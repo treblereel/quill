@@ -142,6 +142,30 @@ public final class IndexReader {
         return Optional.empty();
     }
 
+    public static Optional<ClassRecord> findClassById(Connection conn, int id) {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM classes WHERE id = ?")) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return Optional.of(mapClass(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<BeanRecord> findBeanById(Connection conn, int id) {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM beans WHERE id = ?")) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return Optional.of(mapBean(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return Optional.empty();
+    }
+
     private static ClassRecord mapClass(ResultSet rs) throws SQLException {
         return new ClassRecord(
                 rs.getInt("id"), rs.getString("class_name"), rs.getString("kind"),

@@ -176,6 +176,6 @@ public class JokerTools {
     }
 
     private String errorResponse(String message) {
-        return "{\"error\":\"" + message.replace("\"", "\\\"") + "\"}";
+        return JSON.createObjectNode().put("error", message).toString();
     }
 }

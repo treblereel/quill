@@ -29,13 +29,21 @@ public final class IndexWriter {
             conn.commit();
             conn.setAutoCommit(true);
         } catch (SQLException e) {
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackEx) {
+                e.addSuppressed(rollbackEx);
+            }
             throw new RuntimeException("Failed to write index", e);
         }
     }
 
     private static void clearTables(Connection conn) throws SQLException {
-        for (String table : new String[]{"dependencies", "injection_points", "beans", "classes", "metadata"}) {
-            conn.createStatement().executeUpdate("DELETE FROM " + table);
+        try (var stmt = conn.createStatement()) {
+            for (String table : new String[]{"dependencies", "injection_points", "beans", "classes", "metadata"}) {
+                stmt.executeUpdate("DELETE FROM " + table);
+            }
+            stmt.executeUpdate("DELETE FROM sqlite_sequence");
         }
     }
 

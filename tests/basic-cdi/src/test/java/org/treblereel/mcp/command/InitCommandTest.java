@@ -5,84 +5,92 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.util.Comparator;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.JokerDatabase;
 
 class InitCommandTest {
 
-    @TempDir Path tempDir;
+    static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"));
+    static final Path JOKER_DIR = PROJECT_ROOT.resolve(".joker");
+
+    @AfterEach
+    void cleanup() throws Exception {
+        if (Files.exists(JOKER_DIR)) {
+            try (var walk = Files.walk(JOKER_DIR)) {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+            }
+        }
+    }
 
     @Test
-    void initCreatesIndexDb() throws Exception {
-        // Set up a fake project with compiled test fixture classes
-        Path projectRoot = tempDir.resolve("project");
-        Files.createDirectories(projectRoot.resolve("src/main/java"));
-        Files.createFile(projectRoot.resolve("pom.xml"));
-        Path classesDir = projectRoot.resolve("target/classes/org/treblereel/mcp/fixture");
-        Files.createDirectories(classesDir);
-
-        // Copy fixture .class files to the fake project
-        copyFixtureClasses(classesDir);
-
+    void initIndexesBasicCdiProject() throws Exception {
         InitCommand cmd = new InitCommand();
-        cmd.projectPath = projectRoot;
+        cmd.projectPath = PROJECT_ROOT;
         cmd.run();
 
-        Path dbPath = projectRoot.resolve(".joker/index.db");
+        Path dbPath = JOKER_DIR.resolve("index.db");
         assertTrue(Files.exists(dbPath), "index.db should be created");
 
         try (Connection conn = JokerDatabase.open(dbPath)) {
             var classes = IndexReader.findAllClasses(conn);
-            assertFalse(classes.isEmpty(), "Should have indexed classes");
+            assertEquals(6, classes.size(), "Should index all 6 fixture classes");
 
             var beans = IndexReader.findBeans(conn, null);
-            assertFalse(beans.isEmpty(), "Should have indexed beans");
+            assertEquals(3, beans.size(), "Should find 3 CDI beans (Stripe, Mock, Order)");
+
+            var ips = IndexReader.findInjectionPoints(conn, beans.stream()
+                    .filter(b -> IndexReader.findClassById(conn, b.classId())
+                            .map(c -> c.className().endsWith("OrderService")).orElse(false))
+                    .findFirst().orElseThrow().id());
+            assertFalse(ips.isEmpty(), "OrderService should have injection points");
+            assertTrue(ips.stream().anyMatch(ip -> ip.targetType().contains("PaymentService")),
+                    "OrderService should inject PaymentService");
 
             var meta = IndexReader.getMetadata(conn);
             assertNotNull(meta.get("indexed_at"));
+            assertEquals(PROJECT_ROOT.toString(), meta.get("project_root"));
         }
     }
 
     @Test
     void beanClassIdsReferenceValidClasses() throws Exception {
-        // Verifies the classId mapping between BeanResolver and SQLite is correct
-        Path projectRoot = tempDir.resolve("project2");
-        Files.createDirectories(projectRoot.resolve("src/main/java"));
-        Files.createFile(projectRoot.resolve("pom.xml"));
-        Path classesDir = projectRoot.resolve("target/classes/org/treblereel/mcp/fixture");
-        Files.createDirectories(classesDir);
-
-        copyFixtureClasses(classesDir);
-
         InitCommand cmd = new InitCommand();
-        cmd.projectPath = projectRoot;
+        cmd.projectPath = PROJECT_ROOT;
         cmd.run();
 
-        Path dbPath = projectRoot.resolve(".joker/index.db");
+        Path dbPath = JOKER_DIR.resolve("index.db");
         try (Connection conn = JokerDatabase.open(dbPath)) {
             var beans = IndexReader.findBeans(conn, null);
-            var classes = IndexReader.findAllClasses(conn);
+            var classIds = IndexReader.findAllClasses(conn).stream()
+                    .map(c -> c.id()).collect(Collectors.toSet());
 
-            // Every bean's classId must match a valid class row
-            var classIds = classes.stream().map(c -> c.id()).collect(java.util.stream.Collectors.toSet());
             for (var bean : beans) {
                 assertTrue(classIds.contains(bean.classId()),
-                        "Bean classId " + bean.classId() + " for " + bean.kind()
-                                + " should reference a valid class");
+                        "Bean classId " + bean.classId() + " should reference a valid class");
             }
         }
     }
 
-    private void copyFixtureClasses(Path targetDir) throws Exception {
-        for (String name : new String[]{
-                "PaymentService", "StripePaymentService", "MockPaymentService",
-                "OrderService", "OrderDTO", "Premium"}) {
-            String resource = "org/treblereel/mcp/fixture/" + name + ".class";
-            try (var is = getClass().getClassLoader().getResourceAsStream(resource)) {
-                assertNotNull(is, "Fixture class not found: " + resource);
-                Files.copy(is, targetDir.resolve(name + ".class"));
+    @Test
+    void reindexProducesConsistentIds() throws Exception {
+        InitCommand cmd = new InitCommand();
+        cmd.projectPath = PROJECT_ROOT;
+        cmd.run();
+        cmd.run();
+
+        Path dbPath = JOKER_DIR.resolve("index.db");
+        try (Connection conn = JokerDatabase.open(dbPath)) {
+            var classes = IndexReader.findAllClasses(conn);
+            assertEquals(6, classes.size(), "Re-index should not duplicate classes");
+
+            var classIds = classes.stream().map(c -> c.id()).collect(Collectors.toSet());
+            for (var bean : IndexReader.findBeans(conn, null)) {
+                assertTrue(classIds.contains(bean.classId()),
+                        "After re-index, bean classId " + bean.classId() + " must be valid");
             }
         }
     }

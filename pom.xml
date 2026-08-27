@@ -7,9 +7,9 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>joker-test-fixtures</module>
         <module>joker-core</module>
         <module>joker-app</module>
+        <module>tests</module>
     </modules>
 
     <properties>

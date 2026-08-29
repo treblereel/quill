@@ -3,6 +3,7 @@ package org.treblereel.mcp.mcp;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.util.*;
+import java.util.function.IntConsumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -65,6 +66,8 @@ public class JokerTools {
         if (className != null) filter.put("class_name", className);
         if (scope != null) filter.put("scope", scope);
         if (kind != null) filter.put("kind", kind);
+        if (profile != null) filter.put("profile", profile);
+        if (qualifier != null) filter.put("qualifier", qualifier);
 
         List<BeanRecord> beans = IndexReader.findBeans(conn, filter.isEmpty() ? null : filter);
         ObjectNode root = JSON.createObjectNode();
@@ -107,33 +110,47 @@ public class JokerTools {
             });
         }
 
-        List<DependencyRecord> deps = IndexReader.findDependencies(conn, cls.id(), direction);
-
-        ArrayNode dependsOn = root.putArray("depends_on");
-        ArrayNode dependedBy = root.putArray("depended_by");
         int[] naiveTokens = {cls.sourceTokens()};
+        Set<Integer> visited = new HashSet<>();
+        visited.add(cls.id());
 
-        for (DependencyRecord d : deps) {
-            if (d.fromClassId() == cls.id()) {
-                IndexReader.findClassById(conn, d.toClassId()).ifPresent(c -> {
-                    ObjectNode node = dependsOn.addObject();
-                    node.put("class", c.className());
-                    node.put("kind", d.kind());
-                    naiveTokens[0] += c.sourceTokens();
-                });
-            }
-            if (d.toClassId() == cls.id()) {
-                IndexReader.findClassById(conn, d.fromClassId()).ifPresent(c -> {
-                    ObjectNode node = dependedBy.addObject();
-                    node.put("class", c.className());
-                    node.put("kind", d.kind());
-                    naiveTokens[0] += c.sourceTokens();
-                });
-            }
-        }
+        expandDependencies(conn, cls.id(), direction, depth, root, visited, t -> naiveTokens[0] += t);
 
         appendMeta(root, conn, naiveTokens[0]);
         return root.toString();
+    }
+
+    private void expandDependencies(Connection conn, int classId, String direction, int depth,
+                                     ObjectNode node, Set<Integer> visited, IntConsumer tokenAccum) {
+        List<DependencyRecord> deps = IndexReader.findDependencies(conn, classId, direction);
+
+        ArrayNode dependsOn = node.putArray("depends_on");
+        ArrayNode dependedBy = node.putArray("depended_by");
+
+        for (DependencyRecord d : deps) {
+            if (d.fromClassId() == classId) {
+                IndexReader.findClassById(conn, d.toClassId()).ifPresent(c -> {
+                    ObjectNode child = dependsOn.addObject();
+                    child.put("class", c.className());
+                    child.put("kind", d.kind());
+                    tokenAccum.accept(c.sourceTokens());
+                    if (depth > 1 && visited.add(c.id())) {
+                        expandDependencies(conn, c.id(), direction, depth - 1, child, visited, tokenAccum);
+                    }
+                });
+            }
+            if (d.toClassId() == classId) {
+                IndexReader.findClassById(conn, d.fromClassId()).ifPresent(c -> {
+                    ObjectNode child = dependedBy.addObject();
+                    child.put("class", c.className());
+                    child.put("kind", d.kind());
+                    tokenAccum.accept(c.sourceTokens());
+                    if (depth > 1 && visited.add(c.id())) {
+                        expandDependencies(conn, c.id(), direction, depth - 1, child, visited, tokenAccum);
+                    }
+                });
+            }
+        }
     }
 
     String getInjectionPoints(Connection conn, String target) {

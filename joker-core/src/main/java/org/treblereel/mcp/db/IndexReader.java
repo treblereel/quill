@@ -43,6 +43,14 @@ public final class IndexReader {
                 sb.append(" AND b.kind = ?");
                 params.add(filter.get("kind"));
             }
+            if (filter.containsKey("profile")) {
+                sb.append(" AND b.profiles LIKE ?");
+                params.add("%" + filter.get("profile") + "%");
+            }
+            if (filter.containsKey("qualifier")) {
+                sb.append(" AND b.qualifiers LIKE ?");
+                params.add("%" + filter.get("qualifier") + "%");
+            }
         }
 
         List<BeanRecord> result = new ArrayList<>();

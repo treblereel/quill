@@ -1,5 +1,6 @@
 package org.treblereel.mcp.command;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -29,9 +30,12 @@ public class InitCommand implements Runnable {
         Path classesDir = root.resolve("target/classes");
 
         if (!Files.isDirectory(classesDir)) {
-            System.err.println("No compiled classes found at " + classesDir);
-            System.err.println("Run 'mvn compile' first.");
-            System.exit(2);
+            System.out.println("No compiled classes found. Running Maven compile...");
+            compile(root);
+            if (!Files.isDirectory(classesDir)) {
+                System.err.println("Compilation failed — no classes at " + classesDir);
+                System.exit(2);
+            }
         }
 
         System.out.println("Scanning " + classesDir + " ...");
@@ -104,6 +108,23 @@ public class InitCommand implements Runnable {
 
         System.out.println("Done. Indexed " + classes.size() + " classes, "
                 + resolution.beans().size() + " beans.");
+    }
+
+    private void compile(Path root) {
+        Path mvnw = root.resolve("mvnw");
+        String cmd = Files.isExecutable(mvnw) ? mvnw.toString() : "mvn";
+        try {
+            int exit = new ProcessBuilder(cmd, "compile", "-q")
+                    .directory(root.toFile())
+                    .inheritIO()
+                    .start()
+                    .waitFor();
+            if (exit != 0) {
+                System.err.println("Maven compile exited with code " + exit);
+            }
+        } catch (IOException | InterruptedException e) {
+            System.err.println("Failed to run Maven compile: " + e.getMessage());
+        }
     }
 
     private String resolveGitHead(Path root) {

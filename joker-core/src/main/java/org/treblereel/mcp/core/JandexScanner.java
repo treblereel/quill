@@ -27,17 +27,23 @@ public final class JandexScanner {
     public record ScanResult(Index index, List<ClassRecord> classes) {}
 
     public static ScanResult scan(Path classesDir) {
+        return scan(List.of(classesDir));
+    }
+
+    public static ScanResult scan(List<Path> classesDirs) {
         Indexer indexer = new Indexer();
-        try (Stream<Path> files = Files.walk(classesDir)) {
-            files.filter(p -> p.toString().endsWith(".class")).forEach(p -> {
-                try (InputStream is = Files.newInputStream(p)) {
-                    indexer.index(is);
-                } catch (IOException e) {
-                    throw new RuntimeException("Failed to index " + p, e);
-                }
-            });
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to scan " + classesDir, e);
+        for (Path classesDir : classesDirs) {
+            try (Stream<Path> files = Files.walk(classesDir)) {
+                files.filter(p -> p.toString().endsWith(".class")).forEach(p -> {
+                    try (InputStream is = Files.newInputStream(p)) {
+                        indexer.index(is);
+                    } catch (IOException e) {
+                        throw new RuntimeException("Failed to index " + p, e);
+                    }
+                });
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to scan " + classesDir, e);
+            }
         }
         Index index = indexer.complete();
         return new ScanResult(index, extractClasses(index));

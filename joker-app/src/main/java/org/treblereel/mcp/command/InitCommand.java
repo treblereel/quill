@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.treblereel.mcp.core.BeanResolver;
 import org.treblereel.mcp.core.JandexScanner;
 import org.treblereel.mcp.core.ProjectRootFinder;
@@ -26,20 +27,23 @@ public class InitCommand implements Runnable {
 
     @Override
     public void run() {
-        Path root = ProjectRootFinder.find(projectPath);
-        Path classesDir = root.resolve("target/classes");
+        Path root = resolveRoot();
 
-        if (!Files.isDirectory(classesDir)) {
+        List<Path> classesDirs = findClassesDirs(root);
+
+        if (classesDirs.isEmpty()) {
             System.out.println("No compiled classes found. Running Maven compile...");
             compile(root);
-            if (!Files.isDirectory(classesDir)) {
-                System.err.println("Compilation failed — no classes at " + classesDir);
+            classesDirs = findClassesDirs(root);
+            if (classesDirs.isEmpty()) {
+                System.err.println("Compilation failed — no target/classes directories under " + root);
                 System.exit(2);
             }
         }
 
-        System.out.println("Scanning " + classesDir + " ...");
-        JandexScanner.ScanResult scanResult = JandexScanner.scan(classesDir);
+        System.out.println("Found " + classesDirs.size() + " class directory(ies):");
+        classesDirs.forEach(d -> System.out.println("  " + d));
+        JandexScanner.ScanResult scanResult = JandexScanner.scan(classesDirs);
         System.out.println("Found " + scanResult.classes().size() + " classes.");
 
         System.out.println("Resolving CDI dependencies...");
@@ -108,6 +112,34 @@ public class InitCommand implements Runnable {
 
         System.out.println("Done. Indexed " + classes.size() + " classes, "
                 + resolution.beans().size() + " beans.");
+    }
+
+    private Path resolveRoot() {
+        if (projectPath != null) {
+            Path p = projectPath.toAbsolutePath().normalize();
+            if (Files.isRegularFile(p.resolve("pom.xml"))) {
+                return p;
+            }
+        }
+        return ProjectRootFinder.find(projectPath);
+    }
+
+    private List<Path> findClassesDirs(Path root) {
+        try (Stream<Path> walk = Files.walk(root)) {
+            return walk
+                    .filter(Files::isDirectory)
+                    .filter(p -> p.endsWith("target/classes"))
+                    .filter(p -> {
+                        try (Stream<Path> classFiles = Files.walk(p)) {
+                            return classFiles.anyMatch(f -> f.toString().endsWith(".class"));
+                        } catch (IOException e) {
+                            return false;
+                        }
+                    })
+                    .toList();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to walk project tree: " + root, e);
+        }
     }
 
     private void compile(Path root) {

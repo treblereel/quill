@@ -3,15 +3,18 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>org.treblereel.mcp</groupId>
-        <artifactId>joker</artifactId>
+        <artifactId>joker-tests-multimodule</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>joker-tests</artifactId>
-    <packaging>pom</packaging>
+    <artifactId>joker-tests-multimodule-service</artifactId>
+    <packaging>jar</packaging>
 
-    <modules>
-        <module>basic-cdi</module>
-        <module>multimodule-quarkus</module>
-    </modules>
+    <dependencies>
+        <dependency>
+            <groupId>org.treblereel.mcp</groupId>
+            <artifactId>joker-tests-multimodule-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
 </project>

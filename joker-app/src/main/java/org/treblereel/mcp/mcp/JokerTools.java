@@ -10,6 +10,7 @@ import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.treblereel.mcp.core.ProjectRootFinder;
+import org.treblereel.mcp.core.TokenCounter;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.JokerDatabase;
 import org.treblereel.mcp.model.*;
@@ -87,6 +88,7 @@ public class JokerTools {
         }
         root.put("total", beans.size());
 
+        appendMeta(root, conn, naiveTokensWrapper[0]);
         return root.toString();
     }
 
@@ -109,6 +111,7 @@ public class JokerTools {
 
         ArrayNode dependsOn = root.putArray("depends_on");
         ArrayNode dependedBy = root.putArray("depended_by");
+        int[] naiveTokens = {cls.sourceTokens()};
 
         for (DependencyRecord d : deps) {
             if (d.fromClassId() == cls.id()) {
@@ -116,6 +119,7 @@ public class JokerTools {
                     ObjectNode node = dependsOn.addObject();
                     node.put("class", c.className());
                     node.put("kind", d.kind());
+                    naiveTokens[0] += c.sourceTokens();
                 });
             }
             if (d.toClassId() == cls.id()) {
@@ -123,10 +127,12 @@ public class JokerTools {
                     ObjectNode node = dependedBy.addObject();
                     node.put("class", c.className());
                     node.put("kind", d.kind());
+                    naiveTokens[0] += c.sourceTokens();
                 });
             }
         }
 
+        appendMeta(root, conn, naiveTokens[0]);
         return root.toString();
     }
 
@@ -172,7 +178,21 @@ public class JokerTools {
             }
         }
 
+        appendMeta(root, conn, cls.sourceTokens());
         return root.toString();
+    }
+
+    private void appendMeta(ObjectNode root, Connection conn, int naiveTokens) {
+        String responseJson = root.toString();
+        int responseTokens = TokenCounter.count(responseJson);
+        MetaEnvelope meta = MetaEnvelope.from(conn, null, responseTokens, naiveTokens);
+        ObjectNode metaNode = root.putObject("_meta");
+        metaNode.put("indexed_at", meta.indexedAt());
+        metaNode.put("last_commit", meta.lastCommit());
+        metaNode.put("stale_warning", meta.staleWarning());
+        metaNode.put("response_tokens", meta.responseTokens());
+        metaNode.put("naive_tokens", meta.naiveTokens());
+        metaNode.put("compression", meta.compression());
     }
 
     private String errorResponse(String message) {

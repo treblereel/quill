@@ -46,22 +46,47 @@ public final class JandexScanner {
             }
         }
         Index index = indexer.complete();
-        return new ScanResult(index, extractClasses(index));
+
+        List<Path> sourceRoots = classesDirs.stream()
+                .map(d -> d.getParent().getParent().resolve("src/main/java"))
+                .filter(Files::isDirectory)
+                .toList();
+
+        return new ScanResult(index, extractClasses(index, sourceRoots));
     }
 
     public static List<ClassRecord> extractClasses(Index index) {
+        return extractClasses(index, List.of());
+    }
+
+    public static List<ClassRecord> extractClasses(Index index, List<Path> sourceRoots) {
         List<ClassRecord> result = new ArrayList<>();
         for (ClassInfo ci : index.getKnownClasses()) {
+            String relativePath = ci.name().toString().replace('.', '/') + ".java";
+            String sourceFile = null;
+            int sourceTokens = 0;
+            for (Path root : sourceRoots) {
+                Path src = root.resolve(relativePath);
+                if (Files.isRegularFile(src)) {
+                    sourceFile = src.toString();
+                    try {
+                        sourceTokens = TokenCounter.count(Files.readString(src));
+                    } catch (IOException e) {
+                        // leave 0
+                    }
+                    break;
+                }
+            }
             result.add(new ClassRecord(
                     0,
                     ci.name().toString(),
                     classKind(ci),
                     ci.superName() != null ? ci.superName().toString() : null,
                     ci.interfaceNames().stream().map(DotName::toString).toList(),
-                    null, // source_file not available from .class
+                    sourceFile,
                     0,
                     isBean(ci),
-                    0
+                    sourceTokens
             ));
         }
         return result;

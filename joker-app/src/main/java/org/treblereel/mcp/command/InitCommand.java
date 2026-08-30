@@ -90,6 +90,8 @@ public class InitCommand implements Runnable {
                         d.kind(), d.injectionPointId()))
                 .toList();
 
+        ensureGitignore(root);
+
         Path dbPath = root.resolve(".joker/index.db");
         System.out.println("Writing index to " + dbPath + " ...");
         try {
@@ -156,6 +158,23 @@ public class InitCommand implements Runnable {
             }
         } catch (IOException | InterruptedException e) {
             System.err.println("Failed to run Maven compile: " + e.getMessage());
+        }
+    }
+
+    private void ensureGitignore(Path root) {
+        Path gitignore = root.resolve(".gitignore");
+        String entry = ".joker/";
+        try {
+            if (Files.exists(gitignore)) {
+                String content = Files.readString(gitignore);
+                if (content.contains(entry)) return;
+                String separator = content.endsWith("\n") ? "" : "\n";
+                Files.writeString(gitignore, content + separator + entry + "\n");
+            } else {
+                Files.writeString(gitignore, entry + "\n");
+            }
+        } catch (IOException e) {
+            System.err.println("Warning: could not update .gitignore: " + e.getMessage());
         }
     }
 

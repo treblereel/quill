@@ -7,11 +7,10 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>joker-tests-basic-cdi</artifactId>
+    <artifactId>joker-tests-advanced-cdi</artifactId>
     <packaging>jar</packaging>
 
     <dependencies>
-        <!-- Fixture dependencies (main sources) -->
         <dependency>
             <groupId>jakarta.enterprise</groupId>
             <artifactId>jakarta.enterprise.cdi-api</artifactId>
@@ -27,8 +26,12 @@
             <artifactId>jakarta.annotation-api</artifactId>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>jakarta.interceptor</groupId>
+            <artifactId>jakarta.interceptor-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
 
-        <!-- Modules under test -->
         <dependency>
             <groupId>org.treblereel.mcp</groupId>
             <artifactId>joker-core</artifactId>
@@ -40,7 +43,6 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- Transitive from joker-core needed at test time -->
         <dependency>
             <groupId>io.quarkus.arc</groupId>
             <artifactId>arc-processor</artifactId>
@@ -61,7 +63,6 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
-        <!-- Test framework -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -76,15 +77,6 @@
             </plugin>
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <excludedGroups>e2e</excludedGroups>
-                </configuration>
-            </plugin>
-            <plugin>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <configuration>
-                    <groups>e2e</groups>
-                </configuration>
             </plugin>
         </plugins>
     </build>

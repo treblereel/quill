@@ -23,14 +23,15 @@ public class JokerTools {
 
     @Tool(description = "List CDI beans with optional filtering by class_name, scope, kind, profile, qualifier")
     public String get_beans(
-            @ToolArg(description = "Class name filter (supports * wildcard)") String class_name,
-            @ToolArg(description = "Scope filter, e.g. @ApplicationScoped") String scope,
-            @ToolArg(description = "Bean kind: CLASS, PRODUCER_METHOD, PRODUCER_FIELD, INTERCEPTOR, DECORATOR") String kind,
-            @ToolArg(description = "Build profile filter, e.g. dev") String profile,
-            @ToolArg(description = "Qualifier filter, e.g. @Premium") String qualifier) {
+            @ToolArg(description = "Class name filter (supports * wildcard)") Optional<String> class_name,
+            @ToolArg(description = "Scope filter, e.g. @ApplicationScoped") Optional<String> scope,
+            @ToolArg(description = "Bean kind: CLASS, PRODUCER_METHOD, PRODUCER_FIELD, INTERCEPTOR, DECORATOR") Optional<String> kind,
+            @ToolArg(description = "Build profile filter, e.g. dev") Optional<String> profile,
+            @ToolArg(description = "Qualifier filter, e.g. @Premium") Optional<String> qualifier) {
         Path root = ProjectRootFinder.find(null);
         try (Connection conn = JokerDatabase.open(root.resolve(".joker/index.db"))) {
-            return getBeans(conn, class_name, scope, kind, profile, qualifier);
+            return getBeans(conn, class_name.orElse(null), scope.orElse(null), kind.orElse(null),
+                    profile.orElse(null), qualifier.orElse(null));
         } catch (Exception e) {
             return errorResponse(e.getMessage());
         }
@@ -39,11 +40,11 @@ public class JokerTools {
     @Tool(description = "Get dependency graph for a specific bean or class. Shows what it depends on and what depends on it.")
     public String get_dependencies(
             @ToolArg(description = "Class name (short or FQCN)") String target,
-            @ToolArg(description = "Direction: inbound, outbound, or both (default: both)") String direction,
-            @ToolArg(description = "Graph traversal depth (default: 1)") Integer depth) {
+            @ToolArg(description = "Direction: inbound, outbound, or both (default: both)") Optional<String> direction,
+            @ToolArg(description = "Graph traversal depth (default: 1)") Optional<Integer> depth) {
         Path root = ProjectRootFinder.find(null);
         try (Connection conn = JokerDatabase.open(root.resolve(".joker/index.db"))) {
-            return getDependencies(conn, target, direction != null ? direction : "both", depth != null ? depth : 1);
+            return getDependencies(conn, target, direction.orElse("both"), depth.orElse(1));
         } catch (Exception e) {
             return errorResponse(e.getMessage());
         }

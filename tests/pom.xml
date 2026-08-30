@@ -12,6 +12,7 @@
 
     <modules>
         <module>basic-cdi</module>
+        <module>advanced-cdi</module>
         <module>multimodule-quarkus</module>
     </modules>
 </project>

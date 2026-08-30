@@ -34,7 +34,11 @@ public final class BeanResolver {
             jakarta.inject.Qualifier.class,
             jakarta.inject.Singleton.class,
             jakarta.inject.Named.class,
-            jakarta.annotation.Priority.class
+            jakarta.annotation.Priority.class,
+            jakarta.interceptor.Interceptor.class,
+            jakarta.interceptor.InterceptorBinding.class,
+            jakarta.interceptor.AroundInvoke.class,
+            jakarta.interceptor.InvocationContext.class
     );
 
     public static ResolutionResult resolve(Index applicationIndex) {
@@ -69,7 +73,11 @@ public final class BeanResolver {
         int beanIdSeq = 1;
         Map<BeanInfo, Integer> beanIdMap = new IdentityHashMap<>();
 
-        for (BeanInfo bean : deployment.getBeans()) {
+        List<BeanInfo> allBeans = new ArrayList<>(deployment.getBeans());
+        allBeans.addAll(deployment.getInterceptors());
+        allBeans.addAll(deployment.getDecorators());
+
+        for (BeanInfo bean : allBeans) {
             int beanId = beanIdSeq++;
             beanIdMap.put(bean, beanId);
 
@@ -124,7 +132,7 @@ public final class BeanResolver {
         }
 
         int ipIdSeq = 1;
-        for (BeanInfo bean : deployment.getBeans()) {
+        for (BeanInfo bean : allBeans) {
             Integer ownerBeanId = beanIdMap.get(bean);
             if (ownerBeanId == null) continue;
 

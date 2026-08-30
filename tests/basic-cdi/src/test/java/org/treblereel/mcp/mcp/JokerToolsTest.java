@@ -233,6 +233,129 @@ class JokerToolsTest {
     }
 
     @Test
+    void getOverviewReturnsProjectSummary() throws Exception {
+        var tools = new JokerTools();
+        String result = tools.getOverview(conn);
+        JsonNode root = JSON.readTree(result);
+
+        JsonNode project = root.get("project");
+        assertNotNull(project);
+        assertEquals(4, project.get("classes").asInt());
+        assertEquals(3, project.get("beans").asInt());
+
+        JsonNode byScope = root.get("beans_by_scope");
+        assertNotNull(byScope);
+        assertTrue(byScope.has("@ApplicationScoped"));
+
+        JsonNode byKind = root.get("beans_by_kind");
+        assertNotNull(byKind);
+        assertTrue(byKind.has("CLASS"));
+
+        JsonNode hubs = root.get("architecture_hubs");
+        assertNotNull(hubs);
+        assertTrue(hubs.size() >= 1);
+
+        JsonNode problems = root.get("problems");
+        assertNotNull(problems);
+        assertNotNull(problems.get("unsatisfied_injection_points"));
+        assertNotNull(problems.get("ambiguous_injection_points"));
+
+        JsonNode gitSummary = root.get("git_summary");
+        assertNotNull(gitSummary);
+        assertFalse(gitSummary.isNull());
+        assertEquals(3, gitSummary.get("total_commits_indexed").asInt());
+        assertTrue(gitSummary.get("top_hotspots").size() >= 1);
+
+        assertTrue(root.has("_meta"));
+    }
+
+    @Test
+    void getOverviewWithoutGitDataShowsNull() throws Exception {
+        Connection noGitConn = JokerDatabase.create(tempDir.resolve("nogit-overview.db"));
+        var classes = List.of(
+                new ClassRecord(0, "org.acme.Foo", "CLASS", null, List.of(), "Foo.java", 1, true, 100));
+        var beans = List.of(
+                new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default"),
+                        List.of(), false, null, null, null, null, List.of("Foo")));
+        IndexWriter.write(noGitConn, classes, beans, List.of(), List.of(),
+                Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "unknown"));
+
+        var tools = new JokerTools();
+        String result = tools.getOverview(noGitConn);
+        JsonNode root = JSON.readTree(result);
+        assertTrue(root.get("git_summary").isNull());
+        assertEquals(1, root.get("project").get("beans").asInt());
+        noGitConn.close();
+    }
+
+    @Test
+    void getRiskReturnsScoreAndSignals() throws Exception {
+        var tools = new JokerTools();
+        String result = tools.getRisk(conn, "StripePaymentService");
+        JsonNode root = JSON.readTree(result);
+
+        assertEquals("org.acme.StripePaymentService", root.get("target").asText());
+        assertTrue(root.has("risk_score"));
+        assertTrue(root.get("risk_score").asDouble() >= 0);
+        assertTrue(root.get("risk_score").asDouble() <= 10);
+
+        String level = root.get("risk_level").asText();
+        assertTrue(List.of("LOW", "MEDIUM", "HIGH", "CRITICAL").contains(level));
+
+        JsonNode signals = root.get("signals");
+        assertNotNull(signals);
+        assertTrue(signals.has("fan_in"));
+        assertTrue(signals.has("fan_out"));
+        assertTrue(signals.has("git_churn"));
+        assertTrue(signals.has("bus_factor"));
+        assertTrue(signals.has("coupling"));
+
+        assertTrue(signals.get("git_churn").get("value").asInt() >= 1);
+
+        String recommendation = root.get("recommendation").asText();
+        assertNotNull(recommendation);
+        assertFalse(recommendation.isEmpty());
+
+        assertTrue(root.has("_meta"));
+    }
+
+    @Test
+    void getRiskWithoutGitDataExcludesGitSignals() throws Exception {
+        Connection noGitConn = JokerDatabase.create(tempDir.resolve("nogit-risk.db"));
+        var classes = List.of(
+                new ClassRecord(0, "org.acme.Bar", "CLASS", null, List.of(), "Bar.java", 1, true, 100));
+        var beans = List.of(
+                new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default"),
+                        List.of(), false, null, null, null, null, List.of("Bar")));
+        IndexWriter.write(noGitConn, classes, beans, List.of(), List.of(),
+                Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "unknown"));
+
+        var tools = new JokerTools();
+        String result = tools.getRisk(noGitConn, "Bar");
+        JsonNode root = JSON.readTree(result);
+
+        assertEquals("org.acme.Bar", root.get("target").asText());
+        assertTrue(root.has("risk_score"));
+
+        JsonNode signals = root.get("signals");
+        assertTrue(signals.has("fan_in"));
+        assertTrue(signals.has("fan_out"));
+        assertTrue(signals.has("git"));
+        assertTrue(signals.get("git").get("note").asText().contains("unavailable"));
+
+        assertTrue(root.get("recommendation").asText().contains("Git data unavailable"));
+        noGitConn.close();
+    }
+
+    @Test
+    void getRiskClassNotFound() {
+        var tools = new JokerTools();
+        String result = tools.getRisk(conn, "NonExistentClass");
+        assertTrue(result.contains("error"));
+        assertTrue(result.contains("Class not found"));
+    }
+
+    @Test
     void gitToolsReturnErrorWithoutGitData() throws Exception {
         Connection noGitConn = JokerDatabase.create(tempDir.resolve("nogit.db"));
         IndexWriter.write(noGitConn, List.of(), List.of(), List.of(), List.of(),

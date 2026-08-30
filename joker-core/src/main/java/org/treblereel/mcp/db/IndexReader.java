@@ -338,6 +338,112 @@ public final class IndexReader {
         return Optional.empty();
     }
 
+    public static int countClasses(Connection conn) {
+        return countQuery(conn, "SELECT COUNT(*) FROM classes");
+    }
+
+    public static int countBeans(Connection conn) {
+        return countQuery(conn, "SELECT COUNT(*) FROM beans");
+    }
+
+    public static int countCommits(Connection conn) {
+        return countQuery(conn, "SELECT COUNT(*) FROM git_commits");
+    }
+
+    public static Map<String, Integer> countBeansByScope(Connection conn) {
+        return groupCountQuery(conn, "SELECT scope, COUNT(*) as cnt FROM beans GROUP BY scope ORDER BY cnt DESC");
+    }
+
+    public static Map<String, Integer> countBeansByKind(Connection conn) {
+        return groupCountQuery(conn, "SELECT kind, COUNT(*) as cnt FROM beans GROUP BY kind ORDER BY cnt DESC");
+    }
+
+    public static List<InjectionPointRecord> findUnsatisfiedInjectionPoints(Connection conn) {
+        List<InjectionPointRecord> result = new ArrayList<>();
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM injection_points WHERE resolved_bean_id IS NULL")) {
+            while (rs.next()) {
+                result.add(mapInjectionPoint(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static List<InjectionPointRecord> findAmbiguousInjectionPoints(Connection conn) {
+        List<InjectionPointRecord> result = new ArrayList<>();
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM injection_points WHERE is_ambiguous = 1")) {
+            while (rs.next()) {
+                result.add(mapInjectionPoint(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static List<Map.Entry<Integer, Integer>> findMostDependedOn(Connection conn, int limit) {
+        String sql = "SELECT to_class_id, COUNT(*) as dep_count FROM dependencies GROUP BY to_class_id ORDER BY dep_count DESC LIMIT ?";
+        List<Map.Entry<Integer, Integer>> result = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(Map.entry(rs.getInt("to_class_id"), rs.getInt("dep_count")));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static int countDependents(Connection conn, int classId) {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM dependencies WHERE to_class_id = ?")) {
+            ps.setInt(1, classId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static int countDependencies(Connection conn, int classId) {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM dependencies WHERE from_class_id = ?")) {
+            ps.setInt(1, classId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static int countQuery(Connection conn, String sql) {
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static Map<String, Integer> groupCountQuery(Connection conn, String sql) {
+        Map<String, Integer> result = new LinkedHashMap<>();
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                result.put(rs.getString(1), rs.getInt(2));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
     public static boolean hasGitData(Connection conn) {
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM git_commits")) {

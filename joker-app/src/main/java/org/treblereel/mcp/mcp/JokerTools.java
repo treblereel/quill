@@ -371,6 +371,214 @@ public class JokerTools {
         return root.toString();
     }
 
+    @Tool(description = "Get a high-level overview of the project: bean counts, scope breakdown, architecture hubs, problems, and git activity. Call this first to orient before diving into specifics.")
+    public String get_overview() {
+        Path root = ProjectRootFinder.find(null);
+        try (Connection conn = JokerDatabase.open(root.resolve(".joker/index.db"))) {
+            return getOverview(conn);
+        } catch (Exception e) {
+            return errorResponse(e.getMessage());
+        }
+    }
+
+    @Tool(description = "Assess the risk of changing a specific class. Combines CDI dependency fan-in/out, git churn, author count, and coupling to produce a risk score with explanation.")
+    public String get_risk(
+            @ToolArg(description = "Class name (short or FQCN)") String target) {
+        Path root = ProjectRootFinder.find(null);
+        try (Connection conn = JokerDatabase.open(root.resolve(".joker/index.db"))) {
+            return getRisk(conn, target);
+        } catch (Exception e) {
+            return errorResponse(e.getMessage());
+        }
+    }
+
+    String getOverview(Connection conn) {
+        Map<String, String> meta = IndexReader.getMetadata(conn);
+        ObjectNode root = JSON.createObjectNode();
+
+        ObjectNode project = root.putObject("project");
+        int classCount = IndexReader.countClasses(conn);
+        int beanCount = IndexReader.countBeans(conn);
+        List<ClassRecord> allClasses = IndexReader.findAllClasses(conn);
+        int totalTokens = allClasses.stream().mapToInt(ClassRecord::sourceTokens).sum();
+        project.put("classes", classCount);
+        project.put("beans", beanCount);
+        project.put("total_source_tokens", totalTokens);
+        project.put("indexed_at", meta.getOrDefault("indexed_at", "unknown"));
+        project.put("last_commit", meta.getOrDefault("last_commit", "unknown"));
+
+        ObjectNode scopeNode = root.putObject("beans_by_scope");
+        IndexReader.countBeansByScope(conn).forEach(scopeNode::put);
+
+        ObjectNode kindNode = root.putObject("beans_by_kind");
+        IndexReader.countBeansByKind(conn).forEach(kindNode::put);
+
+        ArrayNode hubs = root.putArray("architecture_hubs");
+        for (var entry : IndexReader.findMostDependedOn(conn, 5)) {
+            IndexReader.findClassById(conn, entry.getKey()).ifPresent(c -> {
+                ObjectNode hub = hubs.addObject();
+                hub.put("class", c.className());
+                hub.put("dependents", entry.getValue());
+                hub.put("is_bean", c.isBean());
+            });
+        }
+
+        ObjectNode problems = root.putObject("problems");
+        List<InjectionPointRecord> unsatisfied = IndexReader.findUnsatisfiedInjectionPoints(conn);
+        ArrayNode unsatArr = problems.putArray("unsatisfied_injection_points");
+        for (InjectionPointRecord ip : unsatisfied) {
+            ObjectNode node = unsatArr.addObject();
+            IndexReader.findBeanById(conn, ip.beanId()).ifPresent(b ->
+                    IndexReader.findClassById(conn, b.classId()).ifPresent(c ->
+                            node.put("bean", c.className())));
+            node.put("field", ip.fieldName());
+            node.put("type", ip.targetType());
+        }
+        List<InjectionPointRecord> ambiguous = IndexReader.findAmbiguousInjectionPoints(conn);
+        ArrayNode ambArr = problems.putArray("ambiguous_injection_points");
+        for (InjectionPointRecord ip : ambiguous) {
+            ObjectNode node = ambArr.addObject();
+            IndexReader.findBeanById(conn, ip.beanId()).ifPresent(b ->
+                    IndexReader.findClassById(conn, b.classId()).ifPresent(c ->
+                            node.put("bean", c.className())));
+            node.put("field", ip.fieldName());
+            node.put("type", ip.targetType());
+        }
+
+        if (IndexReader.hasGitData(conn)) {
+            ObjectNode gitSummary = root.putObject("git_summary");
+            gitSummary.put("total_commits_indexed", IndexReader.countCommits(conn));
+            ArrayNode hotspotsArr = gitSummary.putArray("top_hotspots");
+            for (GitFileStats s : IndexReader.findHotspots(conn, 3, null)) {
+                ObjectNode h = hotspotsArr.addObject();
+                h.put("file", s.filePath());
+                h.put("commit_count", s.commitCount());
+            }
+        } else {
+            root.putNull("git_summary");
+        }
+
+        appendMeta(root, conn, totalTokens);
+        return root.toString();
+    }
+
+    String getRisk(Connection conn, String target) {
+        var classOpt = IndexReader.findClassByName(conn, target);
+        if (classOpt.isEmpty()) return errorResponse("Class not found: " + target);
+        ClassRecord cls = classOpt.get();
+
+        int fanIn = IndexReader.countDependents(conn, cls.id());
+        int fanOut = IndexReader.countDependencies(conn, cls.id());
+
+        boolean hasGit = IndexReader.hasGitData(conn);
+        var statsOpt = hasGit ? IndexReader.findFileStatsByClassId(conn, cls.id()) : Optional.<GitFileStats>empty();
+        int churn = statsOpt.map(GitFileStats::commitCount).orElse(0);
+        int authors = statsOpt.map(GitFileStats::distinctAuthors).orElse(0);
+        int coChangeCount = 0;
+        if (hasGit) {
+            coChangeCount = IndexReader.findCoChanges(conn, cls.id(), 100).size();
+        }
+
+        double fanInScore = scaleScore(fanIn, 0, 3, 8, 15);
+        double fanOutScore = scaleScore(fanOut, 0, 3, 5, 8);
+        double churnScore = hasGit ? scaleScore(churn, 2, 10, 30, 50) : 0;
+        double busFactorScore = hasGit ? busFactorScore(authors) : 0;
+        double couplingScore = hasGit ? scaleScore(coChangeCount, 0, 3, 5, 8) : 0;
+
+        double score = fanInScore * 0.30
+                + fanOutScore * 0.10
+                + churnScore * 0.25
+                + busFactorScore * 0.20
+                + couplingScore * 0.15;
+        score = Math.round(score * 10.0) / 10.0;
+
+        String level;
+        if (score >= 8) level = "CRITICAL";
+        else if (score >= 6) level = "HIGH";
+        else if (score >= 3) level = "MEDIUM";
+        else level = "LOW";
+
+        ObjectNode root = JSON.createObjectNode();
+        root.put("target", cls.className());
+        root.put("risk_score", score);
+        root.put("risk_level", level);
+
+        ObjectNode signals = root.putObject("signals");
+        addSignal(signals, "fan_in", fanIn, fanInScore, 0.30,
+                fanIn + " classes depend on this");
+        addSignal(signals, "fan_out", fanOut, fanOutScore, 0.10,
+                "depends on " + fanOut + " classes");
+        if (hasGit) {
+            addSignal(signals, "git_churn", churn, churnScore, 0.25,
+                    churn + " commits — " + (churn >= 30 ? "high" : churn >= 10 ? "moderate" : "low") + " change frequency");
+            addSignal(signals, "bus_factor", authors, busFactorScore, 0.20,
+                    authors <= 1 ? "only 1 author — single point of knowledge"
+                            : authors + " authors");
+            addSignal(signals, "coupling", coChangeCount, couplingScore, 0.15,
+                    coChangeCount + " files frequently co-change");
+        } else {
+            ObjectNode gitNote = signals.putObject("git");
+            gitNote.put("note", "Git data unavailable — git signals excluded from score. Run 'joker init' in a git repository.");
+        }
+
+        root.put("recommendation", buildRecommendation(cls, fanIn, churn, authors, level, hasGit));
+
+        appendMeta(root, conn, cls.sourceTokens());
+        return root.toString();
+    }
+
+    private static double scaleScore(int value, int low, int mid, int high, int max) {
+        if (value <= low) return 0;
+        if (value >= max) return 10;
+        if (value <= mid) return 5.0 * (value - low) / (mid - low);
+        if (value <= high) return 5.0 + 3.0 * (value - mid) / (high - mid);
+        return 8.0 + 2.0 * (value - high) / (max - high);
+    }
+
+    private static double busFactorScore(int authors) {
+        if (authors <= 0) return 0;
+        if (authors == 1) return 10;
+        if (authors == 2) return 5;
+        if (authors == 3) return 2;
+        return 0;
+    }
+
+    private static void addSignal(ObjectNode signals, String name, int value, double score, double weight, String note) {
+        ObjectNode s = signals.putObject(name);
+        s.put("value", value);
+        s.put("score", Math.round(score * 10.0) / 10.0);
+        s.put("weight", weight);
+        s.put("note", note);
+    }
+
+    private static String buildRecommendation(ClassRecord cls, int fanIn, int churn, int authors, String level, boolean hasGit) {
+        List<String> parts = new ArrayList<>();
+        String shortName = cls.className().contains(".")
+                ? cls.className().substring(cls.className().lastIndexOf('.') + 1) : cls.className();
+
+        if ("CRITICAL".equals(level) || "HIGH".equals(level)) {
+            parts.add(level + "-risk change target.");
+        } else if ("MEDIUM".equals(level)) {
+            parts.add("Moderate risk.");
+        } else {
+            parts.add("Low risk — safe to modify.");
+        }
+
+        if (fanIn > 0) {
+            parts.add(fanIn + " dependents will be affected. Review with get_dependencies(\"" + shortName + "\", direction=\"inbound\").");
+        }
+        if (hasGit && authors <= 1) {
+            parts.add("Single author — ensure review coverage.");
+        }
+        if (hasGit && churn >= 30) {
+            parts.add("Frequently changed — check get_file_history(\"" + shortName + "\") for recent context.");
+        }
+        if (!hasGit) {
+            parts.add("Git data unavailable — risk may be underestimated.");
+        }
+        return String.join(" ", parts);
+    }
+
     private void appendMeta(ObjectNode root, Connection conn, int naiveTokens) {
         String responseJson = root.toString();
         int responseTokens = TokenCounter.count(responseJson);

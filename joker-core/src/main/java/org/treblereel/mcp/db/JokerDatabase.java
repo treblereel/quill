@@ -108,6 +108,16 @@ public final class JokerDatabase {
                 stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_gcf_commit ON git_commit_files(commit_id)");
                 stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_gcf_class ON git_commit_files(class_id)");
                 stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_gc_date ON git_commits(committed_at DESC)");
+
+                stmt.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS class_external_deps (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        class_id INTEGER NOT NULL REFERENCES classes(id),
+                        external_type TEXT NOT NULL,
+                        usage_kind TEXT NOT NULL
+                    )""");
+                stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_ced_class ON class_external_deps(class_id)");
+                stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_ced_type ON class_external_deps(external_type)");
             }
             return conn;
         } catch (SQLException | IOException e) {

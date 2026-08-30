@@ -18,6 +18,7 @@ import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.JokerDatabase;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.DependencyRecord;
+import org.treblereel.mcp.model.ExternalDepRecord;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -95,6 +96,10 @@ public class InitCommand implements Runnable {
                         d.kind(), d.injectionPointId()))
                 .toList();
 
+        System.out.println("Extracting external dependencies...");
+        List<ExternalDepRecord> externalDeps = JandexScanner.extractExternalDeps(scanResult.index(), classNameToSqliteId);
+        System.out.println("Found " + externalDeps.size() + " external type references.");
+
         ensureGitignore(root);
 
         Map<String, Integer> sourceFileToClassId = new HashMap<>();
@@ -129,6 +134,9 @@ public class InitCommand implements Runnable {
                                 "project_root", root.toString(),
                                 "last_commit", lastCommit != null ? lastCommit : "unknown"
                         ));
+                if (!externalDeps.isEmpty()) {
+                    IndexWriter.writeExternalDeps(conn, externalDeps);
+                }
                 if (!gitResult.isEmpty()) {
                     IndexWriter.writeGitData(conn, gitResult.fileStats(),
                             gitResult.commits(), gitResult.commitFiles());

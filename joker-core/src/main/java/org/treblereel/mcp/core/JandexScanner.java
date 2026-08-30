@@ -4,12 +4,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Stream;
 import org.jboss.jandex.*;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.ExternalDepRecord;
 
 public final class JandexScanner {
 
@@ -105,5 +104,72 @@ public final class JandexScanner {
             if (ci.hasDeclaredAnnotation(ann)) return true;
         }
         return false;
+    }
+
+    public static List<ExternalDepRecord> extractExternalDeps(Index index, Map<String, Integer> classNameToId) {
+        Set<String> knownClasses = new HashSet<>();
+        for (ClassInfo ci : index.getKnownClasses()) {
+            knownClasses.add(ci.name().toString());
+        }
+
+        List<ExternalDepRecord> result = new ArrayList<>();
+        for (ClassInfo ci : index.getKnownClasses()) {
+            Integer classId = classNameToId.get(ci.name().toString());
+            if (classId == null) continue;
+
+            Set<String> seen = new HashSet<>();
+
+            if (ci.superName() != null) {
+                collectExternal(ci.superName().toString(), "EXTENDS", classId, knownClasses, seen, result);
+            }
+            for (DotName iface : ci.interfaceNames()) {
+                collectExternal(iface.toString(), "IMPLEMENTS", classId, knownClasses, seen, result);
+            }
+            for (FieldInfo fi : ci.fields()) {
+                collectTypeRefs(fi.type(), "FIELD", classId, knownClasses, seen, result);
+            }
+            for (MethodInfo mi : ci.methods()) {
+                if (mi.name().equals("<init>") || mi.name().equals("<clinit>")) continue;
+                collectTypeRefs(mi.returnType(), "METHOD", classId, knownClasses, seen, result);
+                for (Type pt : mi.parameterTypes()) {
+                    collectTypeRefs(pt, "METHOD", classId, knownClasses, seen, result);
+                }
+            }
+            for (AnnotationInstance ai : ci.declaredAnnotations()) {
+                collectExternal(ai.name().toString(), "ANNOTATION", classId, knownClasses, seen, result);
+            }
+        }
+        return result;
+    }
+
+    private static void collectTypeRefs(Type type, String kind, int classId,
+                                         Set<String> knownClasses, Set<String> seen,
+                                         List<ExternalDepRecord> result) {
+        if (type == null) return;
+        switch (type.kind()) {
+            case CLASS -> collectExternal(type.name().toString(), kind, classId, knownClasses, seen, result);
+            case PARAMETERIZED_TYPE -> {
+                collectExternal(type.asParameterizedType().name().toString(), kind, classId, knownClasses, seen, result);
+                for (Type arg : type.asParameterizedType().arguments()) {
+                    collectTypeRefs(arg, kind, classId, knownClasses, seen, result);
+                }
+            }
+            case ARRAY -> collectTypeRefs(type.asArrayType().constituent(), kind, classId, knownClasses, seen, result);
+            case WILDCARD_TYPE -> {
+                collectTypeRefs(type.asWildcardType().extendsBound(), kind, classId, knownClasses, seen, result);
+                collectTypeRefs(type.asWildcardType().superBound(), kind, classId, knownClasses, seen, result);
+            }
+            default -> { /* PRIMITIVE, VOID, TYPE_VARIABLE — skip */ }
+        }
+    }
+
+    private static void collectExternal(String typeName, String kind, int classId,
+                                         Set<String> knownClasses, Set<String> seen,
+                                         List<ExternalDepRecord> result) {
+        if (knownClasses.contains(typeName)) return;
+        if (typeName.startsWith("java.") || typeName.startsWith("javax.")) return;
+        String key = typeName + ":" + kind;
+        if (!seen.add(key)) return;
+        result.add(new ExternalDepRecord(classId, typeName, kind));
     }
 }

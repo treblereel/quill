@@ -82,6 +82,16 @@ class JokerToolsTest {
                         "2026-08-26T08:00:00Z", "dev1", "2026-08-26T08:00:00Z", 1)
         );
         IndexWriter.writeGitData(conn, gitStats, gitCommits, gitFiles);
+
+        var externalDeps = List.of(
+                new ExternalDepRecord(1, "jakarta.enterprise.context.ApplicationScoped", "ANNOTATION"),
+                new ExternalDepRecord(1, "jakarta.inject.Inject", "ANNOTATION"),
+                new ExternalDepRecord(3, "jakarta.enterprise.context.ApplicationScoped", "ANNOTATION"),
+                new ExternalDepRecord(3, "com.stripe.Stripe", "FIELD"),
+                new ExternalDepRecord(3, "com.stripe.model.Charge", "METHOD"),
+                new ExternalDepRecord(4, "jakarta.enterprise.context.Dependent", "ANNOTATION")
+        );
+        IndexWriter.writeExternalDeps(conn, externalDeps);
     }
 
     @Test
@@ -353,6 +363,61 @@ class JokerToolsTest {
         String result = tools.getRisk(conn, "NonExistentClass");
         assertTrue(result.contains("error"));
         assertTrue(result.contains("Class not found"));
+    }
+
+    @Test
+    void getExternalDepsForClassShowsTypesByKind() throws Exception {
+        var tools = new JokerTools();
+        String result = tools.getExternalDeps(conn, "StripePaymentService", null, 20);
+        JsonNode root = JSON.readTree(result);
+
+        assertEquals("org.acme.StripePaymentService", root.get("target").asText());
+        JsonNode deps = root.get("external_dependencies");
+        assertNotNull(deps);
+        assertTrue(deps.has("annotation"));
+        assertTrue(deps.has("field"));
+        assertTrue(deps.has("method"));
+
+        boolean hasStripe = false;
+        for (JsonNode t : deps.get("field")) {
+            if (t.asText().contains("com.stripe")) hasStripe = true;
+        }
+        assertTrue(hasStripe, "Should include com.stripe.Stripe as FIELD dependency");
+        assertEquals(3, root.get("total_external_types").asInt());
+    }
+
+    @Test
+    void getExternalDepsLibrarySummary() throws Exception {
+        var tools = new JokerTools();
+        String result = tools.getExternalDeps(conn, null, null, 20);
+        JsonNode root = JSON.readTree(result);
+
+        JsonNode libraries = root.get("libraries");
+        assertNotNull(libraries);
+        assertTrue(libraries.size() >= 2);
+
+        boolean hasJakarta = false;
+        boolean hasStripe = false;
+        for (JsonNode lib : libraries) {
+            String pkg = lib.get("package").asText();
+            if (pkg.startsWith("jakarta.")) hasJakarta = true;
+            if (pkg.startsWith("com.stripe")) hasStripe = true;
+        }
+        assertTrue(hasJakarta, "Should include jakarta libraries");
+        assertTrue(hasStripe, "Should include com.stripe library");
+    }
+
+    @Test
+    void getExternalDepsFilterByLibrary() throws Exception {
+        var tools = new JokerTools();
+        String result = tools.getExternalDeps(conn, null, "com.stripe", 20);
+        JsonNode root = JSON.readTree(result);
+
+        assertEquals("com.stripe", root.get("library_filter").asText());
+        JsonNode classes = root.get("classes_using_library");
+        assertNotNull(classes);
+        assertEquals(1, classes.size());
+        assertEquals("org.acme.StripePaymentService", classes.get(0).asText());
     }
 
     @Test

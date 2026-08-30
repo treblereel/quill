@@ -207,6 +207,34 @@ public final class IndexWriter {
         }
     }
 
+    public static void writeExternalDeps(Connection conn, List<ExternalDepRecord> deps) {
+        try {
+            conn.setAutoCommit(false);
+            try (var stmt = conn.createStatement()) {
+                stmt.executeUpdate("DELETE FROM class_external_deps");
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO class_external_deps (class_id, external_type, usage_kind) VALUES (?,?,?)")) {
+                for (ExternalDepRecord d : deps) {
+                    ps.setInt(1, d.classId());
+                    ps.setString(2, d.externalType());
+                    ps.setString(3, d.usageKind());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+            conn.commit();
+            conn.setAutoCommit(true);
+        } catch (SQLException e) {
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackEx) {
+                e.addSuppressed(rollbackEx);
+            }
+            throw new RuntimeException("Failed to write external dependencies", e);
+        }
+    }
+
     static String toJson(List<String> list) {
         if (list == null || list.isEmpty()) return null;
         try {

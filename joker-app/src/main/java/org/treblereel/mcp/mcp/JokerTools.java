@@ -15,6 +15,7 @@ import org.treblereel.mcp.core.TokenCounter;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.JokerDatabase;
 import org.treblereel.mcp.model.*;
+import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.CoChangeRecord;
 import org.treblereel.mcp.model.GitCommitFile;
 import org.treblereel.mcp.model.GitCommitRecord;
@@ -392,6 +393,70 @@ public class JokerTools {
         }
     }
 
+    @Tool(description = "Show external library dependencies used by the project or a specific class. Shows which third-party types are referenced and how (EXTENDS, IMPLEMENTS, FIELD, METHOD, ANNOTATION).")
+    public String get_external_deps(
+            @ToolArg(description = "Class name to inspect (short or FQCN). If omitted, shows project-wide library usage summary.") Optional<String> target,
+            @ToolArg(description = "Filter by library package prefix, e.g. 'com.fasterxml.jackson' or 'jakarta.persistence'") Optional<String> library,
+            @ToolArg(description = "Max results for library summary (default: 20)") Optional<Integer> limit) {
+        Path root = ProjectRootFinder.find(null);
+        try (Connection conn = JokerDatabase.open(root.resolve(".joker/index.db"))) {
+            return getExternalDeps(conn, target.orElse(null), library.orElse(null), limit.orElse(20));
+        } catch (Exception e) {
+            return errorResponse(e.getMessage());
+        }
+    }
+
+    String getExternalDeps(Connection conn, String target, String library, int limit) {
+        if (!IndexReader.hasExternalDeps(conn)) {
+            return errorResponse("No external dependency data. Re-run 'joker init' to index external dependencies.");
+        }
+
+        ObjectNode root = JSON.createObjectNode();
+
+        if (target != null) {
+            var classOpt = IndexReader.findClassByName(conn, target);
+            if (classOpt.isEmpty()) return errorResponse("Class not found: " + target);
+            ClassRecord cls = classOpt.get();
+
+            root.put("target", cls.className());
+            var deps = IndexReader.findExternalDeps(conn, cls.id());
+
+            Map<String, List<ExternalDepRecord>> byKind = new LinkedHashMap<>();
+            for (ExternalDepRecord d : deps) {
+                byKind.computeIfAbsent(d.usageKind(), k -> new ArrayList<>()).add(d);
+            }
+
+            ObjectNode depsNode = root.putObject("external_dependencies");
+            for (var entry : byKind.entrySet()) {
+                ArrayNode arr = depsNode.putArray(entry.getKey().toLowerCase());
+                for (ExternalDepRecord d : entry.getValue()) {
+                    arr.add(d.externalType());
+                }
+            }
+            root.put("total_external_types", deps.size());
+            appendMeta(root, conn, cls.sourceTokens());
+        } else if (library != null) {
+            root.put("library_filter", library);
+            var classes = IndexReader.findClassesUsingType(conn, library + ".%");
+            ArrayNode arr = root.putArray("classes_using_library");
+            for (var entry : classes) {
+                arr.add(entry.getValue());
+            }
+            root.put("total_classes", classes.size());
+            appendMeta(root, conn, 0);
+        } else {
+            ArrayNode arr = root.putArray("libraries");
+            for (var entry : IndexReader.findExternalDepsByLibrary(conn, limit)) {
+                ObjectNode node = arr.addObject();
+                node.put("package", entry.getKey());
+                node.put("used_by_classes", entry.getValue());
+            }
+            appendMeta(root, conn, 0);
+        }
+
+        return root.toString();
+    }
+
     String getOverview(Connection conn) {
         Map<String, String> meta = IndexReader.getMetadata(conn);
         ObjectNode root = JSON.createObjectNode();
@@ -443,6 +508,15 @@ public class JokerTools {
                             node.put("bean", c.className())));
             node.put("field", ip.fieldName());
             node.put("type", ip.targetType());
+        }
+
+        if (IndexReader.hasExternalDeps(conn)) {
+            ArrayNode libsArr = root.putArray("top_libraries");
+            for (var entry : IndexReader.findExternalDepsByLibrary(conn, 5)) {
+                ObjectNode lib = libsArr.addObject();
+                lib.put("package", entry.getKey());
+                lib.put("used_by_classes", entry.getValue());
+            }
         }
 
         if (IndexReader.hasGitData(conn)) {

@@ -12,7 +12,8 @@ import org.treblereel.mcp.model.*;
         GitFileStats.class,
         GitCommitRecord.class,
         GitCommitFile.class,
-        CoChangeRecord.class
+        CoChangeRecord.class,
+        ExternalDepRecord.class
 })
 public class NativeImageReflection {
 }

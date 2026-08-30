@@ -444,6 +444,73 @@ public final class IndexReader {
         return result;
     }
 
+    public static List<ExternalDepRecord> findExternalDeps(Connection conn, int classId) {
+        List<ExternalDepRecord> result = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT * FROM class_external_deps WHERE class_id = ? ORDER BY usage_kind, external_type")) {
+            ps.setInt(1, classId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new ExternalDepRecord(
+                            rs.getInt("class_id"), rs.getString("external_type"), rs.getString("usage_kind")));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static List<Map.Entry<String, Integer>> findExternalDepsByLibrary(Connection conn, int limit) {
+        String sql = """
+                SELECT substr(external_type, 1, instr(substr(external_type, instr(external_type, '.') + 1), '.') + instr(external_type, '.') - 1) as library,
+                       COUNT(DISTINCT class_id) as class_count
+                FROM class_external_deps
+                GROUP BY library
+                ORDER BY class_count DESC
+                LIMIT ?""";
+        List<Map.Entry<String, Integer>> result = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String lib = rs.getString("library");
+                    if (lib != null && !lib.isEmpty()) {
+                        result.add(Map.entry(lib, rs.getInt("class_count")));
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static List<Map.Entry<Integer, String>> findClassesUsingType(Connection conn, String typePattern) {
+        String sql = "SELECT DISTINCT ced.class_id, c.class_name FROM class_external_deps ced JOIN classes c ON ced.class_id = c.id WHERE ced.external_type LIKE ? ORDER BY c.class_name";
+        List<Map.Entry<Integer, String>> result = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, typePattern.replace("*", "%"));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(Map.entry(rs.getInt("class_id"), rs.getString("class_name")));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static boolean hasExternalDeps(Connection conn) {
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM class_external_deps")) {
+            return rs.next() && rs.getInt(1) > 0;
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
     public static boolean hasGitData(Connection conn) {
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM git_commits")) {

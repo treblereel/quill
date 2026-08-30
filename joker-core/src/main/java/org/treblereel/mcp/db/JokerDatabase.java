@@ -73,6 +73,41 @@ public final class JokerDatabase {
                 stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_ip_resolved ON injection_points(resolved_bean_id)");
                 stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_dep_from ON dependencies(from_class_id)");
                 stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_dep_to ON dependencies(to_class_id)");
+
+                stmt.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS git_file_stats (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        file_path TEXT NOT NULL,
+                        class_id INTEGER REFERENCES classes(id),
+                        commit_count INTEGER NOT NULL DEFAULT 0,
+                        last_modified TEXT,
+                        last_author TEXT,
+                        first_commit TEXT,
+                        distinct_authors INTEGER NOT NULL DEFAULT 0
+                    )""");
+                stmt.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS git_commits (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        hash TEXT NOT NULL UNIQUE,
+                        short_hash TEXT NOT NULL,
+                        author TEXT NOT NULL,
+                        author_email TEXT,
+                        committed_at TEXT NOT NULL,
+                        message TEXT NOT NULL
+                    )""");
+                stmt.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS git_commit_files (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        commit_id INTEGER NOT NULL REFERENCES git_commits(id),
+                        class_id INTEGER REFERENCES classes(id),
+                        file_path TEXT NOT NULL,
+                        change_type TEXT NOT NULL
+                    )""");
+                stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_gfs_class ON git_file_stats(class_id)");
+                stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_gfs_count ON git_file_stats(commit_count DESC)");
+                stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_gcf_commit ON git_commit_files(commit_id)");
+                stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_gcf_class ON git_commit_files(class_id)");
+                stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_gc_date ON git_commits(committed_at DESC)");
             }
             return conn;
         } catch (SQLException | IOException e) {

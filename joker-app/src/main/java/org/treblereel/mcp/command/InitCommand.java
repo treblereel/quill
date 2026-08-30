@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.treblereel.mcp.core.BeanResolver;
+import org.treblereel.mcp.core.GitAnalyzer;
+import org.treblereel.mcp.core.GitHookInstaller;
 import org.treblereel.mcp.core.JandexScanner;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import org.treblereel.mcp.db.IndexWriter;
@@ -24,6 +26,9 @@ public class InitCommand implements Runnable {
 
     @Option(names = "--project", description = "Path to project root")
     Path projectPath;
+
+    @Option(names = "--no-hooks", description = "Skip git hook installation")
+    boolean noHooks;
 
     @Override
     public void run() {
@@ -92,12 +97,31 @@ public class InitCommand implements Runnable {
 
         ensureGitignore(root);
 
+        Map<String, Integer> sourceFileToClassId = new HashMap<>();
+        for (int i = 0; i < classes.size(); i++) {
+            String sf = classes.get(i).sourceFile();
+            if (sf != null) sourceFileToClassId.put(sf, i + 1);
+        }
+
+        GitAnalyzer.GitAnalysisResult gitResult;
+        if (GitAnalyzer.hasGitRepo(root)) {
+            System.out.println("Analyzing git history...");
+            gitResult = GitAnalyzer.analyze(root, 500, sourceFileToClassId);
+            System.out.println("Processed " + gitResult.commits().size() + " commits, "
+                    + gitResult.fileStats().size() + " files with history.");
+        } else {
+            System.out.println("No git repository found. Git intelligence will be unavailable.");
+            System.out.println("Consider initializing git: git init && git add -A && git commit -m 'initial'");
+            gitResult = GitAnalyzer.GitAnalysisResult.empty();
+        }
+
+        String lastCommit = gitResult.headShortHash();
+
         Path dbPath = root.resolve(".joker/index.db");
         System.out.println("Writing index to " + dbPath + " ...");
         try {
             Connection conn = JokerDatabase.create(dbPath);
             try {
-                String lastCommit = resolveGitHead(root);
                 IndexWriter.write(conn, classes, remappedBeans,
                         resolution.injectionPoints(), remappedDeps,
                         Map.of(
@@ -105,6 +129,10 @@ public class InitCommand implements Runnable {
                                 "project_root", root.toString(),
                                 "last_commit", lastCommit != null ? lastCommit : "unknown"
                         ));
+                if (!gitResult.isEmpty()) {
+                    IndexWriter.writeGitData(conn, gitResult.fileStats(),
+                            gitResult.commits(), gitResult.commitFiles());
+                }
             } finally {
                 conn.close();
             }
@@ -112,8 +140,14 @@ public class InitCommand implements Runnable {
             throw new RuntimeException("Failed to write index to " + dbPath, e);
         }
 
+        if (!noHooks && GitAnalyzer.hasGitRepo(root)) {
+            GitHookInstaller.install(root);
+            System.out.println("Installed git hooks (post-commit, post-merge) for auto-update.");
+        }
+
         System.out.println("Done. Indexed " + classes.size() + " classes, "
-                + resolution.beans().size() + " beans.");
+                + resolution.beans().size() + " beans"
+                + (gitResult.isEmpty() ? "." : ", " + gitResult.commits().size() + " git commits."));
     }
 
     private Path resolveRoot() {
@@ -178,20 +212,4 @@ public class InitCommand implements Runnable {
         }
     }
 
-    private String resolveGitHead(Path root) {
-        try {
-            Path headFile = root.resolve(".git/HEAD");
-            if (!Files.exists(headFile)) return null;
-            String head = Files.readString(headFile).trim();
-            if (head.startsWith("ref: ")) {
-                Path refFile = root.resolve(".git/" + head.substring(5));
-                if (Files.exists(refFile)) {
-                    return Files.readString(refFile).trim().substring(0, 7);
-                }
-            }
-            return head.length() > 7 ? head.substring(0, 7) : head;
-        } catch (Exception e) {
-            return null;
-        }
-    }
 }

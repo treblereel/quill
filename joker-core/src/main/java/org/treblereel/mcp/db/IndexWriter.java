@@ -8,6 +8,9 @@ import java.util.Map;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.treblereel.mcp.model.*;
+import org.treblereel.mcp.model.GitCommitFile;
+import org.treblereel.mcp.model.GitCommitRecord;
+import org.treblereel.mcp.model.GitFileStats;
 
 public final class IndexWriter {
 
@@ -123,6 +126,81 @@ public final class IndexWriter {
             for (var entry : metadata.entrySet()) {
                 ps.setString(1, entry.getKey());
                 ps.setString(2, entry.getValue());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
+
+    public static void writeGitData(Connection conn, List<GitFileStats> fileStats,
+            List<GitCommitRecord> commits, List<GitCommitFile> commitFiles) {
+        try {
+            conn.setAutoCommit(false);
+            clearGitTables(conn);
+            writeGitFileStats(conn, fileStats);
+            writeGitCommits(conn, commits);
+            writeGitCommitFiles(conn, commitFiles);
+            conn.commit();
+            conn.setAutoCommit(true);
+        } catch (SQLException e) {
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackEx) {
+                e.addSuppressed(rollbackEx);
+            }
+            throw new RuntimeException("Failed to write git data", e);
+        }
+    }
+
+    private static void clearGitTables(Connection conn) throws SQLException {
+        try (var stmt = conn.createStatement()) {
+            for (String table : new String[]{"git_commit_files", "git_commits", "git_file_stats"}) {
+                stmt.executeUpdate("DELETE FROM " + table);
+            }
+        }
+    }
+
+    private static void writeGitFileStats(Connection conn, List<GitFileStats> stats) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO git_file_stats (file_path, class_id, commit_count, last_modified, last_author, first_commit, distinct_authors) VALUES (?,?,?,?,?,?,?)")) {
+            for (GitFileStats s : stats) {
+                ps.setString(1, s.filePath());
+                if (s.classId() != null) ps.setInt(2, s.classId()); else ps.setNull(2, java.sql.Types.INTEGER);
+                ps.setInt(3, s.commitCount());
+                ps.setString(4, s.lastModified());
+                ps.setString(5, s.lastAuthor());
+                ps.setString(6, s.firstCommit());
+                ps.setInt(7, s.distinctAuthors());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
+
+    private static void writeGitCommits(Connection conn, List<GitCommitRecord> commits) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO git_commits (hash, short_hash, author, author_email, committed_at, message) VALUES (?,?,?,?,?,?)")) {
+            for (GitCommitRecord c : commits) {
+                ps.setString(1, c.hash());
+                ps.setString(2, c.shortHash());
+                ps.setString(3, c.author());
+                ps.setString(4, c.authorEmail());
+                ps.setString(5, c.committedAt());
+                ps.setString(6, c.message());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
+
+    private static void writeGitCommitFiles(Connection conn, List<GitCommitFile> files) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO git_commit_files (commit_id, class_id, file_path, change_type) VALUES (?,?,?,?)")) {
+            for (GitCommitFile f : files) {
+                ps.setInt(1, f.commitId());
+                if (f.classId() != null) ps.setInt(2, f.classId()); else ps.setNull(2, java.sql.Types.INTEGER);
+                ps.setString(3, f.filePath());
+                ps.setString(4, f.changeType());
                 ps.addBatch();
             }
             ps.executeBatch();

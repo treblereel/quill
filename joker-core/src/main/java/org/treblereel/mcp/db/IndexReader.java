@@ -6,6 +6,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.treblereel.mcp.model.*;
+import org.treblereel.mcp.model.CoChangeRecord;
+import org.treblereel.mcp.model.GitCommitFile;
+import org.treblereel.mcp.model.GitCommitRecord;
+import org.treblereel.mcp.model.GitFileStats;
 
 public final class IndexReader {
 
@@ -202,6 +206,169 @@ public final class IndexReader {
                 rs.getString("field_name"),
                 rs.getObject("resolved_bean_id") != null ? rs.getInt("resolved_bean_id") : null,
                 rs.getInt("is_ambiguous") == 1
+        );
+    }
+
+    public static List<GitFileStats> findHotspots(Connection conn, int limit, String since) {
+        var sb = new StringBuilder(
+                "SELECT * FROM git_file_stats WHERE commit_count > 0");
+        List<Object> params = new ArrayList<>();
+        if (since != null) {
+            sb.append(" AND last_modified >= ?");
+            params.add(since);
+        }
+        sb.append(" ORDER BY commit_count DESC LIMIT ?");
+        params.add(limit);
+
+        List<GitFileStats> result = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sb.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(mapGitFileStats(rs));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static List<GitCommitRecord> findFileHistory(Connection conn, int classId, int limit) {
+        String sql = """
+                SELECT gc.* FROM git_commits gc
+                JOIN git_commit_files gcf ON gc.id = gcf.commit_id
+                WHERE gcf.class_id = ?
+                ORDER BY gc.committed_at DESC
+                LIMIT ?""";
+        List<GitCommitRecord> result = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, classId);
+            ps.setInt(2, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(mapGitCommit(rs));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static List<CoChangeRecord> findCoChanges(Connection conn, int classId, int limit) {
+        String sql = """
+                SELECT gcf2.file_path, gcf2.class_id, COUNT(*) as co_count
+                FROM git_commit_files gcf1
+                JOIN git_commit_files gcf2 ON gcf1.commit_id = gcf2.commit_id
+                    AND gcf1.file_path != gcf2.file_path
+                WHERE gcf1.class_id = ?
+                GROUP BY gcf2.file_path
+                ORDER BY co_count DESC
+                LIMIT ?""";
+        List<CoChangeRecord> result = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, classId);
+            ps.setInt(2, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int coCount = rs.getInt("co_count");
+                    result.add(new CoChangeRecord(
+                            rs.getString("file_path"),
+                            rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
+                            coCount,
+                            0.0
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static List<GitCommitRecord> findRecentCommits(Connection conn, int limit) {
+        String sql = "SELECT * FROM git_commits ORDER BY committed_at DESC LIMIT ?";
+        List<GitCommitRecord> result = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(mapGitCommit(rs));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static List<GitCommitFile> findCommitFiles(Connection conn, int commitId) {
+        String sql = "SELECT * FROM git_commit_files WHERE commit_id = ?";
+        List<GitCommitFile> result = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, commitId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new GitCommitFile(
+                            rs.getInt("commit_id"),
+                            rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
+                            rs.getString("file_path"),
+                            rs.getString("change_type")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static Optional<GitFileStats> findFileStatsByClassId(Connection conn, int classId) {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM git_file_stats WHERE class_id = ?")) {
+            ps.setInt(1, classId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return Optional.of(mapGitFileStats(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return Optional.empty();
+    }
+
+    public static boolean hasGitData(Connection conn) {
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM git_commits")) {
+            return rs.next() && rs.getInt(1) > 0;
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    private static GitFileStats mapGitFileStats(ResultSet rs) throws SQLException {
+        return new GitFileStats(
+                rs.getInt("id"),
+                rs.getString("file_path"),
+                rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
+                rs.getInt("commit_count"),
+                rs.getString("last_modified"),
+                rs.getString("last_author"),
+                rs.getString("first_commit"),
+                rs.getInt("distinct_authors")
+        );
+    }
+
+    private static GitCommitRecord mapGitCommit(ResultSet rs) throws SQLException {
+        return new GitCommitRecord(
+                rs.getInt("id"),
+                rs.getString("hash"),
+                rs.getString("short_hash"),
+                rs.getString("author"),
+                rs.getString("author_email"),
+                rs.getString("committed_at"),
+                rs.getString("message")
         );
     }
 

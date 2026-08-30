@@ -15,6 +15,10 @@ import org.treblereel.mcp.core.TokenCounter;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.JokerDatabase;
 import org.treblereel.mcp.model.*;
+import org.treblereel.mcp.model.CoChangeRecord;
+import org.treblereel.mcp.model.GitCommitFile;
+import org.treblereel.mcp.model.GitCommitRecord;
+import org.treblereel.mcp.model.GitFileStats;
 
 @ApplicationScoped
 public class JokerTools {
@@ -197,6 +201,173 @@ public class JokerTools {
         }
 
         appendMeta(root, conn, cls.sourceTokens());
+        return root.toString();
+    }
+
+    private static final String NO_GIT_MESSAGE = "No git data available. "
+            + "Initialize a git repository and re-run 'joker init' to enable git intelligence: "
+            + "git init && git add -A && git commit -m 'initial'";
+
+    @Tool(description = "Get most frequently changed files/classes by git commit count. Helps identify volatile areas of the codebase.")
+    public String get_hotspots(
+            @ToolArg(description = "Max results (default: 10)") Optional<Integer> limit,
+            @ToolArg(description = "Only commits after this date, ISO format YYYY-MM-DD") Optional<String> since) {
+        Path root = ProjectRootFinder.find(null);
+        try (Connection conn = JokerDatabase.open(root.resolve(".joker/index.db"))) {
+            return getHotspots(conn, limit.orElse(10), since.orElse(null));
+        } catch (Exception e) {
+            return errorResponse(e.getMessage());
+        }
+    }
+
+    @Tool(description = "Get git commit history for a specific class or file")
+    public String get_file_history(
+            @ToolArg(description = "Class name (short or FQCN)") String target,
+            @ToolArg(description = "Max commits to return (default: 10)") Optional<Integer> limit) {
+        Path root = ProjectRootFinder.find(null);
+        try (Connection conn = JokerDatabase.open(root.resolve(".joker/index.db"))) {
+            return getFileHistory(conn, target, limit.orElse(10));
+        } catch (Exception e) {
+            return errorResponse(e.getMessage());
+        }
+    }
+
+    @Tool(description = "Find files that frequently change together with a given class. Reveals hidden coupling not visible in the dependency graph.")
+    public String get_co_changes(
+            @ToolArg(description = "Class name (short or FQCN)") String target,
+            @ToolArg(description = "Max results (default: 10)") Optional<Integer> limit) {
+        Path root = ProjectRootFinder.find(null);
+        try (Connection conn = JokerDatabase.open(root.resolve(".joker/index.db"))) {
+            return getCoChanges(conn, target, limit.orElse(10));
+        } catch (Exception e) {
+            return errorResponse(e.getMessage());
+        }
+    }
+
+    @Tool(description = "Get recently changed beans/classes from git history. Useful for understanding what was recently modified.")
+    public String get_recent_changes(
+            @ToolArg(description = "Number of recent commits to inspect (default: 10)") Optional<Integer> commits) {
+        Path root = ProjectRootFinder.find(null);
+        try (Connection conn = JokerDatabase.open(root.resolve(".joker/index.db"))) {
+            return getRecentChanges(conn, commits.orElse(10));
+        } catch (Exception e) {
+            return errorResponse(e.getMessage());
+        }
+    }
+
+    String getHotspots(Connection conn, int limit, String since) {
+        if (!IndexReader.hasGitData(conn)) return errorResponse(NO_GIT_MESSAGE);
+
+        List<GitFileStats> hotspots = IndexReader.findHotspots(conn, limit, since);
+        ObjectNode root = JSON.createObjectNode();
+        ArrayNode arr = root.putArray("hotspots");
+
+        for (GitFileStats s : hotspots) {
+            ObjectNode node = arr.addObject();
+            node.put("file", s.filePath());
+            if (s.classId() != null) {
+                IndexReader.findClassById(conn, s.classId()).ifPresent(c -> {
+                    node.put("class", c.className());
+                    node.put("is_bean", c.isBean());
+                });
+            }
+            node.put("commit_count", s.commitCount());
+            node.put("distinct_authors", s.distinctAuthors());
+            node.put("last_modified", s.lastModified());
+            node.put("last_author", s.lastAuthor());
+        }
+        root.put("total", hotspots.size());
+        appendMeta(root, conn, 0);
+        return root.toString();
+    }
+
+    String getFileHistory(Connection conn, String target, int limit) {
+        if (!IndexReader.hasGitData(conn)) return errorResponse(NO_GIT_MESSAGE);
+
+        var classOpt = IndexReader.findClassByName(conn, target);
+        if (classOpt.isEmpty()) return errorResponse("Class not found: " + target);
+        ClassRecord cls = classOpt.get();
+
+        List<GitCommitRecord> commits = IndexReader.findFileHistory(conn, cls.id(), limit);
+        var statsOpt = IndexReader.findFileStatsByClassId(conn, cls.id());
+
+        ObjectNode root = JSON.createObjectNode();
+        root.put("target", cls.className());
+        root.put("file", cls.sourceFile());
+
+        ArrayNode arr = root.putArray("commits");
+        for (GitCommitRecord c : commits) {
+            ObjectNode node = arr.addObject();
+            node.put("hash", c.shortHash());
+            node.put("author", c.author());
+            node.put("date", c.committedAt());
+            node.put("message", c.message());
+        }
+        statsOpt.ifPresent(s -> root.put("total_commits", s.commitCount()));
+        appendMeta(root, conn, cls.sourceTokens());
+        return root.toString();
+    }
+
+    String getCoChanges(Connection conn, String target, int limit) {
+        if (!IndexReader.hasGitData(conn)) return errorResponse(NO_GIT_MESSAGE);
+
+        var classOpt = IndexReader.findClassByName(conn, target);
+        if (classOpt.isEmpty()) return errorResponse("Class not found: " + target);
+        ClassRecord cls = classOpt.get();
+
+        var statsOpt = IndexReader.findFileStatsByClassId(conn, cls.id());
+        int targetCommitCount = statsOpt.map(GitFileStats::commitCount).orElse(1);
+
+        List<CoChangeRecord> coChanges = IndexReader.findCoChanges(conn, cls.id(), limit);
+
+        ObjectNode root = JSON.createObjectNode();
+        root.put("target", cls.className());
+        ArrayNode arr = root.putArray("co_changes");
+        for (CoChangeRecord co : coChanges) {
+            ObjectNode node = arr.addObject();
+            node.put("file", co.filePath());
+            if (co.classId() != null) {
+                IndexReader.findClassById(conn, co.classId()).ifPresent(c -> {
+                    node.put("class", c.className());
+                });
+            }
+            node.put("co_change_count", co.coChangeCount());
+            double ratio = (double) co.coChangeCount() / targetCommitCount;
+            node.put("coupling_ratio", Math.round(ratio * 100.0) / 100.0);
+        }
+        appendMeta(root, conn, cls.sourceTokens());
+        return root.toString();
+    }
+
+    String getRecentChanges(Connection conn, int commitCount) {
+        if (!IndexReader.hasGitData(conn)) return errorResponse(NO_GIT_MESSAGE);
+
+        List<GitCommitRecord> commits = IndexReader.findRecentCommits(conn, commitCount);
+        ObjectNode root = JSON.createObjectNode();
+        ArrayNode arr = root.putArray("recent_changes");
+
+        for (GitCommitRecord c : commits) {
+            ObjectNode node = arr.addObject();
+            node.put("commit", c.shortHash());
+            node.put("author", c.author());
+            node.put("date", c.committedAt());
+            node.put("message", c.message());
+
+            List<GitCommitFile> files = IndexReader.findCommitFiles(conn, c.id());
+            ArrayNode filesArr = node.putArray("files");
+            for (GitCommitFile f : files) {
+                ObjectNode fNode = filesArr.addObject();
+                fNode.put("file", f.filePath());
+                fNode.put("change_type", f.changeType());
+                if (f.classId() != null) {
+                    IndexReader.findClassById(conn, f.classId()).ifPresent(cl -> {
+                        fNode.put("class", cl.className());
+                        fNode.put("is_bean", cl.isBean());
+                    });
+                }
+            }
+        }
+        appendMeta(root, conn, 0);
         return root.toString();
     }
 

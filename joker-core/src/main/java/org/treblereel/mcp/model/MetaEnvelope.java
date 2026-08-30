@@ -1,9 +1,9 @@
 package org.treblereel.mcp.model;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.util.Map;
+import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.db.IndexReader;
 
 public record MetaEnvelope(
@@ -27,19 +27,8 @@ public record MetaEnvelope(
 
     private static boolean isStale(Path projectRoot, String indexedCommit) {
         if (projectRoot == null || "unknown".equals(indexedCommit)) return false;
-        try {
-            Path headFile = projectRoot.resolve(".git/HEAD");
-            if (!Files.exists(headFile)) return false;
-            String head = Files.readString(headFile).trim();
-            if (head.startsWith("ref: ")) {
-                Path refFile = projectRoot.resolve(".git/" + head.substring(5));
-                if (Files.exists(refFile)) {
-                    head = Files.readString(refFile).trim();
-                }
-            }
-            return !head.startsWith(indexedCommit);
-        } catch (Exception e) {
-            return false;
-        }
+        String currentHead = GitAnalyzer.resolveHead(projectRoot);
+        if (currentHead == null) return false;
+        return !currentHead.equals(indexedCommit);
     }
 }

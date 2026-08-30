@@ -1,0 +1,12 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": "com/knuddels/jtokkit/cl100k_base\\.tiktoken$"},
+      {"pattern": "org/eclipse/jgit/internal/JGitText\\.properties$"},
+      {"pattern": "org/eclipse/jgit/internal/storage/dfs/DfsText\\.properties$"},
+      {"pattern": "org/sqlite/native/.*\\.dylib$"},
+      {"pattern": "org/sqlite/native/.*\\.so$"},
+      {"pattern": "org/sqlite/native/.*\\.dll$"}
+    ]
+  }
+}

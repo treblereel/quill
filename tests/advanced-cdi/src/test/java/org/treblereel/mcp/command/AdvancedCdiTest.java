@@ -9,17 +9,17 @@ import java.util.Comparator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.JokerDatabase;
+import org.treblereel.mcp.db.QuillDatabase;
 
 class AdvancedCdiTest {
 
     static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"));
-    static final Path JOKER_DIR = PROJECT_ROOT.resolve(".joker");
+    static final Path QUILL_DIR = PROJECT_ROOT.resolve(".quill");
 
     @AfterEach
     void cleanup() throws Exception {
-        if (Files.exists(JOKER_DIR)) {
-            try (var walk = Files.walk(JOKER_DIR)) {
+        if (Files.exists(QUILL_DIR)) {
+            try (var walk = Files.walk(QUILL_DIR)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
             }
         }
@@ -31,10 +31,10 @@ class AdvancedCdiTest {
         cmd.projectPath = PROJECT_ROOT;
         cmd.run();
 
-        Path dbPath = JOKER_DIR.resolve("index.db");
+        Path dbPath = QUILL_DIR.resolve("index.db");
         assertTrue(Files.exists(dbPath));
 
-        try (Connection conn = JokerDatabase.open(dbPath)) {
+        try (Connection conn = QuillDatabase.open(dbPath)) {
             var classes = IndexReader.findAllClasses(conn);
             assertTrue(classes.size() >= 6,
                     "Should index at least 6 classes (CacheService, InMemory, CacheProducer, ProductService, LoggingInterceptor, annotations)");

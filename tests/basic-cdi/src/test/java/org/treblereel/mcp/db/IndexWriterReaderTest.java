@@ -18,7 +18,7 @@ class IndexWriterReaderTest {
 
     @BeforeEach
     void setUp() {
-        conn = JokerDatabase.create(tempDir.resolve("test.db"));
+        conn = QuillDatabase.create(tempDir.resolve("test.db"));
     }
 
     @Test

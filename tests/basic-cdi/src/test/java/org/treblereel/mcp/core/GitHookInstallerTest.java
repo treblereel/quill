@@ -26,9 +26,9 @@ class GitHookInstallerTest {
 
         String content = Files.readString(postCommit);
         assertTrue(content.startsWith("#!/bin/sh"));
-        assertTrue(content.contains("joker-start"));
-        assertTrue(content.contains("joker update"));
-        assertTrue(content.contains("joker-end"));
+        assertTrue(content.contains("quill-start"));
+        assertTrue(content.contains("quill update"));
+        assertTrue(content.contains("quill-end"));
     }
 
     @Test
@@ -40,8 +40,8 @@ class GitHookInstallerTest {
         GitHookInstaller.install(tempDir);
 
         String content = Files.readString(hooksDir.resolve("post-commit"));
-        int count = countOccurrences(content, "joker-start");
-        assertEquals(1, count, "Should only contain one joker block after double install");
+        int count = countOccurrences(content, "quill-start");
+        assertEquals(1, count, "Should only contain one quill block after double install");
     }
 
     @Test
@@ -55,27 +55,27 @@ class GitHookInstallerTest {
 
         String content = Files.readString(postCommit);
         assertTrue(content.contains("existing hook"));
-        assertTrue(content.contains("joker-start"));
+        assertTrue(content.contains("quill-start"));
     }
 
     @Test
-    void uninstallRemovesJokerBlock() throws IOException {
+    void uninstallRemovesQuillBlock() throws IOException {
         Path hooksDir = tempDir.resolve(".git/hooks");
         Files.createDirectories(hooksDir);
         Path postCommit = hooksDir.resolve("post-commit");
         Files.writeString(postCommit, "#!/bin/sh\necho 'keep this'\n");
 
         GitHookInstaller.install(tempDir);
-        assertTrue(Files.readString(postCommit).contains("joker-start"));
+        assertTrue(Files.readString(postCommit).contains("quill-start"));
 
         GitHookInstaller.uninstall(tempDir);
         String content = Files.readString(postCommit);
-        assertFalse(content.contains("joker-start"));
+        assertFalse(content.contains("quill-start"));
         assertTrue(content.contains("keep this"));
     }
 
     @Test
-    void uninstallDeletesHookIfOnlyJokerContent() throws IOException {
+    void uninstallDeletesHookIfOnlyQuillContent() throws IOException {
         Path hooksDir = tempDir.resolve(".git/hooks");
         Files.createDirectories(hooksDir);
 

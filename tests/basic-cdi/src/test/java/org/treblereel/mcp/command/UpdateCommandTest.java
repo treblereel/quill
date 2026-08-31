@@ -13,12 +13,12 @@ import org.junit.jupiter.api.Test;
 class UpdateCommandTest {
 
     static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"));
-    static final Path JOKER_DIR = PROJECT_ROOT.resolve(".joker");
+    static final Path QUILL_DIR = PROJECT_ROOT.resolve(".quill");
 
     @AfterEach
     void cleanup() throws Exception {
-        if (Files.exists(JOKER_DIR)) {
-            try (var walk = Files.walk(JOKER_DIR)) {
+        if (Files.exists(QUILL_DIR)) {
+            try (var walk = Files.walk(QUILL_DIR)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
             }
         }
@@ -26,7 +26,7 @@ class UpdateCommandTest {
 
     @Test
     void updateRunsFullInitWhenNoIndexExists() {
-        assertFalse(Files.exists(JOKER_DIR.resolve("index.db")));
+        assertFalse(Files.exists(QUILL_DIR.resolve("index.db")));
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         System.setOut(new PrintStream(out));
@@ -38,7 +38,7 @@ class UpdateCommandTest {
             System.setOut(System.out);
         }
 
-        assertTrue(Files.exists(JOKER_DIR.resolve("index.db")),
+        assertTrue(Files.exists(QUILL_DIR.resolve("index.db")),
                 "Should create index.db via full init");
         assertTrue(out.toString().contains("No existing index found"),
                 "Should print 'no existing index' message");
@@ -51,7 +51,7 @@ class UpdateCommandTest {
         init.noHooks = true;
         init.run();
 
-        assertTrue(Files.exists(JOKER_DIR.resolve("index.db")));
+        assertTrue(Files.exists(QUILL_DIR.resolve("index.db")));
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream original = System.out;

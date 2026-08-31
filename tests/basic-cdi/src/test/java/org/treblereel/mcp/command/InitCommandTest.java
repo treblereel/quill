@@ -10,17 +10,17 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.JokerDatabase;
+import org.treblereel.mcp.db.QuillDatabase;
 
 class InitCommandTest {
 
     static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"));
-    static final Path JOKER_DIR = PROJECT_ROOT.resolve(".joker");
+    static final Path QUILL_DIR = PROJECT_ROOT.resolve(".quill");
 
     @AfterEach
     void cleanup() throws Exception {
-        if (Files.exists(JOKER_DIR)) {
-            try (var walk = Files.walk(JOKER_DIR)) {
+        if (Files.exists(QUILL_DIR)) {
+            try (var walk = Files.walk(QUILL_DIR)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
             }
         }
@@ -32,10 +32,10 @@ class InitCommandTest {
         cmd.projectPath = PROJECT_ROOT;
         cmd.run();
 
-        Path dbPath = JOKER_DIR.resolve("index.db");
+        Path dbPath = QUILL_DIR.resolve("index.db");
         assertTrue(Files.exists(dbPath), "index.db should be created");
 
-        try (Connection conn = JokerDatabase.open(dbPath)) {
+        try (Connection conn = QuillDatabase.open(dbPath)) {
             var classes = IndexReader.findAllClasses(conn);
             assertEquals(6, classes.size(), "Should index all 6 fixture classes");
 
@@ -62,8 +62,8 @@ class InitCommandTest {
         cmd.projectPath = PROJECT_ROOT;
         cmd.run();
 
-        Path dbPath = JOKER_DIR.resolve("index.db");
-        try (Connection conn = JokerDatabase.open(dbPath)) {
+        Path dbPath = QUILL_DIR.resolve("index.db");
+        try (Connection conn = QuillDatabase.open(dbPath)) {
             var beans = IndexReader.findBeans(conn, null);
             var classIds = IndexReader.findAllClasses(conn).stream()
                     .map(c -> c.id()).collect(Collectors.toSet());
@@ -82,8 +82,8 @@ class InitCommandTest {
         cmd.run();
         cmd.run();
 
-        Path dbPath = JOKER_DIR.resolve("index.db");
-        try (Connection conn = JokerDatabase.open(dbPath)) {
+        Path dbPath = QUILL_DIR.resolve("index.db");
+        try (Connection conn = QuillDatabase.open(dbPath)) {
             var classes = IndexReader.findAllClasses(conn);
             assertEquals(6, classes.size(), "Re-index should not duplicate classes");
 

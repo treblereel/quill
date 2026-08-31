@@ -9,18 +9,18 @@ import java.util.Comparator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.JokerDatabase;
+import org.treblereel.mcp.db.QuillDatabase;
 
 class MultiModuleInitTest {
 
     // verify/ is CWD; multimodule-quarkus root is one level up
     static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir")).getParent();
-    static final Path JOKER_DIR = PROJECT_ROOT.resolve(".joker");
+    static final Path QUILL_DIR = PROJECT_ROOT.resolve(".quill");
 
     @AfterEach
     void cleanup() throws Exception {
-        if (Files.exists(JOKER_DIR)) {
-            try (var walk = Files.walk(JOKER_DIR)) {
+        if (Files.exists(QUILL_DIR)) {
+            try (var walk = Files.walk(QUILL_DIR)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
             }
         }
@@ -32,10 +32,10 @@ class MultiModuleInitTest {
         cmd.projectPath = PROJECT_ROOT;
         cmd.run();
 
-        Path dbPath = JOKER_DIR.resolve("index.db");
+        Path dbPath = QUILL_DIR.resolve("index.db");
         assertTrue(Files.exists(dbPath), "index.db should be created");
 
-        try (Connection conn = JokerDatabase.open(dbPath)) {
+        try (Connection conn = QuillDatabase.open(dbPath)) {
             var classes = IndexReader.findAllClasses(conn);
             // common: NotificationService (interface) + UserDTO (record) = 2
             // service: EmailNotificationService + SmsNotificationService + UserService = 3

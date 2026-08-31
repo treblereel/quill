@@ -3,10 +3,10 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>org.treblereel.mcp</groupId>
-        <artifactId>joker-tests-multimodule</artifactId>
+        <artifactId>quill-tests-multimodule</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>joker-tests-multimodule-common</artifactId>
+    <artifactId>quill-tests-multimodule-common</artifactId>
     <packaging>jar</packaging>
 </project>

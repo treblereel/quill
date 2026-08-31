@@ -16,20 +16,20 @@ class McpStdioIT {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"));
-    static final Path JOKER_DIR = PROJECT_ROOT.resolve(".joker");
+    static final Path QUILL_DIR = PROJECT_ROOT.resolve(".quill");
 
     @BeforeEach
     void setUp() {
         InitCommand cmd = new InitCommand();
         cmd.projectPath = PROJECT_ROOT;
         cmd.run();
-        assertTrue(Files.exists(JOKER_DIR.resolve("index.db")));
+        assertTrue(Files.exists(QUILL_DIR.resolve("index.db")));
     }
 
     @AfterEach
     void cleanup() throws Exception {
-        if (Files.exists(JOKER_DIR)) {
-            try (var walk = Files.walk(JOKER_DIR)) {
+        if (Files.exists(QUILL_DIR)) {
+            try (var walk = Files.walk(QUILL_DIR)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
             }
         }
@@ -54,7 +54,7 @@ class McpStdioIT {
                     {"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}""");
             JsonNode initResp = readResponse(stdout, 1);
             assertNotNull(initResp.get("result"), "initialize should return a result");
-            assertEquals("joker", initResp.get("result").get("serverInfo").get("name").asText());
+            assertEquals("quill", initResp.get("result").get("serverInfo").get("name").asText());
 
             sendNotification(stdin, "notifications/initialized", "{}");
 
@@ -127,6 +127,6 @@ class McpStdioIT {
 
     private Path resolveQuarkusJar() {
         return PROJECT_ROOT.getParent().getParent()
-                .resolve("joker-app/target/quarkus-app/quarkus-run.jar");
+                .resolve("quill-app/target/quarkus-app/quarkus-run.jar");
     }
 }

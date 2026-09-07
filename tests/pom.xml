@@ -14,5 +14,7 @@
         <module>basic-cdi</module>
         <module>advanced-cdi</module>
         <module>multimodule-quarkus</module>
+        <module>basic-spring</module>
+        <module>advanced-spring</module>
     </modules>
 </project>

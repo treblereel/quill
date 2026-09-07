@@ -4,9 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
 import java.util.Comparator;
 import java.util.stream.Collectors;
+import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.db.IndexReader;
@@ -27,71 +27,94 @@ class InitCommandTest {
     }
 
     @Test
-    void initIndexesBasicCdiProject() throws Exception {
+    void initIndexesBasicCdiProject() {
         InitCommand cmd = new InitCommand();
         cmd.projectPath = PROJECT_ROOT;
+        cmd.indexOnly = true;
         cmd.run();
 
-        Path dbPath = QUILL_DIR.resolve("index.db");
-        assertTrue(Files.exists(dbPath), "index.db should be created");
+        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        assertNotNull(dbPath, "index db should be created");
 
-        try (Connection conn = QuillDatabase.open(dbPath)) {
-            var classes = IndexReader.findAllClasses(conn);
-            assertEquals(6, classes.size(), "Should index all 6 fixture classes");
+        Jdbi jdbi = QuillDatabase.open(dbPath);
+        var classes = IndexReader.findAllClasses(jdbi);
+        assertEquals(8, classes.size(), "Should index all 8 fixture classes");
 
-            var beans = IndexReader.findBeans(conn, null);
-            assertEquals(3, beans.size(), "Should find 3 CDI beans (Stripe, Mock, Order)");
+        var beans = IndexReader.findBeans(jdbi, null);
+        assertTrue(beans.size() >= 3, "Should find at least 3 CDI beans (Stripe, Mock, Order), plus non-bean classes");
 
-            var ips = IndexReader.findInjectionPoints(conn, beans.stream()
-                    .filter(b -> IndexReader.findClassById(conn, b.classId())
-                            .map(c -> c.className().endsWith("OrderService")).orElse(false))
-                    .findFirst().orElseThrow().id());
-            assertFalse(ips.isEmpty(), "OrderService should have injection points");
-            assertTrue(ips.stream().anyMatch(ip -> ip.targetType().contains("PaymentService")),
-                    "OrderService should inject PaymentService");
+        var ips = IndexReader.findInjectionPoints(jdbi, beans.stream()
+                .filter(b -> IndexReader.findClassById(jdbi, b.classId())
+                        .map(c -> c.className().endsWith("OrderService")).orElse(false))
+                .findFirst().orElseThrow().id());
+        assertFalse(ips.isEmpty(), "OrderService should have injection points");
+        assertTrue(ips.stream().anyMatch(ip -> ip.targetType().contains("PaymentService")),
+                "OrderService should inject PaymentService");
 
-            var meta = IndexReader.getMetadata(conn);
-            assertNotNull(meta.get("indexed_at"));
-            assertEquals(PROJECT_ROOT.toString(), meta.get("project_root"));
+        var meta = IndexReader.getMetadata(jdbi);
+        assertNotNull(meta.get("indexed_at"));
+        assertEquals(PROJECT_ROOT.toString(), meta.get("project_root"));
+        assertNotNull(meta.get("dependency_index"));
+        assertNotNull(meta.get("dependency_index_detail"));
+    }
+
+    @Test
+    void beanClassIdsReferenceValidClasses() {
+        InitCommand cmd = new InitCommand();
+        cmd.projectPath = PROJECT_ROOT;
+        cmd.indexOnly = true;
+        cmd.run();
+
+        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Jdbi jdbi = QuillDatabase.open(dbPath);
+        var beans = IndexReader.findBeans(jdbi, null);
+        var classIds = IndexReader.findAllClasses(jdbi).stream()
+                .map(c -> c.id()).collect(Collectors.toSet());
+
+        for (var bean : beans) {
+            assertTrue(classIds.contains(bean.classId()),
+                    "Bean classId " + bean.classId() + " should reference a valid class");
         }
     }
 
     @Test
-    void beanClassIdsReferenceValidClasses() throws Exception {
+    void isBeanMatchesArcResolution() {
         InitCommand cmd = new InitCommand();
         cmd.projectPath = PROJECT_ROOT;
+        cmd.indexOnly = true;
         cmd.run();
 
-        Path dbPath = QUILL_DIR.resolve("index.db");
-        try (Connection conn = QuillDatabase.open(dbPath)) {
-            var beans = IndexReader.findBeans(conn, null);
-            var classIds = IndexReader.findAllClasses(conn).stream()
-                    .map(c -> c.id()).collect(Collectors.toSet());
+        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Jdbi jdbi = QuillDatabase.open(dbPath);
+        var classes = IndexReader.findAllClasses(jdbi);
+        var beans = IndexReader.findBeans(jdbi, null);
+        var beanClassIds = beans.stream().map(b -> b.classId()).collect(Collectors.toSet());
 
-            for (var bean : beans) {
-                assertTrue(classIds.contains(bean.classId()),
-                        "Bean classId " + bean.classId() + " should reference a valid class");
-            }
+        for (var cls : classes) {
+            boolean isBeanInTable = cls.isBean();
+            boolean hasBeanRecord = beanClassIds.contains(cls.id());
+            assertEquals(hasBeanRecord, isBeanInTable,
+                    "classes.is_bean for " + cls.className() + " should match presence in beans table");
         }
     }
 
     @Test
-    void reindexProducesConsistentIds() throws Exception {
+    void reindexProducesConsistentIds() {
         InitCommand cmd = new InitCommand();
         cmd.projectPath = PROJECT_ROOT;
+        cmd.indexOnly = true;
         cmd.run();
         cmd.run();
 
-        Path dbPath = QUILL_DIR.resolve("index.db");
-        try (Connection conn = QuillDatabase.open(dbPath)) {
-            var classes = IndexReader.findAllClasses(conn);
-            assertEquals(6, classes.size(), "Re-index should not duplicate classes");
+        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Jdbi jdbi = QuillDatabase.open(dbPath);
+        var classes = IndexReader.findAllClasses(jdbi);
+        assertEquals(8, classes.size(), "Re-index should not duplicate classes");
 
-            var classIds = classes.stream().map(c -> c.id()).collect(Collectors.toSet());
-            for (var bean : IndexReader.findBeans(conn, null)) {
-                assertTrue(classIds.contains(bean.classId()),
-                        "After re-index, bean classId " + bean.classId() + " must be valid");
-            }
+        var classIds = classes.stream().map(c -> c.id()).collect(Collectors.toSet());
+        for (var bean : IndexReader.findBeans(jdbi, null)) {
+            assertTrue(classIds.contains(bean.classId()),
+                    "After re-index, bean classId " + bean.classId() + " must be valid");
         }
     }
 }

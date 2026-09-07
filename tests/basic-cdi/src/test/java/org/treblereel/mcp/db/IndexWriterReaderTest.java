@@ -3,9 +3,9 @@ package org.treblereel.mcp.db;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
-import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
+import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -14,11 +14,11 @@ import org.treblereel.mcp.model.*;
 class IndexWriterReaderTest {
 
     @TempDir Path tempDir;
-    Connection conn;
+    Jdbi jdbi;
 
     @BeforeEach
     void setUp() {
-        conn = QuillDatabase.create(tempDir.resolve("test.db"));
+        jdbi = QuillDatabase.create(tempDir.resolve("test.db"));
     }
 
     @Test
@@ -29,9 +29,9 @@ class IndexWriterReaderTest {
             new ClassRecord(0, "org.acme.OrderDTO", "CLASS", "java.lang.Object",
                     List.of("Serializable"), "src/main/java/org/acme/OrderDTO.java", 5, false, 200)
         );
-        IndexWriter.write(conn, classes, List.of(), List.of(), List.of(), Map.of("indexed_at", "2026-08-26"));
+        IndexWriter.write(jdbi, classes, List.of(), List.of(), List.of(), Map.of("indexed_at", "2026-08-26"));
 
-        var result = IndexReader.findAllClasses(conn);
+        var result = IndexReader.findAllClasses(jdbi);
         assertEquals(2, result.size());
         assertEquals("org.acme.OrderService", result.get(0).className());
         assertTrue(result.get(0).isBean());
@@ -48,20 +48,146 @@ class IndexWriterReaderTest {
             new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default"),
                     List.of(), false, null, null, null, null, List.of("OrderService", "Object"))
         );
-        IndexWriter.write(conn, classes, beans, List.of(), List.of(), Map.of());
+        IndexWriter.write(jdbi, classes, beans, List.of(), List.of(), Map.of());
 
-        var result = IndexReader.findBeans(conn, null);
+        var result = IndexReader.findBeans(jdbi, null);
         assertEquals(1, result.size());
         assertEquals("@ApplicationScoped", result.getFirst().scope());
     }
 
     @Test
+    void batchReadersReturnRequestedRecords() {
+        var classes = List.of(
+                new ClassRecord(0, "org.acme.First", "CLASS", null,
+                        List.of(), "First.java", 1, true, 10),
+                new ClassRecord(0, "org.acme.Second", "CLASS", null,
+                        List.of(), "Second.java", 1, true, 20));
+        var beans = List.of(
+                new BeanRecord(0, 1, "CLASS", "@Singleton", List.of(), List.of(),
+                        false, null, List.of(), null, null, List.of()),
+                new BeanRecord(0, 2, "CLASS", "@Dependent", List.of(), List.of(),
+                        false, null, List.of(), null, null, List.of()));
+        IndexWriter.write(jdbi, classes, beans, List.of(), List.of(), Map.of());
+
+        assertEquals("org.acme.Second", IndexReader.findClassesByIds(jdbi, List.of(2)).get(2).className());
+        assertEquals("@Singleton", IndexReader.findBeansByIds(jdbi, List.of(1)).get(1).scope());
+        assertEquals("@Dependent", IndexReader.findBeansByClassIds(jdbi, List.of(2)).get(2).scope());
+        assertTrue(IndexReader.findClassesByIds(jdbi, List.of()).isEmpty());
+    }
+
+    @Test
+    void findHotspotsWithSinceRecomputesCounts() {
+        var classes = List.of(
+            new ClassRecord(0, "org.acme.Foo", "CLASS", null,
+                    List.of(), "src/Foo.java", 1, false, 100)
+        );
+        IndexWriter.write(jdbi, classes, List.of(), List.of(), List.of(), Map.of());
+
+        var commits = List.of(
+            new org.treblereel.mcp.model.GitCommitRecord(1, "aaa", "aaa", "dev1", "d@t.c", "2026-08-01T10:00:00Z", "old"),
+            new org.treblereel.mcp.model.GitCommitRecord(2, "bbb", "bbb", "dev2", "d@t.c", "2026-08-20T10:00:00Z", "new")
+        );
+        var commitFiles = List.of(
+            new org.treblereel.mcp.model.GitCommitFile(1, 1, "src/Foo.java", "MODIFY"),
+            new org.treblereel.mcp.model.GitCommitFile(2, 1, "src/Foo.java", "MODIFY")
+        );
+        var stats = List.of(
+            new org.treblereel.mcp.model.GitFileStats(1, "src/Foo.java", 1, 2,
+                    "2026-08-20T10:00:00Z", "dev2", "2026-08-01T10:00:00Z", 2)
+        );
+        IndexWriter.writeGitData(jdbi, stats, commits, commitFiles);
+
+        var allTime = IndexReader.findHotspots(jdbi, 10, null);
+        assertEquals(1, allTime.size());
+        assertEquals(2, allTime.getFirst().commitCount(), "All-time should return 2 commits");
+
+        var filtered = IndexReader.findHotspots(jdbi, 10, "2026-08-15");
+        assertEquals(1, filtered.size());
+        assertEquals(1, filtered.getFirst().commitCount(),
+                "Since 2026-08-15 should return 1 commit, recomputed from join");
+    }
+
+    @Test
+    void findHotspotsWithSinceExcludesOldFiles() {
+        var classes = List.of(
+            new ClassRecord(0, "org.acme.Old", "CLASS", null, List.of(), "Old.java", 1, false, 50),
+            new ClassRecord(0, "org.acme.New", "CLASS", null, List.of(), "New.java", 1, false, 50)
+        );
+        IndexWriter.write(jdbi, classes, List.of(), List.of(), List.of(), Map.of());
+
+        var commits = List.of(
+            new org.treblereel.mcp.model.GitCommitRecord(1, "aaa", "aaa", "dev", "d@t", "2026-01-01T00:00:00Z", "old"),
+            new org.treblereel.mcp.model.GitCommitRecord(2, "bbb", "bbb", "dev", "d@t", "2026-08-01T00:00:00Z", "new")
+        );
+        var commitFiles = List.of(
+            new org.treblereel.mcp.model.GitCommitFile(1, 1, "Old.java", "ADD"),
+            new org.treblereel.mcp.model.GitCommitFile(2, 2, "New.java", "ADD")
+        );
+        var stats = List.of(
+            new org.treblereel.mcp.model.GitFileStats(1, "Old.java", 1, 1, "2026-01-01T00:00:00Z", "dev", "2026-01-01T00:00:00Z", 1),
+            new org.treblereel.mcp.model.GitFileStats(2, "New.java", 2, 1, "2026-08-01T00:00:00Z", "dev", "2026-08-01T00:00:00Z", 1)
+        );
+        IndexWriter.writeGitData(jdbi, stats, commits, commitFiles);
+
+        var filtered = IndexReader.findHotspots(jdbi, 10, "2026-06-01");
+        assertEquals(1, filtered.size());
+        assertEquals("New.java", filtered.getFirst().filePath());
+    }
+
+    @Test
     void readMetadata() {
-        IndexWriter.write(conn, List.of(), List.of(), List.of(), List.of(),
+        IndexWriter.write(jdbi, List.of(), List.of(), List.of(), List.of(),
                 Map.of("indexed_at", "2026-08-26", "last_commit", "abc123"));
 
-        var meta = IndexReader.getMetadata(conn);
+        var meta = IndexReader.getMetadata(jdbi);
         assertEquals("2026-08-26", meta.get("indexed_at"));
         assertEquals("abc123", meta.get("last_commit"));
+    }
+
+    @Test
+    void profileFilterExactMatch() {
+        assertTrue(IndexReader.matchesProfile(List.of("dev"), "dev"));
+        assertTrue(IndexReader.matchesProfile(List.of("dev", "local"), "dev"));
+    }
+
+    @Test
+    void profileFilterRejectsNegation() {
+        assertFalse(IndexReader.matchesProfile(List.of("!dev"), "dev"));
+    }
+
+    @Test
+    void profileFilterRejectsSubstring() {
+        assertFalse(IndexReader.matchesProfile(List.of("dev-staging"), "dev"));
+    }
+
+    @Test
+    void profileFilterNullOrEmptyProfiles() {
+        assertFalse(IndexReader.matchesProfile(null, "dev"));
+        assertFalse(IndexReader.matchesProfile(List.of(), "dev"));
+    }
+
+    @Test
+    void findBeansFiltersByProfileExactly() {
+        var classes = List.of(
+            new ClassRecord(0, "org.acme.DevService", "CLASS", "java.lang.Object",
+                    List.of(), "DevService.java", 1, true, 100),
+            new ClassRecord(0, "org.acme.NotDevService", "CLASS", "java.lang.Object",
+                    List.of(), "NotDevService.java", 1, true, 100),
+            new ClassRecord(0, "org.acme.DevStagingService", "CLASS", "java.lang.Object",
+                    List.of(), "DevStagingService.java", 1, true, 100)
+        );
+        var beans = List.of(
+            new BeanRecord(0, 1, "CLASS", "@Singleton", List.of("@Default"),
+                    List.of(), false, null, List.of("dev"), null, null, List.of()),
+            new BeanRecord(0, 2, "CLASS", "@Singleton", List.of("@Default"),
+                    List.of(), false, null, List.of("!dev"), null, null, List.of()),
+            new BeanRecord(0, 3, "CLASS", "@Singleton", List.of("@Default"),
+                    List.of(), false, null, List.of("dev-staging"), null, null, List.of())
+        );
+        IndexWriter.write(jdbi, classes, beans, List.of(), List.of(), Map.of());
+
+        var result = IndexReader.findBeans(jdbi, Map.of("profile", "dev"));
+        assertEquals(1, result.size(), "Only exact 'dev' profile should match, not '!dev' or 'dev-staging'");
+        assertEquals(1, result.getFirst().classId());
     }
 }

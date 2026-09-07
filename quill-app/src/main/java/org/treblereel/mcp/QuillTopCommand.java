@@ -1,26 +1,73 @@
 package org.treblereel.mcp;
 
-import io.quarkiverse.mcp.server.cli.adapter.runtime.McpAdapter;
-import io.quarkus.picocli.runtime.annotations.TopCommand;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Properties;
 import org.treblereel.mcp.command.CleanCommand;
 import org.treblereel.mcp.command.InitCommand;
 import org.treblereel.mcp.command.StatusCommand;
 import org.treblereel.mcp.command.UpdateCommand;
+import org.treblereel.mcp.mcp.ProjectRegistry;
+import org.treblereel.mcp.mcp.McpStdioServer;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.IVersionProvider;
 import picocli.CommandLine.Option;
 
-@TopCommand
 @Command(name = "quill", mixinStandardHelpOptions = true,
+        versionProvider = QuillTopCommand.VersionProvider.class,
         subcommands = {InitCommand.class, UpdateCommand.class, StatusCommand.class, CleanCommand.class})
 public class QuillTopCommand implements Runnable {
 
     @Option(names = "--mcp", description = "Start an MCP server (stdio transport)")
     boolean mcp;
 
+    @Option(names = "--project", description = "Project path(s) to serve via MCP (repeatable)")
+    List<Path> projects;
+
+    public static void main(String[] args) {
+        int exitCode = new CommandLine(new QuillTopCommand()).execute(args);
+        if (exitCode != 0) System.exit(exitCode);
+    }
+
+    public static final class VersionProvider implements IVersionProvider {
+        @Override
+        public String[] getVersion() {
+            return new String[] {"quill " + version()};
+        }
+
+        private static String versionFromResource() {
+            try (InputStream in = QuillTopCommand.class.getResourceAsStream("/quill.properties")) {
+                if (in == null) return null;
+                Properties properties = new Properties();
+                properties.load(in);
+                return properties.getProperty("version");
+            } catch (IOException ignored) {
+                return null;
+            }
+        }
+    }
+
+    public static String version() {
+        String version = QuillTopCommand.class.getPackage().getImplementationVersion();
+        if (version == null) version = VersionProvider.versionFromResource();
+        return version == null ? "dev" : version;
+    }
+
     @Override
     public void run() {
         if (mcp) {
-            McpAdapter.startMcp();
+            ProjectRegistry registry = new ProjectRegistry();
+            if (projects != null && !projects.isEmpty()) {
+                for (Path p : projects) {
+                    registry.register(p);
+                }
+            } else {
+                registry.register(Path.of(System.getProperty("user.dir")));
+            }
+            McpStdioServer.start(registry, System.in, System.out);
             return;
         }
         System.err.println("Use a subcommand (init, update, status) or --mcp to start the MCP server.");

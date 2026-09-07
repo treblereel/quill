@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
 import java.util.Comparator;
+import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.db.IndexReader;
@@ -29,51 +29,62 @@ class AdvancedCdiTest {
     void indexesProducersInterceptorsAndQualifiers() throws Exception {
         InitCommand cmd = new InitCommand();
         cmd.projectPath = PROJECT_ROOT;
+        cmd.indexOnly = true;
         cmd.run();
 
-        Path dbPath = QUILL_DIR.resolve("index.db");
-        assertTrue(Files.exists(dbPath));
+        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        assertNotNull(dbPath, "index db should be created");
 
-        try (Connection conn = QuillDatabase.open(dbPath)) {
-            var classes = IndexReader.findAllClasses(conn);
-            assertTrue(classes.size() >= 6,
-                    "Should index at least 6 classes (CacheService, InMemory, CacheProducer, ProductService, LoggingInterceptor, annotations)");
+        Jdbi jdbi = QuillDatabase.open(dbPath);
+        var classes = IndexReader.findAllClasses(jdbi);
+        assertTrue(classes.size() >= 6,
+                "Should index at least 6 classes (CacheService, InMemory, CacheProducer, ProductService, LoggingInterceptor, annotations)");
 
-            var beans = IndexReader.findBeans(conn, null);
-            assertTrue(beans.size() >= 3,
-                    "Should find at least 3 beans (InMemoryCacheService, CacheProducer, ProductService) + producer");
+        var beans = IndexReader.findBeans(jdbi, null);
+        assertTrue(beans.size() >= 3,
+                "Should find at least 3 beans (InMemoryCacheService, CacheProducer, ProductService) + producer");
 
-            boolean hasProducer = beans.stream().anyMatch(b -> "PRODUCER_METHOD".equals(b.kind()));
-            assertTrue(hasProducer, "Should detect producer method bean from CacheProducer.cachedService()");
+        boolean hasProducer = beans.stream().anyMatch(b -> "PRODUCER_METHOD".equals(b.kind()));
+        assertTrue(hasProducer, "Should detect producer method bean from CacheProducer.cachedService()");
 
-            boolean hasInterceptor = beans.stream().anyMatch(b -> "INTERCEPTOR".equals(b.kind()));
-            assertTrue(hasInterceptor, "Should detect LoggingInterceptor as an interceptor bean");
+        boolean hasInterceptor = beans.stream().anyMatch(b -> "INTERCEPTOR".equals(b.kind()));
+        assertTrue(hasInterceptor, "Should detect LoggingInterceptor as an interceptor bean");
 
-            var producerBean = beans.stream()
-                    .filter(b -> "PRODUCER_METHOD".equals(b.kind()))
-                    .findFirst().orElseThrow();
-            assertTrue(producerBean.qualifiers().contains("@Cached"),
-                    "Producer bean should carry @Cached qualifier");
-            assertNotNull(producerBean.declaringClassId(),
-                    "Producer bean should reference declaring class");
-            assertEquals("cachedService", producerBean.memberName(),
-                    "Producer bean memberName should be the method name");
+        var producerBean = beans.stream()
+                .filter(b -> "PRODUCER_METHOD".equals(b.kind()))
+                .findFirst().orElseThrow();
+        assertTrue(producerBean.qualifiers().contains("@Cached"),
+                "Producer bean should carry @Cached qualifier");
+        assertNotNull(producerBean.declaringClassId(),
+                "Producer bean should reference declaring class");
+        assertEquals("cachedService", producerBean.memberName(),
+                "Producer bean memberName should be the method name");
 
-            var productServiceClass = classes.stream()
-                    .filter(c -> c.className().endsWith("ProductService"))
-                    .findFirst().orElseThrow();
-            var productServiceBean = beans.stream()
-                    .filter(b -> b.classId() == productServiceClass.id())
-                    .findFirst().orElseThrow();
-            var ips = IndexReader.findInjectionPoints(conn, productServiceBean.id());
-            assertEquals(2, ips.size(), "ProductService should have 2 injection points");
+        var productServiceClass = classes.stream()
+                .filter(c -> c.className().endsWith("ProductService"))
+                .findFirst().orElseThrow();
+        var productServiceBean = beans.stream()
+                .filter(b -> b.classId() == productServiceClass.id())
+                .findFirst().orElseThrow();
+        var ips = IndexReader.findInjectionPoints(jdbi, productServiceBean.id());
+        assertEquals(2, ips.size(), "ProductService should have 2 injection points");
 
-            var qualifiedIp = ips.stream()
-                    .filter(ip -> ip.qualifiers().contains("@Cached"))
-                    .findFirst();
-            assertTrue(qualifiedIp.isPresent(), "Should have injection point with @Cached qualifier");
-            assertNotNull(qualifiedIp.get().resolvedBeanId(),
-                    "@Cached injection point should resolve to the producer bean");
-        }
+        var qualifiedIp = ips.stream()
+                .filter(ip -> ip.qualifiers().contains("@Cached"))
+                .findFirst();
+        assertTrue(qualifiedIp.isPresent(), "Should have injection point with @Cached qualifier");
+        assertNotNull(qualifiedIp.get().resolvedBeanId(),
+                "@Cached injection point should resolve to the producer bean");
+
+        var producerFieldBean = beans.stream()
+                .filter(b -> "PRODUCER_FIELD".equals(b.kind())
+                        && "appSettings".equals(b.memberName()))
+                .findFirst();
+        assertTrue(producerFieldBean.isPresent(),
+                "Should detect producer field bean from SettingsProducer.appSettings");
+        assertNotNull(producerFieldBean.get().declaringClassId(),
+                "Producer field bean should reference declaring class");
+        assertTrue(producerFieldBean.get().beanTypes().contains("java.util.Properties"),
+                "Producer field bean types should include field type");
     }
 }

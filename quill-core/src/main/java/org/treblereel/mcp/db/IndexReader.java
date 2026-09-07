@@ -1,15 +1,11 @@
 package org.treblereel.mcp.db;
 
-import java.sql.*;
 import java.util.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.model.*;
-import org.treblereel.mcp.model.CoChangeRecord;
-import org.treblereel.mcp.model.GitCommitFile;
-import org.treblereel.mcp.model.GitCommitRecord;
-import org.treblereel.mcp.model.GitFileStats;
 
 public final class IndexReader {
 
@@ -17,177 +13,196 @@ public final class IndexReader {
 
     private IndexReader() {}
 
-    public static List<ClassRecord> findAllClasses(Connection conn) {
-        List<ClassRecord> result = new ArrayList<>();
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT * FROM classes ORDER BY id")) {
-            while (rs.next()) {
-                result.add(mapClass(rs));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static List<ClassRecord> findAllClasses(Jdbi jdbi) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM classes ORDER BY id")
+                        .map((rs, ctx) -> mapClass(rs))
+                        .list());
     }
 
-    public static List<BeanRecord> findBeans(Connection conn, Map<String, String> filter) {
-        var sb = new StringBuilder("SELECT b.*, c.class_name FROM beans b JOIN classes c ON b.class_id = c.id WHERE 1=1");
-        List<Object> params = new ArrayList<>();
+    public static List<BeanRecord> findBeans(Jdbi jdbi, Map<String, String> filter) {
+        return jdbi.withHandle(h -> {
+            var sb = new StringBuilder("SELECT b.*, c.class_name FROM beans b JOIN classes c ON b.class_id = c.id WHERE 1=1");
 
-        if (filter != null) {
-            if (filter.containsKey("class_name")) {
-                sb.append(" AND c.class_name LIKE ?");
-                params.add(filter.get("class_name").replace("*", "%"));
+            if (filter != null) {
+                if (filter.containsKey("class_name")) sb.append(" AND c.class_name LIKE :className");
+                if (filter.containsKey("scope")) sb.append(" AND b.scope = :scope");
+                if (filter.containsKey("kind")) sb.append(" AND b.kind = :kind");
+                if (filter.containsKey("qualifier")) sb.append(" AND b.qualifiers LIKE :qualifier");
             }
-            if (filter.containsKey("scope")) {
-                sb.append(" AND b.scope = ?");
-                params.add(filter.get("scope"));
-            }
-            if (filter.containsKey("kind")) {
-                sb.append(" AND b.kind = ?");
-                params.add(filter.get("kind"));
-            }
-            if (filter.containsKey("profile")) {
-                sb.append(" AND b.profiles LIKE ?");
-                params.add("%" + filter.get("profile") + "%");
-            }
-            if (filter.containsKey("qualifier")) {
-                sb.append(" AND b.qualifiers LIKE ?");
-                params.add("%" + filter.get("qualifier") + "%");
-            }
-        }
 
-        List<BeanRecord> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sb.toString())) {
-            for (int i = 0; i < params.size(); i++) {
-                ps.setObject(i + 1, params.get(i));
+            var q = h.createQuery(sb.toString());
+            if (filter != null) {
+                if (filter.containsKey("class_name")) q.bind("className", filter.get("class_name").replace("*", "%"));
+                if (filter.containsKey("scope")) q.bind("scope", filter.get("scope"));
+                if (filter.containsKey("kind")) q.bind("kind", filter.get("kind"));
+                if (filter.containsKey("qualifier")) q.bind("qualifier", "%" + filter.get("qualifier") + "%");
             }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(mapBean(rs));
-                }
+
+            List<BeanRecord> results = q.map((rs, ctx) -> mapBean(rs)).list();
+
+            if (filter != null && filter.containsKey("profile")) {
+                String requestedProfile = filter.get("profile");
+                results = results.stream()
+                        .filter(b -> matchesProfile(b.profiles(), requestedProfile))
+                        .toList();
             }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+
+            return results;
+        });
     }
 
-    public static List<InjectionPointRecord> findInjectionPoints(Connection conn, int beanId) {
-        List<InjectionPointRecord> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM injection_points WHERE bean_id = ?")) {
-            ps.setInt(1, beanId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(mapInjectionPoint(rs));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+    static boolean matchesProfile(List<String> beanProfiles, String requestedProfile) {
+        if (beanProfiles == null || beanProfiles.isEmpty()) return false;
+        for (String p : beanProfiles) {
+            if (p.equals(requestedProfile)) return true;
         }
-        return result;
+        return false;
     }
 
-    public static List<DependencyRecord> findDependencies(Connection conn, int classId, String direction) {
-        List<DependencyRecord> result = new ArrayList<>();
+    public static List<InjectionPointRecord> findInjectionPoints(Jdbi jdbi, int beanId) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM injection_points WHERE bean_id = :beanId")
+                        .bind("beanId", beanId)
+                        .map((rs, ctx) -> mapInjectionPoint(rs))
+                        .list());
+    }
+
+    public static List<DependencyRecord> findDependencies(Jdbi jdbi, int classId, String direction) {
         String sql = switch (direction) {
-            case "outbound" -> "SELECT * FROM dependencies WHERE from_class_id = ?";
-            case "inbound" -> "SELECT * FROM dependencies WHERE to_class_id = ?";
-            default -> "SELECT * FROM dependencies WHERE from_class_id = ? OR to_class_id = ?";
+            case "outbound" -> "SELECT * FROM dependencies WHERE from_class_id = :classId";
+            case "inbound" -> "SELECT * FROM dependencies WHERE to_class_id = :classId";
+            default -> "SELECT * FROM dependencies WHERE from_class_id = :classId OR to_class_id = :classId";
         };
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, classId);
-            if ("both".equals(direction)) ps.setInt(2, classId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(new DependencyRecord(
-                            rs.getInt("from_class_id"), rs.getInt("to_class_id"),
-                            rs.getString("kind"),
-                            rs.getObject("injection_point_id") != null ? rs.getInt("injection_point_id") : null
-                    ));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+        return jdbi.withHandle(h ->
+                h.createQuery(sql)
+                        .bind("classId", classId)
+                        .map((rs, ctx) -> new DependencyRecord(
+                                rs.getInt("from_class_id"), rs.getInt("to_class_id"),
+                                rs.getString("kind"),
+                                rs.getObject("injection_point_id") != null ? rs.getInt("injection_point_id") : null))
+                        .list());
     }
 
-    public static Map<String, String> getMetadata(Connection conn) {
-        Map<String, String> result = new LinkedHashMap<>();
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT key, value FROM metadata")) {
-            while (rs.next()) {
-                result.put(rs.getString("key"), rs.getString("value"));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static Map<String, String> getMetadata(Jdbi jdbi) {
+        return jdbi.withHandle(h -> {
+            Map<String, String> result = new LinkedHashMap<>();
+            h.createQuery("SELECT key, value FROM metadata")
+                    .map((rs, ctx) -> Map.entry(rs.getString("key"), rs.getString("value")))
+                    .forEach(e -> result.put(e.getKey(), e.getValue()));
+            return result;
+        });
     }
 
-    public static Optional<ClassRecord> findClassByName(Connection conn, String className) {
-        String sql = className.contains(".")
-                ? "SELECT * FROM classes WHERE class_name = ?"
-                : "SELECT * FROM classes WHERE class_name LIKE ?";
-        String param = className.contains(".") ? className : "%" + className;
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, param);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) return Optional.of(mapClass(rs));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+    public static Optional<ClassRecord> findClassByName(Jdbi jdbi, String className) {
+        if (className.contains(".")) {
+            return jdbi.withHandle(h ->
+                    h.createQuery("SELECT * FROM classes WHERE class_name = :name")
+                            .bind("name", className)
+                            .map((rs, ctx) -> mapClass(rs))
+                            .findFirst());
         }
+        List<ClassRecord> matches = jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM classes WHERE class_name LIKE :name ORDER BY class_name")
+                        .bind("name", "%" + className)
+                        .map((rs, ctx) -> mapClass(rs))
+                        .list());
+        if (matches.size() == 1) return Optional.of(matches.get(0));
         return Optional.empty();
     }
 
-    public static Optional<BeanRecord> findBeanByClassId(Connection conn, int classId) {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM beans WHERE class_id = ?")) {
-            ps.setInt(1, classId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) return Optional.of(mapBean(rs));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return Optional.empty();
+    public static List<ClassRecord> findClassesByShortName(Jdbi jdbi, String shortName) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM classes WHERE class_name LIKE :name ORDER BY class_name")
+                        .bind("name", "%" + shortName)
+                        .map((rs, ctx) -> mapClass(rs))
+                        .list());
     }
 
-    public static Optional<ClassRecord> findClassById(Connection conn, int id) {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM classes WHERE id = ?")) {
-            ps.setInt(1, id);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) return Optional.of(mapClass(rs));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+    public static List<ClassRecord> searchClasses(Jdbi jdbi, String namePattern, int limit) {
+        String sql = "SELECT * FROM classes WHERE class_name LIKE :pattern ORDER BY class_name LIMIT :limit";
+        String pattern = namePattern.replace("*", "%");
+        if (!pattern.contains("%")) {
+            pattern = "%" + pattern + "%";
         }
-        return Optional.empty();
+        String finalPattern = pattern;
+        return jdbi.withHandle(h ->
+                h.createQuery(sql)
+                        .bind("pattern", finalPattern)
+                        .bind("limit", limit)
+                        .map((rs, ctx) -> mapClass(rs))
+                        .list());
     }
 
-    public static Optional<BeanRecord> findBeanById(Connection conn, int id) {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM beans WHERE id = ?")) {
-            ps.setInt(1, id);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) return Optional.of(mapBean(rs));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return Optional.empty();
+    public static Optional<BeanRecord> findBeanByClassId(Jdbi jdbi, int classId) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM beans WHERE class_id = :classId")
+                        .bind("classId", classId)
+                        .map((rs, ctx) -> mapBean(rs))
+                        .findFirst());
     }
 
-    private static ClassRecord mapClass(ResultSet rs) throws SQLException {
+    public static Optional<ClassRecord> findClassById(Jdbi jdbi, int id) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM classes WHERE id = :id")
+                        .bind("id", id)
+                        .map((rs, ctx) -> mapClass(rs))
+                        .findFirst());
+    }
+
+    public static Optional<BeanRecord> findBeanById(Jdbi jdbi, int id) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM beans WHERE id = :id")
+                        .bind("id", id)
+                        .map((rs, ctx) -> mapBean(rs))
+                        .findFirst());
+    }
+
+    public static Map<Integer, ClassRecord> findClassesByIds(Jdbi jdbi, Collection<Integer> ids) {
+        if (ids == null || ids.isEmpty()) return Map.of();
+        return jdbi.withHandle(h -> {
+            Map<Integer, ClassRecord> result = new LinkedHashMap<>();
+            h.createQuery("SELECT * FROM classes WHERE id IN (<ids>) ORDER BY id")
+                    .bindList("ids", new LinkedHashSet<>(ids))
+                    .map((rs, ctx) -> mapClass(rs))
+                    .forEach(record -> result.put(record.id(), record));
+            return result;
+        });
+    }
+
+    public static Map<Integer, BeanRecord> findBeansByIds(Jdbi jdbi, Collection<Integer> ids) {
+        if (ids == null || ids.isEmpty()) return Map.of();
+        return jdbi.withHandle(h -> {
+            Map<Integer, BeanRecord> result = new LinkedHashMap<>();
+            h.createQuery("SELECT * FROM beans WHERE id IN (<ids>) ORDER BY id")
+                    .bindList("ids", new LinkedHashSet<>(ids))
+                    .map((rs, ctx) -> mapBean(rs))
+                    .forEach(record -> result.put(record.id(), record));
+            return result;
+        });
+    }
+
+    public static Map<Integer, BeanRecord> findBeansByClassIds(Jdbi jdbi, Collection<Integer> classIds) {
+        if (classIds == null || classIds.isEmpty()) return Map.of();
+        return jdbi.withHandle(h -> {
+            Map<Integer, BeanRecord> result = new LinkedHashMap<>();
+            h.createQuery("SELECT * FROM beans WHERE class_id IN (<ids>) ORDER BY id")
+                    .bindList("ids", new LinkedHashSet<>(classIds))
+                    .map((rs, ctx) -> mapBean(rs))
+                    .forEach(record -> result.putIfAbsent(record.classId(), record));
+            return result;
+        });
+    }
+
+    private static ClassRecord mapClass(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new ClassRecord(
                 rs.getInt("id"), rs.getString("class_name"), rs.getString("kind"),
                 rs.getString("superclass"), fromJson(rs.getString("interfaces")),
                 rs.getString("source_file"), rs.getInt("source_line"),
-                rs.getInt("is_bean") == 1, rs.getInt("source_tokens")
-        );
+                rs.getInt("is_bean") == 1, rs.getInt("source_tokens"));
     }
 
-    private static BeanRecord mapBean(ResultSet rs) throws SQLException {
+    private static BeanRecord mapBean(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new BeanRecord(
                 rs.getInt("id"), rs.getInt("class_id"), rs.getString("kind"),
                 rs.getString("scope"), fromJson(rs.getString("qualifiers")),
@@ -195,354 +210,294 @@ public final class IndexReader {
                 rs.getObject("priority") != null ? rs.getInt("priority") : null,
                 fromJson(rs.getString("profiles")),
                 rs.getObject("declaring_class_id") != null ? rs.getInt("declaring_class_id") : null,
-                rs.getString("member_name"), fromJson(rs.getString("bean_types"))
-        );
+                rs.getString("member_name"), fromJson(rs.getString("bean_types")));
     }
 
-    private static InjectionPointRecord mapInjectionPoint(ResultSet rs) throws SQLException {
+    private static InjectionPointRecord mapInjectionPoint(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new InjectionPointRecord(
                 rs.getInt("id"), rs.getInt("bean_id"), rs.getString("kind"),
                 rs.getString("target_type"), fromJson(rs.getString("qualifiers")),
                 rs.getString("field_name"),
                 rs.getObject("resolved_bean_id") != null ? rs.getInt("resolved_bean_id") : null,
-                rs.getInt("is_ambiguous") == 1
-        );
+                rs.getInt("is_ambiguous") == 1);
     }
 
-    public static List<GitFileStats> findHotspots(Connection conn, int limit, String since) {
-        var sb = new StringBuilder(
-                "SELECT * FROM git_file_stats WHERE commit_count > 0");
-        List<Object> params = new ArrayList<>();
-        if (since != null) {
-            sb.append(" AND last_modified >= ?");
-            params.add(since);
+    public static List<GitFileStats> findHotspots(Jdbi jdbi, int limit, String since) {
+        if (since == null) {
+            return jdbi.withHandle(h ->
+                    h.createQuery("SELECT * FROM git_file_stats WHERE commit_count > 0 ORDER BY commit_count DESC LIMIT :limit")
+                            .bind("limit", limit)
+                            .map((rs, ctx) -> mapGitFileStats(rs))
+                            .list());
         }
-        sb.append(" ORDER BY commit_count DESC LIMIT ?");
-        params.add(limit);
-
-        List<GitFileStats> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sb.toString())) {
-            for (int i = 0; i < params.size(); i++) {
-                ps.setObject(i + 1, params.get(i));
-            }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(mapGitFileStats(rs));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+        return jdbi.withHandle(h ->
+                h.createQuery("""
+                        SELECT gcf.file_path, gfs.class_id,
+                               COUNT(DISTINCT gc.id) as commit_count,
+                               MAX(gc.committed_at) as last_modified,
+                               MAX(CASE WHEN gc.committed_at = (
+                                   SELECT MAX(gc2.committed_at) FROM git_commits gc2
+                                   JOIN git_commit_files gcf2 ON gc2.id = gcf2.commit_id
+                                   WHERE gcf2.file_path = gcf.file_path AND gc2.committed_at >= :since
+                               ) THEN gc.author END) as last_author,
+                               MIN(gc.committed_at) as first_commit,
+                               COUNT(DISTINCT gc.author) as distinct_authors
+                        FROM git_commit_files gcf
+                        JOIN git_commits gc ON gcf.commit_id = gc.id
+                        LEFT JOIN git_file_stats gfs ON gcf.file_path = gfs.file_path
+                        WHERE gc.committed_at >= :since
+                        GROUP BY gcf.file_path
+                        ORDER BY commit_count DESC
+                        LIMIT :limit""")
+                        .bind("since", since)
+                        .bind("limit", limit)
+                        .map((rs, ctx) -> new GitFileStats(
+                                0,
+                                rs.getString("file_path"),
+                                rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
+                                rs.getInt("commit_count"),
+                                rs.getString("last_modified"),
+                                rs.getString("last_author"),
+                                rs.getString("first_commit"),
+                                rs.getInt("distinct_authors")))
+                        .list());
     }
 
-    public static List<GitCommitRecord> findFileHistory(Connection conn, int classId, int limit) {
-        String sql = """
-                SELECT gc.* FROM git_commits gc
-                JOIN git_commit_files gcf ON gc.id = gcf.commit_id
-                WHERE gcf.class_id = ?
-                ORDER BY gc.committed_at DESC
-                LIMIT ?""";
-        List<GitCommitRecord> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, classId);
-            ps.setInt(2, limit);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(mapGitCommit(rs));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static List<GitCommitRecord> findFileHistory(Jdbi jdbi, int classId, int limit) {
+        return jdbi.withHandle(h ->
+                h.createQuery("""
+                        SELECT gc.* FROM git_commits gc
+                        JOIN git_commit_files gcf ON gc.id = gcf.commit_id
+                        WHERE gcf.class_id = :classId
+                        ORDER BY gc.committed_at DESC
+                        LIMIT :limit""")
+                        .bind("classId", classId)
+                        .bind("limit", limit)
+                        .map((rs, ctx) -> mapGitCommit(rs))
+                        .list());
     }
 
-    public static List<CoChangeRecord> findCoChanges(Connection conn, int classId, int limit) {
-        String sql = """
-                SELECT gcf2.file_path, gcf2.class_id, COUNT(*) as co_count
-                FROM git_commit_files gcf1
-                JOIN git_commit_files gcf2 ON gcf1.commit_id = gcf2.commit_id
-                    AND gcf1.file_path != gcf2.file_path
-                WHERE gcf1.class_id = ?
-                GROUP BY gcf2.file_path
-                ORDER BY co_count DESC
-                LIMIT ?""";
-        List<CoChangeRecord> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, classId);
-            ps.setInt(2, limit);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    int coCount = rs.getInt("co_count");
-                    result.add(new CoChangeRecord(
-                            rs.getString("file_path"),
-                            rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
-                            coCount,
-                            0.0
-                    ));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static List<CoChangeRecord> findCoChanges(Jdbi jdbi, int classId, int limit) {
+        return jdbi.withHandle(h ->
+                h.createQuery("""
+                        SELECT gcf2.file_path, gcf2.class_id, COUNT(*) as co_count
+                        FROM git_commit_files gcf1
+                        JOIN git_commit_files gcf2 ON gcf1.commit_id = gcf2.commit_id
+                            AND gcf1.file_path != gcf2.file_path
+                        WHERE gcf1.class_id = :classId
+                        GROUP BY gcf2.file_path
+                        ORDER BY co_count DESC
+                        LIMIT :limit""")
+                        .bind("classId", classId)
+                        .bind("limit", limit)
+                        .map((rs, ctx) -> new CoChangeRecord(
+                                rs.getString("file_path"),
+                                rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
+                                rs.getInt("co_count"), 0.0))
+                        .list());
     }
 
-    public static List<GitCommitRecord> findRecentCommits(Connection conn, int limit) {
-        String sql = "SELECT * FROM git_commits ORDER BY committed_at DESC LIMIT ?";
-        List<GitCommitRecord> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, limit);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(mapGitCommit(rs));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static List<GitCommitRecord> findRecentCommits(Jdbi jdbi, int limit) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM git_commits ORDER BY committed_at DESC LIMIT :limit")
+                        .bind("limit", limit)
+                        .map((rs, ctx) -> mapGitCommit(rs))
+                        .list());
     }
 
-    public static List<GitCommitFile> findCommitFiles(Connection conn, int commitId) {
-        String sql = "SELECT * FROM git_commit_files WHERE commit_id = ?";
-        List<GitCommitFile> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, commitId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(new GitCommitFile(
+    public static List<GitCommitFile> findCommitFiles(Jdbi jdbi, int commitId) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM git_commit_files WHERE commit_id = :commitId")
+                        .bind("commitId", commitId)
+                        .map((rs, ctx) -> new GitCommitFile(
+                                rs.getInt("commit_id"),
+                                rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
+                                rs.getString("file_path"), rs.getString("change_type")))
+                        .list());
+    }
+
+    public static Map<Integer, List<GitCommitFile>> findCommitFiles(
+            Jdbi jdbi, Collection<Integer> commitIds, int limit) {
+        if (commitIds == null || commitIds.isEmpty()) return Map.of();
+        return jdbi.withHandle(h -> {
+            Map<Integer, List<GitCommitFile>> result = new LinkedHashMap<>();
+            h.createQuery("SELECT gcf.* FROM git_commit_files gcf "
+                            + "JOIN git_commits gc ON gc.id = gcf.commit_id "
+                            + "WHERE gcf.commit_id IN (<ids>) "
+                            + "ORDER BY gc.committed_at DESC, gcf.file_path LIMIT :limit")
+                    .bindList("ids", new LinkedHashSet<>(commitIds))
+                    .bind("limit", limit)
+                    .map((rs, ctx) -> new GitCommitFile(
                             rs.getInt("commit_id"),
                             rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
-                            rs.getString("file_path"),
-                            rs.getString("change_type")
-                    ));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+                            rs.getString("file_path"), rs.getString("change_type")))
+                    .forEach(file -> result.computeIfAbsent(file.commitId(), ignored -> new ArrayList<>()).add(file));
+            return result;
+        });
     }
 
-    public static Optional<GitFileStats> findFileStatsByClassId(Connection conn, int classId) {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM git_file_stats WHERE class_id = ?")) {
-            ps.setInt(1, classId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) return Optional.of(mapGitFileStats(rs));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return Optional.empty();
+    public static Optional<GitFileStats> findFileStatsByClassId(Jdbi jdbi, int classId) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM git_file_stats WHERE class_id = :classId")
+                        .bind("classId", classId)
+                        .map((rs, ctx) -> mapGitFileStats(rs))
+                        .findFirst());
     }
 
-    public static int countClasses(Connection conn) {
-        return countQuery(conn, "SELECT COUNT(*) FROM classes");
+    public static int countClasses(Jdbi jdbi) {
+        return countQuery(jdbi, "SELECT COUNT(*) FROM classes");
     }
 
-    public static int countBeans(Connection conn) {
-        return countQuery(conn, "SELECT COUNT(*) FROM beans");
+    public static int countBeans(Jdbi jdbi) {
+        return countQuery(jdbi, "SELECT COUNT(*) FROM beans");
     }
 
-    public static int countCommits(Connection conn) {
-        return countQuery(conn, "SELECT COUNT(*) FROM git_commits");
+    public static int countCommits(Jdbi jdbi) {
+        return countQuery(jdbi, "SELECT COUNT(*) FROM git_commits");
     }
 
-    public static Map<String, Integer> countBeansByScope(Connection conn) {
-        return groupCountQuery(conn, "SELECT scope, COUNT(*) as cnt FROM beans GROUP BY scope ORDER BY cnt DESC");
+    public static Map<String, Integer> countBeansByScope(Jdbi jdbi) {
+        return groupCountQuery(jdbi, "SELECT scope, COUNT(*) as cnt FROM beans GROUP BY scope ORDER BY cnt DESC");
     }
 
-    public static Map<String, Integer> countBeansByKind(Connection conn) {
-        return groupCountQuery(conn, "SELECT kind, COUNT(*) as cnt FROM beans GROUP BY kind ORDER BY cnt DESC");
+    public static Map<String, Integer> countBeansByKind(Jdbi jdbi) {
+        return groupCountQuery(jdbi, "SELECT kind, COUNT(*) as cnt FROM beans GROUP BY kind ORDER BY cnt DESC");
     }
 
-    public static List<InjectionPointRecord> findUnsatisfiedInjectionPoints(Connection conn) {
-        List<InjectionPointRecord> result = new ArrayList<>();
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT * FROM injection_points WHERE resolved_bean_id IS NULL")) {
-            while (rs.next()) {
-                result.add(mapInjectionPoint(rs));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static List<InjectionPointRecord> findUnsatisfiedInjectionPoints(Jdbi jdbi) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM injection_points WHERE resolved_bean_id IS NULL AND is_ambiguous = 0")
+                        .map((rs, ctx) -> mapInjectionPoint(rs))
+                        .list());
     }
 
-    public static List<InjectionPointRecord> findAmbiguousInjectionPoints(Connection conn) {
-        List<InjectionPointRecord> result = new ArrayList<>();
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT * FROM injection_points WHERE is_ambiguous = 1")) {
-            while (rs.next()) {
-                result.add(mapInjectionPoint(rs));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static List<InjectionPointRecord> findAmbiguousInjectionPoints(Jdbi jdbi) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM injection_points WHERE is_ambiguous = 1")
+                        .map((rs, ctx) -> mapInjectionPoint(rs))
+                        .list());
     }
 
-    public static List<Map.Entry<Integer, Integer>> findMostDependedOn(Connection conn, int limit) {
-        String sql = "SELECT to_class_id, COUNT(*) as dep_count FROM dependencies GROUP BY to_class_id ORDER BY dep_count DESC LIMIT ?";
-        List<Map.Entry<Integer, Integer>> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, limit);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(Map.entry(rs.getInt("to_class_id"), rs.getInt("dep_count")));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static List<Map.Entry<Integer, Integer>> findMostDependedOn(Jdbi jdbi, int limit) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT to_class_id, COUNT(*) as dep_count FROM dependencies GROUP BY to_class_id ORDER BY dep_count DESC LIMIT :limit")
+                        .bind("limit", limit)
+                        .map((rs, ctx) -> Map.entry(rs.getInt("to_class_id"), rs.getInt("dep_count")))
+                        .list());
     }
 
-    public static int countDependents(Connection conn, int classId) {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM dependencies WHERE to_class_id = ?")) {
-            ps.setInt(1, classId);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getInt(1) : 0;
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+    public static int countDependents(Jdbi jdbi, int classId) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT COUNT(*) FROM dependencies WHERE to_class_id = :classId")
+                        .bind("classId", classId)
+                        .mapTo(Integer.class)
+                        .one());
     }
 
-    public static int countDependencies(Connection conn, int classId) {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM dependencies WHERE from_class_id = ?")) {
-            ps.setInt(1, classId);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getInt(1) : 0;
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+    public static int countDependencies(Jdbi jdbi, int classId) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT COUNT(*) FROM dependencies WHERE from_class_id = :classId")
+                        .bind("classId", classId)
+                        .mapTo(Integer.class)
+                        .one());
     }
 
-    private static int countQuery(Connection conn, String sql) {
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            return rs.next() ? rs.getInt(1) : 0;
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+    private static int countQuery(Jdbi jdbi, String sql) {
+        return jdbi.withHandle(h ->
+                h.createQuery(sql).mapTo(Integer.class).one());
     }
 
-    private static Map<String, Integer> groupCountQuery(Connection conn, String sql) {
-        Map<String, Integer> result = new LinkedHashMap<>();
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            while (rs.next()) {
-                result.put(rs.getString(1), rs.getInt(2));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    private static Map<String, Integer> groupCountQuery(Jdbi jdbi, String sql) {
+        return jdbi.withHandle(h -> {
+            Map<String, Integer> result = new LinkedHashMap<>();
+            h.createQuery(sql)
+                    .map((rs, ctx) -> Map.entry(rs.getString(1), rs.getInt(2)))
+                    .forEach(e -> result.put(e.getKey(), e.getValue()));
+            return result;
+        });
     }
 
-    public static List<ExternalDepRecord> findExternalDeps(Connection conn, int classId) {
-        List<ExternalDepRecord> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT * FROM class_external_deps WHERE class_id = ? ORDER BY usage_kind, external_type")) {
-            ps.setInt(1, classId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(new ExternalDepRecord(
-                            rs.getInt("class_id"), rs.getString("external_type"), rs.getString("usage_kind")));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static List<ExternalDepRecord> findExternalDeps(Jdbi jdbi, int classId) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM class_external_deps WHERE class_id = :classId ORDER BY usage_kind, external_type")
+                        .bind("classId", classId)
+                        .map((rs, ctx) -> new ExternalDepRecord(
+                                rs.getInt("class_id"), rs.getString("external_type"), rs.getString("usage_kind")))
+                        .list());
     }
 
-    public static List<Map.Entry<String, Integer>> findExternalDepsByLibrary(Connection conn, int limit) {
-        String sql = """
-                SELECT substr(external_type, 1, instr(substr(external_type, instr(external_type, '.') + 1), '.') + instr(external_type, '.') - 1) as library,
-                       COUNT(DISTINCT class_id) as class_count
-                FROM class_external_deps
-                GROUP BY library
-                ORDER BY class_count DESC
-                LIMIT ?""";
-        List<Map.Entry<String, Integer>> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, limit);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String lib = rs.getString("library");
-                    if (lib != null && !lib.isEmpty()) {
-                        result.add(Map.entry(lib, rs.getInt("class_count")));
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static List<Map.Entry<String, Integer>> findExternalDepsByLibrary(Jdbi jdbi, int limit) {
+        return jdbi.withHandle(h ->
+                h.createQuery("""
+                        SELECT substr(external_type, 1, instr(substr(external_type, instr(external_type, '.') + 1), '.') + instr(external_type, '.') - 1) as library,
+                               COUNT(DISTINCT class_id) as class_count
+                        FROM class_external_deps
+                        GROUP BY library
+                        ORDER BY class_count DESC
+                        LIMIT :limit""")
+                        .bind("limit", limit)
+                        .map((rs, ctx) -> {
+                            String lib = rs.getString("library");
+                            return (lib != null && !lib.isEmpty()) ? Map.entry(lib, rs.getInt("class_count")) : null;
+                        })
+                        .list()
+                        .stream().filter(Objects::nonNull).toList());
     }
 
-    public static List<Map.Entry<Integer, String>> findClassesUsingType(Connection conn, String typePattern) {
-        String sql = "SELECT DISTINCT ced.class_id, c.class_name FROM class_external_deps ced JOIN classes c ON ced.class_id = c.id WHERE ced.external_type LIKE ? ORDER BY c.class_name";
-        List<Map.Entry<Integer, String>> result = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, typePattern.replace("*", "%"));
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(Map.entry(rs.getInt("class_id"), rs.getString("class_name")));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return result;
+    public static List<Map.Entry<Integer, String>> findClassesUsingType(Jdbi jdbi, String typePattern) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT DISTINCT ced.class_id, c.class_name FROM class_external_deps ced JOIN classes c ON ced.class_id = c.id WHERE ced.external_type LIKE :pattern ORDER BY c.class_name")
+                        .bind("pattern", typePattern.replace("*", "%"))
+                        .map((rs, ctx) -> Map.entry(rs.getInt("class_id"), rs.getString("class_name")))
+                        .list());
     }
 
-    public static boolean hasExternalDeps(Connection conn) {
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM class_external_deps")) {
-            return rs.next() && rs.getInt(1) > 0;
-        } catch (SQLException e) {
+    public static boolean hasExternalDeps(Jdbi jdbi) {
+        try {
+            return countQuery(jdbi, "SELECT COUNT(*) FROM class_external_deps") > 0;
+        } catch (Exception e) {
             return false;
         }
     }
 
-    public static boolean hasGitData(Connection conn) {
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM git_commits")) {
-            return rs.next() && rs.getInt(1) > 0;
-        } catch (SQLException e) {
+    public static List<CdiProblem> findCdiProblems(Jdbi jdbi) {
+        try {
+            return jdbi.withHandle(h ->
+                    h.createQuery("SELECT * FROM cdi_problems ORDER BY id")
+                            .map((rs, ctx) -> new CdiProblem(
+                                    rs.getInt("id"),
+                                    rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
+                                    rs.getString("class_name"),
+                                    rs.getString("problem_type"),
+                                    rs.getString("message")))
+                            .list());
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    public static boolean hasGitData(Jdbi jdbi) {
+        try {
+            return countQuery(jdbi, "SELECT COUNT(*) FROM git_commits") > 0;
+        } catch (Exception e) {
             return false;
         }
     }
 
-    private static GitFileStats mapGitFileStats(ResultSet rs) throws SQLException {
+    private static GitFileStats mapGitFileStats(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new GitFileStats(
-                rs.getInt("id"),
-                rs.getString("file_path"),
+                rs.getInt("id"), rs.getString("file_path"),
                 rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
-                rs.getInt("commit_count"),
-                rs.getString("last_modified"),
-                rs.getString("last_author"),
-                rs.getString("first_commit"),
-                rs.getInt("distinct_authors")
-        );
+                rs.getInt("commit_count"), rs.getString("last_modified"),
+                rs.getString("last_author"), rs.getString("first_commit"),
+                rs.getInt("distinct_authors"));
     }
 
-    private static GitCommitRecord mapGitCommit(ResultSet rs) throws SQLException {
+    private static GitCommitRecord mapGitCommit(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new GitCommitRecord(
-                rs.getInt("id"),
-                rs.getString("hash"),
-                rs.getString("short_hash"),
-                rs.getString("author"),
-                rs.getString("author_email"),
-                rs.getString("committed_at"),
-                rs.getString("message")
-        );
+                rs.getInt("id"), rs.getString("hash"), rs.getString("short_hash"),
+                rs.getString("author"), rs.getString("author_email"),
+                rs.getString("committed_at"), rs.getString("message"));
     }
 
     static List<String> fromJson(String json) {

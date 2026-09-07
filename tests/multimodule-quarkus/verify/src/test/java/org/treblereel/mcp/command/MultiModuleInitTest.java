@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
 import java.util.Comparator;
+import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.db.IndexReader;
@@ -30,39 +30,39 @@ class MultiModuleInitTest {
     void initIndexesAllModules() throws Exception {
         InitCommand cmd = new InitCommand();
         cmd.projectPath = PROJECT_ROOT;
+        cmd.indexOnly = true;
         cmd.run();
 
-        Path dbPath = QUILL_DIR.resolve("index.db");
-        assertTrue(Files.exists(dbPath), "index.db should be created");
+        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        assertNotNull(dbPath, "index db should be created");
 
-        try (Connection conn = QuillDatabase.open(dbPath)) {
-            var classes = IndexReader.findAllClasses(conn);
-            // common: NotificationService (interface) + UserDTO (record) = 2
-            // service: EmailNotificationService + SmsNotificationService + UserService = 3
-            // Total: 5
-            assertEquals(5, classes.size(), "Should index classes from both common and service modules");
+        Jdbi jdbi = QuillDatabase.open(dbPath);
+        var classes = IndexReader.findAllClasses(jdbi);
+        // common: NotificationService (interface) + UserDTO (record) = 2
+        // service: EmailNotificationService + SmsNotificationService + UserService = 3
+        // Total: 5
+        assertEquals(5, classes.size(), "Should index classes from both common and service modules");
 
-            // Verify cross-module classes
-            assertTrue(classes.stream().anyMatch(c -> c.className().contains("NotificationService")));
-            assertTrue(classes.stream().anyMatch(c -> c.className().contains("UserDTO")));
-            assertTrue(classes.stream().anyMatch(c -> c.className().contains("EmailNotificationService")));
-            assertTrue(classes.stream().anyMatch(c -> c.className().contains("UserService")));
+        // Verify cross-module classes
+        assertTrue(classes.stream().anyMatch(c -> c.className().contains("NotificationService")));
+        assertTrue(classes.stream().anyMatch(c -> c.className().contains("UserDTO")));
+        assertTrue(classes.stream().anyMatch(c -> c.className().contains("EmailNotificationService")));
+        assertTrue(classes.stream().anyMatch(c -> c.className().contains("UserService")));
 
-            var beans = IndexReader.findBeans(conn, null);
-            // 3 beans: Email, Sms, UserService
-            assertEquals(3, beans.size(), "Should find 3 CDI beans across modules");
+        var beans = IndexReader.findBeans(jdbi, null);
+        // 3 CDI beans: EmailNotificationService, SmsNotificationService, UserService
+        assertEquals(3, beans.size(), "Should find 3 CDI beans");
 
-            // Verify cross-module injection is detected
-            var userServiceBean = beans.stream()
-                    .filter(b -> IndexReader.findClassById(conn, b.classId())
-                            .map(c -> c.className().endsWith("UserService")).orElse(false))
-                    .findFirst();
-            assertTrue(userServiceBean.isPresent(), "UserService should be a bean");
+        // Verify cross-module injection is detected
+        var userServiceBean = beans.stream()
+                .filter(b -> IndexReader.findClassById(jdbi, b.classId())
+                        .map(c -> c.className().endsWith("UserService")).orElse(false))
+                .findFirst();
+        assertTrue(userServiceBean.isPresent(), "UserService should be a bean");
 
-            var ips = IndexReader.findInjectionPoints(conn, userServiceBean.get().id());
-            assertFalse(ips.isEmpty(), "UserService should have injection points");
-            assertTrue(ips.stream().anyMatch(ip -> ip.targetType().contains("NotificationService")),
-                    "UserService should inject NotificationService from common module");
-        }
+        var ips = IndexReader.findInjectionPoints(jdbi, userServiceBean.get().id());
+        assertFalse(ips.isEmpty(), "UserService should have injection points");
+        assertTrue(ips.stream().anyMatch(ip -> ip.targetType().contains("NotificationService")),
+                "UserService should inject NotificationService from common module");
     }
 }

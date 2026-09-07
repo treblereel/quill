@@ -7,13 +7,24 @@ import com.knuddels.jtokkit.api.EncodingType;
 
 public final class TokenCounter {
 
-    private static final EncodingRegistry REGISTRY = Encodings.newDefaultEncodingRegistry();
-    private static final Encoding ENCODING = REGISTRY.getEncoding(EncodingType.CL100K_BASE);
+    private static volatile Encoding encoding;
 
     private TokenCounter() {}
 
+    private static Encoding encoding() {
+        if (encoding == null) {
+            synchronized (TokenCounter.class) {
+                if (encoding == null) {
+                    EncodingRegistry registry = Encodings.newLazyEncodingRegistry();
+                    encoding = registry.getEncoding(EncodingType.CL100K_BASE);
+                }
+            }
+        }
+        return encoding;
+    }
+
     public static int count(String text) {
         if (text == null || text.isEmpty()) return 0;
-        return ENCODING.countTokens(text);
+        return encoding().countTokens(text);
     }
 }

@@ -11,6 +11,7 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
@@ -73,11 +74,20 @@ public final class GitAnalyzer {
                 }
             }
 
+            Path gitWorkTree = repo.getWorkTree().toPath().toRealPath();
+            Path realProjectRoot = projectRoot.toRealPath();
+            String projectPrefix = "";
+            if (!realProjectRoot.equals(gitWorkTree)) {
+                projectPrefix = gitWorkTree.relativize(realProjectRoot).toString().replace('\\', '/');
+                if (!projectPrefix.endsWith("/")) projectPrefix += "/";
+            }
+
             List<GitCommitRecord> commitRecords = new ArrayList<>();
             List<GitCommitFile> commitFiles = new ArrayList<>();
             Map<String, FileAgg> fileAggs = new LinkedHashMap<>();
 
-            try (DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
+            try (ObjectReader reader = repo.newObjectReader();
+                    DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
                 df.setRepository(repo);
                 df.setDetectRenames(true);
 
@@ -103,14 +113,14 @@ public final class GitAnalyzer {
                             parent = rw.parseCommit(parent.getId());
                         }
                         CanonicalTreeParser p = new CanonicalTreeParser();
-                        p.reset(repo.newObjectReader(), parent.getTree());
+                        p.reset(reader, parent.getTree());
                         parentIter = p;
                     } else {
                         parentIter = new EmptyTreeIterator();
                     }
 
                     CanonicalTreeParser commitIter = new CanonicalTreeParser();
-                    commitIter.reset(repo.newObjectReader(), commit.getTree());
+                    commitIter.reset(reader, commit.getTree());
 
                     List<DiffEntry> diffs = df.scan(parentIter, commitIter);
                     for (DiffEntry diff : diffs) {
@@ -118,8 +128,13 @@ public final class GitAnalyzer {
                                 ? diff.getOldPath() : diff.getNewPath();
                         String changeType = diff.getChangeType().name();
 
+                        String localPath = filePath;
+                        if (!projectPrefix.isEmpty() && filePath.startsWith(projectPrefix)) {
+                            localPath = filePath.substring(projectPrefix.length());
+                        }
+
                         Integer classId = sourceFileToClassId != null
-                                ? sourceFileToClassId.get(filePath) : null;
+                                ? sourceFileToClassId.get(localPath) : null;
 
                         commitFiles.add(new GitCommitFile(commitId, classId, filePath, changeType));
 
@@ -164,17 +179,43 @@ public final class GitAnalyzer {
                 .readEnvironment()
                 .build()) {
             ObjectId head = repo.resolve("HEAD");
-            return head != null ? head.getName().substring(0, 7) : null;
+            return head != null ? head.getName() : null;
         } catch (IOException e) {
             return null;
         }
     }
 
-    private static Path findGitDir(Path from) {
+    public static String resolveCurrentBranch(Path projectRoot) {
+        Path gitDir = findGitDir(projectRoot);
+        if (gitDir == null) return null;
+        try (Repository repo = new FileRepositoryBuilder()
+                .setGitDir(gitDir.toFile())
+                .readEnvironment()
+                .build()) {
+            String branch = repo.getBranch();
+            if (branch != null && branch.length() == 40) return null;
+            return branch;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    static Path findGitDir(Path from) {
         Path dir = from;
         while (dir != null) {
-            Path gitDir = dir.resolve(".git");
-            if (Files.isDirectory(gitDir)) return gitDir;
+            Path gitPath = dir.resolve(".git");
+            if (Files.isDirectory(gitPath)) return gitPath;
+            if (Files.isRegularFile(gitPath)) {
+                try {
+                    String content = Files.readString(gitPath).trim();
+                    if (content.startsWith("gitdir:")) {
+                        Path resolved = dir.resolve(content.substring("gitdir:".length()).trim()).normalize();
+                        if (Files.isDirectory(resolved)) return resolved;
+                    }
+                } catch (IOException e) {
+                    // fall through
+                }
+            }
             dir = dir.getParent();
         }
         return null;

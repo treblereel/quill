@@ -11,25 +11,29 @@ public final class ProjectRootFinder {
         Path start = (explicitPath != null) ? explicitPath : Path.of(System.getProperty("user.dir"));
         start = start.toAbsolutePath().normalize();
 
-        if (isProjectRoot(start)) {
-            return start;
-        }
-
         Path current = start;
+        Path nearestGradleBuild = null;
         while (current != null) {
-            if (isProjectRoot(current)) {
-                return current;
-            }
+            if (Files.isRegularFile(current.resolve("pom.xml"))) return current;
+            if (hasGradleSettings(current)) return current;
+            if (nearestGradleBuild == null && hasGradleBuild(current)) nearestGradleBuild = current;
             current = current.getParent();
         }
 
+        if (nearestGradleBuild != null) return nearestGradleBuild;
+
         throw new IllegalArgumentException(
-                "No Maven project found at or above: " + start
-                        + ". Expected directory with pom.xml and src/main/java");
+                "No Maven or Gradle project found at or above: " + start
+                        + ". Expected pom.xml, settings.gradle[.kts], or build.gradle[.kts]");
     }
 
-    private static boolean isProjectRoot(Path dir) {
-        return Files.isRegularFile(dir.resolve("pom.xml"))
-                && Files.isDirectory(dir.resolve("src/main/java"));
+    private static boolean hasGradleSettings(Path dir) {
+        return Files.isRegularFile(dir.resolve("settings.gradle"))
+                || Files.isRegularFile(dir.resolve("settings.gradle.kts"));
+    }
+
+    private static boolean hasGradleBuild(Path dir) {
+        return Files.isRegularFile(dir.resolve("build.gradle"))
+                || Files.isRegularFile(dir.resolve("build.gradle.kts"));
     }
 }

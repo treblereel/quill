@@ -1,5 +1,157 @@
 [
   {
+    "name": "org.treblereel.mcp.mcp.QuillTools",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "[Lorg.jboss.jandex.ClassInfo;"
+  },
+  {
+    "name": "[Lorg.jboss.jandex.AnnotationInstance;"
+  },
+  {
+    "name": "org.eclipse.jgit.internal.JGitText",
+    "allDeclaredConstructors": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "org.eclipse.jgit.dircache.DirCache$DirCacheVersion",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.diff.DiffAlgorithm$SupportedAlgorithm",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.lib.CoreConfig$AutoCRLF",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.lib.CoreConfig$CheckStat",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.lib.CoreConfig$EOL",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.lib.CoreConfig$HideDotFiles",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.lib.CoreConfig$LogRefUpdates",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.lib.CoreConfig$SymLinks",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.lib.CoreConfig$TrustPackedRefsStat",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.lib.CoreConfig$TrustStat",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.lib.GpgConfig$GpgFormat",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.transport.HttpConfig$HttpRedirectMode",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.eclipse.jgit.util.sha1.SHA1$Sha1Implementation",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.Handles",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.argument.Arguments",
+    "methods": [{"name": "<init>", "parameterTypes": ["org.jdbi.v3.core.config.ConfigRegistry"]}]
+  },
+  {
+    "name": "org.jdbi.v3.core.array.SqlArrayTypes",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.collector.JdbiCollectors",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.config.internal.ConfigCaches",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.mapper.ColumnMappers",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.mapper.Mappers",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.mapper.RowMappers",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.qualifier.Qualifiers",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.statement.SqlStatements",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.statement.StatementExceptions",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "org.jdbi.v3.core.mapper.reflect.internal.PojoTypes",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {"name":"io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier"},
+  {"name":"io.modelcontextprotocol.json.schema.jackson2.JacksonJsonSchemaValidatorSupplier"},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$Annotated"},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$Annotations","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$CallToolRequest","allDeclaredConstructors":true,"methods":[{"name":"fromJson","parameterTypes":["java.lang.String","java.util.Map","java.util.Map"]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$CallToolResult","allDeclaredConstructors":true,"methods":[{"name":"content","parameterTypes":[]},{"name":"isError","parameterTypes":[]},{"name":"meta","parameterTypes":[]},{"name":"structuredContent","parameterTypes":[]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ClientCapabilities","allDeclaredConstructors":true,"methods":[{"name":"<init>","parameterTypes":["java.util.Map","io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$RootCapabilities","io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Sampling","io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Elicitation"]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Elicitation","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Elicitation$Form","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Elicitation$Url","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$RootCapabilities","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Sampling","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$Content"},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$Icon","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$Identifier"},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$Implementation","allDeclaredConstructors":true,"methods":[{"name":"description","parameterTypes":[]},{"name":"fromJson","parameterTypes":["java.lang.String","java.lang.String","java.lang.String","java.lang.String","java.util.List","java.lang.String"]},{"name":"icons","parameterTypes":[]},{"name":"name","parameterTypes":[]},{"name":"title","parameterTypes":[]},{"name":"version","parameterTypes":[]},{"name":"websiteUrl","parameterTypes":[]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$InitializeRequest","methods":[{"name":"fromJson","parameterTypes":["java.lang.String","io.modelcontextprotocol.spec.McpSchema$ClientCapabilities","io.modelcontextprotocol.spec.McpSchema$Implementation","java.util.Map"]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$InitializeResult","allDeclaredConstructors":true,"methods":[{"name":"capabilities","parameterTypes":[]},{"name":"instructions","parameterTypes":[]},{"name":"meta","parameterTypes":[]},{"name":"protocolVersion","parameterTypes":[]},{"name":"serverInfo","parameterTypes":[]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage"},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$JSONRPCNotification","methods":[{"name":"<init>","parameterTypes":["java.lang.String","java.lang.String","java.lang.Object"]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$JSONRPCRequest","methods":[{"name":"<init>","parameterTypes":["java.lang.String","java.lang.String","java.lang.Object","java.lang.Object"]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$JSONRPCResponse","allDeclaredConstructors":true,"methods":[{"name":"error","parameterTypes":[]},{"name":"id","parameterTypes":[]},{"name":"jsonrpc","parameterTypes":[]},{"name":"result","parameterTypes":[]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$JSONRPCResponse$JSONRPCError","allDeclaredConstructors":true,"methods":[{"name":"code","parameterTypes":[]},{"name":"message","parameterTypes":[]},{"name":"data","parameterTypes":[]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ListToolsResult","allDeclaredConstructors":true,"methods":[{"name":"meta","parameterTypes":[]},{"name":"nextCursor","parameterTypes":[]},{"name":"tools","parameterTypes":[]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$Meta","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$Request"},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$Result"},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ServerCapabilities","allDeclaredConstructors":true,"methods":[{"name":"completions","parameterTypes":[]},{"name":"experimental","parameterTypes":[]},{"name":"logging","parameterTypes":[]},{"name":"prompts","parameterTypes":[]},{"name":"resources","parameterTypes":[]},{"name":"tools","parameterTypes":[]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$CompletionCapabilities","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$LoggingCapabilities","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$PromptCapabilities","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$ResourceCapabilities","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$ToolCapabilities","allDeclaredConstructors":true,"methods":[{"name":"listChanged","parameterTypes":[]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$TextContent","allDeclaredConstructors":true,"methods":[{"name":"annotations","parameterTypes":[]},{"name":"meta","parameterTypes":[]},{"name":"text","parameterTypes":[]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$Tool","allDeclaredConstructors":true,"methods":[{"name":"annotations","parameterTypes":[]},{"name":"description","parameterTypes":[]},{"name":"icons","parameterTypes":[]},{"name":"inputSchema","parameterTypes":[]},{"name":"meta","parameterTypes":[]},{"name":"name","parameterTypes":[]},{"name":"outputSchema","parameterTypes":[]},{"name":"title","parameterTypes":[]}]},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ToolAnnotations","allDeclaredConstructors":true},
+  {"name":"[Lio.modelcontextprotocol.spec.McpSchema$Tool;"},
+  {
     "name": "org.eclipse.jgit.lib.ObjectId",
     "allPublicMethods": true,
     "allPublicConstructors": true
@@ -128,5 +280,60 @@
     "name": "com.knuddels.jtokkit.DefaultEncodingRegistry",
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.treblereel.mcp.QuillTopCommand",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "fields": [{"name": "mcp"}, {"name": "projects"}]
+  },
+  {
+    "name": "org.treblereel.mcp.QuillTopCommand$VersionProvider",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.treblereel.mcp.command.CleanCommand",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "fields": [{"name": "projectPath"}]
+  },
+  {
+    "name": "org.treblereel.mcp.command.InitCommand",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "fields": [{"name": "indexOnly"}, {"name": "projectPath"}]
+  },
+  {
+    "name": "org.treblereel.mcp.command.StatusCommand",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "fields": [{"name": "projectPath"}]
+  },
+  {
+    "name": "org.treblereel.mcp.command.UpdateCommand",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "fields": [{"name": "compile"}, {"name": "force"}, {"name": "projectPath"}]
+  },
+  {
+    "name": "picocli.CommandLine$AutoHelpMixin",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "fields": [{"name": "helpRequested"}, {"name": "versionRequested"}]
   }
 ]

@@ -3,31 +3,29 @@ package org.treblereel.mcp.mcp;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
-import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.*;
-import org.treblereel.mcp.model.GitCommitFile;
-import org.treblereel.mcp.model.GitCommitRecord;
-import org.treblereel.mcp.model.GitFileStats;
 
 class QuillToolsTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @TempDir Path tempDir;
-    Connection conn;
+    Jdbi jdbi;
 
     @BeforeEach
     void setUp() {
-        conn = QuillDatabase.create(tempDir.resolve("test.db"));
+        jdbi = QuillDatabase.create(tempDir.resolve("test.db"));
         var classes = List.of(
                 new ClassRecord(0, "org.acme.OrderService", "CLASS", "java.lang.Object",
                         List.of(), "src/main/java/org/acme/OrderService.java", 10, true, 500),
@@ -54,8 +52,10 @@ class QuillToolsTest {
                 new DependencyRecord(1, 3, "CDI_INJECT", 1),
                 new DependencyRecord(3, 4, "CDI_INJECT", null)
         );
-        IndexWriter.write(conn, classes, beans, ips, deps,
-                Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "abc1234"));
+        IndexWriter.write(jdbi, classes, beans, ips, deps,
+                Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "abc1234",
+                        "dependency_index", "degraded",
+                        "dependency_index_detail", "1/2 modules resolved"));
 
         var gitCommits = List.of(
                 new GitCommitRecord(1, "aaa1111aaa1111aaa1111aaa1111aaa1111aaa111", "aaa1111",
@@ -81,7 +81,7 @@ class QuillToolsTest {
                 new GitFileStats(3, "src/main/java/org/acme/PaymentService.java", 2, 1,
                         "2026-08-26T08:00:00Z", "dev1", "2026-08-26T08:00:00Z", 1)
         );
-        IndexWriter.writeGitData(conn, gitStats, gitCommits, gitFiles);
+        IndexWriter.writeGitData(jdbi, gitStats, gitCommits, gitFiles);
 
         var externalDeps = List.of(
                 new ExternalDepRecord(1, "jakarta.enterprise.context.ApplicationScoped", "ANNOTATION"),
@@ -91,22 +91,47 @@ class QuillToolsTest {
                 new ExternalDepRecord(3, "com.stripe.model.Charge", "METHOD"),
                 new ExternalDepRecord(4, "jakarta.enterprise.context.Dependent", "ANNOTATION")
         );
-        IndexWriter.writeExternalDeps(conn, externalDeps);
+        IndexWriter.writeExternalDeps(jdbi, externalDeps);
     }
 
     @Test
     void getBeansReturnsAllBeans() {
         var tools = new QuillTools();
-        String result = tools.getBeans(conn, null, null, null, null, null);
+        String result = tools.getBeans(jdbi, null, null, null, null, null);
         assertTrue(result.contains("OrderService"));
         assertTrue(result.contains("StripePaymentService"));
         assertTrue(result.contains("\"total\":3"));
     }
 
     @Test
+    void singleProjectQueryFailureReturnsStructuredToolError() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("DROP TABLE dependencies");
+            handle.execute("DROP TABLE injection_points");
+            handle.execute("DROP TABLE beans");
+        });
+        ProjectRegistry registry = new ProjectRegistry() {
+            @Override
+            public Resolution resolve() {
+                return new Resolution(
+                        List.of(new ProjectEntry("broken-project", tempDir, jdbi)),
+                        List.of());
+            }
+        };
+
+        String result = new QuillTools(registry).list_beans(
+                Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.empty());
+
+        JsonNode root = JSON.readTree(result);
+        assertTrue(root.get("error").asText().contains("broken-project"));
+        assertTrue(root.get("error").asText().contains("beans"));
+    }
+
+    @Test
     void getBeansFiltersByScope() {
         var tools = new QuillTools();
-        String result = tools.getBeans(conn, null, "@ApplicationScoped", null, null, null);
+        String result = tools.getBeans(jdbi, null, "@ApplicationScoped", null, null, null);
         assertTrue(result.contains("OrderService"));
         assertTrue(result.contains("StripePaymentService"));
         assertFalse(result.contains("AuditService"));
@@ -115,7 +140,7 @@ class QuillToolsTest {
     @Test
     void getBeansFiltersByProfile() {
         var tools = new QuillTools();
-        String result = tools.getBeans(conn, null, null, null, "dev", null);
+        String result = tools.getBeans(jdbi, null, null, null, "dev", null);
         assertTrue(result.contains("AuditService"));
         assertFalse(result.contains("OrderService"));
         assertTrue(result.contains("\"total\":1"));
@@ -124,7 +149,7 @@ class QuillToolsTest {
     @Test
     void getBeansFiltersByQualifier() {
         var tools = new QuillTools();
-        String result = tools.getBeans(conn, null, null, null, null, "@Premium");
+        String result = tools.getBeans(jdbi, null, null, null, null, "@Premium");
         assertTrue(result.contains("StripePaymentService"));
         assertFalse(result.contains("OrderService"));
         assertFalse(result.contains("AuditService"));
@@ -134,15 +159,55 @@ class QuillToolsTest {
     @Test
     void getDependenciesShowsOutbound() {
         var tools = new QuillTools();
-        String result = tools.getDependencies(conn, "OrderService", "outbound", 1);
+        String result = tools.getDependencies(jdbi, "OrderService", "outbound", 1);
         assertTrue(result.contains("StripePaymentService"));
         assertTrue(result.contains("CDI_INJECT"));
     }
 
     @Test
+    void dependencyGraphIsBounded() throws Exception {
+        jdbi.useHandle(handle -> {
+            var classes = handle.prepareBatch(
+                    "INSERT INTO classes(class_name, kind, is_bean) VALUES (:name, 'CLASS', 0)");
+            for (int i = 0; i < 250; i++) {
+                classes.bind("name", "org.acme.Generated" + i).add();
+            }
+            classes.execute();
+            var dependencies = handle.prepareBatch(
+                    "INSERT INTO dependencies(from_class_id, to_class_id, kind) VALUES (1, :target, 'CLASS_REFERENCE')");
+            for (int id = 5; id < 255; id++) {
+                dependencies.bind("target", id).add();
+            }
+            dependencies.execute();
+        });
+
+        JsonNode result = JSON.readTree(
+                new QuillTools().getDependencies(jdbi, "OrderService", "outbound", 1));
+        assertEquals(200, result.get("depends_on").size());
+        assertTrue(result.get("truncated").asBoolean());
+        assertEquals(200, result.get("node_limit").asInt());
+    }
+
+    @Test
+    void multiProjectResultsHaveDeterministicOrder() throws Exception {
+        ProjectRegistry registry = new ProjectRegistry() {
+            @Override
+            public Resolution resolve() {
+                return new Resolution(List.of(
+                        new ProjectEntry("z-project", tempDir, jdbi),
+                        new ProjectEntry("a-project", tempDir, jdbi)), List.of());
+            }
+        };
+
+        JsonNode result = JSON.readTree(new QuillTools(registry).get_overview(Optional.empty()));
+        assertEquals("a-project", result.get("projects").get(0).get("project").asText());
+        assertEquals("z-project", result.get("projects").get(1).get("project").asText());
+    }
+
+    @Test
     void getDependenciesDepth2ExpandsTransitive() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getDependencies(conn, "OrderService", "outbound", 2);
+        String result = tools.getDependencies(jdbi, "OrderService", "outbound", 2);
         JsonNode root = JSON.readTree(result);
         JsonNode dependsOn = root.get("depends_on");
         assertEquals(1, dependsOn.size());
@@ -156,7 +221,7 @@ class QuillToolsTest {
     @Test
     void getDependenciesDepth1DoesNotExpandNested() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getDependencies(conn, "OrderService", "outbound", 1);
+        String result = tools.getDependencies(jdbi, "OrderService", "outbound", 1);
         JsonNode root = JSON.readTree(result);
         JsonNode dependsOn = root.get("depends_on");
         assertNull(dependsOn.get(0).get("depends_on"),
@@ -166,7 +231,7 @@ class QuillToolsTest {
     @Test
     void getInjectionPointsShowsResolution() {
         var tools = new QuillTools();
-        String result = tools.getInjectionPoints(conn, "OrderService");
+        String result = tools.getInjectionPoints(jdbi, "OrderService");
         assertTrue(result.contains("PaymentService"));
         assertTrue(result.contains("paymentService"));
         assertTrue(result.contains("unique") || result.contains("resolved_to"));
@@ -175,7 +240,7 @@ class QuillToolsTest {
     @Test
     void getHotspotsReturnsMostChanged() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getHotspots(conn, 10, null);
+        String result = tools.getHotspots(jdbi, 10, null);
         JsonNode root = JSON.readTree(result);
         JsonNode hotspots = root.get("hotspots");
         assertNotNull(hotspots);
@@ -188,7 +253,7 @@ class QuillToolsTest {
     @Test
     void getHotspotsFiltersBySince() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getHotspots(conn, 10, "2026-08-27");
+        String result = tools.getHotspots(jdbi, 10, "2026-08-27");
         JsonNode root = JSON.readTree(result);
         JsonNode hotspots = root.get("hotspots");
         for (JsonNode h : hotspots) {
@@ -199,7 +264,7 @@ class QuillToolsTest {
     @Test
     void getFileHistoryReturnsCommits() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getFileHistory(conn, "StripePaymentService", 10);
+        String result = tools.getFileHistory(jdbi, "StripePaymentService", 10);
         JsonNode root = JSON.readTree(result);
         assertEquals("org.acme.StripePaymentService", root.get("target").asText());
         JsonNode commits = root.get("commits");
@@ -211,7 +276,7 @@ class QuillToolsTest {
     @Test
     void getCoChangesFindsCorrelatedFiles() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getCoChanges(conn, "OrderService", 10);
+        String result = tools.getCoChanges(jdbi, "OrderService", 10);
         JsonNode root = JSON.readTree(result);
         assertEquals("org.acme.OrderService", root.get("target").asText());
         JsonNode coChanges = root.get("co_changes");
@@ -231,7 +296,7 @@ class QuillToolsTest {
     @Test
     void getRecentChangesReturnsCommitsWithFiles() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getRecentChanges(conn, 5);
+        String result = tools.getRecentChanges(jdbi, 5);
         JsonNode root = JSON.readTree(result);
         JsonNode changes = root.get("recent_changes");
         assertNotNull(changes);
@@ -245,13 +310,15 @@ class QuillToolsTest {
     @Test
     void getOverviewReturnsProjectSummary() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getOverview(conn);
+        String result = tools.getOverview(jdbi);
         JsonNode root = JSON.readTree(result);
 
         JsonNode project = root.get("project");
         assertNotNull(project);
         assertEquals(4, project.get("classes").asInt());
         assertEquals(3, project.get("beans").asInt());
+        assertEquals("degraded", project.get("dependency_index").asText());
+        assertEquals("1/2 modules resolved", project.get("dependency_index_detail").asText());
 
         JsonNode byScope = root.get("beans_by_scope");
         assertNotNull(byScope);
@@ -267,8 +334,8 @@ class QuillToolsTest {
 
         JsonNode problems = root.get("problems");
         assertNotNull(problems);
-        assertNotNull(problems.get("unsatisfied_injection_points"));
-        assertNotNull(problems.get("ambiguous_injection_points"));
+        assertTrue(problems.has("unsatisfied_count"));
+        assertTrue(problems.has("ambiguous_count"));
 
         JsonNode gitSummary = root.get("git_summary");
         assertNotNull(gitSummary);
@@ -281,27 +348,26 @@ class QuillToolsTest {
 
     @Test
     void getOverviewWithoutGitDataShowsNull() throws Exception {
-        Connection noGitConn = QuillDatabase.create(tempDir.resolve("nogit-overview.db"));
+        Jdbi noGitJdbi = QuillDatabase.create(tempDir.resolve("nogit-overview.db"));
         var classes = List.of(
                 new ClassRecord(0, "org.acme.Foo", "CLASS", null, List.of(), "Foo.java", 1, true, 100));
         var beans = List.of(
                 new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default"),
                         List.of(), false, null, null, null, null, List.of("Foo")));
-        IndexWriter.write(noGitConn, classes, beans, List.of(), List.of(),
+        IndexWriter.write(noGitJdbi, classes, beans, List.of(), List.of(),
                 Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "unknown"));
 
         var tools = new QuillTools();
-        String result = tools.getOverview(noGitConn);
+        String result = tools.getOverview(noGitJdbi);
         JsonNode root = JSON.readTree(result);
         assertTrue(root.get("git_summary").isNull());
         assertEquals(1, root.get("project").get("beans").asInt());
-        noGitConn.close();
     }
 
     @Test
     void getRiskReturnsScoreAndSignals() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getRisk(conn, "StripePaymentService");
+        String result = tools.getRisk(jdbi, "StripePaymentService");
         JsonNode root = JSON.readTree(result);
 
         assertEquals("org.acme.StripePaymentService", root.get("target").asText());
@@ -331,17 +397,17 @@ class QuillToolsTest {
 
     @Test
     void getRiskWithoutGitDataExcludesGitSignals() throws Exception {
-        Connection noGitConn = QuillDatabase.create(tempDir.resolve("nogit-risk.db"));
+        Jdbi noGitJdbi = QuillDatabase.create(tempDir.resolve("nogit-risk.db"));
         var classes = List.of(
                 new ClassRecord(0, "org.acme.Bar", "CLASS", null, List.of(), "Bar.java", 1, true, 100));
         var beans = List.of(
                 new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default"),
                         List.of(), false, null, null, null, null, List.of("Bar")));
-        IndexWriter.write(noGitConn, classes, beans, List.of(), List.of(),
+        IndexWriter.write(noGitJdbi, classes, beans, List.of(), List.of(),
                 Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "unknown"));
 
         var tools = new QuillTools();
-        String result = tools.getRisk(noGitConn, "Bar");
+        String result = tools.getRisk(noGitJdbi, "Bar");
         JsonNode root = JSON.readTree(result);
 
         assertEquals("org.acme.Bar", root.get("target").asText());
@@ -354,13 +420,12 @@ class QuillToolsTest {
         assertTrue(signals.get("git").get("note").asText().contains("unavailable"));
 
         assertTrue(root.get("recommendation").asText().contains("Git data unavailable"));
-        noGitConn.close();
     }
 
     @Test
     void getRiskClassNotFound() {
         var tools = new QuillTools();
-        String result = tools.getRisk(conn, "NonExistentClass");
+        String result = tools.getRisk(jdbi, "NonExistentClass");
         assertTrue(result.contains("error"));
         assertTrue(result.contains("Class not found"));
     }
@@ -368,7 +433,7 @@ class QuillToolsTest {
     @Test
     void getExternalDepsForClassShowsTypesByKind() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getExternalDeps(conn, "StripePaymentService", null, 20);
+        String result = tools.getExternalDeps(jdbi, "StripePaymentService", null, 20);
         JsonNode root = JSON.readTree(result);
 
         assertEquals("org.acme.StripePaymentService", root.get("target").asText());
@@ -389,7 +454,7 @@ class QuillToolsTest {
     @Test
     void getExternalDepsLibrarySummary() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getExternalDeps(conn, null, null, 20);
+        String result = tools.getExternalDeps(jdbi, null, null, 20);
         JsonNode root = JSON.readTree(result);
 
         JsonNode libraries = root.get("libraries");
@@ -410,7 +475,7 @@ class QuillToolsTest {
     @Test
     void getExternalDepsFilterByLibrary() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getExternalDeps(conn, null, "com.stripe", 20);
+        String result = tools.getExternalDeps(jdbi, null, "com.stripe", 20);
         JsonNode root = JSON.readTree(result);
 
         assertEquals("com.stripe", root.get("library_filter").asText());
@@ -421,19 +486,55 @@ class QuillToolsTest {
     }
 
     @Test
+    void getBeansRespectsLimit() throws Exception {
+        var tools = new QuillTools();
+        String result = tools.getBeans(jdbi, null, null, null, null, null, 1);
+        JsonNode root = JSON.readTree(result);
+        assertEquals(1, root.get("showing").asInt());
+        assertEquals(3, root.get("total").asInt());
+    }
+
+    @Test
+    void getHotspotsSinceRecomputesCounts() throws Exception {
+        var tools = new QuillTools();
+        String result = tools.getHotspots(jdbi, 10, "2026-08-28");
+        JsonNode root = JSON.readTree(result);
+        JsonNode hotspots = root.get("hotspots");
+        assertNotNull(hotspots);
+        for (JsonNode h : hotspots) {
+            String file = h.get("file").asText();
+            int count = h.get("commit_count").asInt();
+            if (file.contains("OrderService")) {
+                assertEquals(1, count,
+                        "OrderService had 1 commit on 2026-08-28, not lifetime count of 2");
+            }
+        }
+    }
+
+    @Test
+    void getHotspotsSinceExcludesOlderCommits() throws Exception {
+        var tools = new QuillTools();
+        String result = tools.getHotspots(jdbi, 10, "2026-08-28");
+        JsonNode root = JSON.readTree(result);
+        JsonNode hotspots = root.get("hotspots");
+        for (JsonNode h : hotspots) {
+            assertFalse(h.get("file").asText().equals("src/main/java/org/acme/PaymentService.java"),
+                    "PaymentService.java only has commits before 2026-08-28 and should be excluded");
+        }
+    }
+
+    @Test
     void gitToolsReturnErrorWithoutGitData() throws Exception {
-        Connection noGitConn = QuillDatabase.create(tempDir.resolve("nogit.db"));
-        IndexWriter.write(noGitConn, List.of(), List.of(), List.of(), List.of(),
+        Jdbi noGitJdbi = QuillDatabase.create(tempDir.resolve("nogit.db"));
+        IndexWriter.write(noGitJdbi, List.of(), List.of(), List.of(), List.of(),
                 Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "unknown"));
 
         var tools = new QuillTools();
-        String result = tools.getHotspots(noGitConn, 10, null);
+        String result = tools.getHotspots(noGitJdbi, 10, null);
         assertTrue(result.contains("No git data available"));
         assertTrue(result.contains("git init"));
 
-        result = tools.getFileHistory(noGitConn, "SomeClass", 10);
+        result = tools.getFileHistory(noGitJdbi, "SomeClass", 10);
         assertTrue(result.contains("No git data available"));
-
-        noGitConn.close();
     }
 }

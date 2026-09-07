@@ -8,7 +8,7 @@
     </parent>
 
     <artifactId>quill-app</artifactId>
-    <packaging>quarkus</packaging>
+    <packaging>jar</packaging>
 
     <dependencies>
         <dependency>
@@ -17,57 +17,108 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-picocli</artifactId>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+            <version>${picocli.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.quarkiverse.mcp</groupId>
-            <artifactId>quarkus-mcp-server-hibernate-validator</artifactId>
+            <groupId>io.smallrye</groupId>
+            <artifactId>jandex</artifactId>
+            <version>${jandex.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.quarkiverse.mcp</groupId>
-            <artifactId>quarkus-mcp-server-http</artifactId>
+            <groupId>org.jdbi</groupId>
+            <artifactId>jdbi3-core</artifactId>
+            <version>${jdbi.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.quarkiverse.mcp</groupId>
-            <artifactId>quarkus-mcp-server-stdio</artifactId>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.quarkiverse.mcp</groupId>
-            <artifactId>quarkus-mcp-server-schema-validator</artifactId>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.quarkiverse.mcp</groupId>
-            <artifactId>quarkus-mcp-server-cli-adapter</artifactId>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp-core</artifactId>
+            <version>${mcp.sdk.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.quarkiverse.mcp</groupId>
-            <artifactId>quarkus-mcp-server-websocket</artifactId>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp-json-jackson2</artifactId>
+            <version>${mcp.sdk.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.networknt</groupId>
+                    <artifactId>json-schema-validator</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-arc</artifactId>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>${slf4j.version}</version>
         </dependency>
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
-                <groupId>${quarkus.platform.group-id}</groupId>
-                <artifactId>quarkus-maven-plugin</artifactId>
-                <version>${quarkus.platform.version}</version>
-                <extensions>true</extensions>
-            </plugin>
-            <plugin>
-                <artifactId>maven-compiler-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>all</shadedClassifierName>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/**/module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheLicenseResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>META-INF/LICENSE.txt</resource>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>org.treblereel.mcp.QuillTopCommand</mainClass>
+                                    <manifestEntries>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
+                                        <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                                    </manifestEntries>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
-                    <argLine>@{argLine}</argLine>
                     <systemPropertyVariables>
-                        <native.image.path>${project.build.directory}/${project.build.finalName}-runner</native.image.path>
-                        <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                         <maven.home>${maven.home}</maven.home>
                     </systemPropertyVariables>
                 </configuration>
@@ -78,16 +129,41 @@
     <profiles>
         <profile>
             <id>native</id>
-            <activation>
-                <property>
-                    <name>native</name>
-                </property>
-            </activation>
-            <properties>
-                <quarkus.package.jar.enabled>false</quarkus.package.jar.enabled>
-                <skipITs>false</skipITs>
-                <quarkus.native.enabled>true</quarkus.native.enabled>
-            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+                        <version>${native.buildtools.version}</version>
+                        <extensions>true</extensions>
+                        <executions>
+                            <execution>
+                                <id>build-native</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>compile-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <mainClass>org.treblereel.mcp.QuillTopCommand</mainClass>
+                            <imageName>quill</imageName>
+                            <!-- Build from compiled classes plus dependency JARs. Using the
+                                 shaded artifact here duplicates dependency resources. -->
+                            <classesDirectory>${project.build.outputDirectory}</classesDirectory>
+                            <metadataRepository>
+                                <!-- Dependencies already ship native-image metadata. Keeping this
+                                     disabled also supports GraalVM 25.0.x metadata schemas. -->
+                                <enabled>false</enabled>
+                            </metadataRepository>
+                            <buildArgs>
+                                <buildArg>-Os</buildArg>
+                                <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                            </buildArgs>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
 </project>

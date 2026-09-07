@@ -18,7 +18,13 @@ public final class JandexScanner {
             DotName.createSimple("jakarta.enterprise.context.SessionScoped"),
             DotName.createSimple("jakarta.enterprise.context.Dependent"),
             DotName.createSimple("jakarta.inject.Singleton"),
-            DotName.createSimple("jakarta.enterprise.inject.Model")
+            DotName.createSimple("jakarta.enterprise.inject.Model"),
+            DotName.createSimple("org.springframework.stereotype.Component"),
+            DotName.createSimple("org.springframework.stereotype.Service"),
+            DotName.createSimple("org.springframework.stereotype.Repository"),
+            DotName.createSimple("org.springframework.stereotype.Controller"),
+            DotName.createSimple("org.springframework.web.bind.annotation.RestController"),
+            DotName.createSimple("org.springframework.context.annotation.Configuration")
     );
 
     private JandexScanner() {}
@@ -47,11 +53,23 @@ public final class JandexScanner {
         Index index = indexer.complete();
 
         List<Path> sourceRoots = classesDirs.stream()
-                .map(d -> d.getParent().getParent().resolve("src/main/java"))
+                .map(JandexScanner::sourceRoot)
                 .filter(Files::isDirectory)
                 .toList();
 
         return new ScanResult(index, extractClasses(index, sourceRoots));
+    }
+
+    private static Path sourceRoot(Path classesDir) {
+        Path normalized = classesDir.toAbsolutePath().normalize();
+        if (normalized.endsWith("target/classes")) {
+            return normalized.getParent().getParent().resolve("src/main/java");
+        }
+        try {
+            return BuildSystem.GRADLE.moduleDir(normalized).resolve("src/main/java");
+        } catch (IllegalArgumentException ignored) {
+            return normalized.resolve("src/main/java");
+        }
     }
 
     public static List<ClassRecord> extractClasses(Index index) {

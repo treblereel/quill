@@ -20,27 +20,37 @@ public class CleanCommand implements Runnable {
     public void run() {
         Path root = (projectPath != null) ? projectPath : Path.of(System.getProperty("user.dir"));
         root = ProjectRootFinder.find(root);
-        Path quillDir = root.resolve(".quill");
+        Path lockedRoot = root;
 
-        if (Files.isDirectory(quillDir)) {
-            try (Stream<Path> walk = Files.walk(quillDir)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.delete(p);
-                    } catch (IOException e) {
-                        System.err.println("Warning: could not delete " + p + ": " + e.getMessage());
-                    }
-                });
-            } catch (IOException e) {
-                System.err.println("Failed to walk .quill directory: " + e.getMessage());
-                return;
+        try {
+            boolean removed = ProjectIndexLock.withLock(lockedRoot, () -> cleanIndexData(lockedRoot));
+            if (removed) {
+                System.out.println("Removed index data from " + lockedRoot.resolve(".quill"));
+            } else {
+                System.out.println("No index data found.");
             }
-            System.out.println("Removed " + quillDir);
-        } else {
-            System.out.println("No .quill directory found.");
+        } catch (IOException e) {
+            System.err.println("Failed to clean index: " + e.getMessage());
+            return;
         }
 
         GitHookInstaller.uninstall(root);
         System.out.println("Git hooks cleaned.");
+    }
+
+    private static boolean cleanIndexData(Path root) throws IOException {
+        Path quillDir = root.resolve(".quill");
+        boolean[] removed = {false};
+        try (Stream<Path> walk = Files.walk(quillDir)) {
+            for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
+                if (path.equals(quillDir)
+                        || path.getFileName().toString().equals(ProjectIndexLock.LOCK_FILE)) {
+                    continue;
+                }
+                Files.delete(path);
+                removed[0] = true;
+            }
+        }
+        return removed[0];
     }
 }

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -47,5 +48,86 @@ class ProjectRootFinderTest {
     void nullPathUsesCwd() {
         Path result = ProjectRootFinder.find(null);
         assertNotNull(result);
+    }
+
+    @Test
+    void aggregatorRootWithoutSrcMainJava() throws IOException {
+        Path aggregator = tempDir.resolve("multi-module");
+        Files.createDirectories(aggregator);
+        Files.createFile(aggregator.resolve("pom.xml"));
+
+        Path result = ProjectRootFinder.find(aggregator);
+        assertEquals(aggregator, result);
+    }
+
+    @Test
+    void findsStandaloneGradleGroovyProject() throws IOException {
+        Path root = Files.createDirectories(tempDir.resolve("gradle-groovy"));
+        Files.createFile(root.resolve("build.gradle"));
+        Path nested = Files.createDirectories(root.resolve("src/main/java/example"));
+
+        assertEquals(root, ProjectRootFinder.find(nested));
+        assertEquals(BuildSystem.GRADLE, BuildSystem.detect(root));
+    }
+
+    @Test
+    void findsStandaloneGradleKotlinProject() throws IOException {
+        Path root = Files.createDirectories(tempDir.resolve("gradle-kotlin"));
+        Files.createFile(root.resolve("build.gradle.kts"));
+
+        assertEquals(root, ProjectRootFinder.find(root));
+        assertEquals(BuildSystem.GRADLE, BuildSystem.detect(root));
+    }
+
+    @Test
+    void gradleSubprojectResolvesToSettingsRoot() throws IOException {
+        Path root = Files.createDirectories(tempDir.resolve("gradle-multi"));
+        Files.createFile(root.resolve("settings.gradle"));
+        Path module = Files.createDirectories(root.resolve("service/src/main/java/example"));
+        Files.createFile(root.resolve("service/build.gradle"));
+
+        assertEquals(root, ProjectRootFinder.find(module));
+    }
+
+    @Test
+    void buildSystemsPreferExecutableWrappers() throws IOException {
+        Path maven = Files.createDirectories(tempDir.resolve("maven-wrapper"));
+        Files.createFile(maven.resolve("pom.xml"));
+        Path mvnw = Files.createFile(maven.resolve("mvnw"));
+        mvnw.toFile().setExecutable(true);
+
+        Path gradle = Files.createDirectories(tempDir.resolve("gradle-wrapper"));
+        Files.createFile(gradle.resolve("settings.gradle"));
+        Path gradlew = Files.createFile(gradle.resolve("gradlew"));
+        gradlew.toFile().setExecutable(true);
+
+        assertEquals(mvnw.toString(), BuildSystem.MAVEN.compileCommand(maven, false).getFirst());
+        assertEquals(List.of(gradlew.toString(), "classes", "--quiet"),
+                BuildSystem.GRADLE.compileCommand(gradle, false));
+    }
+
+    @Test
+    void windowsBuildCommandsUseBatchWrappersWithoutExecutableBit() throws IOException {
+        Path maven = Files.createDirectories(tempDir.resolve("windows-maven"));
+        Path mvnw = Files.createFile(maven.resolve("mvnw.cmd"));
+        Path gradle = Files.createDirectories(tempDir.resolve("windows-gradle"));
+        Path gradlew = Files.createFile(gradle.resolve("gradlew.bat"));
+
+        assertEquals(List.of("cmd.exe", "/d", "/c", mvnw.toAbsolutePath().toString(),
+                        "compile", "-q"),
+                BuildSystem.MAVEN.compileCommand(maven, true));
+        assertEquals(List.of("cmd.exe", "/d", "/c", gradlew.toAbsolutePath().toString(),
+                        "classes", "--quiet"),
+                BuildSystem.GRADLE.compileCommand(gradle, true));
+    }
+
+    @Test
+    void windowsBuildCommandsFallBackToInstalledTools() throws IOException {
+        Path project = Files.createDirectories(tempDir.resolve("windows-no-wrapper"));
+
+        assertEquals(List.of("cmd.exe", "/d", "/c", "mvn", "compile", "-q"),
+                BuildSystem.MAVEN.compileCommand(project, true));
+        assertEquals(List.of("cmd.exe", "/d", "/c", "gradle", "classes", "--quiet"),
+                BuildSystem.GRADLE.compileCommand(project, true));
     }
 }

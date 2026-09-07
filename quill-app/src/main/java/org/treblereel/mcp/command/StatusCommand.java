@@ -1,8 +1,8 @@
 package org.treblereel.mcp.command;
 
 import java.nio.file.Path;
-import java.sql.Connection;
 import java.util.Map;
+import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.QuillDatabase;
@@ -18,12 +18,19 @@ public class StatusCommand implements Runnable {
     @Override
     public void run() {
         Path root = ProjectRootFinder.find(projectPath);
-        Path dbPath = root.resolve(".quill/index.db");
+        Path dbPath = ProjectInitializer.findDbForHead(root);
 
-        try (Connection conn = QuillDatabase.open(dbPath)) {
-            Map<String, String> meta = IndexReader.getMetadata(conn);
-            var classes = IndexReader.findAllClasses(conn);
-            var beans = IndexReader.findBeans(conn, null);
+        if (dbPath == null) {
+            System.err.println("No index found. Run: quill init --project " + root);
+            System.exit(1);
+            return;
+        }
+
+        try {
+            Jdbi jdbi = QuillDatabase.open(dbPath);
+            Map<String, String> meta = IndexReader.getMetadata(jdbi);
+            var classes = IndexReader.findAllClasses(jdbi);
+            var beans = IndexReader.findBeans(jdbi, null);
 
             int totalTokens = classes.stream().mapToInt(c -> c.sourceTokens()).sum();
 
@@ -36,7 +43,7 @@ public class StatusCommand implements Runnable {
             if (!classes.isEmpty()) {
                 System.out.println("  Avg tokens/class:    " + String.format("%,d", totalTokens / classes.size()));
             }
-        } catch (IllegalStateException e) {
+        } catch (IllegalStateException | QuillDatabase.SchemaVersionException e) {
             System.err.println(e.getMessage());
             System.exit(1);
         } catch (Exception e) {

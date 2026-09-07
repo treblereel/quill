@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  jvm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - run: ./mvnw -B verify -DskipITs=false
+
+  windows-jvm:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - run: .\mvnw.cmd -B verify -DskipITs=false
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: graalvm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: maven
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - if: runner.os != 'Windows'
+        run: ./mvnw -B clean verify -Pnative -DskipITs=false
+      - if: runner.os == 'Windows'
+        run: .\mvnw.cmd -B clean verify -Pnative -DskipITs=false
+      - if: runner.os != 'Windows'
+        run: ./quill-app/target/quill --version
+      - if: runner.os == 'Windows'
+        run: .\quill-app\target\quill.exe --version
+      - name: Enforce native binary size budget
+        if: runner.os != 'Windows'
+        run: test "$(stat -c%s quill-app/target/quill)" -le 47185920
+      - name: Enforce native binary size budget on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Item .\quill-app\target\quill.exe).Length -gt 47185920) {
+            throw "Native executable exceeds the 45 MiB size budget"
+          }

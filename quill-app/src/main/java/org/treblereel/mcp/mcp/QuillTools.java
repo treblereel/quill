@@ -1,8 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import org.jdbi.v3.core.Jdbi;
 import java.util.*;
 import java.util.function.Function;
@@ -12,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.treblereel.mcp.core.TokenCounter;
+import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.CdiProblem;
 import org.treblereel.mcp.db.QuillDatabase;
@@ -37,7 +37,7 @@ public class QuillTools {
     private record ProjectResult(String name, String json, String error) {}
 
     private static final Set<String> NOT_FOUND_PREFIXES = Set.of(
-            "{\"error\":\"Class not found:",
+            "{\"error\":\"Class not found\"",
             "{\"error\":\"Not a bean:");
 
     private boolean isNotFoundError(String json) {
@@ -78,19 +78,11 @@ public class QuillTools {
             return result.json();
         }
 
-        List<ProjectResult> projectResults;
-        if (projects.size() <= 1) {
-            projectResults = new ArrayList<>();
-            for (ProjectRegistry.ProjectEntry p : projects) {
-                projectResults.add(runForProject(p, perProject));
-            }
-        } else {
-            ConcurrentLinkedQueue<ProjectResult> queue = new ConcurrentLinkedQueue<>();
-            CompletableFuture<?>[] futures = projects.stream()
-                    .map(p -> CompletableFuture.runAsync(() -> queue.add(runForProject(p, perProject))))
-                    .toArray(CompletableFuture[]::new);
-            CompletableFuture.allOf(futures).join();
-            projectResults = new ArrayList<>(queue);
+        // Request-level concurrency is bounded by McpStdioServer. Keep project fan-out on
+        // the same worker so a single request cannot escape that limit through the common pool.
+        List<ProjectResult> projectResults = new ArrayList<>();
+        for (ProjectRegistry.ProjectEntry p : projects) {
+            projectResults.add(runForProject(p, perProject));
         }
         projectResults.sort(Comparator.comparing(ProjectResult::name));
 
@@ -140,7 +132,11 @@ public class QuillTools {
     private ProjectResult runForProject(ProjectRegistry.ProjectEntry p,
                                          Function<ProjectRegistry.ProjectEntry, String> perProject) {
         try {
-            return new ProjectResult(p.name(), perProject.apply(p), null);
+            // IndexReader methods use nested Jdbi.withHandle calls. Jdbi's thread-local handle
+            // scope reuses this transaction handle, so every SQL read in one project result sees
+            // the same SQLite snapshot even if another process publishes a new index concurrently.
+            String json = p.jdbi().inTransaction(handle -> perProject.apply(p));
+            return new ProjectResult(p.name(), json, null);
         } catch (Exception e) {
             return new ProjectResult(p.name(), null, ProjectRegistry.safeMessage(e));
         }
@@ -174,9 +170,10 @@ public class QuillTools {
     }
 
     @Tool(description = "Get dependency graph for a specific bean or class. Use instead of grep for imports/references when you need to understand what a class uses or what uses it. "
-            + "Returns: {target, is_bean, scope?, depends_on: [{class, kind}], depended_by: [{class, kind}], _meta}")
+            + "Returns unique fan-in/fan-out separately from reference occurrence counts and groups metrics by source/generated origin. "
+            + "Returns: {target, origin, lifecycle, metrics, depends_on: [{class, kind, occurrences}], depended_by: [{class, kind, occurrences}], _meta}")
     public String get_dependencies(
-            @ToolArg(description = "Class name (short or FQCN)") String target,
+            @ToolArg(description = "Current class name (short or FQCN) or its project/repository source path") String target,
             @ToolArg(description = "Direction: inbound, outbound, or both (default: both)") Optional<String> direction,
             @ToolArg(description = "Graph traversal depth (default: 1)") Optional<Integer> depth,
             @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
@@ -192,18 +189,21 @@ public class QuillTools {
     }
 
     @Tool(description = "Get most frequently changed files/classes by git commit count. Use instead of git log when looking for volatile or high-churn areas of the codebase. "
-            + "Returns: {hotspots: [{file, class?, is_bean?, commit_count, distinct_authors, last_modified, last_author}], total, _meta}")
+            + "Returns: {worktree_changes, hotspots: [{file, lifecycle, class?, is_bean?, commit_count, distinct_authors, last_modified, last_author}], showing, total, truncated, _meta}")
     public String find_git_hotspots(
             @ToolArg(description = "Max results (default: 10)") Optional<Integer> limit,
             @ToolArg(description = "Only commits after this date, ISO format YYYY-MM-DD") Optional<String> since,
+            @ToolArg(description = "Include deleted/historical paths (default: false)") Optional<Boolean> include_historical,
             @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> getHotspots(p.jdbi(), clamp(limit.orElse(10), 1, 100), since.orElse(null)));
+        return forAllProjects(project.orElse(null), p -> getHotspots(p.jdbi(),
+                clamp(limit.orElse(10), 1, 100), since.orElse(null),
+                include_historical.orElse(false)));
     }
 
     @Tool(description = "Get git commit history for a specific class or file. Use instead of git log when you need change history for a particular class. "
             + "Returns: {target, file, commits: [{hash, author, date, message}], total_commits, _meta}")
     public String get_file_history(
-            @ToolArg(description = "Class name (short or FQCN)") String target,
+            @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
             @ToolArg(description = "Max commits to return (default: 10)") Optional<Integer> limit,
             @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> getFileHistory(p.jdbi(), target, clamp(limit.orElse(10), 1, 100)));
@@ -212,7 +212,7 @@ public class QuillTools {
     @Tool(description = "Find files that frequently change together with a given class. Reveals hidden coupling. Use before refactoring to find files you might also need to change. "
             + "Returns: {target, co_changes: [{file, class?, co_change_count, coupling_ratio}], _meta}")
     public String find_co_changed_files(
-            @ToolArg(description = "Class name (short or FQCN)") String target,
+            @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
             @ToolArg(description = "Max results (default: 10)") Optional<Integer> limit,
             @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> getCoChanges(p.jdbi(), target, clamp(limit.orElse(10), 1, 100)));
@@ -240,7 +240,7 @@ public class QuillTools {
     }
 
     @Tool(description = "Search for classes by name pattern (supports * wildcard). Returns all classes, not just beans. Use instead of grep/find when looking for a class by name. "
-            + "Returns: {classes: [{class, source, is_bean, scope?, source_tokens}], showing, total, _meta}")
+            + "Returns: {classes: [{class, source, origin, lifecycle, is_bean, scope?, source_tokens}], showing, total, _meta}")
     public String search_classes(
             @ToolArg(description = "Class name pattern (supports * wildcard, e.g. '*Service', 'io.casehub.*.model.*')") String pattern,
             @ToolArg(description = "Max results (default: 30)") Optional<Integer> limit,
@@ -250,9 +250,9 @@ public class QuillTools {
 
     @Tool(description = "Assess the risk of changing a specific class. Use before modifying a class to understand blast radius, change frequency, and bus factor. "
             + "Returns: {target, risk_score (0-10), risk_level (LOW/MEDIUM/HIGH/CRITICAL), "
-            + "signals: {fan_in, fan_out, git_churn, bus_factor, coupling: {value, score, weight, note}}, recommendation, _meta}")
+            + "signals: {fan_in, fan_out, git_churn, bus_factor, coupling: {value, edges?, breakdown?, score, weight, note}}, recommendation, _meta}")
     public String assess_change_risk(
-            @ToolArg(description = "Class name (short or FQCN)") String target,
+            @ToolArg(description = "Current class name (short or FQCN) or its project/repository source path") String target,
             @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> getRisk(p.jdbi(), target));
     }
@@ -288,6 +288,8 @@ public class QuillTools {
             ObjectNode node = arr.addObject();
             node.put("class", c.className());
             node.put("source", c.sourceFile() + ":" + c.sourceLine());
+            node.put("origin", c.origin());
+            node.put("lifecycle", c.lifecycle());
             node.put("is_bean", c.isBean());
             BeanRecord bean = beansByClass.get(c.id());
             if (bean != null) node.put("scope", bean.scope());
@@ -352,12 +354,24 @@ public class QuillTools {
 
     String getDependencies(Jdbi jdbi, String target, String direction, int depth) {
         var lookup = resolveClass(jdbi, target);
-        if (lookup.error() != null) return errorResponse(lookup.error());
+        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
 
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
         root.put("is_bean", cls.isBean());
+        root.put("origin", cls.origin());
+        root.put("lifecycle", cls.lifecycle());
+
+        ObjectNode metrics = root.putObject("metrics");
+        metrics.put("fan_in", IndexReader.countDependents(jdbi, cls.id()));
+        metrics.put("incoming_edges", IndexReader.countDependencyEdges(jdbi, cls.id(), true));
+        metrics.put("fan_out", IndexReader.countDependencies(jdbi, cls.id()));
+        metrics.put("outgoing_edges", IndexReader.countDependencyEdges(jdbi, cls.id(), false));
+        writeDependencyBreakdown(metrics.putObject("fan_in_breakdown"),
+                IndexReader.dependencyBreakdown(jdbi, cls.id(), true));
+        writeDependencyBreakdown(metrics.putObject("fan_out_breakdown"),
+                IndexReader.dependencyBreakdown(jdbi, cls.id(), false));
 
         if (cls.isBean()) {
             IndexReader.findBeanByClassId(jdbi, cls.id()).ifPresent(b -> {
@@ -396,6 +410,7 @@ public class QuillTools {
                     ObjectNode child = dependsOn.addObject();
                     child.put("class", c.className());
                     child.put("kind", d.kind());
+                    child.put("occurrences", d.occurrenceCount());
                     tokenAccum.accept(c.sourceTokens());
                     if (depth > 1 && visited.add(c.id())) {
                         expandDependencies(jdbi, c.id(), direction, depth - 1, child,
@@ -409,6 +424,7 @@ public class QuillTools {
                     ObjectNode child = dependedBy.addObject();
                     child.put("class", c.className());
                     child.put("kind", d.kind());
+                    child.put("occurrences", d.occurrenceCount());
                     tokenAccum.accept(c.sourceTokens());
                     if (depth > 1 && visited.add(c.id())) {
                         expandDependencies(jdbi, c.id(), direction, depth - 1, child,
@@ -421,7 +437,7 @@ public class QuillTools {
 
     String getInjectionPoints(Jdbi jdbi, String target) {
         var lookup = resolveClass(jdbi, target);
-        if (lookup.error() != null) return errorResponse(lookup.error());
+        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
 
         var beanOpt = IndexReader.findBeanByClassId(jdbi, cls.id());
@@ -481,17 +497,40 @@ public class QuillTools {
             + "git init && git add -A && git commit -m 'initial'";
 
     String getHotspots(Jdbi jdbi, int limit, String since) {
-        if (!IndexReader.hasGitData(jdbi)) return errorResponse(NO_GIT_MESSAGE);
+        return getHotspots(jdbi, limit, since, false);
+    }
 
-        List<GitFileStats> hotspots = IndexReader.findHotspots(jdbi, limit, since);
+    String getHotspots(Jdbi jdbi, int limit, String since, boolean includeHistorical) {
+        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        WorktreeInspector.Snapshot worktree = worktreeSnapshot(metadata);
+        boolean hasGit = IndexReader.hasGitData(jdbi);
+        if (!hasGit && !worktree.dirty()) return errorResponse(NO_GIT_MESSAGE);
+
+        HotspotSelection selection = hasGit
+                ? selectHotspots(jdbi, worktree, limit, since, includeHistorical)
+                : new HotspotSelection(List.of(), 0);
+        List<GitFileStats> hotspots = selection.shown();
         Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(jdbi, hotspots.stream()
                 .map(GitFileStats::classId).filter(Objects::nonNull).toList());
+        Map<String, String> worktreeStatuses = worktree.statusesByRepositoryPath();
         ObjectNode root = JSON.createObjectNode();
+        ArrayNode changes = root.putArray("worktree_changes");
+        for (WorktreeInspector.Change change : worktree.changes()) {
+            ObjectNode node = changes.addObject();
+            node.put("file", change.repositoryPath());
+            node.put("project_file", change.projectPath());
+            node.put("status", change.status());
+        }
         ArrayNode arr = root.putArray("hotspots");
 
         for (GitFileStats s : hotspots) {
             ObjectNode node = arr.addObject();
             node.put("file", s.filePath());
+            String worktreeStatus = worktreeStatuses.get(s.filePath());
+            if (worktreeStatus != null) node.put("worktree_status", worktreeStatus);
+            boolean exists = worktree.repositoryRoot() == null
+                    || Files.exists(worktree.repositoryRoot().resolve(s.filePath()).normalize());
+            node.put("lifecycle", exists ? "current" : "historical");
             if (s.classId() != null) {
                 Optional.ofNullable(classesById.get(s.classId())).ifPresent(c -> {
                     node.put("class", c.className());
@@ -503,16 +542,68 @@ public class QuillTools {
             node.put("last_modified", s.lastModified());
             node.put("last_author", s.lastAuthor());
         }
-        root.put("total", hotspots.size());
+        root.put("showing", hotspots.size());
+        root.put("total", selection.total());
+        root.put("truncated", selection.total() > hotspots.size());
+        root.put("worktree_total", worktree.changes().size());
         appendMeta(root, jdbi, 0);
         return root.toString();
+    }
+
+    private WorktreeInspector.Snapshot worktreeSnapshot(Map<String, String> metadata) {
+        String projectRoot = metadata.get("project_root");
+        if (projectRoot == null) return WorktreeInspector.Snapshot.empty();
+        try {
+            return WorktreeInspector.inspect(Path.of(projectRoot));
+        } catch (RuntimeException e) {
+            return WorktreeInspector.Snapshot.empty();
+        }
+    }
+
+    private record HotspotSelection(List<GitFileStats> shown, int total) {}
+
+    private HotspotSelection selectHotspots(Jdbi jdbi, WorktreeInspector.Snapshot worktree,
+            int limit, String since, boolean includeHistorical) {
+        List<GitFileStats> matching = IndexReader.findHotspots(jdbi, Integer.MAX_VALUE, since);
+        if (!includeHistorical) {
+            matching = matching.stream()
+                    .filter(stats -> isCurrentHotspot(jdbi, worktree, stats.filePath()))
+                    .toList();
+        }
+        int total = matching.size();
+        List<GitFileStats> shown = total > limit ? matching.subList(0, limit) : matching;
+        return new HotspotSelection(shown, total);
+    }
+
+    private boolean isCurrentHotspot(Jdbi jdbi, WorktreeInspector.Snapshot worktree,
+            String repositoryPath) {
+        if (worktree.repositoryRoot() != null) {
+            Path candidate = worktree.repositoryRoot().resolve(repositoryPath).normalize();
+            return candidate.startsWith(worktree.repositoryRoot()) && Files.exists(candidate);
+        }
+        return IndexReader.findFileByPath(jdbi, repositoryPath)
+                .map(file -> file.lifecycle().equals("current"))
+                .orElse(true);
     }
 
     String getFileHistory(Jdbi jdbi, String target, int limit) {
         if (!IndexReader.hasGitData(jdbi)) return errorResponse(NO_GIT_MESSAGE);
 
         var lookup = resolveClass(jdbi, target);
-        if (lookup.error() != null) return errorResponse(lookup.error());
+        if (lookup.error() != null) {
+            String filePath = resolveGitPath(jdbi, target);
+            List<GitCommitRecord> commits = IndexReader.findFileHistoryByPath(jdbi, filePath, limit);
+            if (commits.isEmpty()) return classLookupError(jdbi, lookup, target);
+            ObjectNode root = JSON.createObjectNode();
+            root.put("target", filePath);
+            root.put("file", filePath);
+            root.put("lifecycle", currentFileExists(jdbi, filePath) ? "current" : "historical");
+            appendCommits(root, commits);
+            IndexReader.findFileStatsByPath(jdbi, filePath)
+                    .ifPresent(stats -> root.put("total_commits", stats.commitCount()));
+            appendMeta(root, jdbi, 0);
+            return root.toString();
+        }
         ClassRecord cls = lookup.cls();
 
         List<GitCommitRecord> commits = IndexReader.findFileHistory(jdbi, cls.id(), limit);
@@ -522,14 +613,7 @@ public class QuillTools {
         root.put("target", cls.className());
         root.put("file", cls.sourceFile());
 
-        ArrayNode arr = root.putArray("commits");
-        for (GitCommitRecord c : commits) {
-            ObjectNode node = arr.addObject();
-            node.put("hash", c.shortHash());
-            node.put("author", c.author());
-            node.put("date", c.committedAt());
-            node.put("message", c.message());
-        }
+        appendCommits(root, commits);
         statsOpt.ifPresent(s -> root.put("total_commits", s.commitCount()));
         appendMeta(root, jdbi, cls.sourceTokens());
         return root.toString();
@@ -539,18 +623,32 @@ public class QuillTools {
         if (!IndexReader.hasGitData(jdbi)) return errorResponse(NO_GIT_MESSAGE);
 
         var lookup = resolveClass(jdbi, target);
-        if (lookup.error() != null) return errorResponse(lookup.error());
+        if (lookup.error() != null) {
+            String filePath = resolveGitPath(jdbi, target);
+            List<CoChangeRecord> coChanges = IndexReader.findCoChangesByPath(jdbi, filePath, limit);
+            if (coChanges.isEmpty() && IndexReader.findFileStatsByPath(jdbi, filePath).isEmpty()) {
+                return classLookupError(jdbi, lookup, target);
+            }
+            int targetCommitCount = IndexReader.findFileStatsByPath(jdbi, filePath)
+                    .map(GitFileStats::commitCount).orElse(1);
+            return coChangeResponse(jdbi, filePath, coChanges, targetCommitCount);
+        }
         ClassRecord cls = lookup.cls();
 
         var statsOpt = IndexReader.findFileStatsByClassId(jdbi, cls.id());
         int targetCommitCount = statsOpt.map(GitFileStats::commitCount).orElse(1);
 
         List<CoChangeRecord> coChanges = IndexReader.findCoChanges(jdbi, cls.id(), limit);
+        return coChangeResponse(jdbi, cls.className(), coChanges, targetCommitCount);
+    }
+
+    private String coChangeResponse(Jdbi jdbi, String target,
+            List<CoChangeRecord> coChanges, int targetCommitCount) {
         Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(jdbi, coChanges.stream()
                 .map(CoChangeRecord::classId).filter(Objects::nonNull).toList());
 
         ObjectNode root = JSON.createObjectNode();
-        root.put("target", cls.className());
+        root.put("target", target);
         ArrayNode arr = root.putArray("co_changes");
         for (CoChangeRecord co : coChanges) {
             ObjectNode node = arr.addObject();
@@ -564,8 +662,35 @@ public class QuillTools {
             double ratio = (double) co.coChangeCount() / targetCommitCount;
             node.put("coupling_ratio", Math.round(ratio * 100.0) / 100.0);
         }
-        appendMeta(root, jdbi, cls.sourceTokens());
+        appendMeta(root, jdbi, 0);
         return root.toString();
+    }
+
+    private void appendCommits(ObjectNode root, List<GitCommitRecord> commits) {
+        ArrayNode arr = root.putArray("commits");
+        for (GitCommitRecord commit : commits) {
+            ObjectNode node = arr.addObject();
+            node.put("hash", commit.shortHash());
+            node.put("author", commit.author());
+            node.put("date", commit.committedAt());
+            node.put("message", commit.message());
+        }
+    }
+
+    private String resolveGitPath(Jdbi jdbi, String target) {
+        return IndexReader.findFileByPath(jdbi, target)
+                .map(FileRecord::repositoryPath)
+                .orElse(target.replace('\\', '/'));
+    }
+
+    private boolean currentFileExists(Jdbi jdbi, String repositoryPath) {
+        WorktreeInspector.Snapshot snapshot = worktreeSnapshot(IndexReader.getMetadata(jdbi));
+        if (snapshot.repositoryRoot() != null) {
+            return Files.exists(snapshot.repositoryRoot().resolve(repositoryPath).normalize());
+        }
+        return IndexReader.findFileByPath(jdbi, repositoryPath)
+                .map(file -> file.lifecycle().equals("current"))
+                .orElse(false);
     }
 
     String getRecentChanges(Jdbi jdbi, int commitCount) {
@@ -722,7 +847,8 @@ public class QuillTools {
             ObjectNode gitSummary = root.putObject("git_summary");
             gitSummary.put("total_commits_indexed", IndexReader.countCommits(jdbi));
             ArrayNode hotspotsArr = gitSummary.putArray("top_hotspots");
-            for (GitFileStats s : IndexReader.findHotspots(jdbi, 3, null)) {
+            WorktreeInspector.Snapshot worktree = worktreeSnapshot(meta);
+            for (GitFileStats s : selectHotspots(jdbi, worktree, 3, null, false).shown()) {
                 ObjectNode h = hotspotsArr.addObject();
                 h.put("file", s.filePath());
                 h.put("commit_count", s.commitCount());
@@ -737,11 +863,13 @@ public class QuillTools {
 
     String getRisk(Jdbi jdbi, String target) {
         var lookup = resolveClass(jdbi, target);
-        if (lookup.error() != null) return errorResponse(lookup.error());
+        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
 
         int fanIn = IndexReader.countDependents(jdbi, cls.id());
         int fanOut = IndexReader.countDependencies(jdbi, cls.id());
+        int incomingEdges = IndexReader.countDependencyEdges(jdbi, cls.id(), true);
+        int outgoingEdges = IndexReader.countDependencyEdges(jdbi, cls.id(), false);
 
         boolean hasGit = IndexReader.hasGitData(jdbi);
         var statsOpt = hasGit ? IndexReader.findFileStatsByClassId(jdbi, cls.id()) : Optional.<GitFileStats>empty();
@@ -778,9 +906,15 @@ public class QuillTools {
 
         ObjectNode signals = root.putObject("signals");
         addSignal(signals, "fan_in", fanIn, fanInScore, 0.30,
-                fanIn + " classes depend on this");
+                fanIn + " unique classes depend on this");
         addSignal(signals, "fan_out", fanOut, fanOutScore, 0.10,
-                "depends on " + fanOut + " classes");
+                "depends on " + fanOut + " unique classes");
+        ObjectNode fanInNode = (ObjectNode) signals.get("fan_in");
+        fanInNode.put("edges", incomingEdges);
+        appendDependencyBreakdown(fanInNode, IndexReader.dependencyBreakdown(jdbi, cls.id(), true));
+        ObjectNode fanOutNode = (ObjectNode) signals.get("fan_out");
+        fanOutNode.put("edges", outgoingEdges);
+        appendDependencyBreakdown(fanOutNode, IndexReader.dependencyBreakdown(jdbi, cls.id(), false));
         if (hasGit) {
             addSignal(signals, "git_churn", churn, churnScore, 0.25,
                     churn + " commits — " + (churn >= 30 ? "high" : churn >= 10 ? "moderate" : "low") + " change frequency");
@@ -809,7 +943,7 @@ public class QuillTools {
 
         if (target != null) {
             var lookup = resolveClass(jdbi, target);
-            if (lookup.error() != null) return errorResponse(lookup.error());
+            if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
             ClassRecord cls = lookup.cls();
 
             root.put("target", cls.className());
@@ -875,6 +1009,22 @@ public class QuillTools {
         s.put("note", note);
     }
 
+    private static void appendDependencyBreakdown(ObjectNode signal,
+            List<IndexReader.DependencyBreakdown> breakdown) {
+        ObjectNode result = signal.putObject("breakdown");
+        writeDependencyBreakdown(result, breakdown);
+    }
+
+    private static void writeDependencyBreakdown(ObjectNode result,
+            List<IndexReader.DependencyBreakdown> breakdown) {
+        for (IndexReader.DependencyBreakdown entry : breakdown) {
+            ObjectNode origin = result.putObject(entry.origin());
+            origin.put("classes", entry.classes());
+            origin.put("edges", entry.edges());
+            if (entry.origin().equals("orphan_output")) origin.put("excluded_from_score", true);
+        }
+    }
+
     private static String buildRecommendation(ClassRecord cls, int fanIn, int churn, int authors, String level, boolean hasGit) {
         List<String> parts = new ArrayList<>();
         String shortName = cls.className().contains(".")
@@ -909,7 +1059,17 @@ public class QuillTools {
         MetaEnvelope meta = MetaEnvelope.from(jdbi, responseTokens, naiveTokens);
         ObjectNode metaNode = root.putObject("_meta");
         metaNode.put("indexed_at", meta.indexedAt());
+        metaNode.put("indexed_commit", meta.lastCommit());
+        // Kept for MCP clients built against the original envelope.
         metaNode.put("last_commit", meta.lastCommit());
+        if (meta.currentCommit() == null) metaNode.putNull("current_commit");
+        else metaNode.put("current_commit", meta.currentCommit());
+        metaNode.put("commit_stale", meta.commitStale());
+        metaNode.put("worktree_dirty", meta.worktreeDirty());
+        metaNode.put("worktree_changed_files", meta.worktreeChangedFiles());
+        metaNode.put("structural_changed_files", meta.structuralChangedFiles());
+        metaNode.put("structure_stale", meta.structureStale());
+        metaNode.set("stale_reasons", JSON.valueToTree(meta.staleReasons()));
         metaNode.put("stale_warning", meta.staleWarning());
         metaNode.put("response_tokens", meta.responseTokens());
         metaNode.put("naive_tokens", meta.naiveTokens());
@@ -946,23 +1106,61 @@ public class QuillTools {
         return JSON.createObjectNode().put("error", message).toString();
     }
 
-    private record ClassLookup(ClassRecord cls, String error) {
-        static ClassLookup of(ClassRecord cls) { return new ClassLookup(cls, null); }
-        static ClassLookup error(String msg) { return new ClassLookup(null, msg); }
+    private record ClassLookup(ClassRecord cls, String error, List<ClassRecord> candidates,
+            List<FileRecord> fileCandidates) {
+        static ClassLookup of(ClassRecord cls) {
+            return new ClassLookup(cls, null, List.of(), List.of());
+        }
+        static ClassLookup error(String msg, List<ClassRecord> candidates,
+                List<FileRecord> fileCandidates) {
+            return new ClassLookup(null, msg, candidates, fileCandidates);
+        }
     }
 
     private ClassLookup resolveClass(Jdbi jdbi, String target) {
         var opt = IndexReader.findClassByName(jdbi, target);
         if (opt.isPresent()) return ClassLookup.of(opt.get());
 
+        opt = IndexReader.findClassByPath(jdbi, target);
+        if (opt.isPresent()) return ClassLookup.of(opt.get());
+
         if (!target.contains(".")) {
             var candidates = IndexReader.findClassesByShortName(jdbi, target);
             if (candidates.size() > 1) {
                 var names = candidates.stream().map(ClassRecord::className).toList();
-                return ClassLookup.error("Ambiguous class name '" + target
-                        + "'. Matches: " + names + ". Use the fully qualified name.");
+                return ClassLookup.error("Ambiguous class name", candidates, List.of());
             }
         }
-        return ClassLookup.error("Class not found: " + target);
+        String basename = target.replace('\\', '/');
+        basename = basename.substring(basename.lastIndexOf('/') + 1);
+        if (basename.endsWith(".java")) basename = basename.substring(0, basename.length() - 5);
+        List<ClassRecord> candidates = IndexReader.searchClasses(jdbi, basename, 5);
+        List<FileRecord> fileCandidates = IndexReader.findFileCandidates(jdbi, target, 5);
+        return ClassLookup.error("Class not found", candidates, fileCandidates);
+    }
+
+    private String classLookupError(Jdbi jdbi, ClassLookup lookup, String target) {
+        ObjectNode root = JSON.createObjectNode();
+        root.put("error", lookup.error());
+        root.put("target", target);
+        root.set("accepted_target_types", JSON.valueToTree(
+                List.of("fqcn", "short_class_name", "project_path", "repository_path")));
+        ArrayNode candidates = root.putArray("candidates");
+        for (ClassRecord candidate : lookup.candidates()) {
+            ObjectNode node = candidates.addObject();
+            node.put("class", candidate.className());
+            node.put("file", candidate.sourceFile());
+            node.put("origin", candidate.origin());
+            node.put("lifecycle", candidate.lifecycle());
+        }
+        for (FileRecord candidate : lookup.fileCandidates()) {
+            ObjectNode node = candidates.addObject();
+            node.put("file", candidate.repositoryPath());
+            node.put("origin", candidate.origin());
+            node.put("lifecycle", candidate.lifecycle());
+            node.put("reason", "matching Java source basename");
+        }
+        appendMeta(root, jdbi, 0);
+        return root.toString();
     }
 }

@@ -14,6 +14,26 @@ import org.treblereel.mcp.model.*;
 class IndexWriterReaderTest {
 
     @TempDir Path tempDir;
+
+    @Test
+    void dependencyMetricsSeparateUniqueClassesFromEdgeOccurrences() {
+        Jdbi jdbi = QuillDatabase.create(tempDir.resolve("dependency-metrics.db"));
+        List<ClassRecord> classes = List.of(
+                new ClassRecord(0, "example.Consumer", "CLASS", null, List.of(),
+                        "src/main/java/example/Consumer.java", 1, false, 10),
+                new ClassRecord(0, "example.Target", "CLASS", null, List.of(),
+                        "src/main/java/example/Target.java", 1, false, 10));
+        List<DependencyRecord> dependencies = List.of(
+                new DependencyRecord(1, 2, "CALLS", null, 2),
+                new DependencyRecord(1, 2, "TYPE_USE", null, 1));
+
+        IndexWriter.write(jdbi, classes, List.of(), List.of(), dependencies, Map.of());
+
+        assertEquals(1, IndexReader.countDependents(jdbi, 2));
+        assertEquals(3, IndexReader.countDependencyEdges(jdbi, 2, true));
+        assertEquals(1, IndexReader.dependencyBreakdown(jdbi, 2, true).get(0).classes());
+        assertEquals(3, IndexReader.dependencyBreakdown(jdbi, 2, true).get(0).edges());
+    }
     Jdbi jdbi;
 
     @BeforeEach
@@ -53,6 +73,33 @@ class IndexWriterReaderTest {
         var result = IndexReader.findBeans(jdbi, null);
         assertEquals(1, result.size());
         assertEquals("@ApplicationScoped", result.getFirst().scope());
+    }
+
+    @Test
+    void currentQueriesExcludeHistoricalAndOrphanClassOutputs() {
+        var classes = List.of(
+                new ClassRecord(0, "org.acme.Current", "CLASS", null, List.of(),
+                        "Current.java", 1, true, 10, null, "source", "current"),
+                new ClassRecord(0, "org.acme.Deleted", "CLASS", null, List.of(),
+                        "Deleted.java", 1, true, 10, null, "source", "historical"),
+                new ClassRecord(0, "org.acme.StaleOutput", "CLASS", null, List.of(),
+                        null, 1, true, 10, null, "orphan_output", "current"));
+        var beans = List.of(
+                bean(1), bean(2), bean(3));
+
+        IndexWriter.write(jdbi, classes, beans, List.of(), List.of(), Map.of());
+
+        assertEquals(List.of("org.acme.Current"), IndexReader.findAllClasses(jdbi).stream()
+                .map(ClassRecord::className).toList());
+        assertEquals(1, IndexReader.countClasses(jdbi));
+        assertEquals(1, IndexReader.countBeans(jdbi));
+        assertEquals(1, IndexReader.findBeans(jdbi, null).size());
+        assertTrue(IndexReader.searchClasses(jdbi, "Stale", 10).isEmpty());
+    }
+
+    private static BeanRecord bean(int classId) {
+        return new BeanRecord(0, classId, "CLASS", "@Dependent", List.of(), List.of(),
+                false, null, List.of(), null, null, List.of());
     }
 
     @Test

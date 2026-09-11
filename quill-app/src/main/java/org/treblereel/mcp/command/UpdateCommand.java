@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.treblereel.mcp.core.ProjectRootFinder;
+import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.QuillDatabase;
 import picocli.CommandLine.Command;
@@ -24,8 +25,7 @@ public class UpdateCommand implements Runnable {
 
     @Override
     public void run() {
-        Path root = (projectPath != null) ? projectPath : Path.of(System.getProperty("user.dir"));
-        root = ProjectRootFinder.find(root);
+        Path root = ProjectRootFinder.find(projectPath);
 
         Path lockedRoot = root;
         try {
@@ -73,14 +73,21 @@ public class UpdateCommand implements Runnable {
             List<Path> classesDirs = ProjectInitializer.findClassesDirs(root);
             if (classesDirs.isEmpty()) return true;
             String currentFingerprint = ProjectInitializer.computeStateFingerprint(root, classesDirs);
-            return !indexedFingerprint.equals(currentFingerprint);
+            String indexedWorktree = meta.getOrDefault("indexed_structure_fingerprint",
+                    meta.get("indexed_worktree_fingerprint"));
+            WorktreeInspector.Snapshot worktree = WorktreeInspector.inspect(root);
+            boolean worktreeChanged = indexedWorktree != null
+                    ? !indexedWorktree.equals(worktree.structuralFingerprint())
+                    : worktree.structuralDirty();
+            return !indexedFingerprint.equals(currentFingerprint)
+                    || worktreeChanged;
         } catch (Exception e) {
             return true;
         }
     }
 
     private void runInit(Path root) {
-        if (!ProjectInitializer.initializeLocked(root, true)) {
+        if (!ProjectInitializer.initializeLocked(root, true, compile)) {
             throw new IllegalStateException("Initialization failed for " + root);
         }
     }

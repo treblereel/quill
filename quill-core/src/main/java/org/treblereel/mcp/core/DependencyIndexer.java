@@ -11,7 +11,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
-import java.util.stream.Collectors;
 import org.jboss.jandex.Index;
 import org.jboss.jandex.Indexer;
 
@@ -27,11 +26,11 @@ public final class DependencyIndexer {
 
     public static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs) {
         BuildSystem buildSystem = detectBuildSystem(projectRoot, classesDirs);
-        Set<Path> moduleDirs = classesDirs.stream()
-                .map(buildSystem::moduleDir)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        String buildFingerprint = buildFingerprint(projectRoot, buildSystem);
-        FileTime newestBuildFile = newestBuildFileTimestamp(projectRoot, buildSystem);
+        Map<Path, Path> classDirectoryOwners =
+                mapClassDirectoriesToModules(projectRoot, buildSystem, classesDirs);
+        Set<Path> moduleDirs = new LinkedHashSet<>(classDirectoryOwners.values());
+        String buildFingerprint = buildFingerprint(projectRoot, buildSystem, moduleDirs);
+        FileTime newestBuildFile = newestBuildFileTimestamp(projectRoot, buildSystem, moduleDirs);
 
         boolean anyStale = false;
         for (Path moduleDir : moduleDirs) {
@@ -101,6 +100,30 @@ public final class DependencyIndexer {
         return String.join("; ", reasons);
     }
 
+    public static Map<Path, Path> mapClassDirectoriesToModules(
+            Path projectRoot, BuildSystem buildSystem, List<Path> classesDirs) {
+        Map<Path, Path> result = new LinkedHashMap<>();
+        List<Path> unresolved = new ArrayList<>();
+        for (Path classesDir : classesDirs) {
+            Path normalized = classesDir.toAbsolutePath().normalize();
+            try {
+                result.put(normalized, buildSystem.moduleDir(normalized));
+            } catch (IllegalArgumentException e) {
+                unresolved.add(normalized);
+            }
+        }
+
+        if (buildSystem == BuildSystem.GRADLE && !unresolved.isEmpty()) {
+            GradleProjectDiscovery.Discovery discovery =
+                    GradleProjectDiscovery.discover(projectRoot);
+            for (Path classesDir : unresolved) {
+                Path module = discovery.classDirectoryOwners().get(classesDir);
+                if (module != null) result.put(classesDir, module);
+            }
+        }
+        return Map.copyOf(result);
+    }
+
     static boolean isStale(Path moduleDir) {
         BuildSystem buildSystem;
         try {
@@ -139,10 +162,15 @@ public final class DependencyIndexer {
         return buildFingerprint(projectRoot, BuildSystem.detect(projectRoot));
     }
 
-    private static String buildFingerprint(Path projectRoot, BuildSystem buildSystem) {
+    static String buildFingerprint(Path projectRoot, BuildSystem buildSystem) {
+        return buildFingerprint(projectRoot, buildSystem, List.of());
+    }
+
+    public static String buildFingerprint(
+            Path projectRoot, BuildSystem buildSystem, Collection<Path> moduleDirectories) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            for (Path buildFile : buildFiles(projectRoot, buildSystem)) {
+            for (Path buildFile : buildFiles(projectRoot, buildSystem, moduleDirectories)) {
                 digest.update(buildFile.toAbsolutePath().normalize().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 digest.update((byte) 0);
                 try {
@@ -159,8 +187,13 @@ public final class DependencyIndexer {
     }
 
     private static FileTime newestBuildFileTimestamp(Path projectRoot, BuildSystem buildSystem) {
+        return newestBuildFileTimestamp(projectRoot, buildSystem, List.of());
+    }
+
+    private static FileTime newestBuildFileTimestamp(
+            Path projectRoot, BuildSystem buildSystem, Collection<Path> moduleDirectories) {
         FileTime newest = FileTime.fromMillis(0);
-        for (Path buildFile : buildFiles(projectRoot, buildSystem)) {
+        for (Path buildFile : buildFiles(projectRoot, buildSystem, moduleDirectories)) {
             try {
                 FileTime modified = Files.getLastModifiedTime(buildFile);
                 if (modified.compareTo(newest) > 0) newest = modified;
@@ -171,17 +204,25 @@ public final class DependencyIndexer {
         return newest;
     }
 
-    private static List<Path> buildFiles(Path projectRoot, BuildSystem buildSystem) {
+    private static List<Path> buildFiles(
+            Path projectRoot, BuildSystem buildSystem, Collection<Path> moduleDirectories) {
         Set<Path> files = new LinkedHashSet<>();
         Path normalizedRoot = projectRoot.toAbsolutePath().normalize();
-        if (Files.isDirectory(normalizedRoot)) {
-            try (var walk = Files.walk(normalizedRoot)) {
-                walk.filter(p -> isBuildFile(p, buildSystem))
-                        .filter(p -> !isBuildOutput(p))
-                        .map(p -> p.toAbsolutePath().normalize())
-                        .forEach(files::add);
-            } catch (IOException e) {
-                // Ancestor build files collected below still provide a stable fallback.
+        Set<Path> scanRoots = new LinkedHashSet<>();
+        scanRoots.add(normalizedRoot);
+        moduleDirectories.stream()
+                .map(path -> path.toAbsolutePath().normalize())
+                .forEach(scanRoots::add);
+        for (Path scanRoot : scanRoots) {
+            if (Files.isDirectory(scanRoot)) {
+                try (var walk = Files.walk(scanRoot)) {
+                    walk.filter(p -> isBuildFile(p, buildSystem))
+                            .filter(p -> !isBuildOutput(p))
+                            .map(p -> p.toAbsolutePath().normalize())
+                            .forEach(files::add);
+                } catch (IOException e) {
+                    // Ancestor build files collected below still provide a stable fallback.
+                }
             }
         }
 
@@ -274,52 +315,7 @@ public final class DependencyIndexer {
     }
 
     private static boolean generateGradleClasspathFiles(Path projectRoot) {
-        Path initScript = null;
-        try {
-            initScript = Files.createTempFile("quill-gradle-", ".gradle");
-            Files.writeString(initScript, """
-                    allprojects { project ->
-                        project.pluginManager.withPlugin('java') {
-                            project.tasks.register('quillWriteClasspath') {
-                                doLast {
-                                    def runtime = project.extensions.getByName('sourceSets').getByName('main').runtimeClasspath
-                                    def output = new File(project.layout.buildDirectory.get().asFile, 'quill-classpath.txt')
-                                    output.parentFile.mkdirs()
-                                    output.text = runtime.files.findAll { it.name.endsWith('.jar') }
-                                            .collect { it.absolutePath }.sort().join(File.pathSeparator)
-                                }
-                            }
-                        }
-                    }
-                    """);
-            int exit = new ProcessBuilder(BuildSystem.GRADLE.command(projectRoot,
-                    "--init-script", initScript.toString(), "quillWriteClasspath", "--quiet"))
-                    .directory(projectRoot.toFile())
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectError(ProcessBuilder.Redirect.INHERIT)
-                    .start()
-                    .waitFor();
-            if (exit != 0) {
-                System.err.println("[quill] Warning: Gradle classpath task exited with code " + exit);
-                return false;
-            }
-            return true;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.err.println("[quill] Warning: Gradle classpath resolution was interrupted");
-            return false;
-        } catch (IOException e) {
-            System.err.println("[quill] Warning: could not resolve Gradle dependency classpath: " + e.getMessage());
-            return false;
-        } finally {
-            if (initScript != null) {
-                try {
-                    Files.deleteIfExists(initScript);
-                } catch (IOException ignored) {
-                    // Temporary OS files are safe to leave for later cleanup.
-                }
-            }
-        }
+        return GradleProjectDiscovery.discover(projectRoot, true).complete();
     }
 
     public static List<Path> parseClasspathFile(Path cpFile) {

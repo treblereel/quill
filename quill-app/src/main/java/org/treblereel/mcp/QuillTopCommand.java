@@ -65,7 +65,7 @@ public class QuillTopCommand implements Runnable {
                     registry.register(p);
                 }
             } else {
-                registry.register(Path.of(System.getProperty("user.dir")));
+                registry.register(null);
             }
             McpStdioServer.start(registry, System.in, System.out);
             return;

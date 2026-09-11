@@ -13,16 +13,21 @@ public final class IndexReader {
 
     private IndexReader() {}
 
+    public record DependencyBreakdown(String origin, int classes, int edges) {}
+
     public static List<ClassRecord> findAllClasses(Jdbi jdbi) {
         return jdbi.withHandle(h ->
-                h.createQuery("SELECT * FROM classes ORDER BY id")
+                h.createQuery("SELECT * FROM classes WHERE lifecycle = 'current' "
+                                + "AND origin != 'orphan_output' ORDER BY id")
                         .map((rs, ctx) -> mapClass(rs))
                         .list());
     }
 
     public static List<BeanRecord> findBeans(Jdbi jdbi, Map<String, String> filter) {
         return jdbi.withHandle(h -> {
-            var sb = new StringBuilder("SELECT b.*, c.class_name FROM beans b JOIN classes c ON b.class_id = c.id WHERE 1=1");
+            var sb = new StringBuilder("SELECT b.*, c.class_name FROM beans b "
+                    + "JOIN classes c ON b.class_id = c.id "
+                    + "WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'");
 
             if (filter != null) {
                 if (filter.containsKey("class_name")) sb.append(" AND c.class_name LIKE :className");
@@ -80,7 +85,8 @@ public final class IndexReader {
                         .map((rs, ctx) -> new DependencyRecord(
                                 rs.getInt("from_class_id"), rs.getInt("to_class_id"),
                                 rs.getString("kind"),
-                                rs.getObject("injection_point_id") != null ? rs.getInt("injection_point_id") : null))
+                                rs.getObject("injection_point_id") != null ? rs.getInt("injection_point_id") : null,
+                                rs.getInt("occurrence_count")))
                         .list());
     }
 
@@ -97,13 +103,16 @@ public final class IndexReader {
     public static Optional<ClassRecord> findClassByName(Jdbi jdbi, String className) {
         if (className.contains(".")) {
             return jdbi.withHandle(h ->
-                    h.createQuery("SELECT * FROM classes WHERE class_name = :name")
+                    h.createQuery("SELECT * FROM classes WHERE class_name = :name "
+                                    + "AND lifecycle = 'current' AND origin != 'orphan_output'")
                             .bind("name", className)
                             .map((rs, ctx) -> mapClass(rs))
                             .findFirst());
         }
         List<ClassRecord> matches = jdbi.withHandle(h ->
-                h.createQuery("SELECT * FROM classes WHERE class_name LIKE :name ORDER BY class_name")
+                h.createQuery("SELECT * FROM classes WHERE class_name LIKE :name "
+                                + "AND lifecycle = 'current' AND origin != 'orphan_output' "
+                                + "ORDER BY class_name")
                         .bind("name", "%" + className)
                         .map((rs, ctx) -> mapClass(rs))
                         .list());
@@ -111,16 +120,89 @@ public final class IndexReader {
         return Optional.empty();
     }
 
+    public static Optional<ClassRecord> findClassByPath(Jdbi jdbi, String path) {
+        String normalized = path.replace('\\', '/');
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT c.* FROM classes c
+                        LEFT JOIN files f ON f.id = c.file_id
+                        WHERE (c.source_file = :path
+                           OR f.project_path = :path
+                           OR f.repository_path = :path)
+                          AND c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                        ORDER BY CASE WHEN c.lifecycle = 'current' THEN 0 ELSE 1 END, c.class_name
+                        LIMIT 1""")
+                .bind("path", normalized)
+                .map((rs, ctx) -> mapClass(rs))
+                .findFirst());
+    }
+
+    public static Optional<FileRecord> findFileByPath(Jdbi jdbi, String path) {
+        String normalized = path.replace('\\', '/');
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT * FROM files
+                        WHERE project_path = :path OR repository_path = :path
+                        ORDER BY CASE WHEN lifecycle = 'current' THEN 0 ELSE 1 END
+                        LIMIT 1""")
+                .bind("path", normalized)
+                .map((rs, ctx) -> mapFile(rs))
+                .findFirst());
+    }
+
+    public static List<FileRecord> findFileCandidates(Jdbi jdbi, String target, int limit) {
+        String normalized = target.replace('\\', '/');
+        String basename = normalized.substring(normalized.lastIndexOf('/') + 1);
+        if (basename.contains(".")) {
+            String possibleClass = basename.endsWith(".java")
+                    ? basename.substring(0, basename.length() - 5)
+                    : basename.substring(basename.lastIndexOf('.') + 1);
+            basename = possibleClass + ".java";
+        } else {
+            basename += ".java";
+        }
+        String pattern = "%/" + basename;
+        List<FileRecord> matches = jdbi.withHandle(h -> h.createQuery("""
+                        SELECT id, project_path, repository_path, kind, origin, lifecycle,
+                               worktree_status, source_rank
+                        FROM (
+                            SELECT id, project_path, repository_path, kind, origin, lifecycle,
+                                   worktree_status, 0 AS source_rank
+                            FROM files
+                            WHERE project_path LIKE :pattern OR repository_path LIKE :pattern
+                            UNION ALL
+                            SELECT 0 AS id, g.file_path AS project_path,
+                                   g.file_path AS repository_path, 'java' AS kind,
+                                   'source' AS origin, 'historical' AS lifecycle,
+                                   NULL AS worktree_status, 1 AS source_rank
+                            FROM git_file_stats g
+                            WHERE g.file_path LIKE :pattern
+                        )
+                        ORDER BY source_rank,
+                                 CASE WHEN lifecycle = 'current' THEN 0 ELSE 1 END,
+                                 repository_path""")
+                .bind("pattern", pattern)
+                .map((rs, ctx) -> mapFile(rs))
+                .list());
+        Map<String, FileRecord> unique = new LinkedHashMap<>();
+        for (FileRecord match : matches) unique.putIfAbsent(match.repositoryPath(), match);
+        return unique.values().stream().limit(limit).toList();
+    }
+
     public static List<ClassRecord> findClassesByShortName(Jdbi jdbi, String shortName) {
         return jdbi.withHandle(h ->
-                h.createQuery("SELECT * FROM classes WHERE class_name LIKE :name ORDER BY class_name")
-                        .bind("name", "%" + shortName)
+                h.createQuery("SELECT * FROM classes WHERE "
+                                + "(class_name = :shortName OR class_name LIKE :name) "
+                                + "AND lifecycle = 'current' AND origin != 'orphan_output' "
+                                + "ORDER BY class_name")
+                        .bind("shortName", shortName)
+                        .bind("name", "%." + shortName)
                         .map((rs, ctx) -> mapClass(rs))
                         .list());
     }
 
     public static List<ClassRecord> searchClasses(Jdbi jdbi, String namePattern, int limit) {
-        String sql = "SELECT * FROM classes WHERE class_name LIKE :pattern ORDER BY class_name LIMIT :limit";
+        String sql = "SELECT * FROM classes WHERE class_name LIKE :pattern "
+                + "AND lifecycle = 'current' AND origin != 'orphan_output' "
+                + "ORDER BY class_name LIMIT :limit";
         String pattern = namePattern.replace("*", "%");
         if (!pattern.contains("%")) {
             pattern = "%" + pattern + "%";
@@ -199,7 +281,16 @@ public final class IndexReader {
                 rs.getInt("id"), rs.getString("class_name"), rs.getString("kind"),
                 rs.getString("superclass"), fromJson(rs.getString("interfaces")),
                 rs.getString("source_file"), rs.getInt("source_line"),
-                rs.getInt("is_bean") == 1, rs.getInt("source_tokens"));
+                rs.getInt("is_bean") == 1, rs.getInt("source_tokens"),
+                rs.getObject("file_id") != null ? rs.getInt("file_id") : null,
+                rs.getString("origin"), rs.getString("lifecycle"));
+    }
+
+    private static FileRecord mapFile(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new FileRecord(rs.getInt("id"), rs.getString("project_path"),
+                rs.getString("repository_path"), rs.getString("kind"),
+                rs.getString("origin"), rs.getString("lifecycle"),
+                rs.getString("worktree_status"));
     }
 
     private static BeanRecord mapBean(java.sql.ResultSet rs) throws java.sql.SQLException {
@@ -277,6 +368,20 @@ public final class IndexReader {
                         .list());
     }
 
+    public static List<GitCommitRecord> findFileHistoryByPath(
+            Jdbi jdbi, String filePath, int limit) {
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT DISTINCT gc.* FROM git_commits gc
+                        JOIN git_commit_files gcf ON gc.id = gcf.commit_id
+                        WHERE gcf.file_path = :filePath
+                        ORDER BY gc.committed_at DESC
+                        LIMIT :limit""")
+                .bind("filePath", filePath.replace('\\', '/'))
+                .bind("limit", limit)
+                .map((rs, ctx) -> mapGitCommit(rs))
+                .list());
+    }
+
     public static List<CoChangeRecord> findCoChanges(Jdbi jdbi, int classId, int limit) {
         return jdbi.withHandle(h ->
                 h.createQuery("""
@@ -295,6 +400,25 @@ public final class IndexReader {
                                 rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
                                 rs.getInt("co_count"), 0.0))
                         .list());
+    }
+
+    public static List<CoChangeRecord> findCoChangesByPath(
+            Jdbi jdbi, String filePath, int limit) {
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT gcf2.file_path, gcf2.class_id, COUNT(*) as co_count
+                        FROM git_commit_files gcf1
+                        JOIN git_commit_files gcf2 ON gcf1.commit_id = gcf2.commit_id
+                            AND gcf1.file_path != gcf2.file_path
+                        WHERE gcf1.file_path = :filePath
+                        GROUP BY gcf2.file_path
+                        ORDER BY co_count DESC
+                        LIMIT :limit""")
+                .bind("filePath", filePath.replace('\\', '/'))
+                .bind("limit", limit)
+                .map((rs, ctx) -> new CoChangeRecord(rs.getString("file_path"),
+                        rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
+                        rs.getInt("co_count"), 0.0))
+                .list());
     }
 
     public static List<GitCommitRecord> findRecentCommits(Jdbi jdbi, int limit) {
@@ -344,12 +468,22 @@ public final class IndexReader {
                         .findFirst());
     }
 
+    public static Optional<GitFileStats> findFileStatsByPath(Jdbi jdbi, String filePath) {
+        return jdbi.withHandle(h -> h.createQuery(
+                        "SELECT * FROM git_file_stats WHERE file_path = :filePath")
+                .bind("filePath", filePath.replace('\\', '/'))
+                .map((rs, ctx) -> mapGitFileStats(rs))
+                .findFirst());
+    }
+
     public static int countClasses(Jdbi jdbi) {
-        return countQuery(jdbi, "SELECT COUNT(*) FROM classes");
+        return countQuery(jdbi, "SELECT COUNT(*) FROM classes "
+                + "WHERE lifecycle = 'current' AND origin != 'orphan_output'");
     }
 
     public static int countBeans(Jdbi jdbi) {
-        return countQuery(jdbi, "SELECT COUNT(*) FROM beans");
+        return countQuery(jdbi, "SELECT COUNT(*) FROM beans b JOIN classes c ON c.id = b.class_id "
+                + "WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'");
     }
 
     public static int countCommits(Jdbi jdbi) {
@@ -357,30 +491,51 @@ public final class IndexReader {
     }
 
     public static Map<String, Integer> countBeansByScope(Jdbi jdbi) {
-        return groupCountQuery(jdbi, "SELECT scope, COUNT(*) as cnt FROM beans GROUP BY scope ORDER BY cnt DESC");
+        return groupCountQuery(jdbi, "SELECT b.scope, COUNT(*) as cnt FROM beans b "
+                + "JOIN classes c ON c.id = b.class_id "
+                + "WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output' "
+                + "GROUP BY b.scope ORDER BY cnt DESC");
     }
 
     public static Map<String, Integer> countBeansByKind(Jdbi jdbi) {
-        return groupCountQuery(jdbi, "SELECT kind, COUNT(*) as cnt FROM beans GROUP BY kind ORDER BY cnt DESC");
+        return groupCountQuery(jdbi, "SELECT b.kind, COUNT(*) as cnt FROM beans b "
+                + "JOIN classes c ON c.id = b.class_id "
+                + "WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output' "
+                + "GROUP BY b.kind ORDER BY cnt DESC");
     }
 
     public static List<InjectionPointRecord> findUnsatisfiedInjectionPoints(Jdbi jdbi) {
         return jdbi.withHandle(h ->
-                h.createQuery("SELECT * FROM injection_points WHERE resolved_bean_id IS NULL AND is_ambiguous = 0")
+                h.createQuery("SELECT ip.* FROM injection_points ip "
+                                + "JOIN beans b ON b.id = ip.bean_id "
+                                + "JOIN classes c ON c.id = b.class_id "
+                                + "WHERE ip.resolved_bean_id IS NULL AND ip.is_ambiguous = 0 "
+                                + "AND c.lifecycle = 'current' AND c.origin != 'orphan_output'")
                         .map((rs, ctx) -> mapInjectionPoint(rs))
                         .list());
     }
 
     public static List<InjectionPointRecord> findAmbiguousInjectionPoints(Jdbi jdbi) {
         return jdbi.withHandle(h ->
-                h.createQuery("SELECT * FROM injection_points WHERE is_ambiguous = 1")
+                h.createQuery("SELECT ip.* FROM injection_points ip "
+                                + "JOIN beans b ON b.id = ip.bean_id "
+                                + "JOIN classes c ON c.id = b.class_id "
+                                + "WHERE ip.is_ambiguous = 1 "
+                                + "AND c.lifecycle = 'current' AND c.origin != 'orphan_output'")
                         .map((rs, ctx) -> mapInjectionPoint(rs))
                         .list());
     }
 
     public static List<Map.Entry<Integer, Integer>> findMostDependedOn(Jdbi jdbi, int limit) {
         return jdbi.withHandle(h ->
-                h.createQuery("SELECT to_class_id, COUNT(*) as dep_count FROM dependencies GROUP BY to_class_id ORDER BY dep_count DESC LIMIT :limit")
+                h.createQuery("""
+                        SELECT d.to_class_id, COUNT(DISTINCT d.from_class_id) as dep_count
+                        FROM dependencies d
+                        JOIN classes source ON source.id = d.from_class_id
+                        JOIN classes target ON target.id = d.to_class_id
+                        WHERE source.lifecycle = 'current' AND source.origin != 'orphan_output'
+                          AND target.lifecycle = 'current' AND target.origin != 'orphan_output'
+                        GROUP BY d.to_class_id ORDER BY dep_count DESC LIMIT :limit""")
                         .bind("limit", limit)
                         .map((rs, ctx) -> Map.entry(rs.getInt("to_class_id"), rs.getInt("dep_count")))
                         .list());
@@ -388,7 +543,11 @@ public final class IndexReader {
 
     public static int countDependents(Jdbi jdbi, int classId) {
         return jdbi.withHandle(h ->
-                h.createQuery("SELECT COUNT(*) FROM dependencies WHERE to_class_id = :classId")
+                h.createQuery("""
+                        SELECT COUNT(DISTINCT d.from_class_id) FROM dependencies d
+                        JOIN classes source ON source.id = d.from_class_id
+                        WHERE d.to_class_id = :classId
+                          AND source.lifecycle = 'current' AND source.origin != 'orphan_output'""")
                         .bind("classId", classId)
                         .mapTo(Integer.class)
                         .one());
@@ -396,10 +555,43 @@ public final class IndexReader {
 
     public static int countDependencies(Jdbi jdbi, int classId) {
         return jdbi.withHandle(h ->
-                h.createQuery("SELECT COUNT(*) FROM dependencies WHERE from_class_id = :classId")
+                h.createQuery("""
+                        SELECT COUNT(DISTINCT d.to_class_id) FROM dependencies d
+                        JOIN classes target ON target.id = d.to_class_id
+                        WHERE d.from_class_id = :classId
+                          AND target.lifecycle = 'current' AND target.origin != 'orphan_output'""")
                         .bind("classId", classId)
                         .mapTo(Integer.class)
                         .one());
+    }
+
+    public static int countDependencyEdges(Jdbi jdbi, int classId, boolean inbound) {
+        String endpoint = inbound ? "to_class_id" : "from_class_id";
+        String related = inbound ? "from_class_id" : "to_class_id";
+        return jdbi.withHandle(h -> h.createQuery("SELECT COALESCE(SUM(d.occurrence_count), 0) "
+                        + "FROM dependencies d JOIN classes c ON c.id = d." + related + " "
+                        + "WHERE d." + endpoint + " = :classId "
+                        + "AND c.lifecycle = 'current' AND c.origin != 'orphan_output'")
+                .bind("classId", classId)
+                .mapTo(Integer.class)
+                .one());
+    }
+
+    public static List<DependencyBreakdown> dependencyBreakdown(
+            Jdbi jdbi, int classId, boolean inbound) {
+        String endpoint = inbound ? "to_class_id" : "from_class_id";
+        String related = inbound ? "from_class_id" : "to_class_id";
+        return jdbi.withHandle(h -> h.createQuery("SELECT c.origin, "
+                        + "COUNT(DISTINCT d." + related + ") AS class_count, "
+                        + "SUM(d.occurrence_count) AS edge_count "
+                        + "FROM dependencies d JOIN classes c ON c.id = d." + related + " "
+                        + "WHERE d." + endpoint + " = :classId AND c.lifecycle = 'current' "
+                        + "AND c.origin != 'orphan_output' "
+                        + "GROUP BY c.origin ORDER BY c.origin")
+                .bind("classId", classId)
+                .map((rs, ctx) -> new DependencyBreakdown(rs.getString("origin"),
+                        rs.getInt("class_count"), rs.getInt("edge_count")))
+                .list());
     }
 
     private static int countQuery(Jdbi jdbi, String sql) {

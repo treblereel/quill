@@ -2,16 +2,18 @@ package org.treblereel.mcp.command;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import org.jboss.jandex.Indexer;
+import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.BeanResolver;
+import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.fixture.OrderService;
@@ -23,6 +25,38 @@ import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
 
 class ProjectInitializerRemapTest {
+
+    static class PlainClass {}
+
+    @Test
+    void firstInitDoesNotMistakeManagedGitignoreChangeForConcurrentWorktreeChange(
+            @TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>sample</artifactId><version>1</version>
+                </project>
+                """);
+        Files.writeString(root.resolve(".gitignore"), "target/\n");
+        try (Git git = Git.init().setDirectory(root.toFile()).call()) {
+            git.add().addFilepattern("pom.xml").addFilepattern(".gitignore").call();
+            git.commit().setMessage("initial").setAuthor("Quill Test", "quill@example.test")
+                    .setSign(false).call();
+        }
+
+        Path classes = Files.createDirectories(root.resolve("target/classes/org/example"));
+        try (var bytecode = ProjectInitializerRemapTest.class.getResourceAsStream(
+                "ProjectInitializerRemapTest$PlainClass.class")) {
+            assertNotNull(bytecode);
+            Files.copy(bytecode, classes.resolve("PlainClass.class"));
+        }
+
+        assertTrue(ProjectInitializer.initialize(root, false));
+        assertTrue(Files.readString(root.resolve(".gitignore")).contains(".quill/"));
+        try (var indexFiles = Files.list(root.resolve(".quill"))) {
+            assertTrue(indexFiles.anyMatch(path -> path.getFileName().toString().endsWith(".db")));
+        }
+    }
 
     @Test
     void findsMavenAndGradleMainOutputsButSkipsBuildSrcAndTests(@TempDir Path root) throws Exception {
@@ -36,6 +70,61 @@ class ProjectInitializerRemapTest {
         }
 
         assertEquals(Set.of(maven, java, kotlin), Set.copyOf(ProjectInitializer.findClassesDirs(root)));
+    }
+
+    @Test
+    void mavenDiscoveryIgnoresOutputsOutsideDeclaredReactor(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>root</artifactId><version>1</version>
+                  <packaging>pom</packaging>
+                  <modules><module>included</module></modules>
+                </project>
+                """);
+        Path included = Files.createDirectories(root.resolve("included/target/classes"));
+        Files.writeString(root.resolve("included/pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>included</artifactId><version>1</version>
+                </project>
+                """);
+        Path stray = Files.createDirectories(root.resolve("not-a-module/target/classes"));
+        Files.write(included.resolve("Included.class"), new byte[]{1});
+        Files.write(stray.resolve("Stray.class"), new byte[]{1});
+
+        assertEquals(List.of(included), ProjectInitializer.findClassesDirs(root));
+    }
+
+    @Test
+    void incompleteMavenModelFallsBackToOutputScan(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>root</artifactId><version>1</version>
+                  <packaging>pom</packaging>
+                  <modules><module>missing</module></modules>
+                </project>
+                """);
+        Path legacyOutput = Files.createDirectories(root.resolve("legacy/target/classes"));
+        Files.write(legacyOutput.resolve("Legacy.class"), new byte[]{1});
+
+        assertEquals(List.of(legacyOutput), ProjectInitializer.findClassesDirs(root));
+    }
+
+    @Test
+    void failedGradleDiscoveryFallsBackToOutputScan(@TempDir Path root) throws Exception {
+        Files.createFile(root.resolve("settings.gradle"));
+        Path output = Files.createDirectories(root.resolve("legacy/build/classes/java/main"));
+        Files.write(output.resolve("Legacy.class"), new byte[] {1});
+        if (BuildSystem.isWindows()) {
+            Files.writeString(root.resolve("gradlew.bat"), "@exit /b 7\r\n");
+        } else {
+            Path wrapper = Files.writeString(root.resolve("gradlew"), "#!/bin/sh\nexit 7\n");
+            assertTrue(wrapper.toFile().setExecutable(true));
+        }
+
+        assertEquals(List.of(output), ProjectInitializer.findClassesDirs(root));
     }
 
     @Test

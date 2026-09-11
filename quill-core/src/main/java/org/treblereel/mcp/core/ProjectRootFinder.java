@@ -9,12 +9,24 @@ public final class ProjectRootFinder {
 
     public static Path find(Path explicitPath) {
         Path start = (explicitPath != null) ? explicitPath : Path.of(System.getProperty("user.dir"));
+        return find(start, explicitPath == null);
+    }
+
+    /** Finds the containing Maven reactor even when {@code start} is a child module. */
+    public static Path findReactor(Path start) {
+        return find(start, true);
+    }
+
+    private static Path find(Path start, boolean preferMavenReactor) {
         start = start.toAbsolutePath().normalize();
 
         Path current = start;
         Path nearestGradleBuild = null;
         while (current != null) {
-            if (Files.isRegularFile(current.resolve("pom.xml"))) return current;
+            if (Files.isRegularFile(current.resolve("pom.xml"))) {
+                return preferMavenReactor
+                        ? MavenProjectDiscovery.findReactorRoot(current) : current;
+            }
             if (hasGradleSettings(current)) return current;
             if (nearestGradleBuild == null && hasGradleBuild(current)) nearestGradleBuild = current;
             current = current.getParent();

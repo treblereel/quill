@@ -6,6 +6,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.model.MetaEnvelope;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -33,10 +34,22 @@ public class StatusCommand implements Runnable {
             var beans = IndexReader.findBeans(jdbi, null);
 
             int totalTokens = classes.stream().mapToInt(c -> c.sourceTokens()).sum();
+            MetaEnvelope freshness = MetaEnvelope.from(jdbi, 0, 0);
 
             System.out.println("Index: " + dbPath);
             System.out.println("  Indexed at:          " + meta.getOrDefault("indexed_at", "unknown"));
-            System.out.println("  Last commit:         " + meta.getOrDefault("last_commit", "unknown"));
+            System.out.println("  Indexed commit:      " + freshness.lastCommit());
+            System.out.println("  Current commit:      "
+                    + (freshness.currentCommit() != null ? freshness.currentCommit() : "unknown"));
+            System.out.println("  Worktree:            " + (freshness.worktreeDirty()
+                    ? "dirty (" + freshness.worktreeChangedFiles() + " changed files)" : "clean"));
+            System.out.println("  Structural changes:  " + freshness.structuralChangedFiles());
+            System.out.println("  Structure snapshot:  "
+                    + (freshness.structureStale() ? "stale" : "current"));
+            if (!freshness.staleReasons().isEmpty()) {
+                System.out.println("  Stale reasons:       "
+                        + String.join(", ", freshness.staleReasons()));
+            }
             System.out.println("  Classes:             " + classes.size());
             System.out.println("  Beans:               " + beans.size());
             System.out.println("  Total source tokens: " + String.format("%,d", totalTokens));

@@ -13,7 +13,7 @@ public final class IndexWriter {
     private static final String[] ALL_TABLES = {
             "git_commit_files", "git_commits", "git_file_stats",
             "class_external_deps", "cdi_problems",
-            "dependencies", "injection_points", "beans", "classes", "metadata"
+            "dependencies", "injection_points", "beans", "classes", "files", "metadata"
     };
 
     private IndexWriter() {}
@@ -24,13 +24,14 @@ public final class IndexWriter {
             Map<String, String> metadata,
             List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles) {
+            List<GitCommitFile> commitFiles, List<FileRecord> files) {
         jdbi.useTransaction(h -> {
             for (String table : ALL_TABLES) {
                 h.execute("DELETE FROM " + table);
             }
             h.execute("DELETE FROM sqlite_sequence");
 
+            insertFiles(h, files);
             insertClasses(h, classes);
             insertBeans(h, beans);
             insertInjectionPoints(h, injectionPoints);
@@ -46,7 +47,7 @@ public final class IndexWriter {
             List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
             Map<String, String> metadata) {
         jdbi.useTransaction(h -> {
-            for (String table : new String[]{"dependencies", "injection_points", "beans", "classes", "metadata"}) {
+            for (String table : new String[]{"dependencies", "injection_points", "beans", "classes", "files", "metadata"}) {
                 h.execute("DELETE FROM " + table);
             }
             h.execute("DELETE FROM sqlite_sequence");
@@ -86,7 +87,7 @@ public final class IndexWriter {
 
     private static void insertClasses(org.jdbi.v3.core.Handle h, List<ClassRecord> classes) {
         var batch = h.prepareBatch(
-                "INSERT INTO classes (class_name, kind, superclass, interfaces, source_file, source_line, is_bean, source_tokens) VALUES (:className, :kind, :superclass, :interfaces, :sourceFile, :sourceLine, :isBean, :sourceTokens)");
+                "INSERT INTO classes (class_name, kind, superclass, interfaces, source_file, source_line, is_bean, source_tokens, file_id, origin, lifecycle) VALUES (:className, :kind, :superclass, :interfaces, :sourceFile, :sourceLine, :isBean, :sourceTokens, :fileId, :origin, :lifecycle)");
         for (ClassRecord c : classes) {
             batch
                     .bind("className", c.className())
@@ -97,6 +98,26 @@ public final class IndexWriter {
                     .bind("sourceLine", c.sourceLine())
                     .bind("isBean", c.isBean() ? 1 : 0)
                     .bind("sourceTokens", c.sourceTokens())
+                    .bind("fileId", c.fileId())
+                    .bind("origin", c.origin())
+                    .bind("lifecycle", c.lifecycle())
+                    .add();
+        }
+        batch.execute();
+    }
+
+    private static void insertFiles(org.jdbi.v3.core.Handle h, List<FileRecord> files) {
+        if (files == null || files.isEmpty()) return;
+        var batch = h.prepareBatch(
+                "INSERT INTO files (id, project_path, repository_path, kind, origin, lifecycle, worktree_status) VALUES (:id, :projectPath, :repositoryPath, :kind, :origin, :lifecycle, :worktreeStatus)");
+        for (FileRecord file : files) {
+            batch.bind("id", file.id())
+                    .bind("projectPath", file.projectPath())
+                    .bind("repositoryPath", file.repositoryPath())
+                    .bind("kind", file.kind())
+                    .bind("origin", file.origin())
+                    .bind("lifecycle", file.lifecycle())
+                    .bind("worktreeStatus", file.worktreeStatus())
                     .add();
         }
         batch.execute();
@@ -142,13 +163,14 @@ public final class IndexWriter {
 
     private static void insertDependencies(org.jdbi.v3.core.Handle h, List<DependencyRecord> deps) {
         var batch = h.prepareBatch(
-                "INSERT INTO dependencies (from_class_id, to_class_id, kind, injection_point_id) VALUES (:fromClassId, :toClassId, :kind, :injectionPointId)");
+                "INSERT INTO dependencies (from_class_id, to_class_id, kind, injection_point_id, occurrence_count) VALUES (:fromClassId, :toClassId, :kind, :injectionPointId, :occurrenceCount)");
         for (DependencyRecord d : deps) {
             batch
                     .bind("fromClassId", d.fromClassId())
                     .bind("toClassId", d.toClassId())
                     .bind("kind", d.kind())
                     .bind("injectionPointId", d.injectionPointId())
+                    .bind("occurrenceCount", d.occurrenceCount())
                     .add();
         }
         batch.execute();

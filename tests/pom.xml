@@ -16,5 +16,6 @@
         <module>multimodule-quarkus</module>
         <module>basic-spring</module>
         <module>advanced-spring</module>
+        <module>annotation-processing</module>
     </modules>
 </project>

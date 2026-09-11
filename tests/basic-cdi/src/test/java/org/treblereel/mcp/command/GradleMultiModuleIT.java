@@ -7,10 +7,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.GradleProjectDiscovery;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.QuillDatabase;
 
@@ -37,7 +39,7 @@ class GradleMultiModuleIT {
             Path db = ProjectInitializer.findDbForHead(PROJECT);
             assertNotNull(db);
             var jdbi = QuillDatabase.open(db);
-            assertEquals(3, IndexReader.findAllClasses(jdbi).size());
+            assertEquals(4, IndexReader.findAllClasses(jdbi).size());
             assertTrue(IndexReader.findAllClasses(jdbi).stream()
                     .allMatch(record -> record.sourceTokens() > 0));
             assertEquals(2, IndexReader.findBeans(jdbi, null).size());
@@ -50,8 +52,46 @@ class GradleMultiModuleIT {
 
             assertTrue(Files.isRegularFile(PROJECT.resolve("common/build/quill-classpath.txt")));
             assertTrue(Files.isRegularFile(PROJECT.resolve("service/build/quill-classpath.txt")));
+            assertTrue(Files.isRegularFile(
+                    PROJECT.resolve("modules/custom/build/quill-classpath.txt")));
+            assertTrue(Files.isRegularFile(PROJECT.resolve("build/quill-projects.tsv")));
+            assertTrue(Files.isRegularFile(PROJECT.resolve("build/quill-projects.sha256")));
         } finally {
             deleteTree(PROJECT.resolve(".quill"));
+        }
+    }
+
+    @Test
+    void discoversEvaluatedProjectsAndIgnoresStrayBuildOutput() throws Exception {
+        assumeGradleAvailable();
+        runGradleClean(PROJECT);
+        Path stray = Files.createDirectories(
+                PROJECT.resolve("retired/build/classes/java/main"));
+        Files.write(stray.resolve("Stale.class"), new byte[] {1, 2, 3});
+
+        try {
+            GradleProjectDiscovery.Discovery discovery =
+                    GradleProjectDiscovery.discover(PROJECT);
+
+            assertTrue(discovery.complete());
+            assertEquals(Set.of(
+                            PROJECT.resolve("common").toAbsolutePath(),
+                            PROJECT.resolve("service").toAbsolutePath(),
+                            PROJECT.resolve("modules/custom").toAbsolutePath()),
+                    Set.copyOf(discovery.moduleDirectories()));
+            assertTrue(discovery.classesDirectories().contains(
+                    PROJECT.resolve("out/custom/classes/java/main").toAbsolutePath()));
+            assertFalse(discovery.classesDirectories().stream()
+                    .anyMatch(path -> path.startsWith(PROJECT.resolve("retired"))));
+            assertFalse(Files.exists(PROJECT.resolve("common/build/quill-classpath.txt")),
+                    "Read-only discovery must not modify the classpath cache");
+
+            GradleProjectDiscovery.Discovery pinned =
+                    GradleProjectDiscovery.discover(PROJECT.resolve("service"));
+            assertEquals(Set.of(PROJECT.resolve("service").toAbsolutePath()),
+                    Set.copyOf(pinned.moduleDirectories()));
+        } finally {
+            deleteTree(PROJECT.resolve("retired"));
         }
     }
 

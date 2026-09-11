@@ -18,8 +18,7 @@ public class CleanCommand implements Runnable {
 
     @Override
     public void run() {
-        Path root = (projectPath != null) ? projectPath : Path.of(System.getProperty("user.dir"));
-        root = ProjectRootFinder.find(root);
+        Path root = ProjectRootFinder.find(projectPath);
         Path lockedRoot = root;
 
         try {

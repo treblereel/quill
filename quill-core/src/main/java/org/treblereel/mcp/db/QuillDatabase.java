@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 1;
+    static final int SCHEMA_VERSION = 2;
 
     private QuillDatabase() {}
 
@@ -27,6 +27,16 @@ public final class QuillDatabase {
             // keeps the complete database in one file, so no WAL sidecar can be lost on move.
             h.execute("PRAGMA journal_mode=DELETE");
             h.execute("""
+                CREATE TABLE IF NOT EXISTS files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_path TEXT NOT NULL UNIQUE,
+                    repository_path TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    origin TEXT NOT NULL,
+                    lifecycle TEXT NOT NULL,
+                    worktree_status TEXT
+                )""");
+            h.execute("""
                 CREATE TABLE IF NOT EXISTS classes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     class_name TEXT NOT NULL,
@@ -36,7 +46,10 @@ public final class QuillDatabase {
                     source_file TEXT,
                     source_line INTEGER,
                     is_bean INTEGER NOT NULL DEFAULT 0,
-                    source_tokens INTEGER NOT NULL DEFAULT 0
+                    source_tokens INTEGER NOT NULL DEFAULT 0,
+                    file_id INTEGER REFERENCES files(id),
+                    origin TEXT NOT NULL DEFAULT 'source',
+                    lifecycle TEXT NOT NULL DEFAULT 'current'
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS beans (
@@ -69,7 +82,8 @@ public final class QuillDatabase {
                     from_class_id INTEGER NOT NULL REFERENCES classes(id),
                     to_class_id INTEGER NOT NULL REFERENCES classes(id),
                     kind TEXT NOT NULL,
-                    injection_point_id INTEGER REFERENCES injection_points(id)
+                    injection_point_id INTEGER REFERENCES injection_points(id),
+                    occurrence_count INTEGER NOT NULL DEFAULT 1
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS metadata (
@@ -77,6 +91,9 @@ public final class QuillDatabase {
                     value TEXT
                 )""");
             h.execute("CREATE INDEX IF NOT EXISTS idx_classes_name ON classes(class_name)");
+            h.execute("CREATE INDEX IF NOT EXISTS idx_classes_file ON classes(file_id)");
+            h.execute("CREATE INDEX IF NOT EXISTS idx_files_repository_path ON files(repository_path)");
+            h.execute("CREATE INDEX IF NOT EXISTS idx_files_lifecycle ON files(lifecycle)");
             h.execute("CREATE INDEX IF NOT EXISTS idx_ip_bean ON injection_points(bean_id)");
             h.execute("CREATE INDEX IF NOT EXISTS idx_ip_resolved ON injection_points(resolved_bean_id)");
             h.execute("CREATE INDEX IF NOT EXISTS idx_dep_from ON dependencies(from_class_id)");

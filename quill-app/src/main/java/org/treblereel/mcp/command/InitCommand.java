@@ -5,13 +5,15 @@ import org.treblereel.mcp.core.ProjectRootFinder;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-@Command(name = "init", description = "Index a Maven or Gradle Java project's dependency graph (CDI and Spring). Compiles the project when bytecode is missing.")
+@Command(name = "init", description = "Index a Maven or Gradle Java project's "
+        + "dependency graph (CDI and Spring). Compiles the project when bytecode is missing.")
 public class InitCommand implements Runnable {
 
     @Option(names = "--project", description = "Path to project root")
     Path projectPath;
 
-    @Option(names = "--index-only", description = "Only create the index; skip git hooks, CLAUDE.md, and .gitignore modifications")
+    @Option(names = "--index-only", description = "Only create the index; skip git hooks, "
+            + "agent configuration, and .gitignore modifications")
     boolean indexOnly;
 
     @Override

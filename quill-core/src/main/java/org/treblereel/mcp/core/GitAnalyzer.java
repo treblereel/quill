@@ -93,18 +93,9 @@ public final class GitAnalyzer {
 
                 for (int i = 0; i < revCommits.size(); i++) {
                     RevCommit commit = revCommits.get(i);
-                    int commitId = i + 1;
+                    int commitId = commitRecords.size() + 1;
                     PersonIdent author = commit.getAuthorIdent();
-
-                    commitRecords.add(new GitCommitRecord(
-                            commitId,
-                            commit.getName(),
-                            commit.getName().substring(0, 7),
-                            author.getName(),
-                            author.getEmailAddress(),
-                            formatInstant(author.getWhenAsInstant()),
-                            commit.getShortMessage()
-                    ));
+                    int filesBeforeCommit = commitFiles.size();
 
                     AbstractTreeIterator parentIter;
                     if (commit.getParentCount() > 0) {
@@ -129,7 +120,8 @@ public final class GitAnalyzer {
                         String changeType = diff.getChangeType().name();
 
                         String localPath = filePath;
-                        if (!projectPrefix.isEmpty() && filePath.startsWith(projectPrefix)) {
+                        if (!projectPrefix.isEmpty()) {
+                            if (!filePath.startsWith(projectPrefix)) continue;
                             localPath = filePath.substring(projectPrefix.length());
                         }
 
@@ -140,6 +132,18 @@ public final class GitAnalyzer {
 
                         fileAggs.computeIfAbsent(filePath, k -> new FileAgg(classId))
                                 .record(author.getName(), formatInstant(author.getWhenAsInstant()));
+                    }
+
+                    if (commitFiles.size() > filesBeforeCommit) {
+                        commitRecords.add(new GitCommitRecord(
+                                commitId,
+                                commit.getName(),
+                                commit.getName().substring(0, 7),
+                                author.getName(),
+                                author.getEmailAddress(),
+                                formatInstant(author.getWhenAsInstant()),
+                                commit.getShortMessage()
+                        ));
                     }
                 }
             }

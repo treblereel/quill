@@ -95,4 +95,30 @@ class GitAnalyzerTest {
         assertEquals(1, result.fileStats().size());
         assertEquals(2, result.fileStats().get(0).commitCount());
     }
+
+    @Test
+    void subprojectHistoryIgnoresCommitsOutsideItsPath() throws Exception {
+        Path project = tempDir.resolve("project");
+        Path source = project.resolve("Example.java");
+        Files.createDirectories(project);
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            Files.writeString(source, "class Example {}\n");
+            git.add().addFilepattern("project").call();
+            git.commit().setMessage("project change").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+
+            Files.writeString(tempDir.resolve("outside.txt"), "outside\n");
+            git.add().addFilepattern("outside.txt").call();
+            git.commit().setMessage("outside change").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+        }
+
+        GitAnalyzer.GitAnalysisResult result = GitAnalyzer.analyze(
+                project, 10, Map.of("Example.java", 1));
+
+        assertEquals(1, result.commits().size());
+        assertEquals("project change", result.commits().get(0).message());
+        assertEquals(1, result.commitFiles().size());
+        assertEquals("project/Example.java", result.commitFiles().get(0).filePath());
+    }
 }

@@ -2,18 +2,22 @@ package org.treblereel.mcp.mcp;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.eclipse.jgit.api.Git;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.core.GitAnalyzer;
+import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.model.*;
 
 class QuillToolsTest {
@@ -248,6 +252,15 @@ class QuillToolsTest {
         assertEquals("src/main/java/org/acme/StripePaymentService.java",
                 hotspots.get(0).get("file").asText());
         assertEquals(3, hotspots.get(0).get("commit_count").asInt());
+    }
+
+    @Test
+    void hotspotPaginationReportsFullTotalAndTruncation() throws Exception {
+        JsonNode root = JSON.readTree(new QuillTools().getHotspots(jdbi, 1, null));
+
+        assertEquals(1, root.path("showing").asInt());
+        assertEquals(3, root.path("total").asInt());
+        assertTrue(root.path("truncated").asBoolean());
     }
 
     @Test
@@ -521,6 +534,153 @@ class QuillToolsTest {
             assertFalse(h.get("file").asText().equals("src/main/java/org/acme/PaymentService.java"),
                     "PaymentService.java only has commits before 2026-08-28 and should be excluded");
         }
+    }
+
+    @Test
+    void currentHotspotsExcludeDeletedFilesButHistoryRemainsAddressableByPath() throws Exception {
+        Path repository = tempDir.resolve("history-repository");
+        Path current = repository.resolve("src/main/java/example/Current.java");
+        Path deleted = repository.resolve("src/main/java/example/Deleted.java");
+        java.nio.file.Files.createDirectories(current.getParent());
+        java.nio.file.Files.writeString(current, "package example; class Current {}\n");
+        java.nio.file.Files.writeString(deleted, "package example; class Deleted {}\n");
+
+        GitAnalyzer.GitAnalysisResult analysis;
+        try (Git git = Git.init().setDirectory(repository.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            java.nio.file.Files.delete(deleted);
+            git.rm().addFilepattern("src/main/java/example/Deleted.java").call();
+            git.commit().setMessage("delete stale class").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            analysis = GitAnalyzer.analyze(repository, 10,
+                    Map.of("src/main/java/example/Current.java", 1));
+        }
+
+        Jdbi historyDb = QuillDatabase.create(tempDir.resolve("history.db"));
+        IndexWriter.write(historyDb, List.of(new ClassRecord(0, "example.Current", "CLASS",
+                        "java.lang.Object", List.of(), "src/main/java/example/Current.java",
+                        1, false, 10)), List.of(), List.of(), List.of(),
+                Map.of("indexed_at", "2026-09-08T00:00:00Z",
+                        "last_commit", analysis.headHash(),
+                        "project_root", repository.toString()));
+        IndexWriter.writeGitData(historyDb, analysis.fileStats(), analysis.commits(),
+                analysis.commitFiles());
+        historyDb.useHandle(handle -> handle.createUpdate("""
+                        INSERT INTO files(project_path, repository_path, kind, origin, lifecycle)
+                        VALUES (:path, :path, 'java', 'source', 'historical')""")
+                .bind("path", "src/main/java/example/Deleted.java")
+                .execute());
+
+        var tools = new QuillTools();
+        JsonNode currentOnly = JSON.readTree(tools.getHotspots(historyDb, 10, null, false));
+        assertFalse(currentOnly.path("hotspots").toString().contains("Deleted.java"));
+        JsonNode overview = JSON.readTree(tools.getOverview(historyDb));
+        assertFalse(overview.path("git_summary").path("top_hotspots").toString()
+                .contains("Deleted.java"));
+
+        JsonNode withHistory = JSON.readTree(tools.getHotspots(historyDb, 10, null, true));
+        assertTrue(withHistory.path("hotspots").toString().contains("Deleted.java"));
+        assertTrue(withHistory.path("hotspots").toString().contains("historical"));
+
+        JsonNode history = JSON.readTree(tools.getFileHistory(historyDb,
+                "src/main/java/example/Deleted.java", 10));
+        assertEquals("historical", history.path("lifecycle").asText());
+        assertEquals(2, history.path("commits").size());
+
+        JsonNode missingClass = JSON.readTree(tools.getRisk(historyDb, "example.Deleted"));
+        assertEquals("Class not found", missingClass.path("error").asText());
+        assertTrue(missingClass.path("candidates").toString().contains("Deleted.java"));
+        assertTrue(missingClass.path("candidates").toString().contains("historical"));
+        assertEquals(1, missingClass.path("candidates").size());
+        assertTrue(missingClass.path("_meta").isObject());
+    }
+
+    @Test
+    void searchClassesIncludesOriginAndLifecycle() throws Exception {
+        JsonNode result = JSON.readTree(new QuillTools().searchClasses(jdbi, "OrderService", 10));
+
+        assertEquals("source", result.path("classes").get(0).path("origin").asText());
+        assertEquals("current", result.path("classes").get(0).path("lifecycle").asText());
+    }
+
+    @Test
+    void documentationOnlyWorktreeDoesNotMakeStructureStale() throws Exception {
+        Path repository = tempDir.resolve("docs-repository");
+        Path source = repository.resolve("src/main/java/example/App.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package example; class App {}\n");
+        String head;
+        try (Git git = Git.init().setDirectory(repository.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            head = git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call().getName();
+        }
+        WorktreeInspector.Snapshot indexed = WorktreeInspector.inspect(repository);
+        Jdbi docsDb = QuillDatabase.create(tempDir.resolve("docs.db"));
+        IndexWriter.write(docsDb, List.of(), List.of(), List.of(), List.of(),
+                Map.of("indexed_at", "2026-09-09T00:00:00Z", "last_commit", head,
+                        "project_root", repository.toString(),
+                        "indexed_worktree_fingerprint", indexed.fingerprint(),
+                        "indexed_structure_fingerprint", indexed.structuralFingerprint(),
+                        "compiled_before_index", "false"));
+
+        Files.writeString(repository.resolve("README.md"), "documentation only\n");
+        JsonNode meta = JSON.readTree(new QuillTools().getOverview(docsDb)).path("_meta");
+
+        assertTrue(meta.path("worktree_dirty").asBoolean());
+        assertEquals(1, meta.path("worktree_changed_files").asInt());
+        assertEquals(0, meta.path("structural_changed_files").asInt());
+        assertFalse(meta.path("structure_stale").asBoolean());
+        assertTrue(meta.path("stale_reasons").isEmpty());
+    }
+
+    @Test
+    void responsesExposeDirtyWorktreeFreshnessAndResourceOverlay() throws Exception {
+        Path repository = tempDir.resolve("dirty-repository");
+        Path service = repository.resolve(
+                "src/main/resources/META-INF/services/javax.annotation.processing.Processor");
+        Files.createDirectories(service.getParent());
+        Files.writeString(service, "example.FirstProcessor\nexample.SecondProcessor\n");
+
+        GitAnalyzer.GitAnalysisResult analysis;
+        try (Git git = Git.init().setDirectory(repository.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            analysis = GitAnalyzer.analyze(repository, 10, Map.of());
+        }
+        WorktreeInspector.Snapshot indexed = WorktreeInspector.inspect(repository);
+        Jdbi dirtyDb = QuillDatabase.create(tempDir.resolve("dirty.db"));
+        IndexWriter.write(dirtyDb, List.of(), List.of(), List.of(), List.of(),
+                Map.of("indexed_at", "2026-09-08T00:00:00Z",
+                        "last_commit", analysis.headHash(),
+                        "project_root", repository.toString(),
+                        "indexed_worktree_fingerprint", indexed.fingerprint(),
+                        "compiled_before_index", "false"));
+        IndexWriter.writeGitData(dirtyDb, analysis.fileStats(), analysis.commits(),
+                analysis.commitFiles());
+
+        Files.writeString(service, "example.SecondProcessor\nexample.FirstProcessor\n");
+
+        var tools = new QuillTools();
+        JsonNode overview = JSON.readTree(tools.getOverview(dirtyDb));
+        JsonNode meta = overview.path("_meta");
+        assertEquals(analysis.headHash(), meta.path("indexed_commit").asText());
+        assertEquals(analysis.headHash(), meta.path("current_commit").asText());
+        assertTrue(meta.path("worktree_dirty").asBoolean());
+        assertTrue(meta.path("structure_stale").asBoolean());
+        assertFalse(meta.path("commit_stale").asBoolean());
+        assertTrue(meta.path("stale_reasons").toString()
+                .contains("worktree_changed_after_index"));
+        assertTrue(meta.path("stale_reasons").toString()
+                .contains("dirty_worktree_not_compiled"));
+
+        JsonNode hotspots = JSON.readTree(tools.getHotspots(dirtyDb, 10, null, false));
+        assertTrue(hotspots.path("worktree_changes").toString()
+                .contains("javax.annotation.processing.Processor"));
+        assertTrue(hotspots.path("worktree_changes").toString().contains("modified"));
     }
 
     @Test

@@ -24,7 +24,9 @@ public class ProjectRegistry {
             String uniqueName = dedup(name);
             projects.add(new RegisteredProject(uniqueName, resolved));
         } catch (IllegalArgumentException e) {
-            Path fallback = projectPath.toAbsolutePath().normalize();
+            Path fallback = projectPath == null
+                    ? Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
+                    : projectPath.toAbsolutePath().normalize();
             String name = fallback.getFileName().toString();
             projects.add(new RegisteredProject(dedup(name), fallback));
         }

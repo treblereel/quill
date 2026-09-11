@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -27,11 +28,16 @@ import org.jboss.jandex.Index;
 import org.treblereel.mcp.QuillLauncher;
 import org.treblereel.mcp.core.BeanResolver;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.BytecodeDependencyScanner;
 import org.treblereel.mcp.core.DependencyIndexer;
+import org.treblereel.mcp.core.FileInventory;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.GitHookInstaller;
+import org.treblereel.mcp.core.GradleProjectDiscovery;
 import org.treblereel.mcp.core.JandexScanner;
+import org.treblereel.mcp.core.MavenProjectDiscovery;
 import org.treblereel.mcp.core.SpringResolver;
+import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.BeanRecord;
@@ -64,20 +70,42 @@ public class ProjectInitializer {
     }
 
     static boolean initializeLocked(Path root, boolean indexOnly) {
-        String initialHead = GitAnalyzer.resolveHead(root);
-        List<Path> classesDirs = findClassesDirs(root);
+        return initializeLocked(root, indexOnly, false);
+    }
+
+    static boolean initializeLocked(Path root, boolean indexOnly, boolean compiledBeforeIndex) {
+        List<Path> classesDirs = findClassesDirs(root, true);
 
         if (classesDirs.isEmpty()) {
             if (!compileProject(root)) return false;
-            classesDirs = findClassesDirs(root);
+            compiledBeforeIndex = true;
+            classesDirs = findClassesDirs(root, true);
             if (classesDirs.isEmpty()) {
                 System.err.println("[quill] No compiled classes found for " + root);
                 return false;
             }
         }
 
+        // Compilation is a prerequisite, not part of indexing. Capture the authoritative
+        // commit/worktree snapshot afterwards so generated tracked files do not make a
+        // successful compile look like a concurrent mutation.
+        // Quill's own managed-file changes must also happen before the snapshot; otherwise
+        // the first init would invalidate itself when adding .quill/ to .gitignore.
+        if (!indexOnly) {
+            ensureGitignore(root);
+        }
+        String initialHead = GitAnalyzer.resolveHead(root);
+        WorktreeInspector.Snapshot initialWorktree = WorktreeInspector.inspect(root);
+
         System.err.println("[quill] Indexing " + root.getFileName() + " (" + classesDirs.size() + " class dirs)...");
-        JandexScanner.ScanResult scanResult = JandexScanner.scan(classesDirs);
+        BuildSystem buildSystem = BuildSystem.detect(root);
+        Map<Path, Path> classDirectoryOwners =
+                DependencyIndexer.mapClassDirectoriesToModules(root, buildSystem, classesDirs);
+        List<Path> moduleDirectories = classDirectoryOwners.values().stream().distinct().toList();
+        List<Path> sourceRoots = findSourceRoots(moduleDirectories);
+        JandexScanner.ScanResult scanResult = sourceRoots.isEmpty()
+                ? JandexScanner.scan(classesDirs)
+                : JandexScanner.scan(classesDirs, sourceRoots);
 
         boolean isSpring = SpringResolver.isSpringProject(scanResult.index());
         boolean isCdi = BeanResolver.isCdiProject(scanResult.index());
@@ -134,13 +162,18 @@ public class ProjectInitializer {
         }
         classes = correctedClasses;
 
-        List<DependencyRecord> remappedDeps = persisted.dependencies();
+        List<DependencyRecord> remappedDeps = new ArrayList<>(persisted.dependencies());
+        for (BytecodeDependencyScanner.StaticDependency dependency
+                : BytecodeDependencyScanner.scan(classesDirs)) {
+            Integer from = classNameToSqliteId.get(dependency.fromClass());
+            Integer to = classNameToSqliteId.get(dependency.toClass());
+            if (from != null && to != null) {
+                remappedDeps.add(new DependencyRecord(from, to, dependency.kind(), null,
+                        dependency.occurrences()));
+            }
+        }
 
         List<ExternalDepRecord> externalDeps = JandexScanner.extractExternalDeps(scanResult.index(), classNameToSqliteId);
-
-        if (!indexOnly) {
-            ensureGitignore(root);
-        }
 
         Map<String, Integer> sourceFileToClassId = new HashMap<>();
         for (int i = 0; i < classes.size(); i++) {
@@ -150,7 +183,7 @@ public class ProjectInitializer {
                 if (sfPath.isAbsolute() && sfPath.startsWith(root)) {
                     sf = root.relativize(sfPath).toString();
                 }
-                sourceFileToClassId.put(sf, i + 1);
+                sourceFileToClassId.put(sf.replace('\\', '/'), i + 1);
             }
         }
 
@@ -176,6 +209,19 @@ public class ProjectInitializer {
                         p.className(), p.problemType(), p.message()))
                 .toList();
 
+        FileInventory.Result inventory = FileInventory.build(root, moduleDirectories, sourceRoots,
+                classes, gitResult.fileStats(), initialWorktree);
+        classes = inventory.classes();
+        Set<Integer> currentClassIds = new HashSet<>();
+        for (int i = 0; i < classes.size(); i++) {
+            ClassRecord cls = classes.get(i);
+            if (cls.lifecycle().equals("current") && !cls.origin().equals("orphan_output")) {
+                currentClassIds.add(i + 1);
+            }
+        }
+        remappedDeps.removeIf(dependency -> !currentClassIds.contains(dependency.fromClassId())
+                || !currentClassIds.contains(dependency.toClassId()));
+
         Path dbPath = resolveDbPath(root, lastCommit);
         Path stagedDb = dbPath.resolveSibling("." + dbPath.getFileName() + "."
                 + UUID.randomUUID() + ".tmp");
@@ -184,6 +230,15 @@ public class ProjectInitializer {
         metadata.put("indexed_at", Instant.now().toString());
         metadata.put("project_root", root.toString());
         metadata.put("last_commit", lastCommit != null ? lastCommit : "unknown");
+        metadata.put("indexed_worktree_fingerprint", initialWorktree.fingerprint());
+        metadata.put("indexed_worktree_dirty", Boolean.toString(initialWorktree.dirty()));
+        metadata.put("indexed_worktree_changed_files",
+                Integer.toString(initialWorktree.changes().size()));
+        metadata.put("indexed_structure_fingerprint", initialWorktree.structuralFingerprint());
+        metadata.put("indexed_structural_changed_files",
+                Integer.toString(initialWorktree.structuralChanges().size()));
+        metadata.put("compiled_before_index", Boolean.toString(compiledBeforeIndex));
+        metadata.put("structure_scope", "compiled_snapshot");
         metadata.put("framework", isSpring ? "Spring" : "CDI");
         metadata.put("dependency_index", depResult.status().name().toLowerCase());
         metadata.put("dependency_index_detail", depResult.detail());
@@ -193,10 +248,15 @@ public class ProjectInitializer {
             IndexWriter.writeAll(jdbi, classes, remappedBeans,
                     persisted.injectionPoints(), remappedDeps, metadata,
                     externalDeps, remappedProblems,
-                    gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles());
-            if (!headMatches(root, initialHead)) {
+                    gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
+                    inventory.files());
+            boolean headChanged = !headMatches(root, initialHead);
+            boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint());
+            if (headChanged || worktreeChanged) {
                 deleteDatabaseArtifacts(stagedDb);
-                System.err.println("[quill] Git HEAD changed before index publication; retry update.");
+                String cause = headChanged ? "Git HEAD" : "Worktree";
+                System.err.println("[quill] " + cause
+                        + " changed before index publication; retry update.");
                 return false;
             }
             atomicMove(stagedDb, dbPath);
@@ -221,6 +281,7 @@ public class ProjectInitializer {
         if (!indexOnly) {
             ensureClaudeMd(root);
         }
+        ensureCodexConfig(root, indexOnly);
 
         String depStatus = depResult.status() == DependencyIndexer.Status.COMPLETE
                 ? "" : " [deps: " + depResult.status().name().toLowerCase() + "]";
@@ -229,6 +290,11 @@ public class ProjectInitializer {
                 + (gitResult.isEmpty() ? "" : ", " + gitResult.commits().size() + " git commits")
                 + depStatus + ".");
         return true;
+    }
+
+    static CodexConfigInstaller.Result ensureCodexConfig(Path root, boolean indexOnly) {
+        if (indexOnly) return CodexConfigInstaller.Result.SKIPPED;
+        return CodexConfigInstaller.installIfPresent(root, QuillLauncher.detect());
     }
 
     static PersistedResolution remapForPersistence(
@@ -280,23 +346,76 @@ public class ProjectInitializer {
     }
 
     static List<Path> findClassesDirs(Path root) {
+        return findClassesDirs(root, false);
+    }
+
+    private static List<Path> findClassesDirs(Path root, boolean refreshGradleClasspath) {
+        try {
+            BuildSystem buildSystem = BuildSystem.detect(root);
+            if (buildSystem == BuildSystem.MAVEN) {
+                MavenProjectDiscovery.Discovery discovery = MavenProjectDiscovery.discover(root);
+                LinkedHashSet<Path> result = new LinkedHashSet<>();
+                discovery.moduleDirectories().stream()
+                        .map(module -> module.resolve("target/classes"))
+                        .filter(ProjectInitializer::containsClassFiles)
+                        .forEach(result::add);
+                if (!discovery.complete()) {
+                    result.addAll(scanClassesDirs(root, path -> path.endsWith("target/classes")));
+                }
+                return List.copyOf(result);
+            }
+
+            GradleProjectDiscovery.Discovery discovery = refreshGradleClasspath
+                    ? GradleProjectDiscovery.discoverAndWriteClasspath(root)
+                    : GradleProjectDiscovery.discover(root);
+            LinkedHashSet<Path> result = discovery.classesDirectories().stream()
+                    .filter(ProjectInitializer::containsClassFiles)
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            if (!discovery.complete()) {
+                result.addAll(scanClassesDirs(root, ProjectInitializer::isGradleMainClassesDir));
+            }
+            return List.copyOf(result);
+        } catch (IllegalArgumentException ignored) {
+            // Tests and legacy layouts without a build marker use the generic scan.
+        }
+        return scanClassesDirs(root, ProjectInitializer::isMainClassesDir);
+    }
+
+    private static List<Path> scanClassesDirs(
+            Path root, java.util.function.Predicate<Path> outputDirectory) {
         try (Stream<Path> walk = Files.walk(root)) {
             return walk
                     .filter(Files::isDirectory)
-                    .filter(ProjectInitializer::isMainClassesDir)
+                    .filter(outputDirectory)
                     .filter(path -> !hasPathSegment(path, ".gradle"))
                     .filter(path -> !hasPathSegment(path, "buildSrc"))
-                    .filter(p -> {
-                        try (Stream<Path> classFiles = Files.walk(p)) {
-                            return classFiles.anyMatch(f -> f.toString().endsWith(".class"));
-                        } catch (IOException e) {
-                            return false;
-                        }
-                    })
+                    .filter(ProjectInitializer::containsClassFiles)
                     .toList();
         } catch (IOException e) {
             return List.of();
         }
+    }
+
+    private static boolean containsClassFiles(Path directory) {
+        if (!Files.isDirectory(directory)) return false;
+        try (Stream<Path> classFiles = Files.walk(directory)) {
+            return classFiles.anyMatch(file -> file.toString().endsWith(".class"));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static List<Path> findSourceRoots(List<Path> moduleDirectories) {
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
+        for (Path module : moduleDirectories) {
+            for (Path candidate : List.of(
+                    module.resolve("src/main/java"),
+                    module.resolve("target/generated-sources/annotations"),
+                    module.resolve("build/generated/sources/annotationProcessor/java/main"))) {
+                if (Files.isDirectory(candidate)) roots.add(candidate.toAbsolutePath().normalize());
+            }
+        }
+        return List.copyOf(roots);
     }
 
     private static boolean hasPathSegment(Path path, String segment) {
@@ -308,6 +427,10 @@ public class ProjectInitializer {
 
     private static boolean isMainClassesDir(Path path) {
         if (path.endsWith("target/classes")) return true;
+        return isGradleMainClassesDir(path);
+    }
+
+    private static boolean isGradleMainClassesDir(Path path) {
         Path relative;
         try {
             relative = path.toAbsolutePath().normalize();
@@ -328,8 +451,11 @@ public class ProjectInitializer {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             BuildSystem buildSystem = BuildSystem.detect(root);
+            Map<Path, Path> classDirectoryOwners =
+                    DependencyIndexer.mapClassDirectoriesToModules(root, buildSystem, classesDirs);
             updateDigest(digest, "head", GitAnalyzer.resolveHead(root));
-            updateDigest(digest, "build", DependencyIndexer.buildFingerprint(root));
+            updateDigest(digest, "build", DependencyIndexer.buildFingerprint(
+                    root, buildSystem, classDirectoryOwners.values()));
 
             for (Path classesDir : classesDirs.stream()
                     .map(path -> path.toAbsolutePath().normalize())
@@ -347,7 +473,11 @@ public class ProjectInitializer {
                     updateDigest(digest, "classesError", e.getClass().getName());
                 }
 
-                Path moduleDir = buildSystem.moduleDir(classesDir);
+                Path moduleDir = classDirectoryOwners.get(classesDir);
+                if (moduleDir == null) {
+                    updateDigest(digest, "classpathMissing", classesDir.toString());
+                    continue;
+                }
                 Path classpathFile = buildSystem.classpathFile(moduleDir);
                 if (Files.isRegularFile(classpathFile)) {
                     updateFileIdentity(digest, root, classpathFile);
@@ -369,6 +499,11 @@ public class ProjectInitializer {
 
     static boolean headMatches(Path root, String expectedHead) {
         return java.util.Objects.equals(expectedHead, GitAnalyzer.resolveHead(root));
+    }
+
+    static boolean worktreeMatches(Path root, String expectedFingerprint) {
+        return java.util.Objects.equals(expectedFingerprint,
+                WorktreeInspector.inspect(root).fingerprint());
     }
 
     private static void updateFileIdentity(MessageDigest digest, Path base, Path file) {

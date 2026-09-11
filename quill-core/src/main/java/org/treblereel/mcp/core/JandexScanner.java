@@ -36,6 +36,14 @@ public final class JandexScanner {
     }
 
     public static ScanResult scan(List<Path> classesDirs) {
+        List<Path> sourceRoots = classesDirs.stream()
+                .map(JandexScanner::sourceRoot)
+                .filter(Files::isDirectory)
+                .toList();
+        return scan(classesDirs, sourceRoots);
+    }
+
+    public static ScanResult scan(List<Path> classesDirs, List<Path> sourceRoots) {
         Indexer indexer = new Indexer();
         for (Path classesDir : classesDirs) {
             try (Stream<Path> files = Files.walk(classesDir)) {
@@ -51,11 +59,6 @@ public final class JandexScanner {
             }
         }
         Index index = indexer.complete();
-
-        List<Path> sourceRoots = classesDirs.stream()
-                .map(JandexScanner::sourceRoot)
-                .filter(Files::isDirectory)
-                .toList();
 
         return new ScanResult(index, extractClasses(index, sourceRoots));
     }
@@ -103,7 +106,10 @@ public final class JandexScanner {
                     sourceFile,
                     0,
                     isBean(ci),
-                    sourceTokens
+                    sourceTokens,
+                    null,
+                    sourceFile == null ? "orphan_output" : "source",
+                    "current"
             ));
         }
         return result;

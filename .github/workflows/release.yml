@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  jar:
+  jvm:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -32,16 +32,6 @@ jobs:
           ./mvnw -B org.codehaus.mojo:versions-maven-plugin:2.19.1:set \
             -DnewVersion="${release_version}" -DprocessAllModules=true -DgenerateBackupPoms=false
       - run: ./mvnw -B clean verify -DskipITs=false
-      - name: Prepare runnable JAR
-        run: |
-          mkdir -p dist
-          cp quill-app/target/quill-app-*-all.jar dist/quill.jar
-          sha256sum dist/quill.jar > dist/quill.jar.sha256
-      - uses: actions/upload-artifact@v4
-        with:
-          name: quill-jar
-          path: dist/
-          if-no-files-found: error
 
   native:
     strategy:
@@ -108,7 +98,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [jar, native]
+    needs: [jvm, native]
     runs-on: ubuntu-latest
     permissions:
       contents: write

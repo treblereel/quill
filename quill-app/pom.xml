@@ -159,6 +159,10 @@
                             <buildArgs>
                                 <buildArg>-Os</buildArg>
                                 <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                                <!-- sqlite-jdbc loads its bundled native library through
+                                     System.load, so the generated executable must grant
+                                     native access to classpath code. -->
+                                <buildArg>--enable-native-access=ALL-UNNAMED</buildArg>
                             </buildArgs>
                         </configuration>
                     </plugin>

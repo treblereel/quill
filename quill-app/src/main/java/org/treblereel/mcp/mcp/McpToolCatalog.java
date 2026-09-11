@@ -1,6 +1,6 @@
 package org.treblereel.mcp.mcp;
 
-import io.modelcontextprotocol.server.McpServerFeatures.SyncToolSpecification;
+import io.modelcontextprotocol.server.McpServerFeatures.AsyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -13,28 +13,42 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.RejectedExecutionException;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Scheduler;
 
 final class McpToolCatalog {
 
     private McpToolCatalog() {}
 
-    static List<SyncToolSpecification> create(QuillTools tools) {
+    static List<AsyncToolSpecification> create(
+            QuillTools tools, Scheduler toolScheduler, Scheduler responseScheduler) {
         return java.util.Arrays.stream(QuillTools.class.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(Tool.class))
                 .sorted(Comparator.comparing(Method::getName))
-                .map(method -> specification(tools, method))
+                .map(method -> specification(tools, method, toolScheduler, responseScheduler))
                 .toList();
     }
 
-    private static SyncToolSpecification specification(QuillTools tools, Method method) {
+    private static AsyncToolSpecification specification(
+            QuillTools tools, Method method, Scheduler toolScheduler,
+            Scheduler responseScheduler) {
         Tool annotation = method.getAnnotation(Tool.class);
         McpSchema.Tool tool = McpSchema.Tool.builder(method.getName(), inputSchema(method))
                 .description(annotation.description())
                 .build();
 
-        return SyncToolSpecification.builder()
+        return AsyncToolSpecification.builder()
                 .tool(tool)
-                .callHandler((exchange, request) -> invoke(tools, method, request.arguments()))
+                .callHandler((exchange, request) -> Mono
+                        .fromCallable(() -> invoke(tools, method, request.arguments()))
+                        .subscribeOn(toolScheduler)
+                        .onErrorResume(RejectedExecutionException.class,
+                                ignored -> Mono.just(result("Server busy; retry later", true)))
+                        // The SDK stdio transport uses a unicast outbound sink whose concurrent
+                        // tryEmitNext calls may fail. Serialize completion signals while keeping
+                        // the actual tool work parallel.
+                        .publishOn(responseScheduler))
                 .build();
     }
 

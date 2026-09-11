@@ -7,7 +7,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -62,6 +67,47 @@ class McpStdioIT {
     }
 
     @Test
+    void mcpStdioHandlesPipelinedToolCalls() throws Exception {
+        Path appJar = resolveAppJar();
+        Assumptions.assumeTrue(Files.exists(appJar),
+                "Skipping: quill executable JAR not found (run 'mvn package -DskipTests' first)");
+
+        assertPipelinedToolCalls(List.of("java", "-jar", appJar.toString()));
+    }
+
+    @Test
+    void nativeMcpHandlesPipelinedToolCalls() throws Exception {
+        Path nativeImage = resolveNativeImage();
+        Assumptions.assumeTrue(Files.isExecutable(nativeImage),
+                "Skipping: native image not found (build with -Pnative)");
+
+        assertPipelinedToolCalls(List.of(nativeImage.toString()));
+    }
+
+    @Test
+    void mcpStdioHandlesPipelinedToolCallsAcrossProjects() throws Exception {
+        Path appJar = resolveAppJar();
+        Assumptions.assumeTrue(Files.exists(appJar));
+        prepareGradleProject();
+        try {
+            assertPipelinedToolCalls(
+                    List.of("java", "-jar", appJar.toString()),
+                    List.of(PROJECT_ROOT, GRADLE_PROJECT));
+        } finally {
+            deleteTree(GRADLE_PROJECT.resolve(".quill"));
+        }
+    }
+
+    @Test
+    void mcpStdioReturnsBusyErrorsInsteadOfDroppingBurstRequests() throws Exception {
+        Path appJar = resolveAppJar();
+        Assumptions.assumeTrue(Files.exists(appJar));
+
+        assertPipelinedToolCalls(
+                List.of("java", "-jar", appJar.toString()), List.of(PROJECT_ROOT), 300);
+    }
+
+    @Test
     void gradleProjectWorksThroughJarMcp() throws Exception {
         Path appJar = resolveAppJar();
         Assumptions.assumeTrue(Files.exists(appJar));
@@ -96,6 +142,15 @@ class McpStdioIT {
                 .directory(projectRoot.toFile())
                 .redirectErrorStream(false);
         Process proc = pb.start();
+        ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+        Thread stderrReader = new Thread(() -> {
+            try {
+                proc.getErrorStream().transferTo(stderr);
+            } catch (IOException ignored) {
+                // The stream is closed when the test terminates the server process.
+            }
+        }, "quill-test-stderr");
+        stderrReader.start();
 
         try (BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()));
              BufferedReader stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
@@ -150,7 +205,102 @@ class McpStdioIT {
         } finally {
             proc.destroyForcibly();
             proc.waitFor(5, TimeUnit.SECONDS);
+            stderrReader.join(TimeUnit.SECONDS.toMillis(5));
         }
+
+        String stderrText = stderr.toString(java.nio.charset.StandardCharsets.UTF_8);
+        assertFalse(stderrText.contains("restricted method"), stderrText);
+    }
+
+    private void assertPipelinedToolCalls(List<String> launcher) throws Exception {
+        assertPipelinedToolCalls(launcher, List.of(PROJECT_ROOT), 0);
+    }
+
+    private void assertPipelinedToolCalls(
+            List<String> launcher, List<Path> projectRoots) throws Exception {
+        assertPipelinedToolCalls(launcher, projectRoots, 0);
+    }
+
+    private void assertPipelinedToolCalls(
+            List<String> launcher, List<Path> projectRoots, int burstRequests) throws Exception {
+        List<String> command = new ArrayList<>(launcher);
+        command.add("--mcp");
+        for (Path projectRoot : projectRoots) {
+            command.add("--project");
+            command.add(projectRoot.toString());
+        }
+
+        ProcessBuilder processBuilder = new ProcessBuilder(command)
+                .directory(PROJECT_ROOT.toFile())
+                .redirectErrorStream(false);
+        if (burstRequests > 0) {
+            processBuilder.environment().put("QUILL_MCP_MAX_CONCURRENCY", "1");
+            processBuilder.environment().put("QUILL_MCP_MAX_QUEUED_PER_WORKER", "1");
+        }
+        Process proc = processBuilder.start();
+        ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+        Thread stderrReader = Thread.startVirtualThread(() -> {
+            try {
+                proc.getErrorStream().transferTo(stderr);
+            } catch (IOException ignored) {
+                // Process shutdown closes the stream.
+            }
+        });
+
+        try (BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()));
+             BufferedReader stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
+            sendRequest(stdin, 1, "initialize", """
+                    {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"pipeline-test","version":"1"}}""");
+            assertNotNull(readResponse(stdout, 1).get("result"));
+            sendNotification(stdin, "notifications/initialized", "{}");
+
+            Map<Integer, String> requests = new LinkedHashMap<>();
+            requests.put(10, "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*Service\",\"limit\":10}}");
+            requests.put(11, "{\"name\":\"get_overview\",\"arguments\":{}}");
+            requests.put(12, "{\"name\":\"get_dependencies\",\"arguments\":{\"target\":\"GreetingService\"}}");
+            requests.put(13, "{\"name\":\"find_git_hotspots\",\"arguments\":{\"limit\":5}}");
+            requests.put(14, "{\"name\":\"search_classes\",\"arguments\":{\"unexpected\":true}}");
+            requests.put(15, "{\"name\":\"list_cdi_beans\",\"arguments\":{\"limit\":5}}");
+            requests.put(16, "{\"name\":\"get_recent_changes\",\"arguments\":{\"commits\":3}}");
+            requests.put(17, "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*\",\"limit\":5}}");
+            if (projectRoots.size() > 1) {
+                requests.put(18, "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*\",\"limit\":5,\"project\":\"basic-cdi\"}}");
+                requests.put(19, "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*\",\"limit\":5,\"project\":\"gradle-basic\"}}");
+            }
+            for (int i = 0; i < burstRequests; i++) {
+                requests.put(100 + i,
+                        "{\"name\":\"find_git_hotspots\",\"arguments\":{\"limit\":5}}");
+            }
+
+            for (var request : requests.entrySet()) {
+                writeRequest(stdin, request.getKey(), "tools/call", request.getValue());
+            }
+            stdin.flush();
+
+            Map<Integer, JsonNode> responses = readResponses(
+                    stdout, new LinkedHashSet<>(requests.keySet()), 30_000);
+            assertEquals(requests.keySet(), responses.keySet(),
+                    "Every pipelined request must receive exactly one response");
+            for (int id : requests.keySet()) {
+                assertNotNull(responses.get(id).get("result"), "Missing result for id=" + id);
+            }
+            assertTrue(responses.get(14).path("result").path("isError").asBoolean(),
+                    "One invalid request must not prevent other responses");
+            if (burstRequests > 0) {
+                boolean busy = responses.entrySet().stream()
+                        .filter(entry -> entry.getKey() >= 100)
+                        .map(Map.Entry::getValue)
+                        .anyMatch(response -> response.path("result").path("isError").asBoolean()
+                                && response.path("result").path("content").get(0)
+                                        .path("text").asText().contains("Server busy"));
+                assertTrue(busy, "A saturated bounded queue must return an explicit busy error");
+            }
+        } finally {
+            proc.destroyForcibly();
+            proc.waitFor(5, TimeUnit.SECONDS);
+            stderrReader.join(TimeUnit.SECONDS.toMillis(5));
+        }
+        assertFalse(stderr.toString().contains("restricted method"), stderr.toString());
     }
 
     private void prepareGradleProject() throws Exception {
@@ -228,10 +378,17 @@ class McpStdioIT {
     }
 
     private void sendRequest(BufferedWriter stdin, int id, String method, String params) throws IOException {
-        String msg = String.format("{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"%s\",\"params\":%s}", id, method, params);
+        writeRequest(stdin, id, method, params);
+        stdin.flush();
+    }
+
+    private void writeRequest(BufferedWriter stdin, int id, String method, String params)
+            throws IOException {
+        String msg = String.format(
+                "{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"%s\",\"params\":%s}",
+                id, method, params);
         stdin.write(msg);
         stdin.newLine();
-        stdin.flush();
     }
 
     private void sendNotification(BufferedWriter stdin, String method, String params) throws IOException {
@@ -269,6 +426,47 @@ class McpStdioIT {
             }
         }
         throw new IOException("Timed out waiting for response id=" + expectedId);
+    }
+
+    private Map<Integer, JsonNode> readResponses(
+            BufferedReader stdout, Set<Integer> expectedIds, long timeoutMillis) throws IOException {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        Map<Integer, JsonNode> responses = new HashMap<>();
+        while (System.currentTimeMillis() < deadline && responses.size() < expectedIds.size()) {
+            if (!stdout.ready()) {
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Interrupted while waiting for pipelined responses", e);
+                }
+                continue;
+            }
+            String line = stdout.readLine();
+            if (line == null) throw new IOException("Process stdout closed unexpectedly");
+            line = line.trim();
+            if (line.isEmpty()) continue;
+            JsonNode response;
+            try {
+                response = JSON.readTree(line);
+            } catch (Exception e) {
+                throw new IOException("Non-JSON data on stdout (MCP transport violation): " + line, e);
+            }
+            if (!response.has("id") || !response.get("id").canConvertToInt()) continue;
+            int id = response.get("id").asInt();
+            if (!expectedIds.contains(id)) continue;
+            if (responses.putIfAbsent(id, response) != null) {
+                throw new IOException("Duplicate response id=" + id);
+            }
+        }
+        if (responses.size() != expectedIds.size()) {
+            Set<Integer> missing = new LinkedHashSet<>(expectedIds);
+            missing.removeAll(responses.keySet());
+            throw new IOException("Timed out waiting for pipelined response ids=" + missing);
+        }
+        Map<Integer, JsonNode> ordered = new LinkedHashMap<>();
+        for (int id : expectedIds) ordered.put(id, responses.get(id));
+        return ordered;
     }
 
     private Path resolveAppJar() throws IOException {

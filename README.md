@@ -4,8 +4,9 @@ Pre-computed codebase intelligence for AI coding agents. Quill indexes your Java
 
 ## Prerequisites
 
-- Java 21+
-- Maven or Gradle; Quill prefers `mvnw`/`gradlew` and falls back to the tool on `PATH`
+- A Quill native executable for your operating system
+- The JDK and Maven or Gradle required by the indexed project when compilation is
+  needed; Quill prefers `mvnw`/`gradlew` and falls back to the tool on `PATH`
 
 ## Quick Start
 
@@ -17,9 +18,9 @@ cd /path/to/your/project
 # ./gradlew classes            # Gradle
 
 # 2. Initialize the Quill index (the current directory is used automatically)
-java -jar /path/to/quill-app-1.0.0-SNAPSHOT-all.jar init
+/path/to/quill init
 
-# 3. Add Quill as an MCP server in your AI tool's config (.mcp.json, etc.)
+# 3. Connect Quill to Claude Code or Codex (see below)
 ```
 
 ## How It Works
@@ -33,7 +34,18 @@ stays consistent across branch switches.
 
 **Important:** Quill indexes compiled bytecode, not source code. `quill init` compiles
 when no bytecode exists; use `quill update --compile` when source changes must be
-compiled before refreshing an existing index.
+compiled before refreshing an existing index. Every MCP response reports the indexed
+and current commit plus worktree freshness in `_meta`. Dirty and untracked files are
+also exposed as a live overlay by `find_git_hotspots`. Changes to Java sources,
+resources, generated sources, or Maven/Gradle build inputs mark structural answers
+stale until the project is compiled and the index is refreshed; documentation-only
+changes remain visible without invalidating the bytecode graph.
+
+The stdio MCP server accepts pipelined read-only tool calls and executes up to four
+concurrently. JSON-RPC responses may arrive out of order and are correlated by `id`;
+response writes remain serialized so stdout always contains complete JSON messages.
+`QUILL_MCP_MAX_CONCURRENCY` and `QUILL_MCP_MAX_QUEUED_PER_WORKER` can override the
+defaults for constrained or unusually large local environments.
 
 ## Commands
 
@@ -50,36 +62,154 @@ compiled before refreshing an existing index.
 Once indexed, Quill exposes these tools via MCP:
 
 - **search_classes** — find classes by wildcard pattern
-- **get_dependencies** — fan-in/fan-out for a class
+- **get_dependencies** — dependencies for a class, addressable by FQCN or source path
 - **assess_change_risk** — risk score based on coupling, churn, bus factor
 - **get_overview** — project summary (class/bean counts, architecture hubs, problems)
 - **list_beans** — filter beans by scope, kind, qualifier (CDI and Spring)
 - **list_injection_points** — injection resolution status for a bean
-- **find_git_hotspots** — most frequently changed files
+- **find_git_hotspots** — current hotspots plus a live dirty-worktree overlay; deleted
+  historical paths are opt-in with `include_historical`
 - **find_co_changed_files** — files that change together (hidden coupling)
 - **list_external_dependencies** — third-party library usage
 
+## Connect Quill to Claude Code or Codex
+
+Initialize the project once before connecting an MCP client:
+
+```bash
+/absolute/path/to/quill init --project /absolute/path/to/project
+```
+
+Quill is a local stdio MCP server. The client starts it on demand and communicates
+with it over stdin/stdout; you do not need to run a daemon. Absolute paths are
+recommended because an MCP client's process working directory is not guaranteed.
+
+### Claude Code
+
+Add Quill for the current project (the default `local` scope keeps the setting
+private to your machine):
+
+```bash
+cd /absolute/path/to/project
+claude mcp add --scope local quill -- \
+  /absolute/path/to/quill --mcp --project /absolute/path/to/project
+```
+
+For a team-shared setup, add this `.mcp.json` to the project root. Put `quill` on
+`PATH`, or set `QUILL_BIN` before starting Claude Code:
+
+```json
+{
+  "mcpServers": {
+    "quill": {
+      "type": "stdio",
+      "command": "${QUILL_BIN:-quill}",
+      "args": ["--mcp", "--project", "${CLAUDE_PROJECT_DIR:-.}"]
+    }
+  }
+}
+```
+
+Check the connection with `claude mcp list` or `/mcp` inside Claude Code. Claude
+Code asks for approval before starting a project-scoped server for the first time.
+
+### Codex
+
+Add Quill to the user configuration from the command line:
+
+```bash
+codex mcp add quill -- \
+  /absolute/path/to/quill --mcp --project /absolute/path/to/project
+```
+
+Alternatively, add a project-scoped entry to `.codex/config.toml`:
+
+```toml
+[mcp_servers.quill]
+command = "/absolute/path/to/quill"
+args = ["--mcp"]
+cwd = "/absolute/path/to/project"
+```
+
+When `.codex/config.toml` already exists, `quill init` adds this section
+automatically. A native launch records its executable path; development runs from a
+JAR fall back to `quill` from `PATH`, keeping the generated configuration binary-only.
+Other settings are preserved, repeated initialization is a no-op, and an existing
+`mcp_servers.quill` section is never overwritten. Quill does not create a Codex
+configuration file implicitly.
+
+Here `cwd` lets Quill discover the project automatically, so `--project` is not
+needed. Project-scoped configuration is loaded only for trusted projects. Check the
+connection with `codex mcp list` or `/mcp` inside Codex.
+
+### Windows
+
+The same commands work in Windows PowerShell with `quill.exe`. Forward slashes keep
+paths easy to copy into JSON and TOML:
+
+```powershell
+claude mcp add --scope local quill -- C:/Tools/quill.exe --mcp --project C:/src/my-project
+codex mcp add quill -- C:/Tools/quill.exe --mcp --project C:/src/my-project
+```
+
+To serve more than one initialized project, repeat `--project` for each path. If a
+client explicitly starts Quill in the indexed project directory, `--project` may be
+omitted because Quill uses its current directory by default.
+
+If tools do not appear, run `quill status --project /absolute/path/to/project`, use
+an absolute executable path, and restart the client session after changing its MCP
+configuration. See the official [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp)
+and [Codex MCP documentation](https://developers.openai.com/codex/mcp)
+for client-specific scopes and configuration options.
+
 ## Per-Commit Indexing
 
-Quill stores indexes as `.quill/{commit-hash}.db` with an LRU policy (max 5 indexes). When you switch branches, Quill serves the index matching the current HEAD. A stale warning is included in responses when the index doesn't match the exact commit.
+Quill stores indexes as `.quill/{commit-hash}.db` with an LRU policy (max 5 indexes).
+When you switch branches, Quill serves the index matching the current HEAD. Freshness
+is checked against both the commit and a fingerprint of relevant tracked, deleted and
+untracked worktree files. `_meta.structure_stale` and `_meta.stale_reasons` explain
+when the static graph no longer represents the checkout. `quill status` shows the same
+indexed/current commit and worktree state.
+
+Static dependency counts have explicit scope: `fan_in` and `fan_out` count unique
+current classes, while `incoming_edges` and `outgoing_edges` count reference
+occurrences. Responses also break counts down by `source` and `generated` origin.
+Unmatched stale class outputs are classified as `orphan_output` and excluded from the
+current graph. Git history remains queryable by its historical path without treating a
+deleted class as current code.
 
 Git hooks (post-commit, post-merge, post-checkout) are installed automatically. They
 run `update --compile`, keep the previous index if compilation fails, and prefer the
-absolute JAR/native launcher used during `quill init` before falling back to `quill`
+absolute launcher used during `quill init` before falling back to `quill`
 from `PATH`.
+
+### Maven projects
+
+Quill reads the reactor structure from `pom.xml` with Maven Model and recursively
+follows regular and profile-defined `<module>` entries. When it starts inside a
+module without `--project`, it selects the nearest containing aggregator; an
+explicit `--project` keeps the requested module or reactor root. Only modules with
+compiled main classes are indexed. If a raw POM cannot be read or a declared module
+is unavailable, Quill falls back to scanning `target/classes` so partially checked
+out and generated reactors remain usable. Maven itself is not embedded.
 
 ### Gradle projects
 
 Both Groovy and Kotlin DSL projects are supported, including multi-project builds.
 Quill locates the root through `settings.gradle[.kts]`, runs `gradlew` when present,
-and injects a temporary init script to read each Java module's `runtimeClasspath`.
-It does not modify project build files or embed the Gradle Tooling API. Dependency
-classpath caches are written under each module's `build/` directory and invalidated
+and injects a temporary init script to export the evaluated Java project directories,
+main source-set outputs, and `runtimeClasspath`. This respects dynamic settings and
+custom `projectDir`/`buildDirectory` mappings while excluding stale outputs from
+removed projects.
+Quill does not modify project build files or embed the Gradle Tooling API. Discovery
+and dependency classpath caches are written under `build/` directories and invalidated
 when Gradle build files, version catalogs, wrapper properties, or `buildSrc` change.
-On Windows it uses `gradlew.bat`; Maven projects use `mvnw.cmd`. If a wrapper is
-absent, Quill falls back to `gradle` or `mvn` from `PATH`.
+On Windows it uses `gradlew.bat`; Maven projects use `mvnw.cmd`. If a wrapper is absent,
+Quill falls back to `gradle` or `mvn` from `PATH`.
 
 ## Building Quill
+
+Building Quill requires JDK 21 or newer.
 
 ```bash
 ./mvnw clean package
@@ -89,12 +219,10 @@ java -jar quill-app/target/quill-app-1.0.0-SNAPSHOT-all.jar --help
 Windows PowerShell equivalents are `./mvnw.cmd clean package` and the same
 `java -jar ...` command.
 
-The build produces a thin library JAR and a runnable shaded `-all.jar` (about 28 MB).
-Keeping them separate makes repeated Maven builds reproducible and avoids shading an
-already shaded artifact. To use the runnable JAR as a local MCP
-server, configure the command as `java`, pass `-jar` and the absolute JAR path as
-arguments, and set the MCP process working directory to the indexed project. Start
-it manually with `--mcp`; the current directory is registered automatically.
+The build produces a thin library JAR and a runnable shaded `-all.jar` for development
+and diagnostics. Keeping them separate makes repeated Maven builds reproducible and
+avoids shading an already shaded artifact. Quill releases are distributed as native
+executables, so end-user MCP configuration should point to `quill` or `quill.exe`.
 
 ### Native executable
 
@@ -113,6 +241,6 @@ On Windows the native output is `quill-app\target\quill.exe`.
 ### Releases
 
 Pushing a tag such as `v1.0.0` runs the complete JVM and native test suites and
-publishes a GitHub release containing `quill.jar`, Linux x86-64, macOS Apple
-Silicon, and Windows x86-64 native archives, plus SHA-256 checksums. The release version is derived
-from the tag and is reported consistently by both the CLI and MCP server.
+publishes a GitHub release containing Linux x86-64, macOS Apple Silicon, and Windows
+x86-64 native archives, plus SHA-256 checksums. The release version is derived from
+the tag and is reported consistently by both the CLI and MCP server.

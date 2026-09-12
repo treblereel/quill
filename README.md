@@ -63,7 +63,8 @@ Once indexed, Quill exposes these tools via MCP:
 
 - **search_classes** — find classes by wildcard pattern
 - **get_dependencies** — dependencies for a class, addressable by FQCN or source path
-- **assess_change_risk** — risk score based on coupling, churn, bus factor
+- **assess_change_risk** — class blast radius or file-level risk based on file
+  criticality, coupling, churn, and bus factor; accepts class names and arbitrary paths
 - **get_overview** — project summary (class/bean counts, architecture hubs, problems)
 - **list_beans** — filter beans by scope, kind, qualifier (CDI and Spring)
 - **list_injection_points** — injection resolution status for a bean

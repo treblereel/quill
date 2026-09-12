@@ -384,6 +384,7 @@ class QuillToolsTest {
         JsonNode root = JSON.readTree(result);
 
         assertEquals("org.acme.StripePaymentService", root.get("target").asText());
+        assertEquals("class", root.get("target_type").asText());
         assertTrue(root.has("risk_score"));
         assertTrue(root.get("risk_score").asDouble() >= 0);
         assertTrue(root.get("risk_score").asDouble() <= 10);
@@ -406,6 +407,11 @@ class QuillToolsTest {
         assertFalse(recommendation.isEmpty());
 
         assertTrue(root.has("_meta"));
+
+        JsonNode sourcePath = JSON.readTree(tools.getRisk(jdbi,
+                "src/main/java/org/acme/StripePaymentService.java"));
+        assertEquals("class", sourcePath.path("target_type").asText());
+        assertEquals("org.acme.StripePaymentService", sourcePath.path("target").asText());
     }
 
     @Test
@@ -681,6 +687,35 @@ class QuillToolsTest {
         assertTrue(hotspots.path("worktree_changes").toString()
                 .contains("javax.annotation.processing.Processor"));
         assertTrue(hotspots.path("worktree_changes").toString().contains("modified"));
+
+        JsonNode trackedRisk = JSON.readTree(tools.getRisk(dirtyDb,
+                "src/main/resources/META-INF/services/javax.annotation.processing.Processor"));
+        assertEquals("file", trackedRisk.path("target_type").asText());
+        assertEquals("service_descriptor", trackedRisk.path("kind").asText());
+        assertEquals("modified", trackedRisk.path("worktree_status").asText());
+        assertTrue(trackedRisk.path("risk_score").asDouble() >= 6.0);
+        assertTrue(trackedRisk.path("signals").has("file_criticality"));
+        assertTrue(trackedRisk.path("signals").has("git_churn"));
+        assertFalse(trackedRisk.path("signals").has("fan_in"));
+
+        Path untrackedService = repository.resolve(
+                "src/main/resources/META-INF/services/example.NewProvider");
+        Files.writeString(untrackedService, "example.Provider\n");
+        JsonNode untrackedRisk = JSON.readTree(tools.getRisk(dirtyDb,
+                "src/main/resources/META-INF/services/example.NewProvider"));
+        assertEquals("file", untrackedRisk.path("target_type").asText());
+        assertEquals("untracked", untrackedRisk.path("worktree_status").asText());
+        assertEquals("CRITICAL", untrackedRisk.path("risk_level").asText());
+        assertEquals(10.0, untrackedRisk.path("risk_score").asDouble());
+        assertTrue(untrackedRisk.path("signals").path("git").path("note").asText()
+                .contains("No Git history"));
+
+        Files.writeString(repository.resolve("pom.xml"), "<project/>\n");
+        JsonNode buildRisk = JSON.readTree(tools.getRisk(dirtyDb, "./pom.xml"));
+        assertEquals("file", buildRisk.path("target_type").asText());
+        assertEquals("build_configuration", buildRisk.path("kind").asText());
+        assertEquals("CRITICAL", buildRisk.path("risk_level").asText());
+        assertEquals("untracked", buildRisk.path("worktree_status").asText());
     }
 
     @Test

@@ -583,7 +583,7 @@ public class ProjectInitializer {
 
             - **Searching classes:** `search_classes` — faster than grep, supports wildcard patterns (`*Service`, `*Strategy*`)
             - **Dependency analysis:** `get_dependencies` — what a class depends on and what depends on it
-            - **Risk assessment:** `assess_change_risk` — fan-in/out, git churn, bus factor, coupling → risk score
+            - **Risk assessment:** `assess_change_risk` — class blast radius or file risk from criticality, churn, bus factor, and coupling
             - **Project overview:** `get_overview` — call first to orient (class/bean counts, architecture hubs, problems)
             - **Git hotspots:** `find_git_hotspots` — most frequently changed files/classes
             - **Co-change analysis:** `find_co_changed_files` — files that change together (hidden coupling)

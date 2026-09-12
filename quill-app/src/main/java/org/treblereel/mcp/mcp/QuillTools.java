@@ -248,11 +248,11 @@ public class QuillTools {
         return forAllProjects(project.orElse(null), p -> searchClasses(p.jdbi(), pattern, clamp(limit.orElse(30), 1, 100)));
     }
 
-    @Tool(description = "Assess the risk of changing a specific class. Use before modifying a class to understand blast radius, change frequency, and bus factor. "
+    @Tool(description = "Assess the risk of changing a class or project file. Use before modifying code, build configuration, resources, service descriptors, or CI configuration. "
             + "Returns: {target, risk_score (0-10), risk_level (LOW/MEDIUM/HIGH/CRITICAL), "
-            + "signals: {fan_in, fan_out, git_churn, bus_factor, coupling: {value, edges?, breakdown?, score, weight, note}}, recommendation, _meta}")
+            + "target_type (class/file), signals: {fan_in?, fan_out?, file_criticality?, git_churn?, bus_factor?, coupling?: {value, edges?, breakdown?, score, weight, note}}, recommendation, _meta}")
     public String assess_change_risk(
-            @ToolArg(description = "Current class name (short or FQCN) or its project/repository source path") String target,
+            @ToolArg(description = "Class name (short or FQCN), or any project/repository file path") String target,
             @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> getRisk(p.jdbi(), target));
     }
@@ -863,9 +863,17 @@ public class QuillTools {
 
     String getRisk(Jdbi jdbi, String target) {
         var lookup = resolveClass(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
-        ClassRecord cls = lookup.cls();
+        if (lookup.error() != null) {
+            if ("Class not found".equals(lookup.error())) {
+                Optional<FileRiskTarget> file = resolveFileRiskTarget(jdbi, target);
+                if (file.isPresent()) return getFileRisk(jdbi, file.get());
+            }
+            return classLookupError(jdbi, lookup, target);
+        }
+        return getClassRisk(jdbi, lookup.cls());
+    }
 
+    private String getClassRisk(Jdbi jdbi, ClassRecord cls) {
         int fanIn = IndexReader.countDependents(jdbi, cls.id());
         int fanOut = IndexReader.countDependencies(jdbi, cls.id());
         int incomingEdges = IndexReader.countDependencyEdges(jdbi, cls.id(), true);
@@ -893,14 +901,12 @@ public class QuillTools {
                 + couplingScore * 0.15;
         score = Math.round(score * 10.0) / 10.0;
 
-        String level;
-        if (score >= 8) level = "CRITICAL";
-        else if (score >= 6) level = "HIGH";
-        else if (score >= 3) level = "MEDIUM";
-        else level = "LOW";
+        String level = riskLevel(score);
 
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
+        root.put("target_type", "class");
+        if (cls.sourceFile() != null) root.put("file", cls.sourceFile());
         root.put("risk_score", score);
         root.put("risk_level", level);
 
@@ -932,6 +938,260 @@ public class QuillTools {
 
         appendMeta(root, jdbi, cls.sourceTokens());
         return root.toString();
+    }
+
+    private record FileRiskTarget(String projectPath, String repositoryPath, String kind,
+            String origin, String lifecycle, String worktreeStatus) {}
+
+    private record FileCriticality(int score, String note) {}
+
+    private Optional<FileRiskTarget> resolveFileRiskTarget(Jdbi jdbi, String target) {
+        if (target == null || target.isBlank()) return Optional.empty();
+        String normalized = target.strip().replace('\\', '/');
+        while (normalized.startsWith("./")) normalized = normalized.substring(2);
+        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        WorktreeInspector.Snapshot worktree = worktreeSnapshot(metadata);
+
+        String projectPath = normalized;
+        String repositoryPath = normalized;
+        try {
+            Path supplied = Path.of(target).toAbsolutePath().normalize();
+            if (Path.of(target).isAbsolute()) {
+                String projectRootValue = metadata.get("project_root");
+                if (projectRootValue != null) {
+                    Path projectRoot = Path.of(projectRootValue).toAbsolutePath().normalize();
+                    if (supplied.startsWith(projectRoot)) {
+                        projectPath = normalizePath(projectRoot.relativize(supplied));
+                    }
+                }
+                if (worktree.repositoryRoot() != null && supplied.startsWith(worktree.repositoryRoot())) {
+                    repositoryPath = normalizePath(worktree.repositoryRoot().relativize(supplied));
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // The exact database/worktree lookup below still handles portable path strings.
+        }
+
+        Optional<FileRecord> indexed = IndexReader.findFileByPath(jdbi, projectPath);
+        if (indexed.isEmpty() && !repositoryPath.equals(projectPath)) {
+            indexed = IndexReader.findFileByPath(jdbi, repositoryPath);
+        }
+        if (indexed.isPresent()) {
+            FileRecord file = indexed.get();
+            String status = worktree.statusesByRepositoryPath().get(file.repositoryPath());
+            String lifecycle = status != null && status.equals("deleted")
+                    ? "deleted" : liveLifecycle(worktree, file.repositoryPath(), file.lifecycle());
+            String inferredKind = fileKind(file.projectPath());
+            return Optional.of(new FileRiskTarget(file.projectPath(), file.repositoryPath(),
+                    inferredKind.equals("file") ? file.kind() : inferredKind,
+                    file.origin(), lifecycle, status));
+        }
+
+        for (WorktreeInspector.Change change : worktree.changes()) {
+            if (change.projectPath().equals(projectPath)
+                    || change.repositoryPath().equals(repositoryPath)
+                    || change.repositoryPath().equals(projectPath)) {
+                return Optional.of(new FileRiskTarget(change.projectPath(), change.repositoryPath(),
+                        fileKind(change.projectPath()), fileOrigin(change.projectPath()),
+                        change.status().equals("deleted") ? "deleted" : "current",
+                        change.status()));
+            }
+        }
+
+        String gitPath = repositoryPath;
+        Optional<GitFileStats> stats = IndexReader.findFileStatsByPath(jdbi, gitPath);
+        if (stats.isEmpty() && !projectPath.equals(gitPath)) {
+            stats = IndexReader.findFileStatsByPath(jdbi, projectPath);
+            if (stats.isPresent()) gitPath = projectPath;
+        }
+        if (stats.isPresent()) {
+            return Optional.of(new FileRiskTarget(projectPath, gitPath, fileKind(projectPath),
+                    fileOrigin(projectPath), liveLifecycle(worktree, gitPath, "historical"), null));
+        }
+
+        String projectRootValue = metadata.get("project_root");
+        if (projectRootValue != null) {
+            try {
+                Path projectRoot = Path.of(projectRootValue).toAbsolutePath().normalize();
+                Path candidate = projectRoot.resolve(projectPath).normalize();
+                if (candidate.startsWith(projectRoot) && Files.isRegularFile(candidate)) {
+                    String liveRepositoryPath = worktree.repositoryRoot() != null
+                            && candidate.startsWith(worktree.repositoryRoot())
+                            ? normalizePath(worktree.repositoryRoot().relativize(candidate))
+                            : projectPath;
+                    return Optional.of(new FileRiskTarget(projectPath, liveRepositoryPath,
+                            fileKind(projectPath), fileOrigin(projectPath), "current", null));
+                }
+            } catch (RuntimeException ignored) {
+                // Invalid or inaccessible paths are reported through the regular lookup error.
+            }
+        }
+        return Optional.empty();
+    }
+
+    private String getFileRisk(Jdbi jdbi, FileRiskTarget file) {
+        Optional<GitFileStats> stats = IndexReader.findFileStatsByPath(jdbi, file.repositoryPath());
+        boolean hasFileHistory = stats.isPresent();
+        int churn = stats.map(GitFileStats::commitCount).orElse(0);
+        int authors = stats.map(GitFileStats::distinctAuthors).orElse(0);
+        List<CoChangeRecord> coChanges = hasFileHistory
+                ? IndexReader.findCoChangesByPath(jdbi, file.repositoryPath(), 100) : List.of();
+        int coupling = coChanges.size();
+
+        FileCriticality criticality = fileCriticality(file.projectPath());
+        double churnScore = scaleScore(churn, 2, 10, 30, 50);
+        double authorScore = busFactorScore(authors);
+        double couplingScore = scaleScore(coupling, 0, 3, 5, 8);
+        double criticalityWeight = hasFileHistory ? 0.50 : 1.0;
+        double score = criticality.score() * criticalityWeight;
+        if (hasFileHistory) {
+            score += churnScore * 0.20 + authorScore * 0.15 + couplingScore * 0.15;
+        }
+        score = Math.round(score * 10.0) / 10.0;
+        String level = riskLevel(score);
+
+        ObjectNode root = JSON.createObjectNode();
+        root.put("target", file.repositoryPath());
+        root.put("target_type", "file");
+        root.put("file", file.repositoryPath());
+        root.put("project_file", file.projectPath());
+        root.put("kind", file.kind());
+        root.put("origin", file.origin());
+        root.put("lifecycle", file.lifecycle());
+        if (file.worktreeStatus() != null) root.put("worktree_status", file.worktreeStatus());
+        root.put("risk_score", score);
+        root.put("risk_level", level);
+
+        ObjectNode signals = root.putObject("signals");
+        addSignal(signals, "file_criticality", criticality.score(), criticality.score(),
+                criticalityWeight, criticality.note());
+        if (hasFileHistory) {
+            addSignal(signals, "git_churn", churn, churnScore, 0.20,
+                    churn + " commits — " + (churn >= 30 ? "high" : churn >= 10 ? "moderate" : "low")
+                            + " change frequency");
+            addSignal(signals, "bus_factor", authors, authorScore, 0.15,
+                    authors <= 1 ? "only 1 author — single point of knowledge" : authors + " authors");
+            addSignal(signals, "coupling", coupling, couplingScore, 0.15,
+                    coupling + " files frequently co-change");
+            ArrayNode related = ((ObjectNode) signals.get("coupling")).putArray("top_files");
+            for (CoChangeRecord coChange : coChanges.stream().limit(10).toList()) {
+                ObjectNode node = related.addObject();
+                node.put("file", coChange.filePath());
+                node.put("co_change_count", coChange.coChangeCount());
+            }
+        } else {
+            ObjectNode git = signals.putObject("git");
+            git.put("note", "No Git history for this file; the score is based on file criticality only.");
+        }
+
+        root.put("recommendation", buildFileRecommendation(file, criticality, churn, authors,
+                coupling, level, hasFileHistory));
+        appendMeta(root, jdbi, 0);
+        return root.toString();
+    }
+
+    private static String liveLifecycle(
+            WorktreeInspector.Snapshot worktree, String repositoryPath, String fallback) {
+        if (worktree.repositoryRoot() == null) return fallback;
+        Path candidate = worktree.repositoryRoot().resolve(repositoryPath).normalize();
+        return candidate.startsWith(worktree.repositoryRoot()) && Files.exists(candidate)
+                ? "current" : fallback;
+    }
+
+    private static String normalizePath(Path path) {
+        return path.normalize().toString().replace('\\', '/');
+    }
+
+    private static String fileKind(String path) {
+        String normalized = path.replace('\\', '/');
+        String name = normalized.substring(normalized.lastIndexOf('/') + 1);
+        if (normalized.contains("/META-INF/services/") || normalized.startsWith("META-INF/services/")) {
+            return "service_descriptor";
+        }
+        if (isBuildConfiguration(normalized, name)) return "build_configuration";
+        if (normalized.startsWith(".github/workflows/") || normalized.contains("/.github/workflows/")) {
+            return "ci_configuration";
+        }
+        if (normalized.contains("/resources/") || normalized.startsWith("src/main/resources/")) {
+            return "resource";
+        }
+        if (name.endsWith(".java") || name.endsWith(".kt")) return "source";
+        if (normalized.startsWith("src/test/") || normalized.contains("/src/test/")) return "test";
+        if (name.endsWith(".md") || name.endsWith(".adoc")) return "documentation";
+        return "file";
+    }
+
+    private static String fileOrigin(String path) {
+        String normalized = path.replace('\\', '/');
+        if (normalized.contains("/generated/") || normalized.contains("/generated-sources/")) {
+            return "generated";
+        }
+        if (fileKind(path).equals("resource") || fileKind(path).equals("service_descriptor")) {
+            return "resource";
+        }
+        return "source";
+    }
+
+    private static FileCriticality fileCriticality(String path) {
+        String normalized = path.replace('\\', '/');
+        String name = normalized.substring(normalized.lastIndexOf('/') + 1);
+        if (normalized.contains("/META-INF/services/") || normalized.startsWith("META-INF/services/")) {
+            return new FileCriticality(10,
+                    "Service-provider registration and ordering can change compilation or runtime discovery globally");
+        }
+        if (isBuildConfiguration(normalized, name)) {
+            return new FileCriticality(9,
+                    "Build configuration can affect dependency resolution and every compiled module");
+        }
+        if (normalized.startsWith(".github/workflows/") || normalized.contains("/.github/workflows/")) {
+            return new FileCriticality(8,
+                    "CI configuration controls repository-wide validation and release behavior");
+        }
+        if (normalized.contains("/src/main/resources/") || normalized.startsWith("src/main/resources/")) {
+            return new FileCriticality(7,
+                    "Runtime resource changes can affect behavior without Java dependency edges");
+        }
+        if (normalized.startsWith("src/main/") || normalized.contains("/src/main/")) {
+            return new FileCriticality(5,
+                    "Production source without a resolved class graph has moderate structural impact");
+        }
+        if (normalized.startsWith("src/test/") || normalized.contains("/src/test/")) {
+            return new FileCriticality(3, "Test-only file has limited production blast radius");
+        }
+        if (name.endsWith(".md") || name.endsWith(".adoc")) {
+            return new FileCriticality(1, "Documentation does not directly affect compiled behavior");
+        }
+        return new FileCriticality(4, "General project file has no static class dependency graph");
+    }
+
+    private static boolean isBuildConfiguration(String path, String name) {
+        return name.equals("pom.xml") || name.equals("build.gradle")
+                || name.equals("build.gradle.kts") || name.equals("settings.gradle")
+                || name.equals("settings.gradle.kts") || name.equals("gradle.properties")
+                || name.equals("maven-wrapper.properties") || name.equals("gradle-wrapper.properties")
+                || path.startsWith("buildSrc/") || path.contains("/buildSrc/")
+                || path.startsWith("gradle/libs.versions.") || path.contains("/gradle/libs.versions.");
+    }
+
+    private static String buildFileRecommendation(FileRiskTarget file,
+            FileCriticality criticality, int churn, int authors, int coupling,
+            String level, boolean hasFileHistory) {
+        List<String> parts = new ArrayList<>();
+        parts.add(("HIGH".equals(level) || "CRITICAL".equals(level))
+                ? level + "-risk file change." : "MEDIUM".equals(level)
+                        ? "Moderate-risk file change." : "Low-risk file change.");
+        parts.add(criticality.note() + ".");
+        if (file.worktreeStatus() != null) {
+            parts.add("The file is currently " + file.worktreeStatus() + " in the worktree.");
+        }
+        if (hasFileHistory && authors <= 1) parts.add("Single author — ensure review coverage.");
+        if (churn >= 30) parts.add("Frequently changed — inspect get_file_history for recent context.");
+        if (coupling > 0) parts.add("Review the co-changing files before modification.");
+        if (!hasFileHistory) parts.add("No file history is available, so validate with focused tests.");
+        if ("service_descriptor".equals(file.kind())) {
+            parts.add("Verify provider membership and ordering with annotation-processing or ServiceLoader tests.");
+        }
+        return String.join(" ", parts);
     }
 
     String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {
@@ -983,6 +1243,13 @@ public class QuillTools {
         }
 
         return root.toString();
+    }
+
+    private static String riskLevel(double score) {
+        if (score >= 8) return "CRITICAL";
+        if (score >= 6) return "HIGH";
+        if (score >= 3) return "MEDIUM";
+        return "LOW";
     }
 
     private static double scaleScore(int value, int low, int mid, int high, int max) {

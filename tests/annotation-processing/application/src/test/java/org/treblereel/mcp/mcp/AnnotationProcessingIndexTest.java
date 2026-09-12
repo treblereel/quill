@@ -101,7 +101,21 @@ class AnnotationProcessingIndexTest {
     }
 
     @Test
-    void nativeMcpExposesConstructorOnlyDependency() throws Exception {
+    void assessesAnnotationProcessorServiceDescriptorAsHighRiskFile() throws Exception {
+        var result = JSON.readTree(new QuillTools().getRisk(jdbi,
+                "processor/src/main/resources/META-INF/services/"
+                        + "javax.annotation.processing.Processor"));
+
+        assertEquals("file", result.path("target_type").asText());
+        assertEquals("service_descriptor", result.path("kind").asText());
+        assertTrue(result.path("risk_score").asDouble() >= 6.0);
+        assertEquals(10, result.path("signals").path("file_criticality")
+                .path("value").asInt());
+        assertTrue(result.path("recommendation").asText().contains("provider membership"));
+    }
+
+    @Test
+    void nativeMcpExposesClassAndFileRisk() throws Exception {
         Path repositoryRoot = PROJECT_ROOT.getParent().getParent();
         Path nativeImage = repositoryRoot.resolve(BuildSystem.isWindows()
                 ? "quill-app/target/quill.exe" : "quill-app/target/quill");
@@ -140,6 +154,18 @@ class AnnotationProcessingIndexTest {
                     .path("text").asText());
             assertEquals(1, result.path("signals").path("fan_in").path("value").asInt());
             assertEquals(1, result.path("signals").path("fan_in").path("edges").asInt());
+
+            input.write("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\","
+                    + "\"params\":{\"name\":\"assess_change_risk\",\"arguments\":{"
+                    + "\"target\":\"processor/src/main/resources/META-INF/services/"
+                    + "javax.annotation.processing.Processor\"}}}\n");
+            input.flush();
+            var fileResponse = readResponse(output, 3);
+            var fileRisk = JSON.readTree(fileResponse.path("result").path("content").get(0)
+                    .path("text").asText());
+            assertEquals("file", fileRisk.path("target_type").asText());
+            assertEquals("service_descriptor", fileRisk.path("kind").asText());
+            assertTrue(fileRisk.path("risk_score").asDouble() >= 6.0);
         } finally {
             process.destroyForcibly();
             process.waitFor(5, TimeUnit.SECONDS);

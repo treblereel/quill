@@ -21,9 +21,11 @@ public class InitCommand implements Runnable {
         Path root = ProjectRootFinder.find(projectPath);
 
         System.out.println("Indexing project at " + root + " ...");
-        boolean success = ProjectInitializer.initialize(root, indexOnly);
-        if (!success) {
-            System.err.println("Initialization failed for " + root);
+        ProjectInitializer.InitializationResult result =
+                ProjectInitializer.initializeDetailed(root, indexOnly);
+        if (!result.successful()) {
+            System.err.println("[quill] " + result.diagnostic()
+                    + " (after " + result.elapsedMillis() + " ms)");
             System.exit(2);
         }
     }

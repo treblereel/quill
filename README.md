@@ -57,6 +57,14 @@ defaults for constrained or unusually large local environments.
 | `quill status` | Show current index status |
 | `quill clean` | Remove indexes, refs, and Quill-managed git hook blocks |
 
+Failed initialization reports a stable reason code such as `COMPILATION_FAILED`,
+`NO_COMPILED_CLASSES`, `HEAD_CHANGED`, `WORKTREE_CHANGED`, or
+`INDEX_PUBLICATION_FAILED`. The message includes actionable context: the build command
+and exit code, expected/current commit, current dirty paths, or the SQLite destination.
+Quill builds the database in a staging file and keeps the previous index unchanged if
+compilation, indexing, or publication fails. For `HEAD_CHANGED` or `WORKTREE_CHANGED`,
+finish the concurrent checkout/build/edit and run `quill update` again.
+
 ## MCP Tools
 
 Once indexed, Quill exposes these tools via MCP:

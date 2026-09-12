@@ -39,9 +39,12 @@ public class UpdateCommand implements Runnable {
     }
 
     private void updateLocked(Path root) {
-        if (compile && !ProjectInitializer.compileProject(root)) {
+        ProjectInitializer.CompilationResult compilation = compile
+                ? ProjectInitializer.compileProjectDetailed(root) : null;
+        if (compilation != null && !compilation.successful()) {
             throw new IllegalStateException(
-                    "Compilation failed; the existing index was left unchanged for " + root);
+                    "Compilation failed: " + compilation.message()
+                            + ". The existing index was left unchanged.");
         }
 
         Path existingDb = ProjectInitializer.findDbForHead(root);
@@ -87,8 +90,11 @@ public class UpdateCommand implements Runnable {
     }
 
     private void runInit(Path root) {
-        if (!ProjectInitializer.initializeLocked(root, true, compile)) {
-            throw new IllegalStateException("Initialization failed for " + root);
+        ProjectInitializer.InitializationResult result =
+                ProjectInitializer.initializeLockedDetailed(root, true, compile);
+        if (!result.successful()) {
+            throw new IllegalStateException(result.diagnostic()
+                    + " (after " + result.elapsedMillis() + " ms)");
         }
     }
 }

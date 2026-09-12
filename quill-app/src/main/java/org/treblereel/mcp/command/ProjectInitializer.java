@@ -49,6 +49,42 @@ import org.treblereel.mcp.model.InjectionPointRecord;
 
 public class ProjectInitializer {
 
+    public enum FailureReason {
+        LOCK_FAILED,
+        COMPILATION_FAILED,
+        NO_COMPILED_CLASSES,
+        MIXED_FRAMEWORKS,
+        HEAD_CHANGED,
+        WORKTREE_CHANGED,
+        INDEX_PUBLICATION_FAILED,
+        INDEXING_FAILED
+    }
+
+    public record InitializationResult(
+            boolean successful, FailureReason reason, String message, long elapsedMillis) {
+
+        static InitializationResult success(long startedAtNanos) {
+            return new InitializationResult(true, null, "Index created successfully",
+                    elapsedMillis(startedAtNanos));
+        }
+
+        static InitializationResult failure(
+                FailureReason reason, String message, long startedAtNanos) {
+            return new InitializationResult(false, reason, message, elapsedMillis(startedAtNanos));
+        }
+
+        public String diagnostic() {
+            if (successful) return message;
+            return "Initialization failed [" + reason + "]: " + message;
+        }
+
+        private static long elapsedMillis(long startedAtNanos) {
+            return Math.max(0, (System.nanoTime() - startedAtNanos) / 1_000_000);
+        }
+    }
+
+    record CompilationResult(boolean successful, String message) {}
+
     record PersistedResolution(
             List<BeanRecord> beans,
             List<InjectionPointRecord> injectionPoints,
@@ -59,30 +95,66 @@ public class ProjectInitializer {
     }
 
     public static boolean initialize(Path root, boolean indexOnly) {
+        return initializeDetailed(root, indexOnly).successful();
+    }
+
+    public static InitializationResult initializeDetailed(Path root, boolean indexOnly) {
         Path normalizedRoot = root.toAbsolutePath().normalize();
+        long startedAtNanos = System.nanoTime();
         try {
             return ProjectIndexLock.withLock(
-                    normalizedRoot, () -> initializeLocked(normalizedRoot, indexOnly));
+                    normalizedRoot, () -> initializeLockedDetailed(
+                            normalizedRoot, indexOnly, false, startedAtNanos));
         } catch (IOException e) {
-            System.err.println("[quill] Could not lock index for " + normalizedRoot + ": " + e.getMessage());
-            return false;
+            return InitializationResult.failure(FailureReason.LOCK_FAILED,
+                    "Could not lock index for " + normalizedRoot + ": " + rootMessage(e),
+                    startedAtNanos);
+        } catch (RuntimeException e) {
+            return InitializationResult.failure(FailureReason.INDEXING_FAILED,
+                    "Unexpected indexing error for " + normalizedRoot + ": " + rootMessage(e),
+                    startedAtNanos);
         }
     }
 
     static boolean initializeLocked(Path root, boolean indexOnly) {
-        return initializeLocked(root, indexOnly, false);
+        return initializeLockedDetailed(root, indexOnly, false, System.nanoTime()).successful();
     }
 
     static boolean initializeLocked(Path root, boolean indexOnly, boolean compiledBeforeIndex) {
+        return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex,
+                System.nanoTime()).successful();
+    }
+
+    static InitializationResult initializeLockedDetailed(
+            Path root, boolean indexOnly, boolean compiledBeforeIndex) {
+        long startedAtNanos = System.nanoTime();
+        try {
+            return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex, startedAtNanos);
+        } catch (RuntimeException e) {
+            return InitializationResult.failure(FailureReason.INDEXING_FAILED,
+                    "Unexpected indexing error for " + root + ": " + rootMessage(e),
+                    startedAtNanos);
+        }
+    }
+
+    private static InitializationResult initializeLockedDetailed(
+            Path root, boolean indexOnly, boolean compiledBeforeIndex, long startedAtNanos) {
         List<Path> classesDirs = findClassesDirs(root, true);
 
         if (classesDirs.isEmpty()) {
-            if (!compileProject(root)) return false;
+            CompilationResult compilation = compileProjectDetailed(root);
+            if (!compilation.successful()) {
+                return InitializationResult.failure(FailureReason.COMPILATION_FAILED,
+                        compilation.message(), startedAtNanos);
+            }
             compiledBeforeIndex = true;
             classesDirs = findClassesDirs(root, true);
             if (classesDirs.isEmpty()) {
-                System.err.println("[quill] No compiled classes found for " + root);
-                return false;
+                return InitializationResult.failure(FailureReason.NO_COMPILED_CLASSES,
+                        "Build completed, but no main .class files were found under " + root
+                                + ". Check that the project contains a Java/Kotlin JVM module and "
+                                + "that its main compilation is enabled.",
+                        startedAtNanos);
             }
         }
 
@@ -111,10 +183,10 @@ public class ProjectInitializer {
         boolean isCdi = BeanResolver.isCdiProject(scanResult.index());
 
         if (isSpring && isCdi) {
-            System.err.println("[quill] Mixed Spring/CDI project detected. "
-                    + "Quill does not support projects that use both Spring DI and CDI in the same index. "
-                    + "Index each framework's modules separately.");
-            return false;
+            return InitializationResult.failure(FailureReason.MIXED_FRAMEWORKS,
+                    "Mixed Spring/CDI project detected. Quill does not support both DI frameworks "
+                            + "in one index; index their modules separately.",
+                    startedAtNanos);
         }
 
         DependencyIndexer.DependencyIndexResult depResult =
@@ -198,8 +270,9 @@ public class ProjectInitializer {
 
         if (!headMatches(root, initialHead)
                 || (initialHead != null && !initialHead.equals(lastCommit))) {
-            System.err.println("[quill] Git HEAD changed during indexing; discarding the stale result.");
-            return false;
+            return InitializationResult.failure(FailureReason.HEAD_CHANGED,
+                    headChangedMessage("during indexing", initialHead,
+                            GitAnalyzer.resolveHead(root)), startedAtNanos);
         }
 
         List<CdiProblem> problems = resolution.problems();
@@ -225,7 +298,6 @@ public class ProjectInitializer {
         Path dbPath = resolveDbPath(root, lastCommit);
         Path stagedDb = dbPath.resolveSibling("." + dbPath.getFileName() + "."
                 + UUID.randomUUID() + ".tmp");
-        Jdbi jdbi = QuillDatabase.create(stagedDb);
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("indexed_at", Instant.now().toString());
         metadata.put("project_root", root.toString());
@@ -245,6 +317,7 @@ public class ProjectInitializer {
         metadata.put("state_fingerprint", computeStateFingerprint(root, classesDirs));
 
         try {
+            Jdbi jdbi = QuillDatabase.create(stagedDb);
             IndexWriter.writeAll(jdbi, classes, remappedBeans,
                     persisted.injectionPoints(), remappedDeps, metadata,
                     externalDeps, remappedProblems,
@@ -254,20 +327,33 @@ public class ProjectInitializer {
             boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint());
             if (headChanged || worktreeChanged) {
                 deleteDatabaseArtifacts(stagedDb);
-                String cause = headChanged ? "Git HEAD" : "Worktree";
-                System.err.println("[quill] " + cause
-                        + " changed before index publication; retry update.");
-                return false;
+                if (headChanged) {
+                    return InitializationResult.failure(FailureReason.HEAD_CHANGED,
+                            headChangedMessage("before index publication", initialHead,
+                                    GitAnalyzer.resolveHead(root)), startedAtNanos);
+                }
+                WorktreeInspector.Snapshot currentWorktree = WorktreeInspector.inspect(root);
+                return InitializationResult.failure(FailureReason.WORKTREE_CHANGED,
+                        "Worktree changed before index publication; the staged index was discarded. "
+                                + describeWorktree(currentWorktree) + " Retry `quill update` when "
+                                + "concurrent builds or edits have finished.",
+                        startedAtNanos);
             }
             atomicMove(stagedDb, dbPath);
         } catch (RuntimeException | IOException e) {
             deleteDatabaseArtifacts(stagedDb);
-            throw new RuntimeException("Failed to publish index at " + dbPath, e);
+            return InitializationResult.failure(FailureReason.INDEX_PUBLICATION_FAILED,
+                    "Could not publish SQLite index at " + dbPath + ": " + rootMessage(e)
+                            + ". The previous index, if any, was left unchanged.",
+                    startedAtNanos);
         }
 
         if (!headMatches(root, initialHead)) {
-            System.err.println("[quill] Git HEAD changed after index publication; refs were not updated.");
-            return false;
+            return InitializationResult.failure(FailureReason.HEAD_CHANGED,
+                    headChangedMessage("after index publication", initialHead,
+                            GitAnalyzer.resolveHead(root))
+                            + " The database exists, but branch refs were not updated; retry `quill update`.",
+                    startedAtNanos);
         }
 
         if (initialHead != null) {
@@ -289,7 +375,7 @@ public class ProjectInitializer {
                 + remappedBeans.size() + " beans"
                 + (gitResult.isEmpty() ? "" : ", " + gitResult.commits().size() + " git commits")
                 + depStatus + ".");
-        return true;
+        return InitializationResult.success(startedAtNanos);
     }
 
     static CodexConfigInstaller.Result ensureCodexConfig(Path root, boolean indexOnly) {
@@ -549,7 +635,16 @@ public class ProjectInitializer {
     }
 
     static boolean compileProject(Path root) {
-        BuildSystem buildSystem = BuildSystem.detect(root);
+        return compileProjectDetailed(root).successful();
+    }
+
+    static CompilationResult compileProjectDetailed(Path root) {
+        BuildSystem buildSystem;
+        try {
+            buildSystem = BuildSystem.detect(root);
+        } catch (IllegalArgumentException e) {
+            return new CompilationResult(false, rootMessage(e));
+        }
         List<String> command = buildSystem.compileCommand(root);
         try {
             int exit = new ProcessBuilder(command)
@@ -559,18 +654,52 @@ public class ProjectInitializer {
                     .start()
                     .waitFor();
             if (exit != 0) {
-                System.err.println("[quill] " + buildSystem.name() + " compile failed for " + root);
-                return false;
+                return new CompilationResult(false, buildSystem.name() + " compile command `"
+                        + String.join(" ", command) + "` exited with code " + exit + " for " + root);
             }
-            return true;
+            return new CompilationResult(true, buildSystem.name() + " compilation completed");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            System.err.println("[quill] " + buildSystem.name() + " compile was interrupted for " + root);
-            return false;
+            return new CompilationResult(false,
+                    buildSystem.name() + " compile was interrupted for " + root);
         } catch (IOException e) {
-            System.err.println("[quill] Failed to run " + buildSystem.name() + " compile: " + e.getMessage());
-            return false;
+            return new CompilationResult(false, "Failed to run " + buildSystem.name()
+                    + " compile command `" + String.join(" ", command) + "`: " + rootMessage(e));
         }
+    }
+
+    private static String headChangedMessage(String phase, String expected, String actual) {
+        return "Git HEAD changed " + phase + " (expected " + displayCommit(expected)
+                + ", found " + displayCommit(actual)
+                + "); the stale index was not activated. Retry `quill update`.";
+    }
+
+    private static String displayCommit(String commit) {
+        if (commit == null || commit.isBlank()) return "no commit";
+        return commit.length() > 12 ? commit.substring(0, 12) : commit;
+    }
+
+    private static String describeWorktree(WorktreeInspector.Snapshot snapshot) {
+        if (snapshot.changes().isEmpty()) {
+            return "No dirty paths are currently visible (the changing file may have been restored).";
+        }
+        int limit = Math.min(10, snapshot.changes().size());
+        String paths = snapshot.changes().stream()
+                .limit(limit)
+                .map(change -> change.status() + ":" + change.projectPath())
+                .collect(java.util.stream.Collectors.joining(", "));
+        int remaining = snapshot.changes().size() - limit;
+        return "Current dirty paths: " + paths
+                + (remaining > 0 ? " (and " + remaining + " more)." : ".");
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
     }
 
     private static final String QUILL_SECTION_MARKER = "## Quill — Codebase Intelligence (MCP)";

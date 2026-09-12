@@ -198,7 +198,8 @@ class UpdateCommandTest {
         command.projectPath = project;
         command.compile = true;
 
-        assertThrows(IllegalStateException.class, command::run);
+        IllegalStateException failure = assertThrows(IllegalStateException.class, command::run);
+        assertTrue(failure.getMessage().contains("exited with code 7"), failure.getMessage());
         assertEquals("preserved", org.treblereel.mcp.db.IndexReader
                 .getMetadata(QuillDatabase.open(db)).get("sentinel"));
     }
@@ -217,7 +218,8 @@ class UpdateCommandTest {
         command.projectPath = project;
         command.compile = true;
 
-        assertThrows(IllegalStateException.class, command::run);
+        IllegalStateException failure = assertThrows(IllegalStateException.class, command::run);
+        assertTrue(failure.getMessage().contains("exited with code 7"), failure.getMessage());
         assertEquals("preserved", org.treblereel.mcp.db.IndexReader
                 .getMetadata(QuillDatabase.open(db)).get("sentinel"));
     }

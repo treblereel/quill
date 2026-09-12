@@ -37,6 +37,7 @@ public class StatusCommand implements Runnable {
             MetaEnvelope freshness = MetaEnvelope.from(jdbi, 0, 0);
 
             System.out.println("Index: " + dbPath);
+            System.out.println("  Index generation:    " + freshness.indexId());
             System.out.println("  Indexed at:          " + meta.getOrDefault("indexed_at", "unknown"));
             System.out.println("  Indexed commit:      " + freshness.lastCommit());
             System.out.println("  Current commit:      "

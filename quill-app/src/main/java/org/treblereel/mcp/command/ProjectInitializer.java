@@ -295,11 +295,13 @@ public class ProjectInitializer {
         remappedDeps.removeIf(dependency -> !currentClassIds.contains(dependency.fromClassId())
                 || !currentClassIds.contains(dependency.toClassId()));
 
-        Path dbPath = resolveDbPath(root, lastCommit);
+        String indexId = createIndexId(lastCommit);
+        Path dbPath = resolveDbPath(root, indexId);
         Path stagedDb = dbPath.resolveSibling("." + dbPath.getFileName() + "."
                 + UUID.randomUUID() + ".tmp");
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("indexed_at", Instant.now().toString());
+        metadata.put("index_id", indexId);
         metadata.put("project_root", root.toString());
         metadata.put("last_commit", lastCommit != null ? lastCommit : "unknown");
         metadata.put("indexed_worktree_fingerprint", initialWorktree.fingerprint());
@@ -349,15 +351,23 @@ public class ProjectInitializer {
         }
 
         if (!headMatches(root, initialHead)) {
+            deleteDatabaseArtifacts(dbPath);
             return InitializationResult.failure(FailureReason.HEAD_CHANGED,
                     headChangedMessage("after index publication", initialHead,
                             GitAnalyzer.resolveHead(root))
-                            + " The database exists, but branch refs were not updated; retry `quill update`.",
+                            + " The unpublished generation was removed; retry `quill update`.",
                     startedAtNanos);
         }
 
-        if (initialHead != null) {
-            updateRefs(root, lastCommit);
+        try {
+            updateRefs(root, lastCommit, indexId);
+        } catch (RuntimeException e) {
+            deleteDatabaseArtifacts(dbPath);
+            return InitializationResult.failure(FailureReason.INDEX_PUBLICATION_FAILED,
+                    "Could not activate immutable index generation " + dbPath + ": "
+                            + rootMessage(e)
+                            + ". The previous index remains active.",
+                    startedAtNanos);
         }
 
         if (!indexOnly && GitAnalyzer.hasGitRepo(root)) {
@@ -743,22 +753,36 @@ public class ProjectInitializer {
     private static final int MAX_INDEXES = 5;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static Path resolveDbPath(Path root, String commitHash) {
-        String name = (commitHash != null && !"unknown".equals(commitHash))
+    private static String createIndexId(String commitHash) {
+        String snapshot = commitHash != null && !"unknown".equals(commitHash)
                 ? commitHash : "nocommit";
-        return root.resolve(".quill/" + name + ".db");
+        return snapshot + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
 
-    private static void updateRefs(Path root, String commitHash) {
+    private static Path resolveDbPath(Path root, String indexId) {
+        return root.resolve(".quill/" + indexId + ".db");
+    }
+
+    private static void updateRefs(Path root, String commitHash, String indexId) {
         Path refsPath = root.resolve(".quill/refs.json");
         Map<String, String> refs = readRefs(refsPath);
         if (commitHash != null && !"unknown".equals(commitHash)) {
+            refs.put(headRef(commitHash), indexId);
             String branch = GitAnalyzer.resolveCurrentBranch(root);
             if (branch != null) {
-                refs.put(branch, commitHash);
+                refs.put(branch, indexId);
             }
+        } else {
+            refs.put("@worktree", indexId);
         }
+        // Publish the new pointer before pruning old generations. If cleanup cannot delete an
+        // open file on Windows, the only consequence is a temporary extra cache entry.
+        writeRefsOrThrow(refsPath, refs);
         cleanupLru(root, refs);
+    }
+
+    private static String headRef(String commitHash) {
+        return "@head:" + commitHash;
     }
 
     static void cleanupLru(Path root, Map<String, String> refs) {
@@ -800,29 +824,63 @@ public class ProjectInitializer {
 
     public static Map<String, String> readRefs(Path refsPath) {
         if (!Files.exists(refsPath)) return new LinkedHashMap<>();
-        try {
-            return MAPPER.readValue(refsPath.toFile(),
-                    new TypeReference<LinkedHashMap<String, String>>() {});
-        } catch (IOException e) {
-            return new LinkedHashMap<>();
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                return MAPPER.readValue(refsPath.toFile(),
+                        new TypeReference<LinkedHashMap<String, String>>() {});
+            } catch (IOException e) {
+                if (attempt == 2) return new LinkedHashMap<>();
+                pauseForFileRelease();
+            }
         }
+        return new LinkedHashMap<>();
     }
 
     private static void writeRefs(Path refsPath, Map<String, String> refs) {
+        try {
+            writeRefsOrThrow(refsPath, refs);
+        } catch (RuntimeException e) {
+            System.err.println("[quill] Warning: could not write refs.json: " + rootMessage(e));
+        }
+    }
+
+    private static void writeRefsOrThrow(Path refsPath, Map<String, String> refs) {
         Path temp = refsPath.resolveSibling("." + refsPath.getFileName() + "."
                 + UUID.randomUUID() + ".tmp");
         try {
             Files.createDirectories(refsPath.toAbsolutePath().normalize().getParent());
             MAPPER.writerWithDefaultPrettyPrinter().writeValue(temp.toFile(), refs);
-            atomicMove(temp, refsPath);
+            atomicMoveWithRetry(temp, refsPath);
         } catch (IOException e) {
-            System.err.println("[quill] Warning: could not write refs.json: " + e.getMessage());
+            throw new RuntimeException("Could not write " + refsPath, e);
         } finally {
             try {
                 Files.deleteIfExists(temp);
             } catch (IOException ignored) {
                 // best effort
             }
+        }
+    }
+
+    private static void atomicMoveWithRetry(Path source, Path target) throws IOException {
+        IOException lastFailure = null;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            try {
+                atomicMove(source, target);
+                return;
+            } catch (IOException e) {
+                lastFailure = e;
+                if (attempt < 4) pauseForFileRelease();
+            }
+        }
+        throw lastFailure;
+    }
+
+    private static void pauseForFileRelease() {
+        try {
+            Thread.sleep(20);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -848,27 +906,50 @@ public class ProjectInitializer {
 
     public static Path findDbForHead(Path root) {
         String head = GitAnalyzer.resolveHead(root);
+        Path refsPath = root.resolve(".quill/refs.json");
+        Map<String, String> refs = readRefs(refsPath);
         if (head != null) {
+            Path active = referencedDatabase(root, refs.get(headRef(head)), head);
+            if (active != null) return active;
+
+            String branch = GitAnalyzer.resolveCurrentBranch(root);
+            Path branchDb = branch != null
+                    ? referencedDatabase(root, refs.get(branch), head) : null;
+            if (branchDb != null) return branchDb;
+
+            // Compatibility with indexes created before immutable generations.
             Path exact = root.resolve(".quill/" + head + ".db");
             if (Files.exists(exact)) return exact;
             Path legacy = root.resolve(".quill/" + head.substring(0, 7) + ".db");
             if (Files.exists(legacy)) return legacy;
-        }
+        } else {
+            Path active = referencedDatabase(root, refs.get("@worktree"), null);
+            if (active != null) return active;
 
-        Path refsPath = root.resolve(".quill/refs.json");
-        Map<String, String> refs = readRefs(refsPath);
-        String branch = GitAnalyzer.resolveCurrentBranch(root);
-        if (branch != null && refs.containsKey(branch)) {
-            Path branchDb = root.resolve(".quill/" + refs.get(branch) + ".db");
-            if (Files.exists(branchDb)) return branchDb;
-        }
-
-        if (head == null) {
+            // Compatibility with indexes created before immutable generations.
             Path nocommit = root.resolve(".quill/nocommit.db");
             if (Files.exists(nocommit)) return nocommit;
         }
 
         return null;
+    }
+
+    private static Path referencedDatabase(
+            Path root, String indexId, String expectedCommit) {
+        if (indexId == null || indexId.isBlank()
+                || indexId.contains("/") || indexId.contains("\\")) {
+            return null;
+        }
+        if (expectedCommit != null
+                && !indexId.equals(expectedCommit)
+                && !indexId.startsWith(expectedCommit + "-")) {
+            return null;
+        }
+        Path database = root.resolve(".quill").resolve(indexId + ".db").normalize();
+        Path quillDir = root.resolve(".quill").toAbsolutePath().normalize();
+        database = database.toAbsolutePath().normalize();
+        return database.startsWith(quillDir) && Files.isRegularFile(database)
+                ? database : null;
     }
 
     private static void ensureGitignore(Path root) {

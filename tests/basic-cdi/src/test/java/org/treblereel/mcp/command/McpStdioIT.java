@@ -108,6 +108,68 @@ class McpStdioIT {
     }
 
     @Test
+    void mcpReadsSwitchToNewIndexAfterConcurrentUpdate() throws Exception {
+        Path appJar = resolveAppJar();
+        Assumptions.assumeTrue(Files.exists(appJar));
+
+        List<String> command = new ArrayList<>(List.of("java", "-jar", appJar.toString()));
+        command.add("--mcp");
+        command.add("--project");
+        command.add(PROJECT_ROOT.toString());
+        Process process = new ProcessBuilder(command)
+                .directory(PROJECT_ROOT.toFile())
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
+
+        try (BufferedWriter input = new BufferedWriter(
+                        new OutputStreamWriter(process.getOutputStream()));
+                BufferedReader output = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+            sendRequest(input, 1, "initialize", """
+                    {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"update-test","version":"1"}}""");
+            assertNotNull(readResponse(output, 1).get("result"));
+            sendNotification(input, "notifications/initialized", "{}");
+
+            sendRequest(input, 2, "tools/call",
+                    "{\"name\":\"get_overview\",\"arguments\":{}}");
+            String oldIndex = toolText(readResponse(output, 2))
+                    .path("_meta").path("index_id").asText();
+            Path oldDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+
+            Set<Integer> inFlightIds = new LinkedHashSet<>();
+            for (int id = 100; id < 116; id++) {
+                inFlightIds.add(id);
+                writeRequest(input, id, "tools/call",
+                        "{\"name\":\"find_git_hotspots\",\"arguments\":{\"limit\":100}}");
+            }
+            input.flush();
+
+            UpdateCommand update = new UpdateCommand();
+            update.projectPath = PROJECT_ROOT;
+            update.force = true;
+            update.run();
+            Path newDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+            assertNotEquals(oldDatabase, newDatabase);
+
+            Map<Integer, JsonNode> inFlight = readResponses(output, inFlightIds, 30_000);
+            assertEquals(inFlightIds, inFlight.keySet());
+            assertTrue(inFlight.values().stream()
+                    .allMatch(response -> response.has("result")), inFlight.toString());
+
+            sendRequest(input, 3, "tools/call",
+                    "{\"name\":\"get_overview\",\"arguments\":{}}");
+            String newIndex = toolText(readResponse(output, 3))
+                    .path("_meta").path("index_id").asText();
+            assertNotEquals(oldIndex, newIndex);
+            assertEquals(newDatabase.getFileName().toString().replaceFirst("\\.db$", ""),
+                    newIndex);
+        } finally {
+            process.destroyForcibly();
+            process.waitFor(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
     void gradleProjectWorksThroughJarMcp() throws Exception {
         Path appJar = resolveAppJar();
         Assumptions.assumeTrue(Files.exists(appJar));
@@ -467,6 +529,11 @@ class McpStdioIT {
         Map<Integer, JsonNode> ordered = new LinkedHashMap<>();
         for (int id : expectedIds) ordered.put(id, responses.get(id));
         return ordered;
+    }
+
+    private static JsonNode toolText(JsonNode response) throws IOException {
+        return JSON.readTree(response.path("result").path("content").get(0)
+                .path("text").asText());
     }
 
     private Path resolveAppJar() throws IOException {

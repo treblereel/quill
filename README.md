@@ -29,8 +29,10 @@ Quill scans Maven `target/classes` and Gradle `build/classes/*/main` directories
 compiled `.class` files, builds a [Jandex](https://smallrye.io/jandex/) index, and
 resolves CDI or Spring dependency injection directly from bytecode metadata. Quill
 itself does not use or start Quarkus; the target framework is detected automatically.
-The result is stored in `.quill/{commit-hash}.db` — a per-commit SQLite database that
-stays consistent across branch switches.
+The result is stored as an immutable SQLite generation under `.quill/`; `refs.json`
+atomically points each commit and branch at its active generation. This lets an MCP
+request finish reading the previous snapshot while `quill update` publishes the next
+one, including on Windows where an open SQLite file cannot be replaced safely.
 
 **Important:** Quill indexes compiled bytecode, not source code. `quill init` compiles
 when no bytecode exists; use `quill update --compile` when source changes must be
@@ -171,14 +173,15 @@ configuration. See the official [Claude Code MCP documentation](https://code.cla
 and [Codex MCP documentation](https://developers.openai.com/codex/mcp)
 for client-specific scopes and configuration options.
 
-## Per-Commit Indexing
+## Immutable Index Generations
 
-Quill stores indexes as `.quill/{commit-hash}.db` with an LRU policy (max 5 indexes).
-When you switch branches, Quill serves the index matching the current HEAD. Freshness
-is checked against both the commit and a fingerprint of relevant tracked, deleted and
-untracked worktree files. `_meta.structure_stale` and `_meta.stale_reasons` explain
-when the static graph no longer represents the checkout. `quill status` shows the same
-indexed/current commit and worktree state.
+Quill keeps up to five immutable database generations and selects the active one via
+`.quill/refs.json`. When you switch branches, Quill serves the generation matching the
+current HEAD. Freshness is checked against both the commit and a fingerprint of
+relevant tracked, deleted and untracked worktree files. `_meta.index_id` identifies the
+exact generation used by a response; `_meta.structure_stale` and `_meta.stale_reasons`
+explain when its static graph no longer represents the checkout. `quill status` shows
+the indexed/current commit and worktree state.
 
 Static dependency counts have explicit scope: `fan_in` and `fan_out` count unique
 current classes, while `incoming_edges` and `outgoing_edges` count reference

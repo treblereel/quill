@@ -757,6 +757,7 @@ public class QuillTools {
         project.put("classes", classCount);
         project.put("beans", beanCount);
         project.put("total_source_tokens", totalTokens);
+        project.put("index_id", meta.getOrDefault("index_id", "legacy"));
         project.put("indexed_at", meta.getOrDefault("indexed_at", "unknown"));
         project.put("last_commit", meta.getOrDefault("last_commit", "unknown"));
         project.put("dependency_index", meta.getOrDefault("dependency_index", "unknown"));
@@ -1325,6 +1326,7 @@ public class QuillTools {
         int responseTokens = TokenCounter.count(responseJson);
         MetaEnvelope meta = MetaEnvelope.from(jdbi, responseTokens, naiveTokens);
         ObjectNode metaNode = root.putObject("_meta");
+        metaNode.put("index_id", meta.indexId());
         metaNode.put("indexed_at", meta.indexedAt());
         metaNode.put("indexed_commit", meta.lastCommit());
         // Kept for MCP clients built against the original envelope.

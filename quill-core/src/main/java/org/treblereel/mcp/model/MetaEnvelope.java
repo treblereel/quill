@@ -9,6 +9,7 @@ import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.db.IndexReader;
 
 public record MetaEnvelope(
+        String indexId,
         String indexedAt,
         String lastCommit,
         String currentCommit,
@@ -48,6 +49,7 @@ public record MetaEnvelope(
         }
         double compression = responseTokens > 0 ? (double) naiveTokens / responseTokens : 0;
         return new MetaEnvelope(
+                meta.getOrDefault("index_id", "legacy"),
                 meta.getOrDefault("indexed_at", "unknown"),
                 lastCommit, currentCommit, commitStale, worktree.dirty(), worktree.changes().size(),
                 worktree.structuralChanges().size(),

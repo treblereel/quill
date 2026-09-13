@@ -25,6 +25,8 @@ class ProjectInitializerDiagnosticsTest {
         assertTrue(result.message().contains("exited with code 7"), result.message());
         assertTrue(result.message().contains(BuildSystem.isWindows() ? "mvnw.cmd" : "mvnw"),
                 result.message());
+        assertTrue(result.phaseMillis().containsKey("class_discovery"));
+        assertTrue(result.phaseMillis().containsKey("compilation"));
     }
 
     @Test
@@ -38,6 +40,7 @@ class ProjectInitializerDiagnosticsTest {
         assertFalse(result.successful());
         assertEquals(ProjectInitializer.FailureReason.NO_COMPILED_CLASSES, result.reason());
         assertTrue(result.message().contains("no main .class files"), result.message());
+        assertTrue(result.phaseMillis().containsKey("class_rediscovery"));
     }
 
     private static void writeMavenWrapper(Path project, int exitCode) throws Exception {

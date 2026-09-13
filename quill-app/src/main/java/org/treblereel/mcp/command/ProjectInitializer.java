@@ -12,6 +12,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -61,7 +62,17 @@ public class ProjectInitializer {
     }
 
     public record InitializationResult(
-            boolean successful, FailureReason reason, String message, long elapsedMillis) {
+            boolean successful, FailureReason reason, String message, long elapsedMillis,
+            Map<String, Long> phaseMillis) {
+
+        public InitializationResult(
+                boolean successful, FailureReason reason, String message, long elapsedMillis) {
+            this(successful, reason, message, elapsedMillis, Map.of());
+        }
+
+        public InitializationResult {
+            phaseMillis = Collections.unmodifiableMap(new LinkedHashMap<>(phaseMillis));
+        }
 
         static InitializationResult success(long startedAtNanos) {
             return new InitializationResult(true, null, "Index created successfully",
@@ -78,8 +89,35 @@ public class ProjectInitializer {
             return "Initialization failed [" + reason + "]: " + message;
         }
 
+        InitializationResult withPhaseMillis(Map<String, Long> phases) {
+            return new InitializationResult(
+                    successful, reason, message, elapsedMillis, phases);
+        }
+
+        public String timingsDiagnostic() {
+            List<String> values = new ArrayList<>();
+            phaseMillis.forEach((phase, millis) -> values.add(phase + "=" + millis + "ms"));
+            values.add("total=" + elapsedMillis + "ms");
+            return "Timings: " + String.join(", ", values);
+        }
+
         private static long elapsedMillis(long startedAtNanos) {
             return Math.max(0, (System.nanoTime() - startedAtNanos) / 1_000_000);
+        }
+    }
+
+    static final class PhaseTimings {
+        private final Map<String, Long> phases = new LinkedHashMap<>();
+        private long phaseStartedAt = System.nanoTime();
+
+        void finish(String phase) {
+            long now = System.nanoTime();
+            phases.merge(phase, Math.max(0, (now - phaseStartedAt) / 1_000_000), Long::sum);
+            phaseStartedAt = now;
+        }
+
+        Map<String, Long> snapshot() {
+            return Collections.unmodifiableMap(new LinkedHashMap<>(phases));
         }
     }
 
@@ -101,54 +139,66 @@ public class ProjectInitializer {
     public static InitializationResult initializeDetailed(Path root, boolean indexOnly) {
         Path normalizedRoot = root.toAbsolutePath().normalize();
         long startedAtNanos = System.nanoTime();
+        PhaseTimings timings = new PhaseTimings();
         try {
-            return ProjectIndexLock.withLock(
-                    normalizedRoot, () -> initializeLockedDetailed(
-                            normalizedRoot, indexOnly, false, startedAtNanos));
+            InitializationResult result = ProjectIndexLock.withLock(normalizedRoot, () -> {
+                timings.finish("lock_wait");
+                return initializeLockedDetailed(
+                        normalizedRoot, indexOnly, false, startedAtNanos, timings);
+            });
+            return result.withPhaseMillis(timings.snapshot());
         } catch (IOException e) {
             return InitializationResult.failure(FailureReason.LOCK_FAILED,
                     "Could not lock index for " + normalizedRoot + ": " + rootMessage(e),
-                    startedAtNanos);
+                    startedAtNanos).withPhaseMillis(timings.snapshot());
         } catch (RuntimeException e) {
             return InitializationResult.failure(FailureReason.INDEXING_FAILED,
                     "Unexpected indexing error for " + normalizedRoot + ": " + rootMessage(e),
-                    startedAtNanos);
+                    startedAtNanos).withPhaseMillis(timings.snapshot());
         }
     }
 
     static boolean initializeLocked(Path root, boolean indexOnly) {
-        return initializeLockedDetailed(root, indexOnly, false, System.nanoTime()).successful();
+        return initializeLockedDetailed(root, indexOnly, false, System.nanoTime(),
+                new PhaseTimings()).successful();
     }
 
     static boolean initializeLocked(Path root, boolean indexOnly, boolean compiledBeforeIndex) {
         return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex,
-                System.nanoTime()).successful();
+                System.nanoTime(), new PhaseTimings()).successful();
     }
 
     static InitializationResult initializeLockedDetailed(
             Path root, boolean indexOnly, boolean compiledBeforeIndex) {
         long startedAtNanos = System.nanoTime();
+        PhaseTimings timings = new PhaseTimings();
         try {
-            return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex, startedAtNanos);
+            return initializeLockedDetailed(
+                    root, indexOnly, compiledBeforeIndex, startedAtNanos, timings)
+                    .withPhaseMillis(timings.snapshot());
         } catch (RuntimeException e) {
             return InitializationResult.failure(FailureReason.INDEXING_FAILED,
                     "Unexpected indexing error for " + root + ": " + rootMessage(e),
-                    startedAtNanos);
+                    startedAtNanos).withPhaseMillis(timings.snapshot());
         }
     }
 
     private static InitializationResult initializeLockedDetailed(
-            Path root, boolean indexOnly, boolean compiledBeforeIndex, long startedAtNanos) {
+            Path root, boolean indexOnly, boolean compiledBeforeIndex, long startedAtNanos,
+            PhaseTimings timings) {
         List<Path> classesDirs = findClassesDirs(root, true);
+        timings.finish("class_discovery");
 
         if (classesDirs.isEmpty()) {
             CompilationResult compilation = compileProjectDetailed(root);
+            timings.finish("compilation");
             if (!compilation.successful()) {
                 return InitializationResult.failure(FailureReason.COMPILATION_FAILED,
                         compilation.message(), startedAtNanos);
             }
             compiledBeforeIndex = true;
             classesDirs = findClassesDirs(root, true);
+            timings.finish("class_rediscovery");
             if (classesDirs.isEmpty()) {
                 return InitializationResult.failure(FailureReason.NO_COMPILED_CLASSES,
                         "Build completed, but no main .class files were found under " + root
@@ -168,6 +218,7 @@ public class ProjectInitializer {
         }
         String initialHead = GitAnalyzer.resolveHead(root);
         WorktreeInspector.Snapshot initialWorktree = WorktreeInspector.inspect(root);
+        timings.finish("worktree_snapshot");
 
         System.err.println("[quill] Indexing " + root.getFileName() + " (" + classesDirs.size() + " class dirs)...");
         BuildSystem buildSystem = BuildSystem.detect(root);
@@ -181,6 +232,7 @@ public class ProjectInitializer {
 
         boolean isSpring = SpringResolver.isSpringProject(scanResult.index());
         boolean isCdi = BeanResolver.isCdiProject(scanResult.index());
+        timings.finish("application_index");
 
         if (isSpring && isCdi) {
             return InitializationResult.failure(FailureReason.MIXED_FRAMEWORKS,
@@ -191,6 +243,7 @@ public class ProjectInitializer {
 
         DependencyIndexer.DependencyIndexResult depResult =
                 DependencyIndexer.buildDependencyIndex(root, classesDirs);
+        timings.finish("dependency_index");
         if (depResult.status() != DependencyIndexer.Status.COMPLETE) {
             System.err.println("[quill] Warning: dependency index "
                     + depResult.status().name().toLowerCase() + " (" + depResult.detail() + ")");
@@ -233,6 +286,7 @@ public class ProjectInitializer {
             correctedClasses.add(c);
         }
         classes = correctedClasses;
+        timings.finish("bean_resolution");
 
         List<DependencyRecord> remappedDeps = new ArrayList<>(persisted.dependencies());
         for (BytecodeDependencyScanner.StaticDependency dependency
@@ -246,6 +300,7 @@ public class ProjectInitializer {
         }
 
         List<ExternalDepRecord> externalDeps = JandexScanner.extractExternalDeps(scanResult.index(), classNameToSqliteId);
+        timings.finish("bytecode_analysis");
 
         Map<String, Integer> sourceFileToClassId = new HashMap<>();
         for (int i = 0; i < classes.size(); i++) {
@@ -265,6 +320,7 @@ public class ProjectInitializer {
         } else {
             gitResult = GitAnalyzer.GitAnalysisResult.empty();
         }
+        timings.finish("git_analysis");
 
         String lastCommit = gitResult.headHash();
 
@@ -294,6 +350,7 @@ public class ProjectInitializer {
         }
         remappedDeps.removeIf(dependency -> !currentClassIds.contains(dependency.fromClassId())
                 || !currentClassIds.contains(dependency.toClassId()));
+        timings.finish("file_inventory");
 
         String indexId = createIndexId(lastCommit);
         Path dbPath = resolveDbPath(root, indexId);
@@ -317,6 +374,7 @@ public class ProjectInitializer {
         metadata.put("dependency_index", depResult.status().name().toLowerCase());
         metadata.put("dependency_index_detail", depResult.detail());
         metadata.put("state_fingerprint", computeStateFingerprint(root, classesDirs));
+        timings.finish("index_metadata");
 
         try {
             Jdbi jdbi = QuillDatabase.create(stagedDb);
@@ -328,6 +386,7 @@ public class ProjectInitializer {
             boolean headChanged = !headMatches(root, initialHead);
             boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint());
             if (headChanged || worktreeChanged) {
+                timings.finish("database_write");
                 deleteDatabaseArtifacts(stagedDb);
                 if (headChanged) {
                     return InitializationResult.failure(FailureReason.HEAD_CHANGED,
@@ -342,7 +401,9 @@ public class ProjectInitializer {
                         startedAtNanos);
             }
             atomicMove(stagedDb, dbPath);
+            timings.finish("database_write");
         } catch (RuntimeException | IOException e) {
+            timings.finish("database_write");
             deleteDatabaseArtifacts(stagedDb);
             return InitializationResult.failure(FailureReason.INDEX_PUBLICATION_FAILED,
                     "Could not publish SQLite index at " + dbPath + ": " + rootMessage(e)
@@ -351,6 +412,7 @@ public class ProjectInitializer {
         }
 
         if (!headMatches(root, initialHead)) {
+            timings.finish("publication");
             deleteDatabaseArtifacts(dbPath);
             return InitializationResult.failure(FailureReason.HEAD_CHANGED,
                     headChangedMessage("after index publication", initialHead,
@@ -362,6 +424,7 @@ public class ProjectInitializer {
         try {
             updateRefs(root, lastCommit, indexId);
         } catch (RuntimeException e) {
+            timings.finish("publication");
             deleteDatabaseArtifacts(dbPath);
             return InitializationResult.failure(FailureReason.INDEX_PUBLICATION_FAILED,
                     "Could not activate immutable index generation " + dbPath + ": "
@@ -378,6 +441,7 @@ public class ProjectInitializer {
             ensureClaudeMd(root);
         }
         ensureCodexConfig(root, indexOnly);
+        timings.finish("publication");
 
         String depStatus = depResult.status() == DependencyIndexer.Status.COMPLETE
                 ? "" : " [deps: " + depResult.status().name().toLowerCase() + "]";

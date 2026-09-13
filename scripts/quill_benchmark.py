@@ -155,6 +155,21 @@ def run_measured(command: list[str], cwd: Path) -> dict[str, Any]:
     }
 
 
+def parse_phase_timings(stderr: str) -> dict[str, int]:
+    prefix = "[quill] Timings: "
+    for line in stderr.splitlines():
+        if not line.startswith(prefix):
+            continue
+        result: dict[str, int] = {}
+        for value in line[len(prefix):].split(", "):
+            phase, separator, millis = value.partition("=")
+            if not separator or not millis.endswith("ms"):
+                raise ValueError(f"Invalid Quill phase timing: {value}")
+            result[phase] = int(millis[:-2])
+        return result
+    return {}
+
+
 class McpClient:
     def __init__(self, command: list[str], project: Path, timeout_seconds: int):
         environment = os.environ.copy()
@@ -381,6 +396,10 @@ def print_report(result: dict[str, Any], output: Path) -> None:
     cold = result["cold_init"]
     print(f"Cold init: {cold['duration_seconds']:.3f}s, "
           f"peak RSS: {cold['peak_rss_mib'] if cold['peak_rss_mib'] is not None else 'n/a'} MiB")
+    timings = cold.get("phase_timings_ms", {})
+    if timings:
+        print("Phases: " + ", ".join(
+            f"{phase}={millis}ms" for phase, millis in timings.items()))
     print(f"Index: {result['index']['database_count']} DB, "
           f"{result['index']['size_mib']:.2f} MiB")
     print("\ntool                  samples  p50(ms)  p95(ms)  max(ms)  errors")
@@ -418,13 +437,15 @@ def main() -> int:
     original_project_state = project_metadata(project)
     with IndexSandbox(existing_index, args.keep_benchmark_index):
         command = [str(quill)]
-        cold = run_measured(command + ["init", "--project", str(project), "--index-only"], project)
+        cold = run_measured(command + ["init", "--project", str(project),
+                                     "--index-only", "--timings"], project)
+        cold["phase_timings_ms"] = parse_phase_timings(cold["stderr"])
         if cold["exit_code"] != 0:
             sys.stderr.write(cold["stdout"] + cold["stderr"])
             return cold["exit_code"] or 1
         database_count, size_bytes = index_size(project)
         result = {
-            "schema_version": 1,
+            "schema_version": 2,
             "measured_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "host": host_metadata(),
             "project": str(project),

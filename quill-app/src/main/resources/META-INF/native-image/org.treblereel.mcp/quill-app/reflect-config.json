@@ -310,7 +310,7 @@
     "allPublicConstructors": true,
     "allDeclaredMethods": true,
     "allPublicMethods": true,
-    "fields": [{"name": "indexOnly"}, {"name": "projectPath"}]
+    "fields": [{"name": "indexOnly"}, {"name": "projectPath"}, {"name": "timings"}]
   },
   {
     "name": "org.treblereel.mcp.command.StatusCommand",

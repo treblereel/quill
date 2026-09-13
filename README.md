@@ -72,6 +72,7 @@ machine-readable results are written below `target/benchmarks/`.
 | Command | Description |
 |---------|-------------|
 | `quill init` | Index a Maven or Gradle project; compile if bytecode is absent |
+| `quill init --timings` | Index and report per-phase elapsed times for diagnostics |
 | `quill update` | Re-index if the project fingerprint changed |
 | `quill update --compile` | Compile first, then safely refresh the index |
 | `quill status` | Show current index status |

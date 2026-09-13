@@ -16,6 +16,9 @@ public class InitCommand implements Runnable {
             + "agent configuration, and .gitignore modifications")
     boolean indexOnly;
 
+    @Option(names = "--timings", description = "Report elapsed time for each indexing phase")
+    boolean timings;
+
     @Override
     public void run() {
         Path root = ProjectRootFinder.find(projectPath);
@@ -23,6 +26,9 @@ public class InitCommand implements Runnable {
         System.out.println("Indexing project at " + root + " ...");
         ProjectInitializer.InitializationResult result =
                 ProjectInitializer.initializeDetailed(root, indexOnly);
+        if (timings) {
+            System.err.println("[quill] " + result.timingsDiagnostic());
+        }
         if (!result.successful()) {
             System.err.println("[quill] " + result.diagnostic()
                     + " (after " + result.elapsedMillis() + " ms)");

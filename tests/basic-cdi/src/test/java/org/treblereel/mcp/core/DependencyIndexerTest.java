@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -359,6 +360,76 @@ class DependencyIndexerTest {
         assertEquals(DependencyIndexer.Status.COMPLETE, cached.status());
         assertTrue(cached.detail().contains("loaded from cache"));
         assertNotNull(cached.index().getClassByName("org.jboss.jandex.Index"));
+    }
+
+    @Test
+    void failedClasspathGenerationIsSuppressedUntilBuildFingerprintChanges() throws Exception {
+        Path projectDir = Files.createDirectories(tempDir.resolve("failed-generation"));
+        Path moduleDir = Files.createDirectories(projectDir.resolve("module"));
+        Path classesDir = Files.createDirectories(moduleDir.resolve("target/classes"));
+        Files.writeString(projectDir.resolve("pom.xml"),
+                "<project><modules><module>module</module></modules></project>");
+        Path modulePom = Files.writeString(moduleDir.resolve("pom.xml"), "<project/>");
+        Path jar = findJarOnClasspath("jandex");
+        assertNotNull(jar);
+        Files.writeString(moduleDir.resolve("target/quill-classpath.txt"), jar.toString());
+        Files.writeString(moduleDir.resolve("target/quill-classpath.sha256"), "obsolete");
+
+        AtomicInteger attempts = new AtomicInteger();
+        DependencyIndexer.ClasspathGenerator generator = (root, buildSystem) ->
+                attempts.incrementAndGet() == 1
+                        ? DependencyIndexer.ClasspathGenerationResult.failure(
+                                "Maven dependency classpath generation exited with code 1")
+                        : DependencyIndexer.ClasspathGenerationResult.success();
+        long now = 1_800_000_000_000L;
+
+        var first = DependencyIndexer.buildDependencyIndex(
+                projectDir, List.of(classesDir), generator, now);
+        var suppressed = DependencyIndexer.buildDependencyIndex(
+                projectDir, List.of(classesDir), generator, now + 1_000);
+
+        assertEquals(1, attempts.get());
+        assertEquals(DependencyIndexer.Status.DEGRADED, first.status());
+        assertEquals(DependencyIndexer.Status.DEGRADED, suppressed.status());
+        assertTrue(suppressed.detail().contains("retry suppressed"));
+        assertTrue(Files.isRegularFile(DependencyIndexer.generationFailurePath(
+                projectDir, BuildSystem.MAVEN)));
+
+        Files.writeString(modulePom, "<project><dependencies/></project>");
+        var recovered = DependencyIndexer.buildDependencyIndex(
+                projectDir, List.of(classesDir), generator, now + 2_000);
+
+        assertEquals(2, attempts.get(), "Changed POM must bypass the failure backoff");
+        assertEquals(DependencyIndexer.Status.COMPLETE, recovered.status());
+        assertFalse(Files.exists(DependencyIndexer.generationFailurePath(
+                projectDir, BuildSystem.MAVEN)));
+
+    }
+
+    @Test
+    void failedClasspathGenerationIsRetriedAfterBackoff() throws Exception {
+        Path projectDir = Files.createDirectories(tempDir.resolve("expired-failure"));
+        Path classesDir = Files.createDirectories(projectDir.resolve("target/classes"));
+        Files.writeString(projectDir.resolve("pom.xml"), "<project/>");
+        Path jar = findJarOnClasspath("jandex");
+        assertNotNull(jar);
+        Files.writeString(projectDir.resolve("target/quill-classpath.txt"), jar.toString());
+        Files.writeString(projectDir.resolve("target/quill-classpath.sha256"), "obsolete");
+
+        AtomicInteger attempts = new AtomicInteger();
+        DependencyIndexer.ClasspathGenerator generator = (root, buildSystem) -> {
+            attempts.incrementAndGet();
+            return DependencyIndexer.ClasspathGenerationResult.failure("temporary failure");
+        };
+        long now = 1_800_000_000_000L;
+
+        DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir), generator, now);
+        DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir), generator,
+                now + DependencyIndexer.GENERATION_FAILURE_BACKOFF.toMillis() - 1);
+        DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir), generator,
+                now + DependencyIndexer.GENERATION_FAILURE_BACKOFF.toMillis());
+
+        assertEquals(2, attempts.get());
     }
 
     @Test

@@ -9,6 +9,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,6 +17,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -35,6 +37,9 @@ public final class DependencyIndexer {
 
     private static final String CACHE_FORMAT = "quill-jandex-cache-v3";
     private static final String CACHE_FILE = "quill-dependencies.idx";
+    private static final String FAILURE_CACHE_FORMAT = "quill-classpath-failure-v1";
+    private static final String FAILURE_CACHE_FILE = "quill-classpath.failed";
+    static final Duration GENERATION_FAILURE_BACKOFF = Duration.ofMinutes(5);
     private static final int MAX_INDEXING_SHARDS = 4;
 
     private DependencyIndexer() {}
@@ -60,7 +65,30 @@ public final class DependencyIndexer {
 
     private record ClasspathRead(List<Path> jars, int missingJars, boolean readable) {}
 
+    record ClasspathGenerationResult(boolean successful, String detail) {
+        static ClasspathGenerationResult success() {
+            return new ClasspathGenerationResult(true, "");
+        }
+
+        static ClasspathGenerationResult failure(String detail) {
+            return new ClasspathGenerationResult(false, detail);
+        }
+    }
+
+    private record GenerationFailure(String detail) {}
+
+    @FunctionalInterface
+    interface ClasspathGenerator {
+        ClasspathGenerationResult generate(Path projectRoot, BuildSystem buildSystem);
+    }
+
     public static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs) {
+        return buildDependencyIndex(projectRoot, classesDirs,
+                DependencyIndexer::generateClasspathFilesDetailed, System.currentTimeMillis());
+    }
+
+    static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs,
+            ClasspathGenerator generator, long nowMillis) {
         BuildSystem buildSystem = detectBuildSystem(projectRoot, classesDirs);
         Map<Path, Path> classDirectoryOwners =
                 mapClassDirectoriesToModules(projectRoot, buildSystem, classesDirs);
@@ -76,9 +104,26 @@ public final class DependencyIndexer {
             }
         }
 
-        boolean generationFailed = false;
+        String generationIssue = null;
         if (anyStale) {
-            generationFailed = !generateClasspathFiles(projectRoot, buildSystem);
+            GenerationFailure cachedFailure = readGenerationFailure(
+                    projectRoot, buildSystem, buildFingerprint, nowMillis);
+            if (cachedFailure != null) {
+                generationIssue = cachedFailure.detail()
+                        + "; retry suppressed for unchanged build files for up to "
+                        + GENERATION_FAILURE_BACKOFF.toMinutes() + " minutes";
+            } else {
+                ClasspathGenerationResult generated = generator.generate(projectRoot, buildSystem);
+                if (generated.successful()) {
+                    deleteGenerationFailure(projectRoot, buildSystem);
+                } else {
+                    generationIssue = generated.detail();
+                    if (!Thread.currentThread().isInterrupted()) {
+                        writeGenerationFailure(projectRoot, buildSystem, buildFingerprint,
+                                nowMillis, generationIssue);
+                    }
+                }
+            }
         }
 
         Set<Path> jars = new LinkedHashSet<>();
@@ -91,25 +136,27 @@ public final class DependencyIndexer {
                 jars.addAll(classpath.jars());
                 missingJars += classpath.missingJars();
                 if (classpath.readable()) modulesResolved++;
-                if (!generationFailed && classpath.readable()) {
+                if (generationIssue == null && classpath.readable()) {
                     writeFingerprint(moduleDir, buildSystem, buildFingerprint);
                 }
             }
         }
 
         if (modulesResolved == 0) {
-            String detail = generationFailed
-                    ? buildSystem.name().toLowerCase() + " dependency classpath generation failed"
+            String detail = generationIssue != null
+                    ? generationIssue
                     : "no classpath files found";
             return new DependencyIndexResult(null, Status.UNAVAILABLE, detail);
         }
 
         if (jars.isEmpty()) {
-            boolean degraded = generationFailed || modulesResolved < moduleDirs.size() || missingJars > 0;
+            boolean degraded = generationIssue != null
+                    || modulesResolved < moduleDirs.size() || missingJars > 0;
             return new DependencyIndexResult(null,
                     degraded ? Status.DEGRADED : Status.COMPLETE,
                     degraded
-                            ? dependencyDetail(generationFailed, modulesResolved, moduleDirs.size(), missingJars)
+                            ? dependencyDetail(generationIssue, modulesResolved,
+                                    moduleDirs.size(), missingJars)
                             : "no dependency JARs in classpath");
         }
 
@@ -124,9 +171,10 @@ public final class DependencyIndexer {
             writeCachedIndex(projectRoot, buildSystem, cacheFingerprint, index);
         }
 
-        if (generationFailed || modulesResolved < moduleDirs.size() || missingJars > 0) {
+        if (generationIssue != null || modulesResolved < moduleDirs.size() || missingJars > 0) {
             return new DependencyIndexResult(index.view(), Status.DEGRADED,
-                    dependencyDetail(generationFailed, modulesResolved, moduleDirs.size(), missingJars));
+                    dependencyDetail(generationIssue, modulesResolved,
+                            moduleDirs.size(), missingJars));
         }
 
         return new DependencyIndexResult(index.view(), Status.COMPLETE,
@@ -134,9 +182,9 @@ public final class DependencyIndexer {
     }
 
     private static String dependencyDetail(
-            boolean generationFailed, int modulesResolved, int moduleCount, int missingJars) {
+            String generationIssue, int modulesResolved, int moduleCount, int missingJars) {
         List<String> reasons = new ArrayList<>();
-        if (generationFailed) reasons.add("Build-tool classpath generation failed; using cached data");
+        if (generationIssue != null) reasons.add(generationIssue + "; using cached data");
         if (modulesResolved < moduleCount) {
             reasons.add(modulesResolved + "/" + moduleCount + " modules resolved");
         }
@@ -319,7 +367,7 @@ public final class DependencyIndexer {
         } catch (IllegalArgumentException ignored) {
             buildSystem = BuildSystem.MAVEN;
         }
-        return generateClasspathFiles(projectRoot, buildSystem);
+        return generateClasspathFilesDetailed(projectRoot, buildSystem).successful();
     }
 
     private static BuildSystem detectBuildSystem(Path projectRoot, List<Path> classesDirs) {
@@ -332,8 +380,14 @@ public final class DependencyIndexer {
         }
     }
 
-    private static boolean generateClasspathFiles(Path projectRoot, BuildSystem buildSystem) {
-        if (buildSystem == BuildSystem.GRADLE) return generateGradleClasspathFiles(projectRoot);
+    private static ClasspathGenerationResult generateClasspathFilesDetailed(
+            Path projectRoot, BuildSystem buildSystem) {
+        if (buildSystem == BuildSystem.GRADLE) {
+            return generateGradleClasspathFiles(projectRoot)
+                    ? ClasspathGenerationResult.success()
+                    : ClasspathGenerationResult.failure(
+                            "Gradle dependency classpath discovery failed");
+        }
         try {
             int exit = new ProcessBuilder(buildSystem.command(projectRoot,
                     "dependency:build-classpath", "-DincludeScope=runtime",
@@ -344,22 +398,77 @@ public final class DependencyIndexer {
                     .start()
                     .waitFor();
             if (exit != 0) {
-                System.err.println("[quill] Warning: mvn dependency:build-classpath exited with code " + exit);
-                return false;
+                String detail = "Maven dependency classpath generation exited with code " + exit;
+                System.err.println("[quill] Warning: " + detail);
+                return ClasspathGenerationResult.failure(detail);
             }
-            return true;
+            return ClasspathGenerationResult.success();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            System.err.println("[quill] Warning: dependency classpath resolution was interrupted");
-            return false;
+            String detail = "Dependency classpath resolution was interrupted";
+            System.err.println("[quill] Warning: " + detail);
+            return ClasspathGenerationResult.failure(detail);
         } catch (IOException e) {
-            System.err.println("[quill] Warning: could not resolve dependency classpath: " + e.getMessage());
-            return false;
+            String detail = "Could not resolve dependency classpath: " + e.getMessage();
+            System.err.println("[quill] Warning: " + detail);
+            return ClasspathGenerationResult.failure(detail);
         }
     }
 
     private static boolean generateGradleClasspathFiles(Path projectRoot) {
         return GradleProjectDiscovery.discover(projectRoot, true).complete();
+    }
+
+    private static GenerationFailure readGenerationFailure(Path projectRoot,
+            BuildSystem buildSystem, String expectedFingerprint, long nowMillis) {
+        Path failureCache = generationFailurePath(projectRoot, buildSystem);
+        if (!Files.isRegularFile(failureCache)) return null;
+        try {
+            List<String> lines = Files.readAllLines(failureCache, StandardCharsets.UTF_8);
+            if (lines.size() != 4 || !FAILURE_CACHE_FORMAT.equals(lines.get(0))
+                    || !expectedFingerprint.equals(lines.get(1))) {
+                return null;
+            }
+            long failedAtMillis = Long.parseLong(lines.get(2));
+            long ageMillis = nowMillis - failedAtMillis;
+            if (ageMillis < 0 || ageMillis >= GENERATION_FAILURE_BACKOFF.toMillis()) {
+                return null;
+            }
+            String detail = new String(Base64.getDecoder().decode(lines.get(3)),
+                    StandardCharsets.UTF_8);
+            return new GenerationFailure(detail);
+        } catch (IOException | IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private static void writeGenerationFailure(Path projectRoot, BuildSystem buildSystem,
+            String fingerprint, long failedAtMillis, String detail) {
+        Path failureCache = generationFailurePath(projectRoot, buildSystem);
+        try {
+            Files.createDirectories(failureCache.getParent());
+            String encodedDetail = Base64.getEncoder().encodeToString(
+                    detail.getBytes(StandardCharsets.UTF_8));
+            Files.writeString(failureCache,
+                    FAILURE_CACHE_FORMAT + "\n" + fingerprint + "\n" + failedAtMillis + "\n"
+                            + encodedDetail + "\n",
+                    StandardCharsets.UTF_8);
+        } catch (IOException ignored) {
+            // The failure cache is optional; dependency discovery remains correct without it.
+        }
+    }
+
+    private static void deleteGenerationFailure(Path projectRoot, BuildSystem buildSystem) {
+        try {
+            Files.deleteIfExists(generationFailurePath(projectRoot, buildSystem));
+        } catch (IOException ignored) {
+            // A stale marker is ignored after its fingerprint or backoff expires.
+        }
+    }
+
+    static Path generationFailurePath(Path projectRoot, BuildSystem buildSystem) {
+        return projectRoot.resolve(buildSystem == BuildSystem.MAVEN ? "target" : "build")
+                .resolve(FAILURE_CACHE_FILE);
     }
 
     public static List<Path> parseClasspathFile(Path cpFile) {

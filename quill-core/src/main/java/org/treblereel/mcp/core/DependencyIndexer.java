@@ -1,10 +1,16 @@
 package org.treblereel.mcp.core;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -13,8 +19,13 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import org.jboss.jandex.Index;
 import org.jboss.jandex.Indexer;
+import org.jboss.jandex.IndexReader;
+import org.jboss.jandex.IndexWriter;
 
 public final class DependencyIndexer {
+
+    private static final String CACHE_FORMAT = "quill-jandex-cache-v1";
+    private static final String CACHE_FILE = "quill-dependencies.idx";
 
     private DependencyIndexer() {}
 
@@ -77,8 +88,16 @@ public final class DependencyIndexer {
                             : "no dependency JARs in classpath");
         }
 
-        System.err.println("[quill] Indexing " + jars.size() + " dependency JARs...");
-        Index index = indexJars(jars);
+        String cacheFingerprint = dependencyCacheFingerprint(jars);
+        Index index = readCachedIndex(projectRoot, buildSystem, cacheFingerprint);
+        boolean cacheHit = index != null;
+        if (cacheHit) {
+            System.err.println("[quill] Reusing dependency index for " + jars.size() + " JARs...");
+        } else {
+            System.err.println("[quill] Indexing " + jars.size() + " dependency JARs...");
+            index = indexJars(jars);
+            writeCachedIndex(projectRoot, buildSystem, cacheFingerprint, index);
+        }
 
         if (generationFailed || modulesResolved < moduleDirs.size() || missingJars > 0) {
             return new DependencyIndexResult(index, Status.DEGRADED,
@@ -86,7 +105,7 @@ public final class DependencyIndexer {
         }
 
         return new DependencyIndexResult(index, Status.COMPLETE,
-                jars.size() + " JARs indexed");
+                jars.size() + (cacheHit ? " JARs loaded from cache" : " JARs indexed"));
     }
 
     private static String dependencyDetail(
@@ -121,7 +140,7 @@ public final class DependencyIndexer {
                 if (module != null) result.put(classesDir, module);
             }
         }
-        return Map.copyOf(result);
+        return Collections.unmodifiableMap(new LinkedHashMap<>(result));
     }
 
     static boolean isStale(Path moduleDir) {
@@ -360,5 +379,83 @@ public final class DependencyIndexer {
             }
         }
         return indexer.complete();
+    }
+
+    static String dependencyCacheFingerprint(Collection<Path> jars) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            digest.update(CACHE_FORMAT.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            digest.update((byte) 0);
+            for (Path jar : jars) {
+                Path normalized = jar.toAbsolutePath().normalize();
+                digest.update(normalized.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                digest.update(Long.toString(Files.size(normalized))
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                digest.update(Files.getLastModifiedTime(normalized).toString()
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (IOException e) {
+            return null;
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
+    }
+
+    private static Index readCachedIndex(
+            Path projectRoot, BuildSystem buildSystem, String fingerprint) {
+        if (fingerprint == null) return null;
+        Path cache = dependencyCachePath(projectRoot, buildSystem);
+        if (!Files.isRegularFile(cache)) return null;
+        try (DataInputStream input = new DataInputStream(
+                new BufferedInputStream(Files.newInputStream(cache)))) {
+            if (!CACHE_FORMAT.equals(input.readUTF()) || !fingerprint.equals(input.readUTF())) {
+                return null;
+            }
+            return new IndexReader(input).read();
+        } catch (IOException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static void writeCachedIndex(Path projectRoot, BuildSystem buildSystem,
+            String fingerprint, Index index) {
+        if (fingerprint == null) return;
+        Path cache = dependencyCachePath(projectRoot, buildSystem);
+        Path temporary = null;
+        try {
+            Files.createDirectories(cache.getParent());
+            temporary = Files.createTempFile(cache.getParent(), ".quill-dependencies-", ".tmp");
+            try (DataOutputStream output = new DataOutputStream(
+                    new BufferedOutputStream(Files.newOutputStream(temporary)))) {
+                output.writeUTF(CACHE_FORMAT);
+                output.writeUTF(fingerprint);
+                new IndexWriter(output).write(index);
+            }
+            try {
+                Files.move(temporary, cache, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, cache, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException ignored) {
+            // The cache is optional; indexing remains correct without it.
+        } finally {
+            if (temporary != null) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (IOException ignored) {
+                    // Best-effort cleanup of an unpublished cache file.
+                }
+            }
+        }
+    }
+
+    private static Path dependencyCachePath(Path projectRoot, BuildSystem buildSystem) {
+        return projectRoot.resolve(buildSystem == BuildSystem.MAVEN ? "target" : "build")
+                .resolve(CACHE_FILE);
     }
 }

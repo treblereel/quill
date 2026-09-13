@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.jboss.jandex.Index;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,18 @@ import org.junit.jupiter.api.io.TempDir;
 class DependencyIndexerTest {
 
     @TempDir Path tempDir;
+
+    @Test
+    void classDirectoryOwnersPreserveClasspathOrder() {
+        Path first = tempDir.resolve("first/target/classes");
+        Path second = tempDir.resolve("second/target/classes");
+
+        Map<Path, Path> owners = DependencyIndexer.mapClassDirectoriesToModules(
+                tempDir, BuildSystem.MAVEN, List.of(first, second));
+
+        assertEquals(List.of(first.toAbsolutePath().normalize(), second.toAbsolutePath().normalize()),
+                new java.util.ArrayList<>(owners.keySet()));
+    }
 
     @Test
     void parseClasspathFileReturnsJarPaths() throws Exception {
@@ -204,6 +217,7 @@ class DependencyIndexerTest {
 
         assertEquals(DependencyIndexer.Status.COMPLETE, result.status());
         assertNotNull(result.index().getClassByName("org.jboss.jandex.Index"));
+        assertTrue(Files.isRegularFile(moduleDir.resolve("build/quill-dependencies.idx")));
     }
 
     @Test
@@ -259,6 +273,47 @@ class DependencyIndexerTest {
         assertNotNull(result.index());
         assertEquals(DependencyIndexer.Status.COMPLETE, result.status());
         assertNotNull(result.index().getClassByName("org.jboss.jandex.Index"));
+
+        DependencyIndexer.DependencyIndexResult cached =
+                DependencyIndexer.buildDependencyIndex(tempDir.resolve("project"), List.of(classesDir));
+        assertEquals(DependencyIndexer.Status.COMPLETE, cached.status());
+        assertTrue(cached.detail().contains("loaded from cache"));
+        assertNotNull(cached.index().getClassByName("org.jboss.jandex.Index"));
+    }
+
+    @Test
+    void dependencyCacheFingerprintChangesWithClasspathOrderAndJarMetadata() throws Exception {
+        Path first = Files.write(tempDir.resolve("first.jar"), new byte[] {1});
+        Path second = Files.write(tempDir.resolve("second.jar"), new byte[] {2});
+
+        String original = DependencyIndexer.dependencyCacheFingerprint(List.of(first, second));
+        assertNotEquals(original,
+                DependencyIndexer.dependencyCacheFingerprint(List.of(second, first)));
+
+        Files.write(first, new byte[] {1, 2});
+        assertNotEquals(original,
+                DependencyIndexer.dependencyCacheFingerprint(List.of(first, second)));
+    }
+
+    @Test
+    void corruptDependencyCacheFallsBackToReindexing() throws Exception {
+        Path projectDir = tempDir.resolve("corrupt-cache");
+        Path classesDir = Files.createDirectories(projectDir.resolve("target/classes"));
+        Files.writeString(projectDir.resolve("pom.xml"), "<project/>");
+        Path jar = findJarOnClasspath("jandex");
+        assertNotNull(jar);
+        Files.writeString(projectDir.resolve("target/quill-classpath.txt"), jar.toString());
+        Files.writeString(projectDir.resolve("target/quill-classpath.sha256"),
+                DependencyIndexer.buildFingerprint(projectDir));
+
+        DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir));
+        Files.writeString(projectDir.resolve("target/quill-dependencies.idx"), "corrupt");
+
+        DependencyIndexer.DependencyIndexResult rebuilt =
+                DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir));
+        assertEquals(DependencyIndexer.Status.COMPLETE, rebuilt.status());
+        assertTrue(rebuilt.detail().contains("JARs indexed"));
+        assertNotNull(rebuilt.index().getClassByName("org.jboss.jandex.Index"));
     }
 
     @Test

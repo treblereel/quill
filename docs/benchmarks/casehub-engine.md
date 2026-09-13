@@ -68,3 +68,20 @@ warmup requests.
 At 100 concurrent requests this is about 19 times the baseline throughput, while p50
 and p95 latency are both about 20 times lower. Cold indexing is effectively unchanged,
 as expected: this optimization targets repeated MCP reads after the index is published.
+
+## Dependency-index cache — 2026-09-12
+
+JFR showed that repeated Jandex parsing and type interning for 434 dependency JARs
+dominated indexing CPU. Quill now serializes the combined dependency index into the
+project build output and reuses it while the ordered runtime classpath and every JAR's
+size and modification time remain unchanged.
+
+| Dependency cache | Index time | Peak RSS | Cache size |
+|---|---:|---:|---:|
+| Miss, including cache creation | 11.079 s | 564.78 MiB | 22 MiB |
+| Hit | 3.034 s | 394.94 MiB | 22 MiB |
+
+A cache hit makes a full index refresh about 3.7 times faster than the cache-creation
+run and cuts peak RSS by about 170 MiB. Maven or Gradle `clean` removes the cache with
+the rest of the build output; the next Quill index recreates it. The native executable
+is 39.67 MB (39,674,792 bytes) with cache read/write support included.

@@ -528,18 +528,49 @@ public final class DependencyIndexer {
             int shardCount = input.readInt();
             if (shardCount < 1 || shardCount > MAX_INDEXING_SHARDS) return null;
             long cacheSize = Files.size(cache);
-            List<Index> shards = new ArrayList<>(shardCount);
+            List<byte[]> serializedShards = new ArrayList<>(shardCount);
             for (int i = 0; i < shardCount; i++) {
                 int length = input.readInt();
                 if (length < 1 || length > cacheSize) return null;
                 byte[] serialized = input.readNBytes(length);
                 if (serialized.length != length) return null;
-                shards.add(new IndexReader(new ByteArrayInputStream(serialized)).read());
+                serializedShards.add(serialized);
             }
-            return new ShardedIndex(shards);
+            return new ShardedIndex(readIndexShards(serializedShards));
         } catch (IOException | RuntimeException ignored) {
             return null;
         }
+    }
+
+    private static List<Index> readIndexShards(List<byte[]> serializedShards) throws IOException {
+        if (serializedShards.size() == 1) {
+            return List.of(readIndexShard(serializedShards.get(0)));
+        }
+
+        int threadCount = Math.min(serializedShards.size(),
+                Runtime.getRuntime().availableProcessors());
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        try {
+            List<Future<Index>> futures = new ArrayList<>(serializedShards.size());
+            for (byte[] serialized : serializedShards) {
+                futures.add(executor.submit(() -> readIndexShard(serialized)));
+            }
+            // Await in cache order so CompositeIndex keeps classpath shadowing semantics.
+            List<Index> shards = new ArrayList<>(serializedShards.size());
+            for (Future<Index> future : futures) shards.add(future.get());
+            return shards;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Dependency cache loading was interrupted", e);
+        } catch (ExecutionException e) {
+            throw new IOException("Could not deserialize dependency cache", e.getCause());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private static Index readIndexShard(byte[] serialized) throws IOException {
+        return new IndexReader(new ByteArrayInputStream(serialized)).read();
     }
 
     private static void writeCachedIndex(Path projectRoot, BuildSystem buildSystem,

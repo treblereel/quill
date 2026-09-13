@@ -14,6 +14,18 @@ public final class QuillDatabase {
     private QuillDatabase() {}
 
     public static Jdbi create(Path dbPath) {
+        return create(dbPath, true);
+    }
+
+    public static Jdbi createForBulkLoad(Path dbPath) {
+        if (Files.exists(dbPath)) {
+            throw new IllegalArgumentException(
+                    "Bulk-loaded index must use a new staging path: " + dbPath);
+        }
+        return create(dbPath, false);
+    }
+
+    private static Jdbi create(Path dbPath, boolean createIndexes) {
         try {
             Path parent = dbPath.toAbsolutePath().normalize().getParent();
             if (parent != null) Files.createDirectories(parent);
@@ -22,10 +34,11 @@ public final class QuillDatabase {
         }
         prepareExistingDatabase(dbPath);
         Jdbi jdbi = createJdbi(dbPath, false);
-        jdbi.useHandle(h -> {
+        jdbi.useHandle(h ->
             // Indexes are assembled off to the side and atomically published. DELETE mode
             // keeps the complete database in one file, so no WAL sidecar can be lost on move.
-            h.execute("PRAGMA journal_mode=DELETE");
+            h.execute("PRAGMA journal_mode=DELETE"));
+        jdbi.useTransaction(h -> {
             h.execute("""
                 CREATE TABLE IF NOT EXISTS files (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,15 +103,6 @@ public final class QuillDatabase {
                     key TEXT PRIMARY KEY,
                     value TEXT
                 )""");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_classes_name ON classes(class_name)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_classes_file ON classes(file_id)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_files_repository_path ON files(repository_path)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_files_lifecycle ON files(lifecycle)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_ip_bean ON injection_points(bean_id)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_ip_resolved ON injection_points(resolved_bean_id)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_dep_from ON dependencies(from_class_id)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_dep_to ON dependencies(to_class_id)");
-
             h.execute("""
                 CREATE TABLE IF NOT EXISTS git_file_stats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,12 +132,6 @@ public final class QuillDatabase {
                     file_path TEXT NOT NULL,
                     change_type TEXT NOT NULL
                 )""");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_gfs_class ON git_file_stats(class_id)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_gfs_count ON git_file_stats(commit_count DESC)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_gcf_commit ON git_commit_files(commit_id)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_gcf_class ON git_commit_files(class_id)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_gc_date ON git_commits(committed_at DESC)");
-
             h.execute("""
                 CREATE TABLE IF NOT EXISTS class_external_deps (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,9 +139,6 @@ public final class QuillDatabase {
                     external_type TEXT NOT NULL,
                     usage_kind TEXT NOT NULL
                 )""");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_ced_class ON class_external_deps(class_id)");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_ced_type ON class_external_deps(external_type)");
-
             h.execute("""
                 CREATE TABLE IF NOT EXISTS cdi_problems (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,11 +147,29 @@ public final class QuillDatabase {
                     problem_type TEXT NOT NULL,
                     message TEXT NOT NULL
                 )""");
-            h.execute("CREATE INDEX IF NOT EXISTS idx_cdip_class ON cdi_problems(class_id)");
-
+            if (createIndexes) createIndexes(h);
             h.execute("PRAGMA user_version = " + SCHEMA_VERSION);
         });
         return jdbi;
+    }
+
+    static void createIndexes(org.jdbi.v3.core.Handle h) {
+        h.execute("CREATE INDEX IF NOT EXISTS idx_classes_name ON classes(class_name)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_classes_file ON classes(file_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_files_repository_path ON files(repository_path)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_files_lifecycle ON files(lifecycle)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_ip_bean ON injection_points(bean_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_ip_resolved ON injection_points(resolved_bean_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_dep_from ON dependencies(from_class_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_dep_to ON dependencies(to_class_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_gfs_class ON git_file_stats(class_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_gfs_count ON git_file_stats(commit_count DESC)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_gcf_commit ON git_commit_files(commit_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_gcf_class ON git_commit_files(class_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_gc_date ON git_commits(committed_at DESC)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_ced_class ON class_external_deps(class_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_ced_type ON class_external_deps(external_type)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_cdip_class ON cdi_problems(class_id)");
     }
 
     private static void prepareExistingDatabase(Path dbPath) {

@@ -3,6 +3,8 @@ package org.treblereel.mcp.db;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -61,6 +63,26 @@ class QuillDatabaseTest {
         int version = jdbi.withHandle(h ->
                 h.createQuery("PRAGMA user_version").mapTo(Integer.class).one());
         assertEquals(QuillDatabase.SCHEMA_VERSION, version);
+    }
+
+    @Test
+    void bulkLoadSchemaDefersSecondaryIndexes() {
+        Path dbPath = tempDir.resolve(".quill/bulk.db");
+        Jdbi jdbi = QuillDatabase.createForBulkLoad(dbPath);
+
+        assertFalse(hasIndex(jdbi, "idx_classes_name"));
+        IndexWriter.writeFresh(jdbi, List.of(), List.of(), List.of(), List.of(), Map.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        assertTrue(hasIndex(jdbi, "idx_classes_name"));
+    }
+
+    @Test
+    void bulkLoadRequiresNewStagingPath() {
+        Path dbPath = tempDir.resolve(".quill/existing.db");
+        QuillDatabase.create(dbPath);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> QuillDatabase.createForBulkLoad(dbPath));
     }
 
     @Test
@@ -137,5 +159,13 @@ class QuillDatabaseTest {
 
         assertThrows(QuillDatabase.SchemaVersionException.class,
                 () -> QuillDatabase.create(dbPath));
+    }
+
+    private static boolean hasIndex(Jdbi jdbi, String name) {
+        return jdbi.withHandle(h -> h.createQuery(
+                        "SELECT count(*) FROM sqlite_master WHERE type='index' AND name=:name")
+                .bind("name", name)
+                .mapTo(Integer.class)
+                .one() > 0);
     }
 }

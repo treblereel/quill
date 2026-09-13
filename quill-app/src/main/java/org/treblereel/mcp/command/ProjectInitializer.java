@@ -380,8 +380,8 @@ public class ProjectInitializer {
         timings.finish("index_metadata");
 
         try {
-            Jdbi jdbi = QuillDatabase.create(stagedDb);
-            IndexWriter.writeAll(jdbi, classes, remappedBeans,
+            Jdbi jdbi = QuillDatabase.createForBulkLoad(stagedDb);
+            IndexWriter.writeFresh(jdbi, classes, remappedBeans,
                     persisted.injectionPoints(), remappedDeps, metadata,
                     externalDeps, remappedProblems,
                     gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),

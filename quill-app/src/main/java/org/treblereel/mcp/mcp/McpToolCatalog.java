@@ -7,6 +7,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeoutException;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
 
@@ -22,17 +24,25 @@ final class McpToolCatalog {
     private McpToolCatalog() {}
 
     static List<AsyncToolSpecification> create(
-            QuillTools tools, Scheduler toolScheduler, Scheduler responseScheduler) {
-        return java.util.Arrays.stream(QuillTools.class.getDeclaredMethods())
+            QuillTools tools, Scheduler toolScheduler, Scheduler responseScheduler,
+            Duration requestTimeout) {
+        return create(tools, QuillTools.class, toolScheduler, responseScheduler, requestTimeout);
+    }
+
+    static List<AsyncToolSpecification> create(
+            Object tools, Class<?> toolType, Scheduler toolScheduler,
+            Scheduler responseScheduler, Duration requestTimeout) {
+        return java.util.Arrays.stream(toolType.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(Tool.class))
                 .sorted(Comparator.comparing(Method::getName))
-                .map(method -> specification(tools, method, toolScheduler, responseScheduler))
+                .map(method -> specification(
+                        tools, method, toolScheduler, responseScheduler, requestTimeout))
                 .toList();
     }
 
     private static AsyncToolSpecification specification(
-            QuillTools tools, Method method, Scheduler toolScheduler,
-            Scheduler responseScheduler) {
+            Object tools, Method method, Scheduler toolScheduler,
+            Scheduler responseScheduler, Duration requestTimeout) {
         Tool annotation = method.getAnnotation(Tool.class);
         McpSchema.Tool tool = McpSchema.Tool.builder(method.getName(), inputSchema(method))
                 .description(annotation.description())
@@ -43,8 +53,14 @@ final class McpToolCatalog {
                 .callHandler((exchange, request) -> Mono
                         .fromCallable(() -> invoke(tools, method, request.arguments()))
                         .subscribeOn(toolScheduler)
+                        .timeout(requestTimeout)
                         .onErrorResume(RejectedExecutionException.class,
                                 ignored -> Mono.just(result("Server busy; retry later", true)))
+                        .onErrorResume(TimeoutException.class, ignored -> Mono.just(result(
+                                "Tool timed out after " + requestTimeout.toSeconds()
+                                        + " seconds; retry with a narrower query or increase "
+                                        + "QUILL_MCP_REQUEST_TIMEOUT",
+                                true)))
                         // The SDK stdio transport uses a unicast outbound sink whose concurrent
                         // tryEmitNext calls may fail. Serialize completion signals while keeping
                         // the actual tool work parallel.
@@ -73,7 +89,7 @@ final class McpToolCatalog {
     }
 
     private static McpSchema.CallToolResult invoke(
-            QuillTools tools, Method method, Map<String, Object> arguments) {
+            Object tools, Method method, Map<String, Object> arguments) {
         Map<String, Object> args = arguments == null ? Map.of() : arguments;
         try {
             Object[] values = new Object[method.getParameterCount()];

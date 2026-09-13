@@ -48,6 +48,9 @@ concurrently. JSON-RPC responses may arrive out of order and are correlated by `
 response writes remain serialized so stdout always contains complete JSON messages.
 `QUILL_MCP_MAX_CONCURRENCY` and `QUILL_MCP_MAX_QUEUED_PER_WORKER` can override the
 defaults for constrained or unusually large local environments.
+`QUILL_MCP_REQUEST_TIMEOUT` sets the per-tool timeout in seconds (default: `30`).
+Timed-out work is cancelled and returns an explicit `Tool timed out` result; closing
+the client input also cancels active workers so the stdio server can terminate cleanly.
 
 ## Commands
 

@@ -7,11 +7,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.jar.Attributes;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 import java.util.stream.Collectors;
-import org.jboss.jandex.Index;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -96,6 +104,41 @@ class DependencyIndexerTest {
                 Runtime.getRuntime().availableProcessors()));
         assertEquals(expected, result.shards().size());
         assertFalse(result.view().getKnownClasses().isEmpty());
+    }
+
+    @Test
+    void firstJarOnClasspathWinsDuplicateClass() throws Exception {
+        String className = "sample/Duplicate";
+        Path first = writeJar(tempDir.resolve("first.jar"), Map.of(
+                className + ".class", classBytes(className, "java/lang/Object")), false);
+        Path second = writeJar(tempDir.resolve("second.jar"), Map.of(
+                className + ".class", classBytes(className, "java/lang/RuntimeException")), false);
+
+        var index = DependencyIndexer.indexJars(List.of(first, second)).view();
+
+        assertEquals("java.lang.Object", index.getClassByName("sample.Duplicate")
+                .superName().toString());
+        assertEquals(1, index.getKnownClasses().stream()
+                .filter(info -> info.name().toString().equals("sample.Duplicate")).count(),
+                "Shadowed classes must not leak through the composite index");
+    }
+
+    @Test
+    void multiReleaseJarUsesRuntimeVersionOnly() throws Exception {
+        String className = "sample/Versioned";
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put(className + ".class", classBytes(className, "java/lang/Object"));
+        entries.put("META-INF/versions/" + JarFile.runtimeVersion().feature() + "/"
+                        + className + ".class",
+                classBytes(className, "java/lang/RuntimeException"));
+        Path jar = writeJar(tempDir.resolve("multi-release.jar"), entries, true);
+
+        var index = DependencyIndexer.indexJars(List.of(jar)).view();
+
+        assertEquals("java.lang.RuntimeException", index.getClassByName("sample.Versioned")
+                .superName().toString());
+        assertEquals(1, index.getKnownClasses().size(),
+                "Base and versioned variants must not both be indexed");
     }
 
     @Test
@@ -354,6 +397,30 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void truncatedShardedCacheFallsBackToReindexing() throws Exception {
+        Path projectDir = Files.createDirectories(tempDir.resolve("truncated-cache"));
+        Path classesDir = Files.createDirectories(projectDir.resolve("target/classes"));
+        Files.writeString(projectDir.resolve("pom.xml"), "<project/>");
+        List<Path> jars = findJarsOnClasspath(6);
+        assertTrue(jars.size() > 1, "Test classpath should contain multiple JARs");
+        Files.writeString(projectDir.resolve("target/quill-classpath.txt"), jars.stream()
+                .map(Path::toString).collect(Collectors.joining(File.pathSeparator)));
+        Files.writeString(projectDir.resolve("target/quill-classpath.sha256"),
+                DependencyIndexer.buildFingerprint(projectDir));
+
+        DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir));
+        Path cache = projectDir.resolve("target/quill-dependencies.idx");
+        byte[] complete = Files.readAllBytes(cache);
+        Files.write(cache, Arrays.copyOf(complete, complete.length - 64));
+
+        var rebuilt = DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir));
+
+        assertEquals(DependencyIndexer.Status.COMPLETE, rebuilt.status());
+        assertTrue(rebuilt.detail().contains("JARs indexed"));
+        assertFalse(rebuilt.index().getKnownClasses().isEmpty());
+    }
+
+    @Test
     void buildDependencyIndexIsDegradedWhenClasspathJarIsMissing() throws Exception {
         Path projectDir = tempDir.resolve("project");
         Path moduleDir = projectDir.resolve("mod");
@@ -435,5 +502,29 @@ class DependencyIndexerTest {
                 .distinct()
                 .limit(limit)
                 .toList();
+    }
+
+    private static Path writeJar(
+            Path path, Map<String, byte[]> entries, boolean multiRelease) throws Exception {
+        Manifest manifest = new Manifest();
+        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        if (multiRelease) manifest.getMainAttributes().putValue("Multi-Release", "true");
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(path), manifest)) {
+            for (var entry : entries.entrySet()) {
+                JarEntry jarEntry = new JarEntry(entry.getKey());
+                jarEntry.setTime(0);
+                output.putNextEntry(jarEntry);
+                output.write(entry.getValue());
+                output.closeEntry();
+            }
+        }
+        return path;
+    }
+
+    private static byte[] classBytes(String internalName, String superName) {
+        ClassWriter writer = new ClassWriter(0);
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, internalName, null, superName, null);
+        writer.visitEnd();
+        return writer.toByteArray();
     }
 }

@@ -23,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.zip.ZipFile;
 import org.jboss.jandex.CompositeIndex;
 import org.jboss.jandex.Index;
 import org.jboss.jandex.Indexer;
@@ -32,7 +33,7 @@ import org.jboss.jandex.IndexWriter;
 
 public final class DependencyIndexer {
 
-    private static final String CACHE_FORMAT = "quill-jandex-cache-v2";
+    private static final String CACHE_FORMAT = "quill-jandex-cache-v3";
     private static final String CACHE_FILE = "quill-dependencies.idx";
     private static final int MAX_INDEXING_SHARDS = 4;
 
@@ -391,8 +392,9 @@ public final class DependencyIndexer {
 
         int shardCount = Math.min(orderedJars.size(), Math.min(MAX_INDEXING_SHARDS,
                 Runtime.getRuntime().availableProcessors()));
+        Map<Path, Set<String>> selectedClasses = selectClasspathClasses(orderedJars);
         if (shardCount == 1) {
-            return new ShardedIndex(List.of(indexJarBatch(orderedJars)));
+            return new ShardedIndex(List.of(indexJarBatch(orderedJars, selectedClasses)));
         }
 
         List<List<Path>> batches = contiguousBatches(orderedJars, shardCount);
@@ -400,7 +402,7 @@ public final class DependencyIndexer {
         try {
             List<Future<Index>> futures = new ArrayList<>(shardCount);
             for (List<Path> batch : batches) {
-                futures.add(executor.submit(() -> indexJarBatch(batch)));
+                futures.add(executor.submit(() -> indexJarBatch(batch, selectedClasses)));
             }
             List<Index> indexes = new ArrayList<>(shardCount);
             for (Future<Index> future : futures) indexes.add(future.get());
@@ -428,14 +430,42 @@ public final class DependencyIndexer {
         return batches;
     }
 
+    private static Map<Path, Set<String>> selectClasspathClasses(List<Path> jars) {
+        Set<String> claimed = new HashSet<>();
+        Map<Path, Set<String>> selected = new LinkedHashMap<>();
+        for (Path jar : jars) {
+            Set<String> jarClasses = new HashSet<>();
+            try (JarFile jf = openJar(jar); var entries = jf.versionedStream()) {
+                entries.filter(DependencyIndexer::isClassEntry).forEach(entry -> {
+                    String name = entry.getName();
+                    // module-info.class has the same path in every modular JAR but describes
+                    // a distinct named module, so classpath shadowing does not apply to it.
+                    if (name.equals("module-info.class") || claimed.add(name)) {
+                        jarClasses.add(name);
+                    }
+                });
+            } catch (IOException e) {
+                // Keep the empty selection; the indexing pass will skip the unreadable JAR too.
+            }
+            selected.put(jar, Set.copyOf(jarClasses));
+        }
+        return Collections.unmodifiableMap(selected);
+    }
+
     private static Index indexJarBatch(Collection<Path> jars) {
+        return indexJarBatch(jars, selectClasspathClasses(List.copyOf(jars)));
+    }
+
+    private static Index indexJarBatch(
+            Collection<Path> jars, Map<Path, Set<String>> selectedClasses) {
         Indexer indexer = new Indexer();
         for (Path jar : jars) {
-            try (JarFile jf = new JarFile(jar.toFile())) {
-                Enumeration<JarEntry> entries = jf.entries();
-                while (entries.hasMoreElements()) {
-                    JarEntry entry = entries.nextElement();
-                    if (entry.getName().endsWith(".class") && !entry.isDirectory()) {
+            Set<String> selected = selectedClasses.getOrDefault(jar, Set.of());
+            try (JarFile jf = openJar(jar); var entries = jf.versionedStream()) {
+                Iterator<JarEntry> iterator = entries.iterator();
+                while (iterator.hasNext()) {
+                    JarEntry entry = iterator.next();
+                    if (isClassEntry(entry) && selected.contains(entry.getName())) {
                         try (InputStream is = jf.getInputStream(entry)) {
                             indexer.index(is);
                         } catch (Exception e) {
@@ -450,10 +480,21 @@ public final class DependencyIndexer {
         return indexer.complete();
     }
 
+    private static JarFile openJar(Path jar) throws IOException {
+        return new JarFile(jar.toFile(), false, ZipFile.OPEN_READ, JarFile.runtimeVersion());
+    }
+
+    private static boolean isClassEntry(JarEntry entry) {
+        return entry.getName().endsWith(".class") && !entry.isDirectory();
+    }
+
     static String dependencyCacheFingerprint(Collection<Path> jars) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             digest.update(CACHE_FORMAT.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            digest.update((byte) 0);
+            digest.update(Integer.toString(JarFile.runtimeVersion().feature())
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
             digest.update((byte) 0);
             for (Path jar : jars) {
                 Path normalized = jar.toAbsolutePath().normalize();

@@ -225,6 +225,9 @@ out and generated reactors remain usable. Maven itself is not embedded. The depe
 Jandex index is built in up to four deterministic shards and cached at
 `target/quill-dependencies.idx`; it is invalidated
 when the ordered runtime classpath or a dependency JAR's size or timestamp changes.
+Multi-release JARs contribute only the variant effective for Quill's Java runtime;
+when multiple JARs contain the same class, the first classpath entry wins, matching
+JVM class loading.
 
 ### Gradle projects
 

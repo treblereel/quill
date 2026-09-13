@@ -18,6 +18,7 @@ import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.WorktreeInspector;
+import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.model.*;
 
 class QuillToolsTest {
@@ -701,6 +702,7 @@ class QuillToolsTest {
         Path untrackedService = repository.resolve(
                 "src/main/resources/META-INF/services/example.NewProvider");
         Files.writeString(untrackedService, "example.Provider\n");
+        WorktreeSnapshotCache.shared().invalidate(repository);
         JsonNode untrackedRisk = JSON.readTree(tools.getRisk(dirtyDb,
                 "src/main/resources/META-INF/services/example.NewProvider"));
         assertEquals("file", untrackedRisk.path("target_type").asText());
@@ -711,6 +713,7 @@ class QuillToolsTest {
                 .contains("No Git history"));
 
         Files.writeString(repository.resolve("pom.xml"), "<project/>\n");
+        WorktreeSnapshotCache.shared().invalidate(repository);
         JsonNode buildRisk = JSON.readTree(tools.getRisk(dirtyDb, "./pom.xml"));
         assertEquals("file", buildRisk.path("target_type").asText());
         assertEquals("build_configuration", buildRisk.path("kind").asText());

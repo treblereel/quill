@@ -35,3 +35,36 @@ as a regression.
 The 100-request burst is queueing-latency dominated because the server intentionally runs
 four tool workers. Throughput remains stable and all requests complete without busy,
 timeout, transport, or tool errors.
+
+## Worktree-cache optimization — 2026-09-12
+
+The MCP server now shares one live Git worktree inspection between concurrent tool calls
+for 500 ms and refreshes expired snapshots in the background. `get_overview` also uses
+SQL aggregates and fetches only the class rows needed for its architecture-hub and
+CDI-problem samples. The benchmark collected twenty sequential samples per tool after five
+warmup requests.
+
+- Project commit: `00e34b87d3271d4e272e980481fdbd5c31a34ccb` (clean worktree)
+- Cold-index time: 9.450 s
+- Peak process-tree RSS: 528.86 MiB
+- SQLite size: 3.34 MiB
+- MCP startup: 0.013 s
+- Native binary size: 39.51 MB (39,509,384 bytes)
+
+| Tool | Samples | p50 | p95 | Max | Errors |
+|---|---:|---:|---:|---:|---:|
+| `get_overview` | 20 | 17.70 ms | 31.84 ms | 34.59 ms | 0 |
+| `search_classes` | 20 | 2.04 ms | 2.23 ms | 3.39 ms | 0 |
+| `find_git_hotspots` | 20 | 9.41 ms | 10.58 ms | 13.28 ms | 0 |
+| `list_cdi_beans` | 20 | 3.38 ms | 3.64 ms | 4.02 ms | 0 |
+| `get_recent_changes` | 20 | 2.82 ms | 2.94 ms | 3.06 ms | 0 |
+
+| Concurrent requests | Total | Requests/s | p50 | p95 | Max | Errors |
+|---:|---:|---:|---:|---:|---:|---:|
+| 4 | 0.019 s | 211.21 | 3.91 ms | 18.94 ms | 18.94 ms | 0 |
+| 16 | 0.037 s | 427.94 | 20.58 ms | 37.39 ms | 37.39 ms | 0 |
+| 100 | 0.221 s | 452.77 | 101.03 ms | 215.56 ms | 220.86 ms | 0 |
+
+At 100 concurrent requests this is about 19 times the baseline throughput, while p50
+and p95 latency are both about 20 times lower. Cold indexing is effectively unchanged,
+as expected: this optimization targets repeated MCP reads after the index is published.

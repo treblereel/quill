@@ -2,7 +2,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from quill_benchmark import IndexSandbox, parse_concurrency, percentile
+from quill_benchmark import IndexSandbox, latency_summary, parse_concurrency, percentile
 
 
 class QuillBenchmarkTest(unittest.TestCase):
@@ -17,6 +17,16 @@ class QuillBenchmarkTest(unittest.TestCase):
         values = [40.0, 10.0, 30.0, 20.0]
         self.assertEqual(20.0, percentile(values, 0.50))
         self.assertEqual(40.0, percentile(values, 0.95))
+
+    def test_latency_summary_keeps_distribution_and_errors(self):
+        summary = latency_summary([40.0, 10.0, 30.0, 20.0], errors=1)
+        self.assertEqual({
+            "samples": 4,
+            "p50_latency_ms": 20.0,
+            "p95_latency_ms": 40.0,
+            "max_latency_ms": 40.0,
+            "errors": 1,
+        }, summary)
 
     def test_sandbox_removes_index_when_project_started_without_one(self):
         with tempfile.TemporaryDirectory() as directory:

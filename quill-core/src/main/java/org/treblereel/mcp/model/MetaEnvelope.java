@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.WorktreeInspector;
+import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.IndexReader;
 
 public record MetaEnvelope(
@@ -30,7 +31,8 @@ public record MetaEnvelope(
         String projectRoot = meta.get("project_root");
         Path rootPath = projectRoot != null ? Path.of(projectRoot) : null;
         WorktreeInspector.Snapshot worktree = rootPath != null
-                ? WorktreeInspector.inspect(rootPath) : WorktreeInspector.Snapshot.empty();
+                ? WorktreeSnapshotCache.shared().get(rootPath)
+                : WorktreeInspector.Snapshot.empty();
         String currentCommit = worktree.currentCommit();
         boolean commitStale = isCommitStale(lastCommit, currentCommit);
         String indexedStructure = meta.getOrDefault("indexed_structure_fingerprint",

@@ -92,6 +92,7 @@ class IndexWriterReaderTest {
         assertEquals(List.of("org.acme.Current"), IndexReader.findAllClasses(jdbi).stream()
                 .map(ClassRecord::className).toList());
         assertEquals(1, IndexReader.countClasses(jdbi));
+        assertEquals(10, IndexReader.sumSourceTokens(jdbi));
         assertEquals(1, IndexReader.countBeans(jdbi));
         assertEquals(1, IndexReader.findBeans(jdbi, null).size());
         assertTrue(IndexReader.searchClasses(jdbi, "Stale", 10).isEmpty());

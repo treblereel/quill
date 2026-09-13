@@ -51,6 +51,9 @@ defaults for constrained or unusually large local environments.
 `QUILL_MCP_REQUEST_TIMEOUT` sets the per-tool timeout in seconds (default: `30`).
 Timed-out work is cancelled and returns an explicit `Tool timed out` result; closing
 the client input also cancels active workers so the stdio server can terminate cleanly.
+Concurrent requests share an expensive Git worktree snapshot for 500 ms. An
+expired snapshot remains available while one background refresh runs, so Git inspection
+does not periodically stall MCP workers; edits appear after that refresh completes.
 
 For an informational cold-index and MCP latency benchmark (not part of CI), run:
 

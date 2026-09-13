@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.treblereel.mcp.core.TokenCounter;
 import org.treblereel.mcp.core.WorktreeInspector;
+import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.CdiProblem;
 import org.treblereel.mcp.db.QuillDatabase;
@@ -554,7 +555,7 @@ public class QuillTools {
         String projectRoot = metadata.get("project_root");
         if (projectRoot == null) return WorktreeInspector.Snapshot.empty();
         try {
-            return WorktreeInspector.inspect(Path.of(projectRoot));
+            return WorktreeSnapshotCache.shared().get(Path.of(projectRoot));
         } catch (RuntimeException e) {
             return WorktreeInspector.Snapshot.empty();
         }
@@ -749,10 +750,7 @@ public class QuillTools {
         ObjectNode project = root.putObject("project");
         int classCount = IndexReader.countClasses(jdbi);
         int beanCount = IndexReader.countBeans(jdbi);
-        List<ClassRecord> allClasses = IndexReader.findAllClasses(jdbi);
-        Map<Integer, ClassRecord> classesById = new LinkedHashMap<>();
-        allClasses.forEach(record -> classesById.put(record.id(), record));
-        int totalTokens = allClasses.stream().mapToInt(ClassRecord::sourceTokens).sum();
+        int totalTokens = IndexReader.sumSourceTokens(jdbi);
         project.put("framework", meta.getOrDefault("framework", "CDI"));
         project.put("classes", classCount);
         project.put("beans", beanCount);
@@ -772,8 +770,12 @@ public class QuillTools {
         IndexReader.countBeansByKind(jdbi).forEach(kindNode::put);
 
         ArrayNode hubs = root.putArray("architecture_hubs");
-        for (var entry : IndexReader.findMostDependedOn(jdbi, 5)) {
-            Optional.ofNullable(classesById.get(entry.getKey())).ifPresent(c -> {
+        List<Map.Entry<Integer, Integer>> hubEntries =
+                IndexReader.findMostDependedOn(jdbi, 5);
+        Map<Integer, ClassRecord> hubClasses = IndexReader.findClassesByIds(jdbi,
+                hubEntries.stream().map(Map.Entry::getKey).toList());
+        for (var entry : hubEntries) {
+            Optional.ofNullable(hubClasses.get(entry.getKey())).ifPresent(c -> {
                 ObjectNode hub = hubs.addObject();
                 hub.put("class", c.className());
                 hub.put("dependents", entry.getValue());
@@ -789,6 +791,8 @@ public class QuillTools {
         problemSample.addAll(ambiguous.stream().limit(10).toList());
         Map<Integer, BeanRecord> problemBeans = IndexReader.findBeansByIds(jdbi,
                 problemSample.stream().map(InjectionPointRecord::beanId).toList());
+        Map<Integer, ClassRecord> problemClasses = IndexReader.findClassesByIds(jdbi,
+                problemBeans.values().stream().map(BeanRecord::classId).toList());
         problems.put("unsatisfied_count", unsatisfied.size());
         if (!unsatisfied.isEmpty()) {
             List<InjectionPointRecord> unsatLimited = unsatisfied.size() > 10
@@ -797,8 +801,8 @@ public class QuillTools {
             for (InjectionPointRecord ip : unsatLimited) {
                 ObjectNode node = unsatArr.addObject();
                 BeanRecord bean = problemBeans.get(ip.beanId());
-                if (bean != null && classesById.containsKey(bean.classId())) {
-                    node.put("bean", classesById.get(bean.classId()).className());
+                if (bean != null && problemClasses.containsKey(bean.classId())) {
+                    node.put("bean", problemClasses.get(bean.classId()).className());
                 }
                 node.put("field", ip.fieldName());
                 node.put("type", ip.targetType());
@@ -812,8 +816,8 @@ public class QuillTools {
             for (InjectionPointRecord ip : ambLimited) {
                 ObjectNode node = ambArr.addObject();
                 BeanRecord bean = problemBeans.get(ip.beanId());
-                if (bean != null && classesById.containsKey(bean.classId())) {
-                    node.put("bean", classesById.get(bean.classId()).className());
+                if (bean != null && problemClasses.containsKey(bean.classId())) {
+                    node.put("bean", problemClasses.get(bean.classId()).className());
                 }
                 node.put("field", ip.fieldName());
                 node.put("type", ip.targetType());

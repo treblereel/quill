@@ -481,6 +481,11 @@ public final class IndexReader {
                 + "WHERE lifecycle = 'current' AND origin != 'orphan_output'");
     }
 
+    public static int sumSourceTokens(Jdbi jdbi) {
+        return countQuery(jdbi, "SELECT COALESCE(SUM(source_tokens), 0) FROM classes "
+                + "WHERE lifecycle = 'current' AND origin != 'orphan_output'");
+    }
+
     public static int countBeans(Jdbi jdbi) {
         return countQuery(jdbi, "SELECT COUNT(*) FROM beans b JOIN classes c ON c.id = b.class_id "
                 + "WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'");

@@ -40,6 +40,8 @@ def arguments() -> argparse.Namespace:
                         help="Comma-separated MCP burst sizes")
     parser.add_argument("--warmup", type=int, default=5,
                         help="Sequential MCP warmup calls")
+    parser.add_argument("--samples-per-tool", type=int, default=10,
+                        help="Sequential latency samples collected for each MCP tool")
     parser.add_argument("--request-timeout", type=int, default=30,
                         help="Seconds allowed per benchmark MCP response")
     parser.add_argument("--output", type=Path,
@@ -237,8 +239,19 @@ def percentile(values: list[float], percentage: float) -> float:
     return ordered[index]
 
 
+def latency_summary(values: list[float], errors: int = 0) -> dict[str, Any]:
+    return {
+        "samples": len(values),
+        "p50_latency_ms": round(percentile(values, 0.50), 2),
+        "p95_latency_ms": round(percentile(values, 0.95), 2),
+        "max_latency_ms": round(max(values), 2),
+        "errors": errors,
+    }
+
+
 def benchmark_mcp(command: list[str], project: Path, warmup: int,
-                  concurrency: list[int], timeout_seconds: int) -> dict[str, Any]:
+                  samples_per_tool: int, concurrency: list[int],
+                  timeout_seconds: int) -> dict[str, Any]:
     client = McpClient(command, project, timeout_seconds)
     next_id = 1
     result: dict[str, Any] | None = None
@@ -265,6 +278,23 @@ def benchmark_mcp(command: list[str], project: Path, warmup: int,
             client.flush()
             client.receive({next_id}, timeout_seconds)
             next_id += 1
+
+        tools = []
+        for name, tool_arguments in TOOLS:
+            latencies = []
+            errors = 0
+            for _ in range(samples_per_tool):
+                started = time.perf_counter()
+                client.send(next_id, "tools/call", {
+                    "name": name, "arguments": tool_arguments,
+                })
+                client.flush()
+                response = client.receive({next_id}, timeout_seconds)[next_id]
+                latencies.append((time.perf_counter() - started) * 1000)
+                if "error" in response or response.get("result", {}).get("isError") is True:
+                    errors += 1
+                next_id += 1
+            tools.append({"tool": name, **latency_summary(latencies, errors)})
 
         batches = []
         for size in concurrency:
@@ -296,15 +326,15 @@ def benchmark_mcp(command: list[str], project: Path, warmup: int,
                 "concurrent_requests": size,
                 "elapsed_seconds": round(elapsed, 3),
                 "throughput_requests_per_second": round(size / elapsed, 2),
-                "p50_latency_ms": round(percentile(latencies, 0.50), 2),
-                "p95_latency_ms": round(percentile(latencies, 0.95), 2),
-                "max_latency_ms": round(max(latencies), 2),
-                "errors": errors,
+                **{key: value for key, value in latency_summary(latencies, errors).items()
+                   if key != "samples"},
             })
             next_id += size
         result = {
             "startup_seconds": round(startup_seconds, 3),
             "warmup_requests": warmup,
+            "samples_per_tool": samples_per_tool,
+            "tools": tools,
             "batches": batches,
         }
     finally:
@@ -353,6 +383,11 @@ def print_report(result: dict[str, Any], output: Path) -> None:
           f"peak RSS: {cold['peak_rss_mib'] if cold['peak_rss_mib'] is not None else 'n/a'} MiB")
     print(f"Index: {result['index']['database_count']} DB, "
           f"{result['index']['size_mib']:.2f} MiB")
+    print("\ntool                  samples  p50(ms)  p95(ms)  max(ms)  errors")
+    for tool in result["mcp"]["tools"]:
+        print(f"{tool['tool']:<21} {tool['samples']:>7}  "
+              f"{tool['p50_latency_ms']:>7.2f}  {tool['p95_latency_ms']:>7.2f}  "
+              f"{tool['max_latency_ms']:>7.2f}  {tool['errors']:>6}")
     print("\nrequests  total(s)  req/s    p50(ms)  p95(ms)  max(ms)  errors")
     for batch in result["mcp"]["batches"]:
         print(f"{batch['concurrent_requests']:>8}  {batch['elapsed_seconds']:>8.3f}  "
@@ -372,6 +407,8 @@ def main() -> int:
         raise ValueError(f"Project directory does not exist: {project}")
     if not quill.is_file():
         raise ValueError(f"Quill binary does not exist: {quill}")
+    if args.samples_per_tool <= 0:
+        raise ValueError("--samples-per-tool must be positive")
     concurrency = parse_concurrency(args.concurrency)
     output = (args.output or Path("target/benchmarks") /
               f"quill-{project.name}-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}.json").resolve()
@@ -399,6 +436,7 @@ def main() -> int:
             "configuration": {
                 "concurrency": concurrency,
                 "warmup": args.warmup,
+                "samples_per_tool": args.samples_per_tool,
                 "request_timeout_seconds": args.request_timeout,
                 "tools": [name for name, _ in TOOLS],
             },
@@ -408,7 +446,8 @@ def main() -> int:
                 "size_bytes": size_bytes,
                 "size_mib": round(size_bytes / 1024 / 1024, 2),
             },
-            "mcp": benchmark_mcp(command, project, args.warmup, concurrency,
+            "mcp": benchmark_mcp(command, project, args.warmup,
+                                 args.samples_per_tool, concurrency,
                                  args.request_timeout),
         }
         output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

@@ -81,20 +81,18 @@ public final class JandexScanner {
 
     public static List<ClassRecord> extractClasses(Index index, List<Path> sourceRoots) {
         List<ClassRecord> result = new ArrayList<>();
+        Map<String, Path> sourceFiles = sourceFilesByRelativePath(sourceRoots);
         for (ClassInfo ci : index.getKnownClasses()) {
             String relativePath = ci.name().toString().replace('.', '/') + ".java";
             String sourceFile = null;
             int sourceTokens = 0;
-            for (Path root : sourceRoots) {
-                Path src = root.resolve(relativePath);
-                if (Files.isRegularFile(src)) {
-                    sourceFile = src.toString();
-                    try {
-                        sourceTokens = TokenCounter.count(Files.readString(src));
-                    } catch (IOException e) {
-                        // leave 0
-                    }
-                    break;
+            Path source = sourceFiles.get(relativePath);
+            if (source != null) {
+                sourceFile = source.toString();
+                try {
+                    sourceTokens = TokenCounter.count(Files.readString(source));
+                } catch (IOException e) {
+                    // leave 0
                 }
             }
             result.add(new ClassRecord(
@@ -111,6 +109,21 @@ public final class JandexScanner {
                     sourceFile == null ? "orphan_output" : "source",
                     "current"
             ));
+        }
+        return result;
+    }
+
+    private static Map<String, Path> sourceFilesByRelativePath(List<Path> sourceRoots) {
+        Map<String, Path> result = new HashMap<>();
+        for (Path root : sourceRoots) {
+            try (Stream<Path> files = Files.walk(root)) {
+                files.filter(Files::isRegularFile)
+                        .filter(path -> path.toString().endsWith(".java"))
+                        .forEach(path -> result.putIfAbsent(
+                                root.relativize(path).toString().replace('\\', '/'), path));
+            } catch (IOException ignored) {
+                // An unreadable source root leaves its classes marked as orphan output.
+            }
         }
         return result;
     }

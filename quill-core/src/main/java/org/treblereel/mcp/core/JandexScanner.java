@@ -44,18 +44,16 @@ public final class JandexScanner {
     }
 
     public static ScanResult scan(List<Path> classesDirs, List<Path> sourceRoots) {
+        return scan(ClassFileSnapshot.capture(classesDirs), sourceRoots);
+    }
+
+    public static ScanResult scan(ClassFileSnapshot classFiles, List<Path> sourceRoots) {
         Indexer indexer = new Indexer();
-        for (Path classesDir : classesDirs) {
-            try (Stream<Path> files = Files.walk(classesDir)) {
-                files.filter(p -> p.toString().endsWith(".class")).forEach(p -> {
-                    try (InputStream is = Files.newInputStream(p)) {
-                        indexer.index(is);
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to index " + p, e);
-                    }
-                });
+        for (ClassFileSnapshot.Entry entry : classFiles.entries()) {
+            try (InputStream input = new java.io.ByteArrayInputStream(entry.bytecode())) {
+                indexer.index(input);
             } catch (IOException e) {
-                throw new RuntimeException("Failed to scan " + classesDir, e);
+                throw new RuntimeException("Failed to index " + entry.path(), e);
             }
         }
         Index index = indexer.complete();

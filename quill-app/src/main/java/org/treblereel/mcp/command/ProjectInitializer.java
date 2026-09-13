@@ -30,6 +30,7 @@ import org.treblereel.mcp.QuillLauncher;
 import org.treblereel.mcp.core.BeanResolver;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.BytecodeDependencyScanner;
+import org.treblereel.mcp.core.ClassFileSnapshot;
 import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.core.FileInventory;
 import org.treblereel.mcp.core.GitAnalyzer;
@@ -226,9 +227,10 @@ public class ProjectInitializer {
                 DependencyIndexer.mapClassDirectoriesToModules(root, buildSystem, classesDirs);
         List<Path> moduleDirectories = classDirectoryOwners.values().stream().distinct().toList();
         List<Path> sourceRoots = findSourceRoots(moduleDirectories);
+        ClassFileSnapshot classFiles = ClassFileSnapshot.capture(classesDirs);
         JandexScanner.ScanResult scanResult = sourceRoots.isEmpty()
-                ? JandexScanner.scan(classesDirs)
-                : JandexScanner.scan(classesDirs, sourceRoots);
+                ? JandexScanner.scan(classFiles, List.of())
+                : JandexScanner.scan(classFiles, sourceRoots);
 
         boolean isSpring = SpringResolver.isSpringProject(scanResult.index());
         boolean isCdi = BeanResolver.isCdiProject(scanResult.index());
@@ -290,7 +292,7 @@ public class ProjectInitializer {
 
         List<DependencyRecord> remappedDeps = new ArrayList<>(persisted.dependencies());
         for (BytecodeDependencyScanner.StaticDependency dependency
-                : BytecodeDependencyScanner.scan(classesDirs)) {
+                : BytecodeDependencyScanner.scan(classFiles, classNameToSqliteId.keySet())) {
             Integer from = classNameToSqliteId.get(dependency.fromClass());
             Integer to = classNameToSqliteId.get(dependency.toClass());
             if (from != null && to != null) {
@@ -373,7 +375,8 @@ public class ProjectInitializer {
         metadata.put("framework", isSpring ? "Spring" : "CDI");
         metadata.put("dependency_index", depResult.status().name().toLowerCase());
         metadata.put("dependency_index_detail", depResult.detail());
-        metadata.put("state_fingerprint", computeStateFingerprint(root, classesDirs));
+        metadata.put("state_fingerprint",
+                computeStateFingerprint(root, classesDirs, classFiles.fingerprint()));
         timings.finish("index_metadata");
 
         try {
@@ -608,6 +611,12 @@ public class ProjectInitializer {
     }
 
     static String computeStateFingerprint(Path root, List<Path> classesDirs) {
+        return computeStateFingerprint(
+                root, classesDirs, ClassFileSnapshot.capture(classesDirs).fingerprint());
+    }
+
+    private static String computeStateFingerprint(
+            Path root, List<Path> classesDirs, String classContentFingerprint) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             BuildSystem buildSystem = BuildSystem.detect(root);
@@ -616,23 +625,12 @@ public class ProjectInitializer {
             updateDigest(digest, "head", GitAnalyzer.resolveHead(root));
             updateDigest(digest, "build", DependencyIndexer.buildFingerprint(
                     root, buildSystem, classDirectoryOwners.values()));
+            updateDigest(digest, "classFiles", classContentFingerprint);
 
             for (Path classesDir : classesDirs.stream()
                     .map(path -> path.toAbsolutePath().normalize())
                     .sorted()
                     .toList()) {
-                updateDigest(digest, "classesDir", classesDir.toString());
-                try (Stream<Path> files = Files.walk(classesDir)) {
-                    for (Path file : files.filter(Files::isRegularFile)
-                            .filter(path -> path.toString().endsWith(".class"))
-                            .sorted()
-                            .toList()) {
-                        updateFileContent(digest, classesDir, file);
-                    }
-                } catch (IOException e) {
-                    updateDigest(digest, "classesError", e.getClass().getName());
-                }
-
                 Path moduleDir = classDirectoryOwners.get(classesDir);
                 if (moduleDir == null) {
                     updateDigest(digest, "classpathMissing", classesDir.toString());
@@ -676,26 +674,6 @@ public class ProjectInitializer {
             updateDigest(digest, "file", name);
             updateDigest(digest, "size", Long.toString(Files.size(normalized)));
             updateDigest(digest, "mtime", Long.toString(Files.getLastModifiedTime(normalized).toMillis()));
-        } catch (IOException e) {
-            updateDigest(digest, "missing", normalized.toString());
-        }
-    }
-
-    private static void updateFileContent(MessageDigest digest, Path base, Path file) {
-        Path normalized = file.toAbsolutePath().normalize();
-        try {
-            Path normalizedBase = base.toAbsolutePath().normalize();
-            String name = normalized.startsWith(normalizedBase)
-                    ? normalizedBase.relativize(normalized).toString() : normalized.toString();
-            updateDigest(digest, "file", name);
-            try (var input = Files.newInputStream(normalized)) {
-                byte[] buffer = new byte[8192];
-                int read;
-                while ((read = input.read(buffer)) != -1) {
-                    digest.update(buffer, 0, read);
-                }
-            }
-            digest.update((byte) 0);
         } catch (IOException e) {
             updateDigest(digest, "missing", normalized.toString());
         }

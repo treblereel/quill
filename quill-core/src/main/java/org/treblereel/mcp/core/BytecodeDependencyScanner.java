@@ -1,17 +1,13 @@
 package org.treblereel.mcp.core;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Handle;
@@ -29,24 +25,35 @@ public final class BytecodeDependencyScanner {
     private record Edge(String fromClass, String toClass, String kind) {}
 
     public static List<StaticDependency> scan(List<Path> classesDirectories) {
-        List<Path> classFiles = classFiles(classesDirectories);
-        Set<String> applicationClasses = new HashSet<>();
-        for (Path classFile : classFiles) {
-            try (InputStream input = Files.newInputStream(classFile)) {
-                applicationClasses.add(className(new ClassReader(input).getClassName()));
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to read bytecode " + classFile, e);
-            }
-        }
+        return scan(ClassFileSnapshot.capture(classesDirectories));
+    }
 
+    public static List<StaticDependency> scan(ClassFileSnapshot classFiles) {
+        List<ClassFileSnapshot.Entry> entries = classFiles.entries().stream()
+                .sorted(Comparator.comparing(entry -> entry.path().toString()))
+                .toList();
+        Set<String> applicationClasses = new HashSet<>();
+        for (ClassFileSnapshot.Entry entry : entries) {
+            applicationClasses.add(className(new ClassReader(entry.bytecode()).getClassName()));
+        }
+        return scan(entries, applicationClasses);
+    }
+
+    public static List<StaticDependency> scan(
+            ClassFileSnapshot classFiles, Collection<String> applicationClasses) {
+        List<ClassFileSnapshot.Entry> entries = classFiles.entries().stream()
+                .sorted(Comparator.comparing(entry -> entry.path().toString()))
+                .toList();
+        return scan(entries, Set.copyOf(applicationClasses));
+    }
+
+    private static List<StaticDependency> scan(
+            List<ClassFileSnapshot.Entry> entries, Set<String> applicationClasses) {
         Map<Edge, Integer> edges = new LinkedHashMap<>();
-        for (Path classFile : classFiles) {
-            try (InputStream input = Files.newInputStream(classFile)) {
-                new ClassReader(input).accept(new DependencyClassVisitor(applicationClasses, edges),
-                        ClassReader.SKIP_FRAMES);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to scan bytecode " + classFile, e);
-            }
+        for (ClassFileSnapshot.Entry entry : entries) {
+            new ClassReader(entry.bytecode()).accept(
+                    new DependencyClassVisitor(applicationClasses, edges),
+                    ClassReader.SKIP_FRAMES);
         }
 
         return edges.entrySet().stream()
@@ -56,22 +63,6 @@ public final class BytecodeDependencyScanner {
                         .thenComparing(StaticDependency::toClass)
                         .thenComparing(StaticDependency::kind))
                 .toList();
-    }
-
-    private static List<Path> classFiles(List<Path> classesDirectories) {
-        List<Path> result = new ArrayList<>();
-        for (Path directory : classesDirectories) {
-            if (!Files.isDirectory(directory)) continue;
-            try (Stream<Path> walk = Files.walk(directory)) {
-                walk.filter(Files::isRegularFile)
-                        .filter(path -> path.toString().endsWith(".class"))
-                        .forEach(result::add);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to enumerate bytecode in " + directory, e);
-            }
-        }
-        result.sort(Comparator.comparing(Path::toString));
-        return result;
     }
 
     private static final class DependencyClassVisitor extends ClassVisitor {

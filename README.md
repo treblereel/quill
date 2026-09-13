@@ -52,6 +52,18 @@ defaults for constrained or unusually large local environments.
 Timed-out work is cancelled and returns an explicit `Tool timed out` result; closing
 the client input also cancels active workers so the stdio server can terminate cleanly.
 
+For an informational cold-index and MCP latency benchmark (not part of CI), run:
+
+```bash
+python3 scripts/quill_benchmark.py \
+  --quill quill-app/target/quill \
+  --project /path/to/large/project
+```
+
+It reports peak process-tree memory, index size, and p50/p95 latency for bursts of
+4, 16, and 100 requests. Existing `.quill` data is backed up and restored by default;
+machine-readable results are written below `target/benchmarks/`.
+
 ## Commands
 
 | Command | Description |

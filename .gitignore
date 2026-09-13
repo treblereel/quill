@@ -39,6 +39,10 @@ nb-configuration.xml
 # Local environment
 .env
 
+# Python benchmark tooling
+__pycache__/
+*.py[cod]
+
 # Plugin directory
 /.quarkus/cli/plugins/
 # TLS Certificates

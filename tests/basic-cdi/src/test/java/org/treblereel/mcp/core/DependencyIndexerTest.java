@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.jboss.jandex.Index;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -71,7 +72,7 @@ class DependencyIndexerTest {
         Path jandexJar = findJarOnClasspath("jandex");
         assertNotNull(jandexJar, "jandex JAR should be on test classpath");
 
-        Index index = DependencyIndexer.indexJars(Set.of(jandexJar));
+        var index = DependencyIndexer.indexJars(Set.of(jandexJar)).view();
         assertNotNull(index.getClassByName("org.jboss.jandex.Index"),
                 "Should have indexed org.jboss.jandex.Index from the JAR");
         assertNotNull(index.getClassByName("org.jboss.jandex.Indexer"),
@@ -80,8 +81,44 @@ class DependencyIndexerTest {
 
     @Test
     void indexJarsEmptyCollectionReturnsEmptyIndex() {
-        Index index = DependencyIndexer.indexJars(Set.of());
+        var index = DependencyIndexer.indexJars(Set.of()).view();
         assertTrue(index.getKnownClasses().isEmpty());
+    }
+
+    @Test
+    void indexJarsUsesBoundedDeterministicShards() {
+        List<Path> jars = findJarsOnClasspath(6);
+        assertTrue(jars.size() > 1, "Test classpath should contain multiple JARs");
+
+        var result = DependencyIndexer.indexJars(jars);
+
+        int expected = Math.min(jars.size(), Math.min(4,
+                Runtime.getRuntime().availableProcessors()));
+        assertEquals(expected, result.shards().size());
+        assertFalse(result.view().getKnownClasses().isEmpty());
+    }
+
+    @Test
+    void shardedDependencyCacheRoundTripsAllClasses() throws Exception {
+        Path projectDir = Files.createDirectories(tempDir.resolve("sharded-cache"));
+        Path classesDir = Files.createDirectories(projectDir.resolve("target/classes"));
+        Files.writeString(projectDir.resolve("pom.xml"), "<project/>");
+        List<Path> jars = findJarsOnClasspath(6);
+        assertTrue(jars.size() > 1, "Test classpath should contain multiple JARs");
+        Files.writeString(projectDir.resolve("target/quill-classpath.txt"), jars.stream()
+                .map(Path::toString).collect(Collectors.joining(File.pathSeparator)));
+        Files.writeString(projectDir.resolve("target/quill-classpath.sha256"),
+                DependencyIndexer.buildFingerprint(projectDir));
+
+        var indexed = DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir));
+        Set<String> classNames = indexed.index().getKnownClasses().stream()
+                .map(info -> info.name().toString()).collect(Collectors.toSet());
+        var cached = DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir));
+        Set<String> cachedClassNames = cached.index().getKnownClasses().stream()
+                .map(info -> info.name().toString()).collect(Collectors.toSet());
+
+        assertTrue(cached.detail().contains("loaded from cache"));
+        assertEquals(classNames, cachedClassNames);
     }
 
     @Test
@@ -387,5 +424,16 @@ class DependencyIndexerTest {
             }
         }
         return null;
+    }
+
+    private static List<Path> findJarsOnClasspath(int limit) {
+        return java.util.Arrays.stream(System.getProperty("java.class.path", "")
+                        .split(java.util.regex.Pattern.quote(File.pathSeparator)))
+                .filter(entry -> entry.endsWith(".jar"))
+                .map(Path::of)
+                .filter(Files::isRegularFile)
+                .distinct()
+                .limit(limit)
+                .toList();
     }
 }

@@ -85,3 +85,22 @@ A cache hit makes a full index refresh about 3.7 times faster than the cache-cre
 run and cuts peak RSS by about 170 MiB. Maven or Gradle `clean` removes the cache with
 the rest of the build output; the next Quill index recreates it. The native executable
 is 39.67 MB (39,674,792 bytes) with cache read/write support included.
+
+## Parallel dependency indexing — 2026-09-13
+
+Cold dependency indexing now splits the ordered classpath into at most four contiguous
+shards. Each shard has an independent Jandex indexer and the results are exposed as one
+composite index. The cache stores length-prefixed shard indexes in one atomically published
+file; shard order and classpath order remain deterministic. Parallelism is capped to avoid
+turning first-time indexing into an unbounded memory spike.
+
+Three native runs against the same 434-JAR classpath produced:
+
+| Dependency cache | Runs | Median index time | Observed range | Peak RSS sampled | Cache size |
+|---|---:|---:|---:|---:|---:|
+| Miss, including cache creation | 3 | 7.45 s | 7.44–8.61 s | 522.67 MiB | 22 MiB |
+| Hit | 3 | 2.97 s | 2.91–3.00 s | 392.97 MiB | 22 MiB |
+
+Compared with the prior 11.079 s cache-miss baseline, the median first build is about
+33% faster. Cache-hit latency and the 39.67 MB (39,674,792-byte) native binary size are
+effectively unchanged.

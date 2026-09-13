@@ -62,10 +62,14 @@ public final class SpringResolver {
     }
 
     public static BeanResolver.ResolutionResult resolve(Index applicationIndex) {
-        return resolve(applicationIndex, null);
+        return resolve(applicationIndex, (IndexView) null);
     }
 
     public static BeanResolver.ResolutionResult resolve(Index applicationIndex, Index dependencyIndex) {
+        return resolve(applicationIndex, (IndexView) dependencyIndex);
+    }
+
+    public static BeanResolver.ResolutionResult resolve(Index applicationIndex, IndexView dependencyIndex) {
         IndexView lookupIndex = dependencyIndex != null
                 ? CompositeIndex.create(applicationIndex, dependencyIndex)
                 : applicationIndex;

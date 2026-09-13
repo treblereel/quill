@@ -2,6 +2,8 @@ package org.treblereel.mcp.core;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -15,23 +17,45 @@ import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import org.jboss.jandex.CompositeIndex;
 import org.jboss.jandex.Index;
 import org.jboss.jandex.Indexer;
 import org.jboss.jandex.IndexReader;
+import org.jboss.jandex.IndexView;
 import org.jboss.jandex.IndexWriter;
 
 public final class DependencyIndexer {
 
-    private static final String CACHE_FORMAT = "quill-jandex-cache-v1";
+    private static final String CACHE_FORMAT = "quill-jandex-cache-v2";
     private static final String CACHE_FILE = "quill-dependencies.idx";
+    private static final int MAX_INDEXING_SHARDS = 4;
 
     private DependencyIndexer() {}
 
     public enum Status { COMPLETE, DEGRADED, UNAVAILABLE }
 
-    public record DependencyIndexResult(Index index, Status status, String detail) {}
+    public record DependencyIndexResult(IndexView index, Status status, String detail) {}
+
+    static final class ShardedIndex {
+        private final List<Index> shards;
+        private final IndexView view;
+
+        ShardedIndex(List<Index> shards) {
+            this.shards = List.copyOf(shards);
+            List<IndexView> views = new ArrayList<>(shards);
+            this.view = shards.size() == 1 ? shards.get(0) : CompositeIndex.create(views);
+        }
+
+        List<Index> shards() { return shards; }
+
+        IndexView view() { return view; }
+    }
 
     private record ClasspathRead(List<Path> jars, int missingJars, boolean readable) {}
 
@@ -89,7 +113,7 @@ public final class DependencyIndexer {
         }
 
         String cacheFingerprint = dependencyCacheFingerprint(jars);
-        Index index = readCachedIndex(projectRoot, buildSystem, cacheFingerprint);
+        ShardedIndex index = readCachedIndex(projectRoot, buildSystem, cacheFingerprint);
         boolean cacheHit = index != null;
         if (cacheHit) {
             System.err.println("[quill] Reusing dependency index for " + jars.size() + " JARs...");
@@ -100,11 +124,11 @@ public final class DependencyIndexer {
         }
 
         if (generationFailed || modulesResolved < moduleDirs.size() || missingJars > 0) {
-            return new DependencyIndexResult(index, Status.DEGRADED,
+            return new DependencyIndexResult(index.view(), Status.DEGRADED,
                     dependencyDetail(generationFailed, modulesResolved, moduleDirs.size(), missingJars));
         }
 
-        return new DependencyIndexResult(index, Status.COMPLETE,
+        return new DependencyIndexResult(index.view(), Status.COMPLETE,
                 jars.size() + (cacheHit ? " JARs loaded from cache" : " JARs indexed"));
     }
 
@@ -359,7 +383,52 @@ public final class DependencyIndexer {
         }
     }
 
-    static Index indexJars(Collection<Path> jars) {
+    static ShardedIndex indexJars(Collection<Path> jars) {
+        List<Path> orderedJars = List.copyOf(jars);
+        if (orderedJars.isEmpty()) {
+            return new ShardedIndex(List.of(indexJarBatch(List.of())));
+        }
+
+        int shardCount = Math.min(orderedJars.size(), Math.min(MAX_INDEXING_SHARDS,
+                Runtime.getRuntime().availableProcessors()));
+        if (shardCount == 1) {
+            return new ShardedIndex(List.of(indexJarBatch(orderedJars)));
+        }
+
+        List<List<Path>> batches = contiguousBatches(orderedJars, shardCount);
+        ExecutorService executor = Executors.newFixedThreadPool(shardCount);
+        try {
+            List<Future<Index>> futures = new ArrayList<>(shardCount);
+            for (List<Path> batch : batches) {
+                futures.add(executor.submit(() -> indexJarBatch(batch)));
+            }
+            List<Index> indexes = new ArrayList<>(shardCount);
+            for (Future<Index> future : futures) indexes.add(future.get());
+            return new ShardedIndex(indexes);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Dependency indexing was interrupted", e);
+        } catch (ExecutionException e) {
+            throw new IllegalStateException("Parallel dependency indexing failed", e.getCause());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private static List<List<Path>> contiguousBatches(List<Path> jars, int batchCount) {
+        List<List<Path>> batches = new ArrayList<>(batchCount);
+        int baseSize = jars.size() / batchCount;
+        int remainder = jars.size() % batchCount;
+        int start = 0;
+        for (int i = 0; i < batchCount; i++) {
+            int size = baseSize + (i < remainder ? 1 : 0);
+            batches.add(jars.subList(start, start + size));
+            start += size;
+        }
+        return batches;
+    }
+
+    private static Index indexJarBatch(Collection<Path> jars) {
         Indexer indexer = new Indexer();
         for (Path jar : jars) {
             try (JarFile jf = new JarFile(jar.toFile())) {
@@ -405,7 +474,7 @@ public final class DependencyIndexer {
         }
     }
 
-    private static Index readCachedIndex(
+    private static ShardedIndex readCachedIndex(
             Path projectRoot, BuildSystem buildSystem, String fingerprint) {
         if (fingerprint == null) return null;
         Path cache = dependencyCachePath(projectRoot, buildSystem);
@@ -415,14 +484,25 @@ public final class DependencyIndexer {
             if (!CACHE_FORMAT.equals(input.readUTF()) || !fingerprint.equals(input.readUTF())) {
                 return null;
             }
-            return new IndexReader(input).read();
+            int shardCount = input.readInt();
+            if (shardCount < 1 || shardCount > MAX_INDEXING_SHARDS) return null;
+            long cacheSize = Files.size(cache);
+            List<Index> shards = new ArrayList<>(shardCount);
+            for (int i = 0; i < shardCount; i++) {
+                int length = input.readInt();
+                if (length < 1 || length > cacheSize) return null;
+                byte[] serialized = input.readNBytes(length);
+                if (serialized.length != length) return null;
+                shards.add(new IndexReader(new ByteArrayInputStream(serialized)).read());
+            }
+            return new ShardedIndex(shards);
         } catch (IOException | RuntimeException ignored) {
             return null;
         }
     }
 
     private static void writeCachedIndex(Path projectRoot, BuildSystem buildSystem,
-            String fingerprint, Index index) {
+            String fingerprint, ShardedIndex index) {
         if (fingerprint == null) return;
         Path cache = dependencyCachePath(projectRoot, buildSystem);
         Path temporary = null;
@@ -433,7 +513,13 @@ public final class DependencyIndexer {
                     new BufferedOutputStream(Files.newOutputStream(temporary)))) {
                 output.writeUTF(CACHE_FORMAT);
                 output.writeUTF(fingerprint);
-                new IndexWriter(output).write(index);
+                output.writeInt(index.shards().size());
+                for (Index shard : index.shards()) {
+                    ByteArrayOutputStream serialized = new ByteArrayOutputStream();
+                    new IndexWriter(serialized).write(shard);
+                    output.writeInt(serialized.size());
+                    serialized.writeTo(output);
+                }
             }
             try {
                 Files.move(temporary, cache, StandardCopyOption.ATOMIC_MOVE,

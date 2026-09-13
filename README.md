@@ -221,8 +221,9 @@ module without `--project`, it selects the nearest containing aggregator; an
 explicit `--project` keeps the requested module or reactor root. Only modules with
 compiled main classes are indexed. If a raw POM cannot be read or a declared module
 is unavailable, Quill falls back to scanning `target/classes` so partially checked
-out and generated reactors remain usable. Maven itself is not embedded. The combined
-dependency Jandex index is cached at `target/quill-dependencies.idx`; it is invalidated
+out and generated reactors remain usable. Maven itself is not embedded. The dependency
+Jandex index is built in up to four deterministic shards and cached at
+`target/quill-dependencies.idx`; it is invalidated
 when the ordered runtime classpath or a dependency JAR's size or timestamp changes.
 
 ### Gradle projects
@@ -236,7 +237,7 @@ removed projects.
 Quill does not modify project build files or embed the Gradle Tooling API. Discovery
 and dependency classpath caches are written under `build/` directories and invalidated
 when Gradle build files, version catalogs, wrapper properties, or `buildSrc` change.
-The combined dependency Jandex index is cached at `build/quill-dependencies.idx` with
+The sharded dependency Jandex index is cached at `build/quill-dependencies.idx` with
 the same classpath and JAR invalidation used for Maven.
 On Windows it uses `gradlew.bat`; Maven projects use `mvnw.cmd`. If a wrapper is absent,
 Quill falls back to `gradle` or `mvn` from `PATH`.

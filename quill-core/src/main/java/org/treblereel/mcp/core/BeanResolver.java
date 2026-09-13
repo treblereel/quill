@@ -47,10 +47,14 @@ public final class BeanResolver {
     }
 
     public static ResolutionResult resolve(Index applicationIndex) {
-        return resolve(applicationIndex, null);
+        return resolve(applicationIndex, (IndexView) null);
     }
 
     public static ResolutionResult resolve(Index applicationIndex, Index dependencyIndex) {
+        return resolve(applicationIndex, (IndexView) dependencyIndex);
+    }
+
+    public static ResolutionResult resolve(Index applicationIndex, IndexView dependencyIndex) {
         IndexView lookup = dependencyIndex == null ? applicationIndex
                 : CompositeIndex.create(applicationIndex, dependencyIndex);
         List<BeanRecord> beans = new ArrayList<>();

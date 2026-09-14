@@ -218,7 +218,7 @@ public class ProjectInitializer {
             InitializationResult result = ProjectIndexLock.withLock(normalizedRoot, () -> {
                 timings.finish("lock_wait");
                 return initializeLockedDetailed(
-                        normalizedRoot, indexOnly, false, startedAtNanos, timings);
+                        normalizedRoot, indexOnly, false, null, startedAtNanos, timings);
             });
             return result.withPhaseMillis(timings.snapshot());
         } catch (IOException e) {
@@ -233,12 +233,12 @@ public class ProjectInitializer {
     }
 
     static boolean initializeLocked(Path root, boolean indexOnly) {
-        return initializeLockedDetailed(root, indexOnly, false, System.nanoTime(),
+        return initializeLockedDetailed(root, indexOnly, false, null, System.nanoTime(),
                 new PhaseTimings()).successful();
     }
 
     static boolean initializeLocked(Path root, boolean indexOnly, boolean compiledBeforeIndex) {
-        return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex,
+        return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex, null,
                 System.nanoTime(), new PhaseTimings()).successful();
     }
 
@@ -248,7 +248,7 @@ public class ProjectInitializer {
         PhaseTimings timings = new PhaseTimings();
         try {
             return initializeLockedDetailed(
-                    root, indexOnly, compiledBeforeIndex, startedAtNanos, timings)
+                    root, indexOnly, compiledBeforeIndex, null, startedAtNanos, timings)
                     .withPhaseMillis(timings.snapshot());
         } catch (RuntimeException e) {
             return InitializationResult.failure(FailureReason.INDEXING_FAILED,
@@ -257,9 +257,23 @@ public class ProjectInitializer {
         }
     }
 
+    static InitializationResult initializeLockedDetailed(
+            Path root, boolean indexOnly, boolean compiledBeforeIndex, Path incrementalBase) {
+        long startedAtNanos = System.nanoTime();
+        PhaseTimings timings = new PhaseTimings();
+        try {
+            return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex, incrementalBase,
+                    startedAtNanos, timings).withPhaseMillis(timings.snapshot());
+        } catch (RuntimeException e) {
+            return InitializationResult.failure(FailureReason.INDEXING_FAILED,
+                    "Unexpected indexing error for " + root + ": " + rootMessage(e),
+                    startedAtNanos).withPhaseMillis(timings.snapshot());
+        }
+    }
+
     private static InitializationResult initializeLockedDetailed(
-            Path root, boolean indexOnly, boolean compiledBeforeIndex, long startedAtNanos,
-            PhaseTimings timings) {
+            Path root, boolean indexOnly, boolean compiledBeforeIndex, Path incrementalBase,
+            long startedAtNanos, PhaseTimings timings) {
         List<Path> classesDirs = findClassesDirs(root, true);
         timings.finish("class_discovery");
 
@@ -474,25 +488,45 @@ public class ProjectInitializer {
         metadata.put("framework", isSpring ? "Spring" : "CDI");
         metadata.put("dependency_index", depResult.status().name().toLowerCase());
         metadata.put("dependency_index_detail", depResult.detail());
+        metadata.put("database_write_mode", incrementalBase == null ? "fresh" : "incremental");
         metadata.put("state_fingerprint",
                 computeStateFingerprint(root, classesDirs, classFiles.fingerprint()));
         timings.finish("index_metadata");
 
         long databaseStartedAt = System.nanoTime();
         try {
-            long schemaStartedAt = System.nanoTime();
-            Jdbi jdbi = QuillDatabase.createForBulkLoad(stagedDb);
-            timings.record("database_schema", elapsedMillis(schemaStartedAt));
-            IndexWriter.WriteTimings writeTimings = IndexWriter.writeFresh(
-                    jdbi, classes, remappedBeans,
-                    persisted.injectionPoints(), remappedDeps, metadata,
-                    externalDeps, remappedProblems,
-                    gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
-                    inventory.files());
-            timings.record("database_inserts", writeTimings.insertsMillis());
-            timings.record("database_indexes", writeTimings.indexesMillis());
-            timings.record("database_transaction_overhead",
-                    writeTimings.transactionOverheadMillis());
+            if (incrementalBase == null) {
+                long schemaStartedAt = System.nanoTime();
+                Jdbi jdbi = QuillDatabase.createForBulkLoad(stagedDb);
+                timings.record("database_schema", elapsedMillis(schemaStartedAt));
+                IndexWriter.WriteTimings writeTimings = IndexWriter.writeFresh(
+                        jdbi, classes, remappedBeans,
+                        persisted.injectionPoints(), remappedDeps, metadata,
+                        externalDeps, remappedProblems,
+                        gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
+                        inventory.files());
+                timings.record("database_inserts", writeTimings.insertsMillis());
+                timings.record("database_indexes", writeTimings.indexesMillis());
+                timings.record("database_transaction_overhead",
+                        writeTimings.transactionOverheadMillis());
+            } else {
+                long cloneStartedAt = System.nanoTime();
+                Files.copy(incrementalBase, stagedDb, StandardCopyOption.COPY_ATTRIBUTES);
+                timings.record("database_clone", elapsedMillis(cloneStartedAt));
+                Jdbi jdbi = QuillDatabase.openWritable(stagedDb);
+                IndexWriter.IncrementalWriteTimings writeTimings =
+                        IndexWriter.writeIncremental(jdbi, classes, remappedBeans,
+                                persisted.injectionPoints(), remappedDeps, metadata,
+                                externalDeps, remappedProblems,
+                                gitResult.fileStats(), gitResult.commits(),
+                                gitResult.commitFiles(), inventory.files());
+                timings.record("database_delta", writeTimings.deltaMillis());
+                timings.record("database_transaction_overhead",
+                        writeTimings.transactionOverheadMillis());
+                System.err.println("[quill] SQLite delta: " + writeTimings.rowsInserted()
+                        + " inserted, " + writeTimings.rowsDeleted() + " deleted, "
+                        + writeTimings.rowsUnchanged() + " unchanged.");
+            }
             long validationStartedAt = System.nanoTime();
             boolean headChanged = !headMatches(root, initialHead);
             boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint());

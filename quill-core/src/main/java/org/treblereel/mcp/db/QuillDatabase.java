@@ -204,11 +204,20 @@ public final class QuillDatabase {
     }
 
     public static Jdbi open(Path dbPath) {
+        return openExisting(dbPath, true);
+    }
+
+    /** Opens an already-created staging database for an atomic incremental update. */
+    public static Jdbi openWritable(Path dbPath) {
+        return openExisting(dbPath, false);
+    }
+
+    private static Jdbi openExisting(Path dbPath, boolean readOnly) {
         if (!Files.exists(dbPath)) {
             throw new IllegalStateException(
                     "Index not found at " + dbPath + ". Run 'quill init' first.");
         }
-        Jdbi jdbi = createJdbi(dbPath, true);
+        Jdbi jdbi = createJdbi(dbPath, readOnly);
         jdbi.useHandle(h -> {
             int version = h.createQuery("PRAGMA user_version")
                     .mapTo(Integer.class).one();

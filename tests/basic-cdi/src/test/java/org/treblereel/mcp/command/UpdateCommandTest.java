@@ -120,6 +120,7 @@ class UpdateCommandTest {
         init.projectPath = PROJECT_ROOT;
         init.indexOnly = true;
         init.run();
+        Path previousDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream original = System.out;
@@ -136,6 +137,13 @@ class UpdateCommandTest {
         String output = out.toString();
         assertTrue(output.contains("Forced full re-index"),
                 "Should report forced re-index, got: " + output);
+        Path currentDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        assertNotEquals(previousDatabase, currentDatabase,
+                "Incremental updates must still publish a new immutable generation");
+        assertTrue(Files.exists(previousDatabase),
+                "Publishing the delta must not mutate or remove the previous generation");
+        assertEquals("incremental", org.treblereel.mcp.db.IndexReader
+                .getMetadata(QuillDatabase.open(currentDatabase)).get("database_write_mode"));
     }
 
     @Test

@@ -34,6 +34,61 @@ class IndexWriterReaderTest {
         assertEquals(1, IndexReader.dependencyBreakdown(jdbi, 2, true).get(0).classes());
         assertEquals(3, IndexReader.dependencyBreakdown(jdbi, 2, true).get(0).edges());
     }
+
+    @Test
+    void incrementalWriteMutatesOnlyThePersistentDelta() {
+        Path dbPath = tempDir.resolve("incremental.db");
+        Jdbi writable = QuillDatabase.create(dbPath);
+        List<FileRecord> files = List.of(
+                new FileRecord(1, "src/A.java", "src/A.java", "java", "source",
+                        "current", null),
+                new FileRecord(2, "src/B.java", "src/B.java", "java", "source",
+                        "current", null));
+        List<ClassRecord> initialClasses = List.of(
+                new ClassRecord(0, "example.A", "CLASS", null, List.of(), "src/A.java", 1,
+                        true, 10, 1, "source", "current"),
+                new ClassRecord(0, "example.B", "CLASS", null, List.of(), "src/B.java", 1,
+                        false, 20, 2, "source", "current"));
+        List<BeanRecord> beans = List.of(new BeanRecord(1, 1, "CLASS", "@Dependent",
+                List.of(), List.of(), false, null, List.of(), null, null, List.of("example.A")));
+        List<DependencyRecord> dependencies = List.of(
+                new DependencyRecord(1, 2, "TYPE_USE", null));
+        Map<String, String> metadata = Map.of("database_write_mode", "incremental");
+        IndexWriter.writeFresh(writable, initialClasses, beans, List.of(), dependencies, metadata,
+                List.of(), List.of(), List.of(), List.of(), List.of(), files);
+
+        IndexWriter.IncrementalWriteTimings unchanged = IndexWriter.writeIncremental(
+                QuillDatabase.openWritable(dbPath), initialClasses, beans, List.of(), dependencies,
+                metadata, List.of(), List.of(), List.of(), List.of(), List.of(), files);
+
+        assertEquals(0, unchanged.rowsInserted());
+        assertEquals(0, unchanged.rowsDeleted());
+        assertEquals(7, unchanged.rowsUnchanged());
+
+        List<ClassRecord> changedClasses = List.of(
+                new ClassRecord(0, "example.A", "CLASS", null, List.of(), "src/A.java", 1,
+                        true, 11, 1, "source", "current"),
+                initialClasses.get(1));
+        IndexWriter.IncrementalWriteTimings changed = IndexWriter.writeIncremental(
+                QuillDatabase.openWritable(dbPath), changedClasses, beans, List.of(), List.of(),
+                metadata, List.of(), List.of(), List.of(), List.of(), List.of(), files);
+
+        assertEquals(1, changed.rowsInserted(), "Only the changed class row should be inserted");
+        assertEquals(2, changed.rowsDeleted(),
+                "The old class row and removed dependency should be deleted");
+        assertEquals(11, IndexReader.findClassByName(QuillDatabase.open(dbPath), "example.A")
+                .orElseThrow().sourceTokens());
+        int dependencyCount = QuillDatabase.open(dbPath).withHandle(h ->
+                h.createQuery("SELECT count(*) FROM dependencies").mapTo(Integer.class).one());
+        assertEquals(0, dependencyCount);
+        int classNameIndexCount = QuillDatabase.open(dbPath).withHandle(h -> h.createQuery(
+                        "SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_classes_name'")
+                .mapTo(Integer.class).one());
+        assertTrue(classNameIndexCount > 0, "Secondary indexes must be retained");
+        boolean foreignKeysValid = QuillDatabase.openWritable(dbPath).withHandle(h ->
+                h.createQuery("PRAGMA foreign_key_check").mapToMap().list().isEmpty());
+        assertTrue(foreignKeysValid);
+    }
     Jdbi jdbi;
 
     @BeforeEach

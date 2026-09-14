@@ -50,7 +50,7 @@ public class UpdateCommand implements Runnable {
         Path existingDb = ProjectInitializer.findDbForHead(root);
         if (existingDb == null) {
             System.out.println("No existing index found. Running full init...");
-            runInit(root);
+            runInit(root, null);
             return;
         }
 
@@ -68,7 +68,7 @@ public class UpdateCommand implements Runnable {
         } else {
             System.out.println("Changes detected. Re-indexing...");
         }
-        runInit(root);
+        runInit(root, existingDb);
     }
 
     static boolean requiresPostCompileRefresh(Path root, Path dbPath) {
@@ -105,9 +105,10 @@ public class UpdateCommand implements Runnable {
         }
     }
 
-    private void runInit(Path root) {
+    private void runInit(Path root, Path incrementalBase) {
         ProjectInitializer.InitializationResult result =
-                ProjectInitializer.initializeLockedDetailed(root, true, compile);
+                ProjectInitializer.initializeLockedDetailed(
+                        root, true, compile, incrementalBase);
         if (!result.successful()) {
             throw new IllegalStateException(result.diagnostic()
                     + " (after " + result.elapsedMillis() + " ms)");

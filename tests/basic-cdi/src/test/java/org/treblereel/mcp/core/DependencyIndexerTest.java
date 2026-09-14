@@ -96,12 +96,12 @@ class DependencyIndexerTest {
 
     @Test
     void indexJarsUsesBoundedDeterministicShards() {
-        List<Path> jars = findJarsOnClasspath(6);
+        List<Path> jars = findJarsOnClasspath(10);
         assertTrue(jars.size() > 1, "Test classpath should contain multiple JARs");
 
         var result = DependencyIndexer.indexJars(jars);
 
-        int expected = Math.min(jars.size(), Math.min(4,
+        int expected = Math.min(jars.size(), Math.min(8,
                 Runtime.getRuntime().availableProcessors()));
         assertEquals(expected, result.shards().size());
         assertFalse(result.view().getKnownClasses().isEmpty());
@@ -147,7 +147,7 @@ class DependencyIndexerTest {
         Path projectDir = Files.createDirectories(tempDir.resolve("sharded-cache"));
         Path classesDir = Files.createDirectories(projectDir.resolve("target/classes"));
         Files.writeString(projectDir.resolve("pom.xml"), "<project/>");
-        List<Path> jars = findJarsOnClasspath(6);
+        List<Path> jars = findJarsOnClasspath(10);
         assertTrue(jars.size() > 1, "Test classpath should contain multiple JARs");
         Files.writeString(projectDir.resolve("target/quill-classpath.txt"), jars.stream()
                 .map(Path::toString).collect(Collectors.joining(File.pathSeparator)));

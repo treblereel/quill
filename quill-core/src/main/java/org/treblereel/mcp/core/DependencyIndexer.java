@@ -38,12 +38,12 @@ import org.jboss.jandex.IndexWriter;
 
 public final class DependencyIndexer {
 
-    private static final String CACHE_FORMAT = "quill-jandex-cache-v3";
+    private static final String CACHE_FORMAT = "quill-jandex-cache-v4";
     private static final String CACHE_FILE = "quill-dependencies.idx";
     private static final String FAILURE_CACHE_FORMAT = "quill-classpath-failure-v1";
     private static final String FAILURE_CACHE_FILE = "quill-classpath.failed";
     static final Duration GENERATION_FAILURE_BACKOFF = Duration.ofMinutes(5);
-    private static final int MAX_INDEXING_SHARDS = 4;
+    private static final int MAX_INDEXING_SHARDS = 8;
 
     private DependencyIndexer() {}
 

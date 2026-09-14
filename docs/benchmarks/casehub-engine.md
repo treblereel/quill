@@ -13,6 +13,42 @@ Maven, Gradle, or dependency caches. Existing index data is restored afterwards.
 results from similar hosts and cache conditions; use several runs before treating a change
 as a regression.
 
+## Current baseline — 2026-09-14
+
+- Quill commit: `8a64629`
+- Project commit: `c0469f83b668855f18c58d76fc374cc05beca09d`
+- Host: Apple arm64, 10 logical CPUs, 24 GiB RAM, macOS 26.6.2
+- Native binary: 39,708,008 bytes
+- Measurement: five warmups, ten sequential samples per tool
+
+The first run rebuilt the dependency cache in the current eight-shard format. The second
+run reused it. Existing `.quill` state was restored after both measurements.
+
+| Dependency cache | Index time | Peak RSS | SQLite size |
+|---|---:|---:|---:|
+| Rebuild | 13.093 s | 500.98 MiB | 3.73 MiB |
+| Hit | 2.025 s | 426.38 MiB | 3.73 MiB |
+
+Cache-hit MCP latency:
+
+| Tool | p50 | p95 | Max | Errors |
+|---|---:|---:|---:|---:|
+| `get_overview` | 16.28 ms | 27.62 ms | 27.62 ms | 0 |
+| `search_classes` | 1.47 ms | 1.81 ms | 1.81 ms | 0 |
+| `find_git_hotspots` | 11.59 ms | 30.03 ms | 30.03 ms | 0 |
+| `list_cdi_beans` | 3.16 ms | 5.52 ms | 5.52 ms | 0 |
+| `get_recent_changes` | 1.22 ms | 1.46 ms | 1.46 ms | 0 |
+
+| Concurrent requests | Total | Requests/s | p50 | p95 | Max | Errors |
+|---:|---:|---:|---:|---:|---:|---:|
+| 4 | 0.015 s | 263.47 | 3.49 ms | 15.18 ms | 15.18 ms | 0 |
+| 16 | 0.047 s | 341.48 | 23.46 ms | 46.85 ms | 46.85 ms | 0 |
+| 100 | 0.242 s | 413.43 | 107.60 ms | 236.69 ms | 241.88 ms | 0 |
+
+The cache-hit full refresh is now about 4.3 times faster than the 8.767 s baseline from
+2026-09-12. The dependency cache rebuild number is not directly comparable with the old
+warm-cache baseline; it includes reading and indexing all 434 dependency JARs.
+
 ## Baseline — 2026-09-12
 
 - Quill: `1.0.0-SNAPSHOT`

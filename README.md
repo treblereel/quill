@@ -233,7 +233,7 @@ explicit `--project` keeps the requested module or reactor root. Only modules wi
 compiled main classes are indexed. If a raw POM cannot be read or a declared module
 is unavailable, Quill falls back to scanning `target/classes` so partially checked
 out and generated reactors remain usable. Maven itself is not embedded. The dependency
-Jandex index is built in up to four deterministic shards and cached at
+Jandex index is built in up to eight deterministic shards and cached at
 `target/quill-dependencies.idx`; it is invalidated
 when the ordered runtime classpath or a dependency JAR's size or timestamp changes.
 Multi-release JARs contribute only the variant effective for Quill's Java runtime;

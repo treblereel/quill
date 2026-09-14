@@ -54,17 +54,33 @@ public class UpdateCommand implements Runnable {
             return;
         }
 
-        if (!force && !hasProjectChanges(root, existingDb)) {
+        boolean refreshCompiledSnapshot = compile
+                && requiresPostCompileRefresh(root, existingDb);
+        if (!force && !refreshCompiledSnapshot && !hasProjectChanges(root, existingDb)) {
             System.out.println("Index is up to date — project fingerprint has not changed.");
             return;
         }
 
         if (force) {
             System.out.println("Forced full re-index...");
+        } else if (refreshCompiledSnapshot) {
+            System.out.println("Compilation completed. Refreshing the stale compiled snapshot...");
         } else {
             System.out.println("Changes detected. Re-indexing...");
         }
         runInit(root);
+    }
+
+    static boolean requiresPostCompileRefresh(Path root, Path dbPath) {
+        try {
+            Map<String, String> meta = IndexReader.getMetadata(QuillDatabase.open(dbPath));
+            boolean compiledSnapshot = Boolean.parseBoolean(
+                    meta.getOrDefault("compiled_before_index", "false"));
+            return !compiledSnapshot && WorktreeInspector.inspect(root).structuralDirty();
+        } catch (Exception e) {
+            // A missing or unreadable freshness marker must not suppress a normal change check.
+            return false;
+        }
     }
 
     static boolean hasProjectChanges(Path root, Path dbPath) {

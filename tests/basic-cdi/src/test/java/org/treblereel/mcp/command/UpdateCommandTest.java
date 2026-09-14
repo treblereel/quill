@@ -8,10 +8,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.Comparator;
+import java.util.Map;
+import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.WorktreeInspector;
+import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 
 class UpdateCommandTest {
@@ -222,6 +226,37 @@ class UpdateCommandTest {
         assertTrue(failure.getMessage().contains("exited with code 7"), failure.getMessage());
         assertEquals("preserved", org.treblereel.mcp.db.IndexReader
                 .getMetadata(QuillDatabase.open(db)).get("sentinel"));
+    }
+
+    @Test
+    void successfulCompileRefreshesIndexPublishedFromDirtyUncompiledWorktree(
+            @TempDir Path project) throws Exception {
+        Path source = project.resolve("src/main/java/example/App.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package example; class App {}\n");
+        try (Git git = Git.init().setDirectory(project.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+        }
+
+        Files.writeString(source, "package example; class App { int changed; }\n");
+        WorktreeInspector.Snapshot dirty = WorktreeInspector.inspect(project);
+        assertTrue(dirty.structuralDirty());
+        Path db = project.resolve(".quill/nocommit.db");
+        IndexWriter.write(QuillDatabase.create(db), java.util.List.of(), java.util.List.of(),
+                java.util.List.of(), java.util.List.of(),
+                Map.of("compiled_before_index", "false",
+                        "indexed_structure_fingerprint", dirty.structuralFingerprint()));
+
+        assertTrue(UpdateCommand.requiresPostCompileRefresh(project, db),
+                "A successful --compile must republish an index marked as uncompiled");
+
+        QuillDatabase.create(db).useHandle(handle -> handle.createUpdate(
+                        "UPDATE metadata SET value = 'true' WHERE key = 'compiled_before_index'")
+                .execute());
+        assertFalse(UpdateCommand.requiresPostCompileRefresh(project, db),
+                "An already compiled snapshot must keep the normal fingerprint fast path");
     }
 
     private Path createFingerprintDatabase(Path project, Path classesDir) {

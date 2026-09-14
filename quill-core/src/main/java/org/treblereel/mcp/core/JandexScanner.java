@@ -5,12 +5,18 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Stream;
 import org.jboss.jandex.*;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 
 public final class JandexScanner {
+
+    private static final int MAX_SOURCE_TOKEN_WORKERS = 4;
 
     private static final Set<DotName> BEAN_DEFINING_ANNOTATIONS = Set.of(
             DotName.createSimple("jakarta.enterprise.context.ApplicationScoped"),
@@ -80,18 +86,23 @@ public final class JandexScanner {
     public static List<ClassRecord> extractClasses(Index index, List<Path> sourceRoots) {
         List<ClassRecord> result = new ArrayList<>();
         Map<String, Path> sourceFiles = sourceFilesByRelativePath(sourceRoots);
+        Map<String, Path> sourcesByClass = new HashMap<>();
+        Set<Path> matchedSources = new LinkedHashSet<>();
         for (ClassInfo ci : index.getKnownClasses()) {
-            String relativePath = ci.name().toString().replace('.', '/') + ".java";
+            Path source = sourceFiles.get(ci.name().toString().replace('.', '/') + ".java");
+            if (source != null) {
+                sourcesByClass.put(ci.name().toString(), source);
+                matchedSources.add(source);
+            }
+        }
+        Map<Path, Integer> tokenCounts = countSourceTokens(matchedSources);
+        for (ClassInfo ci : index.getKnownClasses()) {
             String sourceFile = null;
             int sourceTokens = 0;
-            Path source = sourceFiles.get(relativePath);
+            Path source = sourcesByClass.get(ci.name().toString());
             if (source != null) {
                 sourceFile = source.toString();
-                try {
-                    sourceTokens = TokenCounter.count(Files.readString(source));
-                } catch (IOException e) {
-                    // leave 0
-                }
+                sourceTokens = tokenCounts.getOrDefault(source, 0);
             }
             result.add(new ClassRecord(
                     0,
@@ -107,6 +118,51 @@ public final class JandexScanner {
                     sourceFile == null ? "orphan_output" : "source",
                     "current"
             ));
+        }
+        return result;
+    }
+
+    private static Map<Path, Integer> countSourceTokens(Collection<Path> sources) {
+        List<Path> orderedSources = List.copyOf(sources);
+        if (orderedSources.isEmpty()) return Map.of();
+
+        int workerCount = Math.min(orderedSources.size(), Math.min(MAX_SOURCE_TOKEN_WORKERS,
+                Runtime.getRuntime().availableProcessors()));
+        if (workerCount == 1) return countSourceTokenBatch(orderedSources);
+
+        ExecutorService executor = Executors.newFixedThreadPool(workerCount);
+        try {
+            List<Future<Map<Path, Integer>>> futures = new ArrayList<>(workerCount);
+            int baseSize = orderedSources.size() / workerCount;
+            int remainder = orderedSources.size() % workerCount;
+            int start = 0;
+            for (int i = 0; i < workerCount; i++) {
+                int size = baseSize + (i < remainder ? 1 : 0);
+                List<Path> batch = orderedSources.subList(start, start + size);
+                futures.add(executor.submit(() -> countSourceTokenBatch(batch)));
+                start += size;
+            }
+            Map<Path, Integer> result = new HashMap<>();
+            for (Future<Map<Path, Integer>> future : futures) result.putAll(future.get());
+            return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Source token counting was interrupted", e);
+        } catch (ExecutionException e) {
+            throw new IllegalStateException("Parallel source token counting failed", e.getCause());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private static Map<Path, Integer> countSourceTokenBatch(List<Path> sources) {
+        Map<Path, Integer> result = new HashMap<>();
+        for (Path source : sources) {
+            try {
+                result.put(source, TokenCounter.count(Files.readString(source)));
+            } catch (IOException e) {
+                result.put(source, 0);
+            }
         }
         return result;
     }

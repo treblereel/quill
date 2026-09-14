@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.jboss.jandex.Index;
 import org.jboss.jandex.Indexer;
 import org.junit.jupiter.api.BeforeEach;
@@ -102,5 +105,28 @@ class JandexScannerTest {
 
         assertEquals(first.resolve(relative).toString(), paymentService.sourceFile());
         assertTrue(paymentService.sourceTokens() > 0);
+    }
+
+    @Test
+    void countsMultipleMatchedSourcesExactly() throws Exception {
+        Path sourceRoot = tempDir.resolve("sources");
+        Map<String, String> sources = Map.of(
+                "PaymentService", "package org.treblereel.mcp.fixture; interface PaymentService {}",
+                "StripePaymentService", "package org.treblereel.mcp.fixture; class StripePaymentService {}",
+                "OrderDTO", "package org.treblereel.mcp.fixture; record OrderDTO(String id) {}");
+        for (var entry : sources.entrySet()) {
+            Path source = sourceRoot.resolve("org/treblereel/mcp/fixture/")
+                    .resolve(entry.getKey() + ".java");
+            Files.createDirectories(source.getParent());
+            Files.writeString(source, entry.getValue());
+        }
+
+        Map<String, ClassRecord> records = JandexScanner.extractClasses(index, List.of(sourceRoot))
+                .stream().collect(Collectors.toMap(
+                        record -> record.className().substring(record.className().lastIndexOf('.') + 1),
+                        Function.identity()));
+
+        sources.forEach((className, source) -> assertEquals(
+                TokenCounter.count(source), records.get(className).sourceTokens()));
     }
 }

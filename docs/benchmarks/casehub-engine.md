@@ -64,6 +64,30 @@ adding 122 ms to the dependency-cache read; overlapping phases hid that differen
 wall time. Quill now derives its default worker count from CPU and heap budgets, and the
 environment override allows predictable tuning in memory-constrained containers.
 
+## Real update and concurrent publication recheck — 2026-09-14
+
+- Quill commit: `e92664b`
+- Project commit: `c0469f83b668855f18c58d76fc374cc05beca09d`
+- Native binary: 39.72 MB
+- Worktree: five existing non-structural Quill-managed changes; source state was not modified
+
+An informational refresh completed in 7.521 s with 551.66 MiB peak process-tree RSS.
+The 100-request MCP burst completed at 414.60 requests/s with zero errors. A separate
+real-project publication soak kept one MCP process serving mixed overview, class-search,
+and hotspot requests while `quill update --force` built and activated a new immutable
+generation: 752 requests completed with zero tool, transport, timeout, or SQLite errors,
+and the client observed the new `index_id` after publication. All five dirty worktree
+paths remained visible through the live overlay.
+
+The refresh also exposed an environment-sensitive degradation: the reactor-wide Maven
+`dependency:build-classpath` invocation stopped when `casehub-engine-common` attempted to
+resolve the reactor SNAPSHOT `casehub-engine-common-core` from a GitHub Packages repository
+that returned HTTP 401. Quill retained the usable cached dependency index and reported
+`50/56 modules resolved`, but the active generation is marked `dependency_index=degraded`.
+The next Quill improvement should preserve the graceful fallback while reporting the
+failed module and Maven root cause directly, and should avoid requiring installed reactor
+artifacts when collecting external dependencies for a multi-module project.
+
 ## Baseline — 2026-09-12
 
 - Quill: `1.0.0-SNAPSHOT`

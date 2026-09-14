@@ -43,3 +43,35 @@ Cache-hit MCP latency:
 | 100 | 0.200 s | 500.90 | 94.26 ms | 194.59 ms | 199.64 ms | 0 |
 
 All measured MCP calls completed without transport, timeout, busy, or tool errors.
+
+## Real update, overlay, and quality recheck — 2026-09-14
+
+- Quill commit: `e92664b`
+- Project commit: `31a6a114515dcedc325bea26b82a76aaa6d146b8`
+- Worktree: 18 existing changes, 13 structural; source state was not modified
+
+`quill update --compile --force` completed successfully and left the structural snapshot
+current: 1,890 current source classes, 281 beans, and 696,330 source tokens. The
+informational refresh took 2.817 s with 209.03 MiB peak RSS. A 100-request burst completed
+at 488.15 requests/s with zero errors. During a separate forced update, one MCP process
+served 312 mixed requests with zero errors, observed the atomic `index_id` switch, and
+reported all 18 live worktree changes including the modified navigation test POM.
+
+The original Crysknife quality regressions now behave as intended:
+
+- `BeanProcessorTask` has fan-in 2 and explicitly reports the `ApplicationProcessor`
+  constructor edge.
+- The annotation-processor service descriptor resolves as a current high-risk resource.
+- Deleted `ScopedBeanGenerator` and old `TemplatedGenerator` paths are absent from default
+  hotspots and appear only with `include_historical=true`.
+- The removed `TemplatedGenerator` FQCN returns current and historical candidates instead
+  of an unexplained lookup failure.
+- `BeanManager` fan-in is explained as 497 classes: 482 generated and 15 source, with
+  edge counts reported separately.
+
+One update-state edge case remains: after a non-compiling forced update on a structurally
+dirty worktree, a subsequent `quill update --compile` may compile successfully but return
+"Index is up to date" without clearing the stale metadata because the bytecode fingerprint
+already matches. `--compile --force` restores the correct current state. This should be
+fixed so an explicitly successful compile refreshes freshness metadata even when no class
+content changed.

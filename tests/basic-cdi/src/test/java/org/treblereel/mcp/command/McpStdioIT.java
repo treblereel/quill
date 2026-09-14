@@ -108,7 +108,7 @@ class McpStdioIT {
     }
 
     @Test
-    void mcpReadsSwitchToNewIndexAfterConcurrentUpdate() throws Exception {
+    void mcpReadsSurviveRepeatedConcurrentIndexPublications() throws Exception {
         Path appJar = resolveAppJar();
         Assumptions.assumeTrue(Files.exists(appJar));
 
@@ -132,37 +132,64 @@ class McpStdioIT {
 
             sendRequest(input, 2, "tools/call",
                     "{\"name\":\"get_overview\",\"arguments\":{}}");
-            String oldIndex = toolText(readResponse(output, 2))
+            String previousIndex = toolText(readResponse(output, 2))
                     .path("_meta").path("index_id").asText();
-            Path oldDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+            Path previousDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
 
-            Set<Integer> inFlightIds = new LinkedHashSet<>();
-            for (int id = 100; id < 116; id++) {
-                inFlightIds.add(id);
-                writeRequest(input, id, "tools/call",
-                        "{\"name\":\"find_git_hotspots\",\"arguments\":{\"limit\":100}}");
+            for (int publication = 0; publication < 7; publication++) {
+                Set<Integer> inFlightIds = new LinkedHashSet<>();
+                int firstRequestId = 100 + publication * 24;
+                for (int id = firstRequestId; id < firstRequestId + 24; id++) {
+                    inFlightIds.add(id);
+                    writeRequest(input, id, "tools/call",
+                            "{\"name\":\"find_git_hotspots\",\"arguments\":{\"limit\":100}}");
+                }
+                input.flush();
+
+                UpdateCommand update = new UpdateCommand();
+                update.projectPath = PROJECT_ROOT;
+                update.force = true;
+                update.run();
+                Path currentDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+                assertNotEquals(previousDatabase, currentDatabase,
+                        "Every forced update must publish a new immutable generation");
+
+                Map<Integer, JsonNode> inFlight =
+                        readResponses(output, inFlightIds, 30_000);
+                assertEquals(inFlightIds, inFlight.keySet());
+                assertTrue(inFlight.values().stream().allMatch(response ->
+                                response.has("result")
+                                        && !response.path("result").path("isError").asBoolean()),
+                        inFlight.toString());
+
+                int overviewId = 10_000 + publication;
+                sendRequest(input, overviewId, "tools/call",
+                        "{\"name\":\"get_overview\",\"arguments\":{}}");
+                String currentIndex = toolText(readResponse(output, overviewId))
+                        .path("_meta").path("index_id").asText();
+                assertNotEquals(previousIndex, currentIndex,
+                        "The long-lived MCP process must observe the newly published generation");
+                assertEquals(
+                        currentDatabase.getFileName().toString().replaceFirst("\\.db$", ""),
+                        currentIndex);
+                previousIndex = currentIndex;
+                previousDatabase = currentDatabase;
             }
-            input.flush();
 
-            UpdateCommand update = new UpdateCommand();
-            update.projectPath = PROJECT_ROOT;
-            update.force = true;
-            update.run();
-            Path newDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
-            assertNotEquals(oldDatabase, newDatabase);
-
-            Map<Integer, JsonNode> inFlight = readResponses(output, inFlightIds, 30_000);
-            assertEquals(inFlightIds, inFlight.keySet());
-            assertTrue(inFlight.values().stream()
-                    .allMatch(response -> response.has("result")), inFlight.toString());
-
-            sendRequest(input, 3, "tools/call",
-                    "{\"name\":\"get_overview\",\"arguments\":{}}");
-            String newIndex = toolText(readResponse(output, 3))
-                    .path("_meta").path("index_id").asText();
-            assertNotEquals(oldIndex, newIndex);
-            assertEquals(newDatabase.getFileName().toString().replaceFirst("\\.db$", ""),
-                    newIndex);
+            try (var files = Files.list(QUILL_DIR)) {
+                List<Path> entries = files.toList();
+                assertTrue(entries.stream().noneMatch(path ->
+                                path.getFileName().toString().endsWith(".tmp")),
+                        "No unpublished temporary database may remain after the soak test");
+                assertTrue(entries.stream().filter(path ->
+                                path.getFileName().toString().endsWith(".db")).count() <= 5,
+                        "Immutable generation cleanup must enforce the LRU limit");
+            }
+            for (String indexId : ProjectInitializer.readRefs(
+                    QUILL_DIR.resolve("refs.json")).values()) {
+                assertTrue(Files.isRegularFile(QUILL_DIR.resolve(indexId + ".db")),
+                        "Every published ref must resolve to an existing database");
+            }
         } finally {
             process.destroyForcibly();
             process.waitFor(5, TimeUnit.SECONDS);

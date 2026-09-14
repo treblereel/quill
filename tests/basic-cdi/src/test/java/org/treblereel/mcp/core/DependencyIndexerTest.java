@@ -574,6 +574,16 @@ class DependencyIndexerTest {
                 "Should return false for non-Maven directory");
     }
 
+    @Test
+    void dependencyWorkersRespectCpuAndMemoryBudgets() {
+        long mib = 1024L * 1024;
+
+        assertEquals(2, DependencyIndexer.workerCount(20, 16, 600 * mib, null));
+        assertEquals(3, DependencyIndexer.workerCount(3, 16, 8_192 * mib, null));
+        assertEquals(4, DependencyIndexer.workerCount(20, 16, 8_192 * mib, "4"));
+        assertEquals(8, DependencyIndexer.workerCount(20, 16, 8_192 * mib, "invalid"));
+    }
+
     private static Path findJarOnClasspath(String nameFragment) {
         String cp = System.getProperty("java.class.path", "");
         for (String entry : cp.split(File.pathSeparator)) {

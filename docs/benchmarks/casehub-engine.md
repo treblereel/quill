@@ -49,6 +49,21 @@ The cache-hit full refresh is now about 4.3 times faster than the 8.767 s baseli
 2026-09-12. The dependency cache rebuild number is not directly comparable with the old
 warm-cache baseline; it includes reading and indexing all 434 dependency JARs.
 
+### Dependency worker memory tuning
+
+Two consecutive cache-hit runs compared the maximum eight dependency workers with a
+constrained two-worker setting. Both used the same 434-JAR cache and restored `.quill`:
+
+| `QUILL_DEPENDENCY_WORKERS` | Index time | Peak RSS | Dependency cache read |
+|---:|---:|---:|---:|
+| 8 | 1.783 s | 377.64 MiB | 528 ms |
+| 2 | 1.726 s | 349.31 MiB | 650 ms |
+
+On this run, limiting deserialization to two workers reduced peak RSS by about 7.5% while
+adding 122 ms to the dependency-cache read; overlapping phases hid that difference in total
+wall time. Quill now derives its default worker count from CPU and heap budgets, and the
+environment override allows predictable tuning in memory-constrained containers.
+
 ## Baseline — 2026-09-12
 
 - Quill: `1.0.0-SNAPSHOT`

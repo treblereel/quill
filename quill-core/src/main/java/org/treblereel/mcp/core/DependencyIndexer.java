@@ -44,6 +44,8 @@ public final class DependencyIndexer {
     private static final String FAILURE_CACHE_FILE = "quill-classpath.failed";
     static final Duration GENERATION_FAILURE_BACKOFF = Duration.ofMinutes(5);
     private static final int MAX_INDEXING_SHARDS = 8;
+    private static final long MEMORY_BUDGET_PER_WORKER = 256L * 1024 * 1024;
+    private static final String WORKERS_ENV = "QUILL_DEPENDENCY_WORKERS";
 
     private DependencyIndexer() {}
 
@@ -560,8 +562,7 @@ public final class DependencyIndexer {
             return new ShardedIndex(List.of(indexJarBatch(List.of())));
         }
 
-        int shardCount = Math.min(orderedJars.size(), Math.min(MAX_INDEXING_SHARDS,
-                Runtime.getRuntime().availableProcessors()));
+        int shardCount = workerCount(orderedJars.size());
         Map<Path, Set<String>> selectedClasses = selectClasspathClasses(orderedJars);
         if (shardCount == 1) {
             return new ShardedIndex(List.of(indexJarBatch(orderedJars, selectedClasses)));
@@ -598,6 +599,27 @@ public final class DependencyIndexer {
             start += size;
         }
         return batches;
+    }
+
+    private static int workerCount(int tasks) {
+        return workerCount(tasks, Runtime.getRuntime().availableProcessors(),
+                Runtime.getRuntime().maxMemory(), System.getenv(WORKERS_ENV));
+    }
+
+    static int workerCount(int tasks, int processors, long maxMemory, String configured) {
+        if (tasks <= 0) return 1;
+        int taskLimit = Math.min(tasks, MAX_INDEXING_SHARDS);
+        if (configured != null && !configured.isBlank()) {
+            try {
+                int requested = Integer.parseInt(configured.trim());
+                if (requested > 0) return Math.min(taskLimit, requested);
+            } catch (NumberFormatException ignored) {
+                // Fall through to the safe adaptive default.
+            }
+        }
+        int cpuLimit = Math.max(1, processors);
+        long memoryLimit = Math.max(1L, maxMemory / MEMORY_BUDGET_PER_WORKER);
+        return (int) Math.max(1L, Math.min(taskLimit, Math.min(cpuLimit, memoryLimit)));
     }
 
     private static Map<Path, Set<String>> selectClasspathClasses(List<Path> jars) {
@@ -717,8 +739,7 @@ public final class DependencyIndexer {
             return List.of(readIndexShard(serializedShards.get(0)));
         }
 
-        int threadCount = Math.min(serializedShards.size(),
-                Runtime.getRuntime().availableProcessors());
+        int threadCount = workerCount(serializedShards.size());
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         try {
             List<Future<Index>> futures = new ArrayList<>(serializedShards.size());

@@ -49,6 +49,9 @@ response writes remain serialized so stdout always contains complete JSON messag
 `QUILL_MCP_MAX_CONCURRENCY` and `QUILL_MCP_MAX_QUEUED_PER_WORKER` can override the
 defaults for constrained or unusually large local environments.
 `QUILL_MCP_REQUEST_TIMEOUT` sets the per-tool timeout in seconds (default: `30`).
+Dependency JAR indexing uses up to eight workers, capped automatically by available CPUs
+and the process heap budget (roughly 256 MiB per worker). Set
+`QUILL_DEPENDENCY_WORKERS` to a positive number to override that choice.
 Timed-out work is cancelled and returns an explicit `Tool timed out` result; closing
 the client input also cancels active workers so the stdio server can terminate cleanly.
 Concurrent requests share an expensive Git worktree snapshot for 500 ms. An

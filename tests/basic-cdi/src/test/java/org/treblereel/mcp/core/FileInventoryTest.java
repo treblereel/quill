@@ -54,6 +54,21 @@ class FileInventoryTest {
                 .findFirst().orElseThrow().kind());
     }
 
+    @Test
+    void infersKotlinSourceForNestedClass() throws Exception {
+        Path sourceRoot = tempDir.resolve("src/main/kotlin");
+        Path source = sourceRoot.resolve("example/Outer.kt");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package example\nclass Outer { class Nested }");
+
+        FileInventory.Result result = FileInventory.build(tempDir, List.of(tempDir),
+                List.of(sourceRoot), List.of(cls(1, "example.Outer$Nested", null)), List.of(),
+                WorktreeInspector.Snapshot.empty());
+
+        assertEquals("src/main/kotlin/example/Outer.kt", result.classes().getFirst().sourceFile());
+        assertEquals("kotlin", result.files().getFirst().kind());
+    }
+
     private static ClassRecord cls(int id, String name, String source) {
         return new ClassRecord(id, name, "CLASS", "java.lang.Object", List.of(),
                 source, 1, false, 10);

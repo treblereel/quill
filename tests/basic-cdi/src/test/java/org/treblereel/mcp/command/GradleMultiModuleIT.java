@@ -96,7 +96,7 @@ class GradleMultiModuleIT {
     }
 
     @Test
-    void indexesSpringKotlinDslProject() throws Exception {
+    void indexesSpringKotlinProject() throws Exception {
         assumeGradleAvailable();
         deleteTree(SPRING_PROJECT.resolve(".quill"));
         runGradleClean(SPRING_PROJECT);
@@ -117,6 +117,11 @@ class GradleMultiModuleIT {
 
             var serviceClass = IndexReader.findClassByName(jdbi,
                     "org.treblereel.mcp.fixture.gradlespring.OrderService").orElseThrow();
+            assertTrue(serviceClass.sourceFile().endsWith("OrderService.kt"));
+            assertEquals("source", serviceClass.origin());
+            assertEquals(serviceClass, IndexReader.findClassByPath(jdbi,
+                    "src/main/kotlin/org/treblereel/mcp/fixture/gradlespring/OrderService.kt")
+                    .orElseThrow());
             var serviceBean = IndexReader.findBeanByClassId(jdbi, serviceClass.id()).orElseThrow();
             assertNotNull(IndexReader.findInjectionPoints(jdbi, serviceBean.id())
                     .getFirst().resolvedBeanId());

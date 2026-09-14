@@ -1,5 +1,5 @@
 plugins {
-    java
+    kotlin("jvm") version "2.4.20"
 }
 
 repositories {
@@ -10,6 +10,6 @@ dependencies {
     implementation("org.springframework:spring-context:6.2.3")
 }
 
-java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+kotlin {
+    jvmToolchain(21)
 }

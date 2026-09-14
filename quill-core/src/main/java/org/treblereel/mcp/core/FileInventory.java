@@ -123,8 +123,10 @@ public final class FileInventory {
     private static String inferTopLevelSource(String className, Set<String> projectPaths) {
         String topLevel = className.contains("$")
                 ? className.substring(0, className.indexOf('$')) : className;
-        String suffix = topLevel.replace('.', '/') + ".java";
-        return projectPaths.stream().filter(path -> path.endsWith(suffix)).findFirst().orElse(null);
+        String base = topLevel.replace('.', '/');
+        return projectPaths.stream()
+                .filter(path -> path.endsWith(base + ".java") || path.endsWith(base + ".kt"))
+                .findFirst().orElse(null);
     }
 
     private static String projectPath(String repositoryPath, String projectPrefix) {
@@ -135,6 +137,7 @@ public final class FileInventory {
 
     private static String kind(String path) {
         if (path.endsWith(".java")) return "java";
+        if (path.endsWith(".kt")) return "kotlin";
         if (path.contains("/META-INF/services/") || path.startsWith("META-INF/services/")) {
             return "service_descriptor";
         }

@@ -38,7 +38,7 @@ one, including on Windows where an open SQLite file cannot be replaced safely.
 when no bytecode exists; use `quill update --compile` when source changes must be
 compiled before refreshing an existing index. Every MCP response reports the indexed
 and current commit plus worktree freshness in `_meta`. Dirty and untracked files are
-also exposed as a live overlay by `find_git_hotspots`. Changes to Java sources,
+also exposed as a live overlay by `find_git_hotspots`. Changes to Java or Kotlin sources,
 resources, generated sources, or Maven/Gradle build inputs mark structural answers
 stale until the project is compiled and the index is refreshed; documentation-only
 changes remain visible without invalidating the bytecode graph.
@@ -250,6 +250,8 @@ JVM class loading.
 ### Gradle projects
 
 Both Groovy and Kotlin DSL projects are supported, including multi-project builds.
+Java and Kotlin/JVM main sources are mapped back from compiled classes, inventoried,
+and token-counted; common KSP-generated Kotlin sources are included as generated input.
 Quill locates the root through `settings.gradle[.kts]`, runs `gradlew` when present,
 and injects a temporary init script to export the evaluated Java project directories,
 main source-set outputs, and `runtimeClasspath`. This respects dynamic settings and

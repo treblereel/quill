@@ -93,7 +93,9 @@ public final class JandexScanner {
         Map<String, Path> sourcesByClass = new HashMap<>();
         Set<Path> matchedSources = new LinkedHashSet<>();
         for (ClassInfo ci : knownClasses) {
-            Path source = sourceFiles.get(ci.name().toString().replace('.', '/') + ".java");
+            String classPath = ci.name().toString().replace('.', '/');
+            Path source = sourceFiles.get(classPath + ".java");
+            if (source == null) source = sourceFiles.get(classPath + ".kt");
             if (source != null) {
                 sourcesByClass.put(ci.name().toString(), source);
                 matchedSources.add(source);
@@ -137,7 +139,8 @@ public final class JandexScanner {
         for (Path root : sourceRoots) {
             try (Stream<Path> files = Files.walk(root)) {
                 files.filter(Files::isRegularFile)
-                        .filter(path -> path.toString().endsWith(".java"))
+                        .filter(path -> path.toString().endsWith(".java")
+                                || path.toString().endsWith(".kt"))
                         .forEach(path -> result.putIfAbsent(
                                 root.relativize(path).toString().replace('\\', '/'), path));
             } catch (IOException ignored) {

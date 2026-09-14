@@ -129,4 +129,21 @@ class JandexScannerTest {
         sources.forEach((className, source) -> assertEquals(
                 TokenCounter.count(source), records.get(className).sourceTokens()));
     }
+
+    @Test
+    void resolvesKotlinSourceAndCountsTokens() throws Exception {
+        Path relative = Path.of("org/treblereel/mcp/fixture/PaymentService.kt");
+        Path sourceRoot = tempDir.resolve("kotlin");
+        Files.createDirectories(sourceRoot.resolve(relative).getParent());
+        String source = "package org.treblereel.mcp.fixture\ninterface PaymentService";
+        Files.writeString(sourceRoot.resolve(relative), source);
+
+        ClassRecord paymentService = JandexScanner.extractClasses(index, List.of(sourceRoot))
+                .stream()
+                .filter(record -> record.className().endsWith("PaymentService"))
+                .findFirst().orElseThrow();
+
+        assertEquals(sourceRoot.resolve(relative).toString(), paymentService.sourceFile());
+        assertEquals(TokenCounter.count(source), paymentService.sourceTokens());
+    }
 }

@@ -688,8 +688,10 @@ public class ProjectInitializer {
         for (Path module : moduleDirectories) {
             for (Path candidate : List.of(
                     module.resolve("src/main/java"),
+                    module.resolve("src/main/kotlin"),
                     module.resolve("target/generated-sources/annotations"),
-                    module.resolve("build/generated/sources/annotationProcessor/java/main"))) {
+                    module.resolve("build/generated/sources/annotationProcessor/java/main"),
+                    module.resolve("build/generated/ksp/main/kotlin"))) {
                 if (Files.isDirectory(candidate)) roots.add(candidate.toAbsolutePath().normalize());
             }
         }

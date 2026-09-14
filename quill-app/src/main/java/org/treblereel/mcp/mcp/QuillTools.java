@@ -1406,7 +1406,9 @@ public class QuillTools {
         }
         String basename = target.replace('\\', '/');
         basename = basename.substring(basename.lastIndexOf('/') + 1);
-        if (basename.endsWith(".java")) basename = basename.substring(0, basename.length() - 5);
+        if (basename.endsWith(".java") || basename.endsWith(".kt")) {
+            basename = basename.substring(0, basename.lastIndexOf('.'));
+        }
         List<ClassRecord> candidates = IndexReader.searchClasses(jdbi, basename, 5);
         List<FileRecord> fileCandidates = IndexReader.findFileCandidates(jdbi, target, 5);
         return ClassLookup.error("Class not found", candidates, fileCandidates);

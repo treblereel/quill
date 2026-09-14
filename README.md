@@ -297,6 +297,9 @@ On Windows the native output is `quill-app\target\quill.exe`.
 ### Releases
 
 Pushing a tag such as `v1.0.0` runs the complete JVM and native test suites and
-publishes a GitHub release containing Linux x86-64, macOS Apple Silicon, and Windows
-x86-64 native archives, plus SHA-256 checksums. The release version is derived from
-the tag and is reported consistently by both the CLI and MCP server.
+publishes a GitHub release containing Linux x86-64/AArch64, macOS Apple Silicon/Intel,
+and Windows x86-64 native archives, plus SHA-256 checksums and an SPDX SBOM. GitHub
+build-provenance and SBOM attestations cover every archive. The release version is
+derived from the tag and is reported consistently by both the CLI and MCP server.
+See [the release guide](docs/releasing.md) for platform signing, notarization, and
+download verification.

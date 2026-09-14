@@ -32,6 +32,23 @@ jobs:
           ./mvnw -B org.codehaus.mojo:versions-maven-plugin:2.19.1:set \
             -DnewVersion="${release_version}" -DprocessAllModules=true -DgenerateBackupPoms=false
       - run: ./mvnw -B clean verify -DskipITs=false
+      - name: Prepare release SBOM input
+        run: |
+          mkdir -p dist
+          cp quill-app/target/quill-app-*-all.jar dist/quill-release.jar
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          file: dist/quill-release.jar
+          format: spdx-json
+          output-file: dist/quill.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quill-sbom
+          path: dist/quill.spdx.json
+          if-no-files-found: error
 
   native:
     strategy:
@@ -40,8 +57,12 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: linux-x86_64
+          - os: ubuntu-24.04-arm
+            artifact: linux-aarch64
           - os: macos-14
             artifact: macos-aarch64
+          - os: macos-15-intel
+            artifact: macos-x86_64
           - os: windows-latest
             artifact: windows-x86_64
     runs-on: ${{ matrix.os }}
@@ -77,6 +98,85 @@ jobs:
         run: ./quill-app/target/quill --version
       - if: runner.os == 'Windows'
         run: .\quill-app\target\quill.exe --version
+      - name: Sign and notarize macOS executable
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          REQUIRE_PLATFORM_SIGNING: ${{ vars.REQUIRE_PLATFORM_SIGNING }}
+        run: |
+          if [[ -z "${APPLE_CERTIFICATE_BASE64}" || -z "${APPLE_CERTIFICATE_PASSWORD}" || -z "${APPLE_SIGNING_IDENTITY}" ]]; then
+            if [[ "${REQUIRE_PLATFORM_SIGNING}" == "true" ]]; then
+              echo "macOS signing is required, but the Apple signing secrets are incomplete" >&2
+              exit 1
+            fi
+            echo "Apple signing secrets are absent; publishing an unsigned macOS executable"
+            exit 0
+          fi
+
+          certificate_path="${RUNNER_TEMP}/quill-signing.p12"
+          keychain_path="${RUNNER_TEMP}/quill-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          printf '%s' "${APPLE_CERTIFICATE_BASE64}" | base64 --decode > "${certificate_path}"
+          security create-keychain -p "${keychain_password}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+          security import "${certificate_path}" -P "${APPLE_CERTIFICATE_PASSWORD}" -A -t cert -f pkcs12 -k "${keychain_path}"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${keychain_password}" "${keychain_path}"
+          security list-keychains -d user -s "${keychain_path}"
+          codesign --force --options runtime --timestamp --sign "${APPLE_SIGNING_IDENTITY}" quill-app/target/quill
+          codesign --verify --strict --verbose=2 quill-app/target/quill
+
+          if [[ -n "${APPLE_ID}" && -n "${APPLE_TEAM_ID}" && -n "${APPLE_APP_PASSWORD}" ]]; then
+            ditto -c -k --keepParent quill-app/target/quill "${RUNNER_TEMP}/quill-notarization.zip"
+            xcrun notarytool submit "${RUNNER_TEMP}/quill-notarization.zip" \
+              --apple-id "${APPLE_ID}" --team-id "${APPLE_TEAM_ID}" \
+              --password "${APPLE_APP_PASSWORD}" --wait
+          elif [[ "${REQUIRE_PLATFORM_SIGNING}" == "true" ]]; then
+            echo "macOS notarization is required, but notarization secrets are incomplete" >&2
+            exit 1
+          else
+            echo "Apple notarization secrets are absent; the executable is signed but not notarized"
+          fi
+      - name: Sign Windows executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          REQUIRE_PLATFORM_SIGNING: ${{ vars.REQUIRE_PLATFORM_SIGNING }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -or
+              [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            if ($env:REQUIRE_PLATFORM_SIGNING -eq "true") {
+              throw "Windows signing is required, but the Authenticode secrets are incomplete"
+            }
+            Write-Host "Authenticode secrets are absent; publishing an unsigned Windows executable"
+            exit 0
+          }
+
+          $certificatePath = Join-Path $env:RUNNER_TEMP "quill-signing.pfx"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $flags = [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet -bor
+                   [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable
+          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            $certificatePath, $env:WINDOWS_CERTIFICATE_PASSWORD, $flags)
+          $store = [Security.Cryptography.X509Certificates.X509Store]::new("My", "CurrentUser")
+          $store.Open("ReadWrite")
+          $store.Add($certificate)
+          $store.Close()
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1
+          if ($null -eq $signtool) { throw "signtool.exe was not found on the runner" }
+          & $signtool.FullName sign /sha1 $certificate.Thumbprint /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 .\quill-app\target\quill.exe
+          if ($LASTEXITCODE -ne 0) { throw "signtool failed with exit code $LASTEXITCODE" }
+          & $signtool.FullName verify /pa /v .\quill-app\target\quill.exe
+          if ($LASTEXITCODE -ne 0) { throw "Authenticode verification failed" }
       - name: Prepare native archive
         if: runner.os != 'Windows'
         run: |
@@ -102,11 +202,26 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
+      - name: Attest release archive provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/quill-*.tar.gz
+            dist/quill-*.zip
+      - name: Attest release SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/quill-*.tar.gz
+            dist/quill-*.zip
+          sbom-path: dist/quill.spdx.json
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -311,8 +311,8 @@ public class ProjectInitializer {
                         () -> DependencyIndexer.buildDependencyIndex(root, indexingClassDirs))) {
             classFiles = ClassFileSnapshot.capture(indexingClassDirs);
             scanResult = sourceRoots.isEmpty()
-                    ? JandexScanner.scan(classFiles, List.of())
-                    : JandexScanner.scan(classFiles, sourceRoots);
+                    ? JandexScanner.scan(classFiles, List.of(), sourceTokenCache(root))
+                    : JandexScanner.scan(classFiles, sourceRoots, sourceTokenCache(root));
 
             isSpring = SpringResolver.isSpringProject(scanResult.index());
             boolean isCdi = BeanResolver.isCdiProject(scanResult.index());
@@ -908,6 +908,10 @@ public class ProjectInitializer {
 
     private static Path resolveDbPath(Path root, String indexId) {
         return root.resolve(".quill/" + indexId + ".db");
+    }
+
+    private static Path sourceTokenCache(Path root) {
+        return root.resolve(".quill/source-tokens.cache");
     }
 
     private static void updateRefs(Path root, String commitHash, String indexId) {

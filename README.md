@@ -81,6 +81,9 @@ machine-readable results are written below `target/benchmarks/`.
 The `--timings` phases include independently measured background work such as
 dependency and Git analysis. Because those phases can overlap, their durations are
 not expected to add up to the reported wall-clock `total`.
+Exact source token counts are cached by content under `.quill/`, so subsequent indexes
+only tokenize new or changed source files. `quill clean` removes this cache together
+with the index generations.
 
 Failed initialization reports a stable reason code such as `COMPILATION_FAILED`,
 `NO_COMPILED_CLASSES`, `HEAD_CHANGED`, `WORKTREE_CHANGED`, or

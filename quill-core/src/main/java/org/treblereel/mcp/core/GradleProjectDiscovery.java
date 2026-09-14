@@ -62,6 +62,7 @@ public final class GradleProjectDiscovery {
 
         Path initScript = null;
         Path manifest = null;
+        Process process = null;
         try {
             initScript = Files.createTempFile("quill-gradle-", ".init.gradle");
             manifest = Files.createTempFile("quill-gradle-projects-", ".tsv");
@@ -71,7 +72,7 @@ public final class GradleProjectDiscovery {
             Files.writeString(
                     initScript, initScript(taskName, writeClasspath), StandardCharsets.UTF_8);
 
-            int exit = new ProcessBuilder(BuildSystem.GRADLE.command(normalizedRoot,
+            process = new ProcessBuilder(BuildSystem.GRADLE.command(normalizedRoot,
                     "--init-script", initScript.toString(),
                     "-Dquill.manifest=" + manifest,
                     "-Dquill.project=" + normalizedRoot,
@@ -79,8 +80,8 @@ public final class GradleProjectDiscovery {
                     .directory(normalizedRoot.toFile())
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .redirectError(ProcessBuilder.Redirect.INHERIT)
-                    .start()
-                    .waitFor();
+                    .start();
+            int exit = process.waitFor();
             if (exit != 0) {
                 System.err.println("[quill] Warning: Gradle project discovery exited with code " + exit);
                 return incomplete();
@@ -98,6 +99,7 @@ public final class GradleProjectDiscovery {
                     parsed.moduleDirectories(), parsed.classesDirectories(),
                     parsed.classDirectoryOwners(), parsed.valid());
         } catch (InterruptedException e) {
+            terminate(process);
             Thread.currentThread().interrupt();
             System.err.println("[quill] Warning: Gradle project discovery was interrupted");
             return incomplete();
@@ -108,6 +110,16 @@ public final class GradleProjectDiscovery {
             deleteTemporaryFile(initScript);
             deleteTemporaryFile(manifest);
         }
+    }
+
+    private static void terminate(Process process) {
+        if (process == null) return;
+        try (var descendants = process.descendants()) {
+            descendants.forEach(ProcessHandle::destroyForcibly);
+        } catch (UnsupportedOperationException | SecurityException ignored) {
+            // Best effort; destroying the wrapper process is still preferable to leaving it alive.
+        }
+        process.destroyForcibly();
     }
 
     static Discovery readManifest(Path manifest) {

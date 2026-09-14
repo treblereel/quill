@@ -23,6 +23,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Stream;
 import org.jdbi.v3.core.Jdbi;
 import org.jboss.jandex.Index;
@@ -119,6 +124,52 @@ public class ProjectInitializer {
 
         Map<String, Long> snapshot() {
             return Collections.unmodifiableMap(new LinkedHashMap<>(phases));
+        }
+    }
+
+    static final class BackgroundTask<T> implements AutoCloseable {
+        private final String threadName;
+        private final ExecutorService executor;
+        private final Future<T> future;
+
+        private BackgroundTask(String threadName, Callable<T> operation) {
+            this.threadName = threadName;
+            executor = Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, threadName);
+                thread.setDaemon(true);
+                return thread;
+            });
+            future = executor.submit(() -> {
+                try {
+                    return operation.call();
+                } finally {
+                    executor.shutdown();
+                }
+            });
+        }
+
+        static <T> BackgroundTask<T> start(String threadName, Callable<T> operation) {
+            return new BackgroundTask<>(threadName, operation);
+        }
+
+        T await() {
+            try {
+                return future.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(threadName + " was interrupted", e);
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof RuntimeException runtime) throw runtime;
+                if (cause instanceof Error error) throw error;
+                throw new IllegalStateException(threadName + " failed", cause);
+            }
+        }
+
+        @Override
+        public void close() {
+            if (!future.isDone()) future.cancel(true);
+            executor.shutdownNow();
         }
     }
 
@@ -227,33 +278,37 @@ public class ProjectInitializer {
                 DependencyIndexer.mapClassDirectoriesToModules(root, buildSystem, classesDirs);
         List<Path> moduleDirectories = classDirectoryOwners.values().stream().distinct().toList();
         List<Path> sourceRoots = findSourceRoots(moduleDirectories);
-        ClassFileSnapshot classFiles = ClassFileSnapshot.capture(classesDirs);
-        JandexScanner.ScanResult scanResult = sourceRoots.isEmpty()
-                ? JandexScanner.scan(classFiles, List.of())
-                : JandexScanner.scan(classFiles, sourceRoots);
+        List<Path> indexingClassDirs = List.copyOf(classesDirs);
+        ClassFileSnapshot classFiles;
+        JandexScanner.ScanResult scanResult;
+        boolean isSpring;
+        DependencyIndexer.DependencyIndexResult depResult;
+        try (BackgroundTask<DependencyIndexer.DependencyIndexResult> dependencyTask =
+                BackgroundTask.start("quill-dependency-index",
+                        () -> DependencyIndexer.buildDependencyIndex(root, indexingClassDirs))) {
+            classFiles = ClassFileSnapshot.capture(indexingClassDirs);
+            scanResult = sourceRoots.isEmpty()
+                    ? JandexScanner.scan(classFiles, List.of())
+                    : JandexScanner.scan(classFiles, sourceRoots);
 
-        boolean isSpring = SpringResolver.isSpringProject(scanResult.index());
-        boolean isCdi = BeanResolver.isCdiProject(scanResult.index());
-        timings.finish("application_index");
+            isSpring = SpringResolver.isSpringProject(scanResult.index());
+            boolean isCdi = BeanResolver.isCdiProject(scanResult.index());
+            timings.finish("application_index");
 
-        if (isSpring && isCdi) {
-            return InitializationResult.failure(FailureReason.MIXED_FRAMEWORKS,
-                    "Mixed Spring/CDI project detected. Quill does not support both DI frameworks "
-                            + "in one index; index their modules separately.",
-                    startedAtNanos);
+            if (isSpring && isCdi) {
+                return InitializationResult.failure(FailureReason.MIXED_FRAMEWORKS,
+                        "Mixed Spring/CDI project detected. Quill does not support both DI frameworks "
+                                + "in one index; index their modules separately.",
+                        startedAtNanos);
+            }
+
+            depResult = dependencyTask.await();
         }
-
-        DependencyIndexer.DependencyIndexResult depResult =
-                DependencyIndexer.buildDependencyIndex(root, classesDirs);
         timings.finish("dependency_index");
         if (depResult.status() != DependencyIndexer.Status.COMPLETE) {
             System.err.println("[quill] Warning: dependency index "
                     + depResult.status().name().toLowerCase() + " (" + depResult.detail() + ")");
         }
-
-        BeanResolver.ResolutionResult resolution = isSpring
-                ? SpringResolver.resolve(scanResult.index(), depResult.index())
-                : BeanResolver.resolve(scanResult.index(), depResult.index());
 
         List<ClassRecord> classes = scanResult.classes();
 
@@ -261,6 +316,22 @@ public class ProjectInitializer {
         for (int i = 0; i < classes.size(); i++) {
             classNameToSqliteId.put(classes.get(i).className(), i + 1);
         }
+
+        Map<String, Integer> sourceFileToClassId = new HashMap<>();
+        for (int i = 0; i < classes.size(); i++) {
+            String sf = classes.get(i).sourceFile();
+            if (sf != null) {
+                Path sfPath = Path.of(sf);
+                if (sfPath.isAbsolute() && sfPath.startsWith(root)) {
+                    sf = root.relativize(sfPath).toString();
+                }
+                sourceFileToClassId.put(sf.replace('\\', '/'), i + 1);
+            }
+        }
+
+        BeanResolver.ResolutionResult resolution = isSpring
+                ? SpringResolver.resolve(scanResult.index(), depResult.index())
+                : BeanResolver.resolve(scanResult.index(), depResult.index());
 
         Map<Integer, Integer> brToSqlite = new HashMap<>();
         for (var entry : resolution.classNameToId().entrySet()) {
@@ -291,36 +362,27 @@ public class ProjectInitializer {
         timings.finish("bean_resolution");
 
         List<DependencyRecord> remappedDeps = new ArrayList<>(persisted.dependencies());
-        for (BytecodeDependencyScanner.StaticDependency dependency
-                : BytecodeDependencyScanner.scan(classFiles, classNameToSqliteId.keySet())) {
-            Integer from = classNameToSqliteId.get(dependency.fromClass());
-            Integer to = classNameToSqliteId.get(dependency.toClass());
-            if (from != null && to != null) {
-                remappedDeps.add(new DependencyRecord(from, to, dependency.kind(), null,
-                        dependency.occurrences()));
-            }
-        }
-
-        List<ExternalDepRecord> externalDeps = JandexScanner.extractExternalDeps(scanResult.index(), classNameToSqliteId);
-        timings.finish("bytecode_analysis");
-
-        Map<String, Integer> sourceFileToClassId = new HashMap<>();
-        for (int i = 0; i < classes.size(); i++) {
-            String sf = classes.get(i).sourceFile();
-            if (sf != null) {
-                Path sfPath = Path.of(sf);
-                if (sfPath.isAbsolute() && sfPath.startsWith(root)) {
-                    sf = root.relativize(sfPath).toString();
-                }
-                sourceFileToClassId.put(sf.replace('\\', '/'), i + 1);
-            }
-        }
-
+        List<ExternalDepRecord> externalDeps;
         GitAnalyzer.GitAnalysisResult gitResult;
-        if (GitAnalyzer.hasGitRepo(root)) {
-            gitResult = GitAnalyzer.analyze(root, 500, sourceFileToClassId);
-        } else {
-            gitResult = GitAnalyzer.GitAnalysisResult.empty();
+        try (BackgroundTask<GitAnalyzer.GitAnalysisResult> gitTask =
+                BackgroundTask.start("quill-git-analysis", () -> GitAnalyzer.hasGitRepo(root)
+                        ? GitAnalyzer.analyze(root, 500, sourceFileToClassId)
+                        : GitAnalyzer.GitAnalysisResult.empty())) {
+            for (BytecodeDependencyScanner.StaticDependency dependency
+                    : BytecodeDependencyScanner.scan(classFiles, classNameToSqliteId.keySet())) {
+                Integer from = classNameToSqliteId.get(dependency.fromClass());
+                Integer to = classNameToSqliteId.get(dependency.toClass());
+                if (from != null && to != null) {
+                    remappedDeps.add(new DependencyRecord(from, to, dependency.kind(), null,
+                            dependency.occurrences()));
+                }
+            }
+
+            externalDeps = JandexScanner.extractExternalDeps(
+                    scanResult.index(), classNameToSqliteId);
+            timings.finish("bytecode_analysis");
+
+            gitResult = gitTask.await();
         }
         timings.finish("git_analysis");
 

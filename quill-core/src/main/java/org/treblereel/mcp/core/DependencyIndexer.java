@@ -388,15 +388,16 @@ public final class DependencyIndexer {
                     : ClasspathGenerationResult.failure(
                             "Gradle dependency classpath discovery failed");
         }
+        Process process = null;
         try {
-            int exit = new ProcessBuilder(buildSystem.command(projectRoot,
+            process = new ProcessBuilder(buildSystem.command(projectRoot,
                     "dependency:build-classpath", "-DincludeScope=runtime",
                     "-Dmdep.outputFile=target/quill-classpath.txt", "-q"))
                     .directory(projectRoot.toFile())
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .redirectError(ProcessBuilder.Redirect.INHERIT)
-                    .start()
-                    .waitFor();
+                    .start();
+            int exit = process.waitFor();
             if (exit != 0) {
                 String detail = "Maven dependency classpath generation exited with code " + exit;
                 System.err.println("[quill] Warning: " + detail);
@@ -404,6 +405,7 @@ public final class DependencyIndexer {
             }
             return ClasspathGenerationResult.success();
         } catch (InterruptedException e) {
+            terminate(process);
             Thread.currentThread().interrupt();
             String detail = "Dependency classpath resolution was interrupted";
             System.err.println("[quill] Warning: " + detail);
@@ -413,6 +415,16 @@ public final class DependencyIndexer {
             System.err.println("[quill] Warning: " + detail);
             return ClasspathGenerationResult.failure(detail);
         }
+    }
+
+    private static void terminate(Process process) {
+        if (process == null) return;
+        try (var descendants = process.descendants()) {
+            descendants.forEach(ProcessHandle::destroyForcibly);
+        } catch (UnsupportedOperationException | SecurityException ignored) {
+            // Best effort; destroying the wrapper process is still preferable to leaving it alive.
+        }
+        process.destroyForcibly();
     }
 
     private static boolean generateGradleClasspathFiles(Path projectRoot) {

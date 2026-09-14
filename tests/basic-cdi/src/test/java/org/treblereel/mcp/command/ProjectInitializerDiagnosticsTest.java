@@ -6,11 +6,45 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.BuildSystem;
 
 class ProjectInitializerDiagnosticsTest {
+
+    @Test
+    void backgroundTaskRunsConcurrentlyWithCaller() throws Exception {
+        CountDownLatch callerContinued = new CountDownLatch(1);
+        try (var task = ProjectInitializer.BackgroundTask.start(
+                "quill-test-concurrent", () -> callerContinued.await(2, TimeUnit.SECONDS))) {
+            callerContinued.countDown();
+            assertTrue(task.await());
+        }
+    }
+
+    @Test
+    void closingBackgroundTaskInterruptsOutstandingWork() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        var task = ProjectInitializer.BackgroundTask.start("quill-test-background", () -> {
+            started.countDown();
+            try {
+                release.await();
+                return true;
+            } catch (InterruptedException e) {
+                interrupted.countDown();
+                throw e;
+            }
+        });
+
+        assertTrue(started.await(2, TimeUnit.SECONDS));
+        task.close();
+
+        assertTrue(interrupted.await(2, TimeUnit.SECONDS));
+    }
 
     @Test
     void reportsCompileCommandAndExitCode(@TempDir Path project) throws Exception {

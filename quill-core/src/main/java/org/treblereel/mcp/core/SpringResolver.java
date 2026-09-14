@@ -54,7 +54,7 @@ public final class SpringResolver {
         static Resolution unsatisfied() { return new Resolution(null, null, false); }
     }
 
-    public static boolean isSpringProject(Index index) {
+    public static boolean isSpringProject(IndexView index) {
         for (ClassInfo ci : index.getKnownClasses()) {
             if (findBeanAnnotation(ci, index) != null) return true;
         }
@@ -70,6 +70,11 @@ public final class SpringResolver {
     }
 
     public static BeanResolver.ResolutionResult resolve(Index applicationIndex, IndexView dependencyIndex) {
+        return resolve((IndexView) applicationIndex, dependencyIndex);
+    }
+
+    public static BeanResolver.ResolutionResult resolve(
+            IndexView applicationIndex, IndexView dependencyIndex) {
         IndexView lookupIndex = dependencyIndex != null
                 ? CompositeIndex.create(applicationIndex, dependencyIndex)
                 : applicationIndex;

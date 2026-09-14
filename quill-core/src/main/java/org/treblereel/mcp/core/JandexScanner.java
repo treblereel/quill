@@ -1,7 +1,6 @@
 package org.treblereel.mcp.core;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -29,7 +28,8 @@ public final class JandexScanner {
 
     private JandexScanner() {}
 
-    public record ScanResult(Index index, List<ClassRecord> classes) {}
+    public record ScanResult(
+            IndexView index, List<ClassRecord> classes, int cacheHits, int cacheShards) {}
 
     public static ScanResult scan(Path classesDir) {
         return scan(List.of(classesDir));
@@ -48,22 +48,21 @@ public final class JandexScanner {
     }
 
     public static ScanResult scan(ClassFileSnapshot classFiles, List<Path> sourceRoots) {
-        return scan(classFiles, sourceRoots, null);
+        return scan(classFiles, sourceRoots, null, null);
     }
 
     public static ScanResult scan(
             ClassFileSnapshot classFiles, List<Path> sourceRoots, Path sourceTokenCache) {
-        Indexer indexer = new Indexer();
-        for (ClassFileSnapshot.Entry entry : classFiles.entries()) {
-            try (InputStream input = new java.io.ByteArrayInputStream(entry.bytecode())) {
-                indexer.index(input);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to index " + entry.path(), e);
-            }
-        }
-        Index index = indexer.complete();
+        return scan(classFiles, sourceRoots, sourceTokenCache, null);
+    }
 
-        return new ScanResult(index, extractClasses(index, sourceRoots, sourceTokenCache));
+    public static ScanResult scan(ClassFileSnapshot classFiles, List<Path> sourceRoots,
+            Path sourceTokenCache, Path applicationIndexCache) {
+        ApplicationIndexCache.Result cached =
+                ApplicationIndexCache.loadOrBuild(classFiles, applicationIndexCache);
+        return new ScanResult(cached.index(),
+                extractClasses(cached.index(), sourceRoots, sourceTokenCache),
+                cached.hits(), cached.shardCount());
     }
 
     private static Path sourceRoot(Path classesDir) {
@@ -78,21 +77,22 @@ public final class JandexScanner {
         }
     }
 
-    public static List<ClassRecord> extractClasses(Index index) {
+    public static List<ClassRecord> extractClasses(IndexView index) {
         return extractClasses(index, List.of());
     }
 
-    public static List<ClassRecord> extractClasses(Index index, List<Path> sourceRoots) {
+    public static List<ClassRecord> extractClasses(IndexView index, List<Path> sourceRoots) {
         return extractClasses(index, sourceRoots, null);
     }
 
     static List<ClassRecord> extractClasses(
-            Index index, List<Path> sourceRoots, Path sourceTokenCache) {
+            IndexView index, List<Path> sourceRoots, Path sourceTokenCache) {
         List<ClassRecord> result = new ArrayList<>();
+        List<ClassInfo> knownClasses = List.copyOf(index.getKnownClasses());
         Map<String, Path> sourceFiles = sourceFilesByRelativePath(sourceRoots);
         Map<String, Path> sourcesByClass = new HashMap<>();
         Set<Path> matchedSources = new LinkedHashSet<>();
-        for (ClassInfo ci : index.getKnownClasses()) {
+        for (ClassInfo ci : knownClasses) {
             Path source = sourceFiles.get(ci.name().toString().replace('.', '/') + ".java");
             if (source != null) {
                 sourcesByClass.put(ci.name().toString(), source);
@@ -106,7 +106,7 @@ public final class JandexScanner {
             System.err.println("[quill] Reusing source token counts for "
                     + tokenResult.hits() + "/" + matchedSources.size() + " files...");
         }
-        for (ClassInfo ci : index.getKnownClasses()) {
+        for (ClassInfo ci : knownClasses) {
             String sourceFile = null;
             int sourceTokens = 0;
             Path source = sourcesByClass.get(ci.name().toString());
@@ -162,7 +162,8 @@ public final class JandexScanner {
         return false;
     }
 
-    public static List<ExternalDepRecord> extractExternalDeps(Index index, Map<String, Integer> classNameToId) {
+    public static List<ExternalDepRecord> extractExternalDeps(
+            IndexView index, Map<String, Integer> classNameToId) {
         Set<String> knownClasses = new HashSet<>();
         for (ClassInfo ci : index.getKnownClasses()) {
             knownClasses.add(ci.name().toString());

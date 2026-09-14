@@ -40,7 +40,7 @@ public final class BeanResolver {
             n("jakarta.enterprise.context.ConversationScoped"), n("jakarta.enterprise.context.Dependent"),
             PRODUCES, STEREOTYPE, INTERCEPTOR, DECORATOR);
 
-    public static boolean isCdiProject(Index index) {
+    public static boolean isCdiProject(IndexView index) {
         for (DotName signal : CDI_SIGNALS) if (!index.getAnnotations(signal).isEmpty()) return true;
         return index.getKnownClasses().stream().anyMatch(c -> c.isAnnotation()
                 && (c.hasDeclaredAnnotation(SCOPE) || c.hasDeclaredAnnotation(NORMAL_SCOPE)));
@@ -55,6 +55,10 @@ public final class BeanResolver {
     }
 
     public static ResolutionResult resolve(Index applicationIndex, IndexView dependencyIndex) {
+        return resolve((IndexView) applicationIndex, dependencyIndex);
+    }
+
+    public static ResolutionResult resolve(IndexView applicationIndex, IndexView dependencyIndex) {
         IndexView lookup = dependencyIndex == null ? applicationIndex
                 : CompositeIndex.create(applicationIndex, dependencyIndex);
         List<BeanRecord> beans = new ArrayList<>();
@@ -308,7 +312,8 @@ public final class BeanResolver {
         return true;
     }
 
-    static void addNonBeanDependencies(Index index, List<BeanRecord> beans, List<DependencyRecord> deps, Map<String, Integer> ids) {
+    static void addNonBeanDependencies(IndexView index, List<BeanRecord> beans,
+            List<DependencyRecord> deps, Map<String, Integer> ids) {
         Set<DotName> known = new HashSet<>();
         index.getKnownClasses().forEach(c -> known.add(c.name()));
         Map<Integer, String> names = new HashMap<>();

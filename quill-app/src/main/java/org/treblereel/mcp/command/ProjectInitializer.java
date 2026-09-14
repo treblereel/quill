@@ -311,8 +311,14 @@ public class ProjectInitializer {
                         () -> DependencyIndexer.buildDependencyIndex(root, indexingClassDirs))) {
             classFiles = ClassFileSnapshot.capture(indexingClassDirs);
             scanResult = sourceRoots.isEmpty()
-                    ? JandexScanner.scan(classFiles, List.of(), sourceTokenCache(root))
-                    : JandexScanner.scan(classFiles, sourceRoots, sourceTokenCache(root));
+                    ? JandexScanner.scan(classFiles, List.of(), sourceTokenCache(root),
+                            applicationIndexCache(root))
+                    : JandexScanner.scan(classFiles, sourceRoots, sourceTokenCache(root),
+                            applicationIndexCache(root));
+            if (scanResult.cacheHits() > 0) {
+                System.err.println("[quill] Reusing application index shards "
+                        + scanResult.cacheHits() + "/" + scanResult.cacheShards() + "...");
+            }
 
             isSpring = SpringResolver.isSpringProject(scanResult.index());
             boolean isCdi = BeanResolver.isCdiProject(scanResult.index());
@@ -461,6 +467,10 @@ public class ProjectInitializer {
                 Integer.toString(initialWorktree.structuralChanges().size()));
         metadata.put("compiled_before_index", Boolean.toString(compiledBeforeIndex));
         metadata.put("structure_scope", "compiled_snapshot");
+        metadata.put("application_index_cache_hits",
+                Integer.toString(scanResult.cacheHits()));
+        metadata.put("application_index_cache_shards",
+                Integer.toString(scanResult.cacheShards()));
         metadata.put("framework", isSpring ? "Spring" : "CDI");
         metadata.put("dependency_index", depResult.status().name().toLowerCase());
         metadata.put("dependency_index_detail", depResult.detail());
@@ -912,6 +922,10 @@ public class ProjectInitializer {
 
     private static Path sourceTokenCache(Path root) {
         return root.resolve(".quill/source-tokens.cache");
+    }
+
+    private static Path applicationIndexCache(Path root) {
+        return root.resolve(".quill/application-jandex.cache");
     }
 
     private static void updateRefs(Path root, String commitHash, String indexId) {

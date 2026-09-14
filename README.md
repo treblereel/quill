@@ -88,7 +88,9 @@ dependency and Git analysis. Because those phases can overlap, their durations a
 not expected to add up to the reported wall-clock `total`.
 Exact source token counts are cached by content under `.quill/`, so subsequent indexes
 only tokenize new or changed source files. `quill clean` removes this cache together
-with the index generations.
+with the index generations. Application bytecode metadata is kept in eight stable,
+content-addressed Jandex shards. An update reparses only shards containing added, changed,
+or removed class files while global DI resolution is recomputed for correctness.
 
 Failed initialization reports a stable reason code such as `COMPILATION_FAILED`,
 `NO_COMPILED_CLASSES`, `HEAD_CHANGED`, `WORKTREE_CHANGED`, or

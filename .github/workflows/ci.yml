@@ -82,3 +82,6 @@ jobs:
           if ((Get-Item .\quill-app\target\quill.exe).Length -gt 47185920) {
             throw "Native executable exceeds the 45 MiB size budget"
           }
+      - name: Native performance smoke test on Windows
+        if: runner.os == 'Windows'
+        run: python scripts/quill_perf_smoke.py --quill quill-app/target/quill.exe

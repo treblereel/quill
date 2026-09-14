@@ -112,7 +112,21 @@ class McpStdioIT {
         Path appJar = resolveAppJar();
         Assumptions.assumeTrue(Files.exists(appJar));
 
-        List<String> command = new ArrayList<>(List.of("java", "-jar", appJar.toString()));
+        assertReadsSurviveRepeatedConcurrentIndexPublications(
+                List.of("java", "-jar", appJar.toString()));
+    }
+
+    @Test
+    void nativeMcpReadsSurviveRepeatedConcurrentIndexPublications() throws Exception {
+        Path nativeImage = resolveNativeImage();
+        Assumptions.assumeTrue(Files.isExecutable(nativeImage));
+
+        assertReadsSurviveRepeatedConcurrentIndexPublications(List.of(nativeImage.toString()));
+    }
+
+    private void assertReadsSurviveRepeatedConcurrentIndexPublications(
+            List<String> launcher) throws Exception {
+        List<String> command = new ArrayList<>(launcher);
         command.add("--mcp");
         command.add("--project");
         command.add(PROJECT_ROOT.toString());

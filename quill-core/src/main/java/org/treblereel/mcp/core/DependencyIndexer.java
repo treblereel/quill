@@ -439,6 +439,10 @@ public final class DependencyIndexer {
                     : ClasspathGenerationResult.failure(
                             "Gradle dependency classpath discovery failed");
         }
+        MavenProjectDiscovery.Discovery reactor = MavenProjectDiscovery.discover(projectRoot);
+        if (reactor.moduleDirectories().size() > 1) {
+            return MavenClasspathResolver.generate(projectRoot);
+        }
         Process process = null;
         try {
             process = new ProcessBuilder(buildSystem.command(projectRoot,

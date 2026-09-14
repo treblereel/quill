@@ -41,6 +41,46 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void mavenReactorClasspathDoesNotRequireInternalArtifactsInLocalRepository()
+            throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("reactor"));
+        Path library = Files.createDirectories(project.resolve("library"));
+        Path application = Files.createDirectories(project.resolve("application"));
+        Files.writeString(project.resolve("pom.xml"), pom("reactor", "pom", """
+                <modules>
+                  <module>library</module>
+                  <module>application</module>
+                </modules>
+                """));
+        Files.writeString(library.resolve("pom.xml"), childPom("library", """
+                <dependencies>
+                  <dependency>
+                    <groupId>io.smallrye</groupId>
+                    <artifactId>jandex</artifactId>
+                    <version>3.6.0</version>
+                  </dependency>
+                </dependencies>
+                """));
+        Files.writeString(application.resolve("pom.xml"), childPom("application", """
+                <dependencies>
+                  <dependency>
+                    <groupId>org.treblereel.quill.fixture</groupId>
+                    <artifactId>library</artifactId>
+                    <version>1</version>
+                  </dependency>
+                </dependencies>
+                """));
+
+        DependencyIndexer.ClasspathGenerationResult generated =
+                MavenClasspathResolver.generate(project);
+        assertTrue(generated.successful(), generated.detail());
+        assertTrue(Files.readString(library.resolve("target/quill-classpath.txt"))
+                .contains("jandex"));
+        assertEquals("", Files.readString(
+                application.resolve("target/quill-classpath.txt")).trim());
+    }
+
+    @Test
     void parseClasspathFileReturnsJarPaths() throws Exception {
         Path cpFile = tempDir.resolve("classpath.txt");
         String jar1 = tempDir.resolve("a.jar").toString();
@@ -593,6 +633,34 @@ class DependencyIndexerTest {
             }
         }
         return null;
+    }
+
+    private static String pom(String artifactId, String packaging, String body) {
+        return """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.treblereel.quill.fixture</groupId>
+                  <artifactId>%s</artifactId>
+                  <version>1</version>
+                  <packaging>%s</packaging>
+                  %s
+                </project>
+                """.formatted(artifactId, packaging, body);
+    }
+
+    private static String childPom(String artifactId, String body) {
+        return """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>org.treblereel.quill.fixture</groupId>
+                    <artifactId>reactor</artifactId>
+                    <version>1</version>
+                  </parent>
+                  <artifactId>%s</artifactId>
+                  %s
+                </project>
+                """.formatted(artifactId, body);
     }
 
     private static List<Path> findJarsOnClasspath(int limit) {

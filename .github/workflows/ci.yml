@@ -25,6 +25,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - run: ./mvnw -B verify -DskipITs=false
 
   windows-jvm:
@@ -71,6 +72,9 @@ jobs:
       - name: Enforce native binary size budget
         if: runner.os != 'Windows'
         run: test "$(stat -c%s quill-app/target/quill)" -le 47185920
+      - name: Native performance smoke test
+        if: runner.os != 'Windows'
+        run: python3 scripts/quill_perf_smoke.py --quill quill-app/target/quill
       - name: Enforce native binary size budget on Windows
         if: runner.os == 'Windows'
         shell: pwsh

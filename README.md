@@ -66,6 +66,9 @@ python3 scripts/quill_benchmark.py \
 It reports peak process-tree memory, index size, and p50/p95 latency for bursts of
 4, 16, and 100 requests. Existing `.quill` data is backed up and restored by default;
 machine-readable results are written below `target/benchmarks/`.
+CI also runs a generated 400-class native smoke fixture with intentionally broad time,
+memory, and concurrent-request budgets to catch major regressions without depending on
+an external repository or noisy microbenchmark thresholds.
 
 ## Commands
 

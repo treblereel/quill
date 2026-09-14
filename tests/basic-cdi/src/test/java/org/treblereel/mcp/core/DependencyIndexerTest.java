@@ -237,6 +237,21 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void mavenFingerprintIgnoresBuildOutputTrees() throws Exception {
+        Path projectDir = Files.createDirectories(tempDir.resolve("maven-build-output"));
+        Files.writeString(projectDir.resolve("pom.xml"), "<project/>");
+        String before = DependencyIndexer.buildFingerprint(projectDir);
+
+        Path copiedPom = Files.createDirectories(
+                projectDir.resolve("module/target/generated-project"))
+                .resolve("pom.xml");
+        Files.writeString(copiedPom, "<project><dependencies/></project>");
+
+        assertEquals(before, DependencyIndexer.buildFingerprint(projectDir),
+                "Generated build trees must not invalidate dependency classpaths");
+    }
+
+    @Test
     void gradleFingerprintChangesWhenVersionCatalogChanges() throws Exception {
         Path projectDir = Files.createDirectories(tempDir.resolve("gradle-project"));
         Files.writeString(projectDir.resolve("settings.gradle.kts"), "rootProject.name = \"sample\"");

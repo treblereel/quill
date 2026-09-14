@@ -11,9 +11,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -86,6 +89,9 @@ public final class DependencyIndexer {
 
     private record GenerationFailure(String detail) {}
 
+    private record BuildInputSnapshot(
+            String fingerprint, FileTime newestModified) {}
+
     @FunctionalInterface
     interface ClasspathGenerator {
         ClasspathGenerationResult generate(Path projectRoot, BuildSystem buildSystem);
@@ -108,8 +114,10 @@ public final class DependencyIndexer {
         Map<Path, Path> classDirectoryOwners =
                 mapClassDirectoriesToModules(projectRoot, buildSystem, classesDirs);
         Set<Path> moduleDirs = new LinkedHashSet<>(classDirectoryOwners.values());
-        String buildFingerprint = buildFingerprint(projectRoot, buildSystem, moduleDirs);
-        FileTime newestBuildFile = newestBuildFileTimestamp(projectRoot, buildSystem, moduleDirs);
+        BuildInputSnapshot buildInputs = buildInputSnapshot(
+                projectRoot, buildSystem, moduleDirs);
+        String buildFingerprint = buildInputs.fingerprint();
+        FileTime newestBuildFile = buildInputs.newestModified();
 
         boolean anyStale = false;
         for (Path moduleDir : moduleDirs) {
@@ -251,8 +259,10 @@ public final class DependencyIndexer {
             buildSystem = Files.isDirectory(moduleDir.resolve("build"))
                     ? BuildSystem.GRADLE : BuildSystem.MAVEN;
         }
-        return isStale(moduleDir, buildSystem, buildFingerprint(moduleDir, buildSystem),
-                newestBuildFileTimestamp(moduleDir, buildSystem));
+        BuildInputSnapshot buildInputs = buildInputSnapshot(
+                moduleDir, buildSystem, List.of());
+        return isStale(moduleDir, buildSystem, buildInputs.fingerprint(),
+                buildInputs.newestModified());
     }
 
     private static boolean isStale(Path moduleDir, BuildSystem buildSystem,
@@ -287,40 +297,32 @@ public final class DependencyIndexer {
 
     public static String buildFingerprint(
             Path projectRoot, BuildSystem buildSystem, Collection<Path> moduleDirectories) {
+        return buildInputSnapshot(projectRoot, buildSystem, moduleDirectories).fingerprint();
+    }
+
+    private static BuildInputSnapshot buildInputSnapshot(
+            Path projectRoot, BuildSystem buildSystem, Collection<Path> moduleDirectories) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            FileTime newest = FileTime.fromMillis(0);
             for (Path buildFile : buildFiles(projectRoot, buildSystem, moduleDirectories)) {
                 digest.update(buildFile.toAbsolutePath().normalize().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 digest.update((byte) 0);
                 try {
                     digest.update(Files.readAllBytes(buildFile));
+                    FileTime modified = Files.getLastModifiedTime(buildFile);
+                    if (modified.compareTo(newest) > 0) newest = modified;
                 } catch (IOException e) {
                     digest.update((byte) 1);
+                    newest = FileTime.fromMillis(Long.MAX_VALUE);
                 }
                 digest.update((byte) 0);
             }
-            return HexFormat.of().formatHex(digest.digest());
+            return new BuildInputSnapshot(
+                    HexFormat.of().formatHex(digest.digest()), newest);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is not available", e);
         }
-    }
-
-    private static FileTime newestBuildFileTimestamp(Path projectRoot, BuildSystem buildSystem) {
-        return newestBuildFileTimestamp(projectRoot, buildSystem, List.of());
-    }
-
-    private static FileTime newestBuildFileTimestamp(
-            Path projectRoot, BuildSystem buildSystem, Collection<Path> moduleDirectories) {
-        FileTime newest = FileTime.fromMillis(0);
-        for (Path buildFile : buildFiles(projectRoot, buildSystem, moduleDirectories)) {
-            try {
-                FileTime modified = Files.getLastModifiedTime(buildFile);
-                if (modified.compareTo(newest) > 0) newest = modified;
-            } catch (IOException e) {
-                return FileTime.fromMillis(Long.MAX_VALUE);
-            }
-        }
-        return newest;
     }
 
     private static List<Path> buildFiles(
@@ -332,13 +334,35 @@ public final class DependencyIndexer {
         moduleDirectories.stream()
                 .map(path -> path.toAbsolutePath().normalize())
                 .forEach(scanRoots::add);
-        for (Path scanRoot : scanRoots) {
+        List<Path> independentScanRoots = new ArrayList<>();
+        for (Path candidate : scanRoots) {
+            if (independentScanRoots.stream().noneMatch(candidate::startsWith)) {
+                independentScanRoots.removeIf(existing -> existing.startsWith(candidate));
+                independentScanRoots.add(candidate);
+            }
+        }
+        for (Path scanRoot : independentScanRoots) {
             if (Files.isDirectory(scanRoot)) {
-                try (var walk = Files.walk(scanRoot)) {
-                    walk.filter(p -> isBuildFile(p, buildSystem))
-                            .filter(p -> !isBuildOutput(p))
-                            .map(p -> p.toAbsolutePath().normalize())
-                            .forEach(files::add);
+                try {
+                    Files.walkFileTree(scanRoot, new SimpleFileVisitor<>() {
+                        @Override
+                        public FileVisitResult preVisitDirectory(
+                                Path directory, BasicFileAttributes attributes) {
+                            if (!directory.equals(scanRoot) && isBuildOutputDirectory(directory)) {
+                                return FileVisitResult.SKIP_SUBTREE;
+                            }
+                            return FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public FileVisitResult visitFile(
+                                Path file, BasicFileAttributes attributes) {
+                            if (attributes.isRegularFile() && isBuildFile(file, buildSystem)) {
+                                files.add(file.toAbsolutePath().normalize());
+                            }
+                            return FileVisitResult.CONTINUE;
+                        }
+                    });
                 } catch (IOException e) {
                     // Ancestor build files collected below still provide a stable fallback.
                 }
@@ -371,11 +395,9 @@ public final class DependencyIndexer {
                 || name.equals("gradle-wrapper.properties");
     }
 
-    private static boolean isBuildOutput(Path path) {
-        String value = path.toString();
-        return value.contains(File.separator + "target" + File.separator)
-                || value.contains(File.separator + "build" + File.separator)
-                || value.contains(File.separator + ".gradle" + File.separator);
+    private static boolean isBuildOutputDirectory(Path directory) {
+        String name = directory.getFileName().toString();
+        return name.equals("target") || name.equals("build") || name.equals(".gradle");
     }
 
     private static void writeFingerprint(Path moduleDir, BuildSystem buildSystem, String fingerprint) {

@@ -70,13 +70,20 @@ class InitCommandTest {
 
         assertTrue(result.successful(), result.diagnostic());
         assertEquals(List.of("lock_wait", "class_discovery", "worktree_snapshot",
-                        "application_index", "dependency_index", "bean_resolution",
-                        "bytecode_analysis", "git_analysis", "file_inventory",
-                        "index_metadata", "database_write", "publication"),
+                        "index_setup", "application_scan", "dependency_classpath",
+                        "dependency_cache_read", "dependency_jar_index",
+                        "dependency_cache_write", "dependency_total", "analysis_setup",
+                        "bean_resolution", "bytecode_analysis", "git_analysis",
+                        "file_inventory", "index_metadata", "database_schema",
+                        "database_inserts", "database_indexes",
+                        "database_transaction_overhead",
+                        "publication_validation", "atomic_publication", "activation"),
                 List.copyOf(result.phaseMillis().keySet()));
         assertTrue(result.phaseMillis().values().stream().allMatch(value -> value >= 0));
-        assertTrue(result.phaseMillis().values().stream().mapToLong(Long::longValue).sum()
-                <= result.elapsedMillis());
+        assertTrue(result.phaseMillis().values().stream()
+                .allMatch(value -> value <= result.elapsedMillis()));
+        assertTrue(result.phaseMillis().get("dependency_total")
+                >= result.phaseMillis().get("dependency_cache_read"));
         assertTrue(result.timingsDiagnostic().contains("total=" + result.elapsedMillis() + "ms"));
     }
 

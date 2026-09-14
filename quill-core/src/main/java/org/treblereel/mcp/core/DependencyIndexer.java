@@ -46,7 +46,16 @@ public final class DependencyIndexer {
 
     public enum Status { COMPLETE, DEGRADED, UNAVAILABLE }
 
-    public record DependencyIndexResult(IndexView index, Status status, String detail) {}
+    public record DependencyIndexResult(
+            IndexView index, Status status, String detail, Map<String, Long> timings) {
+        public DependencyIndexResult(IndexView index, Status status, String detail) {
+            this(index, status, detail, Map.of());
+        }
+
+        public DependencyIndexResult {
+            timings = Collections.unmodifiableMap(new LinkedHashMap<>(timings));
+        }
+    }
 
     static final class ShardedIndex {
         private final List<Index> shards;
@@ -89,6 +98,12 @@ public final class DependencyIndexer {
 
     static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs,
             ClasspathGenerator generator, long nowMillis) {
+        Map<String, Long> timings = new LinkedHashMap<>();
+        timings.put("dependency_classpath", 0L);
+        timings.put("dependency_cache_read", 0L);
+        timings.put("dependency_jar_index", 0L);
+        timings.put("dependency_cache_write", 0L);
+        long classpathStartedAt = System.nanoTime();
         BuildSystem buildSystem = detectBuildSystem(projectRoot, classesDirs);
         Map<Path, Path> classDirectoryOwners =
                 mapClassDirectoriesToModules(projectRoot, buildSystem, classesDirs);
@@ -141,12 +156,13 @@ public final class DependencyIndexer {
                 }
             }
         }
+        timings.put("dependency_classpath", elapsedMillis(classpathStartedAt));
 
         if (modulesResolved == 0) {
             String detail = generationIssue != null
                     ? generationIssue
                     : "no classpath files found";
-            return new DependencyIndexResult(null, Status.UNAVAILABLE, detail);
+            return new DependencyIndexResult(null, Status.UNAVAILABLE, detail, timings);
         }
 
         if (jars.isEmpty()) {
@@ -157,28 +173,39 @@ public final class DependencyIndexer {
                     degraded
                             ? dependencyDetail(generationIssue, modulesResolved,
                                     moduleDirs.size(), missingJars)
-                            : "no dependency JARs in classpath");
+                            : "no dependency JARs in classpath", timings);
         }
 
+        long cacheReadStartedAt = System.nanoTime();
         String cacheFingerprint = dependencyCacheFingerprint(jars);
         ShardedIndex index = readCachedIndex(projectRoot, buildSystem, cacheFingerprint);
+        timings.put("dependency_cache_read", elapsedMillis(cacheReadStartedAt));
         boolean cacheHit = index != null;
         if (cacheHit) {
             System.err.println("[quill] Reusing dependency index for " + jars.size() + " JARs...");
         } else {
             System.err.println("[quill] Indexing " + jars.size() + " dependency JARs...");
+            long jarIndexStartedAt = System.nanoTime();
             index = indexJars(jars);
+            timings.put("dependency_jar_index", elapsedMillis(jarIndexStartedAt));
+            long cacheWriteStartedAt = System.nanoTime();
             writeCachedIndex(projectRoot, buildSystem, cacheFingerprint, index);
+            timings.put("dependency_cache_write", elapsedMillis(cacheWriteStartedAt));
         }
 
         if (generationIssue != null || modulesResolved < moduleDirs.size() || missingJars > 0) {
             return new DependencyIndexResult(index.view(), Status.DEGRADED,
                     dependencyDetail(generationIssue, modulesResolved,
-                            moduleDirs.size(), missingJars));
+                            moduleDirs.size(), missingJars), timings);
         }
 
         return new DependencyIndexResult(index.view(), Status.COMPLETE,
-                jars.size() + (cacheHit ? " JARs loaded from cache" : " JARs indexed"));
+                jars.size() + (cacheHit ? " JARs loaded from cache" : " JARs indexed"),
+                timings);
+    }
+
+    private static long elapsedMillis(long startedAtNanos) {
+        return Math.max(0, (System.nanoTime() - startedAtNanos) / 1_000_000);
     }
 
     private static String dependencyDetail(

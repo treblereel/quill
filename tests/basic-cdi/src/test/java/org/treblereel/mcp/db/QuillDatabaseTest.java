@@ -71,9 +71,13 @@ class QuillDatabaseTest {
         Jdbi jdbi = QuillDatabase.createForBulkLoad(dbPath);
 
         assertFalse(hasIndex(jdbi, "idx_classes_name"));
-        IndexWriter.writeFresh(jdbi, List.of(), List.of(), List.of(), List.of(), Map.of(),
+        IndexWriter.WriteTimings timings = IndexWriter.writeFresh(
+                jdbi, List.of(), List.of(), List.of(), List.of(), Map.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
         assertTrue(hasIndex(jdbi, "idx_classes_name"));
+        assertTrue(timings.insertsMillis() >= 0);
+        assertTrue(timings.indexesMillis() >= 0);
+        assertTrue(timings.transactionOverheadMillis() >= 0);
     }
 
     @Test

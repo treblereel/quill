@@ -122,15 +122,28 @@ public class ProjectInitializer {
             phaseStartedAt = now;
         }
 
+        void record(String phase, long millis) {
+            phases.merge(phase, Math.max(0, millis), Long::sum);
+        }
+
+        void restart() {
+            phaseStartedAt = System.nanoTime();
+        }
+
         Map<String, Long> snapshot() {
             return Collections.unmodifiableMap(new LinkedHashMap<>(phases));
         }
+    }
+
+    private static long elapsedMillis(long startedAtNanos) {
+        return Math.max(0, (System.nanoTime() - startedAtNanos) / 1_000_000);
     }
 
     static final class BackgroundTask<T> implements AutoCloseable {
         private final String threadName;
         private final ExecutorService executor;
         private final Future<T> future;
+        private volatile long elapsedNanos;
 
         private BackgroundTask(String threadName, Callable<T> operation) {
             this.threadName = threadName;
@@ -140,9 +153,11 @@ public class ProjectInitializer {
                 return thread;
             });
             future = executor.submit(() -> {
+                long startedAt = System.nanoTime();
                 try {
                     return operation.call();
                 } finally {
+                    elapsedNanos = System.nanoTime() - startedAt;
                     executor.shutdown();
                 }
             });
@@ -164,6 +179,13 @@ public class ProjectInitializer {
                 if (cause instanceof Error error) throw error;
                 throw new IllegalStateException(threadName + " failed", cause);
             }
+        }
+
+        long elapsedMillis() {
+            if (!future.isDone()) {
+                throw new IllegalStateException(threadName + " has not completed");
+            }
+            return Math.max(0, elapsedNanos / 1_000_000);
         }
 
         @Override
@@ -279,6 +301,7 @@ public class ProjectInitializer {
         List<Path> moduleDirectories = classDirectoryOwners.values().stream().distinct().toList();
         List<Path> sourceRoots = findSourceRoots(moduleDirectories);
         List<Path> indexingClassDirs = List.copyOf(classesDirs);
+        timings.finish("index_setup");
         ClassFileSnapshot classFiles;
         JandexScanner.ScanResult scanResult;
         boolean isSpring;
@@ -293,7 +316,7 @@ public class ProjectInitializer {
 
             isSpring = SpringResolver.isSpringProject(scanResult.index());
             boolean isCdi = BeanResolver.isCdiProject(scanResult.index());
-            timings.finish("application_index");
+            timings.finish("application_scan");
 
             if (isSpring && isCdi) {
                 return InitializationResult.failure(FailureReason.MIXED_FRAMEWORKS,
@@ -303,8 +326,10 @@ public class ProjectInitializer {
             }
 
             depResult = dependencyTask.await();
+            depResult.timings().forEach(timings::record);
+            timings.record("dependency_total", dependencyTask.elapsedMillis());
         }
-        timings.finish("dependency_index");
+        timings.restart();
         if (depResult.status() != DependencyIndexer.Status.COMPLETE) {
             System.err.println("[quill] Warning: dependency index "
                     + depResult.status().name().toLowerCase() + " (" + depResult.detail() + ")");
@@ -328,6 +353,7 @@ public class ProjectInitializer {
                 sourceFileToClassId.put(sf.replace('\\', '/'), i + 1);
             }
         }
+        timings.finish("analysis_setup");
 
         BeanResolver.ResolutionResult resolution = isSpring
                 ? SpringResolver.resolve(scanResult.index(), depResult.index())
@@ -383,8 +409,9 @@ public class ProjectInitializer {
             timings.finish("bytecode_analysis");
 
             gitResult = gitTask.await();
+            timings.record("git_analysis", gitTask.elapsedMillis());
         }
-        timings.finish("git_analysis");
+        timings.restart();
 
         String lastCommit = gitResult.headHash();
 
@@ -441,17 +468,26 @@ public class ProjectInitializer {
                 computeStateFingerprint(root, classesDirs, classFiles.fingerprint()));
         timings.finish("index_metadata");
 
+        long databaseStartedAt = System.nanoTime();
         try {
+            long schemaStartedAt = System.nanoTime();
             Jdbi jdbi = QuillDatabase.createForBulkLoad(stagedDb);
-            IndexWriter.writeFresh(jdbi, classes, remappedBeans,
+            timings.record("database_schema", elapsedMillis(schemaStartedAt));
+            IndexWriter.WriteTimings writeTimings = IndexWriter.writeFresh(
+                    jdbi, classes, remappedBeans,
                     persisted.injectionPoints(), remappedDeps, metadata,
                     externalDeps, remappedProblems,
                     gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
                     inventory.files());
+            timings.record("database_inserts", writeTimings.insertsMillis());
+            timings.record("database_indexes", writeTimings.indexesMillis());
+            timings.record("database_transaction_overhead",
+                    writeTimings.transactionOverheadMillis());
+            long validationStartedAt = System.nanoTime();
             boolean headChanged = !headMatches(root, initialHead);
             boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint());
+            timings.record("publication_validation", elapsedMillis(validationStartedAt));
             if (headChanged || worktreeChanged) {
-                timings.finish("database_write");
                 deleteDatabaseArtifacts(stagedDb);
                 if (headChanged) {
                     return InitializationResult.failure(FailureReason.HEAD_CHANGED,
@@ -465,10 +501,13 @@ public class ProjectInitializer {
                                 + "concurrent builds or edits have finished.",
                         startedAtNanos);
             }
+            long publicationStartedAt = System.nanoTime();
             atomicMove(stagedDb, dbPath);
-            timings.finish("database_write");
+            timings.record("atomic_publication", elapsedMillis(publicationStartedAt));
+            timings.restart();
         } catch (RuntimeException | IOException e) {
-            timings.finish("database_write");
+            timings.record("database_failed", elapsedMillis(databaseStartedAt));
+            timings.restart();
             deleteDatabaseArtifacts(stagedDb);
             return InitializationResult.failure(FailureReason.INDEX_PUBLICATION_FAILED,
                     "Could not publish SQLite index at " + dbPath + ": " + rootMessage(e)
@@ -476,8 +515,10 @@ public class ProjectInitializer {
                     startedAtNanos);
         }
 
-        if (!headMatches(root, initialHead)) {
-            timings.finish("publication");
+        long validationStartedAt = System.nanoTime();
+        boolean headChangedAfterPublication = !headMatches(root, initialHead);
+        timings.record("publication_validation", elapsedMillis(validationStartedAt));
+        if (headChangedAfterPublication) {
             deleteDatabaseArtifacts(dbPath);
             return InitializationResult.failure(FailureReason.HEAD_CHANGED,
                     headChangedMessage("after index publication", initialHead,
@@ -486,10 +527,11 @@ public class ProjectInitializer {
                     startedAtNanos);
         }
 
+        long activationStartedAt = System.nanoTime();
         try {
             updateRefs(root, lastCommit, indexId);
         } catch (RuntimeException e) {
-            timings.finish("publication");
+            timings.record("activation", elapsedMillis(activationStartedAt));
             deleteDatabaseArtifacts(dbPath);
             return InitializationResult.failure(FailureReason.INDEX_PUBLICATION_FAILED,
                     "Could not activate immutable index generation " + dbPath + ": "
@@ -506,7 +548,8 @@ public class ProjectInitializer {
             ensureClaudeMd(root);
         }
         ensureCodexConfig(root, indexOnly);
-        timings.finish("publication");
+        timings.record("activation", elapsedMillis(activationStartedAt));
+        timings.restart();
 
         String depStatus = depResult.status() == DependencyIndexer.Status.COMPLETE
                 ? "" : " [deps: " + depResult.status().name().toLowerCase() + "]";

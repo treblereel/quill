@@ -21,6 +21,9 @@ public final class IndexWriter {
 
     private IndexWriter() {}
 
+    public record WriteTimings(
+            long insertsMillis, long indexesMillis, long transactionOverheadMillis) {}
+
     public static void writeAll(Jdbi jdbi,
             List<ClassRecord> classes, List<BeanRecord> beans,
             List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
@@ -32,18 +35,18 @@ public final class IndexWriter {
                 externalDeps, problems, fileStats, commits, commitFiles, files, false);
     }
 
-    public static void writeFresh(Jdbi jdbi,
+    public static WriteTimings writeFresh(Jdbi jdbi,
             List<ClassRecord> classes, List<BeanRecord> beans,
             List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
             Map<String, String> metadata,
             List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files) {
-        writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
+        return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
                 externalDeps, problems, fileStats, commits, commitFiles, files, true);
     }
 
-    private static void writeAll(Jdbi jdbi,
+    private static WriteTimings writeAll(Jdbi jdbi,
             List<ClassRecord> classes, List<BeanRecord> beans,
             List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
             Map<String, String> metadata,
@@ -51,6 +54,9 @@ public final class IndexWriter {
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files,
             boolean freshDatabase) {
+        long transactionStartedAt = System.nanoTime();
+        long[] insertsNanos = new long[1];
+        long[] indexesNanos = new long[1];
         jdbi.useTransaction(h -> {
             if (!freshDatabase) {
                 for (String table : ALL_TABLES) {
@@ -59,6 +65,7 @@ public final class IndexWriter {
                 h.execute("DELETE FROM sqlite_sequence");
             }
 
+            long insertsStartedAt = System.nanoTime();
             insertFiles(h, files);
             insertClasses(h, classes);
             insertBeans(h, beans);
@@ -68,8 +75,21 @@ public final class IndexWriter {
             insertExternalDeps(h, externalDeps);
             insertProblems(h, problems);
             insertGitData(h, fileStats, commits, commitFiles);
-            if (freshDatabase) QuillDatabase.createIndexes(h);
+            insertsNanos[0] = System.nanoTime() - insertsStartedAt;
+            if (freshDatabase) {
+                long indexesStartedAt = System.nanoTime();
+                QuillDatabase.createIndexes(h);
+                indexesNanos[0] = System.nanoTime() - indexesStartedAt;
+            }
         });
+        long totalNanos = System.nanoTime() - transactionStartedAt;
+        long overheadNanos = Math.max(0, totalNanos - insertsNanos[0] - indexesNanos[0]);
+        return new WriteTimings(toMillis(insertsNanos[0]), toMillis(indexesNanos[0]),
+                toMillis(overheadNanos));
+    }
+
+    private static long toMillis(long nanos) {
+        return Math.max(0, nanos / 1_000_000);
     }
 
     public static void write(Jdbi jdbi, List<ClassRecord> classes, List<BeanRecord> beans,

@@ -354,12 +354,18 @@ class DependencyIndexerTest {
         assertNotNull(result.index());
         assertEquals(DependencyIndexer.Status.COMPLETE, result.status());
         assertNotNull(result.index().getClassByName("org.jboss.jandex.Index"));
+        assertEquals(List.of("dependency_classpath", "dependency_cache_read",
+                        "dependency_jar_index", "dependency_cache_write"),
+                List.copyOf(result.timings().keySet()));
+        assertTrue(result.timings().values().stream().allMatch(value -> value >= 0));
 
         DependencyIndexer.DependencyIndexResult cached =
                 DependencyIndexer.buildDependencyIndex(tempDir.resolve("project"), List.of(classesDir));
         assertEquals(DependencyIndexer.Status.COMPLETE, cached.status());
         assertTrue(cached.detail().contains("loaded from cache"));
         assertNotNull(cached.index().getClassByName("org.jboss.jandex.Index"));
+        assertEquals(0L, cached.timings().get("dependency_jar_index"));
+        assertEquals(0L, cached.timings().get("dependency_cache_write"));
     }
 
     @Test

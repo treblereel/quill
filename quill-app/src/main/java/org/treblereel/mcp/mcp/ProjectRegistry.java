@@ -3,12 +3,22 @@ package org.treblereel.mcp.mcp;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.command.ProjectInitializer;
 import org.treblereel.mcp.core.ProjectRootFinder;
+import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.QuillDatabase;
 
 public class ProjectRegistry {
+
+    private static final Executor PREWARM_EXECUTOR = Executors.newFixedThreadPool(2, task -> {
+        Thread thread = new Thread(task, "quill-mcp-prewarm");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     public record ProjectEntry(String name, Path root, Jdbi jdbi) {}
     public record Resolution(List<ProjectEntry> projects, List<String> errors) {}
@@ -16,6 +26,7 @@ public class ProjectRegistry {
     private record RegisteredProject(String name, Path root) {}
 
     private final List<RegisteredProject> projects = new ArrayList<>();
+    private final ConcurrentHashMap<Path, Jdbi> databases = new ConcurrentHashMap<>();
 
     public void register(Path projectPath) {
         try {
@@ -47,12 +58,38 @@ public class ProjectRegistry {
                 continue;
             }
             try {
-                result.add(new ProjectEntry(p.name(), p.root(), QuillDatabase.open(dbPath)));
+                Path normalizedDb = dbPath.toAbsolutePath().normalize();
+                Jdbi jdbi = databases.computeIfAbsent(normalizedDb, QuillDatabase::open);
+                result.add(new ProjectEntry(p.name(), p.root(), jdbi));
             } catch (RuntimeException e) {
                 errors.add("Project '" + p.name() + "': " + safeMessage(e));
             }
         }
         return new Resolution(List.copyOf(result), List.copyOf(errors));
+    }
+
+    public void prewarm() {
+        prewarm(PREWARM_EXECUTOR);
+    }
+
+    void prewarm(Executor executor) {
+        List<RegisteredProject> snapshot = List.copyOf(projects);
+        executor.execute(() -> {
+            try {
+                resolve();
+            } catch (RuntimeException ignored) {
+                // A normal request will report the same project-specific error.
+            }
+        });
+        for (RegisteredProject project : snapshot) {
+            executor.execute(() -> {
+                try {
+                    WorktreeSnapshotCache.shared().get(project.root());
+                } catch (RuntimeException ignored) {
+                    // Live worktree metadata is optional and can be retried by a request.
+                }
+            });
+        }
     }
 
     public List<String> uninitializedErrors() {

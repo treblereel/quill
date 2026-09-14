@@ -26,6 +26,7 @@ public final class McpStdioServer {
     private McpStdioServer() {}
 
     public static void start(ProjectRegistry registry, InputStream input, OutputStream output) {
+        registry.prewarm();
         start(new QuillTools(registry), QuillTools.class, input, output,
                 positiveEnvironmentDuration(
                         "QUILL_MCP_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT));

@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.treblereel.mcp.db.QuillDatabase;
 
 class ProjectRegistryTest {
 
@@ -70,5 +71,35 @@ class ProjectRegistryTest {
         assertTrue(resolution.projects().isEmpty());
         assertEquals(1, resolution.errors().size());
         assertTrue(resolution.errors().get(0).contains("broken-project"));
+    }
+
+    @Test
+    void resolveReusesValidatedDatabaseForImmutableGeneration() throws IOException {
+        Path project = Files.createDirectories(tempDir.resolve("cached-project"));
+        Files.createFile(project.resolve("pom.xml"));
+        Path database = project.resolve(".quill/nocommit.db");
+        QuillDatabase.create(database);
+
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project);
+
+        var first = registry.resolve().projects().getFirst();
+        var second = registry.resolve().projects().getFirst();
+
+        assertSame(first.jdbi(), second.jdbi());
+    }
+
+    @Test
+    void synchronousPrewarmMakesDatabaseAvailableToFirstRequest() throws IOException {
+        Path project = Files.createDirectories(tempDir.resolve("prewarmed-project"));
+        Files.createFile(project.resolve("pom.xml"));
+        Path database = project.resolve(".quill/nocommit.db");
+        QuillDatabase.create(database);
+
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project);
+        registry.prewarm(Runnable::run);
+
+        assertEquals(1, registry.resolve().projects().size());
     }
 }

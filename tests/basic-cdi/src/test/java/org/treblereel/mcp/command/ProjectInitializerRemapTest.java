@@ -214,6 +214,36 @@ class ProjectInitializerRemapTest {
         assertEquals(3, persisted.dependencies().get(0).toClassId());
     }
 
+    @Test
+    void mixedFrameworkPartsShareOnePersistentIdSpace() {
+        var spring = new ProjectInitializer.PersistedResolution(
+                List.of(bean(1, 10, "org.acme.SpringService")),
+                List.of(new InjectionPointRecord(1, 1, "FIELD", "org.acme.Repository",
+                        List.of(), "repository", 1, false)),
+                List.of(
+                        new DependencyRecord(10, 10, "SPRING_INJECT", 1),
+                        new DependencyRecord(10, 20, "CLASS_REFERENCE", null)));
+        var cdi = new ProjectInitializer.PersistedResolution(
+                List.of(bean(1, 20, "org.acme.CdiService")),
+                List.of(new InjectionPointRecord(1, 1, "FIELD", "org.acme.Repository",
+                        List.of(), "repository", 1, false)),
+                List.of(
+                        new DependencyRecord(20, 20, "CDI_INJECT", 1),
+                        new DependencyRecord(20, 10, "CLASS_REFERENCE", null)));
+
+        var merged = ProjectInitializer.mergePersistedResolutions(
+                List.of(spring, cdi), true);
+
+        assertEquals(List.of(1, 2), merged.beans().stream().map(BeanRecord::id).toList());
+        assertEquals(List.of(1, 2), merged.injectionPoints().stream()
+                .map(InjectionPointRecord::id).toList());
+        assertEquals(2, merged.injectionPoints().get(1).beanId());
+        assertEquals(2, merged.injectionPoints().get(1).resolvedBeanId());
+        assertEquals(List.of("SPRING_INJECT", "CDI_INJECT"), merged.dependencies().stream()
+                .map(DependencyRecord::kind).toList());
+        assertEquals(2, merged.dependencies().get(1).injectionPointId());
+    }
+
     private static BeanRecord bean(int id, int classId, String type) {
         return new BeanRecord(id, classId, "CLASS", "@ApplicationScoped", List.of("@Default"),
                 List.of(), false, null, null, null, null, List.of(type));

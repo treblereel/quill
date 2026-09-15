@@ -319,6 +319,7 @@ public class ProjectInitializer {
         ClassFileSnapshot classFiles;
         JandexScanner.ScanResult scanResult;
         boolean isSpring;
+        boolean isCdi;
         DependencyIndexer.DependencyIndexResult depResult;
         try (BackgroundTask<DependencyIndexer.DependencyIndexResult> dependencyTask =
                 BackgroundTask.start("quill-dependency-index",
@@ -335,15 +336,8 @@ public class ProjectInitializer {
             }
 
             isSpring = SpringResolver.isSpringProject(scanResult.index());
-            boolean isCdi = BeanResolver.isCdiProject(scanResult.index());
+            isCdi = BeanResolver.isCdiProject(scanResult.index());
             timings.finish("application_scan");
-
-            if (isSpring && isCdi) {
-                return InitializationResult.failure(FailureReason.MIXED_FRAMEWORKS,
-                        "Mixed Spring/CDI project detected. Quill does not support both DI frameworks "
-                                + "in one index; index their modules separately.",
-                        startedAtNanos);
-            }
 
             depResult = dependencyTask.await();
             depResult.timings().forEach(timings::record);
@@ -375,19 +369,27 @@ public class ProjectInitializer {
         }
         timings.finish("analysis_setup");
 
-        BeanResolver.ResolutionResult resolution = isSpring
-                ? SpringResolver.resolve(scanResult.index(), depResult.index())
-                : BeanResolver.resolve(scanResult.index(), depResult.index());
-
-        Map<Integer, Integer> brToSqlite = new HashMap<>();
-        for (var entry : resolution.classNameToId().entrySet()) {
-            Integer sqliteId = classNameToSqliteId.get(entry.getKey());
-            if (sqliteId != null) {
-                brToSqlite.put(entry.getValue(), sqliteId);
-            }
+        List<BeanResolver.ResolutionResult> resolutions = new ArrayList<>();
+        if (isSpring) {
+            resolutions.add(SpringResolver.resolve(scanResult.index(), depResult.index()));
+        }
+        if (isCdi || !isSpring) {
+            resolutions.add(BeanResolver.resolve(scanResult.index(), depResult.index()));
         }
 
-        PersistedResolution persisted = remapForPersistence(resolution, brToSqlite);
+        List<PersistedResolution> persistedParts = new ArrayList<>();
+        for (BeanResolver.ResolutionResult resolution : resolutions) {
+            Map<Integer, Integer> brToSqlite = new HashMap<>();
+            for (var entry : resolution.classNameToId().entrySet()) {
+                Integer sqliteId = classNameToSqliteId.get(entry.getKey());
+                if (sqliteId != null) {
+                    brToSqlite.put(entry.getValue(), sqliteId);
+                }
+            }
+            persistedParts.add(remapForPersistence(resolution, brToSqlite));
+        }
+        PersistedResolution persisted = mergePersistedResolutions(
+                persistedParts, isSpring && isCdi);
         List<BeanRecord> remappedBeans = persisted.beans();
 
         Set<Integer> beanClassIds = new HashSet<>();
@@ -442,7 +444,9 @@ public class ProjectInitializer {
                             GitAnalyzer.resolveHead(root)), startedAtNanos);
         }
 
-        List<CdiProblem> problems = resolution.problems();
+        List<CdiProblem> problems = resolutions.stream()
+                .flatMap(resolution -> resolution.problems().stream())
+                .toList();
         List<CdiProblem> remappedProblems = problems.stream()
                 .map(p -> new CdiProblem(p.id(),
                         classNameToSqliteId.get(p.className()),
@@ -485,7 +489,8 @@ public class ProjectInitializer {
                 Integer.toString(scanResult.cacheHits()));
         metadata.put("application_index_cache_shards",
                 Integer.toString(scanResult.cacheShards()));
-        metadata.put("framework", isSpring ? "Spring" : "CDI");
+        metadata.put("framework", isSpring && isCdi ? "Mixed"
+                : isSpring ? "Spring" : isCdi ? "CDI" : "Plain");
         metadata.put("dependency_index", depResult.status().name().toLowerCase());
         metadata.put("dependency_index_detail", depResult.detail());
         metadata.put("database_write_mode", incrementalBase == null ? "fresh" : "incremental");
@@ -655,6 +660,55 @@ public class ProjectInitializer {
                 .toList();
 
         return new PersistedResolution(beans, injectionPoints, dependencies);
+    }
+
+    static PersistedResolution mergePersistedResolutions(
+            List<PersistedResolution> parts, boolean mixedFrameworks) {
+        List<BeanRecord> beans = new ArrayList<>();
+        List<InjectionPointRecord> injectionPoints = new ArrayList<>();
+        List<DependencyRecord> dependencies = new ArrayList<>();
+
+        for (PersistedResolution part : parts) {
+            Map<Integer, Integer> beanIds = new HashMap<>();
+            for (BeanRecord bean : part.beans()) {
+                int id = beans.size() + 1;
+                beanIds.put(bean.id(), id);
+                beans.add(new BeanRecord(id, bean.classId(), bean.kind(), bean.scope(),
+                        bean.qualifiers(), bean.stereotypes(), bean.isAlternative(),
+                        bean.priority(), bean.profiles(), bean.declaringClassId(),
+                        bean.memberName(), bean.beanTypes()));
+            }
+
+            Map<Integer, Integer> injectionPointIds = new HashMap<>();
+            for (InjectionPointRecord injectionPoint : part.injectionPoints()) {
+                Integer beanId = beanIds.get(injectionPoint.beanId());
+                if (beanId == null) continue;
+                int id = injectionPoints.size() + 1;
+                injectionPointIds.put(injectionPoint.id(), id);
+                injectionPoints.add(new InjectionPointRecord(id, beanId,
+                        injectionPoint.kind(), injectionPoint.targetType(),
+                        injectionPoint.qualifiers(), injectionPoint.fieldName(),
+                        injectionPoint.resolvedBeanId() != null
+                                ? beanIds.get(injectionPoint.resolvedBeanId()) : null,
+                        injectionPoint.isAmbiguous()));
+            }
+
+            for (DependencyRecord dependency : part.dependencies()) {
+                if (mixedFrameworks && "CLASS_REFERENCE".equals(dependency.kind())) {
+                    // Both resolvers scan all non-bean signatures. The bytecode pass below
+                    // supplies the shared static graph once for the complete reactor.
+                    continue;
+                }
+                Integer injectionPointId = dependency.injectionPointId() != null
+                        ? injectionPointIds.get(dependency.injectionPointId()) : null;
+                if (dependency.injectionPointId() != null && injectionPointId == null) continue;
+                dependencies.add(new DependencyRecord(dependency.fromClassId(),
+                        dependency.toClassId(), dependency.kind(), injectionPointId,
+                        dependency.occurrenceCount()));
+            }
+        }
+        return new PersistedResolution(
+                List.copyOf(beans), List.copyOf(injectionPoints), List.copyOf(dependencies));
     }
 
     static List<Path> findClassesDirs(Path root) {

@@ -38,6 +38,7 @@ nb-configuration.xml
 
 # Local environment
 .env
+.quill/
 
 # Python benchmark tooling
 __pycache__/

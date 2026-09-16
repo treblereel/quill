@@ -47,7 +47,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, macos-14, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -70,8 +70,11 @@ jobs:
       - if: runner.os == 'Windows'
         run: .\quill-app\target\quill.exe --version
       - name: Enforce native binary size budget
-        if: runner.os != 'Windows'
+        if: runner.os == 'Linux'
         run: test "$(stat -c%s quill-app/target/quill)" -le 47185920
+      - name: Enforce native binary size budget on macOS
+        if: runner.os == 'macOS'
+        run: test "$(stat -f%z quill-app/target/quill)" -le 47185920
       - name: Native performance smoke test
         if: runner.os != 'Windows'
         run: python3 scripts/quill_perf_smoke.py --quill quill-app/target/quill

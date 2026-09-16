@@ -17,7 +17,7 @@ class CliCommandTest {
 
     @Test
     void everySubcommandProvidesStandardHelpOptions() {
-        for (String command : List.of("init", "update", "status", "clean")) {
+        for (String command : List.of("init", "update", "status", "doctor", "clean")) {
             StringWriter output = new StringWriter();
             CommandLine cli = new CommandLine(new QuillTopCommand());
             cli.setOut(new PrintWriter(output));
@@ -43,5 +43,7 @@ class CliCommandTest {
                 new CommandLine(new InitCommand()).execute("--project", project.toString()));
         assertEquals(CommandLine.ExitCode.SOFTWARE,
                 new CommandLine(new StatusCommand()).execute("--project", project.toString()));
+        assertEquals(CommandLine.ExitCode.SOFTWARE,
+                new CommandLine(new DoctorCommand()).execute("--project", project.toString()));
     }
 }

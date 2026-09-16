@@ -82,6 +82,7 @@ an MCP process serving reads while repeated immutable index generations are publ
 | `quill init --timings` | Index and report per-phase elapsed times for diagnostics |
 | `quill update` | Re-index if the project fingerprint changed |
 | `quill status` | Show current index status |
+| `quill doctor` | Diagnose compiled outputs, index freshness, build integration, and client setup |
 | `quill clean` | Remove `.quill` and build integration |
 
 The `--timings` phases include independently measured background work such as
@@ -99,6 +100,11 @@ actionable context such as expected/current commit, current dirty paths, or the 
 Quill builds the database in a staging file and keeps the previous index unchanged if
 indexing or publication fails. For `HEAD_CHANGED` or `WORKTREE_CHANGED`,
 finish the concurrent checkout/build/edit and run `quill update` again.
+
+`quill doctor` reports actionable project setup and index-health checks without building or
+re-indexing the project. Warnings (for example, missing build integration) keep exit code 0;
+failed requirements such as missing compiled outputs or an unreadable index return a non-zero
+exit code. Use `quill doctor --json` for a stable, versioned machine-readable report.
 
 ## MCP Tools
 

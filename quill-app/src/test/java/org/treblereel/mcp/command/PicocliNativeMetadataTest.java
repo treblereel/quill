@@ -34,6 +34,7 @@ class PicocliNativeMetadataTest {
                 "org.treblereel.mcp.command.InitCommand",
                 "org.treblereel.mcp.command.UpdateCommand",
                 "org.treblereel.mcp.command.StatusCommand",
+                "org.treblereel.mcp.command.DoctorCommand",
                 "org.treblereel.mcp.command.CleanCommand")));
 
         JsonNode init = findCommand(commands, InitCommand.class.getName());

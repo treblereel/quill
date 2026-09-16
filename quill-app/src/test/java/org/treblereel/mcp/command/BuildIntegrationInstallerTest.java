@@ -38,12 +38,24 @@ class BuildIntegrationInstallerTest {
         assertTrue(installed.contains("<artifactId>existing</artifactId>"));
         assertEquals(BuildIntegrationInstaller.Result.UNCHANGED,
                 BuildIntegrationInstaller.install(tempDir));
+        assertEquals(BuildIntegrationInstaller.State.INSTALLED,
+                BuildIntegrationInstaller.inspect(tempDir).state());
+
+        Files.writeString(extensions, installed.replace(
+                "<version>" + org.treblereel.mcp.QuillTopCommand.version() + "</version>",
+                "<version>0.0.0-outdated</version>"));
+        assertEquals(BuildIntegrationInstaller.State.OUTDATED,
+                BuildIntegrationInstaller.inspect(tempDir).state());
+        assertEquals(BuildIntegrationInstaller.Result.UPDATED,
+                BuildIntegrationInstaller.install(tempDir));
 
         assertEquals(BuildIntegrationInstaller.Result.REMOVED,
                 BuildIntegrationInstaller.uninstall(tempDir));
         String cleaned = Files.readString(extensions);
         assertFalse(cleaned.contains("quill-maven-extension"));
         assertTrue(cleaned.contains("<artifactId>existing</artifactId>"));
+        assertEquals(BuildIntegrationInstaller.State.MISSING,
+                BuildIntegrationInstaller.inspect(tempDir).state());
     }
 
     @Test
@@ -57,10 +69,14 @@ class BuildIntegrationInstallerTest {
         assertEquals(BuildIntegrationInstaller.Result.UNCHANGED,
                 BuildIntegrationInstaller.install(tempDir));
         assertTrue(Files.readString(settings).contains("gradle.buildFinished"));
+        assertEquals(BuildIntegrationInstaller.State.INSTALLED,
+                BuildIntegrationInstaller.inspect(tempDir).state());
 
         assertEquals(BuildIntegrationInstaller.Result.REMOVED,
                 BuildIntegrationInstaller.uninstall(tempDir));
         assertEquals(userContent, Files.readString(settings));
+        assertEquals(BuildIntegrationInstaller.State.MISSING,
+                BuildIntegrationInstaller.inspect(tempDir).state());
     }
 
     @Test

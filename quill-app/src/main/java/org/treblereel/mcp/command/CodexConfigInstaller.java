@@ -46,7 +46,7 @@ final class CodexConfigInstaller {
         }
     }
 
-    private static boolean definesQuillServer(String content) {
+    static boolean definesQuillServer(String content) {
         boolean inRootMcpTable = false;
         boolean beforeFirstTable = true;
         for (String line : content.split("\\R", -1)) {

@@ -24,6 +24,10 @@ final class BuildIntegrationInstaller {
 
     enum Result { INSTALLED, UPDATED, UNCHANGED, REMOVED, NOT_FOUND, FAILED }
 
+    enum State { INSTALLED, MISSING, OUTDATED, INVALID }
+
+    record Inspection(State state, Path path, String detail) {}
+
     static Result install(Path root) {
         try {
             return switch (BuildSystem.detect(root)) {
@@ -48,6 +52,78 @@ final class BuildIntegrationInstaller {
         } catch (IOException e) {
             System.err.println("[quill] Could not remove build integration: " + e.getMessage());
             return Result.FAILED;
+        }
+    }
+
+    static Inspection inspect(Path root) {
+        return switch (BuildSystem.detect(root)) {
+            case MAVEN -> inspectMaven(root);
+            case GRADLE -> inspectGradle(root);
+        };
+    }
+
+    private static Inspection inspectMaven(Path root) {
+        Path file = root.resolve(".mvn/extensions.xml");
+        if (!Files.isRegularFile(file)) {
+            return new Inspection(State.MISSING, file, "Maven extension is not installed");
+        }
+        try {
+            String content = Files.readString(file);
+            boolean start = content.contains(MAVEN_START);
+            boolean end = content.contains(MAVEN_END);
+            if (start != end) {
+                return new Inspection(State.INVALID, file,
+                        "Quill-managed Maven extension block is incomplete");
+            }
+            if (!content.contains("<artifactId>quill-maven-extension</artifactId>")) {
+                return new Inspection(State.MISSING, file,
+                        "Maven extensions file does not configure Quill");
+            }
+            String expected = "<version>" + QuillTopCommand.version() + "</version>";
+            if (!content.contains(expected)) {
+                return new Inspection(State.OUTDATED, file,
+                        "Maven extension version differs from Quill "
+                                + QuillTopCommand.version());
+            }
+            return new Inspection(State.INSTALLED, file,
+                    start ? "Managed Maven extension is current"
+                            : "User-managed Maven extension is current");
+        } catch (IOException error) {
+            return new Inspection(State.INVALID, file,
+                    "Could not read Maven extension: " + error.getMessage());
+        }
+    }
+
+    private static Inspection inspectGradle(Path root) {
+        Path file = gradleSettings(root);
+        if (file == null || !Files.isRegularFile(file)) {
+            Path expected = root.resolve(Files.isRegularFile(root.resolve("build.gradle.kts"))
+                    ? "settings.gradle.kts" : "settings.gradle");
+            return new Inspection(State.MISSING, expected,
+                    "Gradle build-success integration is not installed");
+        }
+        try {
+            String content = Files.readString(file);
+            boolean start = content.contains(GRADLE_START);
+            boolean end = content.contains(GRADLE_END);
+            if (start != end) {
+                return new Inspection(State.INVALID, file,
+                        "Quill-managed Gradle block is incomplete");
+            }
+            if (!start) {
+                return new Inspection(State.MISSING, file,
+                        "Gradle settings do not configure Quill build events");
+            }
+            if (!content.contains("quill.internal") || !content.contains("finishedAt")
+                    || !content.contains("version")) {
+                return new Inspection(State.OUTDATED, file,
+                        "Gradle build-success integration uses an older protocol");
+            }
+            return new Inspection(State.INSTALLED, file,
+                    "Managed Gradle build-success integration is current");
+        } catch (IOException error) {
+            return new Inspection(State.INVALID, file,
+                    "Could not read Gradle integration: " + error.getMessage());
         }
     }
 

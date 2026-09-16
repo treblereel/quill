@@ -16,9 +16,11 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.db.QuillDatabase;
 
 @Tag("e2e")
 class McpStdioIT {
@@ -64,6 +66,73 @@ class McpStdioIT {
                 "Skipping: native image not found (build with -Pnative)");
 
         assertToolsListAndCall(List.of(nativeImage.toString()), PROJECT_ROOT, 3);
+    }
+
+    @Test
+    void mcpServesStaleGenerationWhileCurrentHeadIsNotIndexed() throws Exception {
+        Path appJar = resolveAppJar();
+        Assumptions.assumeTrue(Files.exists(appJar));
+
+        Path project = Files.createDirectories(tempDir.resolve("stale-project"));
+        String indexedCommit;
+        String branch;
+        try (Git git = Git.init().setDirectory(project.toFile()).call()) {
+            Files.writeString(project.resolve("pom.xml"), "<project/>");
+            git.add().addFilepattern("pom.xml").call();
+            indexedCommit = git.commit().setMessage("indexed")
+                    .setAuthor("Test", "test@example.com").setSign(false).call().getName();
+            branch = git.getRepository().getBranch();
+
+            Path quillDir = Files.createDirectories(project.resolve(".quill"));
+            String indexId = indexedCommit + "-generation";
+            var jdbi = QuillDatabase.create(quillDir.resolve(indexId + ".db"));
+            jdbi.useHandle(handle -> {
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "index_id", indexId);
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "indexed_at", "2026-09-15T00:00:00Z");
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "last_commit", indexedCommit);
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "project_root", project.toString());
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "framework", "Plain");
+            });
+            JSON.writerWithDefaultPrettyPrinter().writeValue(
+                    quillDir.resolve("refs.json").toFile(),
+                    Map.of("@head:" + indexedCommit, indexId, branch, indexId));
+
+            Files.writeString(project.resolve("README.md"), "new head\n");
+            git.add().addFilepattern("README.md").call();
+            git.commit().setMessage("head moved")
+                    .setAuthor("Test", "test@example.com").setSign(false).call();
+        }
+
+        Process process = new ProcessBuilder("java", "-jar", appJar.toString(),
+                "--mcp", "--project", project.toString())
+                .directory(project.toFile())
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        try (BufferedWriter input = new BufferedWriter(
+                        new OutputStreamWriter(process.getOutputStream()));
+                BufferedReader output = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+            sendRequest(input, 1, "initialize", """
+                    {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"stale-test","version":"1"}}""");
+            assertNotNull(readResponse(output, 1).get("result"));
+            sendNotification(input, "notifications/initialized", "{}");
+            sendRequest(input, 2, "tools/call",
+                    "{\"name\":\"get_overview\",\"arguments\":{}}");
+
+            JsonNode overview = toolText(readResponse(output, 2));
+            assertEquals("Plain", overview.path("project").path("framework").asText());
+            assertTrue(overview.path("_meta").path("commit_stale").asBoolean());
+            assertTrue(overview.path("_meta").path("stale_reasons").toString()
+                    .contains("commit_changed_after_index"));
+        } finally {
+            process.destroyForcibly();
+            process.waitFor(5, TimeUnit.SECONDS);
+        }
     }
 
     @Test
@@ -414,11 +483,11 @@ class McpStdioIT {
         assertTrue(probe.waitFor(10, TimeUnit.SECONDS) && probe.exitValue() == 0,
                 "Gradle executable is required for the Gradle integration test");
         Process clean = new ProcessBuilder(BuildSystem.GRADLE.command(
-                GRADLE_PROJECT, "clean", "--quiet"))
+                GRADLE_PROJECT, "clean", "classes", "--quiet"))
                 .directory(GRADLE_PROJECT.toFile())
                 .inheritIO()
                 .start();
-        assertEquals(0, clean.waitFor(), "Gradle clean must succeed");
+        assertEquals(0, clean.waitFor(), "Gradle fixture build must succeed");
         deleteTree(GRADLE_PROJECT.resolve(".quill"));
 
         InitCommand command = new InitCommand();
@@ -446,7 +515,8 @@ class McpStdioIT {
         Path brokenProject = Files.createDirectories(tempDir.resolve("broken-native-project"));
         Files.createFile(brokenProject.resolve("pom.xml"));
         Path quillDir = Files.createDirectories(brokenProject.resolve(".quill"));
-        Files.writeString(quillDir.resolve("nocommit.db"), "not a sqlite database");
+        Files.writeString(quillDir.resolve("broken.db"), "not a sqlite database");
+        Files.writeString(quillDir.resolve("refs.json"), "{\"@worktree\":\"broken\"}");
 
         Process proc = new ProcessBuilder(nativeImage.toString(), "--mcp", "--project",
                 brokenProject.toString())

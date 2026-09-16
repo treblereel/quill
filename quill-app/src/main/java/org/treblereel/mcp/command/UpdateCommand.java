@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.db.IndexReader;
@@ -20,9 +21,6 @@ public class UpdateCommand implements Runnable {
     @Option(names = "--force", description = "Force full re-index even if no changes detected")
     boolean force;
 
-    @Option(names = "--compile", description = "Compile the project before checking and rebuilding the index")
-    boolean compile;
-
     @Override
     public void run() {
         Path root = ProjectRootFinder.find(projectPath);
@@ -30,7 +28,7 @@ public class UpdateCommand implements Runnable {
         Path lockedRoot = root;
         try {
             ProjectIndexLock.withLock(lockedRoot, () -> {
-                updateLocked(lockedRoot);
+                updateLocked(lockedRoot, System.out::println, false);
                 return null;
             });
         } catch (IOException e) {
@@ -38,37 +36,52 @@ public class UpdateCommand implements Runnable {
         }
     }
 
-    private void updateLocked(Path root) {
-        ProjectInitializer.CompilationResult compilation = compile
-                ? ProjectInitializer.compileProjectDetailed(root) : null;
-        if (compilation != null && !compilation.successful()) {
-            throw new IllegalStateException(
-                    "Compilation failed: " + compilation.message()
-                            + ". The existing index was left unchanged.");
+    public static void updateAfterSuccessfulBuild(Path root) {
+        Path normalized = root.toAbsolutePath().normalize();
+        try {
+            ProjectIndexLock.withLock(normalized, () -> {
+                new UpdateCommand().updateLocked(normalized,
+                        message -> System.err.println("[quill] " + message), true);
+                return null;
+            });
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not lock index for " + normalized, e);
         }
+    }
 
-        Path existingDb = ProjectInitializer.findDbForHead(root);
+    private void updateLocked(
+            Path root, Consumer<String> output, boolean externallyCompiled) {
+        Path exactDb = ProjectInitializer.findExactDbForHead(root);
+        Path existingDb = exactDb != null
+                ? exactDb : ProjectInitializer.findBestAvailableDb(root);
         if (existingDb == null) {
-            System.out.println("No existing index found. Running full init...");
-            runInit(root, null);
+            output.accept("No existing index found. Running full init...");
+            runInit(root, null, externallyCompiled);
             return;
         }
 
-        boolean refreshCompiledSnapshot = compile
+        if (exactDb == null) {
+            output.accept(
+                    "No index for the current commit. Re-indexing from the latest generation...");
+            runInit(root, existingDb, externallyCompiled);
+            return;
+        }
+
+        boolean refreshCompiledSnapshot = externallyCompiled
                 && requiresPostCompileRefresh(root, existingDb);
         if (!force && !refreshCompiledSnapshot && !hasProjectChanges(root, existingDb)) {
-            System.out.println("Index is up to date — project fingerprint has not changed.");
+            output.accept("Index is up to date — project fingerprint has not changed.");
             return;
         }
 
         if (force) {
-            System.out.println("Forced full re-index...");
+            output.accept("Forced full re-index...");
         } else if (refreshCompiledSnapshot) {
-            System.out.println("Compilation completed. Refreshing the stale compiled snapshot...");
+            output.accept("Build completed. Refreshing the stale compiled snapshot...");
         } else {
-            System.out.println("Changes detected. Re-indexing...");
+            output.accept("Changes detected. Re-indexing...");
         }
-        runInit(root, existingDb);
+        runInit(root, existingDb, externallyCompiled);
     }
 
     static boolean requiresPostCompileRefresh(Path root, Path dbPath) {
@@ -92,8 +105,7 @@ public class UpdateCommand implements Runnable {
             List<Path> classesDirs = ProjectInitializer.findClassesDirs(root);
             if (classesDirs.isEmpty()) return true;
             String currentFingerprint = ProjectInitializer.computeStateFingerprint(root, classesDirs);
-            String indexedWorktree = meta.getOrDefault("indexed_structure_fingerprint",
-                    meta.get("indexed_worktree_fingerprint"));
+            String indexedWorktree = meta.get("indexed_structure_fingerprint");
             WorktreeInspector.Snapshot worktree = WorktreeInspector.inspect(root);
             boolean worktreeChanged = indexedWorktree != null
                     ? !indexedWorktree.equals(worktree.structuralFingerprint())
@@ -105,10 +117,10 @@ public class UpdateCommand implements Runnable {
         }
     }
 
-    private void runInit(Path root, Path incrementalBase) {
+    private void runInit(Path root, Path incrementalBase, boolean externallyCompiled) {
         ProjectInitializer.InitializationResult result =
                 ProjectInitializer.initializeLockedDetailed(
-                        root, true, compile, incrementalBase);
+                        root, true, externallyCompiled, incrementalBase);
         if (!result.successful()) {
             throw new IllegalStateException(result.diagnostic()
                     + " (after " + result.elapsedMillis() + " ms)");

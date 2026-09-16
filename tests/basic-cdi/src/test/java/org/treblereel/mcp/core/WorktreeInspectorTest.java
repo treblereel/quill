@@ -91,4 +91,59 @@ class WorktreeInspectorTest {
             assertEquals(1, sourceChanged.structuralChanges().size());
         }
     }
+
+    @Test
+    void ignoresQuillOnlyMavenExtensionButNotOtherExtensionChanges() throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), "<project/>\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("fixture").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+
+            Path extensions = tempDir.resolve(".mvn/extensions.xml");
+            Files.createDirectories(extensions.getParent());
+            Files.writeString(extensions, """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <extensions>
+                        <!-- quill:build-integration:start -->
+                        <extension>
+                            <groupId>org.treblereel.mcp</groupId>
+                            <artifactId>quill-maven-extension</artifactId>
+                            <version>1</version>
+                        </extension>
+                        <!-- quill:build-integration:end -->
+                    </extensions>
+                    """);
+            assertFalse(WorktreeInspector.inspect(tempDir).dirty());
+
+            Files.writeString(extensions, Files.readString(extensions).replace(
+                    "</extensions>", "<extension><groupId>user</groupId></extension></extensions>"));
+            WorktreeInspector.Snapshot userChange = WorktreeInspector.inspect(tempDir);
+            assertTrue(userChange.dirty());
+            assertTrue(userChange.structuralDirty());
+        }
+    }
+
+    @Test
+    void ignoresQuillBlockAddedToTrackedGradleSettings() throws Exception {
+        Path settings = tempDir.resolve("settings.gradle.kts");
+        Files.writeString(settings, "rootProject.name = \"sample\"\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("fixture").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+
+            Files.writeString(settings, """
+                    // quill:build-integration:start
+                    gradle.buildFinished { }
+                    // quill:build-integration:end
+                    rootProject.name = "sample"
+                    """);
+            assertFalse(WorktreeInspector.inspect(tempDir).dirty());
+
+            Files.writeString(settings, Files.readString(settings)
+                    .replace("sample", "user-change"));
+            assertTrue(WorktreeInspector.inspect(tempDir).structuralDirty());
+        }
+    }
 }

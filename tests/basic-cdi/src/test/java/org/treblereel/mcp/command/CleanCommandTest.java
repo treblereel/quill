@@ -7,7 +7,6 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
-import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,7 +27,7 @@ class CleanCommandTest {
     }
 
     @Test
-    void cleanRemovesIndexDataAndRetainsLifecycleLock() {
+    void cleanRemovesEntireQuillDirectory() {
         InitCommand init = new InitCommand();
         init.projectPath = PROJECT_ROOT;
         init.indexOnly = true;
@@ -41,12 +40,7 @@ class CleanCommandTest {
         cmd.run();
 
         assertNull(ProjectInitializer.findDbForHead(PROJECT_ROOT));
-        assertTrue(Files.isRegularFile(QUILL_DIR.resolve(ProjectIndexLock.LOCK_FILE)));
-        try (var files = Files.list(QUILL_DIR)) {
-            assertEquals(List.of(QUILL_DIR.resolve(ProjectIndexLock.LOCK_FILE)), files.toList());
-        } catch (Exception e) {
-            fail(e);
-        }
+        assertFalse(Files.exists(QUILL_DIR));
     }
 
     @Test

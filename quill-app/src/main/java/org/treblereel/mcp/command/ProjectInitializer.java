@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -39,7 +40,6 @@ import org.treblereel.mcp.core.ClassFileSnapshot;
 import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.core.FileInventory;
 import org.treblereel.mcp.core.GitAnalyzer;
-import org.treblereel.mcp.core.GitHookInstaller;
 import org.treblereel.mcp.core.GradleProjectDiscovery;
 import org.treblereel.mcp.core.JandexScanner;
 import org.treblereel.mcp.core.MavenProjectDiscovery;
@@ -58,7 +58,6 @@ public class ProjectInitializer {
 
     public enum FailureReason {
         LOCK_FAILED,
-        COMPILATION_FAILED,
         NO_COMPILED_CLASSES,
         MIXED_FRAMEWORKS,
         HEAD_CHANGED,
@@ -195,8 +194,6 @@ public class ProjectInitializer {
         }
     }
 
-    record CompilationResult(boolean successful, String message) {}
-
     record PersistedResolution(
             List<BeanRecord> beans,
             List<InjectionPointRecord> injectionPoints,
@@ -217,8 +214,8 @@ public class ProjectInitializer {
         try {
             InitializationResult result = ProjectIndexLock.withLock(normalizedRoot, () -> {
                 timings.finish("lock_wait");
-                return initializeLockedDetailed(
-                        normalizedRoot, indexOnly, false, null, startedAtNanos, timings);
+                return initializeLockedDetailed(normalizedRoot, indexOnly, false,
+                        null, startedAtNanos, timings);
             });
             return result.withPhaseMillis(timings.snapshot());
         } catch (IOException e) {
@@ -278,31 +275,22 @@ public class ProjectInitializer {
         timings.finish("class_discovery");
 
         if (classesDirs.isEmpty()) {
-            CompilationResult compilation = compileProjectDetailed(root);
-            timings.finish("compilation");
-            if (!compilation.successful()) {
-                return InitializationResult.failure(FailureReason.COMPILATION_FAILED,
-                        compilation.message(), startedAtNanos);
-            }
-            compiledBeforeIndex = true;
-            classesDirs = findClassesDirs(root, true);
-            timings.finish("class_rediscovery");
-            if (classesDirs.isEmpty()) {
-                return InitializationResult.failure(FailureReason.NO_COMPILED_CLASSES,
-                        "Build completed, but no main .class files were found under " + root
-                                + ". Check that the project contains a Java/Kotlin JVM module and "
-                                + "that its main compilation is enabled.",
-                        startedAtNanos);
-            }
+            return InitializationResult.failure(FailureReason.NO_COMPILED_CLASSES,
+                    "No main .class files were found under " + root
+                            + ". Build the project with Maven or Gradle, then run `quill init` again.",
+                    startedAtNanos);
         }
 
-        // Compilation is a prerequisite, not part of indexing. Capture the authoritative
+        // Compilation is a prerequisite and is never started by Quill. Capture the authoritative
         // commit/worktree snapshot afterwards so generated tracked files do not make a
         // successful compile look like a concurrent mutation.
         // Quill's own managed-file changes must also happen before the snapshot; otherwise
         // the first init would invalidate itself when adding .quill/ to .gitignore.
         if (!indexOnly) {
             ensureGitignore(root);
+            // Install build-success notification before capturing freshness because
+            // Maven/Gradle configuration is structural input.
+            BuildIntegrationInstaller.install(root);
         }
         String initialHead = GitAnalyzer.resolveHead(root);
         WorktreeInspector.Snapshot initialWorktree = WorktreeInspector.inspect(root);
@@ -476,7 +464,6 @@ public class ProjectInitializer {
         metadata.put("index_id", indexId);
         metadata.put("project_root", root.toString());
         metadata.put("last_commit", lastCommit != null ? lastCommit : "unknown");
-        metadata.put("indexed_worktree_fingerprint", initialWorktree.fingerprint());
         metadata.put("indexed_worktree_dirty", Boolean.toString(initialWorktree.dirty()));
         metadata.put("indexed_worktree_changed_files",
                 Integer.toString(initialWorktree.changes().size()));
@@ -587,10 +574,6 @@ public class ProjectInitializer {
                             + rootMessage(e)
                             + ". The previous index remains active.",
                     startedAtNanos);
-        }
-
-        if (!indexOnly && GitAnalyzer.hasGitRepo(root)) {
-            GitHookInstaller.install(root, QuillLauncher.detect());
         }
 
         if (!indexOnly) {
@@ -716,35 +699,30 @@ public class ProjectInitializer {
     }
 
     private static List<Path> findClassesDirs(Path root, boolean refreshGradleClasspath) {
-        try {
-            BuildSystem buildSystem = BuildSystem.detect(root);
-            if (buildSystem == BuildSystem.MAVEN) {
-                MavenProjectDiscovery.Discovery discovery = MavenProjectDiscovery.discover(root);
-                LinkedHashSet<Path> result = new LinkedHashSet<>();
-                discovery.moduleDirectories().stream()
-                        .map(module -> module.resolve("target/classes"))
-                        .filter(ProjectInitializer::containsClassFiles)
-                        .forEach(result::add);
-                if (!discovery.complete()) {
-                    result.addAll(scanClassesDirs(root, path -> path.endsWith("target/classes")));
-                }
-                return List.copyOf(result);
-            }
-
-            GradleProjectDiscovery.Discovery discovery = refreshGradleClasspath
-                    ? GradleProjectDiscovery.discoverAndWriteClasspath(root)
-                    : GradleProjectDiscovery.discover(root);
-            LinkedHashSet<Path> result = discovery.classesDirectories().stream()
+        BuildSystem buildSystem = BuildSystem.detect(root);
+        if (buildSystem == BuildSystem.MAVEN) {
+            MavenProjectDiscovery.Discovery discovery = MavenProjectDiscovery.discover(root);
+            LinkedHashSet<Path> result = new LinkedHashSet<>();
+            discovery.moduleDirectories().stream()
+                    .map(module -> module.resolve("target/classes"))
                     .filter(ProjectInitializer::containsClassFiles)
-                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+                    .forEach(result::add);
             if (!discovery.complete()) {
-                result.addAll(scanClassesDirs(root, ProjectInitializer::isGradleMainClassesDir));
+                result.addAll(scanClassesDirs(root, path -> path.endsWith("target/classes")));
             }
             return List.copyOf(result);
-        } catch (IllegalArgumentException ignored) {
-            // Tests and legacy layouts without a build marker use the generic scan.
         }
-        return scanClassesDirs(root, ProjectInitializer::isMainClassesDir);
+
+        GradleProjectDiscovery.Discovery discovery = refreshGradleClasspath
+                ? GradleProjectDiscovery.discoverAndWriteClasspath(root)
+                : GradleProjectDiscovery.discover(root);
+        LinkedHashSet<Path> result = discovery.classesDirectories().stream()
+                .filter(ProjectInitializer::containsClassFiles)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (!discovery.complete()) {
+            result.addAll(scanClassesDirs(root, ProjectInitializer::isGradleMainClassesDir));
+        }
+        return List.copyOf(result);
     }
 
     private static List<Path> scanClassesDirs(
@@ -791,11 +769,6 @@ public class ProjectInitializer {
             if (part.toString().equals(segment)) return true;
         }
         return false;
-    }
-
-    private static boolean isMainClassesDir(Path path) {
-        if (path.endsWith("target/classes")) return true;
-        return isGradleMainClassesDir(path);
     }
 
     private static boolean isGradleMainClassesDir(Path path) {
@@ -889,40 +862,6 @@ public class ProjectInitializer {
         digest.update((byte) '=');
         if (value != null) digest.update(value.getBytes(StandardCharsets.UTF_8));
         digest.update((byte) 0);
-    }
-
-    static boolean compileProject(Path root) {
-        return compileProjectDetailed(root).successful();
-    }
-
-    static CompilationResult compileProjectDetailed(Path root) {
-        BuildSystem buildSystem;
-        try {
-            buildSystem = BuildSystem.detect(root);
-        } catch (IllegalArgumentException e) {
-            return new CompilationResult(false, rootMessage(e));
-        }
-        List<String> command = buildSystem.compileCommand(root);
-        try {
-            int exit = new ProcessBuilder(command)
-                    .directory(root.toFile())
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectError(ProcessBuilder.Redirect.INHERIT)
-                    .start()
-                    .waitFor();
-            if (exit != 0) {
-                return new CompilationResult(false, buildSystem.name() + " compile command `"
-                        + String.join(" ", command) + "` exited with code " + exit + " for " + root);
-            }
-            return new CompilationResult(true, buildSystem.name() + " compilation completed");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return new CompilationResult(false,
-                    buildSystem.name() + " compile was interrupted for " + root);
-        } catch (IOException e) {
-            return new CompilationResult(false, "Failed to run " + buildSystem.name()
-                    + " compile command `" + String.join(" ", command) + "`: " + rootMessage(e));
-        }
     }
 
     private static String headChangedMessage(String phase, String expected, String actual) {
@@ -1160,6 +1099,10 @@ public class ProjectInitializer {
     }
 
     public static Path findDbForHead(Path root) {
+        return findExactDbForHead(root);
+    }
+
+    public static Path findExactDbForHead(Path root) {
         String head = GitAnalyzer.resolveHead(root);
         Path refsPath = root.resolve(".quill/refs.json");
         Map<String, String> refs = readRefs(refsPath);
@@ -1172,21 +1115,48 @@ public class ProjectInitializer {
                     ? referencedDatabase(root, refs.get(branch), head) : null;
             if (branchDb != null) return branchDb;
 
-            // Compatibility with indexes created before immutable generations.
-            Path exact = root.resolve(".quill/" + head + ".db");
-            if (Files.exists(exact)) return exact;
-            Path legacy = root.resolve(".quill/" + head.substring(0, 7) + ".db");
-            if (Files.exists(legacy)) return legacy;
         } else {
             Path active = referencedDatabase(root, refs.get("@worktree"), null);
             if (active != null) return active;
-
-            // Compatibility with indexes created before immutable generations.
-            Path nocommit = root.resolve(".quill/nocommit.db");
-            if (Files.exists(nocommit)) return nocommit;
         }
 
         return null;
+    }
+
+    /**
+     * Finds the best immutable generation that can serve read-only queries.
+     *
+     * <p>An exact HEAD match is preferred. While a post-commit or post-checkout update is still
+     * running, the current branch's previous generation remains useful and its metadata lets MCP
+     * responses report {@code commit_stale=true}. A newly-created branch may not have a ref yet,
+     * so the newest retained generation is the final fallback.
+     */
+    public static Path findBestAvailableDb(Path root) {
+        Path exact = findExactDbForHead(root);
+        if (exact != null) return exact;
+
+        Path refsPath = root.resolve(".quill/refs.json");
+        Map<String, String> refs = readRefs(refsPath);
+        String branch = GitAnalyzer.resolveCurrentBranch(root);
+        if (branch != null) {
+            Path branchDb = referencedDatabase(root, refs.get(branch), null);
+            if (branchDb != null) return branchDb;
+        }
+
+        // Only generations reached through an atomically published ref are safe to serve.
+        // A complete-looking but unreferenced database may belong to an interrupted publication.
+        return refs.values().stream()
+                .distinct()
+                .map(indexId -> referencedDatabase(root, indexId, null))
+                .filter(Objects::nonNull)
+                .max(Comparator.comparing(path -> {
+                        try {
+                            return Files.getLastModifiedTime(path);
+                        } catch (IOException ignored) {
+                            return java.nio.file.attribute.FileTime.fromMillis(0);
+                        }
+                }))
+                .orElse(null);
     }
 
     private static Path referencedDatabase(

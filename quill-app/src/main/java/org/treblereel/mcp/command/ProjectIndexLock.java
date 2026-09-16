@@ -34,4 +34,23 @@ final class ProjectIndexLock {
             }
         }
     }
+
+    static <T> T withLockAndDeleteDirectory(Path root, Operation<T> operation) throws IOException {
+        Path normalizedRoot = root.toRealPath().normalize();
+        Object jvmLock = JVM_LOCKS.computeIfAbsent(normalizedRoot, ignored -> new Object());
+        synchronized (jvmLock) {
+            Path quillDir = normalizedRoot.resolve(".quill");
+            Files.createDirectories(quillDir);
+            Path lockFile = quillDir.resolve(LOCK_FILE);
+            T result;
+            try (FileChannel channel = FileChannel.open(lockFile,
+                        StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                    FileLock ignored = channel.lock()) {
+                result = operation.run();
+            }
+            Files.deleteIfExists(lockFile);
+            Files.deleteIfExists(quillDir);
+            return result;
+        }
+    }
 }

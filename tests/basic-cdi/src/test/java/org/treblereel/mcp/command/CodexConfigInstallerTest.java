@@ -6,10 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.treblereel.mcp.core.GitHookInstaller;
 
 class CodexConfigInstallerTest {
 
@@ -38,8 +36,7 @@ class CodexConfigInstallerTest {
     @Test
     void appendsDetectedNativeLauncherWithoutChangingExistingSettings() throws Exception {
         Path config = createConfig("model = \"gpt-test\"\n");
-        var launcher = new GitHookInstaller.Launcher(
-                List.of("C:\\Tools\\Quill Лаунчер\\quill.exe"), Path.of("quill.exe"));
+        String launcher = "C:\\Tools\\Quill Лаунчер\\quill.exe";
 
         var result = CodexConfigInstaller.installIfPresent(tempDir, launcher);
         String content = Files.readString(config);
@@ -53,19 +50,13 @@ class CodexConfigInstallerTest {
     }
 
     @Test
-    void usesBinaryFromPathWhenInitRunsFromJar() throws Exception {
+    void usesBinaryFromPathWhenLauncherIsUnavailable() throws Exception {
         Path config = createConfig("");
-        var launcher = new GitHookInstaller.Launcher(
-                List.of("/opt/java/bin/java", "-jar", "/opt/quill/quill.jar"),
-                Path.of("/opt/quill/quill.jar"));
-
-        CodexConfigInstaller.installIfPresent(tempDir, launcher);
+        CodexConfigInstaller.installIfPresent(tempDir, null);
 
         String content = Files.readString(config);
         assertTrue(content.contains("command = \"quill\""));
         assertTrue(content.contains("args = [\"--mcp\"]"));
-        assertFalse(content.contains("java"));
-        assertFalse(content.contains("quill.jar"));
     }
 
     @Test

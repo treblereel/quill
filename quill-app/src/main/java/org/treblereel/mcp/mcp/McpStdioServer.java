@@ -56,7 +56,7 @@ public final class McpStdioServer {
                 .jsonSchemaValidator((schema, value) -> ValidationResponse.asValid(""))
                 // McpToolCatalog performs the small set of validations Quill needs.
                 // Avoiding the generic JSON Schema engine removes four otherwise
-                // unused libraries and their legacy native-image metadata.
+                // unused libraries and their transitive native-image metadata.
                 .validateToolInputs(false)
                 .build();
         try {

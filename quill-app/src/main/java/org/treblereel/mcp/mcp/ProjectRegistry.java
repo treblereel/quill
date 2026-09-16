@@ -27,6 +27,7 @@ public class ProjectRegistry {
 
     private final List<RegisteredProject> projects = new ArrayList<>();
     private final ConcurrentHashMap<Path, Jdbi> databases = new ConcurrentHashMap<>();
+    private final BuildEventConsumer buildEvents = new BuildEventConsumer();
 
     public void register(Path projectPath) {
         try {
@@ -51,7 +52,11 @@ public class ProjectRegistry {
         List<ProjectEntry> result = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         for (RegisteredProject p : projects) {
-            Path dbPath = ProjectInitializer.findDbForHead(p.root());
+            String buildEventError = buildEvents.consume(p.root());
+            if (buildEventError != null) {
+                errors.add("Project '" + p.name() + "': " + buildEventError);
+            }
+            Path dbPath = ProjectInitializer.findBestAvailableDb(p.root());
             if (dbPath == null) {
                 errors.add("Project '" + p.name() + "' is not indexed. "
                         + "Run: quill init --project " + p.root());

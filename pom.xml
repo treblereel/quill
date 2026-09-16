@@ -9,6 +9,7 @@
 
     <modules>
         <module>quill-core</module>
+        <module>quill-maven-extension</module>
         <module>quill-app</module>
         <module>tests</module>
     </modules>

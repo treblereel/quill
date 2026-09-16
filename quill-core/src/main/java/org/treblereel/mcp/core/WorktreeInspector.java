@@ -81,6 +81,9 @@ public final class WorktreeInspector {
                 String projectPath = projectPrefix.isEmpty()
                         ? repositoryPath : repositoryPath.substring(projectPrefix.length());
                 if (projectPath.equals(".quill") || projectPath.startsWith(".quill/")) continue;
+                if (isManagedBuildIntegrationOnly(repository, repositoryRoot, repositoryPath)) {
+                    continue;
+                }
                 changes.add(new Change(projectPath, repositoryPath, entry.getValue()));
             }
             changes.sort(Comparator.comparing(Change::repositoryPath));
@@ -99,6 +102,63 @@ public final class WorktreeInspector {
 
     private static void putAll(Map<String, String> target, Iterable<String> paths, String status) {
         for (String path : paths) target.put(path, status);
+    }
+
+    private static boolean isManagedBuildIntegrationOnly(
+            Repository repository, Path repositoryRoot, String repositoryPath) {
+        String normalized = repositoryPath.replace('\\', '/');
+        boolean candidate = normalized.endsWith("/.mvn/extensions.xml")
+                || normalized.equals(".mvn/extensions.xml")
+                || normalized.endsWith("/settings.gradle")
+                || normalized.equals("settings.gradle")
+                || normalized.endsWith("/settings.gradle.kts")
+                || normalized.equals("settings.gradle.kts");
+        if (!candidate) return false;
+        Path file = repositoryRoot.resolve(repositoryPath).normalize();
+        if (!file.startsWith(repositoryRoot) || !Files.isRegularFile(file)) return false;
+        try {
+            String current = Files.readString(file);
+            String withoutQuill = stripQuillBuildIntegration(current);
+            if (withoutQuill.equals(current)) return false;
+
+            ObjectId baselineId = repository.resolve("HEAD:" + normalized);
+            String baseline = baselineId == null ? ""
+                    : new String(repository.open(baselineId).getBytes(), StandardCharsets.UTF_8);
+            if (baseline.isEmpty() && normalized.endsWith(".mvn/extensions.xml")) {
+                withoutQuill = stripEmptyExtensionsDocument(withoutQuill);
+            }
+            return withoutQuill.equals(baseline);
+        } catch (IOException ignored) {
+            return false;
+        }
+    }
+
+    private static String stripQuillBuildIntegration(String content) {
+        String startToken = "quill:build-integration:start";
+        String endToken = "quill:build-integration:end";
+        int marker = content.indexOf(startToken);
+        if (marker < 0) return content;
+        int start = content.lastIndexOf('\n', marker);
+        start = start < 0 ? 0 : start + 1;
+        int endMarker = content.indexOf(endToken, marker + startToken.length());
+        if (endMarker < 0) return content;
+        int end = content.indexOf('\n', endMarker);
+        end = end < 0 ? content.length() : end + 1;
+        String result = content.substring(0, start) + content.substring(end);
+
+        String created = "// quill:build-integration:created-settings";
+        if (result.startsWith(created + "\r\n")) {
+            result = result.substring(created.length() + 2);
+        } else if (result.startsWith(created + "\n")) {
+            result = result.substring(created.length() + 1);
+        }
+        return result;
+    }
+
+    private static String stripEmptyExtensionsDocument(String content) {
+        String remainder = content.replaceFirst("(?s)<\\?xml.*?\\?>", "")
+                .replace("<extensions>", "").replace("</extensions>", "");
+        return remainder.isBlank() ? "" : content;
     }
 
     private static String fingerprint(Path repositoryRoot, List<Change> changes) {

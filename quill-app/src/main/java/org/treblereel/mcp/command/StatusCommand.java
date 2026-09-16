@@ -19,7 +19,7 @@ public class StatusCommand implements Runnable {
     @Override
     public void run() {
         Path root = ProjectRootFinder.find(projectPath);
-        Path dbPath = ProjectInitializer.findDbForHead(root);
+        Path dbPath = ProjectInitializer.findBestAvailableDb(root);
 
         if (dbPath == null) {
             System.err.println("No index found. Run: quill init --project " + root);

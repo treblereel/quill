@@ -10,7 +10,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.treblereel.mcp.core.BuildSystem;
 
 class ProjectInitializerDiagnosticsTest {
 
@@ -47,43 +46,25 @@ class ProjectInitializerDiagnosticsTest {
     }
 
     @Test
-    void reportsCompileCommandAndExitCode(@TempDir Path project) throws Exception {
+    void initializationNeverInvokesMaven(@TempDir Path project) throws Exception {
         Files.createFile(project.resolve("pom.xml"));
-        writeMavenWrapper(project, 7);
-
-        ProjectInitializer.InitializationResult result =
-                ProjectInitializer.initializeDetailed(project, true);
-
-        assertFalse(result.successful());
-        assertEquals(ProjectInitializer.FailureReason.COMPILATION_FAILED, result.reason());
-        assertTrue(result.message().contains("exited with code 7"), result.message());
-        assertTrue(result.message().contains(BuildSystem.isWindows() ? "mvnw.cmd" : "mvnw"),
-                result.message());
-        assertTrue(result.phaseMillis().containsKey("class_discovery"));
-        assertTrue(result.phaseMillis().containsKey("compilation"));
-    }
-
-    @Test
-    void distinguishesSuccessfulBuildWithoutMainBytecode(@TempDir Path project) throws Exception {
-        Files.createFile(project.resolve("pom.xml"));
-        writeMavenWrapper(project, 0);
+        Path sentinel = project.resolve("maven-was-invoked");
+        Path unixWrapper = Files.writeString(project.resolve("mvnw"),
+                "#!/bin/sh\ntouch maven-was-invoked\nexit 0\n");
+        unixWrapper.toFile().setExecutable(true);
+        Files.writeString(project.resolve("mvnw.cmd"),
+                "@type nul > maven-was-invoked\r\n@exit /b 0\r\n");
 
         ProjectInitializer.InitializationResult result =
                 ProjectInitializer.initializeDetailed(project, true);
 
         assertFalse(result.successful());
         assertEquals(ProjectInitializer.FailureReason.NO_COMPILED_CLASSES, result.reason());
-        assertTrue(result.message().contains("no main .class files"), result.message());
-        assertTrue(result.phaseMillis().containsKey("class_rediscovery"));
-    }
-
-    private static void writeMavenWrapper(Path project, int exitCode) throws Exception {
-        if (BuildSystem.isWindows()) {
-            Files.writeString(project.resolve("mvnw.cmd"), "@exit /b " + exitCode + "\r\n");
-        } else {
-            Path wrapper = Files.writeString(project.resolve("mvnw"),
-                    "#!/bin/sh\nexit " + exitCode + "\n");
-            wrapper.toFile().setExecutable(true);
-        }
+        assertTrue(result.message().contains("No main .class files"), result.message());
+        assertTrue(result.message().contains("Build the project with Maven or Gradle"),
+                result.message());
+        assertFalse(Files.exists(sentinel), "Quill must never start the Maven build");
+        assertFalse(result.phaseMillis().containsKey("compilation"));
+        assertTrue(result.phaseMillis().containsKey("class_discovery"));
     }
 }

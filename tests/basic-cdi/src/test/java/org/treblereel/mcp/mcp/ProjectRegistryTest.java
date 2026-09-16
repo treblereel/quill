@@ -62,7 +62,8 @@ class ProjectRegistryTest {
         Path project = tempDir.resolve("broken-project");
         Path quillDir = Files.createDirectories(project.resolve(".quill"));
         Files.createFile(project.resolve("pom.xml"));
-        Files.writeString(quillDir.resolve("nocommit.db"), "not a sqlite database");
+        Files.writeString(quillDir.resolve("broken.db"), "not a sqlite database");
+        Files.writeString(quillDir.resolve("refs.json"), "{\"@worktree\":\"broken\"}");
 
         ProjectRegistry registry = new ProjectRegistry();
         registry.register(project);
@@ -77,8 +78,7 @@ class ProjectRegistryTest {
     void resolveReusesValidatedDatabaseForImmutableGeneration() throws IOException {
         Path project = Files.createDirectories(tempDir.resolve("cached-project"));
         Files.createFile(project.resolve("pom.xml"));
-        Path database = project.resolve(".quill/nocommit.db");
-        QuillDatabase.create(database);
+        createPublishedDatabase(project, "cached");
 
         ProjectRegistry registry = new ProjectRegistry();
         registry.register(project);
@@ -93,13 +93,21 @@ class ProjectRegistryTest {
     void synchronousPrewarmMakesDatabaseAvailableToFirstRequest() throws IOException {
         Path project = Files.createDirectories(tempDir.resolve("prewarmed-project"));
         Files.createFile(project.resolve("pom.xml"));
-        Path database = project.resolve(".quill/nocommit.db");
-        QuillDatabase.create(database);
+        createPublishedDatabase(project, "prewarmed");
 
         ProjectRegistry registry = new ProjectRegistry();
         registry.register(project);
         registry.prewarm(Runnable::run);
 
         assertEquals(1, registry.resolve().projects().size());
+    }
+
+    private static Path createPublishedDatabase(Path project, String indexId) throws IOException {
+        Path quillDir = Files.createDirectories(project.resolve(".quill"));
+        Path database = quillDir.resolve(indexId + ".db");
+        QuillDatabase.create(database);
+        Files.writeString(quillDir.resolve("refs.json"),
+                "{\"@worktree\":\"" + indexId + "\"}");
+        return database;
     }
 }

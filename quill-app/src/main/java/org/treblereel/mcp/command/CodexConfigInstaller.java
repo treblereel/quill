@@ -6,8 +6,6 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.List;
-import org.treblereel.mcp.core.GitHookInstaller;
 
 final class CodexConfigInstaller {
 
@@ -22,7 +20,7 @@ final class CodexConfigInstaller {
 
     private CodexConfigInstaller() {}
 
-    static Result installIfPresent(Path projectRoot, GitHookInstaller.Launcher launcher) {
+    static Result installIfPresent(Path projectRoot, String binary) {
         Path config = projectRoot.resolve(".codex/config.toml");
         if (!Files.exists(config)) return Result.NOT_PRESENT;
         if (!Files.isRegularFile(config) || Files.isSymbolicLink(config)) {
@@ -38,7 +36,7 @@ final class CodexConfigInstaller {
                 return Result.UNSUPPORTED;
             }
 
-            String updated = appendBlock(content, projectRoot, launcher);
+            String updated = appendBlock(content, projectRoot, binary);
             writeAtomically(config, updated);
             System.err.println("[quill] Added the Quill MCP server to " + config + ".");
             return Result.ADDED;
@@ -155,9 +153,9 @@ final class CodexConfigInstaller {
     }
 
     private static String appendBlock(
-            String content, Path projectRoot, GitHookInstaller.Launcher launcher) {
+            String content, Path projectRoot, String binary) {
         String newline = content.contains("\r\n") ? "\r\n" : "\n";
-        String command = binaryCommand(launcher);
+        String command = binary != null ? binary : "quill";
 
         StringBuilder block = new StringBuilder();
         if (!content.isEmpty() && !content.endsWith("\n") && !content.endsWith("\r")) {
@@ -172,13 +170,6 @@ final class CodexConfigInstaller {
                 .append("cwd = ").append(tomlString(projectRoot.toAbsolutePath().normalize().toString()))
                 .append(newline);
         return content + block;
-    }
-
-    private static String binaryCommand(GitHookInstaller.Launcher launcher) {
-        if (launcher != null && launcher.command().size() == 1) {
-            return launcher.command().getFirst();
-        }
-        return "quill";
     }
 
     private static String tomlString(String value) {

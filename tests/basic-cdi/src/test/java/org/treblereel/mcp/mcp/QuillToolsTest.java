@@ -629,7 +629,6 @@ class QuillToolsTest {
         IndexWriter.write(docsDb, List.of(), List.of(), List.of(), List.of(),
                 Map.of("indexed_at", "2026-09-09T00:00:00Z", "last_commit", head,
                         "project_root", repository.toString(),
-                        "indexed_worktree_fingerprint", indexed.fingerprint(),
                         "indexed_structure_fingerprint", indexed.structuralFingerprint(),
                         "compiled_before_index", "false"));
 
@@ -664,7 +663,7 @@ class QuillToolsTest {
                 Map.of("indexed_at", "2026-09-08T00:00:00Z",
                         "last_commit", analysis.headHash(),
                         "project_root", repository.toString(),
-                        "indexed_worktree_fingerprint", indexed.fingerprint(),
+                        "indexed_structure_fingerprint", indexed.structuralFingerprint(),
                         "compiled_before_index", "false"));
         IndexWriter.writeGitData(dirtyDb, analysis.fileStats(), analysis.commits(),
                 analysis.commitFiles());

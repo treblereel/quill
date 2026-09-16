@@ -59,20 +59,6 @@ class ProjectInitializerRemapTest {
     }
 
     @Test
-    void findsMavenAndGradleMainOutputsButSkipsBuildSrcAndTests(@TempDir Path root) throws Exception {
-        Path maven = Files.createDirectories(root.resolve("maven/target/classes"));
-        Path java = Files.createDirectories(root.resolve("gradle/build/classes/java/main"));
-        Path kotlin = Files.createDirectories(root.resolve("gradle/build/classes/kotlin/main"));
-        Path tests = Files.createDirectories(root.resolve("gradle/build/classes/java/test"));
-        Path buildSrc = Files.createDirectories(root.resolve("buildSrc/build/classes/java/main"));
-        for (Path directory : List.of(maven, java, kotlin, tests, buildSrc)) {
-            Files.write(directory.resolve("Sample.class"), new byte[]{1});
-        }
-
-        assertEquals(Set.of(maven, java, kotlin), Set.copyOf(ProjectInitializer.findClassesDirs(root)));
-    }
-
-    @Test
     void mavenDiscoveryIgnoresOutputsOutsideDeclaredReactor(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("pom.xml"), """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
@@ -106,17 +92,17 @@ class ProjectInitializerRemapTest {
                   <modules><module>missing</module></modules>
                 </project>
                 """);
-        Path legacyOutput = Files.createDirectories(root.resolve("legacy/target/classes"));
-        Files.write(legacyOutput.resolve("Legacy.class"), new byte[]{1});
+        Path fallbackOutput = Files.createDirectories(root.resolve("fallback/target/classes"));
+        Files.write(fallbackOutput.resolve("Fallback.class"), new byte[]{1});
 
-        assertEquals(List.of(legacyOutput), ProjectInitializer.findClassesDirs(root));
+        assertEquals(List.of(fallbackOutput), ProjectInitializer.findClassesDirs(root));
     }
 
     @Test
     void failedGradleDiscoveryFallsBackToOutputScan(@TempDir Path root) throws Exception {
         Files.createFile(root.resolve("settings.gradle"));
-        Path output = Files.createDirectories(root.resolve("legacy/build/classes/java/main"));
-        Files.write(output.resolve("Legacy.class"), new byte[] {1});
+        Path output = Files.createDirectories(root.resolve("fallback/build/classes/java/main"));
+        Files.write(output.resolve("Fallback.class"), new byte[] {1});
         if (BuildSystem.isWindows()) {
             Files.writeString(root.resolve("gradlew.bat"), "@exit /b 7\r\n");
         } else {

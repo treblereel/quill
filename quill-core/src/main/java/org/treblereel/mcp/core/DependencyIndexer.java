@@ -17,7 +17,6 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
@@ -91,8 +90,7 @@ public final class DependencyIndexer {
 
     private record GenerationFailure(String detail) {}
 
-    private record BuildInputSnapshot(
-            String fingerprint, FileTime newestModified) {}
+    private record BuildInputSnapshot(String fingerprint) {}
 
     @FunctionalInterface
     interface ClasspathGenerator {
@@ -119,11 +117,9 @@ public final class DependencyIndexer {
         BuildInputSnapshot buildInputs = buildInputSnapshot(
                 projectRoot, buildSystem, moduleDirs);
         String buildFingerprint = buildInputs.fingerprint();
-        FileTime newestBuildFile = buildInputs.newestModified();
-
         boolean anyStale = false;
         for (Path moduleDir : moduleDirs) {
-            if (isStale(moduleDir, buildSystem, buildFingerprint, newestBuildFile)) {
+            if (isStale(moduleDir, buildSystem, buildFingerprint)) {
                 anyStale = true;
                 break;
             }
@@ -263,23 +259,18 @@ public final class DependencyIndexer {
         }
         BuildInputSnapshot buildInputs = buildInputSnapshot(
                 moduleDir, buildSystem, List.of());
-        return isStale(moduleDir, buildSystem, buildInputs.fingerprint(),
-                buildInputs.newestModified());
+        return isStale(moduleDir, buildSystem, buildInputs.fingerprint());
     }
 
     private static boolean isStale(Path moduleDir, BuildSystem buildSystem,
-                                   String expectedFingerprint, FileTime newestBuildFile) {
+                                   String expectedFingerprint) {
         Path cpFile = buildSystem.classpathFile(moduleDir);
         if (!Files.exists(cpFile)) return true;
 
         Path fingerprintFile = buildSystem.classpathFingerprintFile(moduleDir);
         try {
-            if (Files.exists(fingerprintFile)) {
-                return !Files.readString(fingerprintFile).trim().equals(expectedFingerprint);
-            }
-            // Backward-compatible first run: accept an existing classpath only when
-            // it is newer than every build file that can affect the build.
-            return newestBuildFile.compareTo(Files.getLastModifiedTime(cpFile)) > 0;
+            if (!Files.exists(fingerprintFile)) return true;
+            return !Files.readString(fingerprintFile).trim().equals(expectedFingerprint);
         } catch (IOException e) {
             return true;
         }
@@ -306,22 +297,17 @@ public final class DependencyIndexer {
             Path projectRoot, BuildSystem buildSystem, Collection<Path> moduleDirectories) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            FileTime newest = FileTime.fromMillis(0);
             for (Path buildFile : buildFiles(projectRoot, buildSystem, moduleDirectories)) {
                 digest.update(buildFile.toAbsolutePath().normalize().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 digest.update((byte) 0);
                 try {
                     digest.update(Files.readAllBytes(buildFile));
-                    FileTime modified = Files.getLastModifiedTime(buildFile);
-                    if (modified.compareTo(newest) > 0) newest = modified;
                 } catch (IOException e) {
                     digest.update((byte) 1);
-                    newest = FileTime.fromMillis(Long.MAX_VALUE);
                 }
                 digest.update((byte) 0);
             }
-            return new BuildInputSnapshot(
-                    HexFormat.of().formatHex(digest.digest()), newest);
+            return new BuildInputSnapshot(HexFormat.of().formatHex(digest.digest()));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is not available", e);
         }

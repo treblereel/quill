@@ -54,16 +54,6 @@ public enum BuildSystem {
                 .resolve("quill-classpath.sha256");
     }
 
-    public List<String> compileCommand(Path root) {
-        return compileCommand(root, isWindows());
-    }
-
-    List<String> compileCommand(Path root, boolean windows) {
-        return command(root, windows, this == MAVEN
-                ? new String[] {"compile", "-q"}
-                : new String[] {"classes", "--quiet"});
-    }
-
     /** Builds a platform-specific invocation of this project's wrapper or installed build tool. */
     public List<String> command(Path root, String... arguments) {
         return command(root, isWindows(), arguments);

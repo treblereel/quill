@@ -13,15 +13,76 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.mcp.ProjectRegistry;
+import org.treblereel.mcp.model.MetaEnvelope;
 
 class ProjectIndexLifecycleTest {
 
     @TempDir Path tempDir;
+
+    @Test
+    void servingFallsBackAfterHeadChangesAndOnNewBranch() throws Exception {
+        Path project = tempDir.resolve("project");
+        Files.createDirectories(project);
+        String indexedCommit;
+        String branch;
+        try (Git git = Git.init().setDirectory(project.toFile()).call()) {
+            Files.writeString(project.resolve("pom.xml"), "<project/>");
+            git.add().addFilepattern(".").call();
+            indexedCommit = git.commit().setMessage("indexed")
+                    .setAuthor("Test", "test@example.com").setSign(false).call().getName();
+            branch = git.getRepository().getBranch();
+
+            Path quillDir = Files.createDirectories(project.resolve(".quill"));
+            String indexId = indexedCommit + "-generation";
+            Path database = quillDir.resolve(indexId + ".db");
+            var jdbi = QuillDatabase.create(database);
+            jdbi.useHandle(handle -> {
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "index_id", indexId);
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "indexed_at", "2026-09-15T00:00:00Z");
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "last_commit", indexedCommit);
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "project_root", project.toString());
+            });
+            Files.writeString(quillDir.resolve("refs.json"), """
+                    {
+                      "@head:%s": "%s",
+                      "%s": "%s"
+                    }
+                    """.formatted(indexedCommit, indexId, branch, indexId));
+
+            Files.writeString(project.resolve("README.md"), "new commit\n");
+            git.add().addFilepattern("README.md").call();
+            git.commit().setMessage("head moved")
+                    .setAuthor("Test", "test@example.com").setSign(false).call();
+
+            assertNull(ProjectInitializer.findExactDbForHead(project));
+            assertEquals(database, ProjectInitializer.findBestAvailableDb(project));
+
+            git.checkout().setCreateBranch(true).setName("new-branch").call();
+            assertEquals(database, ProjectInitializer.findBestAvailableDb(project),
+                    "A new branch should use the newest atomically published ref");
+
+            ProjectRegistry registry = new ProjectRegistry();
+            registry.register(project);
+            ProjectRegistry.Resolution resolution = registry.resolve();
+            assertTrue(resolution.errors().isEmpty());
+            assertEquals(1, resolution.projects().size());
+            MetaEnvelope freshness = MetaEnvelope.from(
+                    resolution.projects().getFirst().jdbi(), 0, 0);
+            assertTrue(freshness.commitStale());
+            assertTrue(freshness.structureStale());
+            assertTrue(freshness.staleReasons().contains("commit_changed_after_index"));
+        }
+    }
 
     @Test
     void cleanupLruKeepsFiveNewestDatabasesAndPrunesRefs() throws Exception {
@@ -134,7 +195,7 @@ class ProjectIndexLifecycleTest {
     void lifecycleLockSerializesCleanBehindAnActiveIndexOperation() throws Exception {
         Files.createFile(tempDir.resolve("pom.xml"));
         Path quillDir = Files.createDirectories(tempDir.resolve(".quill"));
-        Path database = Files.writeString(quillDir.resolve("nocommit.db"), "index");
+        Path database = Files.writeString(quillDir.resolve("active.db"), "index");
         CountDownLatch lockAcquired = new CountDownLatch(1);
         CountDownLatch releaseLock = new CountDownLatch(1);
         var executor = Executors.newFixedThreadPool(2);
@@ -167,7 +228,7 @@ class ProjectIndexLifecycleTest {
             indexing.get(5, TimeUnit.SECONDS);
             cleaning.get(5, TimeUnit.SECONDS);
             assertFalse(Files.exists(database));
-            assertTrue(Files.exists(quillDir.resolve(ProjectIndexLock.LOCK_FILE)));
+            assertFalse(Files.exists(quillDir));
         } finally {
             releaseLock.countDown();
             executor.shutdownNow();

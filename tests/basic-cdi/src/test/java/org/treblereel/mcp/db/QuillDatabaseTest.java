@@ -138,20 +138,20 @@ class QuillDatabaseTest {
         QuillDatabase.create(dbPath);
         Jdbi raw = Jdbi.create("jdbc:sqlite:" + dbPath);
         raw.useHandle(h -> {
-            h.execute("CREATE TABLE legacy_marker (value TEXT)");
-            h.execute("INSERT INTO legacy_marker(value) VALUES ('stale')");
+            h.execute("CREATE TABLE stale_marker (value TEXT)");
+            h.execute("INSERT INTO stale_marker(value) VALUES ('stale')");
             h.execute("PRAGMA user_version = 0");
         });
 
         Jdbi rebuilt = QuillDatabase.create(dbPath);
         int version = rebuilt.withHandle(h ->
                 h.createQuery("PRAGMA user_version").mapTo(Integer.class).one());
-        boolean legacyTableExists = rebuilt.withHandle(h -> h.createQuery(
-                        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='legacy_marker'")
+        boolean staleTableExists = rebuilt.withHandle(h -> h.createQuery(
+                        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='stale_marker'")
                 .mapTo(Integer.class).one() > 0);
 
         assertEquals(QuillDatabase.SCHEMA_VERSION, version);
-        assertFalse(legacyTableExists, "Outdated index must be recreated, not upgraded in place");
+        assertFalse(staleTableExists, "Outdated index must be recreated, not upgraded in place");
     }
 
     @Test

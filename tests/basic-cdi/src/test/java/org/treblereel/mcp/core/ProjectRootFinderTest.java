@@ -101,9 +101,10 @@ class ProjectRootFinderTest {
         Path gradlew = Files.createFile(gradle.resolve("gradlew"));
         gradlew.toFile().setExecutable(true);
 
-        assertEquals(mvnw.toString(), BuildSystem.MAVEN.compileCommand(maven, false).getFirst());
-        assertEquals(List.of(gradlew.toString(), "classes", "--quiet"),
-                BuildSystem.GRADLE.compileCommand(gradle, false));
+        assertEquals(List.of(mvnw.toString(), "help:effective-pom"),
+                BuildSystem.MAVEN.command(maven, false, "help:effective-pom"));
+        assertEquals(List.of(gradlew.toString(), "projects", "--quiet"),
+                BuildSystem.GRADLE.command(gradle, false, "projects", "--quiet"));
     }
 
     @Test
@@ -114,20 +115,20 @@ class ProjectRootFinderTest {
         Path gradlew = Files.createFile(gradle.resolve("gradlew.bat"));
 
         assertEquals(List.of("cmd.exe", "/d", "/c", mvnw.toAbsolutePath().toString(),
-                        "compile", "-q"),
-                BuildSystem.MAVEN.compileCommand(maven, true));
+                        "help:effective-pom"),
+                BuildSystem.MAVEN.command(maven, true, "help:effective-pom"));
         assertEquals(List.of("cmd.exe", "/d", "/c", gradlew.toAbsolutePath().toString(),
-                        "classes", "--quiet"),
-                BuildSystem.GRADLE.compileCommand(gradle, true));
+                        "projects", "--quiet"),
+                BuildSystem.GRADLE.command(gradle, true, "projects", "--quiet"));
     }
 
     @Test
     void windowsBuildCommandsFallBackToInstalledTools() throws IOException {
         Path project = Files.createDirectories(tempDir.resolve("windows-no-wrapper"));
 
-        assertEquals(List.of("cmd.exe", "/d", "/c", "mvn", "compile", "-q"),
-                BuildSystem.MAVEN.compileCommand(project, true));
-        assertEquals(List.of("cmd.exe", "/d", "/c", "gradle", "classes", "--quiet"),
-                BuildSystem.GRADLE.compileCommand(project, true));
+        assertEquals(List.of("cmd.exe", "/d", "/c", "mvn", "help:effective-pom"),
+                BuildSystem.MAVEN.command(project, true, "help:effective-pom"));
+        assertEquals(List.of("cmd.exe", "/d", "/c", "gradle", "projects", "--quiet"),
+                BuildSystem.GRADLE.command(project, true, "projects", "--quiet"));
     }
 }

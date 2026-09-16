@@ -326,7 +326,7 @@
     "allPublicConstructors": true,
     "allDeclaredMethods": true,
     "allPublicMethods": true,
-    "fields": [{"name": "compile"}, {"name": "force"}, {"name": "projectPath"}]
+    "fields": [{"name": "force"}, {"name": "projectPath"}]
   },
   {
     "name": "picocli.CommandLine$AutoHelpMixin",

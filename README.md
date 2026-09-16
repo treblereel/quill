@@ -5,14 +5,12 @@ Pre-computed codebase intelligence for AI coding agents. Quill indexes your Java
 ## Prerequisites
 
 - A Quill native executable for your operating system
-- The JDK and Maven or Gradle required by the indexed project when compilation is
-  needed; Quill prefers `mvnw`/`gradlew` and falls back to the tool on `PATH`
+- The JDK and Maven or Gradle required to build the indexed project
 
 ## Quick Start
 
 ```bash
-# 1. Compilation is optional: quill init compiles when bytecode is missing.
-# You can also compile explicitly first:
+# 1. Compile the project so Quill can index its bytecode:
 cd /path/to/your/project
 ./mvnw compile                 # Maven
 # ./gradlew classes            # Gradle
@@ -34,9 +32,10 @@ atomically points each commit and branch at its active generation. This lets an 
 request finish reading the previous snapshot while `quill update` publishes the next
 one, including on Windows where an open SQLite file cannot be replaced safely.
 
-**Important:** Quill indexes compiled bytecode, not source code. `quill init` compiles
-when no bytecode exists; use `quill update --compile` when source changes must be
-compiled before refreshing an existing index. Every MCP response reports the indexed
+**Important:** Quill indexes compiled bytecode, not source code, and never runs a Maven
+or Gradle build. Build the project yourself before `quill init`. Successful builds are
+recorded by the integration installed during initialization; Quill consumes that event
+and refreshes the index before the next MCP response. Every MCP response reports the indexed
 and current commit plus worktree freshness in `_meta`. Dirty and untracked files are
 also exposed as a live overlay by `find_git_hotspots`. Changes to Java or Kotlin sources,
 resources, generated sources, or Maven/Gradle build inputs mark structural answers
@@ -79,12 +78,11 @@ an MCP process serving reads while repeated immutable index generations are publ
 
 | Command | Description |
 |---------|-------------|
-| `quill init` | Index a Maven or Gradle project; compile if bytecode is absent |
+| `quill init` | Index already-compiled Maven or Gradle bytecode and install build integration |
 | `quill init --timings` | Index and report per-phase elapsed times for diagnostics |
 | `quill update` | Re-index if the project fingerprint changed |
-| `quill update --compile` | Compile first, then safely refresh the index |
 | `quill status` | Show current index status |
-| `quill clean` | Remove indexes, refs, and Quill-managed git hook blocks |
+| `quill clean` | Remove `.quill` and build integration |
 
 The `--timings` phases include independently measured background work such as
 dependency and Git analysis. Because those phases can overlap, their durations are
@@ -95,12 +93,11 @@ with the index generations. Application bytecode metadata is kept in eight stabl
 content-addressed Jandex shards. An update reparses only shards containing added, changed,
 or removed class files while global DI resolution is recomputed for correctness.
 
-Failed initialization reports a stable reason code such as `COMPILATION_FAILED`,
-`NO_COMPILED_CLASSES`, `HEAD_CHANGED`, `WORKTREE_CHANGED`, or
-`INDEX_PUBLICATION_FAILED`. The message includes actionable context: the build command
-and exit code, expected/current commit, current dirty paths, or the SQLite destination.
+Failed initialization reports a stable reason code such as `NO_COMPILED_CLASSES`,
+`HEAD_CHANGED`, `WORKTREE_CHANGED`, or `INDEX_PUBLICATION_FAILED`. The message includes
+actionable context such as expected/current commit, current dirty paths, or the SQLite destination.
 Quill builds the database in a staging file and keeps the previous index unchanged if
-compilation, indexing, or publication fails. For `HEAD_CHANGED` or `WORKTREE_CHANGED`,
+indexing or publication fails. For `HEAD_CHANGED` or `WORKTREE_CHANGED`,
 finish the concurrent checkout/build/edit and run `quill update` again.
 
 ## MCP Tools
@@ -213,7 +210,11 @@ for client-specific scopes and configuration options.
 
 Quill keeps up to five immutable database generations and selects the active one via
 `.quill/refs.json`. When you switch branches, Quill serves the generation matching the
-current HEAD. Freshness is checked against both the commit and a fingerprint of
+current HEAD. If that generation is not ready yet after a commit or checkout, MCP and
+`quill status` keep serving the current branch's previous generation, or the newest
+retained generation for a new branch. Such responses explicitly report
+`_meta.commit_stale=true` until `quill update` publishes the current snapshot.
+Freshness is checked against both the commit and a fingerprint of
 relevant tracked, deleted and untracked worktree files. `_meta.index_id` identifies the
 exact generation used by a response; `_meta.structure_stale` and `_meta.stale_reasons`
 explain when its static graph no longer represents the checkout. `quill status` shows
@@ -226,10 +227,14 @@ Unmatched stale class outputs are classified as `orphan_output` and excluded fro
 current graph. Git history remains queryable by its historical path without treating a
 deleted class as current code.
 
-Git hooks (post-commit, post-merge, post-checkout) are installed automatically. They
-run `update --compile`, keep the previous index if compilation fails, and prefer the
-absolute launcher used during `quill init` before falling back to `quill`
-from `PATH`.
+Normal `quill init` installs a reversible build-success integration instead of Git
+hooks. Maven uses `.mvn/extensions.xml`; Gradle gets a Quill-managed block in the root
+`settings.gradle[.kts]`. A successful build writes a small atomic JSON event below
+`.quill/build-events/`. Before serving the next MCP request, Quill consumes that event
+and refreshes the index from the bytecode produced by the build. The integration never
+starts a build itself and build failures do not replace the previous index. Use
+`--index-only` to skip all project configuration changes. `quill clean` removes only
+the Quill-managed integration and the entire `.quill` directory.
 
 ### Maven projects
 

@@ -233,7 +233,7 @@ class DependencyIndexerTest {
     }
 
     @Test
-    void isStaleReturnsFalseWhenClasspathIsNewer() throws Exception {
+    void isStaleReturnsFalseWhenClasspathFingerprintMatches() throws Exception {
         Path moduleDir = tempDir.resolve("mod");
         Files.createDirectories(moduleDir.resolve("target"));
 
@@ -243,20 +243,21 @@ class DependencyIndexerTest {
 
         Path cpFile = moduleDir.resolve("target/quill-classpath.txt");
         Files.writeString(cpFile, "");
-        Files.setLastModifiedTime(cpFile, FileTime.from(Instant.parse("2025-06-01T00:00:00Z")));
+        Files.writeString(moduleDir.resolve("target/quill-classpath.sha256"),
+                DependencyIndexer.buildFingerprint(moduleDir));
 
         assertFalse(DependencyIndexer.isStale(moduleDir),
-                "classpath file newer than pom.xml means not stale");
+                "matching build fingerprint means classpath is current");
     }
 
     @Test
-    void isStaleReturnsFalseWhenNoPomExists() throws Exception {
+    void isStaleReturnsTrueWhenFingerprintIsMissing() throws Exception {
         Path moduleDir = tempDir.resolve("mod");
         Files.createDirectories(moduleDir.resolve("target"));
         Files.writeString(moduleDir.resolve("target/quill-classpath.txt"), "");
 
-        assertFalse(DependencyIndexer.isStale(moduleDir),
-                "No pom.xml means cannot regenerate, so treat as not stale");
+        assertTrue(DependencyIndexer.isStale(moduleDir),
+                "classpath data without a fingerprint is not accepted");
     }
 
     @Test
@@ -401,7 +402,9 @@ class DependencyIndexerTest {
 
         Path cpFile = moduleDir.resolve("target/quill-classpath.txt");
         Files.writeString(cpFile, jandexJar.toString());
-        Files.setLastModifiedTime(cpFile, FileTime.from(Instant.parse("2025-06-01T00:00:00Z")));
+        Files.writeString(moduleDir.resolve("target/quill-classpath.sha256"),
+                DependencyIndexer.buildFingerprint(tempDir.resolve("project"),
+                        BuildSystem.MAVEN, List.of(moduleDir)));
 
         DependencyIndexer.DependencyIndexResult result =
                 DependencyIndexer.buildDependencyIndex(tempDir.resolve("project"), List.of(classesDir));

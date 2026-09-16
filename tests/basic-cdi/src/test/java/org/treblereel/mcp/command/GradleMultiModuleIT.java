@@ -28,7 +28,7 @@ class GradleMultiModuleIT {
     void indexesCrossModuleCdiInjection() throws Exception {
         assumeGradleAvailable();
         deleteTree(PROJECT.resolve(".quill"));
-        runGradleClean(PROJECT);
+        runGradleCleanAndBuild(PROJECT);
 
         try {
             InitCommand command = new InitCommand();
@@ -99,7 +99,7 @@ class GradleMultiModuleIT {
     void indexesSpringKotlinProject() throws Exception {
         assumeGradleAvailable();
         deleteTree(SPRING_PROJECT.resolve(".quill"));
-        runGradleClean(SPRING_PROJECT);
+        runGradleCleanAndBuild(SPRING_PROJECT);
 
         try {
             InitCommand command = new InitCommand();
@@ -144,6 +144,15 @@ class GradleMultiModuleIT {
                 .inheritIO()
                 .start();
         assertEquals(0, process.waitFor(), "Gradle clean must succeed");
+    }
+
+    private static void runGradleCleanAndBuild(Path project) throws Exception {
+        Process process = new ProcessBuilder(BuildSystem.GRADLE.command(
+                project, "clean", "classes", "--quiet"))
+                .directory(project.toFile())
+                .inheritIO()
+                .start();
+        assertEquals(0, process.waitFor(), "Gradle fixture build must succeed");
     }
 
     private static void deleteTree(Path root) throws IOException {

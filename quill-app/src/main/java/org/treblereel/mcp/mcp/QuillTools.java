@@ -755,7 +755,7 @@ public class QuillTools {
         project.put("classes", classCount);
         project.put("beans", beanCount);
         project.put("total_source_tokens", totalTokens);
-        project.put("index_id", meta.getOrDefault("index_id", "legacy"));
+        project.put("index_id", meta.get("index_id"));
         project.put("indexed_at", meta.getOrDefault("indexed_at", "unknown"));
         project.put("last_commit", meta.getOrDefault("last_commit", "unknown"));
         project.put("dependency_index", meta.getOrDefault("dependency_index", "unknown"));

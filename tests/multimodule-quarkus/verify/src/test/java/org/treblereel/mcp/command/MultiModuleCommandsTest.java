@@ -85,7 +85,7 @@ class MultiModuleCommandsTest {
         cmd.run();
 
         assertNull(ProjectInitializer.findDbForHead(PROJECT_ROOT));
-        assertTrue(Files.isRegularFile(QUILL_DIR.resolve(ProjectIndexLock.LOCK_FILE)));
+        assertFalse(Files.exists(QUILL_DIR));
     }
 
     @Test

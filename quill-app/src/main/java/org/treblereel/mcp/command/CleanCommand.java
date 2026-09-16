@@ -5,12 +5,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.stream.Stream;
-import org.treblereel.mcp.core.GitHookInstaller;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-@Command(name = "clean", description = "Remove quill index and git hooks")
+@Command(name = "clean", description = "Remove .quill and Quill build integration")
 public class CleanCommand implements Runnable {
 
     @Option(names = "--project", description = "Path to project root")
@@ -21,8 +20,13 @@ public class CleanCommand implements Runnable {
         Path root = ProjectRootFinder.find(projectPath);
         Path lockedRoot = root;
 
+        BuildIntegrationInstaller.Result integration = BuildIntegrationInstaller.uninstall(root);
+
         try {
-            boolean removed = ProjectIndexLock.withLock(lockedRoot, () -> cleanIndexData(lockedRoot));
+            boolean existed = Files.exists(lockedRoot.resolve(".quill"));
+            boolean removed = ProjectIndexLock.withLockAndDeleteDirectory(
+                    lockedRoot, () -> cleanIndexData(lockedRoot));
+            removed |= existed;
             if (removed) {
                 System.out.println("Removed index data from " + lockedRoot.resolve(".quill"));
             } else {
@@ -33,8 +37,9 @@ public class CleanCommand implements Runnable {
             return;
         }
 
-        GitHookInstaller.uninstall(root);
-        System.out.println("Git hooks cleaned.");
+        if (integration == BuildIntegrationInstaller.Result.REMOVED) {
+            System.out.println("Build integration removed.");
+        }
     }
 
     private static boolean cleanIndexData(Path root) throws IOException {

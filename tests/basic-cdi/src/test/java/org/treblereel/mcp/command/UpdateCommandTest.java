@@ -13,8 +13,9 @@ import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.WorktreeInspector;
+import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 
@@ -147,6 +148,43 @@ class UpdateCommandTest {
     }
 
     @Test
+    void updatePublishesCurrentGenerationFromStaleFallback() throws Exception {
+        InitCommand init = new InitCommand();
+        init.projectPath = PROJECT_ROOT;
+        init.indexOnly = true;
+        init.run();
+
+        Path currentDatabase = ProjectInitializer.findExactDbForHead(PROJECT_ROOT);
+        assertNotNull(currentDatabase);
+        Path staleDatabase = QUILL_DIR.resolve("previous-generation.db");
+        Files.move(currentDatabase, staleDatabase);
+        String branch = GitAnalyzer.resolveCurrentBranch(PROJECT_ROOT);
+        Files.writeString(QUILL_DIR.resolve("refs.json"), """
+                {"%s":"previous-generation"}
+                """.formatted(branch));
+
+        assertNull(ProjectInitializer.findExactDbForHead(PROJECT_ROOT));
+        assertEquals(staleDatabase, ProjectInitializer.findBestAvailableDb(PROJECT_ROOT));
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream original = System.out;
+        System.setOut(new PrintStream(out));
+        try {
+            UpdateCommand command = new UpdateCommand();
+            command.projectPath = PROJECT_ROOT;
+            command.run();
+        } finally {
+            System.setOut(original);
+        }
+
+        assertTrue(out.toString().contains("Re-indexing from the latest generation"));
+        Path published = ProjectInitializer.findExactDbForHead(PROJECT_ROOT);
+        assertNotNull(published);
+        assertEquals("incremental", IndexReader.getMetadata(
+                QuillDatabase.open(published)).get("database_write_mode"));
+    }
+
+    @Test
     void fingerprintDetectsPomChanges(@TempDir Path project) throws Exception {
         Path classesDir = Files.createDirectories(project.resolve("target/classes"));
         Files.write(classesDir.resolve("Example.class"), new byte[]{1, 2, 3});
@@ -198,45 +236,6 @@ class UpdateCommandTest {
     }
 
     @Test
-    void compileFailureLeavesExistingIndexUntouched(@TempDir Path project) throws Exception {
-        Files.createFile(project.resolve("pom.xml"));
-        Path db = project.resolve(".quill/nocommit.db");
-        QuillDatabase.create(db).useHandle(handle -> handle.createUpdate(
-                        "INSERT INTO metadata(key, value) VALUES ('sentinel', 'preserved')")
-                .execute());
-        writeFailingWrapper(project, BuildSystem.MAVEN);
-
-        UpdateCommand command = new UpdateCommand();
-        command.projectPath = project;
-        command.compile = true;
-
-        IllegalStateException failure = assertThrows(IllegalStateException.class, command::run);
-        assertTrue(failure.getMessage().contains("exited with code 7"), failure.getMessage());
-        assertEquals("preserved", org.treblereel.mcp.db.IndexReader
-                .getMetadata(QuillDatabase.open(db)).get("sentinel"));
-    }
-
-    @Test
-    void gradleCompileFailureLeavesExistingIndexUntouched(@TempDir Path project) throws Exception {
-        Files.createFile(project.resolve("settings.gradle"));
-        Files.writeString(project.resolve("build.gradle"), "plugins { id 'java' }");
-        Path db = project.resolve(".quill/nocommit.db");
-        QuillDatabase.create(db).useHandle(handle -> handle.createUpdate(
-                        "INSERT INTO metadata(key, value) VALUES ('sentinel', 'preserved')")
-                .execute());
-        writeFailingWrapper(project, BuildSystem.GRADLE);
-
-        UpdateCommand command = new UpdateCommand();
-        command.projectPath = project;
-        command.compile = true;
-
-        IllegalStateException failure = assertThrows(IllegalStateException.class, command::run);
-        assertTrue(failure.getMessage().contains("exited with code 7"), failure.getMessage());
-        assertEquals("preserved", org.treblereel.mcp.db.IndexReader
-                .getMetadata(QuillDatabase.open(db)).get("sentinel"));
-    }
-
-    @Test
     void successfulCompileRefreshesIndexPublishedFromDirtyUncompiledWorktree(
             @TempDir Path project) throws Exception {
         Path source = project.resolve("src/main/java/example/App.java");
@@ -251,14 +250,14 @@ class UpdateCommandTest {
         Files.writeString(source, "package example; class App { int changed; }\n");
         WorktreeInspector.Snapshot dirty = WorktreeInspector.inspect(project);
         assertTrue(dirty.structuralDirty());
-        Path db = project.resolve(".quill/nocommit.db");
+        Path db = project.resolve(".quill/snapshot.db");
         IndexWriter.write(QuillDatabase.create(db), java.util.List.of(), java.util.List.of(),
                 java.util.List.of(), java.util.List.of(),
                 Map.of("compiled_before_index", "false",
                         "indexed_structure_fingerprint", dirty.structuralFingerprint()));
 
         assertTrue(UpdateCommand.requiresPostCompileRefresh(project, db),
-                "A successful --compile must republish an index marked as uncompiled");
+                "A successful external build must republish an index marked as uncompiled");
 
         QuillDatabase.create(db).useHandle(handle -> handle.createUpdate(
                         "UPDATE metadata SET value = 'true' WHERE key = 'compiled_before_index'")
@@ -269,7 +268,7 @@ class UpdateCommandTest {
 
     private Path createFingerprintDatabase(Path project, Path classesDir) {
         String fingerprint = ProjectInitializer.computeStateFingerprint(project, java.util.List.of(classesDir));
-        Path db = project.resolve(".quill/nocommit.db");
+        Path db = project.resolve(".quill/snapshot.db");
         QuillDatabase.create(db).useHandle(handle -> handle.createUpdate(
                         "INSERT INTO metadata(key, value) VALUES ('state_fingerprint', :value)")
                 .bind("value", fingerprint)
@@ -277,14 +276,4 @@ class UpdateCommandTest {
         return db;
     }
 
-    private static void writeFailingWrapper(Path project, BuildSystem buildSystem) throws Exception {
-        if (BuildSystem.isWindows()) {
-            String name = buildSystem == BuildSystem.MAVEN ? "mvnw.cmd" : "gradlew.bat";
-            Files.writeString(project.resolve(name), "@exit /b 7\r\n");
-        } else {
-            String name = buildSystem == BuildSystem.MAVEN ? "mvnw" : "gradlew";
-            Path wrapper = Files.writeString(project.resolve(name), "#!/bin/sh\nexit 7\n");
-            wrapper.toFile().setExecutable(true);
-        }
-    }
 }

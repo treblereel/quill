@@ -35,8 +35,7 @@ public record MetaEnvelope(
                 : WorktreeInspector.Snapshot.empty();
         String currentCommit = worktree.currentCommit();
         boolean commitStale = isCommitStale(lastCommit, currentCommit);
-        String indexedStructure = meta.getOrDefault("indexed_structure_fingerprint",
-                meta.get("indexed_worktree_fingerprint"));
+        String indexedStructure = meta.get("indexed_structure_fingerprint");
         boolean structureChanged = indexedStructure != null
                 && !indexedStructure.equals(worktree.structuralFingerprint());
         boolean compiledSnapshot = Boolean.parseBoolean(
@@ -51,7 +50,7 @@ public record MetaEnvelope(
         }
         double compression = responseTokens > 0 ? (double) naiveTokens / responseTokens : 0;
         return new MetaEnvelope(
-                meta.getOrDefault("index_id", "legacy"),
+                meta.get("index_id"),
                 meta.getOrDefault("indexed_at", "unknown"),
                 lastCommit, currentCommit, commitStale, worktree.dirty(), worktree.changes().size(),
                 worktree.structuralChanges().size(),

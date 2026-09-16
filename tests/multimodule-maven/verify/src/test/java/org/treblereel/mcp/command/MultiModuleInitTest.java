@@ -13,7 +13,7 @@ import org.treblereel.mcp.db.QuillDatabase;
 
 class MultiModuleInitTest {
 
-    // verify/ is CWD; multimodule-quarkus root is one level up
+    // verify/ is CWD; multimodule-maven root is one level up
     static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir")).getParent();
     static final Path QUILL_DIR = PROJECT_ROOT.resolve(".quill");
 

@@ -13,7 +13,7 @@
     <modules>
         <module>basic-cdi</module>
         <module>advanced-cdi</module>
-        <module>multimodule-quarkus</module>
+        <module>multimodule-maven</module>
         <module>basic-spring</module>
         <module>advanced-spring</module>
         <module>annotation-processing</module>

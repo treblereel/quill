@@ -23,6 +23,8 @@
         <surefire-plugin.version>3.5.6</surefire-plugin.version>
         <mcp.sdk.version>2.0.1</mcp.sdk.version>
         <maven-model.version>3.9.16</maven-model.version>
+        <plexus-utils.version>3.6.1</plexus-utils.version>
+        <reactor.version>3.7.0</reactor.version>
         <picocli.version>4.7.7</picocli.version>
         <shade-plugin.version>3.6.1</shade-plugin.version>
         <resources-plugin.version>3.4.0</resources-plugin.version>
@@ -56,9 +58,29 @@
                 <version>${junit.version}</version>
             </dependency>
             <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-api</artifactId>
+                <version>${junit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-engine</artifactId>
+                <version>${junit.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>org.apache.maven</groupId>
                 <artifactId>maven-model</artifactId>
                 <version>${maven-model.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.codehaus.plexus</groupId>
+                <artifactId>plexus-utils</artifactId>
+                <version>${plexus-utils.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.projectreactor</groupId>
+                <artifactId>reactor-core</artifactId>
+                <version>${reactor.version}</version>
             </dependency>
             <dependency>
                 <groupId>jakarta.enterprise</groupId>

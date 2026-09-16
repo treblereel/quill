@@ -1,20 +1,15 @@
 package org.treblereel.mcp.command;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,10 +19,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.stream.Stream;
 import org.jdbi.v3.core.Jdbi;
 import org.jboss.jandex.Index;
-import org.treblereel.mcp.QuillLauncher;
 import org.treblereel.mcp.core.BeanResolver;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.BytecodeDependencyScanner;
@@ -35,9 +28,7 @@ import org.treblereel.mcp.core.ClassFileSnapshot;
 import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.core.FileInventory;
 import org.treblereel.mcp.core.GitAnalyzer;
-import org.treblereel.mcp.core.GradleProjectDiscovery;
 import org.treblereel.mcp.core.JandexScanner;
-import org.treblereel.mcp.core.MavenProjectDiscovery;
 import org.treblereel.mcp.core.SpringResolver;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.db.IndexWriter;
@@ -266,7 +257,7 @@ public class ProjectInitializer {
     private static InitializationResult initializeLockedDetailed(
             Path root, boolean indexOnly, boolean compiledBeforeIndex, Path incrementalBase,
             long startedAtNanos, PhaseTimings timings) {
-        List<Path> classesDirs = findClassesDirs(root, true);
+        List<Path> classesDirs = ProjectLayout.findClassesDirs(root, true);
         timings.finish("class_discovery");
 
         if (classesDirs.isEmpty()) {
@@ -281,12 +272,7 @@ public class ProjectInitializer {
         // successful compile look like a concurrent mutation.
         // Quill's own managed-file changes must also happen before the snapshot; otherwise
         // the first init would invalidate itself when adding .quill/ to .gitignore.
-        if (!indexOnly) {
-            ensureGitignore(root);
-            // Install build-success notification before capturing freshness because
-            // Maven/Gradle configuration is structural input.
-            BuildIntegrationInstaller.install(root);
-        }
+        ProjectConfiguration.prepareForIndex(root, indexOnly);
         String initialHead = GitAnalyzer.resolveHead(root);
         WorktreeInspector.Snapshot initialWorktree = WorktreeInspector.inspect(root);
         timings.finish("worktree_snapshot");
@@ -296,7 +282,7 @@ public class ProjectInitializer {
         Map<Path, Path> classDirectoryOwners =
                 DependencyIndexer.mapClassDirectoriesToModules(root, buildSystem, classesDirs);
         List<Path> moduleDirectories = classDirectoryOwners.values().stream().distinct().toList();
-        List<Path> sourceRoots = findSourceRoots(moduleDirectories);
+        List<Path> sourceRoots = ProjectLayout.findSourceRoots(moduleDirectories);
         List<Path> indexingClassDirs = List.copyOf(classesDirs);
         timings.finish("index_setup");
         ClassFileSnapshot classFiles;
@@ -479,7 +465,7 @@ public class ProjectInitializer {
         metadata.put("dependency_index_detail", depResult.detail());
         metadata.put("database_write_mode", incrementalBase == null ? "fresh" : "incremental");
         metadata.put("state_fingerprint",
-                computeStateFingerprint(root, classesDirs, classFiles.fingerprint()));
+                ProjectLayout.computeStateFingerprint(root, classesDirs, classFiles.fingerprint()));
         timings.finish("index_metadata");
 
         long databaseStartedAt = System.nanoTime();
@@ -573,10 +559,7 @@ public class ProjectInitializer {
                     startedAtNanos);
         }
 
-        if (!indexOnly) {
-            ensureClaudeMd(root);
-        }
-        ensureCodexConfig(root, indexOnly);
+        ProjectConfiguration.finishInitialization(root, indexOnly);
         timings.record("activation", elapsedMillis(activationStartedAt));
         timings.restart();
 
@@ -590,244 +573,25 @@ public class ProjectInitializer {
     }
 
     static CodexConfigInstaller.Result ensureCodexConfig(Path root, boolean indexOnly) {
-        if (indexOnly) return CodexConfigInstaller.Result.SKIPPED;
-        return CodexConfigInstaller.installIfPresent(root, QuillLauncher.detect());
+        return ProjectConfiguration.ensureCodexConfig(root, indexOnly);
     }
 
     static PersistedResolution remapForPersistence(
             BeanResolver.ResolutionResult resolution, Map<Integer, Integer> classIds) {
-        Map<Integer, Integer> beanIds = new LinkedHashMap<>();
-        List<BeanRecord> beans = new ArrayList<>();
-        for (BeanRecord bean : resolution.beans()) {
-            Integer classId = classIds.get(bean.classId());
-            if (classId == null) continue;
-            if (bean.declaringClassId() != null && !classIds.containsKey(bean.declaringClassId())) {
-                continue;
-            }
-
-            int newId = beans.size() + 1;
-            beanIds.put(bean.id(), newId);
-            beans.add(new BeanRecord(
-                    newId, classId, bean.kind(), bean.scope(), bean.qualifiers(), bean.stereotypes(),
-                    bean.isAlternative(), bean.priority(), bean.profiles(),
-                    bean.declaringClassId() != null ? classIds.get(bean.declaringClassId()) : null,
-                    bean.memberName(), bean.beanTypes()));
-        }
-
-        Map<Integer, Integer> injectionPointIds = new LinkedHashMap<>();
-        List<InjectionPointRecord> injectionPoints = new ArrayList<>();
-        for (InjectionPointRecord ip : resolution.injectionPoints()) {
-            Integer ownerBeanId = beanIds.get(ip.beanId());
-            if (ownerBeanId == null) continue;
-
-            int newId = injectionPoints.size() + 1;
-            injectionPointIds.put(ip.id(), newId);
-            injectionPoints.add(new InjectionPointRecord(
-                    newId, ownerBeanId, ip.kind(), ip.targetType(), ip.qualifiers(), ip.fieldName(),
-                    ip.resolvedBeanId() != null ? beanIds.get(ip.resolvedBeanId()) : null,
-                    ip.isAmbiguous()));
-        }
-
-        List<DependencyRecord> dependencies = resolution.dependencies().stream()
-                .filter(d -> classIds.containsKey(d.fromClassId())
-                        && classIds.containsKey(d.toClassId()))
-                .filter(d -> d.injectionPointId() == null
-                        || injectionPointIds.containsKey(d.injectionPointId()))
-                .map(d -> new DependencyRecord(
-                        classIds.get(d.fromClassId()), classIds.get(d.toClassId()), d.kind(),
-                        d.injectionPointId() != null
-                                ? injectionPointIds.get(d.injectionPointId()) : null))
-                .toList();
-
-        return new PersistedResolution(beans, injectionPoints, dependencies);
+        return ResolutionPersistenceMapper.remap(resolution, classIds);
     }
 
     static PersistedResolution mergePersistedResolutions(
             List<PersistedResolution> parts, boolean mixedFrameworks) {
-        List<BeanRecord> beans = new ArrayList<>();
-        List<InjectionPointRecord> injectionPoints = new ArrayList<>();
-        List<DependencyRecord> dependencies = new ArrayList<>();
-
-        for (PersistedResolution part : parts) {
-            Map<Integer, Integer> beanIds = new HashMap<>();
-            for (BeanRecord bean : part.beans()) {
-                int id = beans.size() + 1;
-                beanIds.put(bean.id(), id);
-                beans.add(new BeanRecord(id, bean.classId(), bean.kind(), bean.scope(),
-                        bean.qualifiers(), bean.stereotypes(), bean.isAlternative(),
-                        bean.priority(), bean.profiles(), bean.declaringClassId(),
-                        bean.memberName(), bean.beanTypes()));
-            }
-
-            Map<Integer, Integer> injectionPointIds = new HashMap<>();
-            for (InjectionPointRecord injectionPoint : part.injectionPoints()) {
-                Integer beanId = beanIds.get(injectionPoint.beanId());
-                if (beanId == null) continue;
-                int id = injectionPoints.size() + 1;
-                injectionPointIds.put(injectionPoint.id(), id);
-                injectionPoints.add(new InjectionPointRecord(id, beanId,
-                        injectionPoint.kind(), injectionPoint.targetType(),
-                        injectionPoint.qualifiers(), injectionPoint.fieldName(),
-                        injectionPoint.resolvedBeanId() != null
-                                ? beanIds.get(injectionPoint.resolvedBeanId()) : null,
-                        injectionPoint.isAmbiguous()));
-            }
-
-            for (DependencyRecord dependency : part.dependencies()) {
-                if (mixedFrameworks && "CLASS_REFERENCE".equals(dependency.kind())) {
-                    // Both resolvers scan all non-bean signatures. The bytecode pass below
-                    // supplies the shared static graph once for the complete reactor.
-                    continue;
-                }
-                Integer injectionPointId = dependency.injectionPointId() != null
-                        ? injectionPointIds.get(dependency.injectionPointId()) : null;
-                if (dependency.injectionPointId() != null && injectionPointId == null) continue;
-                dependencies.add(new DependencyRecord(dependency.fromClassId(),
-                        dependency.toClassId(), dependency.kind(), injectionPointId,
-                        dependency.occurrenceCount()));
-            }
-        }
-        return new PersistedResolution(
-                List.copyOf(beans), List.copyOf(injectionPoints), List.copyOf(dependencies));
+        return ResolutionPersistenceMapper.merge(parts, mixedFrameworks);
     }
 
     static List<Path> findClassesDirs(Path root) {
-        return findClassesDirs(root, false);
-    }
-
-    private static List<Path> findClassesDirs(Path root, boolean refreshGradleClasspath) {
-        BuildSystem buildSystem = BuildSystem.detect(root);
-        if (buildSystem == BuildSystem.MAVEN) {
-            MavenProjectDiscovery.Discovery discovery = MavenProjectDiscovery.discover(root);
-            LinkedHashSet<Path> result = new LinkedHashSet<>();
-            discovery.moduleDirectories().stream()
-                    .map(module -> module.resolve("target/classes"))
-                    .filter(ProjectInitializer::containsClassFiles)
-                    .forEach(result::add);
-            if (!discovery.complete()) {
-                result.addAll(scanClassesDirs(root, path -> path.endsWith("target/classes")));
-            }
-            return List.copyOf(result);
-        }
-
-        GradleProjectDiscovery.Discovery discovery = refreshGradleClasspath
-                ? GradleProjectDiscovery.discoverAndWriteClasspath(root)
-                : GradleProjectDiscovery.discover(root);
-        LinkedHashSet<Path> result = discovery.classesDirectories().stream()
-                .filter(ProjectInitializer::containsClassFiles)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        if (!discovery.complete()) {
-            result.addAll(scanClassesDirs(root, ProjectInitializer::isGradleMainClassesDir));
-        }
-        return List.copyOf(result);
-    }
-
-    private static List<Path> scanClassesDirs(
-            Path root, java.util.function.Predicate<Path> outputDirectory) {
-        try (Stream<Path> walk = Files.walk(root)) {
-            return walk
-                    .filter(Files::isDirectory)
-                    .filter(outputDirectory)
-                    .filter(path -> !hasPathSegment(path, ".gradle"))
-                    .filter(path -> !hasPathSegment(path, "buildSrc"))
-                    .filter(ProjectInitializer::containsClassFiles)
-                    .toList();
-        } catch (IOException e) {
-            return List.of();
-        }
-    }
-
-    private static boolean containsClassFiles(Path directory) {
-        if (!Files.isDirectory(directory)) return false;
-        try (Stream<Path> classFiles = Files.walk(directory)) {
-            return classFiles.anyMatch(file -> file.toString().endsWith(".class"));
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private static List<Path> findSourceRoots(List<Path> moduleDirectories) {
-        LinkedHashSet<Path> roots = new LinkedHashSet<>();
-        for (Path module : moduleDirectories) {
-            for (Path candidate : List.of(
-                    module.resolve("src/main/java"),
-                    module.resolve("src/main/kotlin"),
-                    module.resolve("target/generated-sources/annotations"),
-                    module.resolve("build/generated/sources/annotationProcessor/java/main"),
-                    module.resolve("build/generated/ksp/main/kotlin"))) {
-                if (Files.isDirectory(candidate)) roots.add(candidate.toAbsolutePath().normalize());
-            }
-        }
-        return List.copyOf(roots);
-    }
-
-    private static boolean hasPathSegment(Path path, String segment) {
-        for (Path part : path) {
-            if (part.toString().equals(segment)) return true;
-        }
-        return false;
-    }
-
-    private static boolean isGradleMainClassesDir(Path path) {
-        Path relative;
-        try {
-            relative = path.toAbsolutePath().normalize();
-        } catch (Exception e) {
-            return false;
-        }
-        for (int i = 0; i + 3 < relative.getNameCount(); i++) {
-            if (relative.getName(i).toString().equals("build")
-                    && relative.getName(i + 1).toString().equals("classes")
-                    && relative.getName(i + 3).toString().equals("main")) {
-                return i + 4 == relative.getNameCount();
-            }
-        }
-        return false;
+        return ProjectLayout.findClassesDirs(root, false);
     }
 
     static String computeStateFingerprint(Path root, List<Path> classesDirs) {
-        return computeStateFingerprint(
-                root, classesDirs, ClassFileSnapshot.capture(classesDirs).fingerprint());
-    }
-
-    private static String computeStateFingerprint(
-            Path root, List<Path> classesDirs, String classContentFingerprint) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            BuildSystem buildSystem = BuildSystem.detect(root);
-            Map<Path, Path> classDirectoryOwners =
-                    DependencyIndexer.mapClassDirectoriesToModules(root, buildSystem, classesDirs);
-            updateDigest(digest, "head", GitAnalyzer.resolveHead(root));
-            updateDigest(digest, "build", DependencyIndexer.buildFingerprint(
-                    root, buildSystem, classDirectoryOwners.values()));
-            updateDigest(digest, "classFiles", classContentFingerprint);
-
-            for (Path classesDir : classesDirs.stream()
-                    .map(path -> path.toAbsolutePath().normalize())
-                    .sorted()
-                    .toList()) {
-                Path moduleDir = classDirectoryOwners.get(classesDir);
-                if (moduleDir == null) {
-                    updateDigest(digest, "classpathMissing", classesDir.toString());
-                    continue;
-                }
-                Path classpathFile = buildSystem.classpathFile(moduleDir);
-                if (Files.isRegularFile(classpathFile)) {
-                    updateFileIdentity(digest, root, classpathFile);
-                    for (Path jar : DependencyIndexer.parseClasspathFile(classpathFile).stream()
-                            .map(path -> path.toAbsolutePath().normalize())
-                            .sorted()
-                            .toList()) {
-                        updateFileIdentity(digest, root, jar);
-                    }
-                } else {
-                    updateDigest(digest, "classpathMissing", moduleDir.toString());
-                }
-            }
-            return HexFormat.of().formatHex(digest.digest());
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is not available", e);
-        }
+        return ProjectLayout.computeStateFingerprint(root, classesDirs);
     }
 
     static boolean headMatches(Path root, String expectedHead) {
@@ -837,28 +601,6 @@ public class ProjectInitializer {
     static boolean worktreeMatches(Path root, String expectedFingerprint) {
         return java.util.Objects.equals(expectedFingerprint,
                 WorktreeInspector.inspect(root).fingerprint());
-    }
-
-    private static void updateFileIdentity(MessageDigest digest, Path base, Path file) {
-        Path normalized = file.toAbsolutePath().normalize();
-        String name;
-        try {
-            Path normalizedBase = base.toAbsolutePath().normalize();
-            name = normalized.startsWith(normalizedBase)
-                    ? normalizedBase.relativize(normalized).toString() : normalized.toString();
-            updateDigest(digest, "file", name);
-            updateDigest(digest, "size", Long.toString(Files.size(normalized)));
-            updateDigest(digest, "mtime", Long.toString(Files.getLastModifiedTime(normalized).toMillis()));
-        } catch (IOException e) {
-            updateDigest(digest, "missing", normalized.toString());
-        }
-    }
-
-    private static void updateDigest(MessageDigest digest, String key, String value) {
-        digest.update(key.getBytes(StandardCharsets.UTF_8));
-        digest.update((byte) '=');
-        if (value != null) digest.update(value.getBytes(StandardCharsets.UTF_8));
-        digest.update((byte) 0);
     }
 
     private static String headChangedMessage(String phase, String expected, String actual) {
@@ -895,58 +637,4 @@ public class ProjectInitializer {
         return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
     }
 
-    private static final String QUILL_SECTION_MARKER = "## Quill — Codebase Intelligence (MCP)";
-
-    private static final String QUILL_CLAUDE_MD = """
-
-            ## Quill — Codebase Intelligence (MCP)
-
-            This project is indexed by Quill. **Always prefer Quill MCP tools over grep/find/Explore agents** for:
-
-            - **Searching classes:** `search_classes` — faster than grep, supports wildcard patterns (`*Service`, `*Strategy*`)
-            - **Dependency analysis:** `get_dependencies` — what a class depends on and what depends on it
-            - **Risk assessment:** `assess_change_risk` — class blast radius or file risk from criticality, churn, bus factor, and coupling
-            - **Project overview:** `get_overview` — call first to orient (class/bean counts, architecture hubs, problems)
-            - **Git hotspots:** `find_git_hotspots` — most frequently changed files/classes
-            - **Co-change analysis:** `find_co_changed_files` — files that change together (hidden coupling)
-            - **Beans:** `list_beans` — list/filter beans by scope, kind, qualifier (CDI and Spring)
-            - **Injection points:** `list_injection_points` — injection resolution status for a bean
-            - **External deps:** `list_external_dependencies` — third-party library usage
-
-            **Tip:** Add `"alwaysLoad": true` to the quill server in `.mcp.json` so tool schemas are loaded eagerly (no ToolSearch needed).
-            """;
-
-    private static void ensureClaudeMd(Path root) {
-        Path claudeMd = root.resolve("CLAUDE.md");
-        try {
-            if (Files.exists(claudeMd)) {
-                String content = Files.readString(claudeMd);
-                if (content.contains(QUILL_SECTION_MARKER)) return;
-                String separator = content.endsWith("\n") ? "" : "\n";
-                Files.writeString(claudeMd, content + separator + QUILL_CLAUDE_MD);
-            } else {
-                Files.writeString(claudeMd, QUILL_CLAUDE_MD.stripLeading());
-            }
-            System.err.println("[quill] Updated CLAUDE.md with Quill tool instructions.");
-        } catch (IOException e) {
-            System.err.println("[quill] Warning: could not update CLAUDE.md: " + e.getMessage());
-        }
-    }
-
-    private static void ensureGitignore(Path root) {
-        Path gitignore = root.resolve(".gitignore");
-        String entry = ".quill/";
-        try {
-            if (Files.exists(gitignore)) {
-                String content = Files.readString(gitignore);
-                if (content.contains(entry)) return;
-                String separator = content.endsWith("\n") ? "" : "\n";
-                Files.writeString(gitignore, content + separator + entry + "\n");
-            } else {
-                Files.writeString(gitignore, entry + "\n");
-            }
-        } catch (IOException e) {
-            // ignore
-        }
-    }
 }

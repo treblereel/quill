@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.Properties;
 import java.util.UUID;
 import javax.inject.Named;
 import javax.inject.Singleton;
@@ -27,12 +28,16 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
         }
         MavenSession session = execution.getSession();
         if (session == null || session.getResult() == null
-                || session.getResult().hasExceptions()) {
+                || session.getResult().hasExceptions()
+                || isInternal(session.getUserProperties())) {
             return;
         }
-        Path root = session.getTopLevelProject() == null
-                ? session.getRequest().getMultiModuleProjectDirectory().toPath()
-                : session.getTopLevelProject().getBasedir().toPath();
+        Path reactorRoot = session.getRequest().getMultiModuleProjectDirectory() == null
+                ? null : session.getRequest().getMultiModuleProjectDirectory().toPath();
+        Path topLevelRoot = session.getTopLevelProject() == null
+                ? null : session.getTopLevelProject().getBasedir().toPath();
+        Path root = eventRoot(reactorRoot, topLevelRoot);
+        if (root == null) return;
         try {
             writeEvent(root.toAbsolutePath().normalize());
         } catch (IOException e) {
@@ -40,6 +45,15 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
             System.err.println("[quill] Could not record Maven build completion: "
                     + e.getMessage());
         }
+    }
+
+    static boolean isInternal(Properties userProperties) {
+        return userProperties != null
+                && Boolean.parseBoolean(userProperties.getProperty("quill.internal"));
+    }
+
+    static Path eventRoot(Path reactorRoot, Path topLevelRoot) {
+        return reactorRoot != null ? reactorRoot : topLevelRoot;
     }
 
     static void writeEvent(Path root) throws IOException {

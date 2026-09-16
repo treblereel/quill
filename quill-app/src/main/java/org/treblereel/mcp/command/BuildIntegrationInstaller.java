@@ -95,7 +95,7 @@ final class BuildIntegrationInstaller {
     private static String groovyGradleBlock() {
         return GRADLE_START + "\n"
                 + "gradle.buildFinished { result ->\n"
-                + "    if (result.failure == null) {\n"
+                + "    if (result.failure == null && System.getProperty('quill.internal') != 'true') {\n"
                 + "        def dir = new File(settingsDir, '.quill/build-events')\n"
                 + "        dir.mkdirs()\n"
                 + "        def event = new File(dir, 'gradle-' + System.currentTimeMillis() + '-' + UUID.randomUUID() + '.json')\n"
@@ -113,7 +113,7 @@ final class BuildIntegrationInstaller {
     private static String kotlinGradleBlock() {
         return GRADLE_START + "\n"
                 + "gradle.buildFinished {\n"
-                + "    if (failure == null) {\n"
+                + "    if (failure == null && System.getProperty(\"quill.internal\") != \"true\") {\n"
                 + "        val dir = file(\".quill/build-events\").apply { mkdirs() }\n"
                 + "        val now = System.currentTimeMillis()\n"
                 + "        val event = dir.resolve(\"gradle-$now-${java.util.UUID.randomUUID()}.json\")\n"

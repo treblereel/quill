@@ -236,6 +236,14 @@ starts a build itself and build failures do not replace the previous index. Use
 `--index-only` to skip all project configuration changes. `quill clean` removes only
 the Quill-managed integration and the entire `.quill` directory.
 
+Build events use a strict versioned contract and are accepted only for successful Maven
+or Gradle builds. If a structural worktree file was edited after the build completed,
+Quill discards the stale event and keeps reporting the previous graph as stale instead
+of publishing an index from out-of-date bytecode. A subsequent successful build creates
+a fresh event and allows the next MCP request to refresh the index. Maven and Gradle
+processes started internally for project discovery are marked so they cannot recursively
+create another build event.
+
 ### Maven projects
 
 Quill reads the reactor structure from `pom.xml` with Maven Model and recursively

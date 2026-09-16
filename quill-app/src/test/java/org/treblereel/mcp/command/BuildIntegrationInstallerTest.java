@@ -118,7 +118,27 @@ class BuildIntegrationInstallerTest {
         String output = new String(build.getInputStream().readAllBytes());
         assertEquals(0, build.waitFor(), output);
         try (var events = Files.list(tempDir.resolve(".quill/build-events"))) {
-            assertTrue(events.anyMatch(path -> path.getFileName().toString().startsWith("gradle-")));
+            Path event = events.filter(path -> path.getFileName().toString()
+                            .startsWith("gradle-"))
+                    .findFirst().orElseThrow();
+            String json = Files.readString(event);
+            assertTrue(json.contains("\"version\":1"));
+            assertTrue(json.contains("\"buildTool\":\"gradle\""));
+            assertTrue(json.contains("\"successful\":true"));
+            assertTrue(json.matches("(?s).*\"finishedAt\":[1-9][0-9]*.*"));
+        }
+
+        try (var events = Files.list(tempDir.resolve(".quill/build-events"))) {
+            for (Path event : events.toList()) Files.delete(event);
+        }
+        Process internal = new ProcessBuilder(
+                "gradle", "-Dquill.internal=true", "help", "--quiet", "--no-daemon")
+                .directory(tempDir.toFile()).redirectErrorStream(true).start();
+        String internalOutput = new String(internal.getInputStream().readAllBytes());
+        assertEquals(0, internal.waitFor(), internalOutput);
+        try (var events = Files.list(tempDir.resolve(".quill/build-events"))) {
+            assertTrue(events.findAny().isEmpty(),
+                    "Quill's internal Gradle invocation must not create a build event");
         }
     }
 

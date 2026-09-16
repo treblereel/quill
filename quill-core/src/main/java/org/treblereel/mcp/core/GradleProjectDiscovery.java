@@ -74,6 +74,7 @@ public final class GradleProjectDiscovery {
 
             process = new ProcessBuilder(BuildSystem.GRADLE.command(normalizedRoot,
                     "--init-script", initScript.toString(),
+                    "-Dquill.internal=true",
                     "-Dquill.manifest=" + manifest,
                     "-Dquill.project=" + normalizedRoot,
                     ":" + taskName, "--quiet"))

@@ -1,14 +1,29 @@
 package org.treblereel.mcp.mcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.treblereel.mcp.command.UpdateCommand;
+import org.treblereel.mcp.core.WorktreeInspector;
 
 /** Consumes successful-build markers before MCP opens an immutable index generation. */
 final class BuildEventConsumer {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final int PROTOCOL_VERSION = 1;
+    private static final Duration MAX_CLOCK_SKEW = Duration.ofMinutes(5);
+    private static final Set<String> BUILD_TOOLS = Set.of("maven", "gradle");
+    private static final Set<String> FIELDS =
+            Set.of("version", "buildTool", "successful", "finishedAt");
 
     private final ConcurrentHashMap<Path, Object> projectLocks = new ConcurrentHashMap<>();
 
@@ -17,19 +32,48 @@ final class BuildEventConsumer {
         Object lock = projectLocks.computeIfAbsent(normalized, ignored -> new Object());
         synchronized (lock) {
             Path directory = normalized.resolve(".quill/build-events");
-            List<Path> events;
+            List<Path> eventFiles;
             try {
                 if (!Files.isDirectory(directory)) return null;
                 try (var files = Files.list(directory)) {
-                    events = files.filter(Files::isRegularFile)
+                    eventFiles = files.filter(Files::isRegularFile)
                             .sorted(Comparator.comparing(Path::toString)).toList();
                 }
-                if (events.isEmpty()) return null;
-                UpdateCommand.updateAfterSuccessfulBuild(normalized);
-                for (Path event : events) Files.deleteIfExists(event);
-                try (var remaining = Files.list(directory)) {
-                    if (remaining.findAny().isEmpty()) Files.deleteIfExists(directory);
+                if (eventFiles.isEmpty()) return null;
+
+                List<Path> rejected = new ArrayList<>();
+                List<BuildEvent> events = new ArrayList<>();
+                for (Path file : eventFiles) {
+                    Optional<BuildEvent> event = read(file);
+                    if (event.isPresent()) events.add(event.get());
+                    else rejected.add(file);
                 }
+                delete(rejected);
+                if (!rejected.isEmpty()) {
+                    System.err.println("[quill] Ignored " + rejected.size()
+                            + " invalid build event(s).");
+                }
+                if (events.isEmpty()) {
+                    removeIfEmpty(directory);
+                    return null;
+                }
+
+                BuildEvent latest = events.stream()
+                        .max(Comparator.comparingLong(BuildEvent::finishedAt))
+                        .orElseThrow();
+                Optional<String> newerInput = newerStructuralInput(normalized, latest.finishedAt());
+                if (newerInput.isPresent()) {
+                    delete(events.stream().map(BuildEvent::file).toList());
+                    removeIfEmpty(directory);
+                    System.err.println("[quill] Ignored stale build event: "
+                            + newerInput.get() + " changed after the build completed."
+                            + " Build the project again before Quill refreshes its index.");
+                    return null;
+                }
+
+                UpdateCommand.updateAfterSuccessfulBuild(normalized);
+                delete(events.stream().map(BuildEvent::file).toList());
+                removeIfEmpty(directory);
                 return null;
             } catch (Exception e) {
                 return "Successful build was detected, but the index refresh failed: "
@@ -37,4 +81,76 @@ final class BuildEventConsumer {
             }
         }
     }
+
+    private static Optional<BuildEvent> read(Path file) {
+        try {
+            JsonNode root = JSON.readTree(file.toFile());
+            if (root == null || !root.isObject()) return Optional.empty();
+            var names = root.fieldNames();
+            while (names.hasNext()) {
+                if (!FIELDS.contains(names.next())) return Optional.empty();
+            }
+            JsonNode version = root.get("version");
+            JsonNode buildTool = root.get("buildTool");
+            JsonNode successful = root.get("successful");
+            JsonNode finishedAt = root.get("finishedAt");
+            if (version == null || !version.isIntegralNumber()
+                    || version.intValue() != PROTOCOL_VERSION
+                    || buildTool == null || !buildTool.isTextual()
+                    || !BUILD_TOOLS.contains(buildTool.textValue())
+                    || successful == null || !successful.isBoolean() || !successful.booleanValue()
+                    || finishedAt == null || !finishedAt.isIntegralNumber()) {
+                return Optional.empty();
+            }
+            long timestamp = finishedAt.longValue();
+            long latestAllowed = System.currentTimeMillis() + MAX_CLOCK_SKEW.toMillis();
+            if (timestamp <= 0 || timestamp > latestAllowed) return Optional.empty();
+            return Optional.of(new BuildEvent(file, timestamp));
+        } catch (IOException | RuntimeException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<String> newerStructuralInput(Path root, long finishedAt) {
+        WorktreeInspector.Snapshot snapshot = WorktreeInspector.inspect(root);
+        Path repositoryRoot = snapshot.repositoryRoot();
+        if (repositoryRoot == null) return Optional.empty();
+        for (WorktreeInspector.Change change : snapshot.structuralChanges()) {
+            Path changed = repositoryRoot.resolve(change.repositoryPath()).normalize();
+            if (!changed.startsWith(repositoryRoot)) continue;
+            Path timestampSource = Files.exists(changed)
+                    ? changed : nearestExistingParent(changed, repositoryRoot);
+            try {
+                if (timestampSource != null
+                        && Files.getLastModifiedTime(timestampSource).toMillis() > finishedAt) {
+                    return Optional.of(change.projectPath());
+                }
+            } catch (IOException ignored) {
+                // Freshness cannot be disproved from an unreadable timestamp. The regular
+                // worktree fingerprint still marks the served response as structurally stale.
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Path nearestExistingParent(Path path, Path repositoryRoot) {
+        Path current = path.getParent();
+        while (current != null && current.startsWith(repositoryRoot)) {
+            if (Files.exists(current)) return current;
+            current = current.getParent();
+        }
+        return null;
+    }
+
+    private static void delete(List<Path> files) throws IOException {
+        for (Path file : files) Files.deleteIfExists(file);
+    }
+
+    private static void removeIfEmpty(Path directory) throws IOException {
+        try (var remaining = Files.list(directory)) {
+            if (remaining.findAny().isEmpty()) Files.deleteIfExists(directory);
+        }
+    }
+
+    private record BuildEvent(Path file, long finishedAt) {}
 }

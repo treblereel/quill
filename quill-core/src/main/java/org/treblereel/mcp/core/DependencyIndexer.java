@@ -432,7 +432,8 @@ public final class DependencyIndexer {
         Process process = null;
         try {
             process = new ProcessBuilder(buildSystem.command(projectRoot,
-                    "dependency:build-classpath", "-DincludeScope=runtime",
+                    "-Dquill.internal=true", "dependency:build-classpath",
+                    "-DincludeScope=runtime",
                     "-Dmdep.outputFile=target/quill-classpath.txt", "-q"))
                     .directory(projectRoot.toFile())
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)

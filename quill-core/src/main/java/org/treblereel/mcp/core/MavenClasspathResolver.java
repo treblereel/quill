@@ -32,7 +32,8 @@ final class MavenClasspathResolver {
             temporary = Files.createTempDirectory("quill-maven-classpath-");
             Path effectivePom = temporary.resolve("effective-pom.xml");
             ProcessResult effective = run(projectRoot, BuildSystem.MAVEN.command(projectRoot,
-                    "help:effective-pom", "-Doutput=" + effectivePom, "-q"), temporary);
+                    "-Dquill.internal=true", "help:effective-pom",
+                    "-Doutput=" + effectivePom, "-q"), temporary);
             if (effective.exitCode() != 0 || !Files.isRegularFile(effectivePom)) {
                 return failure("Maven effective POM generation", effective);
             }
@@ -65,7 +66,8 @@ final class MavenClasspathResolver {
             Path syntheticRoot = Files.createDirectories(temporary.resolve("reactor"));
             writeSyntheticReactor(syntheticRoot, modules, projects);
             ProcessResult resolved = run(projectRoot, BuildSystem.MAVEN.command(projectRoot,
-                    "-f", syntheticRoot.resolve("pom.xml").toString(), "--fail-at-end",
+                    "-Dquill.internal=true", "-f",
+                    syntheticRoot.resolve("pom.xml").toString(), "--fail-at-end",
                     "dependency:build-classpath", "-DincludeScope=runtime",
                     "-Dmdep.outputFile=target/quill-classpath.txt", "-q"), temporary);
 

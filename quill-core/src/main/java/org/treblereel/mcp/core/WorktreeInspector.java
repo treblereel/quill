@@ -188,7 +188,7 @@ public final class WorktreeInspector {
         return fingerprint(Path.of("."), List.of());
     }
 
-    static boolean isStructuralPath(String projectPath) {
+    public static boolean isStructuralPath(String projectPath) {
         String path = projectPath.replace('\\', '/');
         String name = path.substring(path.lastIndexOf('/') + 1);
         if (name.equals("pom.xml") || name.equals("build.gradle")

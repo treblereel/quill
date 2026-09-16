@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,8 +24,27 @@ class QuillBuildEventSpyTest {
             assertEquals(1, events.size());
             assertTrue(events.getFirst().getFileName().toString().startsWith("maven-"));
             String json = Files.readString(events.getFirst());
+            assertTrue(json.contains("\"version\":1"));
             assertTrue(json.contains("\"buildTool\":\"maven\""));
             assertTrue(json.contains("\"successful\":true"));
+            assertTrue(json.matches("(?s).*\"finishedAt\":[1-9][0-9]*.*"));
         }
+    }
+
+    @Test
+    void recognizesInternalQuillMavenInvocation() {
+        Properties properties = new Properties();
+        properties.setProperty("quill.internal", "true");
+
+        assertTrue(QuillBuildEventSpy.isInternal(properties));
+    }
+
+    @Test
+    void keepsEventsAtReactorRootWhenProjectListStartsAtModule() {
+        Path reactor = tempDir.resolve("reactor");
+        Path selectedModule = reactor.resolve("module");
+
+        assertEquals(reactor, QuillBuildEventSpy.eventRoot(reactor, selectedModule));
+        assertEquals(selectedModule, QuillBuildEventSpy.eventRoot(null, selectedModule));
     }
 }

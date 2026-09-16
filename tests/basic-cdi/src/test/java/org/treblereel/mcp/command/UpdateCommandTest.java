@@ -158,6 +158,12 @@ class UpdateCommandTest {
         assertNotNull(currentDatabase);
         Path staleDatabase = QUILL_DIR.resolve("previous-generation.db");
         Files.move(currentDatabase, staleDatabase);
+        QuillDatabase.openWritable(staleDatabase).useHandle(handle -> {
+            handle.execute("UPDATE metadata SET value = ? WHERE key = 'index_id'",
+                    "previous-generation");
+            handle.execute("UPDATE metadata SET value = ? WHERE key = 'last_commit'",
+                    "previous-commit");
+        });
         String branch = GitAnalyzer.resolveCurrentBranch(PROJECT_ROOT);
         Files.writeString(QUILL_DIR.resolve("refs.json"), """
                 {"%s":"previous-generation"}

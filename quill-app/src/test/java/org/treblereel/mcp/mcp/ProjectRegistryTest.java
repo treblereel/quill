@@ -105,7 +105,15 @@ class ProjectRegistryTest {
     private static Path createPublishedDatabase(Path project, String indexId) throws IOException {
         Path quillDir = Files.createDirectories(project.resolve(".quill"));
         Path database = quillDir.resolve(indexId + ".db");
-        QuillDatabase.create(database);
+        var jdbi = QuillDatabase.create(database);
+        jdbi.useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                    "index_id", indexId);
+            handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                    "last_commit", "unknown");
+            handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                    "project_root", project.toString());
+        });
         Files.writeString(quillDir.resolve("refs.json"),
                 "{\"@worktree\":\"" + indexId + "\"}");
         return database;

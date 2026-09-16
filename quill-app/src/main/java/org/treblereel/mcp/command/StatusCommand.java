@@ -56,8 +56,14 @@ public class StatusCommand implements Callable<Integer> {
             System.out.println("  Beans:               " + beans.size());
             System.out.println("  Total source tokens: " + String.format("%,d", totalTokens));
             if (!classes.isEmpty()) {
-                System.out.println("  Avg tokens/class:    " + String.format("%,d", totalTokens / classes.size()));
+                System.out.println("  Avg tokens/class:    "
+                        + String.format("%,d", totalTokens / classes.size()));
             }
+            ProjectIndexStore.readRecovery(root).ifPresent(recovery -> {
+                System.out.println("  Last recovery:       " + recovery.reason()
+                        + " at " + recovery.recoveredAt());
+                System.out.println("  Recovered generation: " + recovery.selectedIndexId());
+            });
             return picocli.CommandLine.ExitCode.OK;
         } catch (IllegalStateException | QuillDatabase.SchemaVersionException e) {
             System.err.println(e.getMessage());

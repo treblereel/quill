@@ -503,6 +503,7 @@ public class ProjectInitializer {
                         + writeTimings.rowsUnchanged() + " unchanged.");
             }
             long validationStartedAt = System.nanoTime();
+            ProjectIndexStore.validateForPublication(stagedDb);
             boolean headChanged = !headMatches(root, initialHead);
             boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint());
             timings.record("publication_validation", elapsedMillis(validationStartedAt));

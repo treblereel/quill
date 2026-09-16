@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.treblereel.mcp.core.TokenCounter;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
+import org.treblereel.mcp.command.ProjectIndexStore;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.CdiProblem;
 import org.treblereel.mcp.model.*;
@@ -1099,6 +1100,15 @@ public final class QuillToolQueries {
         metaNode.put("response_tokens", meta.responseTokens());
         metaNode.put("naive_tokens", meta.naiveTokens());
         metaNode.put("compression", meta.compression());
+        String projectRoot = IndexReader.getMetadata(jdbi).get("project_root");
+        if (projectRoot != null) {
+            ProjectIndexStore.readRecovery(Path.of(projectRoot)).ifPresent(recovery -> {
+                ObjectNode recoveryNode = metaNode.putObject("index_recovery");
+                recoveryNode.put("reason", recovery.reason());
+                recoveryNode.put("selected_index_id", recovery.selectedIndexId());
+                recoveryNode.put("recovered_at", recovery.recoveredAt());
+            });
+        }
     }
 
     private static int clamp(int value, int min, int max) {

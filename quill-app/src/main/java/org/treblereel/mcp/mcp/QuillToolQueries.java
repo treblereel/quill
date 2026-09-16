@@ -1,17 +1,18 @@
 package org.treblereel.mcp.mcp;
 
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.jdbi.v3.core.Jdbi;
 import java.util.*;
-import java.util.function.IntConsumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.treblereel.mcp.core.TokenCounter;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
-import org.treblereel.mcp.command.ProjectIndexStore;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.CdiProblem;
 import org.treblereel.mcp.model.*;
@@ -19,231 +20,28 @@ import org.treblereel.mcp.model.*;
 public final class QuillToolQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final int MAX_GRAPH_NODES = 200;
     private static final int MAX_RECENT_CHANGE_FILES = 200;
     private static final int MAX_PROBLEM_DETAILS = 50;
+    private final StructureToolQueries structure = new StructureToolQueries();
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind, String profile, String qualifier) {
-        return getBeans(jdbi, className, scope, kind, profile, qualifier, 50);
+        return structure.getBeans(jdbi, className, scope, kind, profile, qualifier, 50);
     }
 
     String searchClasses(Jdbi jdbi, String pattern, int limit) {
-        List<ClassRecord> classes = IndexReader.searchClasses(jdbi, pattern, limit + 1);
-        int total = classes.size() > limit ? classes.size() : classes.size();
-        boolean hasMore = classes.size() > limit;
-        List<ClassRecord> limited = hasMore ? classes.subList(0, limit) : classes;
-        Map<Integer, BeanRecord> beansByClass = IndexReader.findBeansByClassIds(
-                jdbi, limited.stream().map(ClassRecord::id).toList());
-
-        ObjectNode root = JSON.createObjectNode();
-        ArrayNode arr = root.putArray("classes");
-        int naiveTokens = 0;
-        for (ClassRecord c : limited) {
-            ObjectNode node = arr.addObject();
-            node.put("class", c.className());
-            node.put("source", c.sourceFile() + ":" + c.sourceLine());
-            node.put("origin", c.origin());
-            node.put("lifecycle", c.lifecycle());
-            node.put("is_bean", c.isBean());
-            BeanRecord bean = beansByClass.get(c.id());
-            if (bean != null) node.put("scope", bean.scope());
-            node.put("source_tokens", c.sourceTokens());
-            naiveTokens += c.sourceTokens();
-        }
-        root.put("showing", limited.size());
-        if (hasMore) {
-            root.put("total", ">" + limit + " (use a more specific pattern)");
-        } else {
-            root.put("total", limited.size());
-        }
-        appendMeta(root, jdbi, naiveTokens);
-        return root.toString();
+        return structure.searchClasses(jdbi, pattern, limit);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind, String profile, String qualifier, int limit) {
-        Map<String, String> filter = new HashMap<>();
-        if (className != null) filter.put("class_name", className);
-        if (scope != null) filter.put("scope", scope);
-        if (kind != null) filter.put("kind", kind);
-        if (profile != null) filter.put("profile", profile);
-        if (qualifier != null) filter.put("qualifier", qualifier);
-
-        List<BeanRecord> beans = IndexReader.findBeans(jdbi, filter.isEmpty() ? null : filter);
-        int total = beans.size();
-        List<BeanRecord> limited = beans.size() > limit ? beans.subList(0, limit) : beans;
-        Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(
-                jdbi, limited.stream().map(BeanRecord::classId).toList());
-
-        ObjectNode root = JSON.createObjectNode();
-        ArrayNode arr = root.putArray("beans");
-        int[] naiveTokensWrapper = {0};
-
-        for (BeanRecord b : limited) {
-            ObjectNode node = arr.addObject();
-            ClassRecord beanClass = classesById.get(b.classId());
-            String fqcn = beanClass != null ? beanClass.className() : "unknown";
-            node.put("class", fqcn);
-            if (b.memberName() != null) {
-                node.put("member", b.memberName());
-            }
-            if (isProducer(b.kind()) && b.beanTypes() != null && !b.beanTypes().isEmpty()) {
-                node.put("produced_type", b.beanTypes().get(0));
-            }
-            node.put("kind", b.kind());
-            node.put("scope", b.scope());
-            node.set("qualifiers", JSON.valueToTree(b.qualifiers()));
-            node.set("bean_types", JSON.valueToTree(b.beanTypes()));
-            node.set("profiles", JSON.valueToTree(b.profiles()));
-            if (beanClass != null) {
-                node.put("source", beanClass.sourceFile() + ":" + beanClass.sourceLine());
-                naiveTokensWrapper[0] += beanClass.sourceTokens();
-            }
-        }
-        root.put("showing", limited.size());
-        root.put("total", total);
-
-        appendMeta(root, jdbi, naiveTokensWrapper[0]);
-        return root.toString();
+        return structure.getBeans(jdbi, className, scope, kind, profile, qualifier, limit);
     }
 
     String getDependencies(Jdbi jdbi, String target, String direction, int depth) {
-        var lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
-        ClassRecord cls = lookup.cls();
-
-        ObjectNode root = JSON.createObjectNode();
-        root.put("target", cls.className());
-        root.put("is_bean", cls.isBean());
-        root.put("origin", cls.origin());
-        root.put("lifecycle", cls.lifecycle());
-
-        ObjectNode metrics = root.putObject("metrics");
-        metrics.put("fan_in", IndexReader.countDependents(jdbi, cls.id()));
-        metrics.put("incoming_edges", IndexReader.countDependencyEdges(jdbi, cls.id(), true));
-        metrics.put("fan_out", IndexReader.countDependencies(jdbi, cls.id()));
-        metrics.put("outgoing_edges", IndexReader.countDependencyEdges(jdbi, cls.id(), false));
-        writeDependencyBreakdown(metrics.putObject("fan_in_breakdown"),
-                IndexReader.dependencyBreakdown(jdbi, cls.id(), true));
-        writeDependencyBreakdown(metrics.putObject("fan_out_breakdown"),
-                IndexReader.dependencyBreakdown(jdbi, cls.id(), false));
-
-        if (cls.isBean()) {
-            IndexReader.findBeanByClassId(jdbi, cls.id()).ifPresent(b -> {
-                root.put("scope", b.scope());
-            });
-        }
-
-        int[] naiveTokens = {cls.sourceTokens()};
-        Set<Integer> visited = new HashSet<>();
-        visited.add(cls.id());
-        GraphBudget budget = new GraphBudget(MAX_GRAPH_NODES);
-
-        expandDependencies(jdbi, cls.id(), direction, depth, root, visited,
-                t -> naiveTokens[0] += t, budget);
-        if (budget.truncated) {
-            root.put("truncated", true);
-            root.put("node_limit", MAX_GRAPH_NODES);
-        }
-
-        appendMeta(root, jdbi, naiveTokens[0]);
-        return root.toString();
-    }
-
-    private void expandDependencies(Jdbi jdbi, int classId, String direction, int depth,
-                                     ObjectNode node, Set<Integer> visited, IntConsumer tokenAccum,
-                                     GraphBudget budget) {
-        List<DependencyRecord> deps = IndexReader.findDependencies(jdbi, classId, direction);
-
-        ArrayNode dependsOn = node.putArray("depends_on");
-        ArrayNode dependedBy = node.putArray("depended_by");
-
-        for (DependencyRecord d : deps) {
-            if (d.fromClassId() == classId) {
-                if (!budget.claim()) break;
-                IndexReader.findClassById(jdbi, d.toClassId()).ifPresent(c -> {
-                    ObjectNode child = dependsOn.addObject();
-                    child.put("class", c.className());
-                    child.put("kind", d.kind());
-                    child.put("occurrences", d.occurrenceCount());
-                    tokenAccum.accept(c.sourceTokens());
-                    if (depth > 1 && visited.add(c.id())) {
-                        expandDependencies(jdbi, c.id(), direction, depth - 1, child,
-                                visited, tokenAccum, budget);
-                    }
-                });
-            }
-            if (d.toClassId() == classId) {
-                if (!budget.claim()) break;
-                IndexReader.findClassById(jdbi, d.fromClassId()).ifPresent(c -> {
-                    ObjectNode child = dependedBy.addObject();
-                    child.put("class", c.className());
-                    child.put("kind", d.kind());
-                    child.put("occurrences", d.occurrenceCount());
-                    tokenAccum.accept(c.sourceTokens());
-                    if (depth > 1 && visited.add(c.id())) {
-                        expandDependencies(jdbi, c.id(), direction, depth - 1, child,
-                                visited, tokenAccum, budget);
-                    }
-                });
-            }
-        }
+        return structure.getDependencies(jdbi, target, direction, depth);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {
-        var lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
-        ClassRecord cls = lookup.cls();
-
-        var beanOpt = IndexReader.findBeanByClassId(jdbi, cls.id());
-        if (beanOpt.isEmpty()) return errorResponse("Not a bean: " + target);
-
-        ObjectNode root = JSON.createObjectNode();
-        root.put("target", cls.className());
-
-        List<InjectionPointRecord> ips = IndexReader.findInjectionPoints(jdbi, beanOpt.get().id());
-        Map<Integer, BeanRecord> resolvedBeans = IndexReader.findBeansByIds(jdbi, ips.stream()
-                .map(InjectionPointRecord::resolvedBeanId).filter(Objects::nonNull).toList());
-        Map<Integer, ClassRecord> resolvedClasses = IndexReader.findClassesByIds(jdbi, resolvedBeans.values()
-                .stream().map(BeanRecord::classId).toList());
-
-        ArrayNode arr = root.putArray("injection_points");
-        ArrayNode unsatisfied = root.putArray("unsatisfied");
-        ArrayNode ambiguous = root.putArray("ambiguous");
-
-        for (InjectionPointRecord ip : ips) {
-            ObjectNode node = arr.addObject();
-            node.put("kind", ip.kind());
-            node.put("field", ip.fieldName());
-            node.put("required_type", ip.targetType());
-            node.set("qualifiers", JSON.valueToTree(ip.qualifiers()));
-
-            if (ip.isAmbiguous()) {
-                node.put("resolved_to", (String) null);
-                node.put("resolution", "ambiguous");
-                ambiguous.add(ip.fieldName());
-            } else if (ip.resolvedBeanId() != null) {
-                BeanRecord resolved = resolvedBeans.get(ip.resolvedBeanId());
-                if (resolved != null) {
-                    ClassRecord resolvedClass = resolvedClasses.get(resolved.classId());
-                    if (resolvedClass != null) node.put("resolved_to", resolvedClass.className());
-                    if (resolved.memberName() != null) {
-                        node.put("resolved_member", resolved.memberName());
-                    }
-                    if (isProducer(resolved.kind()) && resolved.beanTypes() != null
-                            && !resolved.beanTypes().isEmpty()) {
-                        node.put("resolved_produced_type", resolved.beanTypes().get(0));
-                    }
-                }
-                node.put("resolution", "unique");
-            } else {
-                node.put("resolved_to", (String) null);
-                node.put("resolution", "unsatisfied");
-                unsatisfied.add(ip.fieldName());
-            }
-        }
-
-        appendMeta(root, jdbi, cls.sourceTokens());
-        return root.toString();
+        return structure.getInjectionPoints(jdbi, target);
     }
 
     private static final String NO_GIT_MESSAGE = "No git data available. "
@@ -1078,73 +876,7 @@ public final class QuillToolQueries {
         return String.join(" ", parts);
     }
 
-    private void appendMeta(ObjectNode root, Jdbi jdbi, int naiveTokens) {
-        String responseJson = root.toString();
-        int responseTokens = TokenCounter.count(responseJson);
-        MetaEnvelope meta = MetaEnvelope.from(jdbi, responseTokens, naiveTokens);
-        ObjectNode metaNode = root.putObject("_meta");
-        metaNode.put("index_id", meta.indexId());
-        metaNode.put("indexed_at", meta.indexedAt());
-        metaNode.put("indexed_commit", meta.lastCommit());
-        // Kept for MCP clients built against the original envelope.
-        metaNode.put("last_commit", meta.lastCommit());
-        if (meta.currentCommit() == null) metaNode.putNull("current_commit");
-        else metaNode.put("current_commit", meta.currentCommit());
-        metaNode.put("commit_stale", meta.commitStale());
-        metaNode.put("worktree_dirty", meta.worktreeDirty());
-        metaNode.put("worktree_changed_files", meta.worktreeChangedFiles());
-        metaNode.put("structural_changed_files", meta.structuralChangedFiles());
-        metaNode.put("structure_stale", meta.structureStale());
-        metaNode.set("stale_reasons", JSON.valueToTree(meta.staleReasons()));
-        metaNode.put("stale_warning", meta.staleWarning());
-        metaNode.put("response_tokens", meta.responseTokens());
-        metaNode.put("naive_tokens", meta.naiveTokens());
-        metaNode.put("compression", meta.compression());
-        String projectRoot = IndexReader.getMetadata(jdbi).get("project_root");
-        if (projectRoot != null) {
-            ProjectIndexStore.readRecovery(Path.of(projectRoot)).ifPresent(recovery -> {
-                ObjectNode recoveryNode = metaNode.putObject("index_recovery");
-                recoveryNode.put("reason", recovery.reason());
-                recoveryNode.put("selected_index_id", recovery.selectedIndexId());
-                recoveryNode.put("recovered_at", recovery.recoveredAt());
-            });
-        }
-    }
-
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
-    }
-
-    private static final class GraphBudget {
-        private int remaining;
-        private boolean truncated;
-
-        private GraphBudget(int limit) {
-            this.remaining = limit;
-        }
-
-        private boolean claim() {
-            if (remaining == 0) {
-                truncated = true;
-                return false;
-            }
-            remaining--;
-            return true;
-        }
-    }
-
-    private static boolean isProducer(String kind) {
-        return "PRODUCER_METHOD".equals(kind) || "PRODUCER_FIELD".equals(kind);
-    }
-
-    private String errorResponse(String message) {
-        return JSON.createObjectNode().put("error", message).toString();
-    }
-
-    private String classLookupError(
-            Jdbi jdbi, ClassTargetResolver.Lookup lookup, String target) {
-        ObjectNode root = ClassTargetResolver.errorResponse(JSON, lookup, target);
-        appendMeta(root, jdbi, 0);
-        return root.toString();
     }
 }

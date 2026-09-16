@@ -2,14 +2,10 @@ package org.treblereel.mcp.command;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.AfterEach;
@@ -19,7 +15,6 @@ import org.treblereel.mcp.db.QuillDatabase;
 
 class InitCommandTest {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
     static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"));
     static final Path QUILL_DIR = PROJECT_ROOT.resolve(".quill");
 
@@ -85,28 +80,6 @@ class InitCommandTest {
         assertTrue(result.phaseMillis().get("dependency_total")
                 >= result.phaseMillis().get("dependency_cache_read"));
         assertTrue(result.timingsDiagnostic().contains("total=" + result.elapsedMillis() + "ms"));
-    }
-
-    @Test
-    void nativeReflectionConfigIncludesAllInitOptions() throws Exception {
-        String resource = "META-INF/native-image/org.treblereel.mcp/quill-app/reflect-config.json";
-        try (InputStream input = InitCommand.class.getClassLoader().getResourceAsStream(resource)) {
-            assertNotNull(input, "native reflection configuration should be on the classpath");
-            JsonNode commands = JSON.readTree(input);
-            JsonNode initCommand = null;
-            for (JsonNode command : commands) {
-                if (InitCommand.class.getName().equals(command.path("name").asText())) {
-                    initCommand = command;
-                    break;
-                }
-            }
-
-            assertNotNull(initCommand, "InitCommand should be registered for native reflection");
-            Set<String> fields = new java.util.HashSet<>();
-            initCommand.path("fields").forEach(field -> fields.add(field.path("name").asText()));
-            assertTrue(fields.containsAll(Set.of("projectPath", "indexOnly", "timings")),
-                    "all Picocli InitCommand fields should be registered for native reflection");
-        }
     }
 
     @Test

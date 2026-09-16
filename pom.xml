@@ -16,6 +16,8 @@
 
     <properties>
         <compiler-plugin.version>3.15.0</compiler-plugin.version>
+        <enforcer-plugin.version>3.6.3</enforcer-plugin.version>
+        <jacoco-plugin.version>0.8.15</jacoco-plugin.version>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -28,7 +30,7 @@
         <picocli.version>4.7.7</picocli.version>
         <shade-plugin.version>3.6.1</shade-plugin.version>
         <resources-plugin.version>3.4.0</resources-plugin.version>
-        <slf4j.version>2.0.17</slf4j.version>
+        <slf4j.version>2.0.18</slf4j.version>
         <native.buildtools.version>1.1.12</native.buildtools.version>
         <jackson.version>2.22.2</jackson.version>
         <jandex.version>3.6.0</jandex.version>
@@ -41,6 +43,7 @@
         <jakarta.inject.version>2.0.1</jakarta.inject.version>
         <jakarta.annotation.version>3.0.0</jakarta.annotation.version>
         <jakarta.interceptor.version>2.2.0</jakarta.interceptor.version>
+        <jacocoArgLine></jacocoArgLine>
     </properties>
 
     <dependencyManagement>
@@ -76,6 +79,11 @@
                 <groupId>org.codehaus.plexus</groupId>
                 <artifactId>plexus-utils</artifactId>
                 <version>${plexus-utils.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.projectreactor</groupId>
@@ -119,7 +127,7 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>${surefire-plugin.version}</version>
                     <configuration>
-                        <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+                        <argLine>@{jacocoArgLine} --enable-native-access=ALL-UNNAMED</argLine>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -134,8 +142,13 @@
                         </execution>
                     </executions>
                     <configuration>
-                        <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+                        <argLine>@{jacocoArgLine} --enable-native-access=ALL-UNNAMED</argLine>
                     </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>${jacoco-plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -152,5 +165,33 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>${enforcer-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>enforce-build-contract</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireMavenVersion>
+                                    <version>[3.9.0,)</version>
+                                </requireMavenVersion>
+                                <requireJavaVersion>
+                                    <version>[21,26)</version>
+                                </requireJavaVersion>
+                                <dependencyConvergence/>
+                                <banDuplicatePomDependencyVersions/>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

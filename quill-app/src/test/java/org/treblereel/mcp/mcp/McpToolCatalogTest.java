@@ -14,6 +14,7 @@ import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -84,6 +85,85 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void rejectsMissingRequiredArgumentWithoutInvokingTool() {
+        ValidationTools tools = new ValidationTools();
+        McpSchema.CallToolResult result = call(tools, "validate", Map.of("enabled", true));
+
+        assertTrue(Boolean.TRUE.equals(result.isError()));
+        assertTrue(text(result).contains("Missing required argument: target"));
+        assertEquals(0, tools.invocations);
+    }
+
+    @Test
+    void rejectsUnknownAndWronglyTypedArguments() {
+        ValidationTools tools = new ValidationTools();
+
+        McpSchema.CallToolResult unknown = call(tools, "validate",
+                Map.of("target", "OrderService", "surprise", true));
+        assertTrue(Boolean.TRUE.equals(unknown.isError()));
+        assertTrue(text(unknown).contains("Unknown argument: surprise"));
+
+        McpSchema.CallToolResult wrongBoolean = call(tools, "validate",
+                Map.of("target", "OrderService", "enabled", "yes"));
+        assertTrue(Boolean.TRUE.equals(wrongBoolean.isError()));
+        assertTrue(text(wrongBoolean).contains("Expected boolean"));
+
+        McpSchema.CallToolResult fractionalInteger = call(tools, "validate",
+                Map.of("target", "OrderService", "limit", 2.5));
+        assertTrue(Boolean.TRUE.equals(fractionalInteger.isError()));
+        assertTrue(text(fractionalInteger).contains("Expected integer"));
+        assertEquals(0, tools.invocations);
+    }
+
+    @Test
+    void domainErrorIsMarkedAsMcpToolErrorAndNextRequestStillSucceeds() {
+        ValidationTools tools = new ValidationTools();
+
+        McpSchema.CallToolResult failed = call(tools, "validate",
+                Map.of("target", "missing"));
+        assertTrue(Boolean.TRUE.equals(failed.isError()));
+        assertEquals("{\"error\":\"target not found\"}", text(failed));
+
+        McpSchema.CallToolResult successful = call(tools, "validate",
+                Map.of("target", "OrderService", "enabled", true, "limit", 10));
+        assertTrue(!Boolean.TRUE.equals(successful.isError()));
+        assertEquals("{\"target\":\"OrderService\"}", text(successful));
+        assertEquals(2, tools.invocations);
+    }
+
+    @Test
+    void booleanToolArgumentIsAdvertisedAsBoolean() {
+        ValidationTools tools = new ValidationTools();
+        AsyncToolSpecification specification = McpToolCatalog.create(
+                        tools, ValidationTools.class, workers, responses, Duration.ofSeconds(1))
+                .getFirst();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) specification.tool()
+                .inputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> enabled = (Map<String, Object>) properties.get("enabled");
+        assertEquals("boolean", enabled.get("type"));
+    }
+
+    @Test
+    void unconfiguredQuillProjectIsAnMcpToolError() {
+        QuillTools tools = new QuillTools(new ProjectRegistry());
+        AsyncToolSpecification overview = McpToolCatalog.create(
+                        tools, workers, responses, Duration.ofSeconds(1))
+                .stream().filter(candidate -> candidate.tool().name().equals("get_overview"))
+                .findFirst().orElseThrow();
+
+        McpSchema.CallToolResult result = overview.callHandler()
+                .apply(null, new McpSchema.CallToolRequest(
+                        "get_overview", Map.of(), Map.of()))
+                .block(Duration.ofSeconds(2));
+
+        assertTrue(Boolean.TRUE.equals(result.isError()));
+        assertTrue(text(result).contains("No projects configured"));
+    }
+
+    @Test
     void stdioServerStopsAndCancelsActiveToolWhenClientDisconnects() throws Exception {
         BlockingTools tools = new BlockingTools();
         PipedInputStream serverInput = new PipedInputStream();
@@ -137,6 +217,21 @@ class McpToolCatalogTest {
                 .orElseThrow();
     }
 
+    private McpSchema.CallToolResult call(
+            ValidationTools tools, String name, Map<String, Object> arguments) {
+        AsyncToolSpecification specification = McpToolCatalog.create(
+                        tools, ValidationTools.class, workers, responses, Duration.ofSeconds(1))
+                .stream().filter(candidate -> candidate.tool().name().equals(name))
+                .findFirst().orElseThrow();
+        return specification.callHandler()
+                .apply(null, new McpSchema.CallToolRequest(name, arguments, Map.of()))
+                .block(Duration.ofSeconds(2));
+    }
+
+    private static String text(McpSchema.CallToolResult result) {
+        return ((McpSchema.TextContent) result.content().getFirst()).text();
+    }
+
     static final class BlockingTools {
         final CountDownLatch started = new CountDownLatch(1);
         final CountDownLatch interrupted = new CountDownLatch(1);
@@ -157,6 +252,20 @@ class McpToolCatalogTest {
         @Tool(description = "Completes immediately")
         public String quick() {
             return "completed";
+        }
+    }
+
+    static final class ValidationTools {
+        int invocations;
+
+        @Tool(description = "Validates arguments")
+        public String validate(
+                @ToolArg(description = "Required target") String target,
+                @ToolArg(description = "Optional switch") Optional<Boolean> enabled,
+                @ToolArg(description = "Optional limit") Optional<Integer> limit) {
+            invocations++;
+            if (target.equals("missing")) return "{\"error\":\"target not found\"}";
+            return "{\"target\":\"" + target + "\"}";
         }
     }
 }

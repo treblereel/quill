@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.McpServerFeatures.AsyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.lang.reflect.InvocationTargetException;
@@ -20,6 +21,8 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
 
 final class McpToolCatalog {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private McpToolCatalog() {}
 
@@ -114,7 +117,8 @@ final class McpToolCatalog {
                     values[i] = convert(value, parameter.getType());
                 }
             }
-            return result((String) method.invoke(tools, values), false);
+            String text = (String) method.invoke(tools, values);
+            return result(text, isToolError(text));
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             return result("Tool failed: " + ProjectRegistry.safeMessage(cause), true);
@@ -136,8 +140,19 @@ final class McpToolCatalog {
 
     private static Object convert(Object value, Class<?> targetType) {
         if (targetType == Integer.class || targetType == int.class) {
-            if (value instanceof Number number) return number.intValue();
+            if (value instanceof Byte || value instanceof Short || value instanceof Integer) {
+                return ((Number) value).intValue();
+            }
+            if (value instanceof Long number
+                    && number >= Integer.MIN_VALUE && number <= Integer.MAX_VALUE) {
+                return number.intValue();
+            }
             throw new IllegalArgumentException("Expected integer, got " + value.getClass().getSimpleName());
+        }
+        if (targetType == Boolean.class || targetType == boolean.class) {
+            if (value instanceof Boolean) return value;
+            throw new IllegalArgumentException("Expected boolean, got "
+                    + value.getClass().getSimpleName());
         }
         if (targetType == String.class && !(value instanceof String)) {
             throw new IllegalArgumentException("Expected string, got " + value.getClass().getSimpleName());
@@ -160,6 +175,17 @@ final class McpToolCatalog {
         Class<?> raw = type instanceof ParameterizedType parameterized
                 ? optionalArgument(parameterized)
                 : (Class<?>) type;
-        return raw == Integer.class || raw == int.class ? "integer" : "string";
+        if (raw == Integer.class || raw == int.class) return "integer";
+        if (raw == Boolean.class || raw == boolean.class) return "boolean";
+        return "string";
+    }
+
+    private static boolean isToolError(String text) {
+        if (text == null || text.isBlank() || text.charAt(0) != '{') return false;
+        try {
+            return JSON.readTree(text).has("error");
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 }

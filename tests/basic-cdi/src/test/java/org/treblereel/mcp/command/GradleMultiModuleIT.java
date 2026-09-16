@@ -34,7 +34,7 @@ class GradleMultiModuleIT {
         InitCommand command = new InitCommand();
         command.projectPath = project;
         command.indexOnly = true;
-        command.run();
+        command.call();
 
         Path db = ProjectIndexStore.findDbForHead(project);
         assertNotNull(db);
@@ -100,7 +100,7 @@ class GradleMultiModuleIT {
         InitCommand command = new InitCommand();
         command.projectPath = springProject;
         command.indexOnly = true;
-        command.run();
+        command.call();
 
         Path db = ProjectIndexStore.findDbForHead(springProject);
         assertNotNull(db);

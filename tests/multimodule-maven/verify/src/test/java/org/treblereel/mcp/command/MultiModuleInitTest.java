@@ -31,7 +31,7 @@ class MultiModuleInitTest {
         InitCommand cmd = new InitCommand();
         cmd.projectPath = PROJECT_ROOT;
         cmd.indexOnly = true;
-        cmd.run();
+        cmd.call();
 
         Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         assertNotNull(dbPath, "index db should be created");

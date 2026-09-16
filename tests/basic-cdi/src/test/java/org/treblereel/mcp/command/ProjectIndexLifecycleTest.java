@@ -217,7 +217,7 @@ class ProjectIndexLifecycleTest {
             var cleaning = executor.submit(() -> {
                 CleanCommand command = new CleanCommand();
                 command.projectPath = tempDir;
-                command.run();
+                command.call();
             });
 
             Thread.sleep(100);

@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.Callable;
 import org.treblereel.mcp.command.CleanCommand;
 import org.treblereel.mcp.command.InitCommand;
 import org.treblereel.mcp.command.StatusCommand;
@@ -19,7 +20,7 @@ import picocli.CommandLine.Option;
 @Command(name = "quill", mixinStandardHelpOptions = true,
         versionProvider = QuillTopCommand.VersionProvider.class,
         subcommands = {InitCommand.class, UpdateCommand.class, StatusCommand.class, CleanCommand.class})
-public class QuillTopCommand implements Runnable {
+public class QuillTopCommand implements Callable<Integer> {
 
     @Option(names = "--mcp", description = "Start an MCP server (stdio transport)")
     boolean mcp;
@@ -28,8 +29,23 @@ public class QuillTopCommand implements Runnable {
     List<Path> projects;
 
     public static void main(String[] args) {
-        int exitCode = new CommandLine(new QuillTopCommand()).execute(args);
+        CommandLine commandLine = new CommandLine(new QuillTopCommand());
+        commandLine.setExecutionExceptionHandler((error, command, parseResult) -> {
+            command.getErr().println("[quill] " + rootMessage(error));
+            return CommandLine.ExitCode.SOFTWARE;
+        });
+        int exitCode = commandLine.execute(args);
         if (exitCode != 0) System.exit(exitCode);
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank()
+                ? current.getClass().getSimpleName() : message;
     }
 
     public static final class VersionProvider implements IVersionProvider {
@@ -57,7 +73,7 @@ public class QuillTopCommand implements Runnable {
     }
 
     @Override
-    public void run() {
+    public Integer call() {
         if (mcp) {
             ProjectRegistry registry = new ProjectRegistry();
             if (projects != null && !projects.isEmpty()) {
@@ -68,9 +84,10 @@ public class QuillTopCommand implements Runnable {
                 registry.register(null);
             }
             McpStdioServer.start(registry, System.in, System.out);
-            return;
+            return CommandLine.ExitCode.OK;
         }
         System.err.println("Use a subcommand (init, update, status) or --mcp to start the MCP server.");
         System.err.println("Run 'quill --help' for more information.");
+        return CommandLine.ExitCode.USAGE;
     }
 }

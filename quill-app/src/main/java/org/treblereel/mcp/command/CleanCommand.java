@@ -4,19 +4,21 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.concurrent.Callable;
 import java.util.stream.Stream;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-@Command(name = "clean", description = "Remove .quill and Quill build integration")
-public class CleanCommand implements Runnable {
+@Command(name = "clean", mixinStandardHelpOptions = true,
+        description = "Remove .quill and Quill build integration")
+public class CleanCommand implements Callable<Integer> {
 
     @Option(names = "--project", description = "Path to project root")
     Path projectPath;
 
     @Override
-    public void run() {
+    public Integer call() {
         Path root = ProjectRootFinder.find(projectPath);
         Path lockedRoot = root;
 
@@ -34,12 +36,13 @@ public class CleanCommand implements Runnable {
             }
         } catch (IOException e) {
             System.err.println("Failed to clean index: " + e.getMessage());
-            return;
+            return picocli.CommandLine.ExitCode.SOFTWARE;
         }
 
         if (integration == BuildIntegrationInstaller.Result.REMOVED) {
             System.out.println("Build integration removed.");
         }
+        return picocli.CommandLine.ExitCode.OK;
     }
 
     private static boolean cleanIndexData(Path root) throws IOException {

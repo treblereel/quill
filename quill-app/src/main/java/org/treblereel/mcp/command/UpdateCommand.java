@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import org.treblereel.mcp.core.WorktreeInspector;
@@ -12,8 +13,9 @@ import org.treblereel.mcp.db.QuillDatabase;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-@Command(name = "update", description = "Incrementally update the project index")
-public class UpdateCommand implements Runnable {
+@Command(name = "update", mixinStandardHelpOptions = true,
+        description = "Incrementally update the project index")
+public class UpdateCommand implements Callable<Integer> {
 
     @Option(names = "--project", description = "Path to project root")
     Path projectPath;
@@ -22,7 +24,7 @@ public class UpdateCommand implements Runnable {
     boolean force;
 
     @Override
-    public void run() {
+    public Integer call() {
         Path root = ProjectRootFinder.find(projectPath);
 
         Path lockedRoot = root;
@@ -31,8 +33,10 @@ public class UpdateCommand implements Runnable {
                 updateLocked(lockedRoot, System.out::println, false);
                 return null;
             });
+            return picocli.CommandLine.ExitCode.OK;
         } catch (IOException e) {
-            throw new RuntimeException("Could not lock index for " + root, e);
+            System.err.println("[quill] Could not lock index for " + root + ": " + e.getMessage());
+            return picocli.CommandLine.ExitCode.SOFTWARE;
         }
     }
 

@@ -43,7 +43,7 @@ class UpdateCommandTest {
         try {
             UpdateCommand cmd = new UpdateCommand();
             cmd.projectPath = PROJECT_ROOT;
-            cmd.run();
+            cmd.call();
         } finally {
             System.setOut(original);
         }
@@ -59,7 +59,7 @@ class UpdateCommandTest {
         InitCommand init = new InitCommand();
         init.projectPath = PROJECT_ROOT;
         init.indexOnly = true;
-        init.run();
+        init.call();
 
         assertNotNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
 
@@ -69,7 +69,7 @@ class UpdateCommandTest {
         try {
             UpdateCommand cmd = new UpdateCommand();
             cmd.projectPath = PROJECT_ROOT;
-            cmd.run();
+            cmd.call();
         } finally {
             System.setOut(original);
         }
@@ -84,7 +84,7 @@ class UpdateCommandTest {
         InitCommand init = new InitCommand();
         init.projectPath = PROJECT_ROOT;
         init.indexOnly = true;
-        init.run();
+        init.call();
 
         // Touch a .class file in target/classes to make it newer than indexed_at
         Thread.sleep(1100);
@@ -105,7 +105,7 @@ class UpdateCommandTest {
         try {
             UpdateCommand cmd = new UpdateCommand();
             cmd.projectPath = PROJECT_ROOT;
-            cmd.run();
+            cmd.call();
         } finally {
             System.setOut(original);
         }
@@ -120,7 +120,7 @@ class UpdateCommandTest {
         InitCommand init = new InitCommand();
         init.projectPath = PROJECT_ROOT;
         init.indexOnly = true;
-        init.run();
+        init.call();
         Path previousDatabase = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -130,7 +130,7 @@ class UpdateCommandTest {
             UpdateCommand cmd = new UpdateCommand();
             cmd.projectPath = PROJECT_ROOT;
             cmd.force = true;
-            cmd.run();
+            cmd.call();
         } finally {
             System.setOut(original);
         }
@@ -152,7 +152,7 @@ class UpdateCommandTest {
         InitCommand init = new InitCommand();
         init.projectPath = PROJECT_ROOT;
         init.indexOnly = true;
-        init.run();
+        init.call();
 
         Path currentDatabase = ProjectIndexStore.findExactDbForHead(PROJECT_ROOT);
         assertNotNull(currentDatabase);
@@ -172,7 +172,7 @@ class UpdateCommandTest {
         try {
             UpdateCommand command = new UpdateCommand();
             command.projectPath = PROJECT_ROOT;
-            command.run();
+            command.call();
         } finally {
             System.setOut(original);
         }

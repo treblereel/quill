@@ -2,6 +2,7 @@ package org.treblereel.mcp.command;
 
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import org.treblereel.mcp.db.IndexReader;
@@ -10,21 +11,21 @@ import org.treblereel.mcp.model.MetaEnvelope;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-@Command(name = "status", description = "Show index state and diagnostics")
-public class StatusCommand implements Runnable {
+@Command(name = "status", mixinStandardHelpOptions = true,
+        description = "Show index state and diagnostics")
+public class StatusCommand implements Callable<Integer> {
 
     @Option(names = "--project", description = "Path to project root")
     Path projectPath;
 
     @Override
-    public void run() {
+    public Integer call() {
         Path root = ProjectRootFinder.find(projectPath);
         Path dbPath = ProjectIndexStore.findBestAvailableDb(root);
 
         if (dbPath == null) {
             System.err.println("No index found. Run: quill init --project " + root);
-            System.exit(1);
-            return;
+            return picocli.CommandLine.ExitCode.SOFTWARE;
         }
 
         try {
@@ -57,9 +58,10 @@ public class StatusCommand implements Runnable {
             if (!classes.isEmpty()) {
                 System.out.println("  Avg tokens/class:    " + String.format("%,d", totalTokens / classes.size()));
             }
+            return picocli.CommandLine.ExitCode.OK;
         } catch (IllegalStateException | QuillDatabase.SchemaVersionException e) {
             System.err.println(e.getMessage());
-            System.exit(1);
+            return picocli.CommandLine.ExitCode.SOFTWARE;
         } catch (Exception e) {
             throw new RuntimeException("Failed to read index from " + dbPath, e);
         }

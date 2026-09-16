@@ -37,7 +37,7 @@ class McpStdioIT {
         InitCommand cmd = new InitCommand();
         cmd.projectPath = PROJECT_ROOT;
         cmd.indexOnly = true;
-        cmd.run();
+        cmd.call();
         assertNotNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
     }
 
@@ -228,7 +228,7 @@ class McpStdioIT {
                 UpdateCommand update = new UpdateCommand();
                 update.projectPath = PROJECT_ROOT;
                 update.force = true;
-                update.run();
+                update.call();
                 Path currentDatabase = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
                 assertNotEquals(previousDatabase, currentDatabase,
                         "Every forced update must publish a new immutable generation");
@@ -483,7 +483,7 @@ class McpStdioIT {
         InitCommand command = new InitCommand();
         command.projectPath = gradleProject;
         command.indexOnly = true;
-        command.run();
+        command.call();
         assertNotNull(ProjectIndexStore.findDbForHead(gradleProject));
         assertTrue(Files.isRegularFile(gradleProject.resolve("build/quill-classpath.txt")));
         return gradleProject;

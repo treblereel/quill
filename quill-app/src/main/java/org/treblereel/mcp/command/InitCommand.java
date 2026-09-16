@@ -1,13 +1,15 @@
 package org.treblereel.mcp.command;
 
 import java.nio.file.Path;
+import java.util.concurrent.Callable;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-@Command(name = "init", description = "Index a Maven or Gradle Java project's "
+@Command(name = "init", mixinStandardHelpOptions = true,
+        description = "Index a Maven or Gradle Java project's "
         + "dependency graph (CDI and Spring).")
-public class InitCommand implements Runnable {
+public class InitCommand implements Callable<Integer> {
 
     @Option(names = "--project", description = "Path to project root")
     Path projectPath;
@@ -20,7 +22,7 @@ public class InitCommand implements Runnable {
     boolean timings;
 
     @Override
-    public void run() {
+    public Integer call() {
         Path root = ProjectRootFinder.find(projectPath);
 
         System.out.println("Indexing project at " + root + " ...");
@@ -32,7 +34,8 @@ public class InitCommand implements Runnable {
         if (!result.successful()) {
             System.err.println("[quill] " + result.diagnostic()
                     + " (after " + result.elapsedMillis() + " ms)");
-            System.exit(2);
+            return picocli.CommandLine.ExitCode.SOFTWARE;
         }
+        return picocli.CommandLine.ExitCode.OK;
     }
 }

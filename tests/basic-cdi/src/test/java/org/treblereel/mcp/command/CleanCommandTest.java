@@ -31,13 +31,13 @@ class CleanCommandTest {
         InitCommand init = new InitCommand();
         init.projectPath = PROJECT_ROOT;
         init.indexOnly = true;
-        init.run();
+        init.call();
 
         assertNotNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
 
         CleanCommand cmd = new CleanCommand();
         cmd.projectPath = PROJECT_ROOT;
-        cmd.run();
+        cmd.call();
 
         assertNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
         assertFalse(Files.exists(QUILL_DIR));
@@ -51,7 +51,7 @@ class CleanCommandTest {
         try {
             CleanCommand cmd = new CleanCommand();
             cmd.projectPath = PROJECT_ROOT;
-            cmd.run();
+            cmd.call();
         } finally {
             System.setOut(original);
         }

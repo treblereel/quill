@@ -48,7 +48,7 @@ class MultiModuleCommandsTest {
         try {
             UpdateCommand cmd = new UpdateCommand();
             cmd.projectPath = PROJECT_ROOT;
-            cmd.run();
+            cmd.call();
         } finally {
             System.setOut(original);
         }
@@ -66,7 +66,7 @@ class MultiModuleCommandsTest {
         try {
             StatusCommand cmd = new StatusCommand();
             cmd.projectPath = PROJECT_ROOT;
-            cmd.run();
+            cmd.call();
         } finally {
             System.setOut(original);
         }
@@ -82,7 +82,7 @@ class MultiModuleCommandsTest {
 
         CleanCommand cmd = new CleanCommand();
         cmd.projectPath = PROJECT_ROOT;
-        cmd.run();
+        cmd.call();
 
         assertNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
         assertFalse(Files.exists(QUILL_DIR));

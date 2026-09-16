@@ -73,7 +73,7 @@ class BuildIntegrationInstallerTest {
 
         CleanCommand clean = new CleanCommand();
         clean.projectPath = tempDir;
-        clean.run();
+        clean.call();
 
         assertFalse(Files.exists(tempDir.resolve(".quill")));
         assertFalse(Files.exists(tempDir.resolve(".mvn/extensions.xml")));

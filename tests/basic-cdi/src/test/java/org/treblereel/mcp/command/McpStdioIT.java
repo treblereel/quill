@@ -28,7 +28,7 @@ class McpStdioIT {
     private static final ObjectMapper JSON = new ObjectMapper();
     static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"));
     static final Path QUILL_DIR = PROJECT_ROOT.resolve(".quill");
-    static final Path GRADLE_PROJECT = PROJECT_ROOT.getParent().resolve("gradle-basic");
+    static final Path GRADLE_FIXTURE = PROJECT_ROOT.getParent().resolve("gradle-basic");
 
     @TempDir Path tempDir;
 
@@ -157,14 +157,10 @@ class McpStdioIT {
     void mcpStdioHandlesPipelinedToolCallsAcrossProjects() throws Exception {
         Path appJar = resolveAppJar();
         Assumptions.assumeTrue(Files.exists(appJar));
-        prepareGradleProject();
-        try {
-            assertPipelinedToolCalls(
-                    List.of("java", "-jar", appJar.toString()),
-                    List.of(PROJECT_ROOT, GRADLE_PROJECT));
-        } finally {
-            deleteTree(GRADLE_PROJECT.resolve(".quill"));
-        }
+        Path gradleProject = prepareGradleProject();
+        assertPipelinedToolCalls(
+                List.of("java", "-jar", appJar.toString()),
+                List.of(PROJECT_ROOT, gradleProject));
     }
 
     @Test
@@ -283,24 +279,17 @@ class McpStdioIT {
     void gradleProjectWorksThroughJarMcp() throws Exception {
         Path appJar = resolveAppJar();
         Assumptions.assumeTrue(Files.exists(appJar));
-        prepareGradleProject();
-        try {
-            assertToolsListAndCall(List.of("java", "-jar", appJar.toString()), GRADLE_PROJECT, 2);
-        } finally {
-            deleteTree(GRADLE_PROJECT.resolve(".quill"));
-        }
+        Path gradleProject = prepareGradleProject();
+        assertToolsListAndCall(
+                List.of("java", "-jar", appJar.toString()), gradleProject, 2);
     }
 
     @Test
     void gradleProjectWorksThroughNativeMcp() throws Exception {
         Path nativeImage = resolveNativeImage();
         Assumptions.assumeTrue(Files.isExecutable(nativeImage));
-        prepareGradleProject();
-        try {
-            assertToolsListAndCall(List.of(nativeImage.toString()), GRADLE_PROJECT, 2);
-        } finally {
-            deleteTree(GRADLE_PROJECT.resolve(".quill"));
-        }
+        Path gradleProject = prepareGradleProject();
+        assertToolsListAndCall(List.of(nativeImage.toString()), gradleProject, 2);
     }
 
     private void assertToolsListAndCall(
@@ -475,35 +464,29 @@ class McpStdioIT {
         assertFalse(stderr.toString().contains("restricted method"), stderr.toString());
     }
 
-    private void prepareGradleProject() throws Exception {
-        assertTrue(Files.isRegularFile(GRADLE_PROJECT.resolve("build.gradle")));
-        Process probe = new ProcessBuilder(BuildSystem.GRADLE.command(GRADLE_PROJECT, "--version"))
+    private Path prepareGradleProject() throws Exception {
+        Path gradleProject = TestProjectCopies.copyFixture(
+                GRADLE_FIXTURE, tempDir.resolve("gradle-basic"));
+        assertTrue(Files.isRegularFile(gradleProject.resolve("build.gradle")));
+        Process probe = new ProcessBuilder(
+                BuildSystem.GRADLE.command(gradleProject, "--version"))
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.DISCARD).start();
         assertTrue(probe.waitFor(10, TimeUnit.SECONDS) && probe.exitValue() == 0,
                 "Gradle executable is required for the Gradle integration test");
         Process clean = new ProcessBuilder(BuildSystem.GRADLE.command(
-                GRADLE_PROJECT, "clean", "classes", "--quiet"))
-                .directory(GRADLE_PROJECT.toFile())
+                gradleProject, "clean", "classes", "--quiet"))
+                .directory(gradleProject.toFile())
                 .inheritIO()
                 .start();
         assertEquals(0, clean.waitFor(), "Gradle fixture build must succeed");
-        deleteTree(GRADLE_PROJECT.resolve(".quill"));
-
         InitCommand command = new InitCommand();
-        command.projectPath = GRADLE_PROJECT;
+        command.projectPath = gradleProject;
         command.indexOnly = true;
         command.run();
-        assertNotNull(ProjectIndexStore.findDbForHead(GRADLE_PROJECT));
-        assertTrue(Files.isRegularFile(GRADLE_PROJECT.resolve("build/quill-classpath.txt")));
-    }
-
-    private static void deleteTree(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        try (var walk = Files.walk(root)) {
-            List<Path> paths = walk.sorted(Comparator.reverseOrder()).toList();
-            for (Path path : paths) Files.deleteIfExists(path);
-        }
+        assertNotNull(ProjectIndexStore.findDbForHead(gradleProject));
+        assertTrue(Files.isRegularFile(gradleProject.resolve("build/quill-classpath.txt")));
+        return gradleProject;
     }
 
     @Test

@@ -1,0 +1,82 @@
+package org.treblereel.mcp.mcp;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.List;
+import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.FileRecord;
+
+/** Resolves the class identifiers accepted by MCP tools into one current index entity. */
+final class ClassTargetResolver {
+
+    record Lookup(ClassRecord cls, String error, List<ClassRecord> candidates,
+            List<FileRecord> fileCandidates) {
+        static Lookup found(ClassRecord cls) {
+            return new Lookup(cls, null, List.of(), List.of());
+        }
+
+        static Lookup error(String message, List<ClassRecord> candidates,
+                List<FileRecord> fileCandidates) {
+            return new Lookup(null, message, candidates, fileCandidates);
+        }
+
+        boolean found() {
+            return cls != null;
+        }
+    }
+
+    private ClassTargetResolver() {}
+
+    static Lookup resolve(Jdbi jdbi, String target) {
+        var exactName = IndexReader.findClassByName(jdbi, target);
+        if (exactName.isPresent()) return Lookup.found(exactName.get());
+
+        var exactPath = IndexReader.findClassByPath(jdbi, target);
+        if (exactPath.isPresent()) return Lookup.found(exactPath.get());
+
+        if (!target.contains(".")) {
+            List<ClassRecord> shortNameCandidates =
+                    IndexReader.findClassesByShortName(jdbi, target);
+            if (shortNameCandidates.size() > 1) {
+                return Lookup.error("Ambiguous class name", shortNameCandidates, List.of());
+            }
+        }
+
+        String basename = target.replace('\\', '/');
+        basename = basename.substring(basename.lastIndexOf('/') + 1);
+        if (basename.endsWith(".java") || basename.endsWith(".kt")) {
+            basename = basename.substring(0, basename.lastIndexOf('.'));
+        }
+        return Lookup.error(
+                "Class not found",
+                IndexReader.searchClasses(jdbi, basename, 5),
+                IndexReader.findFileCandidates(jdbi, target, 5));
+    }
+
+    static ObjectNode errorResponse(ObjectMapper json, Lookup lookup, String target) {
+        ObjectNode root = json.createObjectNode();
+        root.put("error", lookup.error());
+        root.put("target", target);
+        root.set("accepted_target_types", json.valueToTree(
+                List.of("fqcn", "short_class_name", "project_path", "repository_path")));
+        ArrayNode candidates = root.putArray("candidates");
+        for (ClassRecord candidate : lookup.candidates()) {
+            ObjectNode node = candidates.addObject();
+            node.put("class", candidate.className());
+            node.put("file", candidate.sourceFile());
+            node.put("origin", candidate.origin());
+            node.put("lifecycle", candidate.lifecycle());
+        }
+        for (FileRecord candidate : lookup.fileCandidates()) {
+            ObjectNode node = candidates.addObject();
+            node.put("file", candidate.repositoryPath());
+            node.put("origin", candidate.origin());
+            node.put("lifecycle", candidate.lifecycle());
+            node.put("reason", "matching Java source basename");
+        }
+        return root;
+    }
+}

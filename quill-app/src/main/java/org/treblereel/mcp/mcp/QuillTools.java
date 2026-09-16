@@ -341,7 +341,7 @@ public class QuillTools {
     }
 
     String getDependencies(Jdbi jdbi, String target, String direction, int depth) {
-        var lookup = resolveClass(jdbi, target);
+        var lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
 
@@ -424,7 +424,7 @@ public class QuillTools {
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {
-        var lookup = resolveClass(jdbi, target);
+        var lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
 
@@ -577,7 +577,7 @@ public class QuillTools {
     String getFileHistory(Jdbi jdbi, String target, int limit) {
         if (!IndexReader.hasGitData(jdbi)) return errorResponse(NO_GIT_MESSAGE);
 
-        var lookup = resolveClass(jdbi, target);
+        var lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) {
             String filePath = resolveGitPath(jdbi, target);
             List<GitCommitRecord> commits = IndexReader.findFileHistoryByPath(jdbi, filePath, limit);
@@ -610,7 +610,7 @@ public class QuillTools {
     String getCoChanges(Jdbi jdbi, String target, int limit) {
         if (!IndexReader.hasGitData(jdbi)) return errorResponse(NO_GIT_MESSAGE);
 
-        var lookup = resolveClass(jdbi, target);
+        var lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) {
             String filePath = resolveGitPath(jdbi, target);
             List<CoChangeRecord> coChanges = IndexReader.findCoChangesByPath(jdbi, filePath, limit);
@@ -854,7 +854,7 @@ public class QuillTools {
     }
 
     String getRisk(Jdbi jdbi, String target) {
-        var lookup = resolveClass(jdbi, target);
+        var lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) {
             if ("Class not found".equals(lookup.error())) {
                 Optional<FileRiskTarget> file = resolveFileRiskTarget(jdbi, target);
@@ -1194,7 +1194,7 @@ public class QuillTools {
         ObjectNode root = JSON.createObjectNode();
 
         if (target != null) {
-            var lookup = resolveClass(jdbi, target);
+            var lookup = ClassTargetResolver.resolve(jdbi, target);
             if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
             ClassRecord cls = lookup.cls();
 
@@ -1366,62 +1366,9 @@ public class QuillTools {
         return JSON.createObjectNode().put("error", message).toString();
     }
 
-    private record ClassLookup(ClassRecord cls, String error, List<ClassRecord> candidates,
-            List<FileRecord> fileCandidates) {
-        static ClassLookup of(ClassRecord cls) {
-            return new ClassLookup(cls, null, List.of(), List.of());
-        }
-        static ClassLookup error(String msg, List<ClassRecord> candidates,
-                List<FileRecord> fileCandidates) {
-            return new ClassLookup(null, msg, candidates, fileCandidates);
-        }
-    }
-
-    private ClassLookup resolveClass(Jdbi jdbi, String target) {
-        var opt = IndexReader.findClassByName(jdbi, target);
-        if (opt.isPresent()) return ClassLookup.of(opt.get());
-
-        opt = IndexReader.findClassByPath(jdbi, target);
-        if (opt.isPresent()) return ClassLookup.of(opt.get());
-
-        if (!target.contains(".")) {
-            var candidates = IndexReader.findClassesByShortName(jdbi, target);
-            if (candidates.size() > 1) {
-                var names = candidates.stream().map(ClassRecord::className).toList();
-                return ClassLookup.error("Ambiguous class name", candidates, List.of());
-            }
-        }
-        String basename = target.replace('\\', '/');
-        basename = basename.substring(basename.lastIndexOf('/') + 1);
-        if (basename.endsWith(".java") || basename.endsWith(".kt")) {
-            basename = basename.substring(0, basename.lastIndexOf('.'));
-        }
-        List<ClassRecord> candidates = IndexReader.searchClasses(jdbi, basename, 5);
-        List<FileRecord> fileCandidates = IndexReader.findFileCandidates(jdbi, target, 5);
-        return ClassLookup.error("Class not found", candidates, fileCandidates);
-    }
-
-    private String classLookupError(Jdbi jdbi, ClassLookup lookup, String target) {
-        ObjectNode root = JSON.createObjectNode();
-        root.put("error", lookup.error());
-        root.put("target", target);
-        root.set("accepted_target_types", JSON.valueToTree(
-                List.of("fqcn", "short_class_name", "project_path", "repository_path")));
-        ArrayNode candidates = root.putArray("candidates");
-        for (ClassRecord candidate : lookup.candidates()) {
-            ObjectNode node = candidates.addObject();
-            node.put("class", candidate.className());
-            node.put("file", candidate.sourceFile());
-            node.put("origin", candidate.origin());
-            node.put("lifecycle", candidate.lifecycle());
-        }
-        for (FileRecord candidate : lookup.fileCandidates()) {
-            ObjectNode node = candidates.addObject();
-            node.put("file", candidate.repositoryPath());
-            node.put("origin", candidate.origin());
-            node.put("lifecycle", candidate.lifecycle());
-            node.put("reason", "matching Java source basename");
-        }
+    private String classLookupError(
+            Jdbi jdbi, ClassTargetResolver.Lookup lookup, String target) {
+        ObjectNode root = ClassTargetResolver.errorResponse(JSON, lookup, target);
         appendMeta(root, jdbi, 0);
         return root.toString();
     }

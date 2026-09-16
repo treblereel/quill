@@ -25,7 +25,7 @@ TOOLS = (
     ("get_overview", {}),
     ("search_classes", {"pattern": "*Service", "limit": 25}),
     ("find_git_hotspots", {"limit": 25}),
-    ("list_cdi_beans", {"limit": 25}),
+    ("list_beans", {"limit": 25}),
     ("get_recent_changes", {"commits": 10}),
 )
 

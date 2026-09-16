@@ -157,19 +157,6 @@ public class QuillTools {
                 kind.orElse(null), profile.orElse(null), qualifier.orElse(null), clamp(limit.orElse(50), 1, 100)));
     }
 
-    @Tool(description = "Alias for list_beans. List beans (CDI or Spring) with optional filtering. "
-            + "Returns: {beans: [{class, kind, scope, qualifiers, bean_types, profiles, source}], total, showing, _meta}")
-    public String list_cdi_beans(
-            @ToolArg(description = "Class name filter (supports * wildcard)") Optional<String> class_name,
-            @ToolArg(description = "Scope filter, e.g. @ApplicationScoped") Optional<String> scope,
-            @ToolArg(description = "Bean kind: CLASS, PRODUCER_METHOD, PRODUCER_FIELD, INTERCEPTOR, DECORATOR") Optional<String> kind,
-            @ToolArg(description = "Build profile filter, e.g. dev") Optional<String> profile,
-            @ToolArg(description = "Qualifier filter, e.g. @Premium") Optional<String> qualifier,
-            @ToolArg(description = "Max results to return (default: 50)") Optional<Integer> limit,
-            @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
-        return list_beans(class_name, scope, kind, profile, qualifier, limit, project);
-    }
-
     @Tool(description = "Get dependency graph for a specific bean or class. Use instead of grep for imports/references when you need to understand what a class uses or what uses it. "
             + "Returns unique fan-in/fan-out separately from reference occurrence counts and groups metrics by source/generated origin. "
             + "Returns: {target, origin, lifecycle, metrics, depends_on: [{class, kind, occurrences}], depended_by: [{class, kind, occurrences}], _meta}")

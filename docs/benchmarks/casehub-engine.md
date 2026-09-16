@@ -36,7 +36,7 @@ Cache-hit MCP latency:
 | `get_overview` | 16.28 ms | 27.62 ms | 27.62 ms | 0 |
 | `search_classes` | 1.47 ms | 1.81 ms | 1.81 ms | 0 |
 | `find_git_hotspots` | 11.59 ms | 30.03 ms | 30.03 ms | 0 |
-| `list_cdi_beans` | 3.16 ms | 5.52 ms | 5.52 ms | 0 |
+| `list_beans` | 3.16 ms | 5.52 ms | 5.52 ms | 0 |
 | `get_recent_changes` | 1.22 ms | 1.46 ms | 1.46 ms | 0 |
 
 | Concurrent requests | Total | Requests/s | p50 | p95 | Max | Errors |
@@ -99,7 +99,7 @@ artifacts when collecting external dependencies for a multi-module project.
 - SQLite size: 3.34 MiB
 - MCP startup: 0.015 s
 - Tool mix: `get_overview`, `search_classes`, `find_git_hotspots`,
-  `list_cdi_beans`, `get_recent_changes`
+  `list_beans`, `get_recent_changes`
 
 | Concurrent requests | Total | Requests/s | p50 | p95 | Max | Errors |
 |---:|---:|---:|---:|---:|---:|---:|
@@ -131,7 +131,7 @@ warmup requests.
 | `get_overview` | 20 | 17.70 ms | 31.84 ms | 34.59 ms | 0 |
 | `search_classes` | 20 | 2.04 ms | 2.23 ms | 3.39 ms | 0 |
 | `find_git_hotspots` | 20 | 9.41 ms | 10.58 ms | 13.28 ms | 0 |
-| `list_cdi_beans` | 20 | 3.38 ms | 3.64 ms | 4.02 ms | 0 |
+| `list_beans` | 20 | 3.38 ms | 3.64 ms | 4.02 ms | 0 |
 | `get_recent_changes` | 20 | 2.82 ms | 2.94 ms | 3.06 ms | 0 |
 
 | Concurrent requests | Total | Requests/s | p50 | p95 | Max | Errors |

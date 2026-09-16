@@ -347,16 +347,16 @@ class McpStdioIT {
             boolean hasListIps = false;
             for (JsonNode tool : tools) {
                 String name = tool.get("name").asText();
-                if ("list_beans".equals(name) || "list_cdi_beans".equals(name)) hasListBeans = true;
+                if ("list_beans".equals(name)) hasListBeans = true;
                 if ("get_dependencies".equals(name)) hasGetDeps = true;
                 if ("list_injection_points".equals(name)) hasListIps = true;
             }
-            assertTrue(hasListBeans, "Should include list_beans or list_cdi_beans tool");
+            assertTrue(hasListBeans, "Should include list_beans tool");
             assertTrue(hasGetDeps, "Should include get_dependencies tool");
             assertTrue(hasListIps, "Should include list_injection_points tool");
 
             sendRequest(stdin, 3, "tools/call",
-                    "{\"name\":\"list_cdi_beans\",\"arguments\":{}}");
+                    "{\"name\":\"list_beans\",\"arguments\":{}}");
             JsonNode callResp = readResponse(stdout, 3);
             assertNotNull(callResp.get("result"), "tools/call should return a result");
             JsonNode content = callResp.get("result").get("content");
@@ -368,7 +368,7 @@ class McpStdioIT {
             assertTrue(beansResult.has("_meta"), "Response should contain _meta envelope");
 
             sendRequest(stdin, 4, "tools/call",
-                    "{\"name\":\"list_cdi_beans\",\"arguments\":{\"unexpected\":true}}");
+                    "{\"name\":\"list_beans\",\"arguments\":{\"unexpected\":true}}");
             JsonNode invalidCall = readResponse(stdout, 4).get("result");
             assertNotNull(invalidCall, "Invalid tool input should return a tool result");
             assertTrue(invalidCall.get("isError").asBoolean());
@@ -432,7 +432,7 @@ class McpStdioIT {
             requests.put(12, "{\"name\":\"get_dependencies\",\"arguments\":{\"target\":\"GreetingService\"}}");
             requests.put(13, "{\"name\":\"find_git_hotspots\",\"arguments\":{\"limit\":5}}");
             requests.put(14, "{\"name\":\"search_classes\",\"arguments\":{\"unexpected\":true}}");
-            requests.put(15, "{\"name\":\"list_cdi_beans\",\"arguments\":{\"limit\":5}}");
+            requests.put(15, "{\"name\":\"list_beans\",\"arguments\":{\"limit\":5}}");
             requests.put(16, "{\"name\":\"get_recent_changes\",\"arguments\":{\"commits\":3}}");
             requests.put(17, "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*\",\"limit\":5}}");
             if (projectRoots.size() > 1) {

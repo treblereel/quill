@@ -33,7 +33,7 @@ Cache-hit MCP latency:
 | `get_overview` | 15.23 ms | 27.30 ms | 27.30 ms | 0 |
 | `search_classes` | 0.80 ms | 0.96 ms | 0.96 ms | 0 |
 | `find_git_hotspots` | 8.83 ms | 28.33 ms | 28.33 ms | 0 |
-| `list_cdi_beans` | 2.30 ms | 3.31 ms | 3.31 ms | 0 |
+| `list_beans` | 2.30 ms | 3.31 ms | 3.31 ms | 0 |
 | `get_recent_changes` | 1.91 ms | 2.09 ms | 2.09 ms | 0 |
 
 | Concurrent requests | Total | Requests/s | p50 | p95 | Max | Errors |

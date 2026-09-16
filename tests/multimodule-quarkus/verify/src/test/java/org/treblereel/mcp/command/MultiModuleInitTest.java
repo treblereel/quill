@@ -33,7 +33,7 @@ class MultiModuleInitTest {
         cmd.indexOnly = true;
         cmd.run();
 
-        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         assertNotNull(dbPath, "index db should be created");
 
         Jdbi jdbi = QuillDatabase.open(dbPath);

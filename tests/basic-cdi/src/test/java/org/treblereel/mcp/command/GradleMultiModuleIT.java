@@ -36,7 +36,7 @@ class GradleMultiModuleIT {
             command.indexOnly = true;
             command.run();
 
-            Path db = ProjectInitializer.findDbForHead(PROJECT);
+            Path db = ProjectIndexStore.findDbForHead(PROJECT);
             assertNotNull(db);
             var jdbi = QuillDatabase.open(db);
             assertEquals(4, IndexReader.findAllClasses(jdbi).size());
@@ -107,7 +107,7 @@ class GradleMultiModuleIT {
             command.indexOnly = true;
             command.run();
 
-            Path db = ProjectInitializer.findDbForHead(SPRING_PROJECT);
+            Path db = ProjectIndexStore.findDbForHead(SPRING_PROJECT);
             assertNotNull(db);
             var jdbi = QuillDatabase.open(db);
             assertEquals("Spring", IndexReader.getMetadata(jdbi).get("framework"));

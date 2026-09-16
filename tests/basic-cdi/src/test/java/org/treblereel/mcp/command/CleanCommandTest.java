@@ -33,13 +33,13 @@ class CleanCommandTest {
         init.indexOnly = true;
         init.run();
 
-        assertNotNull(ProjectInitializer.findDbForHead(PROJECT_ROOT));
+        assertNotNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
 
         CleanCommand cmd = new CleanCommand();
         cmd.projectPath = PROJECT_ROOT;
         cmd.run();
 
-        assertNull(ProjectInitializer.findDbForHead(PROJECT_ROOT));
+        assertNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
         assertFalse(Files.exists(QUILL_DIR));
     }
 

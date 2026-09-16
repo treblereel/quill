@@ -12,6 +12,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.treblereel.mcp.command.ProjectIndexStore;
 import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
 import org.jdbi.v3.core.Jdbi;
@@ -34,7 +35,7 @@ class AnnotationProcessingIndexTest {
     @BeforeAll
     static void indexFixture() {
         assertTrue(ProjectInitializer.initialize(PROJECT_ROOT, true));
-        Path database = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Path database = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         assertNotNull(database);
         jdbi = QuillDatabase.open(database);
     }

@@ -38,7 +38,7 @@ class McpStdioIT {
         cmd.projectPath = PROJECT_ROOT;
         cmd.indexOnly = true;
         cmd.run();
-        assertNotNull(ProjectInitializer.findDbForHead(PROJECT_ROOT));
+        assertNotNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
     }
 
     @AfterEach
@@ -217,7 +217,7 @@ class McpStdioIT {
                     "{\"name\":\"get_overview\",\"arguments\":{}}");
             String previousIndex = toolText(readResponse(output, 2))
                     .path("_meta").path("index_id").asText();
-            Path previousDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+            Path previousDatabase = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
 
             for (int publication = 0; publication < 7; publication++) {
                 Set<Integer> inFlightIds = new LinkedHashSet<>();
@@ -233,7 +233,7 @@ class McpStdioIT {
                 update.projectPath = PROJECT_ROOT;
                 update.force = true;
                 update.run();
-                Path currentDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+                Path currentDatabase = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
                 assertNotEquals(previousDatabase, currentDatabase,
                         "Every forced update must publish a new immutable generation");
 
@@ -268,7 +268,7 @@ class McpStdioIT {
                                 path.getFileName().toString().endsWith(".db")).count() <= 5,
                         "Immutable generation cleanup must enforce the LRU limit");
             }
-            for (String indexId : ProjectInitializer.readRefs(
+            for (String indexId : ProjectIndexStore.readRefs(
                     QUILL_DIR.resolve("refs.json")).values()) {
                 assertTrue(Files.isRegularFile(QUILL_DIR.resolve(indexId + ".db")),
                         "Every published ref must resolve to an existing database");
@@ -494,7 +494,7 @@ class McpStdioIT {
         command.projectPath = GRADLE_PROJECT;
         command.indexOnly = true;
         command.run();
-        assertNotNull(ProjectInitializer.findDbForHead(GRADLE_PROJECT));
+        assertNotNull(ProjectIndexStore.findDbForHead(GRADLE_PROJECT));
         assertTrue(Files.isRegularFile(GRADLE_PROJECT.resolve("build/quill-classpath.txt")));
     }
 

@@ -51,9 +51,9 @@ public class UpdateCommand implements Runnable {
 
     private void updateLocked(
             Path root, Consumer<String> output, boolean externallyCompiled) {
-        Path exactDb = ProjectInitializer.findExactDbForHead(root);
+        Path exactDb = ProjectIndexStore.findExactDbForHead(root);
         Path existingDb = exactDb != null
-                ? exactDb : ProjectInitializer.findBestAvailableDb(root);
+                ? exactDb : ProjectIndexStore.findBestAvailableDb(root);
         if (existingDb == null) {
             output.accept("No existing index found. Running full init...");
             runInit(root, null, externallyCompiled);

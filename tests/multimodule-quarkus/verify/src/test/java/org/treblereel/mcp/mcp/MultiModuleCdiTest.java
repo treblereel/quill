@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.treblereel.mcp.command.ProjectIndexStore;
 import java.util.Comparator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,7 +27,7 @@ class MultiModuleCdiTest {
     @BeforeAll
     static void indexProject() {
         assertTrue(ProjectInitializer.initialize(PROJECT_ROOT, true));
-        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         assertNotNull(dbPath);
         jdbi = QuillDatabase.open(dbPath);
     }

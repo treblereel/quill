@@ -64,11 +64,11 @@ class ProjectIndexLifecycleTest {
             git.commit().setMessage("head moved")
                     .setAuthor("Test", "test@example.com").setSign(false).call();
 
-            assertNull(ProjectInitializer.findExactDbForHead(project));
-            assertEquals(database, ProjectInitializer.findBestAvailableDb(project));
+            assertNull(ProjectIndexStore.findExactDbForHead(project));
+            assertEquals(database, ProjectIndexStore.findBestAvailableDb(project));
 
             git.checkout().setCreateBranch(true).setName("new-branch").call();
-            assertEquals(database, ProjectInitializer.findBestAvailableDb(project),
+            assertEquals(database, ProjectIndexStore.findBestAvailableDb(project),
                     "A new branch should use the newest atomically published ref");
 
             ProjectRegistry registry = new ProjectRegistry();
@@ -95,7 +95,7 @@ class ProjectIndexLifecycleTest {
             refs.put("branch" + i, hash);
         }
 
-        ProjectInitializer.cleanupLru(tempDir, refs);
+        ProjectIndexStore.cleanupLru(tempDir, refs);
 
         assertFalse(Files.exists(quillDir.resolve("commit0.db")));
         assertFalse(Files.exists(quillDir.resolve("commit1.db")));
@@ -105,7 +105,7 @@ class ProjectIndexLifecycleTest {
         assertEquals(5, refs.size());
         assertFalse(refs.containsValue("commit0"));
         assertFalse(refs.containsValue("commit1"));
-        assertEquals(refs, ProjectInitializer.readRefs(quillDir.resolve("refs.json")));
+        assertEquals(refs, ProjectIndexStore.readRefs(quillDir.resolve("refs.json")));
     }
 
     @Test
@@ -128,7 +128,7 @@ class ProjectIndexLifecycleTest {
 
             assertTrue(first.get(60, TimeUnit.SECONDS));
             assertTrue(second.get(60, TimeUnit.SECONDS));
-            Path db = ProjectInitializer.findDbForHead(project);
+            Path db = ProjectIndexStore.findDbForHead(project);
             assertNotNull(db);
             assertTrue(IndexReader.countClasses(QuillDatabase.open(db)) > 0);
             try (var files = Files.list(quillDir)) {
@@ -150,7 +150,7 @@ class ProjectIndexLifecycleTest {
         var executor = Executors.newSingleThreadExecutor();
         try {
             assertTrue(ProjectInitializer.initialize(project, true));
-            Path firstDatabase = ProjectInitializer.findDbForHead(project);
+            Path firstDatabase = ProjectIndexStore.findDbForHead(project);
             assertNotNull(firstDatabase);
 
             ProjectRegistry registry = new ProjectRegistry();
@@ -168,7 +168,7 @@ class ProjectIndexLifecycleTest {
             assertTrue(oldSnapshotRead.await(10, TimeUnit.SECONDS));
 
             assertTrue(ProjectInitializer.initialize(project, true));
-            Path secondDatabase = ProjectInitializer.findDbForHead(project);
+            Path secondDatabase = ProjectIndexStore.findDbForHead(project);
             assertNotNull(secondDatabase);
             assertNotEquals(firstDatabase, secondDatabase,
                     "An update must publish an immutable database generation");

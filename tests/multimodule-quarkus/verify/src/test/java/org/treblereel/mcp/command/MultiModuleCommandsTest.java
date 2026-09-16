@@ -84,7 +84,7 @@ class MultiModuleCommandsTest {
         cmd.projectPath = PROJECT_ROOT;
         cmd.run();
 
-        assertNull(ProjectInitializer.findDbForHead(PROJECT_ROOT));
+        assertNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
         assertFalse(Files.exists(QUILL_DIR));
     }
 
@@ -92,7 +92,7 @@ class MultiModuleCommandsTest {
     void reindexProducesConsistentIds() {
         ProjectInitializer.initialize(PROJECT_ROOT, true);
 
-        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         Jdbi jdbi = QuillDatabase.open(dbPath);
         var classes = IndexReader.findAllClasses(jdbi);
         assertEquals(5, classes.size(), "Re-index should not duplicate classes");

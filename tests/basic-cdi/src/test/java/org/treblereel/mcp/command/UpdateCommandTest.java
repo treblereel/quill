@@ -35,7 +35,7 @@ class UpdateCommandTest {
 
     @Test
     void updateRunsFullInitWhenNoIndexExists() {
-        assertNull(ProjectInitializer.findDbForHead(PROJECT_ROOT));
+        assertNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream original = System.out;
@@ -48,7 +48,7 @@ class UpdateCommandTest {
             System.setOut(original);
         }
 
-        assertNotNull(ProjectInitializer.findDbForHead(PROJECT_ROOT),
+        assertNotNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT),
                 "Should create index db via full init");
         assertTrue(out.toString().contains("No existing index found"),
                 "Should print 'no existing index' message");
@@ -61,7 +61,7 @@ class UpdateCommandTest {
         init.indexOnly = true;
         init.run();
 
-        assertNotNull(ProjectInitializer.findDbForHead(PROJECT_ROOT));
+        assertNotNull(ProjectIndexStore.findDbForHead(PROJECT_ROOT));
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream original = System.out;
@@ -121,7 +121,7 @@ class UpdateCommandTest {
         init.projectPath = PROJECT_ROOT;
         init.indexOnly = true;
         init.run();
-        Path previousDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Path previousDatabase = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream original = System.out;
@@ -138,7 +138,7 @@ class UpdateCommandTest {
         String output = out.toString();
         assertTrue(output.contains("Forced full re-index"),
                 "Should report forced re-index, got: " + output);
-        Path currentDatabase = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Path currentDatabase = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         assertNotEquals(previousDatabase, currentDatabase,
                 "Incremental updates must still publish a new immutable generation");
         assertTrue(Files.exists(previousDatabase),
@@ -154,7 +154,7 @@ class UpdateCommandTest {
         init.indexOnly = true;
         init.run();
 
-        Path currentDatabase = ProjectInitializer.findExactDbForHead(PROJECT_ROOT);
+        Path currentDatabase = ProjectIndexStore.findExactDbForHead(PROJECT_ROOT);
         assertNotNull(currentDatabase);
         Path staleDatabase = QUILL_DIR.resolve("previous-generation.db");
         Files.move(currentDatabase, staleDatabase);
@@ -163,8 +163,8 @@ class UpdateCommandTest {
                 {"%s":"previous-generation"}
                 """.formatted(branch));
 
-        assertNull(ProjectInitializer.findExactDbForHead(PROJECT_ROOT));
-        assertEquals(staleDatabase, ProjectInitializer.findBestAvailableDb(PROJECT_ROOT));
+        assertNull(ProjectIndexStore.findExactDbForHead(PROJECT_ROOT));
+        assertEquals(staleDatabase, ProjectIndexStore.findBestAvailableDb(PROJECT_ROOT));
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream original = System.out;
@@ -178,7 +178,7 @@ class UpdateCommandTest {
         }
 
         assertTrue(out.toString().contains("Re-indexing from the latest generation"));
-        Path published = ProjectInitializer.findExactDbForHead(PROJECT_ROOT);
+        Path published = ProjectIndexStore.findExactDbForHead(PROJECT_ROOT);
         assertNotNull(published);
         assertEquals("incremental", IndexReader.getMetadata(
                 QuillDatabase.open(published)).get("database_write_mode"));

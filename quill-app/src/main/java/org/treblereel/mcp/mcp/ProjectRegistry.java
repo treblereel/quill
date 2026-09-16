@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.command.ProjectInitializer;
+import org.treblereel.mcp.command.ProjectIndexStore;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.QuillDatabase;
@@ -56,7 +56,7 @@ public class ProjectRegistry {
             if (buildEventError != null) {
                 errors.add("Project '" + p.name() + "': " + buildEventError);
             }
-            Path dbPath = ProjectInitializer.findBestAvailableDb(p.root());
+            Path dbPath = ProjectIndexStore.findBestAvailableDb(p.root());
             if (dbPath == null) {
                 errors.add("Project '" + p.name() + "' is not indexed. "
                         + "Run: quill init --project " + p.root());

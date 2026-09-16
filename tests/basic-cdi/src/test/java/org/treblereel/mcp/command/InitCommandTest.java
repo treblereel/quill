@@ -39,7 +39,7 @@ class InitCommandTest {
         cmd.indexOnly = true;
         cmd.run();
 
-        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         assertNotNull(dbPath, "index db should be created");
 
         Jdbi jdbi = QuillDatabase.open(dbPath);
@@ -116,7 +116,7 @@ class InitCommandTest {
         cmd.indexOnly = true;
         cmd.run();
 
-        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         Jdbi jdbi = QuillDatabase.open(dbPath);
         var beans = IndexReader.findBeans(jdbi, null);
         var classIds = IndexReader.findAllClasses(jdbi).stream()
@@ -135,7 +135,7 @@ class InitCommandTest {
         cmd.indexOnly = true;
         cmd.run();
 
-        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         Jdbi jdbi = QuillDatabase.open(dbPath);
         var classes = IndexReader.findAllClasses(jdbi);
         var beans = IndexReader.findBeans(jdbi, null);
@@ -157,7 +157,7 @@ class InitCommandTest {
         cmd.run();
         cmd.run();
 
-        Path dbPath = ProjectInitializer.findDbForHead(PROJECT_ROOT);
+        Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         Jdbi jdbi = QuillDatabase.open(dbPath);
         var classes = IndexReader.findAllClasses(jdbi);
         assertEquals(8, classes.size(), "Re-index should not duplicate classes");

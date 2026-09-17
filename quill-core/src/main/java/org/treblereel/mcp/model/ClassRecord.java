@@ -14,17 +14,26 @@ public record ClassRecord(
         int sourceTokens,
         Integer fileId,
         String origin,
-        String lifecycle
+        String lifecycle,
+        String module,
+        String sourceSet
 ) {
     public ClassRecord(int id, String className, String kind, String superclass,
             List<String> interfaces, String sourceFile, int sourceLine, boolean isBean,
             int sourceTokens) {
         this(id, className, kind, superclass, interfaces, sourceFile, sourceLine, isBean,
-                sourceTokens, null, "source", "current");
+                sourceTokens, null, "source", "current", null, null);
+    }
+
+    public ClassRecord(int id, String className, String kind, String superclass,
+            List<String> interfaces, String sourceFile, int sourceLine, boolean isBean,
+            int sourceTokens, Integer fileId, String origin, String lifecycle) {
+        this(id, className, kind, superclass, interfaces, sourceFile, sourceLine, isBean,
+                sourceTokens, fileId, origin, lifecycle, null, null);
     }
 
     public ClassRecord withId(int newId) {
         return new ClassRecord(newId, className, kind, superclass, interfaces, sourceFile,
-                sourceLine, isBean, sourceTokens, fileId, origin, lifecycle);
+                sourceLine, isBean, sourceTokens, fileId, origin, lifecycle, module, sourceSet);
     }
 }

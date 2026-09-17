@@ -71,11 +71,14 @@ final class ProjectOverviewQueries {
         ObjectNode problems = root.putObject("problems");
         List<InjectionPointRecord> unsatisfied = IndexReader.findUnsatisfiedInjectionPoints(jdbi);
         List<InjectionPointRecord> ambiguous = IndexReader.findAmbiguousInjectionPoints(jdbi);
+        List<InjectionPointRecord> contextRequired =
+                IndexReader.findContextRequiredInjectionPoints(jdbi);
         List<InjectionPointRecord> unknown = IndexReader.findUnknownInjectionPoints(jdbi);
         List<InjectionPointRecord> unsupported = IndexReader.findUnsupportedInjectionPoints(jdbi);
         List<InjectionPointRecord> problemSample = new ArrayList<>();
         problemSample.addAll(unsatisfied.stream().limit(10).toList());
         problemSample.addAll(ambiguous.stream().limit(10).toList());
+        problemSample.addAll(contextRequired.stream().limit(10).toList());
         problemSample.addAll(unknown.stream().limit(10).toList());
         problemSample.addAll(unsupported.stream().limit(10).toList());
         Map<Integer, BeanRecord> problemBeans = IndexReader.findBeansByIds(jdbi,
@@ -115,6 +118,8 @@ final class ProjectOverviewQueries {
             }
         }
         writeResolutionGroup(problems, "unknown", unknown, problemBeans, problemClasses);
+        writeResolutionGroup(problems, "context_required", contextRequired,
+                problemBeans, problemClasses);
         writeResolutionGroup(problems, "unsupported_mechanism", unsupported,
                 problemBeans, problemClasses);
 

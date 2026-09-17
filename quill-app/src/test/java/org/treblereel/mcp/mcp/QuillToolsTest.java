@@ -137,7 +137,8 @@ class QuillToolsTest {
 
         String result = new QuillTools(registry).list_beans(
                 Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty(), Optional.empty());
+                Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.empty());
 
         JsonNode root = JSON.readTree(result);
         assertTrue(root.get("error").asText().contains("broken-project"));

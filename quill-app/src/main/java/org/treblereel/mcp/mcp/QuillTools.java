@@ -33,18 +33,21 @@ public final class QuillTools {
     }
 
     @Tool(structured = true, description = "List beans (CDI or Spring) with optional filtering. Use instead of grep/find when looking for injectable services, producers, interceptors, or decorators. "
-            + "Returns: {beans: [{class, kind, scope, qualifiers, bean_types, profiles, source}], total, showing, _meta}")
+            + "Returns: {beans: [{class, kind, scope, qualifiers, bean_types, profiles, source, module, source_set}], total, showing, _meta}")
     public String list_beans(
             @ToolArg(description = "Class name filter (supports * wildcard)") Optional<String> class_name,
             @ToolArg(description = "Scope filter, e.g. @ApplicationScoped or @Singleton") Optional<String> scope,
             @ToolArg(description = "Bean kind: CLASS, PRODUCER_METHOD, PRODUCER_FIELD, INTERCEPTOR, DECORATOR") Optional<String> kind,
             @ToolArg(description = "Build profile filter, e.g. dev") Optional<String> profile,
             @ToolArg(description = "Qualifier filter, e.g. @Premium or @Qualifier(\"stripe\")") Optional<String> qualifier,
+            @ToolArg(description = "Module path filter relative to the project root, or '.' for the root module") Optional<String> module,
+            @ToolArg(description = "Source set filter, e.g. main or test") Optional<String> source_set,
             @ToolArg(description = "Max results to return (default: 50)") Optional<Integer> limit,
             @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getBeans(p.jdbi(),
                 class_name.orElse(null), scope.orElse(null), kind.orElse(null),
-                profile.orElse(null), qualifier.orElse(null), clamp(limit.orElse(50), 1, 100)));
+                profile.orElse(null), qualifier.orElse(null), module.orElse(null),
+                source_set.orElse(null), clamp(limit.orElse(50), 1, 100)));
     }
 
     @Tool(structured = true, description = "Get dependency graph for a specific bean or class. Use instead of grep for imports/references when you need to understand what a class uses or what uses it. "
@@ -60,7 +63,7 @@ public final class QuillTools {
     }
 
     @Tool(structured = true, description = "Get injection points for a bean with resolution status. Use when checking what a bean injects and whether injections resolve correctly. "
-            + "Returns: {target, injection_points: [{kind, field, required_type, qualifiers, resolved_to, resolution, resolution_strategy, reason, confidence, limitations, resolution_trace: {candidates: [{class, file, origin, kind, member, qualifiers, disposition, reason, related_class, rules}], applied_rules, unsupported_rules}}], unsatisfied: [], ambiguous: [], unknown: [], unsupported_mechanism: [], _meta}")
+            + "Returns: {target, module, source_set, injection_points: [{kind, field, required_type, qualifiers, resolved_to, resolution, resolution_strategy, reason, confidence, limitations, resolution_trace: {candidates: [{class, file, origin, module, source_set, kind, member, qualifiers, disposition, reason, related_class, rules}], applied_rules, unsupported_rules}}], unsatisfied: [], ambiguous: [], context_required: [], unknown: [], unsupported_mechanism: [], _meta}")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
             @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
@@ -113,7 +116,7 @@ public final class QuillTools {
             + "Returns: {project: {framework, classes, beans, total_source_tokens, indexed_at, last_commit, dependency_index, dependency_index_detail?, service_descriptors, service_registrations}, "
             + "beans_by_scope: {...}, beans_by_kind: {...}, "
             + "architecture_hubs: [{class, dependents, is_bean}], "
-            + "problems: {unsatisfied_count, ambiguous_count, unknown_count, unsupported_mechanism_count, *_injection_points_sample: [{bean, field, type, resolution_strategy, reason, confidence, limitations}]}, "
+            + "problems: {unsatisfied_count, ambiguous_count, context_required_count, unknown_count, unsupported_mechanism_count, *_injection_points_sample: [{bean, field, type, resolution_strategy, reason, confidence, limitations}]}, "
             + "top_libraries: [{package, used_by_classes}], "
             + "git_summary: {total_commits_indexed, top_hotspots: [{file, commit_count}]}, _meta}. "
             + "For multi-project: {projects: [{project, data: <above>}], uninitialized?: [...]}")
@@ -123,13 +126,16 @@ public final class QuillTools {
     }
 
     @Tool(structured = true, description = "Search for classes by name pattern (supports * wildcard). Returns all classes, not just beans. Use instead of grep/find when looking for a class by name. "
-            + "Returns: {classes: [{class, source, origin, lifecycle, is_bean, scope?, source_tokens}], showing, total, _meta}")
+            + "Returns: {classes: [{class, source, origin, lifecycle, module, source_set, is_bean, scope?, source_tokens}], showing, total, _meta}")
     public String search_classes(
             @ToolArg(description = "Class name pattern (supports * wildcard, e.g. '*Service', 'io.casehub.*.model.*')") String pattern,
+            @ToolArg(description = "Module path filter relative to the project root, or '.' for the root module") Optional<String> module,
+            @ToolArg(description = "Source set filter, e.g. main or test") Optional<String> source_set,
             @ToolArg(description = "Max results (default: 30)") Optional<Integer> limit,
             @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.searchClasses(
-                p.jdbi(), pattern, clamp(limit.orElse(30), 1, 100)));
+                p.jdbi(), pattern, module.orElse(null), source_set.orElse(null),
+                clamp(limit.orElse(30), 1, 100)));
     }
 
     @Tool(structured = true, description = "Assess the risk of changing a class or project file. Use before modifying code, build configuration, resources, service descriptors, or CI configuration. "

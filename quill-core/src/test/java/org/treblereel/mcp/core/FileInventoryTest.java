@@ -44,6 +44,9 @@ class FileInventoryTest {
 
         assertEquals("source", result.classes().get(0).origin());
         assertEquals("generated", result.classes().get(1).origin());
+        assertEquals(".", result.classes().get(0).module());
+        assertEquals("main", result.classes().get(0).sourceSet());
+        assertEquals("main", result.classes().get(1).sourceSet());
         assertEquals("orphan_output", result.classes().get(2).origin());
         assertNull(result.classes().get(2).fileId());
         assertEquals("historical", result.files().stream()
@@ -52,6 +55,24 @@ class FileInventoryTest {
         assertEquals("service_descriptor", result.files().stream()
                 .filter(file -> file.projectPath().contains("META-INF/services"))
                 .findFirst().orElseThrow().kind());
+    }
+
+    @Test
+    void identifiesNestedModuleAndSourceSet() throws Exception {
+        Path module = tempDir.resolve("applications/navigation");
+        Path sourceRoot = module.resolve("src/main/java");
+        Path source = sourceRoot.resolve("example/Navigation.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package example; class Navigation {}\n");
+
+        FileInventory.Result result = FileInventory.build(tempDir, List.of(module),
+                List.of(sourceRoot), List.of(cls(1, "example.Navigation", source.toString())),
+                List.of(), WorktreeInspector.Snapshot.empty());
+
+        assertEquals("applications/navigation", result.classes().getFirst().module());
+        assertEquals("main", result.classes().getFirst().sourceSet());
+        assertEquals("applications/navigation", result.files().getFirst().module());
+        assertEquals("main", result.files().getFirst().sourceSet());
     }
 
     @Test

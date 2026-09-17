@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +41,11 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
+import org.treblereel.mcp.model.CandidateDisposition;
+import org.treblereel.mcp.model.ResolutionCandidate;
+import org.treblereel.mcp.model.ResolutionConfidence;
+import org.treblereel.mcp.model.ResolutionStatus;
+import org.treblereel.mcp.model.ResolutionTrace;
 
 public class ProjectInitializer {
 
@@ -446,6 +452,14 @@ public class ProjectInitializer {
         FileInventory.Result inventory = FileInventory.build(root, moduleDirectories, sourceRoots,
                 classes, gitResult.fileStats(), initialWorktree);
         classes = inventory.classes();
+        List<InjectionPointRecord> contextualInjectionPoints = requireApplicationContext(
+                persisted.injectionPoints(), remappedBeans, classes);
+        Set<Integer> contextRequiredInjectionIds = contextualInjectionPoints.stream()
+                .filter(point -> point.resolutionStatus() == ResolutionStatus.CONTEXT_REQUIRED)
+                .map(InjectionPointRecord::id)
+                .collect(java.util.stream.Collectors.toSet());
+        remappedDeps.removeIf(dependency -> dependency.injectionPointId() != null
+                && contextRequiredInjectionIds.contains(dependency.injectionPointId()));
         Set<Integer> currentClassIds = new HashSet<>();
         for (int i = 0; i < classes.size(); i++) {
             ClassRecord cls = classes.get(i);
@@ -497,7 +511,7 @@ public class ProjectInitializer {
                 timings.record("database_schema", elapsedMillis(schemaStartedAt));
                 IndexWriter.WriteTimings writeTimings = IndexWriter.writeFresh(
                         jdbi, classes, remappedBeans,
-                        persisted.injectionPoints(), remappedDeps, metadata,
+                        contextualInjectionPoints, remappedDeps, metadata,
                         externalDeps, remappedProblems,
                         gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
                         inventory.files());
@@ -512,7 +526,7 @@ public class ProjectInitializer {
                 Jdbi jdbi = QuillDatabase.openWritable(stagedDb);
                 IndexWriter.IncrementalWriteTimings writeTimings =
                         IndexWriter.writeIncremental(jdbi, classes, remappedBeans,
-                                persisted.injectionPoints(), remappedDeps, metadata,
+                                contextualInjectionPoints, remappedDeps, metadata,
                                 externalDeps, remappedProblems,
                                 gitResult.fileStats(), gitResult.commits(),
                                 gitResult.commitFiles(), inventory.files());
@@ -606,6 +620,57 @@ public class ProjectInitializer {
     static PersistedResolution mergePersistedResolutions(
             List<PersistedResolution> parts, boolean mixedFrameworks) {
         return ResolutionPersistenceMapper.merge(parts, mixedFrameworks);
+    }
+
+    static List<InjectionPointRecord> requireApplicationContext(
+            List<InjectionPointRecord> injectionPoints, List<BeanRecord> beans,
+            List<ClassRecord> classes) {
+        Map<Integer, BeanRecord> beansById = new HashMap<>();
+        beans.forEach(bean -> beansById.put(bean.id(), bean));
+        Map<Integer, ClassRecord> classesById = new HashMap<>();
+        for (int i = 0; i < classes.size(); i++) {
+            classesById.put(i + 1, classes.get(i));
+        }
+
+        List<InjectionPointRecord> result = new ArrayList<>(injectionPoints.size());
+        for (InjectionPointRecord point : injectionPoints) {
+            Set<String> candidateModules = new LinkedHashSet<>();
+            for (ResolutionCandidate candidate : point.resolutionTrace().candidates()) {
+                if (candidate.beanId() == null || "QUALIFIER_MISMATCH".equals(candidate.reason())
+                        || "INACTIVE_ALTERNATIVE".equals(candidate.reason())) {
+                    continue;
+                }
+                BeanRecord bean = beansById.get(candidate.beanId());
+                ClassRecord cls = bean == null ? null : classesById.get(bean.classId());
+                if (cls != null && cls.module() != null) candidateModules.add(cls.module());
+            }
+            if (candidateModules.size() < 2) {
+                result.add(point);
+                continue;
+            }
+
+            List<String> limitations = new ArrayList<>(point.limitations());
+            limitations.add("Candidates belong to multiple modules and Quill has not selected "
+                    + "an application runtime classpath.");
+            List<ResolutionCandidate> candidates = point.resolutionTrace().candidates().stream()
+                    .map(candidate -> candidate.disposition() == CandidateDisposition.SELECTED
+                            ? new ResolutionCandidate(candidate.beanId(), candidate.className(),
+                                    candidate.relatedBeanId(), CandidateDisposition.ELIGIBLE,
+                                    "SELECTED_WITHOUT_APPLICATION_CONTEXT", candidate.rules())
+                            : candidate)
+                    .toList();
+            List<String> appliedRules = new ArrayList<>(point.resolutionTrace().appliedRules());
+            appliedRules.add("MODULE_CONTEXT_CHECK");
+            List<String> unsupportedRules = new ArrayList<>(
+                    point.resolutionTrace().unsupportedRules());
+            unsupportedRules.add("APPLICATION_RUNTIME_CLASSPATH");
+            result.add(new InjectionPointRecord(point.id(), point.beanId(), point.kind(),
+                    point.targetType(), point.qualifiers(), point.fieldName(), null,
+                    ResolutionStatus.CONTEXT_REQUIRED, "APPLICATION_CONTEXT",
+                    "APPLICATION_CONTEXT_REQUIRED", ResolutionConfidence.LOW, limitations,
+                    new ResolutionTrace(candidates, appliedRules, unsupportedRules)));
+        }
+        return List.copyOf(result);
     }
 
     static List<Path> findClassesDirs(Path root) {

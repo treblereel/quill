@@ -31,8 +31,11 @@ final class ClassTargetResolver {
     private ClassTargetResolver() {}
 
     static Lookup resolve(Jdbi jdbi, String target) {
-        var exactName = IndexReader.findClassByName(jdbi, target);
-        if (exactName.isPresent()) return Lookup.found(exactName.get());
+        var exactNames = IndexReader.findClassesByName(jdbi, target);
+        if (exactNames.size() == 1) return Lookup.found(exactNames.getFirst());
+        if (exactNames.size() > 1) {
+            return Lookup.error("Ambiguous class context", exactNames, List.of());
+        }
 
         var exactPath = IndexReader.findClassByPath(jdbi, target);
         if (exactPath.isPresent()) return Lookup.found(exactPath.get());
@@ -63,6 +66,10 @@ final class ClassTargetResolver {
         ObjectNode root = json.createObjectNode();
         root.put("error", lookup.error());
         root.put("target", target);
+        if ("Ambiguous class context".equals(lookup.error())) {
+            root.put("reason", "The same FQCN exists in more than one module/source set; "
+                    + "use its project path to select a concrete class");
+        }
         root.set("accepted_target_types", json.valueToTree(
                 List.of("fqcn", "short_class_name", "project_path", "repository_path")));
         ArrayNode candidates = root.putArray("candidates");
@@ -72,12 +79,16 @@ final class ClassTargetResolver {
             node.put("file", candidate.sourceFile());
             node.put("origin", candidate.origin());
             node.put("lifecycle", candidate.lifecycle());
+            if (candidate.module() != null) node.put("module", candidate.module());
+            if (candidate.sourceSet() != null) node.put("source_set", candidate.sourceSet());
         }
         for (FileRecord candidate : lookup.fileCandidates()) {
             ObjectNode node = candidates.addObject();
             node.put("file", candidate.repositoryPath());
             node.put("origin", candidate.origin());
             node.put("lifecycle", candidate.lifecycle());
+            if (candidate.module() != null) node.put("module", candidate.module());
+            if (candidate.sourceSet() != null) node.put("source_set", candidate.sourceSet());
             node.put("reason", "matching Java source basename");
         }
         return root;

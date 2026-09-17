@@ -23,6 +23,10 @@ import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
+import org.treblereel.mcp.model.CandidateDisposition;
+import org.treblereel.mcp.model.ResolutionCandidate;
+import org.treblereel.mcp.model.ResolutionStatus;
+import org.treblereel.mcp.model.ResolutionTrace;
 
 class ProjectInitializerRemapTest {
 
@@ -233,6 +237,47 @@ class ProjectInitializerRemapTest {
         assertEquals(List.of("SPRING_INJECT", "CDI_INJECT"), merged.dependencies().stream()
                 .map(DependencyRecord::kind).toList());
         assertEquals(2, merged.dependencies().get(1).injectionPointId());
+    }
+
+    @Test
+    void resolutionAcrossMultipleModulesRequiresApplicationContext() {
+        List<BeanRecord> beans = List.of(
+                bean(1, 1, "example.Navigation"),
+                bean(2, 2, "example.NavigationGraph"),
+                bean(3, 3, "example.GeneratedNavigationGraph"));
+        ResolutionTrace trace = new ResolutionTrace(List.of(
+                new ResolutionCandidate(2, "example.NavigationGraph", 3,
+                        CandidateDisposition.EXCLUDED, "SPECIALIZED_BY",
+                        List.of("SPECIALIZATION")),
+                new ResolutionCandidate(3, "example.GeneratedNavigationGraph", null,
+                        CandidateDisposition.SELECTED, "UNIQUE_ELIGIBLE_CANDIDATE",
+                        List.of("SPECIALIZATION"))),
+                List.of("TYPE_ASSIGNABILITY", "SPECIALIZATION"), List.of());
+        InjectionPointRecord injection = InjectionPointRecord.staticAnalysis(
+                1, 1, "FIELD", "example.NavigationGraph", List.of("@Default"),
+                "navGraph", 3, false, InjectionPointRecord.STATIC_CDI)
+                .withResolution(3, false, trace);
+        List<ClassRecord> classes = List.of(
+                contextualClass("example.Navigation", "runtime"),
+                contextualClass("example.NavigationGraph", "runtime"),
+                contextualClass("example.GeneratedNavigationGraph", "applications/one"));
+
+        InjectionPointRecord refined = ProjectInitializer.requireApplicationContext(
+                List.of(injection), beans, classes).getFirst();
+
+        assertEquals(ResolutionStatus.CONTEXT_REQUIRED, refined.resolutionStatus());
+        assertNull(refined.resolvedBeanId());
+        assertEquals("APPLICATION_CONTEXT_REQUIRED", refined.resolutionReason());
+        assertTrue(refined.resolutionTrace().unsupportedRules()
+                .contains("APPLICATION_RUNTIME_CLASSPATH"));
+        assertEquals(CandidateDisposition.ELIGIBLE,
+                refined.resolutionTrace().candidates().get(1).disposition());
+    }
+
+    private static ClassRecord contextualClass(String name, String module) {
+        return new ClassRecord(0, name, "CLASS", "java.lang.Object", List.of(),
+                module + "/src/main/java/" + name.replace('.', '/') + ".java",
+                1, true, 10, null, "source", "current", module, "main");
     }
 
     private static BeanRecord bean(int id, int classId, String type) {

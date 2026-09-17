@@ -140,6 +140,35 @@ class MultiModuleCdiTest {
     }
 
     @Test
+    void classesAndResolutionCandidatesExposeModuleContext() throws Exception {
+        var dto = IndexReader.findClassByName(jdbi, "org.acme.common.UserDTO").orElseThrow();
+        assertEquals("common", dto.module());
+        assertEquals("main", dto.sourceSet());
+
+        JsonNode injections = JSON.readTree(
+                new QuillTools().getInjectionPoints(jdbi, "UserService"));
+        JsonNode candidate = injections.path("injection_points").get(0)
+                .path("resolution_trace").path("candidates").get(0);
+        assertEquals("service", candidate.path("module").asText());
+        assertEquals("main", candidate.path("source_set").asText());
+    }
+
+    @Test
+    void classAndBeanQueriesCanBeScopedToModule() throws Exception {
+        var queries = new QuillToolQueries();
+        JsonNode commonClasses = JSON.readTree(
+                queries.searchClasses(jdbi, "*", "common", "main", 20));
+        assertEquals(2, commonClasses.path("classes").size());
+        assertTrue(commonClasses.path("classes").toString().contains("UserDTO"));
+        assertFalse(commonClasses.path("classes").toString().contains("UserService"));
+
+        JsonNode serviceBeans = JSON.readTree(queries.getBeans(
+                jdbi, null, null, null, null, null, "service", "main", 20));
+        assertEquals(3, serviceBeans.path("beans").size());
+        assertTrue(serviceBeans.path("beans").toString().contains("UserService"));
+    }
+
+    @Test
     void beansByKindShowsCorrectDistribution() throws Exception {
         var tools = new QuillTools();
         String result = tools.getOverview(jdbi);

@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 3;
+    static final int SCHEMA_VERSION = 4;
 
     private QuillDatabase() {}
 
@@ -47,7 +47,9 @@ public final class QuillDatabase {
                     kind TEXT NOT NULL,
                     origin TEXT NOT NULL,
                     lifecycle TEXT NOT NULL,
-                    worktree_status TEXT
+                    worktree_status TEXT,
+                    module TEXT,
+                    source_set TEXT
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS classes (
@@ -62,7 +64,9 @@ public final class QuillDatabase {
                     source_tokens INTEGER NOT NULL DEFAULT 0,
                     file_id INTEGER REFERENCES files(id),
                     origin TEXT NOT NULL DEFAULT 'source',
-                    lifecycle TEXT NOT NULL DEFAULT 'current'
+                    lifecycle TEXT NOT NULL DEFAULT 'current',
+                    module TEXT,
+                    source_set TEXT
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS beans (
@@ -162,6 +166,7 @@ public final class QuillDatabase {
 
     static void createIndexes(org.jdbi.v3.core.Handle h) {
         h.execute("CREATE INDEX IF NOT EXISTS idx_classes_name ON classes(class_name)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_classes_context ON classes(module, source_set)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_classes_file ON classes(file_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_repository_path ON files(repository_path)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_lifecycle ON files(lifecycle)");

@@ -55,6 +55,21 @@ class ClassTargetResolverTest {
         assertEquals("second.BeanManager", lookup.cls().className());
     }
 
+    @Test
+    void duplicateFqcnRequiresAConcreteModuleContext() {
+        Jdbi jdbi = database(List.of(
+                current("example.GeneratedRegistry", "applications/one"),
+                current("example.GeneratedRegistry", "applications/two")));
+
+        ClassTargetResolver.Lookup lookup =
+                ClassTargetResolver.resolve(jdbi, "example.GeneratedRegistry");
+
+        assertFalse(lookup.found());
+        assertEquals("Ambiguous class context", lookup.error());
+        assertEquals(List.of("applications/one", "applications/two"),
+                lookup.candidates().stream().map(ClassRecord::module).toList());
+    }
+
     private Jdbi database(List<ClassRecord> classes) {
         Jdbi jdbi = QuillDatabase.create(tempDir.resolve("index-" + System.nanoTime() + ".db"));
         IndexWriter.write(jdbi, classes, List.of(), List.of(), List.of(),
@@ -65,6 +80,12 @@ class ClassTargetResolverTest {
     private static ClassRecord current(String name) {
         return new ClassRecord(0, name, "CLASS", "java.lang.Object", List.of(),
                 "src/main/java/" + name.replace('.', '/') + ".java", 1, false, 10);
+    }
+
+    private static ClassRecord current(String name, String module) {
+        return new ClassRecord(0, name, "CLASS", "java.lang.Object", List.of(),
+                module + "/src/main/java/" + name.replace('.', '/') + ".java",
+                1, false, 10, null, "source", "current", module, "main");
     }
 
     private static ClassRecord historical(String name) {

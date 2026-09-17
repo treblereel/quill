@@ -34,6 +34,8 @@ public final class IndexReader {
                 if (filter.containsKey("scope")) sb.append(" AND b.scope = :scope");
                 if (filter.containsKey("kind")) sb.append(" AND b.kind = :kind");
                 if (filter.containsKey("qualifier")) sb.append(" AND b.qualifiers LIKE :qualifier");
+                if (filter.containsKey("module")) sb.append(" AND c.module = :module");
+                if (filter.containsKey("source_set")) sb.append(" AND c.source_set = :sourceSet");
             }
 
             var q = h.createQuery(sb.toString());
@@ -42,6 +44,8 @@ public final class IndexReader {
                 if (filter.containsKey("scope")) q.bind("scope", filter.get("scope"));
                 if (filter.containsKey("kind")) q.bind("kind", filter.get("kind"));
                 if (filter.containsKey("qualifier")) q.bind("qualifier", "%" + filter.get("qualifier") + "%");
+                if (filter.containsKey("module")) q.bind("module", filter.get("module"));
+                if (filter.containsKey("source_set")) q.bind("sourceSet", filter.get("source_set"));
             }
 
             List<BeanRecord> results = q.map((rs, ctx) -> mapBean(rs)).list();
@@ -101,12 +105,17 @@ public final class IndexReader {
     }
 
     public static Optional<ClassRecord> findClassByName(Jdbi jdbi, String className) {
+        return findClassesByName(jdbi, className).stream().findFirst();
+    }
+
+    public static List<ClassRecord> findClassesByName(Jdbi jdbi, String className) {
         return jdbi.withHandle(h ->
                 h.createQuery("SELECT * FROM classes WHERE class_name = :name "
-                                + "AND lifecycle = 'current' AND origin != 'orphan_output'")
+                                + "AND lifecycle = 'current' AND origin != 'orphan_output' "
+                                + "ORDER BY module, source_set, id")
                         .bind("name", className)
                         .map((rs, ctx) -> mapClass(rs))
-                        .findFirst());
+                        .list());
     }
 
     public static Optional<ClassRecord> findClassByPath(Jdbi jdbi, String path) {
@@ -150,10 +159,10 @@ public final class IndexReader {
         String kotlinPattern = "%/" + basename + ".kt";
         List<FileRecord> matches = jdbi.withHandle(h -> h.createQuery("""
                         SELECT id, project_path, repository_path, kind, origin, lifecycle,
-                               worktree_status, source_rank
+                               worktree_status, module, source_set, source_rank
                         FROM (
                             SELECT id, project_path, repository_path, kind, origin, lifecycle,
-                                   worktree_status, 0 AS source_rank
+                                   worktree_status, module, source_set, 0 AS source_rank
                             FROM files
                             WHERE project_path LIKE :javaPattern OR repository_path LIKE :javaPattern
                                OR project_path LIKE :kotlinPattern OR repository_path LIKE :kotlinPattern
@@ -162,7 +171,8 @@ public final class IndexReader {
                                    g.file_path AS repository_path,
                                    CASE WHEN g.file_path LIKE '%.kt' THEN 'kotlin' ELSE 'java' END AS kind,
                                    'source' AS origin, 'historical' AS lifecycle,
-                                   NULL AS worktree_status, 1 AS source_rank
+                                   NULL AS worktree_status, NULL AS module, NULL AS source_set,
+                                   1 AS source_rank
                             FROM git_file_stats g
                             WHERE g.file_path LIKE :javaPattern OR g.file_path LIKE :kotlinPattern
                         )
@@ -191,8 +201,15 @@ public final class IndexReader {
     }
 
     public static List<ClassRecord> searchClasses(Jdbi jdbi, String namePattern, int limit) {
+        return searchClasses(jdbi, namePattern, null, null, limit);
+    }
+
+    public static List<ClassRecord> searchClasses(Jdbi jdbi, String namePattern,
+            String module, String sourceSet, int limit) {
         String sql = "SELECT * FROM classes WHERE class_name LIKE :pattern "
                 + "AND lifecycle = 'current' AND origin != 'orphan_output' "
+                + (module != null ? "AND module = :module " : "")
+                + (sourceSet != null ? "AND source_set = :sourceSet " : "")
                 + "ORDER BY class_name LIMIT :limit";
         String pattern = namePattern.replace("*", "%");
         if (!pattern.contains("%")) {
@@ -200,11 +217,14 @@ public final class IndexReader {
         }
         String finalPattern = pattern;
         return jdbi.withHandle(h ->
-                h.createQuery(sql)
-                        .bind("pattern", finalPattern)
-                        .bind("limit", limit)
-                        .map((rs, ctx) -> mapClass(rs))
-                        .list());
+                {
+                    var query = h.createQuery(sql)
+                            .bind("pattern", finalPattern)
+                            .bind("limit", limit);
+                    if (module != null) query.bind("module", module);
+                    if (sourceSet != null) query.bind("sourceSet", sourceSet);
+                    return query.map((rs, ctx) -> mapClass(rs)).list();
+                });
     }
 
     public static Optional<BeanRecord> findBeanByClassId(Jdbi jdbi, int classId) {
@@ -274,14 +294,16 @@ public final class IndexReader {
                 rs.getString("source_file"), rs.getInt("source_line"),
                 rs.getInt("is_bean") == 1, rs.getInt("source_tokens"),
                 rs.getObject("file_id") != null ? rs.getInt("file_id") : null,
-                rs.getString("origin"), rs.getString("lifecycle"));
+                rs.getString("origin"), rs.getString("lifecycle"),
+                rs.getString("module"), rs.getString("source_set"));
     }
 
     private static FileRecord mapFile(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new FileRecord(rs.getInt("id"), rs.getString("project_path"),
                 rs.getString("repository_path"), rs.getString("kind"),
                 rs.getString("origin"), rs.getString("lifecycle"),
-                rs.getString("worktree_status"));
+                rs.getString("worktree_status"), rs.getString("module"),
+                rs.getString("source_set"));
     }
 
     private static BeanRecord mapBean(java.sql.ResultSet rs) throws java.sql.SQLException {
@@ -531,6 +553,10 @@ public final class IndexReader {
 
     public static List<InjectionPointRecord> findUnknownInjectionPoints(Jdbi jdbi) {
         return findInjectionPointsByStatus(jdbi, ResolutionStatus.UNKNOWN);
+    }
+
+    public static List<InjectionPointRecord> findContextRequiredInjectionPoints(Jdbi jdbi) {
+        return findInjectionPointsByStatus(jdbi, ResolutionStatus.CONTEXT_REQUIRED);
     }
 
     public static List<InjectionPointRecord> findUnsupportedInjectionPoints(Jdbi jdbi) {

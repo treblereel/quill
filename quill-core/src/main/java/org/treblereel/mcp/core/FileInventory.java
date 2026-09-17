@@ -71,11 +71,16 @@ public final class FileInventory {
                 .toList();
         List<FileRecord> files = new ArrayList<>();
         Map<String, Integer> fileIdsByProjectPath = new LinkedHashMap<>();
+        Map<Integer, SourceContext> contextsByFileId = new LinkedHashMap<>();
         int nextId = 1;
         for (MutableFile file : ordered) {
+            SourceContext context = sourceContext(root, moduleDirectories, file.projectPath);
             files.add(new FileRecord(nextId, file.projectPath, file.repositoryPath, file.kind,
-                    file.origin, file.lifecycle, file.worktreeStatus));
-            fileIdsByProjectPath.put(file.projectPath, nextId++);
+                    file.origin, file.lifecycle, file.worktreeStatus,
+                    context.module(), context.sourceSet()));
+            fileIdsByProjectPath.put(file.projectPath, nextId);
+            contextsByFileId.put(nextId, context);
+            nextId++;
         }
 
         List<ClassRecord> classifiedClasses = new ArrayList<>();
@@ -85,9 +90,13 @@ public final class FileInventory {
             Integer fileId = source != null ? fileIdsByProjectPath.get(source) : null;
             String classOrigin = source != null ? origin(source) : "orphan_output";
             String lifecycle = fileId != null ? files.get(fileId - 1).lifecycle() : "current";
+            SourceContext context = fileId != null
+                    ? contextsByFileId.get(fileId)
+                    : sourceContext(root, moduleDirectories, source);
             classifiedClasses.add(new ClassRecord(cls.id(), cls.className(), cls.kind(),
                     cls.superclass(), cls.interfaces(), source, cls.sourceLine(), cls.isBean(),
-                    cls.sourceTokens(), fileId, classOrigin, lifecycle));
+                    cls.sourceTokens(), fileId, classOrigin, lifecycle,
+                    context.module(), context.sourceSet()));
         }
         return new Result(List.copyOf(files), List.copyOf(classifiedClasses));
     }
@@ -151,6 +160,44 @@ public final class FileInventory {
         }
         if (kind(path).equals("resource") || kind(path).equals("service_descriptor")) return "resource";
         return "source";
+    }
+
+    private static SourceContext sourceContext(
+            Path projectRoot, List<Path> moduleDirectories, String projectPath) {
+        if (projectPath == null) return SourceContext.UNKNOWN;
+        Path absolute;
+        try {
+            absolute = projectRoot.resolve(projectPath).toAbsolutePath().normalize();
+        } catch (RuntimeException ignored) {
+            return SourceContext.UNKNOWN;
+        }
+        Path owner = moduleDirectories.stream()
+                .map(module -> module.toAbsolutePath().normalize())
+                .filter(absolute::startsWith)
+                .max(Comparator.comparingInt(Path::getNameCount))
+                .orElse(projectRoot.toAbsolutePath().normalize());
+        String module = owner.equals(projectRoot.toAbsolutePath().normalize())
+                ? "." : normalize(projectRoot.toAbsolutePath().normalize().relativize(owner));
+        String relative = absolute.startsWith(owner) ? normalize(owner.relativize(absolute)) : projectPath;
+        return new SourceContext(module, sourceSet(relative));
+    }
+
+    private static String sourceSet(String moduleRelativePath) {
+        String normalized = moduleRelativePath.replace('\\', '/');
+        if (normalized.startsWith("src/")) {
+            int slash = normalized.indexOf('/', 4);
+            return slash > 4 ? normalized.substring(4, slash) : null;
+        }
+        if (normalized.startsWith("target/generated-sources/")
+                || normalized.startsWith("build/generated/")) {
+            if (normalized.contains("/test/")) return "test";
+            return "main";
+        }
+        return null;
+    }
+
+    private record SourceContext(String module, String sourceSet) {
+        private static final SourceContext UNKNOWN = new SourceContext(null, null);
     }
 
     private static String normalize(Path path) {

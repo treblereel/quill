@@ -41,10 +41,11 @@ public final class IndexWriter {
 
     private static final TableSpec FILES = new TableSpec("files",
             "id", "project_path", "repository_path", "kind", "origin", "lifecycle",
-            "worktree_status");
+            "worktree_status", "module", "source_set");
     private static final TableSpec CLASSES = new TableSpec("classes",
             "id", "class_name", "kind", "superclass", "interfaces", "source_file",
-            "source_line", "is_bean", "source_tokens", "file_id", "origin", "lifecycle");
+            "source_line", "is_bean", "source_tokens", "file_id", "origin", "lifecycle",
+            "module", "source_set");
     private static final TableSpec BEANS = new TableSpec("beans",
             "id", "class_id", "kind", "scope", "qualifiers", "stereotypes",
             "is_alternative", "priority", "profiles", "declaring_class_id", "member_name",
@@ -211,7 +212,7 @@ public final class IndexWriter {
 
     private static void insertDesiredFiles(Handle h, List<FileRecord> files) {
         executeBatch(h,
-                "INSERT INTO desired_files (id, project_path, repository_path, kind, origin, lifecycle, worktree_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO desired_files (id, project_path, repository_path, kind, origin, lifecycle, worktree_status, module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 files, (statement, file) -> {
                     statement.setInt(1, file.id());
                     statement.setString(2, file.projectPath());
@@ -220,12 +221,14 @@ public final class IndexWriter {
                     statement.setString(5, file.origin());
                     statement.setString(6, file.lifecycle());
                     statement.setString(7, file.worktreeStatus());
+                    statement.setString(8, file.module());
+                    statement.setString(9, file.sourceSet());
                 });
     }
 
     private static void insertDesiredClasses(Handle h, List<ClassRecord> classes) {
         try (PreparedStatement statement = h.getConnection().prepareStatement(
-                "INSERT INTO desired_classes (id, class_name, kind, superclass, interfaces, source_file, source_line, is_bean, source_tokens, file_id, origin, lifecycle) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                "INSERT INTO desired_classes (id, class_name, kind, superclass, interfaces, source_file, source_line, is_bean, source_tokens, file_id, origin, lifecycle, module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             for (int i = 0; i < classes.size(); i++) {
                 ClassRecord c = classes.get(i);
                 statement.setInt(1, i + 1);
@@ -240,6 +243,8 @@ public final class IndexWriter {
                 statement.setObject(10, c.fileId());
                 statement.setString(11, c.origin());
                 statement.setString(12, c.lifecycle());
+                statement.setString(13, c.module());
+                statement.setString(14, c.sourceSet());
                 statement.addBatch();
             }
             if (!classes.isEmpty()) statement.executeBatch();
@@ -472,7 +477,7 @@ public final class IndexWriter {
 
     private static void insertClasses(Handle h, List<ClassRecord> classes) {
         executeBatch(h,
-                "INSERT INTO classes (class_name, kind, superclass, interfaces, source_file, source_line, is_bean, source_tokens, file_id, origin, lifecycle) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO classes (class_name, kind, superclass, interfaces, source_file, source_line, is_bean, source_tokens, file_id, origin, lifecycle, module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 classes, (statement, c) -> {
                     statement.setString(1, c.className());
                     statement.setString(2, c.kind());
@@ -485,13 +490,15 @@ public final class IndexWriter {
                     statement.setObject(9, c.fileId());
                     statement.setString(10, c.origin());
                     statement.setString(11, c.lifecycle());
+                    statement.setString(12, c.module());
+                    statement.setString(13, c.sourceSet());
                 });
     }
 
     private static void insertFiles(Handle h, List<FileRecord> files) {
         if (files == null || files.isEmpty()) return;
         executeBatch(h,
-                "INSERT INTO files (id, project_path, repository_path, kind, origin, lifecycle, worktree_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO files (id, project_path, repository_path, kind, origin, lifecycle, worktree_status, module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 files, (statement, file) -> {
                     statement.setInt(1, file.id());
                     statement.setString(2, file.projectPath());
@@ -500,6 +507,8 @@ public final class IndexWriter {
                     statement.setString(5, file.origin());
                     statement.setString(6, file.lifecycle());
                     statement.setString(7, file.worktreeStatus());
+                    statement.setString(8, file.module());
+                    statement.setString(9, file.sourceSet());
                 });
     }
 

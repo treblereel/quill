@@ -31,7 +31,12 @@ final class StructureToolQueries {
     private static final int MAX_GRAPH_NODES = 200;
 
     String searchClasses(Jdbi jdbi, String pattern, int limit) {
-        List<ClassRecord> classes = IndexReader.searchClasses(jdbi, pattern, limit + 1);
+        return searchClasses(jdbi, pattern, null, null, limit);
+    }
+
+    String searchClasses(Jdbi jdbi, String pattern, String module, String sourceSet, int limit) {
+        List<ClassRecord> classes = IndexReader.searchClasses(
+                jdbi, pattern, module, sourceSet, limit + 1);
         boolean hasMore = classes.size() > limit;
         List<ClassRecord> limited = hasMore ? classes.subList(0, limit) : classes;
         Map<Integer, BeanRecord> beansByClass = IndexReader.findBeansByClassIds(
@@ -46,6 +51,7 @@ final class StructureToolQueries {
             node.put("source", value.sourceFile() + ":" + value.sourceLine());
             node.put("origin", value.origin());
             node.put("lifecycle", value.lifecycle());
+            appendContext(node, value);
             node.put("is_bean", value.isBean());
             BeanRecord bean = beansByClass.get(value.id());
             if (bean != null) node.put("scope", bean.scope());
@@ -61,12 +67,19 @@ final class StructureToolQueries {
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier, int limit) {
+        return getBeans(jdbi, className, scope, kind, profile, qualifier, null, null, limit);
+    }
+
+    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+            String profile, String qualifier, String module, String sourceSet, int limit) {
         Map<String, String> filter = new HashMap<>();
         if (className != null) filter.put("class_name", className);
         if (scope != null) filter.put("scope", scope);
         if (kind != null) filter.put("kind", kind);
         if (profile != null) filter.put("profile", profile);
         if (qualifier != null) filter.put("qualifier", qualifier);
+        if (module != null) filter.put("module", module);
+        if (sourceSet != null) filter.put("source_set", sourceSet);
 
         List<BeanRecord> beans = IndexReader.findBeans(jdbi, filter.isEmpty() ? null : filter);
         int total = beans.size();
@@ -92,6 +105,7 @@ final class StructureToolQueries {
             node.set("profiles", JSON.valueToTree(bean.profiles()));
             if (beanClass != null) {
                 node.put("source", beanClass.sourceFile() + ":" + beanClass.sourceLine());
+                appendContext(node, beanClass);
                 naiveTokens += beanClass.sourceTokens();
             }
         }
@@ -110,6 +124,7 @@ final class StructureToolQueries {
         root.put("is_bean", cls.isBean());
         root.put("origin", cls.origin());
         root.put("lifecycle", cls.lifecycle());
+        appendContext(root, cls);
         ObjectNode metrics = root.putObject("metrics");
         metrics.put("fan_in", IndexReader.countDependents(jdbi, cls.id()));
         metrics.put("incoming_edges", IndexReader.countDependencyEdges(jdbi, cls.id(), true));
@@ -151,6 +166,7 @@ final class StructureToolQueries {
                     child.put("class", value.className());
                     child.put("kind", dependency.kind());
                     child.put("occurrences", dependency.occurrenceCount());
+                    appendContext(child, value);
                     tokenAccum.accept(value.sourceTokens());
                     if (depth > 1 && visited.add(value.id())) {
                         expandDependencies(jdbi, value.id(), direction, depth - 1, child,
@@ -165,6 +181,7 @@ final class StructureToolQueries {
                     child.put("class", value.className());
                     child.put("kind", dependency.kind());
                     child.put("occurrences", dependency.occurrenceCount());
+                    appendContext(child, value);
                     tokenAccum.accept(value.sourceTokens());
                     if (depth > 1 && visited.add(value.id())) {
                         expandDependencies(jdbi, value.id(), direction, depth - 1, child,
@@ -183,6 +200,7 @@ final class StructureToolQueries {
         if (bean.isEmpty()) return errorResponse("Not a bean: " + target);
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
+        appendContext(root, cls);
         List<InjectionPointRecord> injectionPoints = IndexReader.findInjectionPoints(
                 jdbi, bean.get().id());
         Set<Integer> referencedBeanIds = new HashSet<>();
@@ -201,6 +219,7 @@ final class StructureToolQueries {
         ArrayNode result = root.putArray("injection_points");
         ArrayNode unsatisfied = root.putArray("unsatisfied");
         ArrayNode ambiguous = root.putArray("ambiguous");
+        ArrayNode contextRequired = root.putArray("context_required");
         ArrayNode unknown = root.putArray("unknown");
         ArrayNode unsupported = root.putArray("unsupported_mechanism");
         for (InjectionPointRecord point : injectionPoints) {
@@ -235,6 +254,7 @@ final class StructureToolQueries {
                 node.putNull("resolved_to");
                 switch (point.resolutionStatus()) {
                     case UNSATISFIED -> unsatisfied.add(point.fieldName());
+                    case CONTEXT_REQUIRED -> contextRequired.add(point.fieldName());
                     case UNKNOWN -> unknown.add(point.fieldName());
                     case UNSUPPORTED_MECHANISM -> unsupported.add(point.fieldName());
                     default -> { }
@@ -266,6 +286,7 @@ final class StructureToolQueries {
                 candidateNode.put("file", candidateClass.sourceFile());
                 candidateNode.put("origin", candidateClass.origin());
                 candidateNode.put("lifecycle", candidateClass.lifecycle());
+                appendContext(candidateNode, candidateClass);
             }
             if (bean != null) {
                 candidateNode.put("kind", bean.kind());
@@ -294,6 +315,13 @@ final class StructureToolQueries {
             origin.put("edges", entry.edges());
             if (entry.origin().equals("orphan_output")) origin.put("excluded_from_score", true);
         }
+    }
+
+    private static void appendContext(ObjectNode node, ClassRecord cls) {
+        if (cls.module() == null) node.putNull("module");
+        else node.put("module", cls.module());
+        if (cls.sourceSet() == null) node.putNull("source_set");
+        else node.put("source_set", cls.sourceSet());
     }
 
     private static final class GraphBudget {

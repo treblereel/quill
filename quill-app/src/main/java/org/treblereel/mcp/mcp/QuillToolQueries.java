@@ -18,12 +18,22 @@ public final class QuillToolQueries {
     }
 
     String searchClasses(Jdbi jdbi, String pattern, int limit) {
-        return structure.searchClasses(jdbi, pattern, limit);
+        return structure.searchClasses(jdbi, pattern, null, null, limit);
+    }
+
+    String searchClasses(Jdbi jdbi, String pattern, String module, String sourceSet, int limit) {
+        return structure.searchClasses(jdbi, pattern, module, sourceSet, limit);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier, int limit) {
         return structure.getBeans(jdbi, className, scope, kind, profile, qualifier, limit);
+    }
+
+    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+            String profile, String qualifier, String module, String sourceSet, int limit) {
+        return structure.getBeans(jdbi, className, scope, kind, profile, qualifier,
+                module, sourceSet, limit);
     }
 
     String getDependencies(Jdbi jdbi, String target, String direction, int depth) {

@@ -196,8 +196,9 @@ class QuillToolsTest {
         JsonNode edge = result.get("depended_by").get(0);
         assertEquals("CONSTRUCTS", edge.get("kind").asText());
         assertEquals("src/main/java/org/acme/StripePaymentService.java",
-                edge.get("evidence").get(0).get("file").asText());
-        assertEquals(42, edge.get("evidence").get(0).get("line").asInt());
+                edge.get("evidence_file").asText());
+        assertEquals(42, edge.get("evidence_lines").get(0).asInt());
+        assertNull(result.get("depends_on"));
     }
 
     @Test

@@ -175,16 +175,16 @@ final class StructureToolQueries {
         }
         Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
                 IndexReader.findClassOccurrencesByClassIds(jdbi, relatedClassIds);
-        ArrayNode dependsOn = node.putArray("depends_on");
-        ArrayNode dependedBy = node.putArray("depended_by");
         for (DependencyRecord dependency : dependencies) {
             if (dependency.fromClassId() == classId) {
                 if (!budget.claim()) break;
                 IndexReader.findClassById(jdbi, dependency.toClassId()).ifPresent(value -> {
-                    ObjectNode child = dependsOn.addObject();
+                    ObjectNode child = array(node, "depends_on").addObject();
                     child.put("class", value.className());
                     child.put("kind", dependency.kind());
-                    child.put("occurrences", dependency.occurrenceCount());
+                    if (dependency.occurrenceCount() > 1) {
+                        child.put("occurrences", dependency.occurrenceCount());
+                    }
                     if (current != null) appendEvidence(child, current, dependency);
                     appendContext(child, value);
                     appendOccurrences(child, occurrencesByClass.get(value.id()));
@@ -198,10 +198,12 @@ final class StructureToolQueries {
             if (dependency.toClassId() == classId) {
                 if (!budget.claim()) break;
                 IndexReader.findClassById(jdbi, dependency.fromClassId()).ifPresent(value -> {
-                    ObjectNode child = dependedBy.addObject();
+                    ObjectNode child = array(node, "depended_by").addObject();
                     child.put("class", value.className());
                     child.put("kind", dependency.kind());
-                    child.put("occurrences", dependency.occurrenceCount());
+                    if (dependency.occurrenceCount() > 1) {
+                        child.put("occurrences", dependency.occurrenceCount());
+                    }
                     appendEvidence(child, value, dependency);
                     appendContext(child, value);
                     appendOccurrences(child, occurrencesByClass.get(value.id()));
@@ -218,13 +220,12 @@ final class StructureToolQueries {
     private static void appendEvidence(
             ObjectNode child, ClassRecord caller, DependencyRecord dependency) {
         if (dependency.evidenceLines().isEmpty()) return;
-        ArrayNode evidence = child.putArray("evidence");
-        for (Integer line : dependency.evidenceLines()) {
-            ObjectNode item = evidence.addObject();
-            item.put("file", caller.sourceFile());
-            item.put("line", line);
-            item.put("kind", dependency.kind());
-        }
+        child.put("evidence_file", caller.sourceFile());
+        child.set("evidence_lines", JSON.valueToTree(dependency.evidenceLines()));
+    }
+
+    private static ArrayNode array(ObjectNode node, String name) {
+        return node.has(name) ? (ArrayNode) node.get(name) : node.putArray(name);
     }
 
     private static void appendOccurrences(

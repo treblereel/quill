@@ -107,6 +107,32 @@ class IndexWriterReaderTest {
     }
 
     @Test
+    void searchesClassAndMemberSymbolsWithKindFiltering() {
+        Jdbi database = QuillDatabase.create(tempDir.resolve("symbol-search.db"));
+        List<ClassRecord> classes = List.of(new ClassRecord(
+                0, "example.PaymentService", "CLASS", "java.lang.Object", List.of(),
+                "src/main/java/example/PaymentService.java", 1, false, 25));
+        List<ClassMemberRecord> members = List.of(
+                new ClassMemberRecord(1, "METHOD", "processPayment",
+                        "processPayment(example.Order):boolean", "boolean",
+                        List.of("example.Order"), "public", List.of("example.Audited")),
+                new ClassMemberRecord(1, "FIELD", "paymentGateway", "paymentGateway:Gateway",
+                        "example.Gateway", List.of(), "private", List.of()));
+        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), members);
+
+        var all = IndexReader.searchSymbols(database, "Payment", null, 10, 0);
+        var methods = IndexReader.searchSymbols(database, "Payment", "METHOD", 10, 0);
+
+        assertEquals(3, all.size());
+        assertEquals(3, IndexReader.countSymbols(database, "Payment", null));
+        assertEquals(1, methods.size());
+        assertEquals("processPayment", methods.getFirst().symbolName());
+        assertEquals(List.of("example.Order"), methods.getFirst().parameterTypes());
+    }
+
+    @Test
     void dependencyMetricsSeparateUniqueClassesFromEdgeOccurrences() {
         Jdbi jdbi = QuillDatabase.create(tempDir.resolve("dependency-metrics.db"));
         List<ClassRecord> classes = List.of(

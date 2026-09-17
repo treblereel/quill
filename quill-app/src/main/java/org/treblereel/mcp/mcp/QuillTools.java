@@ -139,6 +139,19 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Search indexed type, method, field, and constructor declarations.")
+    public String search_symbols(
+            @ToolArg(description = "Name or signature pattern; * is a wildcard") String pattern,
+            @ToolArg(description = "Symbol kind or all; default all") Optional<String> kind,
+            @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.searchSymbols(
+                p.jdbi(), pattern, kind.orElse(null),
+                clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -306,6 +319,10 @@ public final class QuillTools {
     String getTypeHierarchy(Jdbi jdbi, String target, String direction,
             int maxDepth, int limit, int offset) {
         return queries.getTypeHierarchy(jdbi, target, direction, maxDepth, limit, offset);
+    }
+
+    String searchSymbols(Jdbi jdbi, String pattern, String kind, int limit, int offset) {
+        return queries.searchSymbols(jdbi, pattern, kind, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

@@ -11,6 +11,7 @@ public final class QuillToolQueries {
     private final SymbolToolQueries symbols = new SymbolToolQueries();
     private final TestImpactQueries testImpact = new TestImpactQueries();
     private final TypeHierarchyQueries typeHierarchy = new TypeHierarchyQueries();
+    private final SymbolSearchQueries symbolSearch = new SymbolSearchQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -63,6 +64,10 @@ public final class QuillToolQueries {
             int maxDepth, int limit, int offset) {
         return typeHierarchy.getTypeHierarchy(
                 jdbi, target, direction, maxDepth, limit, offset);
+    }
+
+    String searchSymbols(Jdbi jdbi, String pattern, String kind, int limit, int offset) {
+        return symbolSearch.searchSymbols(jdbi, pattern, kind, limit, offset);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

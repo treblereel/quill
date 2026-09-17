@@ -23,6 +23,24 @@ public final class IndexReader {
             int productionDependents,
             int testDependents) {}
 
+    public record SymbolSearchResult(
+            int classId,
+            String className,
+            String classKind,
+            String symbolKind,
+            String symbolName,
+            String signature,
+            String typeName,
+            List<String> parameterTypes,
+            String modifiers,
+            List<String> annotations,
+            String sourceFile,
+            int sourceLine,
+            String origin,
+            String module,
+            String sourceSet,
+            int sourceTokens) {}
+
     public static List<ClassRecord> findAllClasses(Jdbi jdbi) {
         return jdbi.withHandle(h ->
                 h.createQuery("SELECT * FROM classes WHERE lifecycle = 'current' "
@@ -156,6 +174,81 @@ public final class IndexReader {
                         fromJson(rs.getString("parameter_types")), rs.getString("modifiers"),
                         fromJson(rs.getString("annotations"))))
                 .list());
+    }
+
+    public static List<SymbolSearchResult> searchSymbols(Jdbi jdbi, String namePattern,
+            String symbolKind, int limit, int offset) {
+        String pattern = namePattern.replace("*", "%");
+        if (!pattern.contains("%")) pattern = "%" + pattern + "%";
+        String kindFilter = symbolKind == null ? "" : " AND symbol_kind = :kind";
+        String sql = """
+                WITH symbols AS (
+                    SELECT c.id AS class_id, c.class_name, c.kind AS class_kind,
+                           c.kind AS symbol_kind, c.class_name AS symbol_name,
+                           NULL AS signature, NULL AS type_name, '[]' AS parameter_types,
+                           '' AS modifiers, '[]' AS annotations,
+                           c.source_file, c.source_line, c.origin, c.module, c.source_set,
+                           c.source_tokens
+                    FROM classes c
+                    WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                      AND c.class_name LIKE :pattern
+                    UNION ALL
+                    SELECT c.id AS class_id, c.class_name, c.kind AS class_kind,
+                           m.kind AS symbol_kind, m.name AS symbol_name,
+                           m.signature, m.type_name, m.parameter_types,
+                           m.modifiers, m.annotations,
+                           c.source_file, c.source_line, c.origin, c.module, c.source_set,
+                           c.source_tokens
+                    FROM class_members m JOIN classes c ON c.id = m.class_id
+                    WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                      AND (m.name LIKE :pattern OR m.signature LIKE :pattern)
+                )
+                SELECT * FROM symbols WHERE 1 = 1
+                """ + kindFilter + " ORDER BY symbol_name, class_name, signature "
+                + "LIMIT :limit OFFSET :offset";
+        String finalPattern = pattern;
+        return jdbi.withHandle(handle -> {
+            var query = handle.createQuery(sql)
+                    .bind("pattern", finalPattern)
+                    .bind("limit", limit)
+                    .bind("offset", offset);
+            if (symbolKind != null) query.bind("kind", symbolKind);
+            return query.map((rs, ctx) -> new SymbolSearchResult(
+                    rs.getInt("class_id"), rs.getString("class_name"),
+                    rs.getString("class_kind"), rs.getString("symbol_kind"),
+                    rs.getString("symbol_name"), rs.getString("signature"),
+                    rs.getString("type_name"), fromJson(rs.getString("parameter_types")),
+                    rs.getString("modifiers"), fromJson(rs.getString("annotations")),
+                    rs.getString("source_file"), rs.getInt("source_line"),
+                    rs.getString("origin"), rs.getString("module"),
+                    rs.getString("source_set"), rs.getInt("source_tokens"))).list();
+        });
+    }
+
+    public static int countSymbols(Jdbi jdbi, String namePattern, String symbolKind) {
+        String pattern = namePattern.replace("*", "%");
+        if (!pattern.contains("%")) pattern = "%" + pattern + "%";
+        String kindFilter = symbolKind == null ? "" : " AND symbol_kind = :kind";
+        String sql = """
+                WITH symbols AS (
+                    SELECT c.kind AS symbol_kind
+                    FROM classes c
+                    WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                      AND c.class_name LIKE :pattern
+                    UNION ALL
+                    SELECT m.kind AS symbol_kind
+                    FROM class_members m JOIN classes c ON c.id = m.class_id
+                    WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                      AND (m.name LIKE :pattern OR m.signature LIKE :pattern)
+                )
+                SELECT count(*) FROM symbols WHERE 1 = 1
+                """ + kindFilter;
+        String finalPattern = pattern;
+        return jdbi.withHandle(handle -> {
+            var query = handle.createQuery(sql).bind("pattern", finalPattern);
+            if (symbolKind != null) query.bind("kind", symbolKind);
+            return query.mapTo(Integer.class).one();
+        });
     }
 
     public static List<BeanRecord> findBeans(Jdbi jdbi, Map<String, String> filter) {

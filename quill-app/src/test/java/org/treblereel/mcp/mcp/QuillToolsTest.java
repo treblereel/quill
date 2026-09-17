@@ -444,6 +444,51 @@ class QuillToolsTest {
     }
 
     @Test
+    void searchSymbolsFindsAndFiltersMemberDeclarations() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    VALUES (1, 'METHOD', 'createOrder',
+                            'createOrder(java.lang.String):org.acme.Order',
+                            'org.acme.Order', '["java.lang.String"]', 'public',
+                            '["jakarta.transaction.Transactional"]'),
+                           (1, 'FIELD', 'orderRepository',
+                            'orderRepository:org.acme.OrderRepository',
+                            'org.acme.OrderRepository', '[]', 'private', '[]')""");
+        });
+
+        QuillTools tools = new QuillTools();
+        JsonNode result = JSON.readTree(tools.searchSymbols(
+                jdbi, "order", "method", 10, 0));
+        JsonNode invalid = JSON.readTree(tools.searchSymbols(
+                jdbi, "order", "package", 10, 0));
+
+        assertEquals(1, result.path("total").asInt());
+        JsonNode symbol = result.path("symbols").get(0);
+        assertEquals("method", symbol.path("kind").asText());
+        assertEquals("createOrder", symbol.path("name").asText());
+        assertEquals("org.acme.OrderService", symbol.path("declaring_class").asText());
+        assertEquals("org.acme.Order", symbol.path("type").asText());
+        assertTrue(symbol.path("annotations").toString().contains("Transactional"));
+        assertTrue(invalid.path("error").asText().contains("Invalid kind"));
+    }
+
+    @Test
+    void searchSymbolsIncludesTypesAndPaginates() throws Exception {
+        QuillTools tools = new QuillTools();
+        JsonNode page = JSON.readTree(tools.searchSymbols(jdbi, "Service", null, 2, 1));
+        JsonNode blank = JSON.readTree(tools.searchSymbols(jdbi, " ", null, 10, 0));
+
+        assertEquals(4, page.path("total").asInt());
+        assertEquals(2, page.path("showing").asInt());
+        assertEquals(1, page.path("offset").asInt());
+        assertTrue(page.path("has_more").asBoolean());
+        assertTrue(blank.path("error").asText().contains("must not be blank"));
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

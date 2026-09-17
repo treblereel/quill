@@ -907,6 +907,74 @@ class QuillToolsTest {
     }
 
     @Test
+    void findImplementationsReportsGeneratedOccurrencesByModule() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_occurrences
+                      (id, class_id, class_name, module, source_set, output_directory,
+                       class_file, source_file, origin)
+                    VALUES (?, 3, 'org.acme.StripePaymentService', ?, 'main', ?, ?, ?, ?)""",
+                    11, "checkout-one", "checkout-one/target/classes",
+                    "checkout-one/target/classes/org/acme/StripePaymentService.class",
+                    "checkout-one/target/generated-sources/annotations/org/acme/StripePaymentService.java",
+                    "generated");
+            handle.execute("""
+                    INSERT INTO class_occurrences
+                      (id, class_id, class_name, module, source_set, output_directory,
+                       class_file, source_file, origin)
+                    VALUES (?, 3, 'org.acme.StripePaymentService', ?, 'main', ?, ?, ?, ?)""",
+                    12, "checkout-two", "checkout-two/target/classes",
+                    "checkout-two/target/classes/org/acme/StripePaymentService.class",
+                    "checkout-two/target/generated-sources/annotations/org/acme/StripePaymentService.java",
+                    "generated");
+        });
+
+        JsonNode result = JSON.readTree(new QuillTools().findImplementations(
+                jdbi, "PaymentService", true, null, null, 10, 0));
+
+        assertEquals("org.acme.PaymentService", result.path("target").asText());
+        assertEquals(1, result.path("implementation_class_count").asInt());
+        assertEquals(2, result.path("implementation_occurrence_count").asInt());
+        assertEquals(2, result.path("generated_implementation_count").asInt());
+        assertEquals(List.of("checkout-one", "checkout-two"),
+                result.path("generated_modules").valueStream().map(JsonNode::asText).toList());
+        assertTrue(result.path("selection_depends_on_application_context").asBoolean());
+        assertEquals("org.acme.StripePaymentService",
+                result.path("implementations").get(0).path("class").asText());
+        assertEquals(2, result.path("implementations").get(0)
+                .path("occurrence_count").asInt());
+
+        JsonNode filtered = JSON.readTree(new QuillTools().findImplementations(
+                jdbi, "PaymentService", true, "checkout-two", null, 10, 0));
+        assertEquals(1, filtered.path("implementation_occurrence_count").asInt());
+        assertEquals(List.of("checkout-two"), filtered.path("generated_modules")
+                .valueStream().map(JsonNode::asText).toList());
+        assertFalse(filtered.path("selection_depends_on_application_context").asBoolean());
+    }
+
+    @Test
+    void findImplementationsCanExcludeTransitiveDescendants() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO classes
+                  (class_name, kind, superclass, interfaces, source_file, source_line,
+                   is_bean, source_tokens, origin, lifecycle, module, source_set)
+                VALUES ('org.acme.SpecialStripePaymentService', 'CLASS',
+                        'org.acme.StripePaymentService', '[]',
+                        'src/main/java/org/acme/SpecialStripePaymentService.java', 1,
+                        0, 20, 'source', 'current', 'payments', 'main')"""));
+
+        QuillTools tools = new QuillTools();
+        JsonNode direct = JSON.readTree(tools.findImplementations(
+                jdbi, "PaymentService", false, null, null, 10, 0));
+        JsonNode transitive = JSON.readTree(tools.findImplementations(
+                jdbi, "PaymentService", true, null, null, 10, 0));
+
+        assertEquals(1, direct.path("implementation_class_count").asInt());
+        assertEquals(2, transitive.path("implementation_class_count").asInt());
+        assertEquals(2, transitive.path("implementations").get(1).path("distance").asInt());
+    }
+
+    @Test
     void documentationOnlyWorktreeDoesNotMakeStructureStale() throws Exception {
         Path repository = tempDir.resolve("docs-repository");
         Path source = repository.resolve("src/main/java/example/App.java");

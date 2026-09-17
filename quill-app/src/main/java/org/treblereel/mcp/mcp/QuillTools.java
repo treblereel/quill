@@ -67,6 +67,21 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE), cursor.orElse(null)));
     }
 
+    @Tool(structured = true, description = "Find direct/transitive implementations across indexed reactor outputs, including duplicate generated FQCNs by module.")
+    public String find_implementations(
+            @ToolArg(description = "Current class or interface name (short or FQCN), or its source path") String target,
+            @ToolArg(description = "Include indirect implementations through intermediate types (default: true)") Optional<Boolean> transitive,
+            @ToolArg(description = "Only occurrences from this project-relative module") Optional<String> module,
+            @ToolArg(description = "Source set filter, e.g. main or test") Optional<String> source_set,
+            @ToolArg(description = "Logical implementation classes per page (default: 50, max: 100)") Optional<Integer> limit,
+            @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
+            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findImplementations(
+                p.jdbi(), target, transitive.orElse(true), module.orElse(null),
+                source_set.orElse(null), clamp(limit.orElse(50), 1, 100),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -192,6 +207,12 @@ public final class QuillTools {
             boolean includeNodes, int limit, int offset, String cursor) {
         return queries.getDependencies(jdbi, target, direction, depth,
                 includeNodes, limit, offset, cursor);
+    }
+
+    String findImplementations(Jdbi jdbi, String target, boolean transitive,
+            String module, String sourceSet, int limit, int offset) {
+        return queries.findImplementations(
+                jdbi, target, transitive, module, sourceSet, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

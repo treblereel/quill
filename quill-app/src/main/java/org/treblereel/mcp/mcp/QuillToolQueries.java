@@ -60,6 +60,12 @@ public final class QuillToolQueries {
                 includeNodes, limit, offset, cursor);
     }
 
+    String findImplementations(Jdbi jdbi, String target, boolean transitive,
+            String module, String sourceSet, int limit, int offset) {
+        return structure.findImplementations(
+                jdbi, target, transitive, module, sourceSet, limit, offset);
+    }
+
     String getInjectionPoints(Jdbi jdbi, String target) {
         return structure.getInjectionPoints(jdbi, target);
     }

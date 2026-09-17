@@ -23,6 +23,7 @@ final class ProjectConfiguration {
 
             - **Searching classes:** `search_classes` — faster than grep, supports wildcard patterns (`*Service`, `*Strategy*`)
             - **Dependency analysis:** `get_dependencies` — what a class depends on and what depends on it
+            - **Implementations:** `find_implementations` — subclasses/implementors, including generated copies by module
             - **Risk assessment:** `assess_change_risk` — class blast radius or file risk from criticality, churn, bus factor, and coupling
             - **Project overview:** `get_overview` — call first to orient (class/bean counts, architecture hubs, problems)
             - **Git hotspots:** `find_git_hotspots` — most frequently changed files/classes

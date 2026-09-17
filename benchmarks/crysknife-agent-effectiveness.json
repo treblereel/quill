@@ -5,7 +5,7 @@
   "tasks": [
     {
       "id": "navigation-implementation-context",
-      "quill_tools": ["search_classes", "get_dependencies"],
+      "quill_tools": ["find_implementations"],
       "prompt": "Determine whether one NavigationGraph implementation can be selected safely for the root Maven reactor. Identify the module containing the base graph and return a sorted list of every reactor module whose build output contains a generated implementation with the same FQCN. Exclude standalone Maven builds that are not declared transitively by the root pom.xml.",
       "expected": {
         "selection_depends_on_application_context": true,

@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.BeanRecord;
@@ -221,6 +222,165 @@ final class StructureToolQueries {
         }
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
+    }
+
+    String findImplementations(Jdbi jdbi, String target, boolean transitive,
+            String module, String sourceSet, int limit, int offset) {
+        var lookup = ClassTargetResolver.resolve(jdbi, target);
+        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+        ClassRecord base = lookup.cls();
+        List<ClassRecord> allClasses = IndexReader.findAllClasses(jdbi);
+        Map<String, Integer> distances = implementationDistances(
+                allClasses, base.className(), transitive);
+        List<ClassRecord> implementations = allClasses.stream()
+                .filter(candidate -> distances.containsKey(candidate.className()))
+                .sorted(Comparator
+                        .comparingInt((ClassRecord value) -> distances.get(value.className()))
+                        .thenComparing(ClassRecord::className))
+                .toList();
+        Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
+                IndexReader.findClassOccurrencesByClassIds(
+                        jdbi, implementations.stream().map(ClassRecord::id).toList());
+
+        List<ImplementationResult> results = new ArrayList<>();
+        for (ClassRecord implementation : implementations) {
+            List<ClassOccurrenceRecord> occurrences = filteredOccurrences(
+                    implementation, occurrencesByClass.get(implementation.id()), module, sourceSet);
+            if (!occurrences.isEmpty()) {
+                results.add(new ImplementationResult(
+                        implementation, distances.get(implementation.className()), occurrences));
+            }
+        }
+
+        int from = Math.min(offset, results.size());
+        int to = (int) Math.min((long) from + limit, results.size());
+        List<ImplementationResult> page = results.subList(from, to);
+        ImplementationSummary summary = summarizeImplementations(results);
+
+        ObjectNode root = JSON.createObjectNode();
+        root.put("target", base.className());
+        root.put("kind", base.kind());
+        root.put("source", base.sourceFile() + ":" + base.sourceLine());
+        root.put("origin", base.origin());
+        appendContext(root, base);
+        root.put("transitive", transitive);
+        root.put("implementation_class_count", results.size());
+        root.put("implementation_occurrence_count", summary.occurrenceCount());
+        root.put("source_implementation_count", summary.sourceCount());
+        root.put("generated_implementation_count", summary.generatedCount());
+        root.set("implementation_modules", JSON.valueToTree(summary.modules()));
+        root.set("generated_modules", JSON.valueToTree(summary.generatedModules()));
+        root.put("selection_depends_on_application_context",
+                summary.occurrenceCount() > 1);
+
+        ArrayNode array = root.putArray("implementations");
+        int naiveTokens = base.sourceTokens();
+        for (ImplementationResult result : page) {
+            ClassRecord implementation = result.implementation();
+            ObjectNode node = array.addObject();
+            node.put("class", implementation.className());
+            node.put("kind", implementation.kind());
+            node.put("distance", result.distance());
+            node.put("direct", result.distance() == 1);
+            node.put("source", implementation.sourceFile() + ":" + implementation.sourceLine());
+            node.put("origin", implementation.origin());
+            appendContext(node, implementation);
+            appendImplementationOccurrences(node, result.occurrences());
+            naiveTokens += implementation.sourceTokens();
+        }
+        appendPage(root, page.size(), results.size(), limit, offset);
+        appendMeta(root, jdbi, naiveTokens);
+        return root.toString();
+    }
+
+    private Map<String, Integer> implementationDistances(
+            List<ClassRecord> classes, String target, boolean transitive) {
+        Map<String, Integer> distances = new HashMap<>();
+        distances.put(target, 0);
+        boolean changed;
+        do {
+            changed = false;
+            for (ClassRecord candidate : classes) {
+                if (distances.containsKey(candidate.className())) continue;
+                int distance = directParentDistance(candidate, distances);
+                if (distance > 0 && (transitive || distance == 1)) {
+                    distances.put(candidate.className(), distance);
+                    changed = true;
+                }
+            }
+        } while (transitive && changed);
+        distances.remove(target);
+        return distances;
+    }
+
+    private int directParentDistance(ClassRecord candidate, Map<String, Integer> distances) {
+        int result = Integer.MAX_VALUE;
+        Integer superclassDistance = distances.get(candidate.superclass());
+        if (superclassDistance != null) result = superclassDistance + 1;
+        for (String implemented : candidate.interfaces()) {
+            Integer interfaceDistance = distances.get(implemented);
+            if (interfaceDistance != null) result = Math.min(result, interfaceDistance + 1);
+        }
+        return result == Integer.MAX_VALUE ? -1 : result;
+    }
+
+    private List<ClassOccurrenceRecord> filteredOccurrences(ClassRecord implementation,
+            List<ClassOccurrenceRecord> occurrences, String module, String sourceSet) {
+        List<ClassOccurrenceRecord> available = occurrences == null || occurrences.isEmpty()
+                ? List.of(new ClassOccurrenceRecord(0, implementation.id(),
+                        implementation.className(), implementation.module(),
+                        implementation.sourceSet(), "", "", implementation.sourceFile(),
+                        implementation.origin()))
+                : occurrences;
+        return available.stream()
+                .filter(value -> module == null || Objects.equals(module, value.module()))
+                .filter(value -> sourceSet == null
+                        || Objects.equals(sourceSet, value.sourceSet()))
+                .toList();
+    }
+
+    private ImplementationSummary summarizeImplementations(
+            List<ImplementationResult> implementations) {
+        int occurrences = 0;
+        int source = 0;
+        int generated = 0;
+        Set<String> modules = new TreeSet<>();
+        Set<String> generatedModules = new TreeSet<>();
+        for (ImplementationResult implementation : implementations) {
+            for (ClassOccurrenceRecord occurrence : implementation.occurrences()) {
+                occurrences++;
+                if (occurrence.module() != null) modules.add(occurrence.module());
+                if ("generated".equals(occurrence.origin())) {
+                    generated++;
+                    if (occurrence.module() != null) generatedModules.add(occurrence.module());
+                } else {
+                    source++;
+                }
+            }
+        }
+        return new ImplementationSummary(occurrences, source, generated,
+                List.copyOf(modules), List.copyOf(generatedModules));
+    }
+
+    private void appendImplementationOccurrences(
+            ObjectNode node, List<ClassOccurrenceRecord> occurrences) {
+        node.put("occurrence_count", occurrences.size());
+        ArrayNode values = node.putArray("class_occurrences");
+        for (ClassOccurrenceRecord occurrence : occurrences) {
+            ObjectNode value = values.addObject();
+            value.put("module", occurrence.module());
+            value.put("source_set", occurrence.sourceSet());
+            value.put("origin", occurrence.origin());
+            if (!occurrence.outputDirectory().isEmpty()) {
+                value.put("output_directory", occurrence.outputDirectory());
+            }
+            if (!occurrence.classFile().isEmpty()) {
+                value.put("class_file", occurrence.classFile());
+            }
+            if (occurrence.sourceFile() != null) {
+                value.put("source_file", occurrence.sourceFile());
+            }
+        }
     }
 
     private List<GraphRelation> breadthFirstRelations(
@@ -522,6 +682,14 @@ final class StructureToolQueries {
     }
 
     private record Frontier(int classId, int depth) {}
+
+    private record ImplementationResult(
+            ClassRecord implementation, int distance,
+            List<ClassOccurrenceRecord> occurrences) {}
+
+    private record ImplementationSummary(
+            int occurrenceCount, int sourceCount, int generatedCount,
+            List<String> modules, List<String> generatedModules) {}
 
     private record GraphRelation(
             ClassRecord current,

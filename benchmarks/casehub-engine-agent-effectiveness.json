@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Casehub Engine agent effectiveness",
-  "project_revision": "54c21d0d5806922e723de2782f4ad8419cf5dc63",
+  "project_revision": "a44fe7813149c2ffd725931b8a0442ba8c3597ef",
   "tasks": [
     {
       "id": "case-definition-coupling",

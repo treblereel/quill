@@ -83,6 +83,9 @@ final class McpToolCatalog {
         for (Parameter parameter : method.getParameters()) {
             Map<String, Object> property = new LinkedHashMap<>();
             property.put("type", jsonType(parameter.getParameterizedType()));
+            if ("array".equals(property.get("type"))) {
+                property.put("items", Map.of("type", "string"));
+            }
             ToolArg arg = parameter.getAnnotation(ToolArg.class);
             if (arg != null) property.put("description", arg.description());
             properties.put(parameter.getName(), property);
@@ -181,6 +184,11 @@ final class McpToolCatalog {
             throw new IllegalArgumentException("Expected string, got " + value.getClass().getSimpleName());
         }
         if (targetType == String.class) return value;
+        if (targetType == List.class) {
+            if (value instanceof List<?> list
+                    && list.stream().allMatch(String.class::isInstance)) return List.copyOf(list);
+            throw new IllegalArgumentException("Expected string array");
+        }
         return value;
     }
 
@@ -195,9 +203,10 @@ final class McpToolCatalog {
     }
 
     private static String jsonType(Type type) {
+        if (type instanceof ParameterizedType parameterized
+                && parameterized.getRawType() == List.class) return "array";
         Class<?> raw = type instanceof ParameterizedType parameterized
-                ? optionalArgument(parameterized)
-                : (Class<?>) type;
+                ? optionalArgument(parameterized) : (Class<?>) type;
         if (raw == Integer.class || raw == int.class) return "integer";
         if (raw == Boolean.class || raw == boolean.class) return "boolean";
         return "string";

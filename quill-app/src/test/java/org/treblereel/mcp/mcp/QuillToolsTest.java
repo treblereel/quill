@@ -193,6 +193,28 @@ class QuillToolsTest {
     }
 
     @Test
+    void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,
+                    last_author, first_commit, distinct_authors)
+                VALUES (?, NULL, 4, ?, ?, ?, 2)""",
+                "src/main/java/org/acme/DeletedGenerator.java",
+                "2026-08-25T08:00:00Z", "dev2", "2026-08-20T08:00:00Z"));
+        JsonNode result = JSON.readTree(new QuillTools().resolveEntities(
+                jdbi, List.of("OrderService", "DeletedGenerator.java", "NeverExisted")));
+        JsonNode current = result.get("entities").get(0);
+        assertTrue(current.get("current").asBoolean());
+        assertEquals("current", current.get("resolution").asText());
+        JsonNode deleted = result.get("entities").get(1);
+        assertFalse(deleted.get("current").asBoolean());
+        assertTrue(deleted.get("historical").asBoolean());
+        assertTrue(deleted.get("deleted").asBoolean());
+        assertEquals("src/main/java/org/acme/DeletedGenerator.java",
+                deleted.get("historical_paths").get(0).get("file").asText());
+        assertEquals("not_found", result.get("entities").get(2).get("resolution").asText());
+    }
+
+    @Test
     void dependencyGraphIsBounded() throws Exception {
         jdbi.useHandle(handle -> {
             var classes = handle.prepareBatch(

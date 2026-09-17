@@ -93,6 +93,14 @@ public final class QuillTools {
                 p.jdbi(), target, clamp(limit.orElse(10), 1, 100)));
     }
 
+    @Tool(structured = true, description = "Resolve up to 20 class names or paths across the current tree and indexed Git history. Use for deleted, renamed, or historical entities instead of combining class search, hotspots, and git log. "
+            + "Returns: {entities: [{target, class?, current, historical, deleted, resolution, current_paths, historical_paths: [{file, commit_count?, last_modified?, last_author?, current}]}], _meta}")
+    public String resolve_entities(
+            @ToolArg(description = "Class names, file names, or repository paths to resolve") List<String> targets,
+            @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.resolveEntities(p.jdbi(), targets));
+    }
+
     @Tool(structured = true, description = "Find files that frequently change together with a given class. Reveals hidden coupling. Use before refactoring to find files you might also need to change. "
             + "Returns: {target, co_changes: [{file, class?, co_change_count, coupling_ratio}], _meta}")
     public String find_co_changed_files(
@@ -193,6 +201,10 @@ public final class QuillTools {
 
     String getFileHistory(Jdbi jdbi, String target, int limit) {
         return queries.getFileHistory(jdbi, target, limit);
+    }
+
+    String resolveEntities(Jdbi jdbi, List<String> targets) {
+        return queries.resolveEntities(jdbi, targets);
     }
 
     String getCoChanges(Jdbi jdbi, String target, int limit) {

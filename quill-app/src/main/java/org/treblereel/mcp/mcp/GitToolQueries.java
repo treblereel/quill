@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
@@ -25,6 +27,7 @@ final class GitToolQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int MAX_RECENT_CHANGE_FILES = 200;
+    private static final int MAX_ENTITY_MATCHES = 20;
 
     private static final String NO_GIT_MESSAGE = "No git data available. "
             + "Initialize a git repository and re-run 'quill init' to enable git intelligence: "
@@ -82,6 +85,91 @@ final class GitToolQueries {
         root.put("worktree_total", worktree.changes().size());
         appendMeta(root, jdbi, 0);
         return root.toString();
+    }
+
+    String resolveEntities(Jdbi jdbi, List<String> targets) {
+        if (targets == null || targets.isEmpty()) {
+            return errorResponse("At least one target is required");
+        }
+        if (targets.size() > MAX_ENTITY_MATCHES) {
+            return errorResponse("At most " + MAX_ENTITY_MATCHES + " targets are allowed");
+        }
+        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        WorktreeInspector.Snapshot worktree = worktreeSnapshot(metadata);
+        ObjectNode root = JSON.createObjectNode();
+        ArrayNode entities = root.putArray("entities");
+        for (String target : targets) {
+            ObjectNode entity = entities.addObject();
+            entity.put("target", target);
+            Set<String> currentPaths = new LinkedHashSet<>();
+            Set<String> historicalPaths = new LinkedHashSet<>();
+
+            var classLookup = ClassTargetResolver.resolve(jdbi, target);
+            if (classLookup.cls() != null && classLookup.cls().sourceFile() != null) {
+                currentPaths.add(classLookup.cls().sourceFile());
+                entity.put("class", classLookup.cls().className());
+            }
+            for (FileRecord file : IndexReader.findFileCandidates(
+                    jdbi, target, MAX_ENTITY_MATCHES)) {
+                if ("current".equals(file.lifecycle())) currentPaths.add(file.repositoryPath());
+                else historicalPaths.add(file.repositoryPath());
+            }
+            for (WorktreeInspector.Change change : worktree.changes()) {
+                if (!"deleted".equals(change.status())
+                        && pathMatchesTarget(change.repositoryPath(), target)) {
+                    currentPaths.add(change.repositoryPath());
+                }
+            }
+
+            ArrayNode history = entity.putArray("historical_paths");
+            for (GitFileStats stats : IndexReader.findHistoricalPathCandidates(
+                    jdbi, target, MAX_ENTITY_MATCHES)) {
+                historicalPaths.add(stats.filePath());
+                ObjectNode path = history.addObject();
+                path.put("file", stats.filePath());
+                path.put("commit_count", stats.commitCount());
+                path.put("last_modified", stats.lastModified());
+                path.put("last_author", stats.lastAuthor());
+                path.put("current", currentPaths.contains(stats.filePath()));
+            }
+            // A historical candidate may come from a partial Git index without aggregate stats.
+            for (String path : historicalPaths) {
+                boolean alreadyPresent = false;
+                for (var item : history) {
+                    if (path.equals(item.path("file").asText())) {
+                        alreadyPresent = true;
+                        break;
+                    }
+                }
+                if (!alreadyPresent) history.addObject().put("file", path)
+                        .put("current", currentPaths.contains(path));
+            }
+            ArrayNode current = entity.putArray("current_paths");
+            currentPaths.forEach(current::add);
+            entity.put("current", !currentPaths.isEmpty());
+            entity.put("historical", !historicalPaths.isEmpty());
+            entity.put("deleted", currentPaths.isEmpty() && !historicalPaths.isEmpty());
+            entity.put("resolution", !currentPaths.isEmpty() ? "current"
+                    : !historicalPaths.isEmpty() ? "historical" : "not_found");
+        }
+        appendMeta(root, jdbi, 0);
+        return root.toString();
+    }
+
+    private static boolean pathMatchesTarget(String path, String target) {
+        String normalized = target.replace('\\', '/');
+        if (path.equals(normalized) || path.endsWith("/" + normalized)) return true;
+        String basename = normalized.substring(normalized.lastIndexOf('/') + 1);
+        String shortName;
+        if (basename.endsWith(".java") || basename.endsWith(".kt")) {
+            shortName = basename.substring(0, basename.lastIndexOf('.'));
+        } else {
+            int dot = basename.lastIndexOf('.');
+            shortName = dot >= 0 ? basename.substring(dot + 1) : basename;
+        }
+        return path.endsWith("/" + shortName)
+                || path.endsWith("/" + shortName + ".java")
+                || path.endsWith("/" + shortName + ".kt");
     }
 
     private WorktreeInspector.Snapshot worktreeSnapshot(Map<String, String> metadata) {

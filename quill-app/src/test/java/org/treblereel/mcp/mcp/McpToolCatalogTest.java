@@ -148,6 +148,22 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void listToolArgumentIsAdvertisedAsStringArray() {
+        AsyncToolSpecification specification = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1))
+                .stream().filter(candidate -> candidate.tool().name().equals("resolve_entities"))
+                .findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) specification.tool()
+                .inputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> targets = (Map<String, Object>) properties.get("targets");
+        assertEquals("array", targets.get("type"));
+        assertEquals(Map.of("type", "string"), targets.get("items"));
+    }
+
+    @Test
     void structuredToolAdvertisesOutputSchemaAndReturnsJsonWithTextFallback() throws Exception {
         StructuredTools tools = new StructuredTools();
         AsyncToolSpecification specification = McpToolCatalog.create(

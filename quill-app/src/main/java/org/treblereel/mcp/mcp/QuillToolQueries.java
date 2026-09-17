@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import java.util.List;
 import org.jdbi.v3.core.Jdbi;
 
 /** Routes tool calls to focused query components. */
@@ -55,6 +56,10 @@ public final class QuillToolQueries {
 
     String getFileHistory(Jdbi jdbi, String target, int limit) {
         return git.getFileHistory(jdbi, target, limit);
+    }
+
+    String resolveEntities(Jdbi jdbi, List<String> targets) {
+        return git.resolveEntities(jdbi, targets);
     }
 
     String getCoChanges(Jdbi jdbi, String target, int limit) {

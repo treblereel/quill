@@ -205,6 +205,29 @@ public final class IndexReader {
         return unique.values().stream().limit(limit).toList();
     }
 
+    public static List<GitFileStats> findHistoricalPathCandidates(
+            Jdbi jdbi, String target, int limit) {
+        String normalized = target.replace('\\', '/');
+        String basename = normalized.substring(normalized.lastIndexOf('/') + 1);
+        if (!basename.endsWith(".java") && !basename.endsWith(".kt")) {
+            int dot = basename.lastIndexOf('.');
+            if (dot >= 0) basename = basename.substring(dot + 1);
+            basename += ".java";
+        }
+        String suffixPattern = "%/" + basename;
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT * FROM git_file_stats
+                        WHERE file_path = :path OR file_path LIKE :suffix
+                        ORDER BY CASE WHEN file_path = :path THEN 0 ELSE 1 END,
+                                 commit_count DESC, file_path
+                        LIMIT :limit""")
+                .bind("path", normalized)
+                .bind("suffix", suffixPattern)
+                .bind("limit", limit)
+                .map((rs, ctx) -> mapGitFileStats(rs))
+                .list());
+    }
+
     public static List<ClassRecord> findClassesByShortName(Jdbi jdbi, String shortName) {
         return jdbi.withHandle(h ->
                 h.createQuery("SELECT * FROM classes WHERE "

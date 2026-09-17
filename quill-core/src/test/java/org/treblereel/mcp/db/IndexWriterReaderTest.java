@@ -516,6 +516,7 @@ class IndexWriterReaderTest {
                 IndexReader.findVisibleModules(jdbi, "application"));
         assertEquals(List.of(0, 1, 2), IndexReader.findModuleClasspath(jdbi, "application")
                 .stream().map(ModuleClasspathRecord::distance).toList());
+        assertEquals(3, IndexReader.findAllModuleClasspath(jdbi).size());
         assertTrue(IndexReader.findVisibleModules(jdbi, "missing").isEmpty());
     }
 

@@ -894,6 +894,17 @@ public final class IndexReader {
                 .list());
     }
 
+    public static List<ModuleClasspathRecord> findAllModuleClasspath(Jdbi jdbi) {
+        return jdbi.withHandle(h -> h.createQuery(
+                        "SELECT application_module, visible_module, distance, relation "
+                                + "FROM module_classpath "
+                                + "ORDER BY application_module, distance, visible_module")
+                .map((rs, ctx) -> new ModuleClasspathRecord(
+                        rs.getString("application_module"), rs.getString("visible_module"),
+                        rs.getInt("distance"), rs.getString("relation")))
+                .list());
+    }
+
     public static Set<String> findVisibleModules(Jdbi jdbi, String applicationModule) {
         return findModuleClasspath(jdbi, applicationModule).stream()
                 .map(ModuleClasspathRecord::visibleModule)

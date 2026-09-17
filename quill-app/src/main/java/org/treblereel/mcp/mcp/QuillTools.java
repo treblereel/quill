@@ -241,6 +241,20 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Inspect direct project-module dependencies and transitive classpath visibility.")
+    public String get_module_graph(
+            @ToolArg(description = "Module path relative to the project root; omit for the complete direct-dependency graph") Optional<String> module,
+            @ToolArg(description = "For a selected module: inbound, outbound, or both (default: both)") Optional<String> direction,
+            @ToolArg(description = "Maximum stored visibility distance (default: 2, max: 10)") Optional<Integer> depth,
+            @ToolArg(description = "Relations per page (default: 100, max: 200)") Optional<Integer> limit,
+            @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.getModuleGraph(
+                p.jdbi(), module.orElse(null), direction.orElse("both"),
+                clamp(depth.orElse(2), 1, 10), clamp(limit.orElse(100), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -447,6 +461,11 @@ public final class QuillTools {
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
         return queries.findEntryPoints(jdbi, kind, module,
                 includeGenerated, includeTests, limit, offset);
+    }
+
+    String getModuleGraph(Jdbi jdbi, String module, String direction,
+            int depth, int limit, int offset) {
+        return queries.getModuleGraph(jdbi, module, direction, depth, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

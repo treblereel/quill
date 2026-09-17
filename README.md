@@ -139,6 +139,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   serializable, and static-final fields are excluded, while write-only candidates are opt-in
 - **find_entry_points** — discover main methods, REST resources/endpoints, observers, scheduled
   methods, message consumers, annotation processors, and ServiceLoader providers
+- **get_module_graph** — inspect direct Maven/Gradle project-module dependencies and transitive
+  classpath visibility in either direction, with module-level class and bean counts
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
   annotation name or FQCN, with pagination and source/generated breakdown
 - **find_implementations** — find direct/transitive subclasses and implementors, including

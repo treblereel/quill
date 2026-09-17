@@ -910,6 +910,58 @@ class QuillToolsTest {
     }
 
     @Test
+    void getModuleGraphSeparatesDirectDependenciesFromTransitiveVisibility() throws Exception {
+        IndexWriter.writeModuleClasspath(jdbi, List.of(
+                new ModuleClasspathRecord("app", "app", 0, "self"),
+                new ModuleClasspathRecord("app", "service", 1, "project_dependency"),
+                new ModuleClasspathRecord("app", "common", 2, "project_dependency"),
+                new ModuleClasspathRecord("service", "service", 0, "self"),
+                new ModuleClasspathRecord("service", "common", 1, "project_dependency"),
+                new ModuleClasspathRecord("common", "common", 0, "self")));
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO classes
+                  (class_name, kind, superclass, interfaces, source_file, source_line,
+                   is_bean, source_tokens, origin, lifecycle, module, source_set)
+                VALUES ('org.acme.app.Application', 'CLASS', 'java.lang.Object', '[]',
+                        'app/src/main/java/org/acme/app/Application.java', 1,
+                        1, 30, 'source', 'current', 'app', 'main'),
+                       ('org.acme.service.Service', 'CLASS', 'java.lang.Object', '[]',
+                        'service/src/main/java/org/acme/service/Service.java', 1,
+                        1, 20, 'source', 'current', 'service', 'main'),
+                       ('org.acme.common.GeneratedModel', 'CLASS', 'java.lang.Object', '[]',
+                        'common/target/generated-sources/org/acme/common/GeneratedModel.java', 1,
+                        0, 10, 'generated', 'current', 'common', 'main')
+                """));
+
+        QuillTools tools = new QuillTools();
+        JsonNode direct = JSON.readTree(tools.getModuleGraph(
+                jdbi, null, "both", 5, 20, 0));
+        JsonNode outbound = JSON.readTree(tools.getModuleGraph(
+                jdbi, "app", "outbound", 2, 20, 0));
+        JsonNode inbound = JSON.readTree(tools.getModuleGraph(
+                jdbi, "common", "inbound", 2, 20, 0));
+        JsonNode missing = JSON.readTree(tools.getModuleGraph(
+                jdbi, "missing", "both", 2, 20, 0));
+
+        assertEquals(2, direct.path("total").asInt());
+        assertEquals(2, direct.path("direct_relations").asInt());
+        assertEquals(0, direct.path("transitive_relations").asInt());
+        assertEquals(2, outbound.path("total").asInt());
+        assertEquals("direct_project_dependency",
+                outbound.path("relations").get(0).path("kind").asText());
+        assertEquals("transitive_classpath_visibility",
+                outbound.path("relations").get(1).path("kind").asText());
+        assertEquals(2, inbound.path("total").asInt());
+        assertEquals("service", inbound.path("relations").get(0).path("from").asText());
+        JsonNode common = inbound.path("nodes").valueStream()
+                .filter(node -> node.path("module").asText().equals("common"))
+                .findFirst().orElseThrow();
+        assertEquals(1, common.path("generated_classes").asInt());
+        assertEquals("Module not found: missing", missing.path("error").asText());
+        assertEquals(3, missing.path("available_modules").size());
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

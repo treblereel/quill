@@ -879,6 +879,65 @@ class QuillToolsTest {
     }
 
     @Test
+    void getAnnotatedClassesSeparatesDirectAndMetaMatches() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_annotations
+                      (class_id, annotation_name, direct, via_annotation)
+                    VALUES (1, 'org.acme.Tracked', 1, NULL)""");
+            handle.execute("""
+                    INSERT INTO class_annotations
+                      (class_id, annotation_name, direct, via_annotation)
+                    VALUES (3, 'org.acme.Tracked', 0, 'org.acme.Specialized')""");
+            handle.execute("UPDATE classes SET origin = 'generated' WHERE id = 3");
+        });
+
+        QuillToolQueries queries = new QuillToolQueries();
+        JsonNode all = JSON.readTree(
+                queries.getAnnotatedClasses(jdbi, "@Tracked", true, 1, 0));
+        assertEquals("org.acme.Tracked", all.path("annotation").asText());
+        assertEquals(2, all.path("annotated_class_count").asInt());
+        assertEquals(1, all.path("direct_class_count").asInt());
+        assertEquals(1, all.path("meta_only_class_count").asInt());
+        assertEquals(1, all.path("origin_breakdown").path("source").asInt());
+        assertEquals(1, all.path("origin_breakdown").path("generated").asInt());
+        assertEquals(1, all.path("showing").asInt());
+        assertTrue(all.path("has_more").asBoolean());
+
+        JsonNode meta = JSON.readTree(
+                queries.getAnnotatedClasses(jdbi, "org.acme.Tracked", true, 10, 1));
+        assertEquals("meta", meta.path("classes").get(0).path("match").asText());
+        assertEquals("org.acme.Specialized", meta.path("classes").get(0)
+                .path("via_annotations").get(0).asText());
+
+        JsonNode directOnly = JSON.readTree(
+                queries.getAnnotatedClasses(jdbi, "Tracked", false, 10, 0));
+        assertEquals(1, directOnly.path("annotated_class_count").asInt());
+        assertEquals("direct", directOnly.path("classes").get(0).path("match").asText());
+    }
+
+    @Test
+    void getAnnotatedClassesRejectsAmbiguousShortNames() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_annotations
+                      (class_id, annotation_name, direct, via_annotation)
+                    VALUES (1, 'org.acme.Tracked', 1, NULL)""");
+            handle.execute("""
+                    INSERT INTO class_annotations
+                      (class_id, annotation_name, direct, via_annotation)
+                    VALUES (2, 'other.Tracked', 1, NULL)""");
+        });
+
+        JsonNode result = JSON.readTree(new QuillToolQueries()
+                .getAnnotatedClasses(jdbi, "Tracked", true, 10, 0));
+
+        assertEquals("Ambiguous annotation name", result.path("error").asText());
+        assertEquals(List.of("org.acme.Tracked", "other.Tracked"), result.path("candidates")
+                .valueStream().map(JsonNode::asText).toList());
+    }
+
+    @Test
     void structuralQueriesExposeDuplicateOccurrencesAndFilterByOccurrenceModule()
             throws Exception {
         jdbi.useHandle(handle -> {

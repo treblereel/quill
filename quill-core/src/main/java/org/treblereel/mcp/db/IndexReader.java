@@ -31,6 +31,104 @@ public final class IndexReader {
                         .list());
     }
 
+    public static List<String> findAnnotationNames(Jdbi jdbi, String target) {
+        String normalized = target.startsWith("@") ? target.substring(1) : target;
+        String suffix = "%." + normalized;
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT DISTINCT annotation_name FROM class_annotations
+                        WHERE annotation_name = :name OR annotation_name LIKE :suffix
+                        ORDER BY CASE WHEN annotation_name = :name THEN 0 ELSE 1 END,
+                                 annotation_name""")
+                .bind("name", normalized)
+                .bind("suffix", suffix)
+                .mapTo(String.class)
+                .list());
+    }
+
+    public static List<ClassRecord> findAnnotatedClasses(Jdbi jdbi, String annotationName,
+            boolean includeMetaAnnotations, int limit, int offset) {
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT c.* FROM classes c
+                        WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                          AND EXISTS (
+                              SELECT 1 FROM class_annotations a
+                              WHERE a.class_id = c.id
+                                AND a.annotation_name = :annotation
+                                AND (:includeMeta = 1 OR a.direct = 1))
+                        ORDER BY c.class_name, c.id
+                        LIMIT :limit OFFSET :offset""")
+                .bind("annotation", annotationName)
+                .bind("includeMeta", includeMetaAnnotations ? 1 : 0)
+                .bind("limit", limit)
+                .bind("offset", offset)
+                .map((rs, ctx) -> mapClass(rs))
+                .list());
+    }
+
+    public static int countAnnotatedClasses(Jdbi jdbi, String annotationName,
+            boolean includeMetaAnnotations) {
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT count(*) FROM classes c
+                        WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                          AND EXISTS (
+                              SELECT 1 FROM class_annotations a
+                              WHERE a.class_id = c.id
+                                AND a.annotation_name = :annotation
+                                AND (:includeMeta = 1 OR a.direct = 1))""")
+                .bind("annotation", annotationName)
+                .bind("includeMeta", includeMetaAnnotations ? 1 : 0)
+                .mapTo(Integer.class)
+                .one());
+    }
+
+    public static Map<String, Integer> countAnnotatedClassesByOrigin(
+            Jdbi jdbi, String annotationName, boolean includeMetaAnnotations) {
+        return jdbi.withHandle(h -> {
+            Map<String, Integer> result = new LinkedHashMap<>();
+            h.createQuery("""
+                            SELECT c.origin, count(*) AS class_count FROM classes c
+                            WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                              AND EXISTS (
+                                  SELECT 1 FROM class_annotations a
+                                  WHERE a.class_id = c.id
+                                    AND a.annotation_name = :annotation
+                                    AND (:includeMeta = 1 OR a.direct = 1))
+                            GROUP BY c.origin ORDER BY c.origin""")
+                    .bind("annotation", annotationName)
+                    .bind("includeMeta", includeMetaAnnotations ? 1 : 0)
+                    .map((rs, ctx) -> Map.entry(
+                            rs.getString("origin"), rs.getInt("class_count")))
+                    .forEach(entry -> result.put(entry.getKey(), entry.getValue()));
+            return result;
+        });
+    }
+
+    public static Map<Integer, List<ClassAnnotationRecord>> findClassAnnotations(
+            Jdbi jdbi, String annotationName, Collection<Integer> classIds,
+            boolean includeMetaAnnotations) {
+        if (classIds == null || classIds.isEmpty()) return Map.of();
+        return jdbi.withHandle(h -> {
+            Map<Integer, List<ClassAnnotationRecord>> result = new LinkedHashMap<>();
+            h.createQuery("""
+                            SELECT class_id, annotation_name, direct, via_annotation
+                            FROM class_annotations
+                            WHERE annotation_name = :annotation
+                              AND class_id IN (<classIds>)
+                              AND (:includeMeta = 1 OR direct = 1)
+                            ORDER BY class_id, direct DESC, via_annotation""")
+                    .bind("annotation", annotationName)
+                    .bindList("classIds", classIds)
+                    .bind("includeMeta", includeMetaAnnotations ? 1 : 0)
+                    .map((rs, ctx) -> new ClassAnnotationRecord(
+                            rs.getInt("class_id"), rs.getString("annotation_name"),
+                            rs.getBoolean("direct"), rs.getString("via_annotation")))
+                    .forEach(annotation -> result
+                            .computeIfAbsent(annotation.classId(), ignored -> new ArrayList<>())
+                            .add(annotation));
+            return result;
+        });
+    }
+
     public static List<BeanRecord> findBeans(Jdbi jdbi, Map<String, String> filter) {
         return jdbi.withHandle(h -> {
             var sb = new StringBuilder("SELECT b.*, c.class_name FROM beans b "

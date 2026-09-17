@@ -18,6 +18,7 @@ public final class QuillTools {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> NOT_FOUND_PREFIXES = Set.of(
             "{\"error\":\"Class not found\"",
+            "{\"error\":\"Annotation not found\"",
             "{\"error\":\"Not a bean:");
 
     private final ProjectRegistry registry;
@@ -164,6 +165,20 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), p -> queries.searchClasses(
                 p.jdbi(), pattern, module.orElse(null), source_set.orElse(null),
                 clamp(limit.orElse(30), 1, 100),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
+    @Tool(structured = true, description = "Find classes carrying an annotation directly or "
+            + "through a resolvable meta-annotation.")
+    public String get_annotated_classes(
+            @ToolArg(description = "Annotation short name or FQCN, with optional @ prefix") String annotation,
+            @ToolArg(description = "Include meta-annotation matches (default: true)") Optional<Boolean> include_meta_annotations,
+            @ToolArg(description = "Max results (default: 50)") Optional<Integer> limit,
+            @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
+            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.getAnnotatedClasses(
+                p.jdbi(), annotation, include_meta_annotations.orElse(true),
+                clamp(limit.orElse(50), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 

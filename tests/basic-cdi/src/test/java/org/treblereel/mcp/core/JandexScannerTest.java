@@ -4,6 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.lang.annotation.ElementType;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -25,7 +29,8 @@ class JandexScannerTest {
     void setUp() throws Exception {
         Indexer indexer = new Indexer();
         for (Class<?> cls : List.of(PaymentService.class, StripePaymentService.class,
-                MockPaymentService.class, OrderService.class, OrderDTO.class, Premium.class)) {
+                MockPaymentService.class, OrderService.class, OrderDTO.class, Premium.class,
+                RootMarker.class, ComposedMarker.class, MetaAnnotated.class)) {
             indexer.indexClass(cls);
         }
         index = indexer.complete();
@@ -34,7 +39,7 @@ class JandexScannerTest {
     @Test
     void extractsAllClasses() {
         List<ClassRecord> classes = JandexScanner.extractClasses(index);
-        assertEquals(6, classes.size());
+        assertEquals(9, classes.size());
     }
 
     @Test
@@ -85,6 +90,24 @@ class JandexScannerTest {
                 .filter(c -> c.className().endsWith("StripePaymentService"))
                 .findFirst().orElseThrow();
         assertTrue(stripe.interfaces().stream().anyMatch(i -> i.contains("PaymentService")));
+    }
+
+    @Test
+    void extractsDirectAndMetaClassAnnotationsWithoutConflatingThem() {
+        List<ClassRecord> classes = JandexScanner.extractClasses(index);
+        Map<String, Integer> ids = classes.stream().collect(Collectors.toMap(
+                ClassRecord::className, value -> classes.indexOf(value) + 1));
+
+        var annotations = JandexScanner.extractClassAnnotations(index, index, ids);
+        int classId = ids.get(MetaAnnotated.class.getName());
+
+        assertTrue(annotations.stream().anyMatch(value -> value.classId() == classId
+                && value.annotationName().equals(ComposedMarker.class.getName())
+                && value.direct() && value.viaAnnotation() == null));
+        assertTrue(annotations.stream().anyMatch(value -> value.classId() == classId
+                && value.annotationName().equals(RootMarker.class.getName())
+                && !value.direct()
+                && value.viaAnnotation().equals(ComposedMarker.class.getName())));
     }
 
     @Test
@@ -146,4 +169,16 @@ class JandexScannerTest {
         assertEquals(sourceRoot.resolve(relative).toString(), paymentService.sourceFile());
         assertEquals(TokenCounter.count(source), paymentService.sourceTokens());
     }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    @interface RootMarker {}
+
+    @RootMarker
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    @interface ComposedMarker {}
+
+    @ComposedMarker
+    static class MetaAnnotated {}
 }

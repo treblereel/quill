@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Stream;
 import org.jboss.jandex.*;
+import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 
@@ -164,6 +165,60 @@ public final class JandexScanner {
         }
         return false;
     }
+
+    /** Extracts declared class annotations and their resolvable meta-annotation closure. */
+    public static List<ClassAnnotationRecord> extractClassAnnotations(
+            IndexView applicationIndex, IndexView lookupIndex,
+            Map<String, Integer> classNameToId) {
+        List<ClassAnnotationRecord> result = new ArrayList<>();
+        Set<ClassAnnotationKey> seen = new HashSet<>();
+        List<ClassInfo> classes = applicationIndex.getKnownClasses().stream()
+                .sorted(Comparator.comparing(value -> value.name().toString()))
+                .toList();
+        for (ClassInfo classInfo : classes) {
+            Integer classId = classNameToId.get(classInfo.name().toString());
+            if (classId == null) continue;
+            List<AnnotationInstance> declared = classInfo.declaredAnnotations().stream()
+                    .sorted(Comparator.comparing(value -> value.name().toString()))
+                    .toList();
+            for (AnnotationInstance annotation : declared) {
+                String directName = annotation.name().toString();
+                addClassAnnotation(result, seen,
+                        new ClassAnnotationRecord(classId, directName, true, null));
+                collectMetaAnnotations(classId, annotation.name(), directName, lookupIndex,
+                        new HashSet<>(), result, seen);
+            }
+        }
+        return result;
+    }
+
+    private static void collectMetaAnnotations(int classId, DotName annotationName,
+            String viaAnnotation, IndexView lookupIndex, Set<DotName> visited,
+            List<ClassAnnotationRecord> result, Set<ClassAnnotationKey> seen) {
+        if (!visited.add(annotationName)) return;
+        ClassInfo annotationClass = lookupIndex.getClassByName(annotationName);
+        if (annotationClass == null) return;
+        for (AnnotationInstance meta : annotationClass.declaredAnnotations().stream()
+                .sorted(Comparator.comparing(value -> value.name().toString())).toList()) {
+            if (meta.name().equals(annotationName)
+                    || meta.name().toString().equals(viaAnnotation)) continue;
+            addClassAnnotation(result, seen,
+                    new ClassAnnotationRecord(classId, meta.name().toString(), false,
+                            viaAnnotation));
+            collectMetaAnnotations(classId, meta.name(), viaAnnotation, lookupIndex, visited,
+                    result, seen);
+        }
+    }
+
+    private static void addClassAnnotation(List<ClassAnnotationRecord> result,
+            Set<ClassAnnotationKey> seen, ClassAnnotationRecord annotation) {
+        ClassAnnotationKey key = new ClassAnnotationKey(annotation.classId(),
+                annotation.annotationName(), annotation.direct(), annotation.viaAnnotation());
+        if (seen.add(key)) result.add(annotation);
+    }
+
+    private record ClassAnnotationKey(
+            int classId, String annotationName, boolean direct, String viaAnnotation) {}
 
     public static List<ExternalDepRecord> extractExternalDeps(
             IndexView index, Map<String, Integer> classNameToId) {

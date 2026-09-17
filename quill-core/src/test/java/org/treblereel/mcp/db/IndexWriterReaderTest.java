@@ -42,6 +42,41 @@ class IndexWriterReaderTest {
     }
 
     @Test
+    void persistsAndIncrementallyUpdatesClassAnnotations() {
+        Path dbPath = tempDir.resolve("annotations.db");
+        Jdbi database = QuillDatabase.create(dbPath);
+        List<ClassRecord> classes = List.of(new ClassRecord(
+                0, "example.Service", "CLASS", "java.lang.Object", List.of(),
+                "src/main/java/example/Service.java", 1, false, 10));
+        List<ClassAnnotationRecord> initial = List.of(
+                new ClassAnnotationRecord(1, "example.Specialized", true, null),
+                new ClassAnnotationRecord(1, "example.Root", false, "example.Specialized"));
+        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                initial);
+
+        assertEquals(List.of("example.Root"),
+                IndexReader.findAnnotationNames(database, "Root"));
+        assertEquals(1, IndexReader.countAnnotatedClasses(database, "example.Root", true));
+        assertEquals(0, IndexReader.countAnnotatedClasses(database, "example.Root", false));
+
+        List<ClassAnnotationRecord> updated = List.of(
+                new ClassAnnotationRecord(1, "example.Specialized", true, null),
+                new ClassAnnotationRecord(1, "example.OtherRoot", false,
+                        "example.Specialized"));
+        IndexWriter.IncrementalWriteTimings timings = IndexWriter.writeIncremental(
+                QuillDatabase.openWritable(dbPath), classes, List.of(), List.of(), List.of(),
+                Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), updated);
+
+        assertTrue(timings.rowsInserted() >= 1);
+        assertTrue(timings.rowsDeleted() >= 1);
+        assertEquals(List.of(), IndexReader.findAnnotationNames(database, "Root"));
+        assertEquals(List.of("example.OtherRoot"),
+                IndexReader.findAnnotationNames(database, "OtherRoot"));
+    }
+
+    @Test
     void dependencyMetricsSeparateUniqueClassesFromEdgeOccurrences() {
         Jdbi jdbi = QuillDatabase.create(tempDir.resolve("dependency-metrics.db"));
         List<ClassRecord> classes = List.of(

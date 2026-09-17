@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 7;
+    static final int SCHEMA_VERSION = 8;
 
     private QuillDatabase() {}
 
@@ -80,6 +80,14 @@ public final class QuillDatabase {
                     source_file TEXT,
                     origin TEXT NOT NULL,
                     UNIQUE(class_name, output_directory, class_file)
+                )""");
+            h.execute("""
+                CREATE TABLE IF NOT EXISTS class_annotations (
+                    class_id INTEGER NOT NULL REFERENCES classes(id),
+                    annotation_name TEXT NOT NULL,
+                    direct INTEGER NOT NULL,
+                    via_annotation TEXT,
+                    UNIQUE(class_id, annotation_name, direct, via_annotation)
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS module_classpath (
@@ -194,6 +202,8 @@ public final class QuillDatabase {
         h.execute("CREATE INDEX IF NOT EXISTS idx_occurrences_class ON class_occurrences(class_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_occurrences_name ON class_occurrences(class_name)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_occurrences_context ON class_occurrences(module, source_set)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_annotations_name ON class_annotations(annotation_name)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_annotations_class ON class_annotations(class_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_module_classpath_visible ON module_classpath(visible_module)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_repository_path ON files(repository_path)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_lifecycle ON files(lifecycle)");

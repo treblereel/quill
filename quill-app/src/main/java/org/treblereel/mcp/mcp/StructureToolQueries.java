@@ -24,6 +24,7 @@ import java.util.TreeSet;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.BeanRecord;
+import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
@@ -75,6 +76,66 @@ final class StructureToolQueries {
             naiveTokens += value.sourceTokens();
         }
         appendPage(root, limited.size(), total, limit, offset);
+        appendMeta(root, jdbi, naiveTokens);
+        return root.toString();
+    }
+
+    String getAnnotatedClasses(Jdbi jdbi, String annotation,
+            boolean includeMetaAnnotations, int limit, int offset) {
+        String requested = annotation.startsWith("@") ? annotation.substring(1) : annotation;
+        List<String> names = IndexReader.findAnnotationNames(jdbi, requested);
+        String resolved = names.stream().filter(requested::equals).findFirst().orElse(null);
+        if (resolved == null && names.size() == 1) resolved = names.getFirst();
+        if (resolved == null) {
+            ObjectNode error = JSON.createObjectNode();
+            error.put("error", names.isEmpty()
+                    ? "Annotation not found" : "Ambiguous annotation name");
+            error.put("annotation", requested);
+            error.set("candidates", JSON.valueToTree(names));
+            return error.toString();
+        }
+
+        List<ClassRecord> classes = IndexReader.findAnnotatedClasses(
+                jdbi, resolved, includeMetaAnnotations, limit, offset);
+        int total = IndexReader.countAnnotatedClasses(jdbi, resolved, includeMetaAnnotations);
+        int direct = IndexReader.countAnnotatedClasses(jdbi, resolved, false);
+        Map<Integer, List<ClassAnnotationRecord>> matches =
+                IndexReader.findClassAnnotations(jdbi, resolved,
+                        classes.stream().map(ClassRecord::id).toList(), includeMetaAnnotations);
+        Map<Integer, List<ClassOccurrenceRecord>> occurrences =
+                IndexReader.findClassOccurrencesByClassIds(
+                        jdbi, classes.stream().map(ClassRecord::id).toList());
+
+        ObjectNode root = JSON.createObjectNode();
+        root.put("annotation", resolved);
+        root.put("include_meta_annotations", includeMetaAnnotations);
+        root.put("annotated_class_count", total);
+        root.put("direct_class_count", direct);
+        root.put("meta_only_class_count", Math.max(0, total - direct));
+        root.set("origin_breakdown", JSON.valueToTree(
+                IndexReader.countAnnotatedClassesByOrigin(
+                        jdbi, resolved, includeMetaAnnotations)));
+        ArrayNode values = root.putArray("classes");
+        int naiveTokens = 0;
+        for (ClassRecord cls : classes) {
+            List<ClassAnnotationRecord> classMatches = matches.getOrDefault(cls.id(), List.of());
+            boolean directMatch = classMatches.stream().anyMatch(ClassAnnotationRecord::direct);
+            ObjectNode node = values.addObject();
+            node.put("class", cls.className());
+            node.put("match", directMatch ? "direct" : "meta");
+            node.put("source", cls.sourceFile() + ":" + cls.sourceLine());
+            node.put("origin", cls.origin());
+            node.put("lifecycle", cls.lifecycle());
+            appendContext(node, cls);
+            if (!directMatch) {
+                node.set("via_annotations", JSON.valueToTree(classMatches.stream()
+                        .map(ClassAnnotationRecord::viaAnnotation)
+                        .filter(Objects::nonNull).distinct().sorted().toList()));
+            }
+            appendOccurrences(node, occurrences.get(cls.id()));
+            naiveTokens += cls.sourceTokens();
+        }
+        appendPage(root, classes.size(), total, limit, offset);
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }

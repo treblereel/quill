@@ -23,7 +23,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.jdbi.v3.core.Jdbi;
+import org.jboss.jandex.CompositeIndex;
 import org.jboss.jandex.Index;
+import org.jboss.jandex.IndexView;
 import org.treblereel.mcp.core.ApplicationContextResolver;
 import org.treblereel.mcp.core.BeanResolver;
 import org.treblereel.mcp.core.BuildSystem;
@@ -42,6 +44,7 @@ import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.CdiProblem;
+import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.DependencyRecord;
@@ -342,6 +345,12 @@ public class ProjectInitializer {
         for (int i = 0; i < classes.size(); i++) {
             classNameToSqliteId.put(classes.get(i).className(), i + 1);
         }
+        IndexView annotationLookup = depResult.index() == null
+                ? scanResult.index()
+                : CompositeIndex.create(scanResult.index(), depResult.index());
+        List<ClassAnnotationRecord> classAnnotations =
+                JandexScanner.extractClassAnnotations(
+                        scanResult.index(), annotationLookup, classNameToSqliteId);
         List<ClassOccurrenceRecord> classOccurrences = ClassOccurrenceScanner.scan(
                 root, classFiles, classDirectoryOwners, classNameToSqliteId);
 
@@ -547,7 +556,7 @@ public class ProjectInitializer {
                         contextualInjectionPoints, remappedDeps, metadata,
                         externalDeps, remappedProblems,
                         gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
-                        inventory.files(), classOccurrences);
+                        inventory.files(), classOccurrences, classAnnotations);
                 timings.record("database_inserts", writeTimings.insertsMillis());
                 timings.record("database_indexes", writeTimings.indexesMillis());
                 timings.record("database_transaction_overhead",
@@ -562,7 +571,8 @@ public class ProjectInitializer {
                                 contextualInjectionPoints, remappedDeps, metadata,
                                 externalDeps, remappedProblems,
                                 gitResult.fileStats(), gitResult.commits(),
-                                gitResult.commitFiles(), inventory.files(), classOccurrences);
+                                gitResult.commitFiles(), inventory.files(), classOccurrences,
+                                classAnnotations);
                 timings.record("database_delta", writeTimings.deltaMillis());
                 timings.record("database_transaction_overhead",
                         writeTimings.transactionOverheadMillis());

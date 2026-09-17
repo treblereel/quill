@@ -125,6 +125,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
 `outputSchema`. Quill does not duplicate the JSON payload as text content.
 
 - **search_classes** — find classes by wildcard pattern; supports `limit`/`offset`
+- **get_annotated_classes** — find directly annotated and meta-annotated classes by short
+  annotation name or FQCN, with pagination and source/generated breakdown
 - **find_implementations** — find direct/transitive subclasses and implementors, including
   generated occurrences grouped by module and evidence about reactor-discovery completeness
 - **get_dependencies** — complete dependency metrics plus an optional relation graph,

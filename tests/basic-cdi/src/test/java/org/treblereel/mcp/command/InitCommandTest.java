@@ -52,6 +52,13 @@ class InitCommandTest {
         assertTrue(ips.stream().anyMatch(ip -> ip.targetType().contains("PaymentService")),
                 "OrderService should inject PaymentService");
 
+        var applicationScoped = IndexReader.findAnnotationNames(jdbi, "ApplicationScoped");
+        assertEquals(List.of("jakarta.enterprise.context.ApplicationScoped"),
+                applicationScoped);
+        assertTrue(IndexReader.findAnnotatedClasses(jdbi, applicationScoped.getFirst(),
+                        false, 20, 0).stream()
+                .anyMatch(value -> value.className().endsWith("StripePaymentService")));
+
         var meta = IndexReader.getMetadata(jdbi);
         assertNotNull(meta.get("indexed_at"));
         assertEquals(PROJECT_ROOT.toString(), meta.get("project_root"));

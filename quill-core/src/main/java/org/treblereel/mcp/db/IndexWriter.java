@@ -17,7 +17,8 @@ public final class IndexWriter {
     private static final String[] ALL_TABLES = {
             "git_commit_files", "git_commits", "git_file_stats",
             "class_external_deps", "cdi_problems",
-            "dependencies", "injection_points", "beans", "class_occurrences", "module_classpath", "classes",
+            "dependencies", "injection_points", "beans", "class_annotations",
+            "class_occurrences", "module_classpath", "classes",
             "files", "metadata"
     };
 
@@ -50,6 +51,8 @@ public final class IndexWriter {
     private static final TableSpec CLASS_OCCURRENCES = new TableSpec("class_occurrences",
             "id", "class_id", "class_name", "module", "source_set", "output_directory",
             "class_file", "source_file", "origin");
+    private static final TableSpec CLASS_ANNOTATIONS = new TableSpec("class_annotations",
+            "class_id", "annotation_name", "direct", "via_annotation");
     private static final TableSpec BEANS = new TableSpec("beans",
             "id", "class_id", "kind", "scope", "qualifiers", "stereotypes",
             "is_alternative", "is_default", "priority", "profiles", "declaring_class_id",
@@ -75,11 +78,13 @@ public final class IndexWriter {
     private static final TableSpec COMMIT_FILES = new TableSpec("git_commit_files",
             "commit_id", "class_id", "file_path", "change_type");
     private static final List<TableSpec> INSERT_ORDER = List.of(
-            FILES, CLASSES, CLASS_OCCURRENCES, BEANS, INJECTION_POINTS, DEPENDENCIES, METADATA,
+            FILES, CLASSES, CLASS_OCCURRENCES, CLASS_ANNOTATIONS, BEANS,
+            INJECTION_POINTS, DEPENDENCIES, METADATA,
             EXTERNAL_DEPS, PROBLEMS, FILE_STATS, COMMITS, COMMIT_FILES);
     private static final List<TableSpec> DELETE_ORDER = List.of(
             COMMIT_FILES, FILE_STATS, EXTERNAL_DEPS, PROBLEMS, DEPENDENCIES,
-            INJECTION_POINTS, BEANS, COMMITS, CLASS_OCCURRENCES, CLASSES, FILES, METADATA);
+            INJECTION_POINTS, BEANS, COMMITS, CLASS_ANNOTATIONS, CLASS_OCCURRENCES,
+            CLASSES, FILES, METADATA);
 
     public static void writeAll(Jdbi jdbi,
             List<ClassRecord> classes, List<BeanRecord> beans,
@@ -89,7 +94,8 @@ public final class IndexWriter {
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files) {
         writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, List.of(), false);
+                externalDeps, problems, fileStats, commits, commitFiles, files, List.of(),
+                List.of(), false);
     }
 
     public static WriteTimings writeFresh(Jdbi jdbi,
@@ -100,7 +106,8 @@ public final class IndexWriter {
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files) {
         return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, List.of(), true);
+                externalDeps, problems, fileStats, commits, commitFiles, files, List.of(),
+                List.of(), true);
     }
 
     public static WriteTimings writeFresh(Jdbi jdbi,
@@ -111,8 +118,23 @@ public final class IndexWriter {
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files,
             List<ClassOccurrenceRecord> occurrences) {
+        return writeFresh(jdbi, classes, beans, injectionPoints, dependencies, metadata,
+                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
+                List.of());
+    }
+
+    public static WriteTimings writeFresh(Jdbi jdbi,
+            List<ClassRecord> classes, List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
+            Map<String, String> metadata,
+            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
+            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
+            List<GitCommitFile> commitFiles, List<FileRecord> files,
+            List<ClassOccurrenceRecord> occurrences,
+            List<ClassAnnotationRecord> annotations) {
         return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences, true);
+                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
+                annotations, true);
     }
 
     /**
@@ -139,6 +161,20 @@ public final class IndexWriter {
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files,
             List<ClassOccurrenceRecord> occurrences) {
+        return writeIncremental(jdbi, classes, beans, injectionPoints, dependencies, metadata,
+                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
+                List.of());
+    }
+
+    public static IncrementalWriteTimings writeIncremental(Jdbi jdbi,
+            List<ClassRecord> classes, List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
+            Map<String, String> metadata,
+            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
+            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
+            List<GitCommitFile> commitFiles, List<FileRecord> files,
+            List<ClassOccurrenceRecord> occurrences,
+            List<ClassAnnotationRecord> annotations) {
         long startedAt = System.nanoTime();
         long[] deltaNanos = new long[1];
         long[] counts = new long[3];
@@ -149,7 +185,7 @@ public final class IndexWriter {
                     createDesiredTables(tx);
                     populateDesiredTables(tx, classes, beans, injectionPoints, dependencies,
                             metadata, externalDeps, problems, fileStats, commits, commitFiles,
-                            files, occurrences);
+                            files, occurrences, annotations);
                     createDesiredIndexes(tx);
                     long deltaStartedAt = System.nanoTime();
                     for (TableSpec table : DELETE_ORDER) {
@@ -193,10 +229,12 @@ public final class IndexWriter {
             List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences) {
+            List<ClassOccurrenceRecord> occurrences,
+            List<ClassAnnotationRecord> annotations) {
         insertDesiredFiles(h, files);
         insertDesiredClasses(h, classes);
         insertDesiredClassOccurrences(h, occurrences);
+        insertDesiredClassAnnotations(h, annotations);
         insertDesiredBeans(h, beans);
         insertDesiredInjectionPoints(h, injectionPoints);
         insertDesiredDependencies(h, dependencies);
@@ -298,6 +336,18 @@ public final class IndexWriter {
                     statement.setString(7, occurrence.classFile());
                     statement.setString(8, occurrence.sourceFile());
                     statement.setString(9, occurrence.origin());
+                });
+    }
+
+    private static void insertDesiredClassAnnotations(
+            Handle h, List<ClassAnnotationRecord> annotations) {
+        executeBatch(h,
+                "INSERT INTO desired_class_annotations (class_id, annotation_name, direct, via_annotation) VALUES (?, ?, ?, ?)",
+                annotations, (statement, annotation) -> {
+                    statement.setInt(1, annotation.classId());
+                    statement.setString(2, annotation.annotationName());
+                    statement.setInt(3, annotation.direct() ? 1 : 0);
+                    statement.setString(4, annotation.viaAnnotation());
                 });
     }
 
@@ -445,7 +495,8 @@ public final class IndexWriter {
             List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences, boolean freshDatabase) {
+            List<ClassOccurrenceRecord> occurrences,
+            List<ClassAnnotationRecord> annotations, boolean freshDatabase) {
         long transactionStartedAt = System.nanoTime();
         long[] insertsNanos = new long[1];
         long[] indexesNanos = new long[1];
@@ -461,6 +512,7 @@ public final class IndexWriter {
             insertFiles(h, files);
             insertClasses(h, classes);
             insertClassOccurrences(h, occurrences);
+            insertClassAnnotations(h, annotations);
             insertBeans(h, beans);
             insertInjectionPoints(h, injectionPoints);
             insertDependencies(h, dependencies);
@@ -490,7 +542,7 @@ public final class IndexWriter {
             Map<String, String> metadata) {
         jdbi.useTransaction(h -> {
             for (String table : new String[]{"dependencies", "injection_points", "beans",
-                    "class_occurrences", "classes", "files", "metadata"}) {
+                    "class_annotations", "class_occurrences", "classes", "files", "metadata"}) {
                 h.execute("DELETE FROM " + table);
             }
             h.execute("DELETE FROM sqlite_sequence");
@@ -577,6 +629,18 @@ public final class IndexWriter {
                     statement.setString(7, occurrence.classFile());
                     statement.setString(8, occurrence.sourceFile());
                     statement.setString(9, occurrence.origin());
+                });
+    }
+
+    private static void insertClassAnnotations(
+            Handle h, List<ClassAnnotationRecord> annotations) {
+        executeBatch(h,
+                "INSERT INTO class_annotations (class_id, annotation_name, direct, via_annotation) VALUES (?, ?, ?, ?)",
+                annotations, (statement, annotation) -> {
+                    statement.setInt(1, annotation.classId());
+                    statement.setString(2, annotation.annotationName());
+                    statement.setInt(3, annotation.direct() ? 1 : 0);
+                    statement.setString(4, annotation.viaAnnotation());
                 });
     }
 

@@ -32,6 +32,12 @@ public final class QuillToolQueries {
         return structure.searchClasses(jdbi, pattern, module, sourceSet, limit, offset);
     }
 
+    String getAnnotatedClasses(Jdbi jdbi, String annotation,
+            boolean includeMetaAnnotations, int limit, int offset) {
+        return structure.getAnnotatedClasses(
+                jdbi, annotation, includeMetaAnnotations, limit, offset);
+    }
+
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier, int limit) {
         return structure.getBeans(jdbi, className, scope, kind, profile, qualifier, limit);

@@ -12,6 +12,7 @@ public final class QuillToolQueries {
     private final TestImpactQueries testImpact = new TestImpactQueries();
     private final TypeHierarchyQueries typeHierarchy = new TypeHierarchyQueries();
     private final SymbolSearchQueries symbolSearch = new SymbolSearchQueries();
+    private final CallHierarchyQueries callHierarchy = new CallHierarchyQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -68,6 +69,11 @@ public final class QuillToolQueries {
 
     String searchSymbols(Jdbi jdbi, String pattern, String kind, int limit, int offset) {
         return symbolSearch.searchSymbols(jdbi, pattern, kind, limit, offset);
+    }
+
+    String getCallHierarchy(Jdbi jdbi, String target, String method,
+            String direction, int limit, int offset) {
+        return callHierarchy.getCallHierarchy(jdbi, target, method, direction, limit, offset);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

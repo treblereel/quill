@@ -43,6 +43,24 @@ class BytecodeDependencyScannerTest {
     }
 
     @Test
+    void recordsMethodLevelCallerAndCalleeEvidence() throws URISyntaxException {
+        Path testClasses = Path.of(BytecodeDependencyScannerTest.class.getProtectionDomain()
+                .getCodeSource().getLocation().toURI());
+
+        BytecodeDependencyScanner.ScanResult result = BytecodeDependencyScanner.analyze(
+                ClassFileSnapshot.capture(List.of(testClasses)));
+
+        assertEquals(1, result.methodCalls().stream()
+                .filter(call -> call.fromClass().equals(Consumer.class.getName()))
+                .filter(call -> call.fromMethod().equals("create"))
+                .filter(call -> call.toClass().equals(Constructed.class.getName()))
+                .filter(call -> call.toMethod().equals("<init>"))
+                .filter(call -> call.invocationKind().equals("special"))
+                .filter(call -> !call.evidenceLines().isEmpty())
+                .count());
+    }
+
+    @Test
     void snapshotSupportsAllIndexingPassesAfterClassFilesDisappear() throws Exception {
         copyClass(Consumer.class);
         copyClass(Constructed.class);

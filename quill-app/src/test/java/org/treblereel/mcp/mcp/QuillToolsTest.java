@@ -489,6 +489,50 @@ class QuillToolsTest {
     }
 
     @Test
+    void getCallHierarchyReturnsMethodLevelInboundAndOutboundEvidence() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    VALUES (1, 'METHOD', 'createOrder',
+                            'createOrder(java.lang.String):org.acme.Order',
+                            'org.acme.Order', '["java.lang.String"]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor,
+                       to_class_id, to_method, to_descriptor, invocation_kind,
+                       occurrence_count, evidence_lines)
+                    VALUES (1, 'createOrder', '(Ljava/lang/String;)Lorg/acme/Order;',
+                            4, 'audit', '(Lorg/acme/Order;)V', 'virtual', 2, '[21,24]'),
+                           (3, 'charge', '()V', 1, 'createOrder',
+                            '(Ljava/lang/String;)Lorg/acme/Order;', 'virtual', 1, '[42]')""");
+        });
+
+        QuillTools tools = new QuillTools();
+        JsonNode result = JSON.readTree(tools.getCallHierarchy(
+                jdbi, "OrderService", "createOrder", "both", 10, 0));
+        JsonNode invalid = JSON.readTree(tools.getCallHierarchy(
+                jdbi, "OrderService", null, "sideways", 10, 0));
+
+        assertEquals(2, result.path("total").asInt());
+        assertTrue(result.path("declared_method_found").asBoolean());
+        assertTrue(result.path("direct_only").asBoolean());
+        assertTrue(result.path("calls").valueStream().anyMatch(call ->
+                call.path("caller").path("class").asText()
+                        .equals("org.acme.StripePaymentService")
+                        && call.path("callee").path("method").asText().equals("createOrder")));
+        JsonNode outbound = result.path("calls").valueStream()
+                .filter(call -> call.path("callee").path("method").asText().equals("audit"))
+                .findFirst().orElseThrow();
+        assertEquals(List.of(21, 24), outbound.path("evidence_lines").valueStream()
+                .map(JsonNode::asInt).toList());
+        assertEquals("org.acme.Order", outbound.path("callee").path("parameters")
+                .get(0).asText());
+        assertTrue(invalid.path("error").asText().contains("Invalid direction"));
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

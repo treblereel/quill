@@ -26,13 +26,35 @@ public final class BytecodeDependencyScanner {
             String fromClass, String toClass, String kind, int occurrences,
             List<Integer> evidenceLines) {}
 
+    public record StaticMethodCall(
+            String fromClass,
+            String fromMethod,
+            String fromDescriptor,
+            String toClass,
+            String toMethod,
+            String toDescriptor,
+            String invocationKind,
+            int occurrences,
+            List<Integer> evidenceLines) {}
+
+    public record ScanResult(
+            List<StaticDependency> dependencies, List<StaticMethodCall> methodCalls) {}
+
     private record Edge(String fromClass, String toClass, String kind) {}
 
+    private record CallEdge(
+            String fromClass, String fromMethod, String fromDescriptor,
+            String toClass, String toMethod, String toDescriptor, String invocationKind) {}
+
     public static List<StaticDependency> scan(List<Path> classesDirectories) {
-        return scan(ClassFileSnapshot.capture(classesDirectories));
+        return analyze(ClassFileSnapshot.capture(classesDirectories)).dependencies();
     }
 
     public static List<StaticDependency> scan(ClassFileSnapshot classFiles) {
+        return analyze(classFiles).dependencies();
+    }
+
+    public static ScanResult analyze(ClassFileSnapshot classFiles) {
         List<ClassFileSnapshot.Entry> entries = classFiles.entries().stream()
                 .sorted(Comparator.comparing(entry -> entry.path().toString()))
                 .toList();
@@ -40,7 +62,7 @@ public final class BytecodeDependencyScanner {
         for (ClassFileSnapshot.Entry entry : entries) {
             applicationClasses.add(className(new ClassReader(entry.bytecode()).getClassName()));
         }
-        return scan(entries, applicationClasses);
+        return analyze(entries, applicationClasses);
     }
 
     public static List<StaticDependency> scan(
@@ -48,19 +70,28 @@ public final class BytecodeDependencyScanner {
         List<ClassFileSnapshot.Entry> entries = classFiles.entries().stream()
                 .sorted(Comparator.comparing(entry -> entry.path().toString()))
                 .toList();
-        return scan(entries, Set.copyOf(applicationClasses));
+        return analyze(entries, Set.copyOf(applicationClasses)).dependencies();
     }
 
-    private static List<StaticDependency> scan(
+    public static ScanResult analyze(
+            ClassFileSnapshot classFiles, Collection<String> applicationClasses) {
+        List<ClassFileSnapshot.Entry> entries = classFiles.entries().stream()
+                .sorted(Comparator.comparing(entry -> entry.path().toString()))
+                .toList();
+        return analyze(entries, Set.copyOf(applicationClasses));
+    }
+
+    private static ScanResult analyze(
             List<ClassFileSnapshot.Entry> entries, Set<String> applicationClasses) {
         Map<Edge, EdgeEvidence> edges = new LinkedHashMap<>();
+        Map<CallEdge, EdgeEvidence> calls = new LinkedHashMap<>();
         for (ClassFileSnapshot.Entry entry : entries) {
             new ClassReader(entry.bytecode()).accept(
-                    new DependencyClassVisitor(applicationClasses, edges),
+                    new DependencyClassVisitor(applicationClasses, edges, calls),
                     ClassReader.SKIP_FRAMES);
         }
 
-        return edges.entrySet().stream()
+        List<StaticDependency> dependencies = edges.entrySet().stream()
                 .map(entry -> new StaticDependency(entry.getKey().fromClass(),
                         entry.getKey().toClass(), entry.getKey().kind(), entry.getValue().occurrences,
                         List.copyOf(entry.getValue().lines)))
@@ -68,18 +99,36 @@ public final class BytecodeDependencyScanner {
                         .thenComparing(StaticDependency::toClass)
                         .thenComparing(StaticDependency::kind))
                 .toList();
+        List<StaticMethodCall> methodCalls = calls.entrySet().stream()
+                .map(entry -> new StaticMethodCall(
+                        entry.getKey().fromClass(), entry.getKey().fromMethod(),
+                        entry.getKey().fromDescriptor(), entry.getKey().toClass(),
+                        entry.getKey().toMethod(), entry.getKey().toDescriptor(),
+                        entry.getKey().invocationKind(), entry.getValue().occurrences,
+                        List.copyOf(entry.getValue().lines)))
+                .sorted(Comparator.comparing(StaticMethodCall::fromClass)
+                        .thenComparing(StaticMethodCall::fromMethod)
+                        .thenComparing(StaticMethodCall::fromDescriptor)
+                        .thenComparing(StaticMethodCall::toClass)
+                        .thenComparing(StaticMethodCall::toMethod)
+                        .thenComparing(StaticMethodCall::toDescriptor))
+                .toList();
+        return new ScanResult(dependencies, methodCalls);
     }
 
     private static final class DependencyClassVisitor extends ClassVisitor {
         private final Set<String> applicationClasses;
         private final Map<Edge, EdgeEvidence> edges;
+        private final Map<CallEdge, EdgeEvidence> calls;
         private String owner;
 
         private DependencyClassVisitor(
-                Set<String> applicationClasses, Map<Edge, EdgeEvidence> edges) {
+                Set<String> applicationClasses, Map<Edge, EdgeEvidence> edges,
+                Map<CallEdge, EdgeEvidence> calls) {
             super(Opcodes.ASM9);
             this.applicationClasses = applicationClasses;
             this.edges = edges;
+            this.calls = calls;
         }
 
         @Override
@@ -91,6 +140,8 @@ public final class BytecodeDependencyScanner {
         @Override
         public MethodVisitor visitMethod(int access, String name, String descriptor,
                 String signature, String[] exceptions) {
+            String callerMethod = name;
+            String callerDescriptor = descriptor;
             return new MethodVisitor(Opcodes.ASM9) {
                 private Type directClassLiteral;
                 private int currentLine;
@@ -123,6 +174,8 @@ public final class BytecodeDependencyScanner {
                         addService(owner, directClassLiteral.getInternalName(),
                                 "SERVICE_CONSUMES");
                     }
+                    addCall(methodOwner, methodName, methodDescriptor,
+                            invocationKind(opcode));
                     directClassLiteral = null;
                     if (!"<init>".equals(methodName)) add(methodOwner, "CALLS");
                     addMethodTypes(methodDescriptor);
@@ -136,6 +189,8 @@ public final class BytecodeDependencyScanner {
                     add(bootstrapMethodHandle.getOwner(), "CALLS");
                     for (Object argument : bootstrapMethodArguments) {
                         if (argument instanceof Handle handle) {
+                            addCall(handle.getOwner(), handle.getName(), handle.getDesc(),
+                                    "dynamic");
                             add(handle.getOwner(), "CALLS");
                             addMethodTypes(handle.getDesc());
                         } else if (argument instanceof Type type) {
@@ -218,6 +273,17 @@ public final class BytecodeDependencyScanner {
                     edges.computeIfAbsent(new Edge(owner, target, kind), ignored -> new EdgeEvidence())
                             .add(currentLine);
                 }
+
+                private void addCall(String internalName, String methodName,
+                        String methodDescriptor, String kind) {
+                    if (internalName == null || methodName == null || methodDescriptor == null
+                            || !methodDescriptor.startsWith("(")) return;
+                    String target = className(internalName);
+                    if (!applicationClasses.contains(target)) return;
+                    calls.computeIfAbsent(new CallEdge(owner, callerMethod, callerDescriptor,
+                                    target, methodName, methodDescriptor, kind),
+                            ignored -> new EdgeEvidence()).add(currentLine);
+                }
             };
         }
 
@@ -257,5 +323,15 @@ public final class BytecodeDependencyScanner {
 
     private static String className(String internalName) {
         return internalName.replace('/', '.');
+    }
+
+    private static String invocationKind(int opcode) {
+        return switch (opcode) {
+            case Opcodes.INVOKESTATIC -> "static";
+            case Opcodes.INVOKEINTERFACE -> "interface";
+            case Opcodes.INVOKESPECIAL -> "special";
+            case Opcodes.INVOKEVIRTUAL -> "virtual";
+            default -> "unknown";
+        };
     }
 }

@@ -52,6 +52,7 @@ import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
+import org.treblereel.mcp.model.MethodCallRecord;
 
 public class ProjectInitializer {
     private static final int MAX_GIT_COMMITS = 5_000;
@@ -416,13 +417,16 @@ public class ProjectInitializer {
         int serviceRegistrationCount;
         List<ServiceProviderScanner.Registration> serviceRegistrations;
         List<ExternalDepRecord> bytecodeServiceExternalDeps = new ArrayList<>();
+        List<MethodCallRecord> methodCalls = new ArrayList<>();
         GitAnalyzer.GitAnalysisResult gitResult;
         try (BackgroundTask<GitAnalyzer.GitAnalysisResult> gitTask =
                 BackgroundTask.start("quill-git-analysis", () -> GitAnalyzer.hasGitRepo(root)
                         ? GitAnalyzer.analyze(root, MAX_GIT_COMMITS, sourceFileToClassId)
                         : GitAnalyzer.GitAnalysisResult.empty())) {
+            BytecodeDependencyScanner.ScanResult bytecode = BytecodeDependencyScanner.analyze(
+                    classFiles, classNameToSqliteId.keySet());
             for (BytecodeDependencyScanner.StaticDependency dependency
-                    : BytecodeDependencyScanner.scan(classFiles, classNameToSqliteId.keySet())) {
+                    : bytecode.dependencies()) {
                 Integer from = classNameToSqliteId.get(dependency.fromClass());
                 Integer to = classNameToSqliteId.get(dependency.toClass());
                 if (from != null && to != null) {
@@ -431,6 +435,15 @@ public class ProjectInitializer {
                 } else if (from != null && dependency.kind().startsWith("SERVICE_")) {
                     bytecodeServiceExternalDeps.add(new ExternalDepRecord(
                             from, dependency.toClass(), dependency.kind()));
+                }
+            }
+            for (BytecodeDependencyScanner.StaticMethodCall call : bytecode.methodCalls()) {
+                Integer from = classNameToSqliteId.get(call.fromClass());
+                Integer to = classNameToSqliteId.get(call.toClass());
+                if (from != null && to != null) {
+                    methodCalls.add(new MethodCallRecord(from, call.fromMethod(),
+                            call.fromDescriptor(), to, call.toMethod(), call.toDescriptor(),
+                            call.invocationKind(), call.occurrences(), call.evidenceLines()));
                 }
             }
             timings.finish("bytecode_analysis");
@@ -538,6 +551,7 @@ public class ProjectInitializer {
         metadata.put("module_classpath_entries", Integer.toString(moduleClasspath.size()));
         metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
+        metadata.put("method_calls", Integer.toString(methodCalls.size()));
         metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
         metadata.put("framework", isSpring && isCdi ? "Mixed"
                 : isSpring ? "Spring" : isCdi ? "CDI" : "Plain");
@@ -559,7 +573,8 @@ public class ProjectInitializer {
                         contextualInjectionPoints, remappedDeps, metadata,
                         externalDeps, remappedProblems,
                         gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
-                        inventory.files(), classOccurrences, classAnnotations, classMembers);
+                        inventory.files(), classOccurrences, classAnnotations, classMembers,
+                        methodCalls);
                 timings.record("database_inserts", writeTimings.insertsMillis());
                 timings.record("database_indexes", writeTimings.indexesMillis());
                 timings.record("database_transaction_overhead",
@@ -575,7 +590,7 @@ public class ProjectInitializer {
                                 externalDeps, remappedProblems,
                                 gitResult.fileStats(), gitResult.commits(),
                                 gitResult.commitFiles(), inventory.files(), classOccurrences,
-                                classAnnotations, classMembers);
+                                classAnnotations, classMembers, methodCalls);
                 timings.record("database_delta", writeTimings.deltaMillis());
                 timings.record("database_transaction_overhead",
                         writeTimings.transactionOverheadMillis());

@@ -41,6 +41,29 @@ public final class IndexReader {
             String sourceSet,
             int sourceTokens) {}
 
+    public record MethodCallView(
+            int fromClassId,
+            String fromClass,
+            String fromSource,
+            int fromSourceLine,
+            String fromOrigin,
+            String fromModule,
+            int fromSourceTokens,
+            String fromMethod,
+            String fromDescriptor,
+            int toClassId,
+            String toClass,
+            String toSource,
+            int toSourceLine,
+            String toOrigin,
+            String toModule,
+            int toSourceTokens,
+            String toMethod,
+            String toDescriptor,
+            String invocationKind,
+            int occurrenceCount,
+            List<Integer> evidenceLines) {}
+
     public static List<ClassRecord> findAllClasses(Jdbi jdbi) {
         return jdbi.withHandle(h ->
                 h.createQuery("SELECT * FROM classes WHERE lifecycle = 'current' "
@@ -249,6 +272,72 @@ public final class IndexReader {
             if (symbolKind != null) query.bind("kind", symbolKind);
             return query.mapTo(Integer.class).one();
         });
+    }
+
+    public static List<MethodCallView> findMethodCalls(Jdbi jdbi, int classId,
+            String method, String direction, int limit, int offset) {
+        String predicate = methodCallPredicate(direction, method != null);
+        String sql = """
+                SELECT mc.*, source.class_name AS from_class,
+                       source.source_file AS from_source,
+                       source.source_line AS from_source_line,
+                       source.origin AS from_origin, source.module AS from_module,
+                       source.source_tokens AS from_source_tokens,
+                       target.class_name AS to_class,
+                       target.source_file AS to_source,
+                       target.source_line AS to_source_line,
+                       target.origin AS to_origin, target.module AS to_module,
+                       target.source_tokens AS to_source_tokens
+                FROM method_calls mc
+                JOIN classes source ON source.id = mc.from_class_id
+                JOIN classes target ON target.id = mc.to_class_id
+                WHERE
+                """ + predicate + " ORDER BY from_class, from_method, from_descriptor, "
+                + "to_class, to_method, to_descriptor LIMIT :limit OFFSET :offset";
+        return jdbi.withHandle(handle -> {
+            var query = handle.createQuery(sql)
+                    .bind("classId", classId)
+                    .bind("limit", limit)
+                    .bind("offset", offset);
+            if (method != null) query.bind("method", method);
+            return query.map((rs, ctx) -> new MethodCallView(
+                    rs.getInt("from_class_id"), rs.getString("from_class"),
+                    rs.getString("from_source"), rs.getInt("from_source_line"),
+                    rs.getString("from_origin"), rs.getString("from_module"),
+                    rs.getInt("from_source_tokens"),
+                    rs.getString("from_method"), rs.getString("from_descriptor"),
+                    rs.getInt("to_class_id"), rs.getString("to_class"),
+                    rs.getString("to_source"), rs.getInt("to_source_line"),
+                    rs.getString("to_origin"), rs.getString("to_module"),
+                    rs.getInt("to_source_tokens"),
+                    rs.getString("to_method"), rs.getString("to_descriptor"),
+                    rs.getString("invocation_kind"), rs.getInt("occurrence_count"),
+                    parseIntList(rs.getString("evidence_lines")))).list();
+        });
+    }
+
+    public static int countMethodCalls(
+            Jdbi jdbi, int classId, String method, String direction) {
+        String sql = "SELECT count(*) FROM method_calls mc WHERE "
+                + methodCallPredicate(direction, method != null);
+        return jdbi.withHandle(handle -> {
+            var query = handle.createQuery(sql).bind("classId", classId);
+            if (method != null) query.bind("method", method);
+            return query.mapTo(Integer.class).one();
+        });
+    }
+
+    private static String methodCallPredicate(String direction, boolean filterMethod) {
+        String inbound = "mc.to_class_id = :classId"
+                + (filterMethod ? " AND mc.to_method = :method" : "");
+        String outbound = "mc.from_class_id = :classId"
+                + (filterMethod ? " AND mc.from_method = :method" : "");
+        return switch (direction) {
+            case "inbound" -> inbound;
+            case "outbound" -> outbound;
+            case "both" -> "((" + inbound + ") OR (" + outbound + "))";
+            default -> throw new IllegalArgumentException("Unsupported call direction: " + direction);
+        };
     }
 
     public static List<BeanRecord> findBeans(Jdbi jdbi, Map<String, String> filter) {

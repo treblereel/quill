@@ -133,6 +133,34 @@ class IndexWriterReaderTest {
     }
 
     @Test
+    void persistsQueriesAndIncrementallyRemovesMethodCalls() {
+        Path dbPath = tempDir.resolve("method-calls.db");
+        Jdbi database = QuillDatabase.create(dbPath);
+        List<ClassRecord> classes = List.of(
+                new ClassRecord(0, "example.Caller", "CLASS", "java.lang.Object", List.of(),
+                        "src/main/java/example/Caller.java", 1, false, 20),
+                new ClassRecord(0, "example.Target", "CLASS", "java.lang.Object", List.of(),
+                        "src/main/java/example/Target.java", 1, false, 20));
+        List<MethodCallRecord> calls = List.of(new MethodCallRecord(
+                1, "run", "()V", 2, "execute", "(Ljava/lang/String;)Z",
+                "virtual", 2, List.of(12, 18)));
+        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), calls);
+
+        var inbound = IndexReader.findMethodCalls(database, 2, "execute", "inbound", 10, 0);
+        assertEquals(1, inbound.size());
+        assertEquals("example.Caller", inbound.getFirst().fromClass());
+        assertEquals(List.of(12, 18), inbound.getFirst().evidenceLines());
+        assertEquals(1, IndexReader.countMethodCalls(database, 1, "run", "outbound"));
+
+        IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), classes,
+                List.of(), List.of(), List.of(), Map.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        assertEquals(0, IndexReader.countMethodCalls(database, 2, null, "inbound"));
+    }
+
+    @Test
     void dependencyMetricsSeparateUniqueClassesFromEdgeOccurrences() {
         Jdbi jdbi = QuillDatabase.create(tempDir.resolve("dependency-metrics.db"));
         List<ClassRecord> classes = List.of(

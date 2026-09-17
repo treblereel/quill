@@ -45,6 +45,7 @@ import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.CdiProblem;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
+import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.DependencyRecord;
@@ -351,6 +352,8 @@ public class ProjectInitializer {
         List<ClassAnnotationRecord> classAnnotations =
                 JandexScanner.extractClassAnnotations(
                         scanResult.index(), annotationLookup, classNameToSqliteId);
+        List<ClassMemberRecord> classMembers =
+                JandexScanner.extractClassMembers(scanResult.index(), classNameToSqliteId);
         List<ClassOccurrenceRecord> classOccurrences = ClassOccurrenceScanner.scan(
                 root, classFiles, classDirectoryOwners, classNameToSqliteId);
 
@@ -556,7 +559,7 @@ public class ProjectInitializer {
                         contextualInjectionPoints, remappedDeps, metadata,
                         externalDeps, remappedProblems,
                         gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
-                        inventory.files(), classOccurrences, classAnnotations);
+                        inventory.files(), classOccurrences, classAnnotations, classMembers);
                 timings.record("database_inserts", writeTimings.insertsMillis());
                 timings.record("database_indexes", writeTimings.indexesMillis());
                 timings.record("database_transaction_overhead",
@@ -572,7 +575,7 @@ public class ProjectInitializer {
                                 externalDeps, remappedProblems,
                                 gitResult.fileStats(), gitResult.commits(),
                                 gitResult.commitFiles(), inventory.files(), classOccurrences,
-                                classAnnotations);
+                                classAnnotations, classMembers);
                 timings.record("database_delta", writeTimings.deltaMillis());
                 timings.record("database_transaction_overhead",
                         writeTimings.transactionOverheadMillis());

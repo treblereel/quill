@@ -95,6 +95,20 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Inspect a class and its members.")
+    public String get_symbol_details(
+            @ToolArg(description = "Class or source path") String target,
+            @ToolArg(description = "Include members; default true") Optional<Boolean> include_members,
+            @ToolArg(description = "Member kind or all") Optional<String> member_kind,
+            @ToolArg(description = "Page size; default 100") Optional<Integer> member_limit,
+            @ToolArg(description = "Page offset") Optional<Integer> member_offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.getSymbolDetails(
+                p.jdbi(), target, include_members.orElse(true), member_kind.orElse(null),
+                clamp(member_limit.orElse(100), 1, 200),
+                clamp(member_offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -246,6 +260,12 @@ public final class QuillTools {
     String findUsages(Jdbi jdbi, String target, String usageKind,
             String module, int limit, int offset) {
         return queries.findUsages(jdbi, target, usageKind, module, limit, offset);
+    }
+
+    String getSymbolDetails(Jdbi jdbi, String target, boolean includeMembers,
+            String memberKind, int memberLimit, int memberOffset) {
+        return queries.getSymbolDetails(
+                jdbi, target, includeMembers, memberKind, memberLimit, memberOffset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

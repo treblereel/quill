@@ -129,6 +129,35 @@ public final class IndexReader {
         });
     }
 
+    public static List<ClassAnnotationRecord> findClassAnnotations(
+            Jdbi jdbi, int classId) {
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT class_id, annotation_name, direct, via_annotation
+                        FROM class_annotations WHERE class_id = :classId
+                        ORDER BY direct DESC, annotation_name, via_annotation""")
+                .bind("classId", classId)
+                .map((rs, ctx) -> new ClassAnnotationRecord(
+                        rs.getInt("class_id"), rs.getString("annotation_name"),
+                        rs.getBoolean("direct"), rs.getString("via_annotation")))
+                .list());
+    }
+
+    public static List<ClassMemberRecord> findClassMembers(Jdbi jdbi, int classId) {
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT class_id, kind, name, signature, type_name, parameter_types,
+                               modifiers, annotations
+                        FROM class_members WHERE class_id = :classId
+                        ORDER BY CASE kind WHEN 'FIELD' THEN 0 WHEN 'CONSTRUCTOR' THEN 1 ELSE 2 END,
+                                 name, signature""")
+                .bind("classId", classId)
+                .map((rs, ctx) -> new ClassMemberRecord(
+                        rs.getInt("class_id"), rs.getString("kind"), rs.getString("name"),
+                        rs.getString("signature"), rs.getString("type_name"),
+                        fromJson(rs.getString("parameter_types")), rs.getString("modifiers"),
+                        fromJson(rs.getString("annotations"))))
+                .list());
+    }
+
     public static List<BeanRecord> findBeans(Jdbi jdbi, Map<String, String> filter) {
         return jdbi.withHandle(h -> {
             var sb = new StringBuilder("SELECT b.*, c.class_name FROM beans b "

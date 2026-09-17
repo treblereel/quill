@@ -282,6 +282,60 @@ class QuillToolsTest {
     }
 
     @Test
+    void getSymbolDetailsCombinesMembersDiAndDependencyMetrics() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_annotations
+                      (class_id, annotation_name, direct, via_annotation)
+                    VALUES (1, 'jakarta.enterprise.context.ApplicationScoped', 1, NULL)""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    VALUES (1, 'FIELD', 'paymentService',
+                            'paymentService:org.acme.PaymentService',
+                            'org.acme.PaymentService', '[]', '', '["jakarta.inject.Inject"]')""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    VALUES (1, 'METHOD', 'createOrder',
+                            'createOrder(java.lang.String):org.acme.Order',
+                            'org.acme.Order', '["java.lang.String"]', 'public', '[]')""");
+        });
+
+        QuillTools tools = new QuillTools();
+        JsonNode first = JSON.readTree(tools.getSymbolDetails(
+                jdbi, "OrderService", true, null, 1, 0));
+        JsonNode methods = JSON.readTree(tools.getSymbolDetails(
+                jdbi, "OrderService", true, "method", 10, 0));
+
+        assertEquals("org.acme.OrderService", first.path("class").asText());
+        assertEquals("@ApplicationScoped", first.path("bean").path("scope").asText());
+        assertEquals(1, first.path("dependency_metrics").path("fan_out").asInt());
+        assertEquals("jakarta.enterprise.context.ApplicationScoped",
+                first.path("annotations").get(0).asText());
+        assertEquals(2, first.path("total").asInt());
+        assertTrue(first.path("has_more").asBoolean());
+        assertEquals("createOrder", methods.path("members").get(0).path("name").asText());
+        assertEquals("java.lang.String",
+                methods.path("members").get(0).path("parameters").get(0).asText());
+    }
+
+    @Test
+    void getSymbolDetailsCanSkipMembersAndValidatesMemberKind() throws Exception {
+        QuillTools tools = new QuillTools();
+        JsonNode compact = JSON.readTree(tools.getSymbolDetails(
+                jdbi, "PaymentService", false, null, 10, 0));
+        JsonNode invalid = JSON.readTree(tools.getSymbolDetails(
+                jdbi, "PaymentService", true, "property", 10, 0));
+
+        assertFalse(compact.path("members_included").asBoolean());
+        assertFalse(compact.has("members"));
+        assertTrue(invalid.path("error").asText().startsWith("Invalid member_kind"));
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

@@ -111,6 +111,26 @@ class JandexScannerTest {
     }
 
     @Test
+    void extractsDeclaredFieldsConstructorsAndMethods() {
+        List<ClassRecord> classes = JandexScanner.extractClasses(index);
+        Map<String, Integer> ids = classes.stream().collect(Collectors.toMap(
+                ClassRecord::className, value -> classes.indexOf(value) + 1));
+
+        var members = JandexScanner.extractClassMembers(index, ids);
+        int orderService = ids.get(OrderService.class.getName());
+
+        assertTrue(members.stream().anyMatch(member -> member.classId() == orderService
+                && member.kind().equals("FIELD")
+                && member.name().equals("paymentService")
+                && member.annotations().contains("jakarta.inject.Inject")));
+        assertTrue(members.stream().anyMatch(member -> member.classId() == orderService
+                && member.kind().equals("CONSTRUCTOR")));
+        assertTrue(members.stream().anyMatch(member -> member.classId() == orderService
+                && member.kind().equals("METHOD")
+                && member.signature().contains("createOrder(java.lang.String)")));
+    }
+
+    @Test
     void resolvesSourcesInRootOrderAndCountsTokens() throws Exception {
         Path relative = Path.of("org/treblereel/mcp/fixture/PaymentService.java");
         Path first = tempDir.resolve("first");

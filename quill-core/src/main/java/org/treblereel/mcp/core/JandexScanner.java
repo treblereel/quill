@@ -7,6 +7,7 @@ import java.util.*;
 import java.util.stream.Stream;
 import org.jboss.jandex.*;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
+import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 
@@ -219,6 +220,60 @@ public final class JandexScanner {
 
     private record ClassAnnotationKey(
             int classId, String annotationName, boolean direct, String viaAnnotation) {}
+
+    /** Extracts declared fields, constructors, and methods for symbol inspection. */
+    public static List<ClassMemberRecord> extractClassMembers(
+            IndexView index, Map<String, Integer> classNameToId) {
+        List<ClassMemberRecord> result = new ArrayList<>();
+        for (ClassInfo classInfo : index.getKnownClasses().stream()
+                .sorted(Comparator.comparing(value -> value.name().toString())).toList()) {
+            Integer classId = classNameToId.get(classInfo.name().toString());
+            if (classId == null) continue;
+            for (FieldInfo field : classInfo.fields().stream()
+                    .filter(value -> !synthetic(value.flags()))
+                    .sorted(Comparator.comparing(FieldInfo::name)).toList()) {
+                String type = field.type().toString();
+                result.add(new ClassMemberRecord(classId, "FIELD", field.name(),
+                        field.name() + ":" + type, type, List.of(),
+                        java.lang.reflect.Modifier.toString(field.flags()),
+                        memberAnnotations(field.annotations(), AnnotationTarget.Kind.FIELD)));
+            }
+            for (MethodInfo method : classInfo.methods().stream()
+                    .filter(value -> !"<clinit>".equals(value.name()))
+                    .filter(value -> !synthetic(value.flags()))
+                    .filter(value -> (value.flags() & 0x0040) == 0)
+                    .sorted(Comparator.comparing(MethodInfo::name)
+                            .thenComparing(value -> value.parameterTypes().toString()))
+                    .toList()) {
+                boolean constructor = "<init>".equals(method.name());
+                List<String> parameters = method.parameterTypes().stream()
+                        .map(Type::toString).toList();
+                String type = constructor ? classInfo.name().toString()
+                        : method.returnType().toString();
+                String name = constructor ? classInfo.simpleName() : method.name();
+                String signature = name + "(" + String.join(",", parameters) + ")"
+                        + (constructor ? "" : ":" + type);
+                result.add(new ClassMemberRecord(classId,
+                        constructor ? "CONSTRUCTOR" : "METHOD", name, signature, type,
+                        parameters, java.lang.reflect.Modifier.toString(method.flags()),
+                        memberAnnotations(method.annotations(), AnnotationTarget.Kind.METHOD)));
+            }
+        }
+        return result;
+    }
+
+    private static boolean synthetic(short flags) {
+        return (flags & 0x1000) != 0;
+    }
+
+    private static List<String> memberAnnotations(
+            Collection<AnnotationInstance> annotations, AnnotationTarget.Kind targetKind) {
+        return annotations.stream()
+                .filter(annotation -> annotation.target() != null
+                        && annotation.target().kind() == targetKind)
+                .map(annotation -> annotation.name().toString())
+                .distinct().sorted().toList();
+    }
 
     public static List<ExternalDepRecord> extractExternalDeps(
             IndexView index, Map<String, Integer> classNameToId) {

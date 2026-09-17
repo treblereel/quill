@@ -8,6 +8,7 @@ public final class QuillToolQueries {
 
     private final StructureToolQueries structure = new StructureToolQueries();
     private final UsageToolQueries usages = new UsageToolQueries();
+    private final SymbolToolQueries symbols = new SymbolToolQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -42,6 +43,12 @@ public final class QuillToolQueries {
     String findUsages(Jdbi jdbi, String target, String usageKind,
             String module, int limit, int offset) {
         return usages.findUsages(jdbi, target, usageKind, module, limit, offset);
+    }
+
+    String getSymbolDetails(Jdbi jdbi, String target, boolean includeMembers,
+            String memberKind, int memberLimit, int memberOffset) {
+        return symbols.getSymbolDetails(
+                jdbi, target, includeMembers, memberKind, memberLimit, memberOffset);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

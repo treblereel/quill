@@ -59,6 +59,13 @@ class InitCommandTest {
                         false, 20, 0).stream()
                 .anyMatch(value -> value.className().endsWith("StripePaymentService")));
 
+        var orderService = classes.stream()
+                .filter(value -> value.className().endsWith("OrderService"))
+                .findFirst().orElseThrow();
+        assertTrue(IndexReader.findClassMembers(jdbi, orderService.id()).stream()
+                .anyMatch(member -> member.name().equals("createOrder")
+                        && member.kind().equals("METHOD")));
+
         var meta = IndexReader.getMetadata(jdbi);
         assertNotNull(meta.get("indexed_at"));
         assertEquals(PROJECT_ROOT.toString(), meta.get("project_root"));

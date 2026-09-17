@@ -77,6 +77,36 @@ class IndexWriterReaderTest {
     }
 
     @Test
+    void persistsAndIncrementallyUpdatesClassMembers() {
+        Path dbPath = tempDir.resolve("members.db");
+        Jdbi database = QuillDatabase.create(dbPath);
+        List<ClassRecord> classes = List.of(new ClassRecord(
+                0, "example.Service", "CLASS", "java.lang.Object", List.of(),
+                "src/main/java/example/Service.java", 1, false, 10));
+        List<ClassMemberRecord> initial = List.of(new ClassMemberRecord(
+                1, "METHOD", "run", "run(java.lang.String):void", "void",
+                List.of("java.lang.String"), "public", List.of("example.Tracked")));
+        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), initial);
+
+        assertEquals("run(java.lang.String):void",
+                IndexReader.findClassMembers(database, 1).getFirst().signature());
+
+        List<ClassMemberRecord> updated = List.of(new ClassMemberRecord(
+                1, "METHOD", "execute", "execute():boolean", "boolean",
+                List.of(), "public final", List.of()));
+        IndexWriter.IncrementalWriteTimings timings = IndexWriter.writeIncremental(
+                QuillDatabase.openWritable(dbPath), classes, List.of(), List.of(), List.of(),
+                Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), updated);
+
+        assertTrue(timings.rowsInserted() >= 1);
+        assertTrue(timings.rowsDeleted() >= 1);
+        assertEquals("execute", IndexReader.findClassMembers(database, 1).getFirst().name());
+    }
+
+    @Test
     void dependencyMetricsSeparateUniqueClassesFromEdgeOccurrences() {
         Jdbi jdbi = QuillDatabase.create(tempDir.resolve("dependency-metrics.db"));
         List<ClassRecord> classes = List.of(

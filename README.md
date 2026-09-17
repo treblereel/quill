@@ -135,6 +135,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   dependency metrics, implementations, occurrences, and external types for one class
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
   with explicit reporting when compiled test outputs are not indexed
+- **get_type_hierarchy** — inspect paged ancestor and descendant paths, including external
+  ancestors that are referenced by indexed bytecode but are not themselves indexed
 - **get_dependencies** — complete dependency metrics plus an optional relation graph,
   addressable by FQCN or source path. Use `include_nodes=false` for a compact metrics-only
   response. Depth-one relations use `limit`/`offset`; deeper breadth-first traversals return

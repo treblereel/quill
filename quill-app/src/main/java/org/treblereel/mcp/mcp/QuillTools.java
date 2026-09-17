@@ -124,6 +124,21 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Inspect ancestor and descendant paths for a type.")
+    public String get_type_hierarchy(
+            @ToolArg(description = "Current class, interface, or source path") String target,
+            @ToolArg(description = "ancestors, descendants, or both; default both") Optional<String> direction,
+            @ToolArg(description = "Maximum hierarchy depth; default 5") Optional<Integer> max_depth,
+            @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.getTypeHierarchy(
+                p.jdbi(), target, direction.orElse("both"),
+                clamp(max_depth.orElse(5), 1, 20),
+                clamp(limit.orElse(100), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -286,6 +301,11 @@ public final class QuillTools {
     String findImpactedTests(Jdbi jdbi, List<String> targets,
             boolean transitive, int maxDepth, int limit, int offset) {
         return queries.findImpactedTests(jdbi, targets, transitive, maxDepth, limit, offset);
+    }
+
+    String getTypeHierarchy(Jdbi jdbi, String target, String direction,
+            int maxDepth, int limit, int offset) {
+        return queries.getTypeHierarchy(jdbi, target, direction, maxDepth, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

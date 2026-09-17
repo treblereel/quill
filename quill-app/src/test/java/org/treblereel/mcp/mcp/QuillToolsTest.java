@@ -393,6 +393,57 @@ class QuillToolsTest {
     }
 
     @Test
+    void getTypeHierarchyReturnsAncestorAndDescendantPaths() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO classes
+                  (class_name, kind, superclass, interfaces, source_file, source_line,
+                   is_bean, source_tokens, origin, lifecycle, module, source_set)
+                VALUES ('org.acme.PremiumStripePaymentService', 'CLASS',
+                        'org.acme.StripePaymentService', '[]',
+                        'src/main/java/org/acme/PremiumStripePaymentService.java', 1,
+                        0, 50, 'source', 'current', '.', 'main')"""));
+
+        QuillTools tools = new QuillTools();
+        JsonNode descendants = JSON.readTree(tools.getTypeHierarchy(
+                jdbi, "PaymentService", "descendants", 5, 10, 0));
+        JsonNode ancestors = JSON.readTree(tools.getTypeHierarchy(
+                jdbi, "PremiumStripePaymentService", "ancestors", 5, 10, 0));
+
+        assertEquals(2, descendants.path("descendant_count").asInt());
+        assertEquals("org.acme.StripePaymentService",
+                descendants.path("hierarchy").get(0).path("class").asText());
+        assertEquals(1, descendants.path("hierarchy").get(0).path("depth").asInt());
+        assertEquals(List.of("implements"), descendants.path("hierarchy").get(0)
+                .path("relations").valueStream().map(JsonNode::asText).toList());
+        assertEquals("org.acme.PremiumStripePaymentService",
+                descendants.path("hierarchy").get(1).path("class").asText());
+        assertEquals(2, descendants.path("hierarchy").get(1).path("depth").asInt());
+        assertEquals(List.of("implements", "extends"), descendants.path("hierarchy").get(1)
+                .path("relations").valueStream().map(JsonNode::asText).toList());
+
+        assertTrue(ancestors.path("hierarchy").valueStream().anyMatch(node ->
+                node.path("class").asText().equals("org.acme.PaymentService")
+                        && node.path("depth").asInt() == 2));
+        assertTrue(ancestors.path("hierarchy").valueStream().anyMatch(node ->
+                node.path("class").asText().equals("java.lang.Object")
+                        && !node.path("indexed").asBoolean()));
+    }
+
+    @Test
+    void getTypeHierarchyValidatesDirectionAndPaginates() throws Exception {
+        QuillTools tools = new QuillTools();
+        JsonNode page = JSON.readTree(tools.getTypeHierarchy(
+                jdbi, "PaymentService", "down", 5, 1, 0));
+        JsonNode invalid = JSON.readTree(tools.getTypeHierarchy(
+                jdbi, "PaymentService", "sideways", 5, 10, 0));
+
+        assertEquals("descendants", page.path("direction").asText());
+        assertEquals(1, page.path("showing").asInt());
+        assertEquals(1, page.path("total").asInt());
+        assertTrue(invalid.path("error").asText().contains("Invalid direction"));
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

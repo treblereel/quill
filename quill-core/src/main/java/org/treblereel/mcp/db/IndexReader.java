@@ -98,8 +98,17 @@ public final class IndexReader {
                                 rs.getInt("from_class_id"), rs.getInt("to_class_id"),
                                 rs.getString("kind"),
                                 rs.getObject("injection_point_id") != null ? rs.getInt("injection_point_id") : null,
-                                rs.getInt("occurrence_count")))
+                                rs.getInt("occurrence_count"),
+                                parseIntList(rs.getString("evidence_lines"))))
                         .list());
+    }
+
+    private static List<Integer> parseIntList(String value) {
+        if (value == null || value.length() < 2) return List.of();
+        String body = value.substring(1, value.length() - 1).trim();
+        if (body.isEmpty()) return List.of();
+        return java.util.Arrays.stream(body.split(","))
+                .map(String::trim).map(Integer::valueOf).toList();
     }
 
     public static Map<String, String> getMetadata(Jdbi jdbi) {

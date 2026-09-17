@@ -66,7 +66,7 @@ class QuillToolsTest {
         );
         var deps = List.of(
                 new DependencyRecord(1, 3, "CDI_INJECT", 1),
-                new DependencyRecord(3, 4, "CDI_INJECT", null)
+                new DependencyRecord(3, 4, "CONSTRUCTS", null, 1, List.of(42))
         );
         IndexWriter.write(jdbi, classes, beans, ips, deps,
                 Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "abc1234",
@@ -179,6 +179,17 @@ class QuillToolsTest {
         String result = tools.getDependencies(jdbi, "OrderService", "outbound", 1);
         assertTrue(result.contains("StripePaymentService"));
         assertTrue(result.contains("CDI_INJECT"));
+    }
+
+    @Test
+    void getDependenciesReturnsCallSiteEvidence() throws Exception {
+        JsonNode result = JSON.readTree(
+                new QuillTools().getDependencies(jdbi, "AuditService", "inbound", 1));
+        JsonNode edge = result.get("depended_by").get(0);
+        assertEquals("CONSTRUCTS", edge.get("kind").asText());
+        assertEquals("src/main/java/org/acme/StripePaymentService.java",
+                edge.get("evidence").get(0).get("file").asText());
+        assertEquals(42, edge.get("evidence").get(0).get("line").asInt());
     }
 
     @Test

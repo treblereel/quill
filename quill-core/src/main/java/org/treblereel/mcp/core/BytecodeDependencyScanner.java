@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Handle;
@@ -21,7 +22,9 @@ public final class BytecodeDependencyScanner {
 
     private BytecodeDependencyScanner() {}
 
-    public record StaticDependency(String fromClass, String toClass, String kind, int occurrences) {}
+    public record StaticDependency(
+            String fromClass, String toClass, String kind, int occurrences,
+            List<Integer> evidenceLines) {}
 
     private record Edge(String fromClass, String toClass, String kind) {}
 
@@ -50,7 +53,7 @@ public final class BytecodeDependencyScanner {
 
     private static List<StaticDependency> scan(
             List<ClassFileSnapshot.Entry> entries, Set<String> applicationClasses) {
-        Map<Edge, Integer> edges = new LinkedHashMap<>();
+        Map<Edge, EdgeEvidence> edges = new LinkedHashMap<>();
         for (ClassFileSnapshot.Entry entry : entries) {
             new ClassReader(entry.bytecode()).accept(
                     new DependencyClassVisitor(applicationClasses, edges),
@@ -59,7 +62,8 @@ public final class BytecodeDependencyScanner {
 
         return edges.entrySet().stream()
                 .map(entry -> new StaticDependency(entry.getKey().fromClass(),
-                        entry.getKey().toClass(), entry.getKey().kind(), entry.getValue()))
+                        entry.getKey().toClass(), entry.getKey().kind(), entry.getValue().occurrences,
+                        List.copyOf(entry.getValue().lines)))
                 .sorted(Comparator.comparing(StaticDependency::fromClass)
                         .thenComparing(StaticDependency::toClass)
                         .thenComparing(StaticDependency::kind))
@@ -68,10 +72,11 @@ public final class BytecodeDependencyScanner {
 
     private static final class DependencyClassVisitor extends ClassVisitor {
         private final Set<String> applicationClasses;
-        private final Map<Edge, Integer> edges;
+        private final Map<Edge, EdgeEvidence> edges;
         private String owner;
 
-        private DependencyClassVisitor(Set<String> applicationClasses, Map<Edge, Integer> edges) {
+        private DependencyClassVisitor(
+                Set<String> applicationClasses, Map<Edge, EdgeEvidence> edges) {
             super(Opcodes.ASM9);
             this.applicationClasses = applicationClasses;
             this.edges = edges;
@@ -88,6 +93,12 @@ public final class BytecodeDependencyScanner {
                 String signature, String[] exceptions) {
             return new MethodVisitor(Opcodes.ASM9) {
                 private Type directClassLiteral;
+                private int currentLine;
+
+                @Override
+                public void visitLineNumber(int line, org.objectweb.asm.Label start) {
+                    currentLine = line;
+                }
 
                 @Override
                 public void visitTypeInsn(int opcode, String type) {
@@ -204,7 +215,8 @@ public final class BytecodeDependencyScanner {
                     if (internalName == null) return;
                     String target = className(internalName);
                     if (owner.equals(target) || !applicationClasses.contains(target)) return;
-                    edges.merge(new Edge(owner, target, kind), 1, Integer::sum);
+                    edges.computeIfAbsent(new Edge(owner, target, kind), ignored -> new EdgeEvidence())
+                            .add(currentLine);
                 }
             };
         }
@@ -228,7 +240,18 @@ public final class BytecodeDependencyScanner {
             if (from.equals(to) || !applicationClasses.contains(from)) {
                 return;
             }
-            edges.merge(new Edge(from, to, kind), 1, Integer::sum);
+            edges.computeIfAbsent(new Edge(from, to, kind), ignored -> new EdgeEvidence())
+                    .add(0);
+        }
+    }
+
+    private static final class EdgeEvidence {
+        private int occurrences;
+        private final Set<Integer> lines = new TreeSet<>();
+
+        private void add(int line) {
+            occurrences++;
+            if (line > 0) lines.add(line);
         }
     }
 

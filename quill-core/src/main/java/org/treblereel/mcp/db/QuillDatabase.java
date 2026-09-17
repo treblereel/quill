@@ -107,7 +107,8 @@ public final class QuillDatabase {
                     to_class_id INTEGER NOT NULL REFERENCES classes(id),
                     kind TEXT NOT NULL,
                     injection_point_id INTEGER REFERENCES injection_points(id),
-                    occurrence_count INTEGER NOT NULL DEFAULT 1
+                    occurrence_count INTEGER NOT NULL DEFAULT 1,
+                    evidence_lines TEXT NOT NULL DEFAULT '[]'
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS metadata (

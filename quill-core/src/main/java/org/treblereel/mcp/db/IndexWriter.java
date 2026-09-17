@@ -56,7 +56,8 @@ public final class IndexWriter {
             "resolution_reason", "resolution_confidence", "limitations",
             "resolution_candidates", "applied_rules", "unsupported_rules");
     private static final TableSpec DEPENDENCIES = new TableSpec("dependencies",
-            "from_class_id", "to_class_id", "kind", "injection_point_id", "occurrence_count");
+            "from_class_id", "to_class_id", "kind", "injection_point_id", "occurrence_count",
+            "evidence_lines");
     private static final TableSpec METADATA = new TableSpec("metadata", "key", "value");
     private static final TableSpec EXTERNAL_DEPS = new TableSpec("class_external_deps",
             "class_id", "external_type", "usage_kind");
@@ -309,13 +310,15 @@ public final class IndexWriter {
 
     private static void insertDesiredDependencies(Handle h, List<DependencyRecord> dependencies) {
         executeBatch(h,
-                "INSERT INTO desired_dependencies (from_class_id, to_class_id, kind, injection_point_id, occurrence_count) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO desired_dependencies (from_class_id, to_class_id, kind, injection_point_id, occurrence_count, evidence_lines) VALUES (?, ?, ?, ?, ?, ?)",
                 dependencies, (statement, d) -> {
                     statement.setInt(1, d.fromClassId());
                     statement.setInt(2, d.toClassId());
                     statement.setString(3, d.kind());
                     statement.setObject(4, d.injectionPointId());
                     statement.setInt(5, d.occurrenceCount());
+                    statement.setString(6, d.evidenceLines().isEmpty()
+                            ? "[]" : toJson(d.evidenceLines()));
                 });
     }
 
@@ -553,13 +556,15 @@ public final class IndexWriter {
 
     private static void insertDependencies(Handle h, List<DependencyRecord> deps) {
         executeBatch(h,
-                "INSERT INTO dependencies (from_class_id, to_class_id, kind, injection_point_id, occurrence_count) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO dependencies (from_class_id, to_class_id, kind, injection_point_id, occurrence_count, evidence_lines) VALUES (?, ?, ?, ?, ?, ?)",
                 deps, (statement, d) -> {
                     statement.setInt(1, d.fromClassId());
                     statement.setInt(2, d.toClassId());
                     statement.setString(3, d.kind());
                     statement.setObject(4, d.injectionPointId());
                     statement.setInt(5, d.occurrenceCount());
+                    statement.setString(6, d.evidenceLines().isEmpty()
+                            ? "[]" : toJson(d.evidenceLines()));
                 });
     }
 

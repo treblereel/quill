@@ -38,6 +38,8 @@ class BytecodeDependencyScannerTest {
 
         assertEquals(1, matches.size());
         assertEquals(1, matches.get(0).occurrences());
+        assertEquals(1, matches.get(0).evidenceLines().size());
+        assertNotEquals(0, matches.get(0).evidenceLines().getFirst());
     }
 
     @Test

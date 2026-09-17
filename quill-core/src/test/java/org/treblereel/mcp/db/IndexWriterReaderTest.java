@@ -24,7 +24,7 @@ class IndexWriterReaderTest {
                 new ClassRecord(0, "example.Target", "CLASS", null, List.of(),
                         "src/main/java/example/Target.java", 1, false, 10));
         List<DependencyRecord> dependencies = List.of(
-                new DependencyRecord(1, 2, "CALLS", null, 2),
+                new DependencyRecord(1, 2, "CALLS", null, 2, List.of(7, 11)),
                 new DependencyRecord(1, 2, "TYPE_USE", null, 1));
 
         IndexWriter.write(jdbi, classes, List.of(), List.of(), dependencies, Map.of());
@@ -33,6 +33,9 @@ class IndexWriterReaderTest {
         assertEquals(3, IndexReader.countDependencyEdges(jdbi, 2, true));
         assertEquals(1, IndexReader.dependencyBreakdown(jdbi, 2, true).get(0).classes());
         assertEquals(3, IndexReader.dependencyBreakdown(jdbi, 2, true).get(0).edges());
+        assertEquals(List.of(7, 11), IndexReader.findDependencies(jdbi, 2, "inbound").stream()
+                .filter(dependency -> dependency.kind().equals("CALLS"))
+                .findFirst().orElseThrow().evidenceLines());
     }
 
     @Test

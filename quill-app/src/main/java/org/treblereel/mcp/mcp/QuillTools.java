@@ -52,7 +52,7 @@ public final class QuillTools {
 
     @Tool(structured = true, description = "Get dependency graph for a specific bean or class. Use instead of grep for imports/references when you need to understand what a class uses or what uses it. "
             + "Returns unique fan-in/fan-out separately from reference occurrence counts and groups metrics by source/generated origin. "
-            + "Returns: {target, origin, lifecycle, metrics, depends_on: [{class, kind, occurrences}], depended_by: [{class, kind, occurrences}], _meta}")
+            + "Returns: {target, origin, lifecycle, metrics, depends_on: [{class, kind, occurrences, evidence?: [{file, line, kind}]}], depended_by: [<same>], _meta}")
     public String get_dependencies(
             @ToolArg(description = "Current class name (short or FQCN) or its project/repository source path") String target,
             @ToolArg(description = "Direction: inbound, outbound, or both (default: both)") Optional<String> direction,

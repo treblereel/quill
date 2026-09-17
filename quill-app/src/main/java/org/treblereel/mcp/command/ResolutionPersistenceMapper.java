@@ -60,7 +60,8 @@ final class ResolutionPersistenceMapper {
                         classIds.get(dependency.fromClassId()),
                         classIds.get(dependency.toClassId()), dependency.kind(),
                         dependency.injectionPointId() != null
-                                ? injectionPointIds.get(dependency.injectionPointId()) : null))
+                                ? injectionPointIds.get(dependency.injectionPointId()) : null,
+                        dependency.occurrenceCount(), dependency.evidenceLines()))
                 .toList();
 
         return new ProjectInitializer.PersistedResolution(beans, injectionPoints, dependencies);
@@ -100,7 +101,7 @@ final class ResolutionPersistenceMapper {
                 if (dependency.injectionPointId() != null && injectionPointId == null) continue;
                 dependencies.add(new DependencyRecord(dependency.fromClassId(),
                         dependency.toClassId(), dependency.kind(), injectionPointId,
-                        dependency.occurrenceCount()));
+                        dependency.occurrenceCount(), dependency.evidenceLines()));
             }
         }
         return new ProjectInitializer.PersistedResolution(

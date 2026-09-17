@@ -154,6 +154,7 @@ final class StructureToolQueries {
 
     private void expandDependencies(Jdbi jdbi, int classId, String direction, int depth,
             ObjectNode node, Set<Integer> visited, IntConsumer tokenAccum, GraphBudget budget) {
+        ClassRecord current = IndexReader.findClassById(jdbi, classId).orElse(null);
         List<DependencyRecord> dependencies = IndexReader.findDependencies(
                 jdbi, classId, direction);
         ArrayNode dependsOn = node.putArray("depends_on");
@@ -166,6 +167,7 @@ final class StructureToolQueries {
                     child.put("class", value.className());
                     child.put("kind", dependency.kind());
                     child.put("occurrences", dependency.occurrenceCount());
+                    if (current != null) appendEvidence(child, current, dependency);
                     appendContext(child, value);
                     tokenAccum.accept(value.sourceTokens());
                     if (depth > 1 && visited.add(value.id())) {
@@ -181,6 +183,7 @@ final class StructureToolQueries {
                     child.put("class", value.className());
                     child.put("kind", dependency.kind());
                     child.put("occurrences", dependency.occurrenceCount());
+                    appendEvidence(child, value, dependency);
                     appendContext(child, value);
                     tokenAccum.accept(value.sourceTokens());
                     if (depth > 1 && visited.add(value.id())) {
@@ -189,6 +192,18 @@ final class StructureToolQueries {
                     }
                 });
             }
+        }
+    }
+
+    private static void appendEvidence(
+            ObjectNode child, ClassRecord caller, DependencyRecord dependency) {
+        if (dependency.evidenceLines().isEmpty()) return;
+        ArrayNode evidence = child.putArray("evidence");
+        for (Integer line : dependency.evidenceLines()) {
+            ObjectNode item = evidence.addObject();
+            item.put("file", caller.sourceFile());
+            item.put("line", line);
+            item.put("kind", dependency.kind());
         }
     }
 

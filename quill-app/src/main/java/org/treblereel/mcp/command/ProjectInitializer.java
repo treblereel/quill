@@ -403,7 +403,7 @@ public class ProjectInitializer {
                 Integer to = classNameToSqliteId.get(dependency.toClass());
                 if (from != null && to != null) {
                     remappedDeps.add(new DependencyRecord(from, to, dependency.kind(), null,
-                            dependency.occurrences()));
+                            dependency.occurrences(), dependency.evidenceLines()));
                 } else if (from != null && dependency.kind().startsWith("SERVICE_")) {
                     bytecodeServiceExternalDeps.add(new ExternalDepRecord(
                             from, dependency.toClass(), dependency.kind()));

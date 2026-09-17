@@ -42,11 +42,11 @@
     {
       "id": "mapper-history-coverage",
       "quill_tools": ["get_file_history"],
-      "prompt": "Inspect at most the 100 most recent commits touching api/src/main/java/io/casehub/api/model/converter/CaseDefinitionYamlMapper.java. Return how many commits are available in that requested window, the number of distinct authors, and the latest author. Do not estimate beyond the history actually returned.",
+      "prompt": "Inspect at most the 100 most recent commits touching api/src/main/java/io/casehub/api/model/converter/CaseDefinitionYamlMapper.java. Return how many commits are available in that requested window, the number of distinct Git author labels, and the latest author label. Include merge commits present in the returned history. Do not infer human identities or estimate beyond the history actually returned.",
       "expected": {
         "commits_in_requested_window": 100,
-        "distinct_authors": 3,
-        "latest_author": "Mark Proctor"
+        "distinct_author_labels": 3,
+        "latest_author_label": "Mark Proctor"
       }
     },
     {

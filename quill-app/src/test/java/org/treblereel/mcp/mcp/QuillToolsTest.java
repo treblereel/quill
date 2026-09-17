@@ -92,7 +92,7 @@ class QuillToolsTest {
                 new GitCommitRecord(2, "bbb2222bbb2222bbb2222bbb2222bbb2222bbb222", "bbb2222",
                         "dev2", "dev2@test.com", "2026-08-27T09:00:00Z", "fix: payment edge case"),
                 new GitCommitRecord(3, "ccc3333ccc3333ccc3333ccc3333ccc3333ccc333", "ccc3333",
-                        "dev1", "dev1@test.com", "2026-08-26T08:00:00Z", "initial commit")
+                        "dev1", "dev1-alias@test.com", "2026-08-26T08:00:00Z", "initial commit")
         );
         var gitFiles = List.of(
                 new GitCommitFile(1, 1, "src/main/java/org/acme/OrderService.java", "MODIFY"),
@@ -460,6 +460,15 @@ class QuillToolsTest {
         assertNotNull(commits);
         assertEquals(3, commits.size());
         assertEquals("aaa1111", commits.get(0).get("hash").asText());
+        assertEquals("dev1@test.com", commits.get(0).get("author_email").asText());
+        JsonNode window = root.get("returned_window");
+        assertEquals(3, window.get("commit_count").asInt());
+        assertEquals(2, window.get("distinct_author_labels").asInt());
+        assertEquals(3, window.get("distinct_author_emails").asInt());
+        assertEquals("not_attempted", window.get("identity_resolution").asText());
+        assertEquals(List.of("dev1", "dev2"), JSON.convertValue(
+                window.get("author_labels"), JSON.getTypeFactory()
+                        .constructCollectionType(List.class, String.class)));
         assertEquals(3, root.get("total_commits").asInt());
         assertTrue(root.get("history_complete").asBoolean());
         assertFalse(root.get("has_more").asBoolean());
@@ -474,6 +483,8 @@ class QuillToolsTest {
                 tools.getFileHistory(jdbi, "StripePaymentService", 2, 2));
 
         assertEquals(2, first.get("showing").asInt());
+        assertEquals(2, first.get("returned_window").get("commit_count").asInt());
+        assertEquals(1, second.get("returned_window").get("commit_count").asInt());
         assertEquals(3, first.get("total_commits").asInt());
         assertEquals(2, first.get("next_offset").asInt());
         assertTrue(first.get("has_more").asBoolean());

@@ -222,12 +222,16 @@ class SourceTools:
         if name == "git_history":
             command = [
                 "git", "log", f"-{arguments['limit']}", "--date=iso-strict",
-                "--format=%H%x09%an%x09%ad%x09%s",
+                "--format=%H%x09%an%x09%ae%x09%ad%x09%s",
             ]
             if arguments["name_status"]:
                 command.append("--name-status")
             if arguments["path"]:
                 checked_path(self.project, arguments["path"])
+                # Match Quill's un-simplified RevWalk history. The default path-limited
+                # git log can omit merge commits even when the file differs from the
+                # merge's first parent.
+                command.append("--full-history")
                 command.extend(["--", arguments["path"]])
             return self._run(command)
         if name == "git_show_file":

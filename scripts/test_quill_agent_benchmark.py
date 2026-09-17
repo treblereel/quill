@@ -134,9 +134,10 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
             })
 
         fields = result.strip().split("\t")
-        self.assertEqual(4, len(fields))
+        self.assertEqual(5, len(fields))
         self.assertEqual("Benchmark Author", fields[1])
-        self.assertEqual("initial", fields[3])
+        self.assertEqual("test@example.com", fields[2])
+        self.assertEqual("initial", fields[4])
 
     def test_parses_fenced_json(self):
         self.assertEqual({"observed": {"x": True}},

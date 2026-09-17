@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.TreeSet;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
@@ -330,13 +331,35 @@ final class GitToolQueries {
 
     private void appendCommits(ObjectNode root, List<GitCommitRecord> commits) {
         ArrayNode arr = root.putArray("commits");
+        Set<String> authorLabels = new TreeSet<>();
+        Set<String> authorEmails = new TreeSet<>();
         for (GitCommitRecord commit : commits) {
             ObjectNode node = arr.addObject();
             node.put("hash", commit.shortHash());
             node.put("author", commit.author());
+            node.put("author_email", commit.authorEmail());
             node.put("date", commit.committedAt());
             node.put("message", commit.message());
+            if (commit.author() != null && !commit.author().isBlank()) {
+                authorLabels.add(commit.author());
+            }
+            if (commit.authorEmail() != null && !commit.authorEmail().isBlank()) {
+                authorEmails.add(commit.authorEmail());
+            }
         }
+
+        ObjectNode window = root.putObject("returned_window");
+        window.put("commit_count", commits.size());
+        window.put("distinct_author_labels", authorLabels.size());
+        ArrayNode labels = window.putArray("author_labels");
+        authorLabels.forEach(labels::add);
+        window.put("distinct_author_emails", authorEmails.size());
+        ArrayNode emails = window.putArray("author_emails");
+        authorEmails.forEach(emails::add);
+        window.put("identity_resolution", "not_attempted");
+        window.put("history_semantics",
+                "commits reachable from the indexed HEAD whose tree differs from the first parent "
+                        + "for this file; merge commits may be included");
     }
 
     private String resolveGitPath(Jdbi jdbi, String target) {

@@ -21,9 +21,11 @@ read-only `rg`, file-read, and Git-history functions, including ignored build ou
 MCP server. Expected values are deliberately not sent to the model. The order is alternated
 between tasks so one mode does not always benefit from running second.
 
-The neutral `git_history` baseline exposes commit hash, author, timestamp, subject, and optional
-changed paths. Facts available from Quill history must not be withheld from the baseline merely
-because its representation is less structured.
+The neutral `git_history` baseline exposes commit hash, author label, author email, timestamp,
+subject, and optional changed paths. Path-limited queries use Git's full-history mode so merge
+commits exposed by Quill are not silently removed by history simplification. Facts available from
+Quill history must not be withheld from the baseline merely because its representation is less
+structured.
 
 Set an API key, build Quill, and run against the exact revision pinned by the suite:
 

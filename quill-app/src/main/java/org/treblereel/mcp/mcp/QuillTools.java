@@ -101,7 +101,8 @@ public final class QuillTools {
                 include_historical.orElse(false)));
     }
 
-    @Tool(structured = true, description = "Get commit history for one current class or file.")
+    @Tool(structured = true, description = "Get commit history for one current class or file, "
+            + "including author labels/emails and explicit returned-window counts.")
     public String get_file_history(
             @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
             @ToolArg(description = "Max commits to return (default: 10)") Optional<Integer> limit,

@@ -301,7 +301,14 @@ public final class IndexReader {
                 rs.getString("target_type"), fromJson(rs.getString("qualifiers")),
                 rs.getString("field_name"),
                 rs.getObject("resolved_bean_id") != null ? rs.getInt("resolved_bean_id") : null,
-                rs.getInt("is_ambiguous") == 1);
+                ResolutionStatus.valueOf(rs.getString("resolution_status")),
+                rs.getString("resolution_strategy"), rs.getString("resolution_reason"),
+                ResolutionConfidence.valueOf(rs.getString("resolution_confidence")),
+                fromJson(rs.getString("limitations")),
+                new ResolutionTrace(
+                        candidatesFromJson(rs.getString("resolution_candidates")),
+                        fromJson(rs.getString("applied_rules")),
+                        fromJson(rs.getString("unsupported_rules"))));
     }
 
     public static List<GitFileStats> findHotspots(Jdbi jdbi, int limit, String since) {
@@ -505,7 +512,7 @@ public final class IndexReader {
                 h.createQuery("SELECT ip.* FROM injection_points ip "
                                 + "JOIN beans b ON b.id = ip.bean_id "
                                 + "JOIN classes c ON c.id = b.class_id "
-                                + "WHERE ip.resolved_bean_id IS NULL AND ip.is_ambiguous = 0 "
+                                + "WHERE ip.resolution_status = 'UNSATISFIED' "
                                 + "AND c.lifecycle = 'current' AND c.origin != 'orphan_output'")
                         .map((rs, ctx) -> mapInjectionPoint(rs))
                         .list());
@@ -516,8 +523,29 @@ public final class IndexReader {
                 h.createQuery("SELECT ip.* FROM injection_points ip "
                                 + "JOIN beans b ON b.id = ip.bean_id "
                                 + "JOIN classes c ON c.id = b.class_id "
-                                + "WHERE ip.is_ambiguous = 1 "
+                                + "WHERE ip.resolution_status = 'AMBIGUOUS' "
                                 + "AND c.lifecycle = 'current' AND c.origin != 'orphan_output'")
+                        .map((rs, ctx) -> mapInjectionPoint(rs))
+                        .list());
+    }
+
+    public static List<InjectionPointRecord> findUnknownInjectionPoints(Jdbi jdbi) {
+        return findInjectionPointsByStatus(jdbi, ResolutionStatus.UNKNOWN);
+    }
+
+    public static List<InjectionPointRecord> findUnsupportedInjectionPoints(Jdbi jdbi) {
+        return findInjectionPointsByStatus(jdbi, ResolutionStatus.UNSUPPORTED_MECHANISM);
+    }
+
+    private static List<InjectionPointRecord> findInjectionPointsByStatus(
+            Jdbi jdbi, ResolutionStatus status) {
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT ip.* FROM injection_points ip "
+                                + "JOIN beans b ON b.id = ip.bean_id "
+                                + "JOIN classes c ON c.id = b.class_id "
+                                + "WHERE ip.resolution_status = :status "
+                                + "AND c.lifecycle = 'current' AND c.origin != 'orphan_output'")
+                        .bind("status", status.name())
                         .map((rs, ctx) -> mapInjectionPoint(rs))
                         .list());
     }
@@ -689,6 +717,15 @@ public final class IndexReader {
     }
 
     static List<String> fromJson(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return JSON.readValue(json, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static List<ResolutionCandidate> candidatesFromJson(String json) {
         if (json == null || json.isBlank()) return List.of();
         try {
             return JSON.readValue(json, new TypeReference<>() {});

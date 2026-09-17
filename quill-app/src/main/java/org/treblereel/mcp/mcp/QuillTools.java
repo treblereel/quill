@@ -60,7 +60,7 @@ public final class QuillTools {
     }
 
     @Tool(structured = true, description = "Get injection points for a bean with resolution status. Use when checking what a bean injects and whether injections resolve correctly. "
-            + "Returns: {target, injection_points: [{kind, field, required_type, qualifiers, resolved_to, resolution}], unsatisfied: [], ambiguous: [], _meta}")
+            + "Returns: {target, injection_points: [{kind, field, required_type, qualifiers, resolved_to, resolution, resolution_strategy, reason, confidence, limitations, resolution_trace: {candidates: [{class, file, origin, kind, member, qualifiers, disposition, reason, related_class, rules}], applied_rules, unsupported_rules}}], unsatisfied: [], ambiguous: [], unknown: [], unsupported_mechanism: [], _meta}")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
             @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
@@ -113,7 +113,7 @@ public final class QuillTools {
             + "Returns: {project: {framework, classes, beans, total_source_tokens, indexed_at, last_commit, dependency_index, dependency_index_detail?, service_descriptors, service_registrations}, "
             + "beans_by_scope: {...}, beans_by_kind: {...}, "
             + "architecture_hubs: [{class, dependents, is_bean}], "
-            + "problems: {unsatisfied_count, unsatisfied_injection_points_sample: [{bean, field, type}], ambiguous_count, ambiguous_injection_points_sample: [...]}, "
+            + "problems: {unsatisfied_count, ambiguous_count, unknown_count, unsupported_mechanism_count, *_injection_points_sample: [{bean, field, type, resolution_strategy, reason, confidence, limitations}]}, "
             + "top_libraries: [{package, used_by_classes}], "
             + "git_summary: {total_commits_indexed, top_hotspots: [{file, commit_count}]}, _meta}. "
             + "For multi-project: {projects: [{project, data: <above>}], uninitialized?: [...]}")

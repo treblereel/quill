@@ -296,14 +296,20 @@ class SpringResolverTest {
     }
 
     @Test
-    void resolveByTypeQualifierMismatchReturnsUnsatisfied() {
+    void resolveByTypeQualifierMismatchReturnsCandidateEvidence() {
         var candidates = new java.util.HashMap<String, List<SpringResolver.BeanCandidate>>();
         candidates.put("com.Iface", List.of(
                 new SpringResolver.BeanCandidate(1, 10, List.of("@Qualifier(\"a\")"), false),
                 new SpringResolver.BeanCandidate(2, 20, List.of("@Qualifier(\"b\")"), false)));
         var r = SpringResolver.resolveByType("com.Iface", List.of("@Qualifier(\"c\")"), candidates);
         assertNull(r.beanId());
-        assertFalse(r.isAmbiguous(), "Qualifier mismatch → unsatisfied, not ambiguous");
+        assertFalse(r.isAmbiguous(), "Qualifier mismatch stays unresolved, not ambiguous");
+        assertEquals(2, r.trace().candidates().size());
+        assertTrue(r.trace().candidates().stream().allMatch(candidate ->
+                candidate.disposition()
+                        == org.treblereel.mcp.model.CandidateDisposition.EXCLUDED));
+        assertTrue(r.trace().candidates().stream().allMatch(candidate ->
+                candidate.reason().equals("QUALIFIER_MISMATCH")));
     }
 
     @Test
@@ -316,6 +322,9 @@ class SpringResolverTest {
         var r = SpringResolver.resolveByType("com.Iface", List.of("@Default"), candidates);
         assertEquals(2, r.beanId());
         assertFalse(r.isAmbiguous());
+        assertEquals("PRIMARY_CANDIDATE", r.trace().candidates().stream()
+                .filter(candidate -> candidate.beanId() == 2)
+                .findFirst().orElseThrow().reason());
     }
 
     @Test
@@ -363,7 +372,7 @@ class SpringResolverTest {
                 new SpringResolver.BeanCandidate(1, 10, List.of("@Qualifier(\"a\")"), false)));
         var r = SpringResolver.resolveByType("com.Iface",
                 List.of("@Qualifier(\"a\")", "@Qualifier(\"b\")"), candidates);
-        assertNull(r.beanId(), "Candidate has only 'a', required both 'a' and 'b' → unsatisfied");
+        assertNull(r.beanId(), "Candidate has only 'a'; requiring both remains unresolved");
     }
 
     // --- Default bean name ---

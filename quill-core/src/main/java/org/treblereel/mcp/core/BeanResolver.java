@@ -27,6 +27,7 @@ public final class BeanResolver {
             NORMAL_SCOPE = n("jakarta.enterprise.context.NormalScope"),
             STEREOTYPE = n("jakarta.enterprise.inject.Stereotype"),
             PRODUCES = n("jakarta.enterprise.inject.Produces"),
+            SPECIALIZES = n("jakarta.enterprise.inject.Specializes"),
             ALTERNATIVE = n("jakarta.enterprise.inject.Alternative"), PRIORITY = n("jakarta.annotation.Priority"),
             INTERCEPTOR = n("jakarta.interceptor.Interceptor"), DECORATOR = n("jakarta.decorator.Decorator"),
             IF_PROFILE = n("io.quarkus.arc.profile.IfBuildProfile"),
@@ -117,13 +118,18 @@ public final class BeanResolver {
                             qualifiers(parameterAnnotations(m, p), lookup, false), m.name()));
             }
         }
-        reResolveUnresolved(beans, ips, deps);
+        Map<Integer, Integer> specializedBeans = specializedBeans(classes, classBeanIds);
+        inheritSpecializedQualifiers(beans, specializedBeans);
+        Map<Integer, String> classNames = new HashMap<>();
+        classIds.forEach((name, id) -> classNames.put(id, name));
+        reResolveUnresolved(beans, ips, deps, specializedBeans, classNames);
         addNonBeanDependencies(applicationIndex, beans, deps, classIds);
         return new ResolutionResult(beans, ips, deps, classIds, List.of());
     }
 
     private static InjectionPointRecord ip(int id, int owner, String kind, Type type, List<String> qs, String member) {
-        return new InjectionPointRecord(id, owner, kind, typeName(type), qs, member, null, false);
+        return InjectionPointRecord.staticAnalysis(id, owner, kind, typeName(type), qs,
+                member, null, false, InjectionPointRecord.STATIC_CDI);
     }
 
     private static boolean isBeanClass(ClassInfo c, IndexView index) {
@@ -271,6 +277,12 @@ public final class BeanResolver {
     }
 
     static void reResolveUnresolved(List<BeanRecord> beans, List<InjectionPointRecord> ips, List<DependencyRecord> deps) {
+        reResolveUnresolved(beans, ips, deps, Map.of(), Map.of());
+    }
+
+    private static void reResolveUnresolved(List<BeanRecord> beans,
+            List<InjectionPointRecord> ips, List<DependencyRecord> deps,
+            Map<Integer, Integer> specializedBeans, Map<Integer, String> classNames) {
         Map<String, List<BeanRecord>> byType = new HashMap<>();
         Map<Integer, Integer> classByBean = new HashMap<>();
         for (var b : beans) {
@@ -280,31 +292,177 @@ public final class BeanResolver {
         }
         for (int i = 0; i < ips.size(); i++) {
             var ip = ips.get(i);
-            if (ip.resolvedBeanId() != null || ip.isAmbiguous()) continue;
-            var candidates = byType.getOrDefault(ip.targetType(), List.of()).stream().filter(b -> qualifiersMatch(ip.qualifiers(), b.qualifiers())).toList();
-            Selection selection = select(candidates);
+            if (ip.resolvedBeanId() != null
+                    || ip.resolutionStatus() == ResolutionStatus.AMBIGUOUS) continue;
+            var candidates = byType.getOrDefault(ip.targetType(), List.of());
+            Selection selection = select(candidates, ip.qualifiers(), specializedBeans, classNames);
             if (selection.bean() != null) {
                 var b = selection.bean();
-                ips.set(i, new InjectionPointRecord(ip.id(), ip.beanId(), ip.kind(), ip.targetType(), ip.qualifiers(), ip.fieldName(), b.id(), false));
+                ips.set(i, ip.withResolution(b.id(), false, selection.trace()));
                 Integer from = classByBean.get(ip.beanId());
                 if (from != null) deps.add(new DependencyRecord(from, b.classId(), "CDI_INJECT", ip.id()));
             } else if (selection.ambiguous())
-                ips.set(i, new InjectionPointRecord(ip.id(), ip.beanId(), ip.kind(), ip.targetType(), ip.qualifiers(), ip.fieldName(), null, true));
+                ips.set(i, ip.withResolution(null, true, selection.trace()));
+            else
+                ips.set(i, ip.withResolution(null, false, selection.trace()));
         }
     }
 
-    private record Selection(BeanRecord bean, boolean ambiguous) {
+    private record Selection(BeanRecord bean, boolean ambiguous, ResolutionTrace trace) {
     }
 
-    private static Selection select(List<BeanRecord> candidates) {
-        var alternatives = candidates.stream().filter(b -> b.isAlternative() && b.priority() != null).sorted(Comparator.comparing(BeanRecord::priority)).toList();
+    private static Selection select(List<BeanRecord> candidates, List<String> requiredQualifiers,
+            Map<Integer, Integer> specializedBeans, Map<Integer, String> classNames) {
+        List<String> appliedRules = new ArrayList<>(List.of(
+                "TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING", "SPECIALIZATION",
+                "ALTERNATIVE_PRIORITY"));
+        Map<Integer, ResolutionCandidate> evidence = new LinkedHashMap<>();
+        List<BeanRecord> qualified = new ArrayList<>();
+        for (BeanRecord candidate : candidates) {
+            if (qualifiersMatch(requiredQualifiers, candidate.qualifiers())) {
+                qualified.add(candidate);
+                evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
+                        CandidateDisposition.ELIGIBLE, "QUALIFIERS_MATCHED",
+                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING")));
+            } else {
+                evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
+                        CandidateDisposition.EXCLUDED, "QUALIFIER_MISMATCH",
+                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING")));
+            }
+        }
+
+        Set<Integer> specializedTargets = new LinkedHashSet<>();
+        for (BeanRecord candidate : qualified) {
+            Integer target = specializedBeans.get(candidate.id());
+            while (target != null && specializedTargets.add(target)) {
+                target = specializedBeans.get(target);
+            }
+        }
+        List<BeanRecord> active = new ArrayList<>();
+        for (BeanRecord candidate : qualified) {
+            if (specializedTargets.contains(candidate.id())) {
+                Integer specializingBean = specializedBeans.entrySet().stream()
+                        .filter(entry -> entry.getValue().equals(candidate.id()))
+                        .map(Map.Entry::getKey).findFirst().orElse(null);
+                evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
+                        specializingBean, CandidateDisposition.EXCLUDED,
+                        "SPECIALIZED_BY",
+                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING",
+                                "SPECIALIZATION")));
+            } else {
+                active.add(candidate);
+            }
+        }
+
+        var alternatives = active.stream()
+                .filter(b -> b.isAlternative() && b.priority() != null)
+                .toList();
         if (!alternatives.isEmpty()) {
-            int best = alternatives.get(0).priority();
+            int best = alternatives.stream().mapToInt(BeanRecord::priority).max().orElseThrow();
             var winners = alternatives.stream().filter(b -> b.priority() == best).toList();
-            return winners.size() == 1 ? new Selection(winners.get(0), false) : new Selection(null, true);
+            for (BeanRecord candidate : active) {
+                boolean winner = winners.stream().anyMatch(b -> b.id() == candidate.id());
+                evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
+                        winner ? (winners.size() == 1 ? CandidateDisposition.SELECTED
+                                : CandidateDisposition.ELIGIBLE) : CandidateDisposition.EXCLUDED,
+                        winner ? (winners.size() == 1 ? "HIGHEST_PRIORITY_ALTERNATIVE"
+                                : "SAME_PRIORITY_ALTERNATIVE") : "LOWER_PRIORITY_OR_NON_ALTERNATIVE",
+                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING",
+                                "SPECIALIZATION", "ALTERNATIVE_PRIORITY")));
+            }
+            ResolutionTrace trace = trace(evidence, appliedRules);
+            return winners.size() == 1
+                    ? new Selection(winners.get(0), false, trace)
+                    : new Selection(null, true, trace);
         }
-        var normal = candidates.stream().filter(b -> !b.isAlternative()).toList();
-        return normal.size() == 1 ? new Selection(normal.get(0), false) : new Selection(null, normal.size() > 1);
+        var normal = active.stream().filter(b -> !b.isAlternative()).toList();
+        for (BeanRecord candidate : active) {
+            boolean normalCandidate = !candidate.isAlternative();
+            CandidateDisposition disposition = normalCandidate
+                    ? (normal.size() == 1 ? CandidateDisposition.SELECTED
+                            : CandidateDisposition.ELIGIBLE)
+                    : CandidateDisposition.EXCLUDED;
+            evidence.put(candidate.id(), candidateEvidence(candidate, classNames, disposition,
+                    normalCandidate ? (normal.size() == 1 ? "UNIQUE_ELIGIBLE_CANDIDATE"
+                            : "MULTIPLE_ELIGIBLE_CANDIDATES") : "INACTIVE_ALTERNATIVE",
+                    List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING",
+                            "SPECIALIZATION", "ALTERNATIVE_PRIORITY")));
+        }
+        ResolutionTrace trace = trace(evidence, appliedRules);
+        return normal.size() == 1
+                ? new Selection(normal.get(0), false, trace)
+                : new Selection(null, normal.size() > 1, trace);
+    }
+
+    private static ResolutionCandidate candidateEvidence(BeanRecord bean,
+            Map<Integer, String> classNames, CandidateDisposition disposition,
+            String reason, List<String> rules) {
+        return candidateEvidence(bean, classNames, null, disposition, reason, rules);
+    }
+
+    private static ResolutionCandidate candidateEvidence(BeanRecord bean,
+            Map<Integer, String> classNames, Integer relatedBeanId,
+            CandidateDisposition disposition, String reason, List<String> rules) {
+        return new ResolutionCandidate(bean.id(), classNames.get(bean.classId()), relatedBeanId,
+                disposition, reason, rules);
+    }
+
+    private static ResolutionTrace trace(Map<Integer, ResolutionCandidate> evidence,
+            List<String> appliedRules) {
+        return new ResolutionTrace(new ArrayList<>(evidence.values()), appliedRules,
+                List.of("RUNTIME_CDI_EXTENSIONS", "CONDITIONAL_BEAN_REGISTRATION",
+                        "PRODUCER_METHOD_SPECIALIZATION"));
+    }
+
+    private static Map<Integer, Integer> specializedBeans(List<ClassInfo> classes,
+            Map<DotName, Integer> classBeanIds) {
+        Map<Integer, Integer> result = new HashMap<>();
+        for (ClassInfo beanClass : classes) {
+            if (!beanClass.hasDeclaredAnnotation(SPECIALIZES) || beanClass.superName() == null) {
+                continue;
+            }
+            Integer specializingBean = classBeanIds.get(beanClass.name());
+            Integer specializedBean = classBeanIds.get(beanClass.superName());
+            if (specializingBean != null && specializedBean != null) {
+                result.put(specializingBean, specializedBean);
+            }
+        }
+        return result;
+    }
+
+    private static void inheritSpecializedQualifiers(List<BeanRecord> beans,
+            Map<Integer, Integer> specializedBeans) {
+        Map<Integer, BeanRecord> byId = new HashMap<>();
+        beans.forEach(bean -> byId.put(bean.id(), bean));
+        for (int i = 0; i < beans.size(); i++) {
+            BeanRecord bean = beans.get(i);
+            if (!specializedBeans.containsKey(bean.id())) continue;
+            LinkedHashSet<String> inherited = new LinkedHashSet<>();
+            collectSpecializedQualifiers(bean.id(), specializedBeans, byId,
+                    inherited, new HashSet<>());
+            inherited.addAll(bean.qualifiers());
+            boolean custom = inherited.stream().anyMatch(q -> !q.equals("@Any")
+                    && !q.equals("@Default") && !q.startsWith("@Named"));
+            if (custom) inherited.remove("@Default");
+            inherited.add("@Any");
+            BeanRecord updated = new BeanRecord(bean.id(), bean.classId(), bean.kind(),
+                    bean.scope(), new ArrayList<>(inherited), bean.stereotypes(),
+                    bean.isAlternative(), bean.priority(), bean.profiles(),
+                    bean.declaringClassId(), bean.memberName(), bean.beanTypes());
+            beans.set(i, updated);
+            byId.put(updated.id(), updated);
+        }
+    }
+
+    private static void collectSpecializedQualifiers(int beanId,
+            Map<Integer, Integer> specializedBeans, Map<Integer, BeanRecord> beans,
+            Set<String> result, Set<Integer> visited) {
+        if (!visited.add(beanId)) return;
+        Integer parentId = specializedBeans.get(beanId);
+        if (parentId == null) return;
+        collectSpecializedQualifiers(parentId, specializedBeans, beans, result, visited);
+        BeanRecord parent = beans.get(parentId);
+        if (parent != null) result.addAll(parent.qualifiers());
     }
 
     private static boolean qualifiersMatch(List<String> required, List<String> available) {

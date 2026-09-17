@@ -21,6 +21,8 @@ import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
+import org.treblereel.mcp.model.ResolutionCandidate;
+import org.treblereel.mcp.model.ResolutionStatus;
 
 /** Structural code and dependency graph queries. */
 final class StructureToolQueries {
@@ -183,23 +185,38 @@ final class StructureToolQueries {
         root.put("target", cls.className());
         List<InjectionPointRecord> injectionPoints = IndexReader.findInjectionPoints(
                 jdbi, bean.get().id());
-        Map<Integer, BeanRecord> resolvedBeans = IndexReader.findBeansByIds(jdbi,
-                injectionPoints.stream().map(InjectionPointRecord::resolvedBeanId)
-                        .filter(Objects::nonNull).toList());
+        Set<Integer> referencedBeanIds = new HashSet<>();
+        injectionPoints.stream().map(InjectionPointRecord::resolvedBeanId)
+                .filter(Objects::nonNull).forEach(referencedBeanIds::add);
+        injectionPoints.stream().flatMap(point -> point.resolutionTrace().candidates().stream())
+                .map(ResolutionCandidate::beanId).filter(Objects::nonNull)
+                .forEach(referencedBeanIds::add);
+        injectionPoints.stream().flatMap(point -> point.resolutionTrace().candidates().stream())
+                .map(ResolutionCandidate::relatedBeanId).filter(Objects::nonNull)
+                .forEach(referencedBeanIds::add);
+        Map<Integer, BeanRecord> resolvedBeans = IndexReader.findBeansByIds(
+                jdbi, referencedBeanIds);
         Map<Integer, ClassRecord> resolvedClasses = IndexReader.findClassesByIds(jdbi,
                 resolvedBeans.values().stream().map(BeanRecord::classId).toList());
         ArrayNode result = root.putArray("injection_points");
         ArrayNode unsatisfied = root.putArray("unsatisfied");
         ArrayNode ambiguous = root.putArray("ambiguous");
+        ArrayNode unknown = root.putArray("unknown");
+        ArrayNode unsupported = root.putArray("unsupported_mechanism");
         for (InjectionPointRecord point : injectionPoints) {
             ObjectNode node = result.addObject();
             node.put("kind", point.kind());
             node.put("field", point.fieldName());
             node.put("required_type", point.targetType());
             node.set("qualifiers", JSON.valueToTree(point.qualifiers()));
-            if (point.isAmbiguous()) {
+            node.put("resolution", point.resolutionStatus().name().toLowerCase());
+            node.put("resolution_strategy", point.resolutionStrategy());
+            node.put("reason", point.resolutionReason());
+            node.put("confidence", point.resolutionConfidence().name().toLowerCase());
+            node.set("limitations", JSON.valueToTree(point.limitations()));
+            appendResolutionTrace(node, point, resolvedBeans, resolvedClasses);
+            if (point.resolutionStatus() == ResolutionStatus.AMBIGUOUS) {
                 node.putNull("resolved_to");
-                node.put("resolution", "ambiguous");
                 ambiguous.add(point.fieldName());
             } else if (point.resolvedBeanId() != null) {
                 BeanRecord resolved = resolvedBeans.get(point.resolvedBeanId());
@@ -214,15 +231,59 @@ final class StructureToolQueries {
                         node.put("resolved_produced_type", resolved.beanTypes().getFirst());
                     }
                 }
-                node.put("resolution", "unique");
             } else {
                 node.putNull("resolved_to");
-                node.put("resolution", "unsatisfied");
-                unsatisfied.add(point.fieldName());
+                switch (point.resolutionStatus()) {
+                    case UNSATISFIED -> unsatisfied.add(point.fieldName());
+                    case UNKNOWN -> unknown.add(point.fieldName());
+                    case UNSUPPORTED_MECHANISM -> unsupported.add(point.fieldName());
+                    default -> { }
+                }
             }
         }
         appendMeta(root, jdbi, cls.sourceTokens());
         return root.toString();
+    }
+
+    private static void appendResolutionTrace(ObjectNode node, InjectionPointRecord point,
+            Map<Integer, BeanRecord> beans, Map<Integer, ClassRecord> classes) {
+        ObjectNode trace = node.putObject("resolution_trace");
+        trace.set("applied_rules", JSON.valueToTree(point.resolutionTrace().appliedRules()));
+        trace.set("unsupported_rules",
+                JSON.valueToTree(point.resolutionTrace().unsupportedRules()));
+        ArrayNode candidates = trace.putArray("candidates");
+        for (ResolutionCandidate candidate : point.resolutionTrace().candidates()) {
+            ObjectNode candidateNode = candidates.addObject();
+            if (candidate.beanId() == null) candidateNode.putNull("bean_id");
+            else candidateNode.put("bean_id", candidate.beanId());
+            BeanRecord bean = candidate.beanId() == null ? null : beans.get(candidate.beanId());
+            ClassRecord candidateClass = bean == null ? null : classes.get(bean.classId());
+            String className = candidateClass == null
+                    ? candidate.className() : candidateClass.className();
+            if (className == null) candidateNode.putNull("class");
+            else candidateNode.put("class", className);
+            if (candidateClass != null) {
+                candidateNode.put("file", candidateClass.sourceFile());
+                candidateNode.put("origin", candidateClass.origin());
+                candidateNode.put("lifecycle", candidateClass.lifecycle());
+            }
+            if (bean != null) {
+                candidateNode.put("kind", bean.kind());
+                if (bean.memberName() != null) candidateNode.put("member", bean.memberName());
+                candidateNode.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+            }
+            candidateNode.put("disposition", candidate.disposition().name().toLowerCase());
+            candidateNode.put("reason", candidate.reason());
+            if (candidate.relatedBeanId() != null) {
+                candidateNode.put("related_bean_id", candidate.relatedBeanId());
+                BeanRecord related = beans.get(candidate.relatedBeanId());
+                ClassRecord relatedClass = related == null ? null : classes.get(related.classId());
+                if (relatedClass != null) {
+                    candidateNode.put("related_class", relatedClass.className());
+                }
+            }
+            candidateNode.set("rules", JSON.valueToTree(candidate.rules()));
+        }
     }
 
     private static void writeDependencyBreakdown(ObjectNode result,

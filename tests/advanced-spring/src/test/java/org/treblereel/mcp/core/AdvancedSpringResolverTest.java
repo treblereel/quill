@@ -459,8 +459,9 @@ class AdvancedSpringResolverTest {
                 .filter(ip -> ip.beanId() == reportGen.id()
                         && ip.targetType().contains("ExternalApiClient"))
                 .findFirst();
-        assertTrue(externalIp.isEmpty() || !externalIp.get().isAmbiguous(),
-                "Single unresolved interface should be unsatisfied, not ambiguous");
+        assertTrue(externalIp.isEmpty()
+                        || externalIp.get().resolutionStatus() == ResolutionStatus.UNKNOWN,
+                "A missing static candidate must remain unknown, not become a confirmed error");
     }
 
     // --- Composed / meta-annotated stereotypes ---

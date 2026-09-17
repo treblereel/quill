@@ -53,7 +53,7 @@ class MultiModuleCdiTest {
 
         JsonNode ip = ips.get(0);
         assertEquals("notificationService", ip.get("field").asText());
-        assertEquals("unique", ip.get("resolution").asText(),
+        assertEquals("resolved", ip.get("resolution").asText(),
                 "Cross-module injection should be resolved (SmsNotificationService wins via @Alternative @Priority)");
 
         assertEquals(0, root.get("unsatisfied").size());

@@ -71,9 +71,13 @@ final class ProjectOverviewQueries {
         ObjectNode problems = root.putObject("problems");
         List<InjectionPointRecord> unsatisfied = IndexReader.findUnsatisfiedInjectionPoints(jdbi);
         List<InjectionPointRecord> ambiguous = IndexReader.findAmbiguousInjectionPoints(jdbi);
+        List<InjectionPointRecord> unknown = IndexReader.findUnknownInjectionPoints(jdbi);
+        List<InjectionPointRecord> unsupported = IndexReader.findUnsupportedInjectionPoints(jdbi);
         List<InjectionPointRecord> problemSample = new ArrayList<>();
         problemSample.addAll(unsatisfied.stream().limit(10).toList());
         problemSample.addAll(ambiguous.stream().limit(10).toList());
+        problemSample.addAll(unknown.stream().limit(10).toList());
+        problemSample.addAll(unsupported.stream().limit(10).toList());
         Map<Integer, BeanRecord> problemBeans = IndexReader.findBeansByIds(jdbi,
                 problemSample.stream().map(InjectionPointRecord::beanId).toList());
         Map<Integer, ClassRecord> problemClasses = IndexReader.findClassesByIds(jdbi,
@@ -91,6 +95,7 @@ final class ProjectOverviewQueries {
                 }
                 node.put("field", ip.fieldName());
                 node.put("type", ip.targetType());
+                appendResolutionEvidence(node, ip);
             }
         }
         problems.put("ambiguous_count", ambiguous.size());
@@ -106,8 +111,12 @@ final class ProjectOverviewQueries {
                 }
                 node.put("field", ip.fieldName());
                 node.put("type", ip.targetType());
+                appendResolutionEvidence(node, ip);
             }
         }
+        writeResolutionGroup(problems, "unknown", unknown, problemBeans, problemClasses);
+        writeResolutionGroup(problems, "unsupported_mechanism", unsupported,
+                problemBeans, problemClasses);
 
         List<CdiProblem> cdiProblems = IndexReader.findCdiProblems(jdbi);
         if (!cdiProblems.isEmpty()) {
@@ -148,6 +157,32 @@ final class ProjectOverviewQueries {
 
         appendMeta(root, jdbi, totalTokens);
         return root.toString();
+    }
+
+    private static void writeResolutionGroup(ObjectNode problems, String name,
+            List<InjectionPointRecord> points, Map<Integer, BeanRecord> beans,
+            Map<Integer, ClassRecord> classes) {
+        problems.put(name + "_count", points.size());
+        if (points.isEmpty()) return;
+        ArrayNode sample = problems.putArray(name + "_injection_points_sample");
+        for (InjectionPointRecord ip : points.stream().limit(10).toList()) {
+            ObjectNode node = sample.addObject();
+            BeanRecord bean = beans.get(ip.beanId());
+            if (bean != null && classes.containsKey(bean.classId())) {
+                node.put("bean", classes.get(bean.classId()).className());
+            }
+            node.put("field", ip.fieldName());
+            node.put("type", ip.targetType());
+            appendResolutionEvidence(node, ip);
+        }
+    }
+
+    private static void appendResolutionEvidence(
+            ObjectNode node, InjectionPointRecord injectionPoint) {
+        node.put("resolution_strategy", injectionPoint.resolutionStrategy());
+        node.put("reason", injectionPoint.resolutionReason());
+        node.put("confidence", injectionPoint.resolutionConfidence().name().toLowerCase());
+        node.set("limitations", JSON.valueToTree(injectionPoint.limitations()));
     }
 
 }

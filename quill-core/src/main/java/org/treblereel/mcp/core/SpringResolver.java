@@ -48,10 +48,17 @@ public final class SpringResolver {
 
     record BeanCandidate(int beanId, int classId, List<String> qualifiers, boolean isPrimary) {}
 
-    record Resolution(Integer beanId, Integer classId, boolean isAmbiguous) {
-        static Resolution unique(BeanCandidate c) { return new Resolution(c.beanId(), c.classId(), false); }
-        static Resolution ambiguous() { return new Resolution(null, null, true); }
-        static Resolution unsatisfied() { return new Resolution(null, null, false); }
+    record Resolution(Integer beanId, Integer classId, boolean isAmbiguous,
+            ResolutionTrace trace) {
+        static Resolution unique(BeanCandidate c, ResolutionTrace trace) {
+            return new Resolution(c.beanId(), c.classId(), false, trace);
+        }
+        static Resolution ambiguous(ResolutionTrace trace) {
+            return new Resolution(null, null, true, trace);
+        }
+        static Resolution unresolved(ResolutionTrace trace) {
+            return new Resolution(null, null, false, trace);
+        }
     }
 
     public static boolean isSpringProject(IndexView index) {
@@ -189,9 +196,10 @@ public final class SpringResolver {
             List<String> ipQualifiers = extractFieldQualifiers(field, index);
             Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
 
-            ipRecords.add(new InjectionPointRecord(
+            ipRecords.add(InjectionPointRecord.staticAnalysis(
                     ipId, beanId, "FIELD", targetType, ipQualifiers,
-                    field.name(), r.beanId(), r.isAmbiguous()));
+                    field.name(), r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
+                    .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
 
             if (r.classId() != null) {
                 depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
@@ -206,9 +214,10 @@ public final class SpringResolver {
                 List<String> ipQualifiers = extractParamQualifiers(injectConstructor, i, index);
                 Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
 
-                ipRecords.add(new InjectionPointRecord(
+                ipRecords.add(InjectionPointRecord.staticAnalysis(
                         ipId, beanId, "CONSTRUCTOR_PARAM", targetType, ipQualifiers,
-                        "<init>", r.beanId(), r.isAmbiguous()));
+                        "<init>", r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
+                        .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
 
                 if (r.classId() != null) {
                     depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
@@ -226,9 +235,10 @@ public final class SpringResolver {
                 List<String> ipQualifiers = extractParamQualifiers(method, i, index);
                 Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
 
-                ipRecords.add(new InjectionPointRecord(
+                ipRecords.add(InjectionPointRecord.staticAnalysis(
                         ipId, beanId, "METHOD_PARAM", targetType, ipQualifiers,
-                        method.name(), r.beanId(), r.isAmbiguous()));
+                        method.name(), r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
+                        .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
 
                 if (r.classId() != null) {
                     depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
@@ -249,9 +259,10 @@ public final class SpringResolver {
             List<String> ipQualifiers = extractParamQualifiers(method, i, index);
             Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
 
-            ipRecords.add(new InjectionPointRecord(
+            ipRecords.add(InjectionPointRecord.staticAnalysis(
                     ipId, configBeanId, "METHOD_PARAM", targetType, ipQualifiers,
-                    method.name(), r.beanId(), r.isAmbiguous()));
+                    method.name(), r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
+                    .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
 
             if (r.classId() != null) {
                 depRecords.add(new DependencyRecord(configClassId, r.classId(), "SPRING_INJECT", ipId));
@@ -263,9 +274,12 @@ public final class SpringResolver {
     static Resolution resolveByType(String targetType, List<String> qualifiers,
             Map<String, List<BeanCandidate>> candidatesByType) {
         List<BeanCandidate> candidates = candidatesByType.getOrDefault(targetType, List.of());
+        Map<Integer, ResolutionCandidate> evidence = new LinkedHashMap<>();
+        List<String> appliedRules = List.of(
+                "TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING", "PRIMARY_SELECTION");
 
         if (candidates.isEmpty()) {
-            return Resolution.unsatisfied();
+            return Resolution.unresolved(springTrace(evidence, appliedRules));
         }
 
         boolean hasNonDefaultQualifier = qualifiers.stream()
@@ -275,24 +289,64 @@ public final class SpringResolver {
             List<BeanCandidate> matched = candidates.stream()
                     .filter(c -> matchesQualifiers(qualifiers, c.qualifiers()))
                     .toList();
+            for (BeanCandidate candidate : candidates) {
+                boolean matches = matched.contains(candidate);
+                evidence.put(candidate.beanId(), springCandidate(candidate,
+                        matches ? CandidateDisposition.ELIGIBLE : CandidateDisposition.EXCLUDED,
+                        matches ? "QUALIFIERS_MATCHED" : "QUALIFIER_MISMATCH"));
+            }
             if (matched.isEmpty()) {
-                return Resolution.unsatisfied();
+                return Resolution.unresolved(springTrace(evidence, appliedRules));
             }
             candidates = matched;
+        } else {
+            for (BeanCandidate candidate : candidates) {
+                evidence.put(candidate.beanId(), springCandidate(candidate,
+                        CandidateDisposition.ELIGIBLE, "TYPE_MATCHED"));
+            }
         }
 
         if (candidates.size() == 1) {
-            return Resolution.unique(candidates.get(0));
+            BeanCandidate selected = candidates.get(0);
+            evidence.put(selected.beanId(), springCandidate(selected,
+                    CandidateDisposition.SELECTED, "UNIQUE_ELIGIBLE_CANDIDATE"));
+            return Resolution.unique(selected, springTrace(evidence, appliedRules));
         }
 
         List<BeanCandidate> primaries = candidates.stream()
                 .filter(BeanCandidate::isPrimary)
                 .toList();
         if (primaries.size() == 1) {
-            return Resolution.unique(primaries.get(0));
+            BeanCandidate selected = primaries.get(0);
+            for (BeanCandidate candidate : candidates) {
+                evidence.put(candidate.beanId(), springCandidate(candidate,
+                        candidate.beanId() == selected.beanId()
+                                ? CandidateDisposition.SELECTED : CandidateDisposition.EXCLUDED,
+                        candidate.beanId() == selected.beanId()
+                                ? "PRIMARY_CANDIDATE" : "NON_PRIMARY_CANDIDATE"));
+            }
+            return Resolution.unique(selected, springTrace(evidence, appliedRules));
         }
 
-        return Resolution.ambiguous();
+        for (BeanCandidate candidate : candidates) {
+            evidence.put(candidate.beanId(), springCandidate(candidate,
+                    CandidateDisposition.ELIGIBLE,
+                    primaries.isEmpty() ? "MULTIPLE_ELIGIBLE_CANDIDATES"
+                            : "MULTIPLE_PRIMARY_CANDIDATES"));
+        }
+        return Resolution.ambiguous(springTrace(evidence, appliedRules));
+    }
+
+    private static ResolutionCandidate springCandidate(BeanCandidate candidate,
+            CandidateDisposition disposition, String reason) {
+        return new ResolutionCandidate(candidate.beanId(), null, disposition, reason,
+                List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING", "PRIMARY_SELECTION"));
+    }
+
+    private static ResolutionTrace springTrace(
+            Map<Integer, ResolutionCandidate> evidence, List<String> appliedRules) {
+        return new ResolutionTrace(new ArrayList<>(evidence.values()), appliedRules,
+                List.of("CONDITIONAL_BEAN_REGISTRATION", "RUNTIME_BEAN_FACTORY_HOOKS"));
     }
 
     private static boolean isInjectionField(FieldInfo field) {

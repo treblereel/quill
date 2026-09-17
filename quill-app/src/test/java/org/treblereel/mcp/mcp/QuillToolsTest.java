@@ -50,8 +50,19 @@ class QuillToolsTest {
                         List.of(), false, null, List.of("dev", "test"), null, null, List.of("AuditService", "Object"))
         );
         var ips = List.of(
-                new InjectionPointRecord(0, 1, "FIELD", "PaymentService",
-                        List.of("@Default"), "paymentService", 2, false)
+                InjectionPointRecord.staticAnalysis(0, 1, "FIELD", "PaymentService",
+                        List.of("@Default"), "paymentService", 2, false,
+                        InjectionPointRecord.STATIC_CDI).withResolution(2, false,
+                        new ResolutionTrace(List.of(new ResolutionCandidate(2,
+                                "org.acme.StripePaymentService",
+                                CandidateDisposition.SELECTED,
+                                "UNIQUE_ELIGIBLE_CANDIDATE",
+                                List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING"))),
+                                List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING"),
+                                List.of("RUNTIME_CDI_EXTENSIONS"))),
+                InjectionPointRecord.staticAnalysis(0, 1, "FIELD", "RuntimeProvidedService",
+                        List.of("@Default"), "runtimeProvidedService", null, false,
+                        InjectionPointRecord.STATIC_CDI)
         );
         var deps = List.of(
                 new DependencyRecord(1, 3, "CDI_INJECT", 1),
@@ -234,12 +245,27 @@ class QuillToolsTest {
     }
 
     @Test
-    void getInjectionPointsShowsResolution() {
+    void getInjectionPointsShowsResolutionEvidenceAndKeepsMissingCandidateUnknown()
+            throws Exception {
         var tools = new QuillTools();
         String result = tools.getInjectionPoints(jdbi, "OrderService");
-        assertTrue(result.contains("PaymentService"));
-        assertTrue(result.contains("paymentService"));
-        assertTrue(result.contains("unique") || result.contains("resolved_to"));
+        JsonNode root = JSON.readTree(result);
+        assertEquals(2, root.get("injection_points").size());
+        JsonNode unknown = root.get("injection_points").get(1);
+        assertEquals("unknown", unknown.get("resolution").asText());
+        assertEquals("STATIC_CDI", unknown.get("resolution_strategy").asText());
+        assertEquals("NO_STATIC_CANDIDATE", unknown.get("reason").asText());
+        assertEquals("low", unknown.get("confidence").asText());
+        assertFalse(unknown.get("limitations").isEmpty());
+        assertEquals(0, root.get("unsatisfied").size());
+        assertEquals("runtimeProvidedService", root.get("unknown").get(0).asText());
+        JsonNode selected = root.get("injection_points").get(0)
+                .get("resolution_trace").get("candidates").get(0);
+        assertEquals("org.acme.StripePaymentService", selected.get("class").asText());
+        assertEquals("src/main/java/org/acme/StripePaymentService.java",
+                selected.get("file").asText());
+        assertEquals("selected", selected.get("disposition").asText());
+        assertEquals("UNIQUE_ELIGIBLE_CANDIDATE", selected.get("reason").asText());
     }
 
     @Test
@@ -350,6 +376,11 @@ class QuillToolsTest {
         assertNotNull(problems);
         assertTrue(problems.has("unsatisfied_count"));
         assertTrue(problems.has("ambiguous_count"));
+        assertEquals(0, problems.get("unsatisfied_count").asInt());
+        assertEquals(1, problems.get("unknown_count").asInt());
+        assertEquals("NO_STATIC_CANDIDATE",
+                problems.get("unknown_injection_points_sample").get(0)
+                        .get("reason").asText());
 
         JsonNode gitSummary = root.get("git_summary");
         assertNotNull(gitSummary);

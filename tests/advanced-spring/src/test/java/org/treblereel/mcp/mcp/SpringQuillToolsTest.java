@@ -67,18 +67,18 @@ class SpringQuillToolsTest {
         );
 
         var ips = List.of(
-                new InjectionPointRecord(1, 2, "FIELD",
+                InjectionPointRecord.staticAnalysis(1, 2, "FIELD",
                         "com.example.UserRepository", List.of("@Default"),
-                        "userRepository", 1, false),
-                new InjectionPointRecord(2, 2, "FIELD",
+                        "userRepository", 1, false, InjectionPointRecord.STATIC_SPRING),
+                InjectionPointRecord.staticAnalysis(2, 2, "FIELD",
                         "com.example.NotificationService", List.of("@Default"),
-                        "notificationService", 3, false),
-                new InjectionPointRecord(3, 6, "CONSTRUCTOR_PARAM",
+                        "notificationService", 3, false, InjectionPointRecord.STATIC_SPRING),
+                InjectionPointRecord.staticAnalysis(3, 6, "CONSTRUCTOR_PARAM",
                         "com.example.UserService", List.of("@Default"),
-                        "<init>", 2, false),
-                new InjectionPointRecord(4, 6, "FIELD",
+                        "<init>", 2, false, InjectionPointRecord.STATIC_SPRING),
+                InjectionPointRecord.staticAnalysis(4, 6, "FIELD",
                         "com.example.RequestContext", List.of("@Default"),
-                        "requestContext", 5, false)
+                        "requestContext", 5, false, InjectionPointRecord.STATIC_SPRING)
         );
 
         var deps = List.of(

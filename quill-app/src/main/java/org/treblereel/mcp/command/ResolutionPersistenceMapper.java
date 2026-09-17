@@ -9,6 +9,10 @@ import org.treblereel.mcp.core.BeanResolver;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
+import org.treblereel.mcp.model.ResolutionConfidence;
+import org.treblereel.mcp.model.ResolutionCandidate;
+import org.treblereel.mcp.model.ResolutionStatus;
+import org.treblereel.mcp.model.ResolutionTrace;
 
 /** Maps resolver-local identifiers onto the stable identifiers persisted in SQLite. */
 final class ResolutionPersistenceMapper {
@@ -43,12 +47,8 @@ final class ResolutionPersistenceMapper {
 
             int newId = injectionPoints.size() + 1;
             injectionPointIds.put(injectionPoint.id(), newId);
-            injectionPoints.add(new InjectionPointRecord(
-                    newId, ownerBeanId, injectionPoint.kind(), injectionPoint.targetType(),
-                    injectionPoint.qualifiers(), injectionPoint.fieldName(),
-                    injectionPoint.resolvedBeanId() != null
-                            ? beanIds.get(injectionPoint.resolvedBeanId()) : null,
-                    injectionPoint.isAmbiguous()));
+            injectionPoints.add(remapInjectionPoint(
+                    injectionPoint, newId, ownerBeanId, beanIds));
         }
 
         List<DependencyRecord> dependencies = resolution.dependencies().stream()
@@ -89,12 +89,8 @@ final class ResolutionPersistenceMapper {
                 if (beanId == null) continue;
                 int id = injectionPoints.size() + 1;
                 injectionPointIds.put(injectionPoint.id(), id);
-                injectionPoints.add(new InjectionPointRecord(id, beanId,
-                        injectionPoint.kind(), injectionPoint.targetType(),
-                        injectionPoint.qualifiers(), injectionPoint.fieldName(),
-                        injectionPoint.resolvedBeanId() != null
-                                ? beanIds.get(injectionPoint.resolvedBeanId()) : null,
-                        injectionPoint.isAmbiguous()));
+                injectionPoints.add(remapInjectionPoint(
+                        injectionPoint, id, beanId, beanIds));
             }
 
             for (DependencyRecord dependency : part.dependencies()) {
@@ -109,5 +105,36 @@ final class ResolutionPersistenceMapper {
         }
         return new ProjectInitializer.PersistedResolution(
                 List.copyOf(beans), List.copyOf(injectionPoints), List.copyOf(dependencies));
+    }
+
+    private static InjectionPointRecord remapInjectionPoint(InjectionPointRecord original,
+            int id, int beanId, Map<Integer, Integer> beanIds) {
+        Integer resolvedBeanId = original.resolvedBeanId() == null
+                ? null : beanIds.get(original.resolvedBeanId());
+        if (original.resolvedBeanId() != null && resolvedBeanId == null) {
+            List<String> limitations = new ArrayList<>(original.limitations());
+            limitations.add("The statically selected candidate is outside the persisted project bean set.");
+            return new InjectionPointRecord(id, beanId, original.kind(), original.targetType(),
+                    original.qualifiers(), original.fieldName(), null, ResolutionStatus.UNKNOWN,
+                    original.resolutionStrategy(), "STATIC_CANDIDATE_NOT_PERSISTED",
+                    ResolutionConfidence.LOW, limitations,
+                    remapTrace(original.resolutionTrace(), beanIds));
+        }
+        return new InjectionPointRecord(id, beanId, original.kind(), original.targetType(),
+                original.qualifiers(), original.fieldName(), resolvedBeanId,
+                original.resolutionStatus(), original.resolutionStrategy(),
+                original.resolutionReason(), original.resolutionConfidence(),
+                original.limitations(), remapTrace(original.resolutionTrace(), beanIds));
+    }
+
+    private static ResolutionTrace remapTrace(
+            ResolutionTrace trace, Map<Integer, Integer> beanIds) {
+        List<ResolutionCandidate> candidates = trace.candidates().stream()
+                .map(candidate -> candidate.withBeanIds(
+                        candidate.beanId() == null ? null : beanIds.get(candidate.beanId()),
+                        candidate.relatedBeanId() == null
+                                ? null : beanIds.get(candidate.relatedBeanId())))
+                .toList();
+        return new ResolutionTrace(candidates, trace.appliedRules(), trace.unsupportedRules());
     }
 }

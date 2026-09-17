@@ -4,6 +4,15 @@
     "allDeclaredMethods": true
   },
   {
+    "name": "org.treblereel.mcp.model.ResolutionCandidate",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "org.treblereel.mcp.model.CandidateDisposition",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
     "name": "[Lorg.jboss.jandex.ClassInfo;"
   },
   {

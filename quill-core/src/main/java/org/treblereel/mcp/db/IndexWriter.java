@@ -2,6 +2,7 @@ package org.treblereel.mcp.db;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -50,7 +51,9 @@ public final class IndexWriter {
             "bean_types");
     private static final TableSpec INJECTION_POINTS = new TableSpec("injection_points",
             "id", "bean_id", "kind", "target_type", "qualifiers", "field_name",
-            "resolved_bean_id", "is_ambiguous");
+            "resolved_bean_id", "resolution_status", "resolution_strategy",
+            "resolution_reason", "resolution_confidence", "limitations",
+            "resolution_candidates", "applied_rules", "unsupported_rules");
     private static final TableSpec DEPENDENCIES = new TableSpec("dependencies",
             "from_class_id", "to_class_id", "kind", "injection_point_id", "occurrence_count");
     private static final TableSpec METADATA = new TableSpec("metadata", "key", "value");
@@ -273,7 +276,7 @@ public final class IndexWriter {
     private static void insertDesiredInjectionPoints(
             Handle h, List<InjectionPointRecord> injectionPoints) {
         try (PreparedStatement statement = h.getConnection().prepareStatement(
-                "INSERT INTO desired_injection_points (id, bean_id, kind, target_type, qualifiers, field_name, resolved_bean_id, is_ambiguous) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                "INSERT INTO desired_injection_points (id, bean_id, kind, target_type, qualifiers, field_name, resolved_bean_id, resolution_status, resolution_strategy, resolution_reason, resolution_confidence, limitations, resolution_candidates, applied_rules, unsupported_rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             for (int i = 0; i < injectionPoints.size(); i++) {
                 InjectionPointRecord ip = injectionPoints.get(i);
                 statement.setInt(1, i + 1);
@@ -283,7 +286,14 @@ public final class IndexWriter {
                 statement.setString(5, toJson(ip.qualifiers()));
                 statement.setString(6, ip.fieldName());
                 statement.setObject(7, ip.resolvedBeanId());
-                statement.setInt(8, ip.isAmbiguous() ? 1 : 0);
+                statement.setString(8, ip.resolutionStatus().name());
+                statement.setString(9, ip.resolutionStrategy());
+                statement.setString(10, ip.resolutionReason());
+                statement.setString(11, ip.resolutionConfidence().name());
+                statement.setString(12, toJson(ip.limitations()));
+                statement.setString(13, toJson(ip.resolutionTrace().candidates()));
+                statement.setString(14, toJson(ip.resolutionTrace().appliedRules()));
+                statement.setString(15, toJson(ip.resolutionTrace().unsupportedRules()));
                 statement.addBatch();
             }
             if (!injectionPoints.isEmpty()) statement.executeBatch();
@@ -513,7 +523,7 @@ public final class IndexWriter {
 
     private static void insertInjectionPoints(Handle h, List<InjectionPointRecord> ips) {
         executeBatch(h,
-                "INSERT INTO injection_points (bean_id, kind, target_type, qualifiers, field_name, resolved_bean_id, is_ambiguous) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO injection_points (bean_id, kind, target_type, qualifiers, field_name, resolved_bean_id, resolution_status, resolution_strategy, resolution_reason, resolution_confidence, limitations, resolution_candidates, applied_rules, unsupported_rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 ips, (statement, ip) -> {
                     statement.setInt(1, ip.beanId());
                     statement.setString(2, ip.kind());
@@ -521,7 +531,14 @@ public final class IndexWriter {
                     statement.setString(4, toJson(ip.qualifiers()));
                     statement.setString(5, ip.fieldName());
                     statement.setObject(6, ip.resolvedBeanId());
-                    statement.setInt(7, ip.isAmbiguous() ? 1 : 0);
+                    statement.setString(7, ip.resolutionStatus().name());
+                    statement.setString(8, ip.resolutionStrategy());
+                    statement.setString(9, ip.resolutionReason());
+                    statement.setString(10, ip.resolutionConfidence().name());
+                    statement.setString(11, toJson(ip.limitations()));
+                    statement.setString(12, toJson(ip.resolutionTrace().candidates()));
+                    statement.setString(13, toJson(ip.resolutionTrace().appliedRules()));
+                    statement.setString(14, toJson(ip.resolutionTrace().unsupportedRules()));
                 });
     }
 
@@ -626,10 +643,11 @@ public final class IndexWriter {
         void bind(PreparedStatement statement, T row) throws SQLException;
     }
 
-    static String toJson(List<String> list) {
-        if (list == null || list.isEmpty()) return null;
+    static String toJson(Object value) {
+        if (value == null) return null;
+        if (value instanceof Collection<?> collection && collection.isEmpty()) return null;
         try {
-            return JSON.writeValueAsString(list);
+            return JSON.writeValueAsString(value);
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }

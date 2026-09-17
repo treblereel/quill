@@ -111,7 +111,8 @@ class BeanResolverTest {
                 .toList();
         assertFalse(orderServiceIps.isEmpty());
         for (var ip : orderServiceIps) {
-            assertFalse(ip.isAmbiguous() && ip.resolvedBeanId() == null,
+            assertFalse(ip.resolutionStatus() == ResolutionStatus.AMBIGUOUS
+                            && ip.resolvedBeanId() == null,
                     "Resolvable injection points should not be marked ambiguous with null resolution");
         }
     }
@@ -174,16 +175,46 @@ class BeanResolverTest {
                         List.of("@Default", "@Any"), List.of(), false, null,
                         null, null, null, List.of("example.Consumer")));
         var injectionPoints = new java.util.ArrayList<>(List.of(
-                new InjectionPointRecord(1, 3, "FIELD", "example.DataSource",
-                        List.of("@Default"), "dataSource", null, false)));
+                InjectionPointRecord.staticAnalysis(1, 3, "FIELD", "example.DataSource",
+                        List.of("@Default"), "dataSource", null, false,
+                        InjectionPointRecord.STATIC_CDI)));
         var dependencies = new java.util.ArrayList<DependencyRecord>();
 
         BeanResolver.reResolveUnresolved(beans, injectionPoints, dependencies);
 
         assertNull(injectionPoints.get(0).resolvedBeanId());
-        assertTrue(injectionPoints.get(0).isAmbiguous(),
+        assertEquals(ResolutionStatus.AMBIGUOUS,
+                injectionPoints.get(0).resolutionStatus(),
                 "Two fallback @Default producers must be reported as ambiguous");
         assertTrue(dependencies.isEmpty(), "Ambiguous injection must not create a dependency edge");
+    }
+
+    @Test
+    void highestPriorityAlternativeWinsAndIsExplained() {
+        var beans = List.of(
+                new BeanRecord(1, 10, "CLASS", "@Dependent",
+                        List.of("@Default", "@Any"), List.of(), true, 1,
+                        null, null, null, List.of("example.Service")),
+                new BeanRecord(2, 20, "CLASS", "@Dependent",
+                        List.of("@Default", "@Any"), List.of(), true, 100,
+                        null, null, null, List.of("example.Service")),
+                new BeanRecord(3, 30, "CLASS", "@Dependent",
+                        List.of("@Default", "@Any"), List.of(), false, null,
+                        null, null, null, List.of("example.Consumer")));
+        var injectionPoints = new java.util.ArrayList<>(List.of(
+                InjectionPointRecord.staticAnalysis(1, 3, "FIELD", "example.Service",
+                        List.of("@Default"), "service", null, false,
+                        InjectionPointRecord.STATIC_CDI)));
+
+        BeanResolver.reResolveUnresolved(
+                beans, injectionPoints, new java.util.ArrayList<>());
+
+        InjectionPointRecord resolved = injectionPoints.getFirst();
+        assertEquals(2, resolved.resolvedBeanId());
+        assertTrue(resolved.resolutionTrace().candidates().stream()
+                .anyMatch(candidate -> candidate.beanId() == 2
+                        && candidate.disposition() == CandidateDisposition.SELECTED
+                        && candidate.reason().equals("HIGHEST_PRIORITY_ALTERNATIVE")));
     }
 
     @Test
@@ -196,15 +227,70 @@ class BeanResolverTest {
                         List.of("@Default", "@Any"), List.of(), false, null,
                         null, null, null, List.of("example.Consumer")));
         var injectionPoints = new java.util.ArrayList<>(List.of(
-                new InjectionPointRecord(1, 2, "FIELD", "example.Service",
-                        List.of("@Default"), "service", null, false)));
+                InjectionPointRecord.staticAnalysis(1, 2, "FIELD", "example.Service",
+                        List.of("@Default"), "service", null, false,
+                        InjectionPointRecord.STATIC_CDI)));
 
         BeanResolver.reResolveUnresolved(
                 beans, injectionPoints, new java.util.ArrayList<>());
 
         assertNull(injectionPoints.get(0).resolvedBeanId());
-        assertFalse(injectionPoints.get(0).isAmbiguous(),
-                "A custom-only bean is unsatisfied for an unqualified injection point");
+        assertEquals(ResolutionStatus.UNKNOWN, injectionPoints.get(0).resolutionStatus(),
+                "A missing static candidate is unknown because the model may be incomplete");
+    }
+
+    @Test
+    void unrelatedAnnotationDoesNotBecomeCdiQualifierOrConfirmedFailure() throws Exception {
+        Indexer indexer = new Indexer();
+        for (Class<?> type : List.of(UnrelatedMarker.class, RuntimeProvidedService.class,
+                FrameworkConsumer.class)) {
+            indexer.indexClass(type);
+        }
+
+        InjectionPointRecord injectionPoint = BeanResolver.resolve(indexer.complete())
+                .injectionPoints().stream().findFirst().orElseThrow();
+
+        assertEquals(List.of("@Default"), injectionPoint.qualifiers(),
+                "An arbitrary annotation must not be treated as a CDI selector");
+        assertEquals(ResolutionStatus.UNKNOWN, injectionPoint.resolutionStatus());
+        assertEquals("NO_STATIC_CANDIDATE", injectionPoint.resolutionReason());
+        assertEquals(InjectionPointRecord.STATIC_CDI,
+                injectionPoint.resolutionStrategy());
+        assertEquals(ResolutionConfidence.LOW,
+                injectionPoint.resolutionConfidence());
+    }
+
+    @Test
+    void specializationExcludesBaseBeanAndExplainsSelection() throws Exception {
+        Indexer indexer = new Indexer();
+        for (Class<?> type : List.of(Premium.class, NavigationGraph.class,
+                GeneratedNavigationGraph.class, NavigationConsumer.class)) {
+            indexer.indexClass(type);
+        }
+
+        BeanResolver.ResolutionResult result = BeanResolver.resolve(indexer.complete());
+        InjectionPointRecord injectionPoint = result.injectionPoints().stream()
+                .filter(ip -> ip.targetType().equals(NavigationGraph.class.getName()))
+                .findFirst().orElseThrow();
+
+        assertEquals(ResolutionStatus.RESOLVED, injectionPoint.resolutionStatus());
+        BeanRecord selected = result.beans().stream()
+                .filter(bean -> bean.id() == injectionPoint.resolvedBeanId())
+                .findFirst().orElseThrow();
+        assertEquals(GeneratedNavigationGraph.class.getName(),
+                className(result, selected));
+        assertTrue(injectionPoint.resolutionTrace().appliedRules()
+                .contains("SPECIALIZATION"));
+        assertTrue(injectionPoint.resolutionTrace().candidates().stream()
+                .anyMatch(candidate -> NavigationGraph.class.getName()
+                                .equals(candidate.className())
+                        && candidate.disposition() == CandidateDisposition.EXCLUDED
+                        && candidate.reason().equals("SPECIALIZED_BY")
+                        && candidate.relatedBeanId().equals(selected.id())));
+        assertTrue(injectionPoint.resolutionTrace().candidates().stream()
+                .anyMatch(candidate -> GeneratedNavigationGraph.class.getName()
+                                .equals(candidate.className())
+                        && candidate.disposition() == CandidateDisposition.SELECTED));
     }
 
     @Test
@@ -231,6 +317,32 @@ class BeanResolverTest {
     @ServiceStereotype
     static class StereotypedService {}
 
+    @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+    @java.lang.annotation.Target(java.lang.annotation.ElementType.FIELD)
+    @interface UnrelatedMarker {}
+
+    interface RuntimeProvidedService {}
+
+    @jakarta.enterprise.context.ApplicationScoped
+    static class FrameworkConsumer {
+        @jakarta.inject.Inject
+        @UnrelatedMarker
+        RuntimeProvidedService service;
+    }
+
+    @jakarta.enterprise.context.ApplicationScoped
+    @Premium
+    static class NavigationGraph {}
+
+    @jakarta.enterprise.context.ApplicationScoped
+    @jakarta.enterprise.inject.Specializes
+    static class GeneratedNavigationGraph extends NavigationGraph {}
+
+    @jakarta.enterprise.context.ApplicationScoped
+    static class NavigationConsumer {
+        @jakarta.inject.Inject @Premium NavigationGraph graph;
+    }
+
     @jakarta.enterprise.context.NormalScope
     @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
     @java.lang.annotation.Target(java.lang.annotation.ElementType.TYPE)
@@ -246,5 +358,12 @@ class BeanResolverTest {
             }
         }
         return false;
+    }
+
+    private String className(BeanResolver.ResolutionResult result, BeanRecord bean) {
+        return result.classNameToId().entrySet().stream()
+                .filter(entry -> entry.getValue() == bean.classId())
+                .map(java.util.Map.Entry::getKey)
+                .findFirst().orElseThrow();
     }
 }

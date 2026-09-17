@@ -140,7 +140,10 @@ class ProjectInitializerRemapTest {
                 .filter(ip -> ip.targetType().equals(PaymentService.class.getName()))
                 .findFirst().orElseThrow();
         assertNull(paymentInjection.resolvedBeanId(),
-                "External bean resolution must become unsatisfied in the project-only database");
+                "External bean resolution must not leave a dangling bean id");
+        assertEquals(org.treblereel.mcp.model.ResolutionStatus.UNKNOWN,
+                paymentInjection.resolutionStatus(),
+                "A filtered static candidate must become unknown, not unsatisfied");
         assertTrue(persisted.dependencies().stream()
                 .noneMatch(d -> d.injectionPointId() != null
                         && d.injectionPointId() == paymentInjection.id()));
@@ -150,9 +153,9 @@ class ProjectInitializerRemapTest {
     void filteredExternalBeanCannotLeaveDanglingIds(@TempDir Path tempDir) {
         var applicationBean = bean(5, 10, "org.acme.OrderService");
         var externalBean = bean(9, 20, "com.vendor.PaymentService");
-        var injection = new InjectionPointRecord(
+        var injection = InjectionPointRecord.staticAnalysis(
                 7, 5, "FIELD", "com.vendor.PaymentService", List.of("@Default"),
-                "paymentService", 9, false);
+                "paymentService", 9, false, InjectionPointRecord.STATIC_CDI);
         var dependency = new DependencyRecord(10, 20, "CDI_INJECT", 7);
 
         var resolution = new BeanResolver.ResolutionResult(
@@ -179,9 +182,9 @@ class ProjectInitializerRemapTest {
     void survivingIdsAndInjectionEdgesAreCompactedTogether() {
         var filteredBean = bean(1, 99, "com.vendor.FilteredBean");
         var applicationBean = bean(4, 10, "org.acme.OrderService");
-        var injection = new InjectionPointRecord(
+        var injection = InjectionPointRecord.staticAnalysis(
                 12, 4, "FIELD", "org.acme.OrderService", List.of("@Default"),
-                "self", 4, false);
+                "self", 4, false, InjectionPointRecord.STATIC_CDI);
         var dependency = new DependencyRecord(10, 10, "CDI_INJECT", 12);
 
         var resolution = new BeanResolver.ResolutionResult(
@@ -204,15 +207,17 @@ class ProjectInitializerRemapTest {
     void mixedFrameworkPartsShareOnePersistentIdSpace() {
         var spring = new ProjectInitializer.PersistedResolution(
                 List.of(bean(1, 10, "org.acme.SpringService")),
-                List.of(new InjectionPointRecord(1, 1, "FIELD", "org.acme.Repository",
-                        List.of(), "repository", 1, false)),
+                List.of(InjectionPointRecord.staticAnalysis(1, 1, "FIELD",
+                        "org.acme.Repository", List.of(), "repository", 1, false,
+                        InjectionPointRecord.STATIC_SPRING)),
                 List.of(
                         new DependencyRecord(10, 10, "SPRING_INJECT", 1),
                         new DependencyRecord(10, 20, "CLASS_REFERENCE", null)));
         var cdi = new ProjectInitializer.PersistedResolution(
                 List.of(bean(1, 20, "org.acme.CdiService")),
-                List.of(new InjectionPointRecord(1, 1, "FIELD", "org.acme.Repository",
-                        List.of(), "repository", 1, false)),
+                List.of(InjectionPointRecord.staticAnalysis(1, 1, "FIELD",
+                        "org.acme.Repository", List.of(), "repository", 1, false,
+                        InjectionPointRecord.STATIC_CDI)),
                 List.of(
                         new DependencyRecord(20, 20, "CDI_INJECT", 1),
                         new DependencyRecord(20, 10, "CLASS_REFERENCE", null)));

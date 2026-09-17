@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 2;
+    static final int SCHEMA_VERSION = 3;
 
     private QuillDatabase() {}
 
@@ -88,7 +88,14 @@ public final class QuillDatabase {
                     qualifiers TEXT,
                     field_name TEXT,
                     resolved_bean_id INTEGER REFERENCES beans(id),
-                    is_ambiguous INTEGER NOT NULL DEFAULT 0
+                    resolution_status TEXT NOT NULL,
+                    resolution_strategy TEXT NOT NULL,
+                    resolution_reason TEXT NOT NULL,
+                    resolution_confidence TEXT NOT NULL,
+                    limitations TEXT,
+                    resolution_candidates TEXT,
+                    applied_rules TEXT,
+                    unsupported_rules TEXT
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS dependencies (
@@ -160,6 +167,7 @@ public final class QuillDatabase {
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_lifecycle ON files(lifecycle)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_ip_bean ON injection_points(bean_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_ip_resolved ON injection_points(resolved_bean_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_ip_status ON injection_points(resolution_status)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_dep_from ON dependencies(from_class_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_dep_to ON dependencies(to_class_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_gfs_class ON git_file_stats(class_id)");

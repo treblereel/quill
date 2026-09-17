@@ -52,6 +52,8 @@ response writes remain serialized so stdout always contains complete JSON messag
 `QUILL_MCP_MAX_CONCURRENCY` and `QUILL_MCP_MAX_QUEUED_PER_WORKER` can override the
 defaults for constrained or unusually large local environments.
 `QUILL_MCP_REQUEST_TIMEOUT` sets the per-tool timeout in seconds (default: `30`).
+Successful JSON responses are capped at 256 KiB; set `QUILL_MCP_MAX_RESPONSE_BYTES`
+to override the cap. Truncated responses report omitted fields and filtering guidance.
 Dependency JAR indexing uses up to eight workers, capped automatically by available CPUs
 and the process heap budget (roughly 256 MiB per worker). Set
 `QUILL_DEPENDENCY_WORKERS` to a positive number to override that choice.

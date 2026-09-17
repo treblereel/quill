@@ -239,7 +239,7 @@ public final class QuillTools {
         if (projects.size() == 1 && errors.isEmpty()) {
             ProjectResult result = runForProject(projects.get(0), perProject);
             return result.error() == null
-                    ? result.json()
+                    ? ResponseBudget.apply(result.json())
                     : errorResponse("Project '" + result.name() + "': " + result.error());
         }
 
@@ -275,7 +275,7 @@ public final class QuillTools {
             ArrayNode uninitialized = root.putArray("uninitialized");
             errors.forEach(uninitialized::add);
         }
-        return root.toString();
+        return ResponseBudget.apply(root.toString());
     }
 
     private ProjectResult runForProject(ProjectRegistry.ProjectEntry project,

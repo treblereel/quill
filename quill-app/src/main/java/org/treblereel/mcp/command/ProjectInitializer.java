@@ -33,6 +33,7 @@ import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.core.FileInventory;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.JandexScanner;
+import org.treblereel.mcp.core.ModuleClasspathResolver;
 import org.treblereel.mcp.core.ServiceProviderScanner;
 import org.treblereel.mcp.core.SpringResolver;
 import org.treblereel.mcp.core.WorktreeInspector;
@@ -45,6 +46,7 @@ import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
+import org.treblereel.mcp.model.ModuleClasspathRecord;
 import org.treblereel.mcp.model.CandidateDisposition;
 import org.treblereel.mcp.model.ResolutionCandidate;
 import org.treblereel.mcp.model.ResolutionConfidence;
@@ -295,6 +297,8 @@ public class ProjectInitializer {
         Map<Path, Path> classDirectoryOwners =
                 DependencyIndexer.mapClassDirectoriesToModules(root, buildSystem, classesDirs);
         List<Path> moduleDirectories = classDirectoryOwners.values().stream().distinct().toList();
+        List<ModuleClasspathRecord> moduleClasspath = ModuleClasspathResolver.resolve(
+                root, buildSystem, moduleDirectories);
         List<Path> sourceRoots = ProjectLayout.findSourceRoots(moduleDirectories);
         List<Path> indexingClassDirs = List.copyOf(classesDirs);
         timings.finish("index_setup");
@@ -503,6 +507,8 @@ public class ProjectInitializer {
         metadata.put("application_index_cache_shards",
                 Integer.toString(scanResult.cacheShards()));
         metadata.put("class_occurrences", Integer.toString(classOccurrences.size()));
+        metadata.put("module_contexts", Integer.toString(moduleDirectories.size()));
+        metadata.put("module_classpath_entries", Integer.toString(moduleClasspath.size()));
         metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
         metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
@@ -549,6 +555,7 @@ public class ProjectInitializer {
                         + " inserted, " + writeTimings.rowsDeleted() + " deleted, "
                         + writeTimings.rowsUnchanged() + " unchanged.");
             }
+            IndexWriter.writeModuleClasspath(QuillDatabase.openWritable(stagedDb), moduleClasspath);
             long validationStartedAt = System.nanoTime();
             ProjectIndexStore.validateForPublication(stagedDb);
             boolean headChanged = !headMatches(root, initialHead);

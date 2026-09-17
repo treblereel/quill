@@ -17,7 +17,7 @@ public final class IndexWriter {
     private static final String[] ALL_TABLES = {
             "git_commit_files", "git_commits", "git_file_stats",
             "class_external_deps", "cdi_problems",
-            "dependencies", "injection_points", "beans", "class_occurrences", "classes",
+            "dependencies", "injection_points", "beans", "class_occurrences", "module_classpath", "classes",
             "files", "metadata"
     };
 
@@ -524,6 +524,21 @@ public final class IndexWriter {
         jdbi.useTransaction(h -> {
             h.execute("DELETE FROM cdi_problems");
             insertProblems(h, problems);
+        });
+    }
+
+    public static void writeModuleClasspath(
+            Jdbi jdbi, List<ModuleClasspathRecord> moduleClasspath) {
+        jdbi.useTransaction(h -> {
+            h.execute("DELETE FROM module_classpath");
+            executeBatch(h,
+                    "INSERT INTO module_classpath (application_module, visible_module, distance, relation) VALUES (?, ?, ?, ?)",
+                    moduleClasspath, (statement, entry) -> {
+                        statement.setString(1, entry.applicationModule());
+                        statement.setString(2, entry.visibleModule());
+                        statement.setInt(3, entry.distance());
+                        statement.setString(4, entry.relation());
+                    });
         });
     }
 

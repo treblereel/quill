@@ -359,6 +359,25 @@ public final class IndexReader {
         });
     }
 
+    public static List<ModuleClasspathRecord> findModuleClasspath(
+            Jdbi jdbi, String applicationModule) {
+        return jdbi.withHandle(h -> h.createQuery(
+                        "SELECT application_module, visible_module, distance, relation "
+                                + "FROM module_classpath WHERE application_module = :application "
+                                + "ORDER BY distance, visible_module")
+                .bind("application", applicationModule)
+                .map((rs, ctx) -> new ModuleClasspathRecord(
+                        rs.getString("application_module"), rs.getString("visible_module"),
+                        rs.getInt("distance"), rs.getString("relation")))
+                .list());
+    }
+
+    public static Set<String> findVisibleModules(Jdbi jdbi, String applicationModule) {
+        return findModuleClasspath(jdbi, applicationModule).stream()
+                .map(ModuleClasspathRecord::visibleModule)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
     private static ClassRecord mapClass(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new ClassRecord(
                 rs.getInt("id"), rs.getString("class_name"), rs.getString("kind"),

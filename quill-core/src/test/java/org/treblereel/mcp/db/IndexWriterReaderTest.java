@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -303,6 +304,20 @@ class IndexWriterReaderTest {
         var meta = IndexReader.getMetadata(jdbi);
         assertEquals("2026-08-26", meta.get("indexed_at"));
         assertEquals("abc123", meta.get("last_commit"));
+    }
+
+    @Test
+    void storesAndReadsApplicationModuleClasspath() {
+        IndexWriter.writeModuleClasspath(jdbi, List.of(
+                new ModuleClasspathRecord("application", "application", 0, "self"),
+                new ModuleClasspathRecord("application", "service", 1, "project_dependency"),
+                new ModuleClasspathRecord("application", "common", 2, "project_dependency")));
+
+        assertEquals(Set.of("application", "service", "common"),
+                IndexReader.findVisibleModules(jdbi, "application"));
+        assertEquals(List.of(0, 1, 2), IndexReader.findModuleClasspath(jdbi, "application")
+                .stream().map(ModuleClasspathRecord::distance).toList());
+        assertTrue(IndexReader.findVisibleModules(jdbi, "missing").isEmpty());
     }
 
     @Test

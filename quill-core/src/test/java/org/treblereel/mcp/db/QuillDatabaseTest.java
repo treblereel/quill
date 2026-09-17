@@ -18,7 +18,7 @@ class QuillDatabaseTest {
         Path dbPath = tempDir.resolve(".quill/index.db");
         Jdbi jdbi = QuillDatabase.create(dbPath);
         jdbi.useHandle(h -> {
-            for (String table : new String[]{"classes", "beans", "injection_points", "dependencies", "metadata"}) {
+            for (String table : new String[]{"classes", "beans", "injection_points", "dependencies", "module_classpath", "metadata"}) {
                 boolean exists = h.createQuery(
                         "SELECT name FROM sqlite_master WHERE type='table' AND name = :table")
                         .bind("table", table)

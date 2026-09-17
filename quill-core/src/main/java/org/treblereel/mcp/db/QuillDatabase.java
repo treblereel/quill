@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 5;
+    static final int SCHEMA_VERSION = 6;
 
     private QuillDatabase() {}
 
@@ -80,6 +80,14 @@ public final class QuillDatabase {
                     source_file TEXT,
                     origin TEXT NOT NULL,
                     UNIQUE(class_name, output_directory, class_file)
+                )""");
+            h.execute("""
+                CREATE TABLE IF NOT EXISTS module_classpath (
+                    application_module TEXT NOT NULL,
+                    visible_module TEXT NOT NULL,
+                    distance INTEGER NOT NULL,
+                    relation TEXT NOT NULL,
+                    PRIMARY KEY(application_module, visible_module)
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS beans (
@@ -185,6 +193,7 @@ public final class QuillDatabase {
         h.execute("CREATE INDEX IF NOT EXISTS idx_occurrences_class ON class_occurrences(class_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_occurrences_name ON class_occurrences(class_name)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_occurrences_context ON class_occurrences(module, source_set)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_module_classpath_visible ON module_classpath(visible_module)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_repository_path ON files(repository_path)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_lifecycle ON files(lifecycle)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_ip_bean ON injection_points(bean_id)");

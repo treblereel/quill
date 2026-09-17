@@ -15,6 +15,7 @@ public final class QuillToolQueries {
     private final CallHierarchyQueries callHierarchy = new CallHierarchyQueries();
     private final MethodOverrideQueries methodOverrides = new MethodOverrideQueries();
     private final UnusedClassQueries unusedClasses = new UnusedClassQueries();
+    private final UnusedMethodQueries unusedMethods = new UnusedMethodQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -87,6 +88,12 @@ public final class QuillToolQueries {
     String findUnusedClasses(Jdbi jdbi, String module, boolean includeGenerated,
             boolean includeTests, int limit, int offset) {
         return unusedClasses.findUnusedClasses(
+                jdbi, module, includeGenerated, includeTests, limit, offset);
+    }
+
+    String findUnusedMethods(Jdbi jdbi, String module, boolean includeGenerated,
+            boolean includeTests, int limit, int offset) {
+        return unusedMethods.findUnusedMethods(
                 jdbi, module, includeGenerated, includeTests, limit, offset);
     }
 

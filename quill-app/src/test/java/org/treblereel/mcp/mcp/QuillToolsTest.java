@@ -669,6 +669,73 @@ class QuillToolsTest {
     }
 
     @Test
+    void findUnusedMethodsMatchesOverloadsByDescriptorAndExcludesCallbacks() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes
+                      (class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.PlainUtility', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/PlainUtility.java', 1,
+                            0, 35, 'source', 'current', '.', 'main')""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    VALUES (1, 'METHOD', 'helper', 'helper(java.lang.String):void', 'void',
+                            '["java.lang.String"]', 'private', '[]'),
+                           (1, 'METHOD', 'helper', 'helper(int):void', 'void',
+                            '["int"]', 'private', '[]'),
+                           (1, 'METHOD', 'callback', 'callback():void', 'void',
+                            '[]', 'private', '["org.acme.RuntimeHook"]'),
+                           (1, 'METHOD', 'readObject',
+                            'readObject(java.io.ObjectInputStream):void', 'void',
+                            '["java.io.ObjectInputStream"]', 'private', '[]'),
+                           (1, 'METHOD', 'nativeHook', 'nativeHook():void', 'void',
+                            '[]', 'private native', '[]')""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    SELECT id, 'METHOD', 'abandoned', 'abandoned():int', 'int',
+                           '[]', 'private static', '[]'
+                    FROM classes WHERE class_name = 'org.acme.PlainUtility'""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor,
+                       to_class_id, to_method, to_descriptor, invocation_kind,
+                       occurrence_count, evidence_lines)
+                    VALUES (1, 'createOrder', '()V', 1, 'helper',
+                            '(Ljava/lang/String;)V', 'special', 2, '[18,21]')""");
+        });
+
+        JsonNode result = JSON.readTree(new QuillTools().findUnusedMethods(
+                jdbi, null, false, false, 20, 0));
+
+        assertEquals("private_method_candidates_not_proven_dead_code",
+                result.path("classification").asText());
+        assertEquals(2, result.path("total").asInt());
+        assertEquals("org.acme.PlainUtility",
+                result.path("candidates").get(0).path("class").asText());
+        assertEquals("medium", result.path("candidates").get(0)
+                .path("confidence").asText());
+        JsonNode overloaded = result.path("candidates").valueStream()
+                .filter(candidate -> candidate.path("method").asText().equals("helper"))
+                .findFirst().orElseThrow();
+        assertEquals("helper(int):void", overloaded.path("signature").asText());
+        assertEquals("(I)V", overloaded.path("descriptor").asText());
+        assertEquals("low", overloaded.path("confidence").asText());
+        assertEquals(1, result.path("excluded_reason_counts")
+                .path("inbound_bytecode_call").asInt());
+        assertEquals(1, result.path("excluded_reason_counts")
+                .path("annotated_method").asInt());
+        assertEquals(1, result.path("excluded_reason_counts")
+                .path("conventional_runtime_callback").asInt());
+        assertEquals(1, result.path("excluded_reason_counts")
+                .path("native_method").asInt());
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

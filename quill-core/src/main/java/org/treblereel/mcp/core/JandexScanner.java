@@ -250,7 +250,10 @@ public final class JandexScanner {
                         .map(Type::toString).toList();
                 String type = constructor ? classInfo.name().toString()
                         : method.returnType().toString();
-                String name = constructor ? classInfo.simpleName() : method.name();
+                String simpleName = classInfo.simpleName();
+                String name = constructor
+                        ? (simpleName == null || simpleName.isBlank() ? "<init>" : simpleName)
+                        : method.name();
                 String signature = name + "(" + String.join(",", parameters) + ")"
                         + (constructor ? "" : ":" + type);
                 result.add(new ClassMemberRecord(classId,

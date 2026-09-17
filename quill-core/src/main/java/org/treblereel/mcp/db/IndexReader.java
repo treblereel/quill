@@ -64,6 +64,13 @@ public final class IndexReader {
             int occurrenceCount,
             List<Integer> evidenceLines) {}
 
+    public record MethodInboundUsage(
+            int classId,
+            String method,
+            String descriptor,
+            int callerClassCount,
+            int occurrenceCount) {}
+
     public static List<ClassRecord> findAllClasses(Jdbi jdbi) {
         return jdbi.withHandle(h ->
                 h.createQuery("SELECT * FROM classes WHERE lifecycle = 'current' "
@@ -141,6 +148,27 @@ public final class IndexReader {
                         rs.getInt("hierarchy_user_count"),
                         rs.getInt("annotation_count"),
                         rs.getBoolean("has_main")))
+                .list());
+    }
+
+    public static List<MethodInboundUsage> findMethodInboundUsages(Jdbi jdbi) {
+        return jdbi.withHandle(handle -> handle.createQuery("""
+                        SELECT calls.to_class_id, calls.to_method, calls.to_descriptor,
+                               COUNT(DISTINCT calls.from_class_id) AS caller_class_count,
+                               SUM(calls.occurrence_count) AS occurrence_count
+                        FROM method_calls calls
+                        JOIN classes target ON target.id = calls.to_class_id
+                        JOIN classes source ON source.id = calls.from_class_id
+                        WHERE target.lifecycle = 'current'
+                          AND target.origin != 'orphan_output'
+                          AND source.lifecycle = 'current'
+                          AND source.origin != 'orphan_output'
+                        GROUP BY calls.to_class_id, calls.to_method, calls.to_descriptor
+                        ORDER BY calls.to_class_id, calls.to_method, calls.to_descriptor""")
+                .map((rs, ctx) -> new MethodInboundUsage(
+                        rs.getInt("to_class_id"), rs.getString("to_method"),
+                        rs.getString("to_descriptor"), rs.getInt("caller_class_count"),
+                        rs.getInt("occurrence_count")))
                 .list());
     }
 

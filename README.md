@@ -133,6 +133,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   method or overload, with hierarchy paths and Java modifier checks
 - **find_unused_classes** — find conservative dead-code candidates while excluding indexed
   references, hierarchy use, DI/framework roots, main classes, and ServiceLoader providers
+- **find_unused_methods** — find uncalled private-method candidates using exact erased JVM
+  descriptors while excluding annotated, native, and conventional runtime callback methods
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
   annotation name or FQCN, with pagination and source/generated breakdown
 - **find_implementations** — find direct/transitive subclasses and implementors, including

@@ -193,11 +193,17 @@ class IndexWriterReaderTest {
         assertEquals("example.Caller", inbound.getFirst().fromClass());
         assertEquals(List.of(12, 18), inbound.getFirst().evidenceLines());
         assertEquals(1, IndexReader.countMethodCalls(database, 1, "run", "outbound"));
+        var inboundUsages = IndexReader.findMethodInboundUsages(database);
+        assertEquals(1, inboundUsages.size());
+        assertEquals("(Ljava/lang/String;)Z", inboundUsages.getFirst().descriptor());
+        assertEquals(1, inboundUsages.getFirst().callerClassCount());
+        assertEquals(2, inboundUsages.getFirst().occurrenceCount());
 
         IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), classes,
                 List.of(), List.of(), List.of(), Map.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
         assertEquals(0, IndexReader.countMethodCalls(database, 2, null, "inbound"));
+        assertTrue(IndexReader.findMethodInboundUsages(database).isEmpty());
     }
 
     @Test

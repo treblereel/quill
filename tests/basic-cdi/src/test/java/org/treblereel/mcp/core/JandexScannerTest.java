@@ -22,6 +22,11 @@ import org.treblereel.mcp.model.ClassRecord;
 
 class JandexScannerTest {
 
+    private static final Runnable ANONYMOUS_FIXTURE = new Runnable() {
+        @Override
+        public void run() {}
+    };
+
     @TempDir Path tempDir;
     Index index;
 
@@ -128,6 +133,24 @@ class JandexScannerTest {
         assertTrue(members.stream().anyMatch(member -> member.classId() == orderService
                 && member.kind().equals("METHOD")
                 && member.signature().contains("createOrder(java.lang.String)")));
+    }
+
+    @Test
+    void givesAnonymousClassConstructorsAStableNonNullName() throws Exception {
+        Indexer indexer = new Indexer();
+        indexer.indexClass(ANONYMOUS_FIXTURE.getClass());
+        Index anonymousIndex = indexer.complete();
+        List<ClassRecord> classes = JandexScanner.extractClasses(anonymousIndex);
+        Map<String, Integer> ids = Map.of(
+                ANONYMOUS_FIXTURE.getClass().getName(), 1);
+
+        var constructor = JandexScanner.extractClassMembers(anonymousIndex, ids).stream()
+                .filter(member -> member.kind().equals("CONSTRUCTOR"))
+                .findFirst().orElseThrow();
+
+        assertEquals("<init>", constructor.name());
+        assertTrue(constructor.signature().startsWith("<init>("));
+        assertEquals(1, classes.size());
     }
 
     @Test

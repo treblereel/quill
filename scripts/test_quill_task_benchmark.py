@@ -90,6 +90,17 @@ class QuillTaskBenchmarkTest(unittest.TestCase):
                                      {"deleted": False}))
         self.assertEqual(1.0, result["totals"]["fact_accuracy"])
 
+    def test_accepts_json_numeric_strings_but_not_boolean_strings(self):
+        numeric = score_run(SUITE, run(
+            "with_quill", {"status": "resolved", "fan_in": "2"},
+            {"deleted": False}))
+        boolean = score_run(SUITE, run(
+            "with_quill", {"status": "resolved", "fan_in": 2},
+            {"deleted": "false"}))
+
+        self.assertEqual(1.0, numeric["totals"]["fact_accuracy"])
+        self.assertEqual(1, boolean["totals"]["incorrect_facts"])
+
     def test_summarizes_repeated_paired_runs(self):
         first_with = run("with_quill", {"status": "resolved", "fan_in": 2},
                          {"deleted": False})

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from decimal import Decimal, InvalidOperation
 import json
 import math
 from pathlib import Path
@@ -58,6 +59,19 @@ def _tasks_by_id(document: dict[str, Any], label: str) -> dict[str, dict[str, An
     return result
 
 
+def _equivalent_fact(observed: Any, expected: Any) -> bool:
+    if observed == expected:
+        return True
+    if isinstance(expected, bool) or isinstance(observed, bool):
+        return False
+    if isinstance(expected, (int, float)) and isinstance(observed, str):
+        try:
+            return Decimal(observed.strip()) == Decimal(str(expected))
+        except InvalidOperation:
+            return False
+    return False
+
+
 def score_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
     expected_revision = suite.get("project_revision")
     if expected_revision and run.get("project_revision") != expected_revision:
@@ -92,8 +106,9 @@ def score_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
         for fact, expected_value in expected.items():
             if fact not in observed:
                 missing.append(fact)
-            elif (observed[fact] == expected_value
-                  or observed[fact] in accepted.get(fact, [])):
+            elif (_equivalent_fact(observed[fact], expected_value)
+                  or any(_equivalent_fact(observed[fact], alternative)
+                         for alternative in accepted.get(fact, []))):
                 correct.append(fact)
             else:
                 incorrect.append({"fact": fact, "expected": expected_value,

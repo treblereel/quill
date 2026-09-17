@@ -30,6 +30,7 @@ public final class BeanResolver {
             SPECIALIZES = n("jakarta.enterprise.inject.Specializes"),
             ALTERNATIVE = n("jakarta.enterprise.inject.Alternative"), PRIORITY = n("jakarta.annotation.Priority"),
             INTERCEPTOR = n("jakarta.interceptor.Interceptor"), DECORATOR = n("jakarta.decorator.Decorator"),
+            DEFAULT_BEAN = n("io.quarkus.arc.DefaultBean"),
             IF_PROFILE = n("io.quarkus.arc.profile.IfBuildProfile"),
             UNLESS_PROFILE = n("io.quarkus.arc.profile.UnlessBuildProfile");
     private static final Set<DotName> SCOPES = Set.of(n("jakarta.enterprise.context.ApplicationScoped"),
@@ -78,13 +79,16 @@ public final class BeanResolver {
             classBeanIds.put(c.name(), ownerId);
             beans.add(new BeanRecord(ownerId, classId, beanKind(c), scope(c.declaredAnnotations(), lookup),
                     qualifiers(c.declaredAnnotations(), lookup, true), stereotypes(c, lookup),
-                    hasMeta(c.declaredAnnotations(), ALTERNATIVE, lookup), priority(c.declaredAnnotations(), lookup),
+                    hasMeta(c.declaredAnnotations(), ALTERNATIVE, lookup),
+                    hasAnnotation(c.declaredAnnotations(), DEFAULT_BEAN),
+                    priority(c.declaredAnnotations(), lookup),
                     profiles(c), null, null, typeClosure(Type.create(c.name(), Type.Kind.CLASS), lookup)));
             for (FieldInfo f : c.fields())
                 if (f.hasAnnotation(PRODUCES)) {
                     beans.add(new BeanRecord(nextBean++, classId, "PRODUCER_FIELD", scope(f.annotations(), lookup),
                             qualifiers(f.annotations(), lookup, true), List.of(),
                             hasAnnotation(f.annotations(), ALTERNATIVE) || isAlternative(c, lookup),
+                            hasAnnotation(f.annotations(), DEFAULT_BEAN),
                             first(priority(f.annotations(), lookup), priority(c.declaredAnnotations(), lookup)),
                             profiles(c), classId, f.name(), typeClosure(f.type(), lookup)));
                 }
@@ -96,6 +100,7 @@ public final class BeanResolver {
                     beans.add(new BeanRecord(producerId, classId, "PRODUCER_METHOD", scope(annotations, lookup),
                             qualifiers(annotations, lookup, true), List.of(),
                             hasAnnotation(annotations, ALTERNATIVE) || isAlternative(c, lookup),
+                            hasAnnotation(annotations, DEFAULT_BEAN),
                             first(priority(annotations, lookup), priority(c.declaredAnnotations(), lookup)),
                             profiles(c), classId, m.name(), typeClosure(m.returnType(), lookup)));
                 }
@@ -315,7 +320,7 @@ public final class BeanResolver {
             Map<Integer, Integer> specializedBeans, Map<Integer, String> classNames) {
         List<String> appliedRules = new ArrayList<>(List.of(
                 "TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING", "SPECIALIZATION",
-                "ALTERNATIVE_PRIORITY"));
+                "DEFAULT_BEAN_FALLBACK", "ALTERNATIVE_PRIORITY"));
         Map<Integer, ResolutionCandidate> evidence = new LinkedHashMap<>();
         List<BeanRecord> qualified = new ArrayList<>();
         for (BeanRecord candidate : candidates) {
@@ -352,6 +357,37 @@ public final class BeanResolver {
             } else {
                 active.add(candidate);
             }
+        }
+
+        List<BeanRecord> nonDefault = active.stream().filter(bean -> !bean.isDefault()).toList();
+        if (!nonDefault.isEmpty()) {
+            for (BeanRecord candidate : active) {
+                if (!candidate.isDefault()) continue;
+                evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
+                        CandidateDisposition.EXCLUDED, "DEFAULT_BEAN_SUPPRESSED",
+                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING",
+                                "SPECIALIZATION", "DEFAULT_BEAN_FALLBACK")));
+            }
+            active = new ArrayList<>(nonDefault);
+        } else if (!active.isEmpty() && active.stream().allMatch(BeanRecord::isDefault)) {
+            int best = active.stream().map(BeanResolver::defaultPriority)
+                    .max(Integer::compareTo).orElseThrow();
+            List<BeanRecord> winners = active.stream()
+                    .filter(bean -> defaultPriority(bean) == best).toList();
+            for (BeanRecord candidate : active) {
+                boolean winner = winners.stream().anyMatch(bean -> bean.id() == candidate.id());
+                evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
+                        winner ? (winners.size() == 1 ? CandidateDisposition.SELECTED
+                                : CandidateDisposition.ELIGIBLE) : CandidateDisposition.EXCLUDED,
+                        winner ? (winners.size() == 1 ? "DEFAULT_BEAN_FALLBACK_SELECTED"
+                                : "SAME_PRIORITY_DEFAULT_BEAN") : "LOWER_PRIORITY_DEFAULT_BEAN",
+                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING",
+                                "SPECIALIZATION", "DEFAULT_BEAN_FALLBACK")));
+            }
+            ResolutionTrace trace = trace(evidence, appliedRules);
+            return winners.size() == 1
+                    ? new Selection(winners.getFirst(), false, trace)
+                    : new Selection(null, true, trace);
         }
 
         var alternatives = active.stream()
@@ -398,6 +434,10 @@ public final class BeanResolver {
             Map<Integer, String> classNames, CandidateDisposition disposition,
             String reason, List<String> rules) {
         return candidateEvidence(bean, classNames, null, disposition, reason, rules);
+    }
+
+    private static int defaultPriority(BeanRecord bean) {
+        return bean.priority() == null ? 0 : bean.priority();
     }
 
     private static ResolutionCandidate candidateEvidence(BeanRecord bean,
@@ -447,7 +487,7 @@ public final class BeanResolver {
             inherited.add("@Any");
             BeanRecord updated = new BeanRecord(bean.id(), bean.classId(), bean.kind(),
                     bean.scope(), new ArrayList<>(inherited), bean.stereotypes(),
-                    bean.isAlternative(), bean.priority(), bean.profiles(),
+                    bean.isAlternative(), bean.isDefault(), bean.priority(), bean.profiles(),
                     bean.declaringClassId(), bean.memberName(), bean.beanTypes());
             beans.set(i, updated);
             byId.put(updated.id(), updated);

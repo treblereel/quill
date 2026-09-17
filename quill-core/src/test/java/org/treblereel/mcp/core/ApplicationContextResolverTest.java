@@ -2,6 +2,7 @@ package org.treblereel.mcp.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -83,6 +84,31 @@ class ApplicationContextResolverTest {
         assertEquals(2, refined.resolvedBeanId());
     }
 
+    @Test
+    void regularBeanSuppressesDefaultBeanInsideApplicationContext() {
+        List<ClassRecord> classes = List.of(
+                cls("example.Consumer", "app"),
+                cls("example.FallbackService", "shared"),
+                cls("example.RealService", "app"));
+        List<BeanRecord> beans = List.of(
+                bean(1, 1, "example.Consumer", false),
+                defaultBean(2, 2, "example.Service"),
+                bean(3, 3, "example.Service", false));
+        InjectionPointRecord point = InjectionPointRecord.staticAnalysis(1, 1, "FIELD",
+                "example.Service", List.of("@Default"), "service", null, true,
+                InjectionPointRecord.STATIC_CDI);
+
+        InjectionPointRecord refined = ApplicationContextResolver.refine(
+                List.of(point), beans, classes, List.of(), List.of(
+                        context("app", "app", 0), context("app", "shared", 1))).getFirst();
+
+        assertEquals(ResolutionStatus.RESOLVED, refined.resolutionStatus());
+        assertEquals(3, refined.resolvedBeanId());
+        assertTrue(refined.resolutionTrace().candidates().stream()
+                .anyMatch(candidate -> candidate.beanId() == 2
+                        && "DEFAULT_BEAN_SUPPRESSED".equals(candidate.reason())));
+    }
+
     private static ModuleClasspathRecord context(String application, String visible, int distance) {
         return new ModuleClasspathRecord(application, visible, distance,
                 distance == 0 ? "self" : "project_dependency");
@@ -97,5 +123,10 @@ class ApplicationContextResolverTest {
     private static BeanRecord bean(int id, int classId, String type, boolean primary) {
         return new BeanRecord(id, classId, "CLASS", "@Singleton", List.of("@Default"),
                 List.of(), primary, primary ? 0 : null, null, null, null, List.of(type));
+    }
+
+    private static BeanRecord defaultBean(int id, int classId, String type) {
+        return new BeanRecord(id, classId, "CLASS", "@Singleton", List.of("@Default"),
+                List.of(), false, true, null, null, null, null, List.of(type));
     }
 }

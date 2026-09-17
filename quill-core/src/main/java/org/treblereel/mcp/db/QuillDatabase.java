@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 6;
+    static final int SCHEMA_VERSION = 7;
 
     private QuillDatabase() {}
 
@@ -98,6 +98,7 @@ public final class QuillDatabase {
                     qualifiers TEXT,
                     stereotypes TEXT,
                     is_alternative INTEGER NOT NULL DEFAULT 0,
+                    is_default INTEGER NOT NULL DEFAULT 0,
                     priority INTEGER,
                     profiles TEXT,
                     declaring_class_id INTEGER REFERENCES classes(id),

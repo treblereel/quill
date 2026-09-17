@@ -52,8 +52,8 @@ public final class IndexWriter {
             "class_file", "source_file", "origin");
     private static final TableSpec BEANS = new TableSpec("beans",
             "id", "class_id", "kind", "scope", "qualifiers", "stereotypes",
-            "is_alternative", "priority", "profiles", "declaring_class_id", "member_name",
-            "bean_types");
+            "is_alternative", "is_default", "priority", "profiles", "declaring_class_id",
+            "member_name", "bean_types");
     private static final TableSpec INJECTION_POINTS = new TableSpec("injection_points",
             "id", "bean_id", "kind", "target_type", "qualifiers", "field_name",
             "resolved_bean_id", "resolution_status", "resolution_strategy",
@@ -303,7 +303,7 @@ public final class IndexWriter {
 
     private static void insertDesiredBeans(Handle h, List<BeanRecord> beans) {
         try (PreparedStatement statement = h.getConnection().prepareStatement(
-                "INSERT INTO desired_beans (id, class_id, kind, scope, qualifiers, stereotypes, is_alternative, priority, profiles, declaring_class_id, member_name, bean_types) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                "INSERT INTO desired_beans (id, class_id, kind, scope, qualifiers, stereotypes, is_alternative, is_default, priority, profiles, declaring_class_id, member_name, bean_types) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             for (int i = 0; i < beans.size(); i++) {
                 BeanRecord b = beans.get(i);
                 statement.setInt(1, i + 1);
@@ -313,11 +313,12 @@ public final class IndexWriter {
                 statement.setString(5, toJson(b.qualifiers()));
                 statement.setString(6, toJson(b.stereotypes()));
                 statement.setInt(7, b.isAlternative() ? 1 : 0);
-                statement.setObject(8, b.priority());
-                statement.setString(9, toJson(b.profiles()));
-                statement.setObject(10, b.declaringClassId());
-                statement.setString(11, b.memberName());
-                statement.setString(12, toJson(b.beanTypes()));
+                statement.setInt(8, b.isDefault() ? 1 : 0);
+                statement.setObject(9, b.priority());
+                statement.setString(10, toJson(b.profiles()));
+                statement.setObject(11, b.declaringClassId());
+                statement.setString(12, b.memberName());
+                statement.setString(13, toJson(b.beanTypes()));
                 statement.addBatch();
             }
             if (!beans.isEmpty()) statement.executeBatch();
@@ -598,7 +599,7 @@ public final class IndexWriter {
 
     private static void insertBeans(Handle h, List<BeanRecord> beans) {
         executeBatch(h,
-                "INSERT INTO beans (class_id, kind, scope, qualifiers, stereotypes, is_alternative, priority, profiles, declaring_class_id, member_name, bean_types) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO beans (class_id, kind, scope, qualifiers, stereotypes, is_alternative, is_default, priority, profiles, declaring_class_id, member_name, bean_types) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 beans, (statement, b) -> {
                     statement.setInt(1, b.classId());
                     statement.setString(2, b.kind());
@@ -606,11 +607,12 @@ public final class IndexWriter {
                     statement.setString(4, toJson(b.qualifiers()));
                     statement.setString(5, toJson(b.stereotypes()));
                     statement.setInt(6, b.isAlternative() ? 1 : 0);
-                    statement.setObject(7, b.priority());
-                    statement.setString(8, toJson(b.profiles()));
-                    statement.setObject(9, b.declaringClassId());
-                    statement.setString(10, b.memberName());
-                    statement.setString(11, toJson(b.beanTypes()));
+                    statement.setInt(7, b.isDefault() ? 1 : 0);
+                    statement.setObject(8, b.priority());
+                    statement.setString(9, toJson(b.profiles()));
+                    statement.setObject(10, b.declaringClassId());
+                    statement.setString(11, b.memberName());
+                    statement.setString(12, toJson(b.beanTypes()));
                 });
     }
 

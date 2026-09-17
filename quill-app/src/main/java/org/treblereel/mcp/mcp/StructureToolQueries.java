@@ -125,6 +125,7 @@ final class StructureToolQueries {
             }
             node.put("kind", bean.kind());
             node.put("scope", bean.scope());
+            if (bean.isDefault()) node.put("default_bean", true);
             node.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
             node.set("bean_types", JSON.valueToTree(bean.beanTypes()));
             node.set("profiles", JSON.valueToTree(bean.profiles()));

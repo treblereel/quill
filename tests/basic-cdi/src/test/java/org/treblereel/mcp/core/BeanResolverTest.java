@@ -3,6 +3,9 @@ package org.treblereel.mcp.core;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
+import io.quarkus.arc.DefaultBean;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.jboss.jandex.Index;
 import org.jboss.jandex.Indexer;
 import org.junit.jupiter.api.BeforeEach;
@@ -190,6 +193,59 @@ class BeanResolverTest {
     }
 
     @Test
+    void regularBeanSuppressesQuarkusDefaultBean() {
+        var beans = List.of(
+                new BeanRecord(1, 10, "CLASS", "@ApplicationScoped",
+                        List.of("@Default", "@Any"), List.of(), false, true, null,
+                        null, null, null, List.of("example.ConfigManager")),
+                new BeanRecord(2, 20, "CLASS", "@ApplicationScoped",
+                        List.of("@Default", "@Any"), List.of(), false, false, null,
+                        null, null, null, List.of("example.ConfigManager")),
+                new BeanRecord(3, 30, "CLASS", "@ApplicationScoped",
+                        List.of("@Default", "@Any"), List.of(), false, false, null,
+                        null, null, null, List.of("example.Consumer")));
+        var injectionPoints = new java.util.ArrayList<>(List.of(
+                InjectionPointRecord.staticAnalysis(1, 3, "FIELD", "example.ConfigManager",
+                        List.of("@Default"), "configManager", null, false,
+                        InjectionPointRecord.STATIC_CDI)));
+
+        BeanResolver.reResolveUnresolved(
+                beans, injectionPoints, new java.util.ArrayList<>());
+
+        InjectionPointRecord resolved = injectionPoints.getFirst();
+        assertEquals(2, resolved.resolvedBeanId());
+        assertEquals(ResolutionStatus.RESOLVED, resolved.resolutionStatus());
+        assertTrue(resolved.resolutionTrace().candidates().stream()
+                .anyMatch(candidate -> candidate.beanId() == 1
+                        && candidate.disposition() == CandidateDisposition.EXCLUDED
+                        && candidate.reason().equals("DEFAULT_BEAN_SUPPRESSED")));
+    }
+
+    @Test
+    void extractsAndAppliesQuarkusDefaultBean() throws Exception {
+        Indexer indexer = new Indexer();
+        for (Class<?> type : List.of(DefaultBean.class, DefaultConfigManager.class,
+                RealConfigManager.class, ConfigConsumer.class, ConfigManager.class)) {
+            indexer.indexClass(type);
+        }
+
+        BeanResolver.ResolutionResult result = BeanResolver.resolve(indexer.complete());
+        BeanRecord fallback = result.beans().stream()
+                .filter(bean -> hasClassName(result, bean, "DefaultConfigManager"))
+                .findFirst().orElseThrow();
+        InjectionPointRecord injection = result.injectionPoints().stream()
+                .filter(point -> "configManager".equals(point.fieldName()))
+                .findFirst().orElseThrow();
+        BeanRecord resolved = result.beans().stream()
+                .filter(bean -> bean.id() == injection.resolvedBeanId())
+                .findFirst().orElseThrow();
+
+        assertTrue(fallback.isDefault());
+        assertTrue(hasClassName(result, resolved, "RealConfigManager"));
+        assertEquals(ResolutionStatus.RESOLVED, injection.resolutionStatus());
+    }
+
+    @Test
     void highestPriorityAlternativeWinsAndIsExplained() {
         var beans = List.of(
                 new BeanRecord(1, 10, "CLASS", "@Dependent",
@@ -215,6 +271,20 @@ class BeanResolverTest {
                 .anyMatch(candidate -> candidate.beanId() == 2
                         && candidate.disposition() == CandidateDisposition.SELECTED
                         && candidate.reason().equals("HIGHEST_PRIORITY_ALTERNATIVE")));
+    }
+
+    interface ConfigManager {}
+
+    @DefaultBean
+    @ApplicationScoped
+    static class DefaultConfigManager implements ConfigManager {}
+
+    @ApplicationScoped
+    static class RealConfigManager implements ConfigManager {}
+
+    @ApplicationScoped
+    static class ConfigConsumer {
+        @Inject ConfigManager configManager;
     }
 
     @Test

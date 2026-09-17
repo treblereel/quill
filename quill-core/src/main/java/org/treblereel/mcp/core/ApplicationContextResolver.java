@@ -72,11 +72,24 @@ public final class ApplicationContextResolver {
                         .anyMatch(visibleModules::contains))
                 .filter(bean -> qualifiersMatch(point.qualifiers(), bean.qualifiers(), spring))
                 .toList();
+        Set<Integer> defaultSuppressed = new LinkedHashSet<>();
         if (spring) {
             List<BeanRecord> primaries = candidates.stream().filter(BeanRecord::isAlternative).toList();
             if (candidates.size() > 1 && primaries.size() == 1) candidates = primaries;
         } else {
             candidates = applySpecialization(candidates, point.resolutionTrace());
+            List<BeanRecord> nonDefault = candidates.stream()
+                    .filter(bean -> !bean.isDefault()).toList();
+            if (!nonDefault.isEmpty()) {
+                candidates.stream().filter(BeanRecord::isDefault)
+                        .map(BeanRecord::id).forEach(defaultSuppressed::add);
+                candidates = nonDefault;
+            } else if (!candidates.isEmpty()) {
+                int bestDefaultPriority = candidates.stream()
+                        .mapToInt(ApplicationContextResolver::defaultPriority).max().orElseThrow();
+                candidates = candidates.stream()
+                        .filter(bean -> defaultPriority(bean) == bestDefaultPriority).toList();
+            }
             List<BeanRecord> alternatives = candidates.stream()
                     .filter(bean -> bean.isAlternative() && bean.priority() != null).toList();
             if (!alternatives.isEmpty()) {
@@ -103,6 +116,8 @@ public final class ApplicationContextResolver {
                                 : CandidateDisposition.EXCLUDED,
                         java.util.Objects.equals(bean.id(), selected) ? "UNIQUE_CONTEXT_CANDIDATE"
                                 : eligible.contains(bean.id()) ? "CONTEXT_CANDIDATE"
+                                : defaultSuppressed.contains(bean.id())
+                                        ? "DEFAULT_BEAN_SUPPRESSED"
                                 : visible(visibleModules, modulesByClass.get(bean.classId()))
                                         ? "FRAMEWORK_RULE_EXCLUDED" : "MODULE_NOT_VISIBLE",
                         List.of("APPLICATION_MODULE_CLASSPATH")))
@@ -132,6 +147,10 @@ public final class ApplicationContextResolver {
             }
         }
         return candidates.stream().filter(bean -> !specialized.contains(bean.id())).toList();
+    }
+
+    private static int defaultPriority(BeanRecord bean) {
+        return bean.priority() == null ? 0 : bean.priority();
     }
 
     private static boolean qualifiersMatch(

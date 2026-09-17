@@ -34,7 +34,7 @@ final class ResolutionPersistenceMapper {
             beanIds.put(bean.id(), newId);
             beans.add(new BeanRecord(
                     newId, classId, bean.kind(), bean.scope(), bean.qualifiers(), bean.stereotypes(),
-                    bean.isAlternative(), bean.priority(), bean.profiles(),
+                    bean.isAlternative(), bean.isDefault(), bean.priority(), bean.profiles(),
                     bean.declaringClassId() != null ? classIds.get(bean.declaringClassId()) : null,
                     bean.memberName(), bean.beanTypes()));
         }
@@ -80,7 +80,7 @@ final class ResolutionPersistenceMapper {
                 beanIds.put(bean.id(), id);
                 beans.add(new BeanRecord(id, bean.classId(), bean.kind(), bean.scope(),
                         bean.qualifiers(), bean.stereotypes(), bean.isAlternative(),
-                        bean.priority(), bean.profiles(), bean.declaringClassId(),
+                        bean.isDefault(), bean.priority(), bean.profiles(), bean.declaringClassId(),
                         bean.memberName(), bean.beanTypes()));
             }
 

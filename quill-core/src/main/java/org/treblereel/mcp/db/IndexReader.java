@@ -440,6 +440,7 @@ public final class IndexReader {
                 rs.getInt("id"), rs.getInt("class_id"), rs.getString("kind"),
                 rs.getString("scope"), fromJson(rs.getString("qualifiers")),
                 fromJson(rs.getString("stereotypes")), rs.getInt("is_alternative") == 1,
+                rs.getInt("is_default") == 1,
                 rs.getObject("priority") != null ? rs.getInt("priority") : null,
                 fromJson(rs.getString("profiles")),
                 rs.getObject("declaring_class_id") != null ? rs.getInt("declaring_class_id") : null,

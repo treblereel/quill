@@ -9,6 +9,7 @@ public final class QuillToolQueries {
     private final StructureToolQueries structure = new StructureToolQueries();
     private final UsageToolQueries usages = new UsageToolQueries();
     private final SymbolToolQueries symbols = new SymbolToolQueries();
+    private final TestImpactQueries testImpact = new TestImpactQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -49,6 +50,12 @@ public final class QuillToolQueries {
             String memberKind, int memberLimit, int memberOffset) {
         return symbols.getSymbolDetails(
                 jdbi, target, includeMembers, memberKind, memberLimit, memberOffset);
+    }
+
+    String findImpactedTests(Jdbi jdbi, List<String> targets,
+            boolean transitive, int maxDepth, int limit, int offset) {
+        return testImpact.findImpactedTests(
+                jdbi, targets, transitive, maxDepth, limit, offset);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

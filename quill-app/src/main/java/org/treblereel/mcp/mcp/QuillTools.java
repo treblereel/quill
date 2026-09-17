@@ -109,6 +109,21 @@ public final class QuillTools {
                 clamp(member_offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Rank tests affected by changed classes.")
+    public String find_impacted_tests(
+            @ToolArg(description = "Classes or source paths") List<String> targets,
+            @ToolArg(description = "Traverse dependencies; default true") Optional<Boolean> transitive,
+            @ToolArg(description = "Traversal depth; default 3") Optional<Integer> max_depth,
+            @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findImpactedTests(
+                p.jdbi(), targets, transitive.orElse(true),
+                clamp(max_depth.orElse(3), 1, 5),
+                clamp(limit.orElse(100), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -266,6 +281,11 @@ public final class QuillTools {
             String memberKind, int memberLimit, int memberOffset) {
         return queries.getSymbolDetails(
                 jdbi, target, includeMembers, memberKind, memberLimit, memberOffset);
+    }
+
+    String findImpactedTests(Jdbi jdbi, List<String> targets,
+            boolean transitive, int maxDepth, int limit, int offset) {
+        return queries.findImpactedTests(jdbi, targets, transitive, maxDepth, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

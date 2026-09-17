@@ -133,6 +133,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   injection, inheritance, annotations, and ServiceLoader usages with evidence and pagination
 - **get_symbol_details** — inspect hierarchy, annotations, declared members, DI context,
   dependency metrics, implementations, occurrences, and external types for one class
+- **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
+  with explicit reporting when compiled test outputs are not indexed
 - **get_dependencies** — complete dependency metrics plus an optional relation graph,
   addressable by FQCN or source path. Use `include_nodes=false` for a compact metrics-only
   response. Depth-one relations use `limit`/`offset`; deeper breadth-first traversals return

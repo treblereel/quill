@@ -336,6 +336,63 @@ class QuillToolsTest {
     }
 
     @Test
+    void findImpactedTestsCombinesTransitiveStaticAndGitEvidence() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes
+                      (class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.OrderHelper', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/OrderHelper.java', 1, 0, 40,
+                            'source', 'current', '.', 'main')""");
+            handle.execute("""
+                    INSERT INTO classes
+                      (class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.OrderServiceTest', 'CLASS', 'java.lang.Object', '[]',
+                            'src/test/java/org/acme/OrderServiceTest.java', 1, 0, 80,
+                            'source', 'current', '.', 'test')""");
+            handle.execute("""
+                    INSERT INTO dependencies
+                      (from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    VALUES (5, 1, 'CALLS', 1, '[12]'),
+                           (6, 5, 'CALLS', 2, '[20,24]')""");
+            handle.execute("""
+                    INSERT INTO git_commit_files(commit_id, class_id, file_path, change_type)
+                    VALUES (1, 6, 'src/test/java/org/acme/OrderServiceTest.java', 'MODIFY')""");
+        });
+
+        JsonNode result = JSON.readTree(new QuillTools().findImpactedTests(
+                jdbi, List.of("OrderService"), true, 3, 10, 0));
+
+        assertEquals(1, result.path("indexed_test_class_count").asInt());
+        assertTrue(result.path("compiled_test_outputs_indexed").asBoolean());
+        assertEquals(1, result.path("total").asInt());
+        JsonNode test = result.path("tests").get(0);
+        assertEquals("org.acme.OrderServiceTest", test.path("class").asText());
+        assertEquals(2, test.path("dependency_depth").asInt());
+        assertEquals("medium", test.path("confidence").asText());
+        assertEquals(1, test.path("co_change_count").asInt());
+        assertEquals(List.of("org.acme.OrderService", "org.acme.OrderHelper",
+                        "org.acme.OrderServiceTest"),
+                test.path("dependency_path").valueStream().map(JsonNode::asText).toList());
+    }
+
+    @Test
+    void findImpactedTestsReportsMissingCompiledTestCoverage() throws Exception {
+        QuillTools tools = new QuillTools();
+        JsonNode result = JSON.readTree(tools.findImpactedTests(
+                jdbi, List.of("AuditService"), true, 3, 10, 0));
+        JsonNode invalid = JSON.readTree(tools.findImpactedTests(
+                jdbi, List.of(), true, 3, 10, 0));
+
+        assertFalse(result.path("compiled_test_outputs_indexed").asBoolean());
+        assertTrue(result.path("limitations").get(0).asText()
+                .contains("No compiled test classes"));
+        assertEquals("At least one target is required", invalid.path("error").asText());
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

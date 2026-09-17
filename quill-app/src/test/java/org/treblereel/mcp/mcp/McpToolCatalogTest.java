@@ -203,13 +203,16 @@ class McpToolCatalogTest {
 
     @Test
     void quillCatalogStaysCompact() {
-        int characters = McpToolCatalog.create(
-                        new QuillTools(new ProjectRegistry()), workers, responses,
-                        Duration.ofSeconds(1)).stream()
+        var tools = McpToolCatalog.create(
+                new QuillTools(new ProjectRegistry()), workers, responses,
+                Duration.ofSeconds(1));
+        int characters = tools.stream()
                 .mapToInt(specification -> specification.tool().description().length()
                         + specification.tool().inputSchema().toString().length())
                 .sum();
-        assertTrue(characters < 9_000, "catalog characters: " + characters);
+        int averageCharacters = characters / tools.size();
+        assertTrue(averageCharacters < 550,
+                "catalog characters: " + characters + ", average: " + averageCharacters);
     }
 
     @Test

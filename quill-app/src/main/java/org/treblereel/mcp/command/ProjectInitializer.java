@@ -500,7 +500,7 @@ public class ProjectInitializer {
                 Integer.toString(scanResult.cacheShards()));
         metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
-        metadata.put("service_registrations_detail", toJson(serviceRegistrations));
+        metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
         metadata.put("framework", isSpring && isCdi ? "Mixed"
                 : isSpring ? "Spring" : isCdi ? "CDI" : "Plain");
         metadata.put("dependency_index", depResult.status().name().toLowerCase());
@@ -621,6 +621,21 @@ public class ProjectInitializer {
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("Could not serialize index metadata", error);
         }
+    }
+
+    static String serviceRegistrationsJson(
+            List<ServiceProviderScanner.Registration> registrations) {
+        List<Map<String, Object>> rows = registrations.stream()
+                .map(registration -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("serviceType", registration.serviceType());
+                    row.put("providerType", registration.providerType());
+                    row.put("descriptorPath", registration.descriptorPath());
+                    row.put("line", registration.line());
+                    return row;
+                })
+                .toList();
+        return toJson(rows);
     }
 
     static CodexConfigInstaller.Result ensureCodexConfig(Path root, boolean indexOnly) {

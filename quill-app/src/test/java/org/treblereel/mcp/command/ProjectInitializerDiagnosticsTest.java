@@ -6,12 +6,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.treblereel.mcp.core.ServiceProviderScanner;
 
 class ProjectInitializerDiagnosticsTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    @Test
+    void serializesServiceRegistrationsWithoutReflectiveRecordAccess() throws Exception {
+        String json = ProjectInitializer.serviceRegistrationsJson(List.of(
+                new ServiceProviderScanner.Registration(
+                        "com.acme.Service", "com.acme.Provider", "module/META-INF/services/com.acme.Service", 3)));
+
+        var registration = JSON.readTree(json).get(0);
+        assertEquals("com.acme.Service", registration.path("serviceType").asText());
+        assertEquals("com.acme.Provider", registration.path("providerType").asText());
+        assertEquals("module/META-INF/services/com.acme.Service",
+                registration.path("descriptorPath").asText());
+        assertEquals(3, registration.path("line").asInt());
+    }
 
     @Test
     void backgroundTaskRunsConcurrentlyWithCaller() throws Exception {

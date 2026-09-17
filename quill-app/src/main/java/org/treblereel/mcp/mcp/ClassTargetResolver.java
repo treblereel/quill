@@ -40,6 +40,9 @@ final class ClassTargetResolver {
         if (!target.contains(".")) {
             List<ClassRecord> shortNameCandidates =
                     IndexReader.findClassesByShortName(jdbi, target);
+            if (shortNameCandidates.size() == 1) {
+                return Lookup.found(shortNameCandidates.getFirst());
+            }
             if (shortNameCandidates.size() > 1) {
                 return Lookup.error("Ambiguous class name", shortNameCandidates, List.of());
             }

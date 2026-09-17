@@ -101,23 +101,12 @@ public final class IndexReader {
     }
 
     public static Optional<ClassRecord> findClassByName(Jdbi jdbi, String className) {
-        if (className.contains(".")) {
-            return jdbi.withHandle(h ->
-                    h.createQuery("SELECT * FROM classes WHERE class_name = :name "
-                                    + "AND lifecycle = 'current' AND origin != 'orphan_output'")
-                            .bind("name", className)
-                            .map((rs, ctx) -> mapClass(rs))
-                            .findFirst());
-        }
-        List<ClassRecord> matches = jdbi.withHandle(h ->
-                h.createQuery("SELECT * FROM classes WHERE class_name LIKE :name "
-                                + "AND lifecycle = 'current' AND origin != 'orphan_output' "
-                                + "ORDER BY class_name")
-                        .bind("name", "%" + className)
+        return jdbi.withHandle(h ->
+                h.createQuery("SELECT * FROM classes WHERE class_name = :name "
+                                + "AND lifecycle = 'current' AND origin != 'orphan_output'")
+                        .bind("name", className)
                         .map((rs, ctx) -> mapClass(rs))
-                        .list());
-        if (matches.size() == 1) return Optional.of(matches.get(0));
-        return Optional.empty();
+                        .findFirst());
     }
 
     public static Optional<ClassRecord> findClassByPath(Jdbi jdbi, String path) {

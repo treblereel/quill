@@ -92,6 +92,8 @@ class IndexWriterReaderTest {
 
         assertEquals("run(java.lang.String):void",
                 IndexReader.findClassMembers(database, 1).getFirst().signature());
+        assertEquals("run", IndexReader.findClassMembers(database, List.of(1))
+                .get(1).getFirst().name());
 
         List<ClassMemberRecord> updated = List.of(new ClassMemberRecord(
                 1, "METHOD", "execute", "execute():boolean", "boolean",

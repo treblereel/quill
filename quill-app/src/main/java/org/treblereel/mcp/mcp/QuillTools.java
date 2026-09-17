@@ -166,6 +166,21 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Find declared method overrides in indexed subclasses and implementors.")
+    public String find_method_overrides(
+            @ToolArg(description = "Current class, interface, or source path") String target,
+            @ToolArg(description = "Declared method name") String method,
+            @ToolArg(description = "Optional exact signature to select one overload") Optional<String> signature,
+            @ToolArg(description = "Include indirect descendants; default true") Optional<Boolean> transitive,
+            @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findMethodOverrides(
+                p.jdbi(), target, method, signature.orElse(null), transitive.orElse(true),
+                clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -342,6 +357,12 @@ public final class QuillTools {
     String getCallHierarchy(Jdbi jdbi, String target, String method,
             String direction, int limit, int offset) {
         return queries.getCallHierarchy(jdbi, target, method, direction, limit, offset);
+    }
+
+    String findMethodOverrides(Jdbi jdbi, String target, String method,
+            String signature, boolean transitive, int limit, int offset) {
+        return queries.findMethodOverrides(
+                jdbi, target, method, signature, transitive, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

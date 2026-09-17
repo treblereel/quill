@@ -191,12 +191,34 @@ public final class IndexReader {
                         ORDER BY CASE kind WHEN 'FIELD' THEN 0 WHEN 'CONSTRUCTOR' THEN 1 ELSE 2 END,
                                  name, signature""")
                 .bind("classId", classId)
-                .map((rs, ctx) -> new ClassMemberRecord(
-                        rs.getInt("class_id"), rs.getString("kind"), rs.getString("name"),
-                        rs.getString("signature"), rs.getString("type_name"),
-                        fromJson(rs.getString("parameter_types")), rs.getString("modifiers"),
-                        fromJson(rs.getString("annotations"))))
+                .map((rs, ctx) -> mapClassMember(rs))
                 .list());
+    }
+
+    public static Map<Integer, List<ClassMemberRecord>> findClassMembers(
+            Jdbi jdbi, Collection<Integer> classIds) {
+        if (classIds == null || classIds.isEmpty()) return Map.of();
+        return jdbi.withHandle(handle -> {
+            Map<Integer, List<ClassMemberRecord>> result = new LinkedHashMap<>();
+            List<Integer> ids = List.copyOf(classIds);
+            for (int from = 0; from < ids.size(); from += 500) {
+                List<Integer> batch = ids.subList(from, Math.min(from + 500, ids.size()));
+                handle.createQuery("""
+                                SELECT class_id, kind, name, signature, type_name, parameter_types,
+                                       modifiers, annotations
+                                FROM class_members WHERE class_id IN (<classIds>)
+                                ORDER BY class_id,
+                                         CASE kind WHEN 'FIELD' THEN 0
+                                                   WHEN 'CONSTRUCTOR' THEN 1 ELSE 2 END,
+                                         name, signature""")
+                        .bindList("classIds", batch)
+                        .map((rs, ctx) -> mapClassMember(rs))
+                        .forEach(member -> result
+                                .computeIfAbsent(member.classId(), ignored -> new ArrayList<>())
+                                .add(member));
+            }
+            return result;
+        });
     }
 
     public static List<SymbolSearchResult> searchSymbols(Jdbi jdbi, String namePattern,
@@ -725,6 +747,15 @@ public final class IndexReader {
                 rs.getObject("file_id") != null ? rs.getInt("file_id") : null,
                 rs.getString("origin"), rs.getString("lifecycle"),
                 rs.getString("module"), rs.getString("source_set"));
+    }
+
+    private static ClassMemberRecord mapClassMember(java.sql.ResultSet rs)
+            throws java.sql.SQLException {
+        return new ClassMemberRecord(
+                rs.getInt("class_id"), rs.getString("kind"), rs.getString("name"),
+                rs.getString("signature"), rs.getString("type_name"),
+                fromJson(rs.getString("parameter_types")), rs.getString("modifiers"),
+                fromJson(rs.getString("annotations")));
     }
 
     private static ClassOccurrenceRecord mapClassOccurrence(java.sql.ResultSet rs)

@@ -129,6 +129,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   signature, with kind filtering and pagination
 - **get_call_hierarchy** — inspect direct method callers and callees with JVM descriptors,
   invocation kinds, occurrence counts, and source-line evidence
+- **find_method_overrides** — find direct or transitive overriding declarations for a selected
+  method or overload, with hierarchy paths and Java modifier checks
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
   annotation name or FQCN, with pagination and source/generated breakdown
 - **find_implementations** — find direct/transitive subclasses and implementors, including

@@ -13,6 +13,7 @@ public final class QuillToolQueries {
     private final TypeHierarchyQueries typeHierarchy = new TypeHierarchyQueries();
     private final SymbolSearchQueries symbolSearch = new SymbolSearchQueries();
     private final CallHierarchyQueries callHierarchy = new CallHierarchyQueries();
+    private final MethodOverrideQueries methodOverrides = new MethodOverrideQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -74,6 +75,12 @@ public final class QuillToolQueries {
     String getCallHierarchy(Jdbi jdbi, String target, String method,
             String direction, int limit, int offset) {
         return callHierarchy.getCallHierarchy(jdbi, target, method, direction, limit, offset);
+    }
+
+    String findMethodOverrides(Jdbi jdbi, String target, String method,
+            String signature, boolean transitive, int limit, int offset) {
+        return methodOverrides.findMethodOverrides(
+                jdbi, target, method, signature, transitive, limit, offset);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

@@ -533,6 +533,76 @@ class QuillToolsTest {
     }
 
     @Test
+    void findMethodOverridesHandlesOverloadsAndTransitiveDescendants() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes
+                      (class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.PremiumStripePaymentService', 'CLASS',
+                            'org.acme.StripePaymentService', '[]',
+                            'src/main/java/org/acme/PremiumStripePaymentService.java', 1,
+                            0, 50, 'source', 'current', '.', 'main')""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    VALUES (2, 'METHOD', 'processPayment',
+                            'processPayment(double):void', 'void', '["double"]',
+                            'public abstract', '[]'),
+                           (2, 'METHOD', 'processPayment',
+                            'processPayment(java.lang.String):void', 'void',
+                            '["java.lang.String"]', 'public abstract', '[]'),
+                           (3, 'METHOD', 'processPayment',
+                            'processPayment(double):void', 'void', '["double"]',
+                            'public', '[]'),
+                           (5, 'METHOD', 'processPayment',
+                            'processPayment(double):void', 'void', '["double"]',
+                            'public final', '[]'),
+                           (5, 'METHOD', 'processPayment',
+                            'processPayment(java.lang.String):void', 'void',
+                            '["java.lang.String"]', 'public', '[]')""");
+        });
+
+        QuillTools tools = new QuillTools();
+        JsonNode all = JSON.readTree(tools.findMethodOverrides(
+                jdbi, "PaymentService", "processPayment", null, true, 10, 0));
+        JsonNode direct = JSON.readTree(tools.findMethodOverrides(
+                jdbi, "PaymentService", "processPayment", null, false, 10, 0));
+        JsonNode overload = JSON.readTree(tools.findMethodOverrides(
+                jdbi, "PaymentService", "processPayment",
+                "processPayment(java.lang.String):void", true, 10, 0));
+
+        assertEquals(3, all.path("total").asInt());
+        assertEquals(2, all.path("base_declarations").size());
+        assertTrue(all.path("overrides").valueStream().anyMatch(node ->
+                node.path("class").asText().equals("org.acme.PremiumStripePaymentService")
+                        && node.path("distance").asInt() == 2
+                        && node.path("hierarchy_path").size() == 3));
+        assertEquals(1, direct.path("total").asInt());
+        assertEquals(1, overload.path("total").asInt());
+        assertEquals("processPayment(java.lang.String):void",
+                overload.path("overrides").get(0).path("base_signature").asText());
+    }
+
+    @Test
+    void findMethodOverridesReturnsOverloadCandidatesForMissingSignature() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members
+                  (class_id, kind, name, signature, type_name, parameter_types,
+                   modifiers, annotations)
+                VALUES (2, 'METHOD', 'processPayment',
+                        'processPayment(double):void', 'void', '["double"]',
+                        'public abstract', '[]')"""));
+
+        JsonNode result = JSON.readTree(new QuillTools().findMethodOverrides(
+                jdbi, "PaymentService", "processPayment", "missing()", true, 10, 0));
+
+        assertEquals("Method signature not found", result.path("error").asText());
+        assertEquals("processPayment(double):void", result.path("candidates").get(0).asText());
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

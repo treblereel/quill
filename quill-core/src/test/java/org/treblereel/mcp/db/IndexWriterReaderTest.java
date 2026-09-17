@@ -36,6 +36,36 @@ class IndexWriterReaderTest {
     }
 
     @Test
+    void architectureHubsSeparateOriginAndSourceSetDimensions() {
+        Jdbi database = QuillDatabase.create(tempDir.resolve("hub-breakdown.db"));
+        List<ClassRecord> classes = List.of(
+                contextualClass("example.Target", "source", "main"),
+                contextualClass("example.HandwrittenConsumer", "source", "main"),
+                contextualClass("example.GeneratedConsumer", "generated", "main"),
+                contextualClass("example.TestConsumer", "source", "test"));
+        List<DependencyRecord> dependencies = List.of(
+                new DependencyRecord(2, 1, "TYPE_USE", null),
+                new DependencyRecord(3, 1, "TYPE_USE", null),
+                new DependencyRecord(4, 1, "TYPE_USE", null));
+
+        IndexWriter.write(database, classes, List.of(), List.of(), dependencies, Map.of());
+
+        IndexReader.ArchitectureHub hub = IndexReader.findArchitectureHubs(database).getFirst();
+        assertEquals(1, hub.classId());
+        assertEquals(3, hub.totalDependents());
+        assertEquals(2, hub.sourceDependents());
+        assertEquals(1, hub.generatedDependents());
+        assertEquals(2, hub.productionDependents());
+        assertEquals(1, hub.testDependents());
+    }
+
+    private static ClassRecord contextualClass(String name, String origin, String sourceSet) {
+        return new ClassRecord(0, name, "CLASS", "java.lang.Object", List.of(),
+                "src/" + sourceSet + "/java/" + name.replace('.', '/') + ".java",
+                1, false, 10, null, origin, "current", ".", sourceSet);
+    }
+
+    @Test
     void incrementalWriteMutatesOnlyThePersistentDelta() {
         Path dbPath = tempDir.resolve("incremental.db");
         Jdbi writable = QuillDatabase.create(dbPath);

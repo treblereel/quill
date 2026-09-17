@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Comparator;
+import java.util.function.ToIntFunction;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.*;
@@ -55,18 +57,24 @@ final class ProjectOverviewQueries {
         IndexReader.countBeansByKind(jdbi).forEach(kindNode::put);
 
         ArrayNode hubs = root.putArray("architecture_hubs");
-        List<Map.Entry<Integer, Integer>> hubEntries =
-                IndexReader.findMostDependedOn(jdbi, 5);
+        List<IndexReader.ArchitectureHub> hubMetrics = IndexReader.findArchitectureHubs(jdbi);
         Map<Integer, ClassRecord> hubClasses = IndexReader.findClassesByIds(jdbi,
-                hubEntries.stream().map(Map.Entry::getKey).toList());
-        for (var entry : hubEntries) {
-            Optional.ofNullable(hubClasses.get(entry.getKey())).ifPresent(c -> {
-                ObjectNode hub = hubs.addObject();
-                hub.put("class", c.className());
-                hub.put("dependents", entry.getValue());
-                hub.put("is_bean", c.isBean());
-            });
-        }
+                hubMetrics.stream().map(IndexReader.ArchitectureHub::classId).toList());
+        topHubs(hubMetrics, IndexReader.ArchitectureHub::totalDependents).forEach(hub ->
+                Optional.ofNullable(hubClasses.get(hub.classId()))
+                        .ifPresent(cls -> appendHub(hubs, hub, cls, "combined")));
+
+        ObjectNode rankings = root.putObject("architecture_hub_rankings");
+        writeHubRanking(rankings, "source", hubMetrics,
+                IndexReader.ArchitectureHub::sourceDependents, hubClasses);
+        writeHubRanking(rankings, "generated", hubMetrics,
+                IndexReader.ArchitectureHub::generatedDependents, hubClasses);
+        writeHubRanking(rankings, "production", hubMetrics,
+                IndexReader.ArchitectureHub::productionDependents, hubClasses);
+        writeHubRanking(rankings, "test", hubMetrics,
+                IndexReader.ArchitectureHub::testDependents, hubClasses);
+        rankings.put("scope_note", "production/test are classified by source_set; "
+                + "source/generated are independent origin dimensions");
 
         ObjectNode problems = root.putObject("problems");
         List<InjectionPointRecord> unsatisfied = IndexReader.findUnsatisfiedInjectionPoints(jdbi);
@@ -180,6 +188,43 @@ final class ProjectOverviewQueries {
             node.put("type", ip.targetType());
             appendResolutionEvidence(node, ip);
         }
+    }
+
+    private static List<IndexReader.ArchitectureHub> topHubs(
+            List<IndexReader.ArchitectureHub> hubs,
+            ToIntFunction<IndexReader.ArchitectureHub> metric) {
+        return hubs.stream()
+                .filter(hub -> metric.applyAsInt(hub) > 0)
+                .sorted(Comparator.comparingInt(metric).reversed()
+                        .thenComparingInt(IndexReader.ArchitectureHub::classId))
+                .limit(5)
+                .toList();
+    }
+
+    private static void writeHubRanking(ObjectNode rankings, String name,
+            List<IndexReader.ArchitectureHub> metrics,
+            ToIntFunction<IndexReader.ArchitectureHub> rankingMetric,
+            Map<Integer, ClassRecord> classes) {
+        ArrayNode result = rankings.putArray(name);
+        for (IndexReader.ArchitectureHub hub : topHubs(metrics, rankingMetric)) {
+            ClassRecord cls = classes.get(hub.classId());
+            if (cls != null) appendHub(result, hub, cls, name);
+        }
+    }
+
+    private static void appendHub(ArrayNode result, IndexReader.ArchitectureHub metrics,
+            ClassRecord cls, String rankedBy) {
+        ObjectNode hub = result.addObject();
+        hub.put("class", cls.className());
+        hub.put("ranked_by", rankedBy);
+        hub.put("total_dependents", metrics.totalDependents());
+        hub.put("source_dependents", metrics.sourceDependents());
+        hub.put("generated_dependents", metrics.generatedDependents());
+        hub.put("production_dependents", metrics.productionDependents());
+        hub.put("test_dependents", metrics.testDependents());
+        hub.put("is_bean", cls.isBean());
+        if (cls.module() != null) hub.put("module", cls.module());
+        if (cls.sourceSet() != null) hub.put("source_set", cls.sourceSet());
     }
 
     private static void appendResolutionEvidence(

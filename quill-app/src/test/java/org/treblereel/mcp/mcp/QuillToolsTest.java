@@ -372,6 +372,17 @@ class QuillToolsTest {
         JsonNode hubs = root.get("architecture_hubs");
         assertNotNull(hubs);
         assertTrue(hubs.size() >= 1);
+        assertTrue(hubs.get(0).has("total_dependents"));
+        assertTrue(hubs.get(0).has("source_dependents"));
+        assertTrue(hubs.get(0).has("generated_dependents"));
+        assertFalse(hubs.get(0).has("dependents"),
+                "The overview must not expose an unexplained mixed dependent count");
+        JsonNode rankings = root.get("architecture_hub_rankings");
+        assertNotNull(rankings);
+        assertTrue(rankings.path("source").isArray());
+        assertTrue(rankings.path("generated").isArray());
+        assertTrue(rankings.path("production").isArray());
+        assertTrue(rankings.path("test").isArray());
 
         JsonNode problems = root.get("problems");
         assertNotNull(problems);

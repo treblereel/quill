@@ -15,6 +15,14 @@ public final class IndexReader {
 
     public record DependencyBreakdown(String origin, int classes, int edges) {}
 
+    public record ArchitectureHub(
+            int classId,
+            int totalDependents,
+            int sourceDependents,
+            int generatedDependents,
+            int productionDependents,
+            int testDependents) {}
+
     public static List<ClassRecord> findAllClasses(Jdbi jdbi) {
         return jdbi.withHandle(h ->
                 h.createQuery("SELECT * FROM classes WHERE lifecycle = 'current' "
@@ -577,18 +585,37 @@ public final class IndexReader {
     }
 
     public static List<Map.Entry<Integer, Integer>> findMostDependedOn(Jdbi jdbi, int limit) {
-        return jdbi.withHandle(h ->
-                h.createQuery("""
-                        SELECT d.to_class_id, COUNT(DISTINCT d.from_class_id) as dep_count
+        return findArchitectureHubs(jdbi).stream()
+                .limit(limit)
+                .map(hub -> Map.entry(hub.classId(), hub.totalDependents()))
+                .toList();
+    }
+
+    public static List<ArchitectureHub> findArchitectureHubs(Jdbi jdbi) {
+        return jdbi.withHandle(h -> h.createQuery("""
+                        SELECT d.to_class_id,
+                               COUNT(DISTINCT source.id) AS total_count,
+                               COUNT(DISTINCT CASE WHEN source.origin = 'source'
+                                                   THEN source.id END) AS source_count,
+                               COUNT(DISTINCT CASE WHEN source.origin = 'generated'
+                                                   THEN source.id END) AS generated_count,
+                               COUNT(DISTINCT CASE WHEN source.source_set IS NULL
+                                                       OR source.source_set != 'test'
+                                                   THEN source.id END) AS production_count,
+                               COUNT(DISTINCT CASE WHEN source.source_set = 'test'
+                                                   THEN source.id END) AS test_count
                         FROM dependencies d
                         JOIN classes source ON source.id = d.from_class_id
                         JOIN classes target ON target.id = d.to_class_id
                         WHERE source.lifecycle = 'current' AND source.origin != 'orphan_output'
                           AND target.lifecycle = 'current' AND target.origin != 'orphan_output'
-                        GROUP BY d.to_class_id ORDER BY dep_count DESC LIMIT :limit""")
-                        .bind("limit", limit)
-                        .map((rs, ctx) -> Map.entry(rs.getInt("to_class_id"), rs.getInt("dep_count")))
-                        .list());
+                        GROUP BY d.to_class_id
+                        ORDER BY total_count DESC, d.to_class_id""")
+                .map((rs, ctx) -> new ArchitectureHub(
+                        rs.getInt("to_class_id"), rs.getInt("total_count"),
+                        rs.getInt("source_count"), rs.getInt("generated_count"),
+                        rs.getInt("production_count"), rs.getInt("test_count")))
+                .list());
     }
 
     public static int countDependents(Jdbi jdbi, int classId) {

@@ -94,6 +94,29 @@ class GitAnalyzerTest {
         assertEquals(2, result.commitFiles().size());
         assertEquals(1, result.fileStats().size());
         assertEquals(2, result.fileStats().get(0).commitCount());
+        assertEquals(2, result.scannedCommits());
+        assertEquals(2, result.repositoryCommits());
+    }
+
+    @Test
+    void reportsRepositoryHistoryBeyondScanLimit() throws Exception {
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            Path source = tempDir.resolve("Example.java");
+            for (int i = 0; i < 3; i++) {
+                Files.writeString(source, "class Example { int value" + i + "; }\n");
+                git.add().addFilepattern("Example.java").call();
+                git.commit().setMessage("change " + i).setAuthor("Test", "test@example.com")
+                        .setSign(false).call();
+            }
+        }
+
+        GitAnalyzer.GitAnalysisResult result = GitAnalyzer.analyze(
+                tempDir, 2, Map.of("Example.java", 1));
+
+        assertEquals(2, result.scannedCommits());
+        assertEquals(3, result.repositoryCommits());
+        assertEquals(2, result.commits().size());
+        assertEquals(2, result.fileStats().getFirst().commitCount());
     }
 
     @Test

@@ -34,10 +34,12 @@ public final class GitAnalyzer {
             List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles,
             String headHash,
-            String headShortHash
+            String headShortHash,
+            int scannedCommits,
+            int repositoryCommits
     ) {
         public static GitAnalysisResult empty() {
-            return new GitAnalysisResult(List.of(), List.of(), List.of(), null, null);
+            return new GitAnalysisResult(List.of(), List.of(), List.of(), null, null, 0, 0);
         }
 
         public boolean isEmpty() {
@@ -65,12 +67,12 @@ public final class GitAnalyzer {
             String headShortHash = headHash.substring(0, 7);
 
             List<RevCommit> revCommits = new ArrayList<>();
+            int repositoryCommits = 0;
             try (RevWalk walk = new RevWalk(repo)) {
                 walk.markStart(walk.parseCommit(head));
-                int count = 0;
                 for (RevCommit c : walk) {
-                    if (count++ >= maxCommits) break;
-                    revCommits.add(c);
+                    repositoryCommits++;
+                    if (revCommits.size() < maxCommits) revCommits.add(c);
                 }
             }
 
@@ -164,7 +166,8 @@ public final class GitAnalyzer {
                 ));
             }
 
-            return new GitAnalysisResult(fileStats, commitRecords, commitFiles, headHash, headShortHash);
+            return new GitAnalysisResult(fileStats, commitRecords, commitFiles, headHash,
+                    headShortHash, revCommits.size(), repositoryCommits);
 
         } catch (IOException e) {
             throw new RuntimeException("Git analysis failed", e);

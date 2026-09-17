@@ -92,9 +92,11 @@ public final class QuillTools {
     public String get_file_history(
             @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
             @ToolArg(description = "Max commits to return (default: 10)") Optional<Integer> limit,
+            @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getFileHistory(
-                p.jdbi(), target, clamp(limit.orElse(10), 1, 100)));
+                p.jdbi(), target, clamp(limit.orElse(10), 1, 100),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
     @Tool(structured = true, description = "Resolve up to 20 names/paths across the current tree and Git history, including deleted paths.")
@@ -206,6 +208,10 @@ public final class QuillTools {
 
     String getFileHistory(Jdbi jdbi, String target, int limit) {
         return queries.getFileHistory(jdbi, target, limit);
+    }
+
+    String getFileHistory(Jdbi jdbi, String target, int limit, int offset) {
+        return queries.getFileHistory(jdbi, target, limit, offset);
     }
 
     String resolveEntities(Jdbi jdbi, List<String> targets) {

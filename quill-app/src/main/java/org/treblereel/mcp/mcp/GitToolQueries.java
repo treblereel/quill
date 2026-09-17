@@ -215,26 +215,33 @@ final class GitToolQueries {
     }
 
     String getFileHistory(Jdbi jdbi, String target, int limit) {
+        return getFileHistory(jdbi, target, limit, 0);
+    }
+
+    String getFileHistory(Jdbi jdbi, String target, int limit, int offset) {
         if (!IndexReader.hasGitData(jdbi)) return errorResponse(NO_GIT_MESSAGE);
 
         var lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) {
             String filePath = resolveGitPath(jdbi, target);
-            List<GitCommitRecord> commits = IndexReader.findFileHistoryByPath(jdbi, filePath, limit);
+            List<GitCommitRecord> commits = IndexReader.findFileHistoryByPath(
+                    jdbi, filePath, limit, offset);
             if (commits.isEmpty()) return classLookupError(jdbi, lookup, target);
             ObjectNode root = JSON.createObjectNode();
             root.put("target", filePath);
             root.put("file", filePath);
             root.put("lifecycle", currentFileExists(jdbi, filePath) ? "current" : "historical");
             appendCommits(root, commits);
-            IndexReader.findFileStatsByPath(jdbi, filePath)
-                    .ifPresent(stats -> root.put("total_commits", stats.commitCount()));
+            int total = IndexReader.findFileStatsByPath(jdbi, filePath)
+                    .map(GitFileStats::commitCount).orElse(commits.size());
+            appendHistoryPage(root, jdbi, commits.size(), total, limit, offset);
             appendMeta(root, jdbi, 0);
             return root.toString();
         }
         ClassRecord cls = lookup.cls();
 
-        List<GitCommitRecord> commits = IndexReader.findFileHistory(jdbi, cls.id(), limit);
+        List<GitCommitRecord> commits = IndexReader.findFileHistory(
+                jdbi, cls.id(), limit, offset);
         var statsOpt = IndexReader.findFileStatsByClassId(jdbi, cls.id());
 
         ObjectNode root = JSON.createObjectNode();
@@ -242,9 +249,36 @@ final class GitToolQueries {
         root.put("file", cls.sourceFile());
 
         appendCommits(root, commits);
-        statsOpt.ifPresent(s -> root.put("total_commits", s.commitCount()));
+        appendHistoryPage(root, jdbi, commits.size(),
+                statsOpt.map(GitFileStats::commitCount).orElse(commits.size()), limit, offset);
         appendMeta(root, jdbi, cls.sourceTokens());
         return root.toString();
+    }
+
+    private void appendHistoryPage(ObjectNode root, Jdbi jdbi, int showing,
+            int indexedTotal, int limit, int offset) {
+        root.put("total_commits", indexedTotal);
+        appendPage(root, showing, indexedTotal, limit, offset);
+        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        boolean indexComplete = Boolean.parseBoolean(
+                metadata.getOrDefault("git_history_complete", "false"));
+        root.put("index_history_complete", indexComplete);
+        root.put("history_complete", indexComplete && offset + showing >= indexedTotal);
+        root.put("repository_commits", parseInt(metadata.get("git_repository_commits")));
+        root.put("scanned_repository_commits", parseInt(metadata.get("git_scanned_commits")));
+        if (!indexComplete) {
+            root.put("history_limitation",
+                    "The Git index covers only the newest repository commits; older file history may be absent.");
+        }
+    }
+
+    private static int parseInt(String value) {
+        if (value == null) return 0;
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     String getCoChanges(Jdbi jdbi, String target, int limit) {

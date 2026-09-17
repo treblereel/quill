@@ -138,6 +138,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
 - **list_injection_points** — injection resolution status for a bean
 - **find_git_hotspots** — current hotspots plus a live dirty-worktree overlay; deleted
   historical paths are opt-in with `include_historical`; supports `limit`/`offset`
+- **get_file_history** — paged commit history for a class or file, with explicit
+  indexed-history coverage
 - **find_co_changed_files** — files that change together (hidden coupling)
 - **list_external_dependencies** — third-party library usage
 

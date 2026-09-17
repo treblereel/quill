@@ -50,6 +50,7 @@ import org.treblereel.mcp.model.InjectionPointRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 
 public class ProjectInitializer {
+    private static final int MAX_GIT_COMMITS = 5_000;
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -404,7 +405,7 @@ public class ProjectInitializer {
         GitAnalyzer.GitAnalysisResult gitResult;
         try (BackgroundTask<GitAnalyzer.GitAnalysisResult> gitTask =
                 BackgroundTask.start("quill-git-analysis", () -> GitAnalyzer.hasGitRepo(root)
-                        ? GitAnalyzer.analyze(root, 500, sourceFileToClassId)
+                        ? GitAnalyzer.analyze(root, MAX_GIT_COMMITS, sourceFileToClassId)
                         : GitAnalyzer.GitAnalysisResult.empty())) {
             for (BytecodeDependencyScanner.StaticDependency dependency
                     : BytecodeDependencyScanner.scan(classFiles, classNameToSqliteId.keySet())) {
@@ -499,6 +500,10 @@ public class ProjectInitializer {
         metadata.put("index_id", indexId);
         metadata.put("project_root", root.toString());
         metadata.put("last_commit", lastCommit != null ? lastCommit : "unknown");
+        metadata.put("git_scanned_commits", Integer.toString(gitResult.scannedCommits()));
+        metadata.put("git_repository_commits", Integer.toString(gitResult.repositoryCommits()));
+        metadata.put("git_history_complete", Boolean.toString(
+                gitResult.scannedCommits() == gitResult.repositoryCommits()));
         metadata.put("indexed_worktree_dirty", Boolean.toString(initialWorktree.dirty()));
         metadata.put("indexed_worktree_changed_files",
                 Integer.toString(initialWorktree.changes().size()));

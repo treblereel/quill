@@ -505,29 +505,41 @@ public final class IndexReader {
     }
 
     public static List<GitCommitRecord> findFileHistory(Jdbi jdbi, int classId, int limit) {
+        return findFileHistory(jdbi, classId, limit, 0);
+    }
+
+    public static List<GitCommitRecord> findFileHistory(
+            Jdbi jdbi, int classId, int limit, int offset) {
         return jdbi.withHandle(h ->
                 h.createQuery("""
                         SELECT gc.* FROM git_commits gc
                         JOIN git_commit_files gcf ON gc.id = gcf.commit_id
                         WHERE gcf.class_id = :classId
                         ORDER BY gc.committed_at DESC
-                        LIMIT :limit""")
+                        LIMIT :limit OFFSET :offset""")
                         .bind("classId", classId)
                         .bind("limit", limit)
+                        .bind("offset", offset)
                         .map((rs, ctx) -> mapGitCommit(rs))
                         .list());
     }
 
     public static List<GitCommitRecord> findFileHistoryByPath(
             Jdbi jdbi, String filePath, int limit) {
+        return findFileHistoryByPath(jdbi, filePath, limit, 0);
+    }
+
+    public static List<GitCommitRecord> findFileHistoryByPath(
+            Jdbi jdbi, String filePath, int limit, int offset) {
         return jdbi.withHandle(h -> h.createQuery("""
                         SELECT DISTINCT gc.* FROM git_commits gc
                         JOIN git_commit_files gcf ON gc.id = gcf.commit_id
                         WHERE gcf.file_path = :filePath
                         ORDER BY gc.committed_at DESC
-                        LIMIT :limit""")
+                        LIMIT :limit OFFSET :offset""")
                 .bind("filePath", filePath.replace('\\', '/'))
                 .bind("limit", limit)
+                .bind("offset", offset)
                 .map((rs, ctx) -> mapGitCommit(rs))
                 .list());
     }

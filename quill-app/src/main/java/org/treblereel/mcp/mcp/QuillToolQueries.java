@@ -82,6 +82,10 @@ public final class QuillToolQueries {
         return git.getFileHistory(jdbi, target, limit);
     }
 
+    String getFileHistory(Jdbi jdbi, String target, int limit, int offset) {
+        return git.getFileHistory(jdbi, target, limit, offset);
+    }
+
     String resolveEntities(Jdbi jdbi, List<String> targets) {
         return git.resolveEntities(jdbi, targets);
     }

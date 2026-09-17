@@ -72,6 +72,9 @@ class QuillToolsTest {
                 Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "abc1234",
                         "dependency_index", "degraded",
                         "dependency_index_detail", "1/2 modules resolved",
+                        "git_scanned_commits", "3",
+                        "git_repository_commits", "3",
+                        "git_history_complete", "true",
                         "service_registrations_detail", """
                                 [{"serviceType":"javax.annotation.processing.Processor",
                                   "providerType":"org.acme.FirstProcessor",
@@ -434,6 +437,29 @@ class QuillToolsTest {
         assertNotNull(commits);
         assertEquals(3, commits.size());
         assertEquals("aaa1111", commits.get(0).get("hash").asText());
+        assertEquals(3, root.get("total_commits").asInt());
+        assertTrue(root.get("history_complete").asBoolean());
+        assertFalse(root.get("has_more").asBoolean());
+    }
+
+    @Test
+    void getFileHistorySupportsOffsetPagination() throws Exception {
+        var tools = new QuillTools();
+        JsonNode first = JSON.readTree(
+                tools.getFileHistory(jdbi, "StripePaymentService", 2, 0));
+        JsonNode second = JSON.readTree(
+                tools.getFileHistory(jdbi, "StripePaymentService", 2, 2));
+
+        assertEquals(2, first.get("showing").asInt());
+        assertEquals(3, first.get("total_commits").asInt());
+        assertEquals(2, first.get("next_offset").asInt());
+        assertTrue(first.get("has_more").asBoolean());
+        assertFalse(first.get("history_complete").asBoolean());
+        assertEquals(1, second.get("showing").asInt());
+        assertFalse(second.get("has_more").asBoolean());
+        assertTrue(second.get("history_complete").asBoolean());
+        assertNotEquals(first.get("commits").get(0).get("hash").asText(),
+                second.get("commits").get(0).get("hash").asText());
     }
 
     @Test

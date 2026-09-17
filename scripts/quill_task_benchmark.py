@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
+from statistics import median
 import sys
 from typing import Any
 
@@ -25,9 +27,9 @@ def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", type=Path, required=True,
                         help="Task suite containing prompts and expected facts")
-    parser.add_argument("--with-quill", type=Path, required=True,
+    parser.add_argument("--with-quill", type=Path, nargs="+", required=True,
                         help="Captured results from the Quill-enabled run")
-    parser.add_argument("--without-quill", type=Path, required=True,
+    parser.add_argument("--without-quill", type=Path, nargs="+", required=True,
                         help="Captured results from the baseline run")
     parser.add_argument("--output", type=Path,
                         help="Optional JSON report path")
@@ -80,6 +82,9 @@ def score_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
         observed = actual_task.get("observed", {})
         if not isinstance(observed, dict):
             raise ValueError(f"Run task {task_id} observed must be an object")
+        accepted = expected_task.get("accepted", {})
+        if not isinstance(accepted, dict):
+            raise ValueError(f"Suite task {task_id} accepted must be an object")
 
         correct = []
         incorrect = []
@@ -87,7 +92,8 @@ def score_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
         for fact, expected_value in expected.items():
             if fact not in observed:
                 missing.append(fact)
-            elif observed[fact] == expected_value:
+            elif (observed[fact] == expected_value
+                  or observed[fact] in accepted.get(fact, [])):
                 correct.append(fact)
             else:
                 incorrect.append({"fact": fact, "expected": expected_value,
@@ -166,8 +172,79 @@ def build_report(suite: dict[str, Any], with_run: dict[str, Any],
     }
 
 
+def runs_from_documents(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    runs: list[dict[str, Any]] = []
+    for document in documents:
+        nested = document.get("runs")
+        if nested is None:
+            runs.append(document)
+        elif isinstance(nested, list) and nested:
+            runs.extend(nested)
+        else:
+            raise ValueError("Repeated-run document must contain a non-empty runs array")
+    return runs
+
+
+def percentile(values: list[float], fraction: float) -> float:
+    ordered = sorted(values)
+    return ordered[max(0, math.ceil(len(ordered) * fraction) - 1)]
+
+
+def summarize_runs(scores: list[dict[str, Any]]) -> dict[str, Any]:
+    fields = ("fact_accuracy", "task_completion_rate", "duration_seconds",
+              "total_tokens", "uncached_tokens", "model_requests", "requests",
+              "manual_verification_steps")
+    summary: dict[str, Any] = {"run_count": len(scores), "metrics": {}}
+    for field in fields:
+        values = [score["totals"][field] for score in scores]
+        summary["metrics"][field] = {
+            "median": round(median(values), 4),
+            "p95": round(percentile(values, 0.95), 4),
+            "min": round(min(values), 4),
+            "max": round(max(values), 4),
+        }
+    return summary
+
+
+def build_repeated_report(suite: dict[str, Any], with_runs: list[dict[str, Any]],
+                          without_runs: list[dict[str, Any]]) -> dict[str, Any]:
+    if len(with_runs) != len(without_runs):
+        raise ValueError("Paired modes must contain the same number of runs")
+    with_scores = [score_run(suite, run) for run in with_runs]
+    without_scores = [score_run(suite, run) for run in without_runs]
+    paired = [compare(left, right)["with_quill_minus_without_quill"]
+              for left, right in zip(with_scores, without_scores)]
+    delta_fields = paired[0].keys()
+    return {
+        "schema_version": 2,
+        "suite": suite.get("name", "unnamed"),
+        "project_revision": suite.get("project_revision"),
+        "run_count": len(with_scores),
+        "with_quill": {"summary": summarize_runs(with_scores), "runs": with_scores},
+        "without_quill": {"summary": summarize_runs(without_scores),
+                          "runs": without_scores},
+        "paired_delta_median": {
+            field: round(median([delta[field] for delta in paired]), 4)
+            for field in delta_fields
+        },
+    }
+
+
 def print_report(report: dict[str, Any]) -> None:
     print(f"Task benchmark: {report['suite']}")
+    if report.get("schema_version") == 2:
+        print(f"paired runs: {report['run_count']}")
+        print("mode           accuracy median/p95  seconds median/p95  uncached median/p95")
+        for key in ("with_quill", "without_quill"):
+            metrics = report[key]["summary"]["metrics"]
+            print(f"{key:<14} "
+                  f"{metrics['fact_accuracy']['median'] * 100:>6.1f}%/"
+                  f"{metrics['fact_accuracy']['p95'] * 100:<6.1f}%  "
+                  f"{metrics['duration_seconds']['median']:>7.2f}/"
+                  f"{metrics['duration_seconds']['p95']:<7.2f}  "
+                  f"{metrics['uncached_tokens']['median']:>8.0f}/"
+                  f"{metrics['uncached_tokens']['p95']:<8.0f}")
+        return
     print("mode           accuracy  complete  seconds  tokens  uncached  model req  tools  manual  wrong  missing")
     for key in ("with_quill", "without_quill"):
         totals = report[key]["totals"]
@@ -181,8 +258,12 @@ def print_report(report: dict[str, Any]) -> None:
 
 def main() -> int:
     args = arguments()
-    report = build_report(load_json(args.suite), load_json(args.with_quill),
-                          load_json(args.without_quill))
+    suite = load_json(args.suite)
+    with_runs = runs_from_documents([load_json(path) for path in args.with_quill])
+    without_runs = runs_from_documents([load_json(path) for path in args.without_quill])
+    report = (build_report(suite, with_runs[0], without_runs[0])
+              if len(with_runs) == len(without_runs) == 1
+              else build_repeated_report(suite, with_runs, without_runs))
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

@@ -15,6 +15,14 @@
           "tests/j2cl-tests-templates"
         ],
         "generated_implementation_count": 3
+      },
+      "accepted": {
+        "base_module": ["crysknife-ui-core"],
+        "generated_modules": [[
+          "j2cl-tests",
+          "j2cl-tests-navigation",
+          "j2cl-tests-templates"
+        ]]
       }
     },
     {

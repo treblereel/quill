@@ -30,7 +30,8 @@ python3 scripts/quill_agent_benchmark.py \
   --project /path/to/crysknife \
   --quill quill-app/target/quill \
   --model gpt-5.6-terra \
-  --reasoning-effort medium
+  --reasoning-effort medium \
+  --repetitions 10
 ```
 
 `gpt-5.6-terra` with medium reasoning is the benchmark default, so the final two options may be
@@ -39,6 +40,11 @@ omitted. Always record overrides when comparing results produced by a different 
 The runner rejects a different Git revision or dirty worktree by default. `--allow-dirty` is
 available for intentional worktree experiments, but such results are not comparable to the pinned
 suite without a corresponding rebaseline.
+
+Runs alternate the first condition by task and repetition. With more than one repetition the
+generated files contain a `runs` array; the scorer reports median and p95. Suites may declare
+deterministic `accepted` alternatives for semantically equivalent facts such as Maven artifact ids
+and repository module paths without exposing those alternatives to the model.
 
 The generated `*-with-quill.json` and `*-without-quill.json` files contain the usage returned by
 every Responses API call:

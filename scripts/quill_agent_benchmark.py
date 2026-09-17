@@ -130,6 +130,8 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--api-base", default="https://api.openai.com/v1")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--tool-output-limit", type=int, default=30000)
+    parser.add_argument("--repetitions", type=int, default=1,
+                        help="Number of independent paired runs (use 10-20 for reporting)")
     parser.add_argument("--allow-dirty", action="store_true")
     return parser.parse_args()
 
@@ -545,6 +547,8 @@ def main() -> int:
     tasks = suite.get("tasks")
     if not isinstance(tasks, list) or not tasks:
         raise ValueError("Suite must contain a non-empty tasks array")
+    if args.repetitions < 1:
+        raise ValueError("--repetitions must be at least 1")
     project = args.project.resolve()
     revision = verify_project(suite, project, args.allow_dirty)
     api_key = os.environ.get(args.api_key_env)
@@ -554,31 +558,54 @@ def main() -> int:
     quill_command = args.quill
     if os.sep in quill_command or (os.altsep and os.altsep in quill_command):
         quill_command = str(Path(quill_command).resolve())
-    captures = {
-        "with_quill": {"mode": "with_quill", "project_revision": revision, "tasks": []},
-        "without_quill": {"mode": "without_quill", "project_revision": revision, "tasks": []},
-    }
-    # Alternate the first mode to reduce systematic warm-cache and temporal bias.
-    for index, task in enumerate(tasks):
-        order = ("with_quill", "without_quill") if index % 2 == 0 else (
-            "without_quill", "with_quill")
-        for mode in order:
-            print(f"[{mode}] {task.get('id')}...", file=sys.stderr)
-            source = SourceTools(project, args.tool_output_limit)
-            if mode == "with_quill":
-                with QuillTools([quill_command], project, args.timeout,
-                                args.tool_output_limit) as quill:
+    captures: dict[str, list[dict[str, Any]]] = {
+        "with_quill": [], "without_quill": []}
+    for repetition in range(args.repetitions):
+        paired = {
+            mode: {
+                "mode": mode,
+                "run_index": repetition + 1,
+                "project_revision": revision,
+                "order_schedule": [],
+                "tasks": [],
+            }
+            for mode in captures
+        }
+        # Flip both task and repetition parity to distribute warm-cache/temporal bias.
+        for index, task in enumerate(tasks):
+            order = (("with_quill", "without_quill")
+                     if (repetition + index) % 2 == 0
+                     else ("without_quill", "with_quill"))
+            for mode in captures:
+                paired[mode]["order_schedule"].append({
+                    "task": task.get("id"), "first_mode": order[0]})
+            for mode in order:
+                print(f"[run {repetition + 1}/{args.repetitions}] "
+                      f"[{mode}] {task.get('id')}...", file=sys.stderr)
+                source = SourceTools(project, args.tool_output_limit)
+                if mode == "with_quill":
+                    with QuillTools([quill_command], project, args.timeout,
+                                    args.tool_output_limit) as quill:
+                        result = run_agent(client, task, mode, args.model,
+                                           args.reasoning_effort, source, quill)
+                else:
                     result = run_agent(client, task, mode, args.model,
-                                       args.reasoning_effort, source, quill)
-            else:
-                result = run_agent(client, task, mode, args.model,
-                                   args.reasoning_effort, source, None)
-            captures[mode]["tasks"].append(result)
+                                       args.reasoning_effort, source, None)
+                paired[mode]["tasks"].append(result)
+        for mode in captures:
+            captures[mode].append(paired[mode])
     args.output_dir.mkdir(parents=True, exist_ok=True)
     stem = args.suite.stem
-    for mode, capture in captures.items():
+    for mode, runs in captures.items():
         suffix = mode.replace("_", "-")
         path = args.output_dir / f"{stem}-{suffix}.json"
+        capture = runs[0] if len(runs) == 1 else {
+            "schema_version": 2,
+            "mode": mode,
+            "project_revision": revision,
+            "repetitions": len(runs),
+            "runs": runs,
+        }
         path.write_text(json.dumps(capture, indent=2) + "\n", encoding="utf-8")
         print(path)
     return 0

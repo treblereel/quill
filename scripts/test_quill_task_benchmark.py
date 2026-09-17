@@ -1,6 +1,7 @@
 import unittest
 
-from quill_task_benchmark import build_report, score_run
+from quill_task_benchmark import (build_repeated_report, build_report, score_run,
+                                  runs_from_documents)
 
 
 SUITE = {
@@ -77,6 +78,39 @@ class QuillTaskBenchmarkTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "does not match"):
             score_run(suite, capture)
+
+    def test_accepts_declared_semantic_equivalent(self):
+        suite = {**SUITE, "tasks": [
+            {"id": "one", "expected": {"status": "resolved", "fan_in": 2},
+             "accepted": {"status": ["satisfied"]}},
+            SUITE["tasks"][1],
+        ]}
+        result = score_run(suite, run("with_quill",
+                                     {"status": "satisfied", "fan_in": 2},
+                                     {"deleted": False}))
+        self.assertEqual(1.0, result["totals"]["fact_accuracy"])
+
+    def test_summarizes_repeated_paired_runs(self):
+        first_with = run("with_quill", {"status": "resolved", "fan_in": 2},
+                         {"deleted": False})
+        second_with = run("with_quill", {"status": "resolved", "fan_in": 2},
+                          {"deleted": False})
+        second_with["tasks"][0]["duration_seconds"] = 12
+        baseline = run("without_quill", {"status": "unknown", "fan_in": 1}, {})
+
+        report = build_repeated_report(
+            SUITE, [first_with, second_with], [baseline, baseline])
+
+        self.assertEqual(2, report["run_count"])
+        duration = report["with_quill"]["summary"]["metrics"]["duration_seconds"]
+        self.assertEqual(10, duration["median"])
+        self.assertEqual(15, duration["p95"])
+        self.assertGreater(report["paired_delta_median"]["fact_accuracy"], 0)
+
+    def test_expands_repeated_run_documents(self):
+        one = run("with_quill", {"status": "resolved", "fan_in": 2},
+                  {"deleted": False})
+        self.assertEqual([one, one], runs_from_documents([{"runs": [one, one]}]))
 
 
 if __name__ == "__main__":

@@ -51,14 +51,20 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Get a class graph with unique fan-in/out, edge counts, origin breakdown, and call-site evidence.")
+    @Tool(structured = true, description = "Get complete dependency metrics and an optionally paged class graph with call-site evidence.")
     public String get_dependencies(
             @ToolArg(description = "Current class name (short or FQCN) or its project/repository source path") String target,
             @ToolArg(description = "Direction: inbound, outbound, or both (default: both)") Optional<String> direction,
             @ToolArg(description = "Graph traversal depth (default: 1)") Optional<Integer> depth,
+            @ToolArg(description = "Include dependency relations; false returns compact metrics only (default: true)") Optional<Boolean> include_nodes,
+            @ToolArg(description = "Relations per page (default: 50, max: 200)") Optional<Integer> limit,
+            @ToolArg(description = "Result offset for depth=1 (default: 0)") Optional<Integer> offset,
+            @ToolArg(description = "Opaque continuation cursor for depth>1") Optional<String> cursor,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getDependencies(
-                p.jdbi(), target, direction.orElse("both"), clamp(depth.orElse(1), 1, 5)));
+                p.jdbi(), target, direction.orElse("both"), clamp(depth.orElse(1), 1, 5),
+                include_nodes.orElse(true), clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE), cursor.orElse(null)));
     }
 
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
@@ -178,6 +184,12 @@ public final class QuillTools {
 
     String getDependencies(Jdbi jdbi, String target, String direction, int depth) {
         return queries.getDependencies(jdbi, target, direction, depth);
+    }
+
+    String getDependencies(Jdbi jdbi, String target, String direction, int depth,
+            boolean includeNodes, int limit, int offset, String cursor) {
+        return queries.getDependencies(jdbi, target, direction, depth,
+                includeNodes, limit, offset, cursor);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

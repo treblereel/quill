@@ -258,7 +258,8 @@ class QuillToolsTest {
                 new QuillTools().getDependencies(jdbi, "OrderService", "outbound", 1));
         assertEquals(200, result.get("depends_on").size());
         assertTrue(result.get("truncated").asBoolean());
-        assertEquals(200, result.get("node_limit").asInt());
+        assertEquals(251, result.get("total").asInt());
+        assertEquals(200, result.get("next_offset").asInt());
     }
 
     @Test
@@ -283,13 +284,13 @@ class QuillToolsTest {
         var tools = new QuillTools();
         String result = tools.getDependencies(jdbi, "OrderService", "outbound", 2);
         JsonNode root = JSON.readTree(result);
-        JsonNode dependsOn = root.get("depends_on");
-        assertEquals(1, dependsOn.size());
-        assertEquals("org.acme.StripePaymentService", dependsOn.get(0).get("class").asText());
-        JsonNode nested = dependsOn.get(0).get("depends_on");
-        assertNotNull(nested, "depth=2 should expand nested depends_on");
-        assertEquals(1, nested.size());
-        assertEquals("org.acme.AuditService", nested.get(0).get("class").asText());
+        JsonNode graph = root.get("graph");
+        assertEquals(2, graph.size());
+        assertEquals("org.acme.StripePaymentService", graph.get(0).get("class").asText());
+        assertEquals(1, graph.get(0).get("depth").asInt());
+        assertEquals("org.acme.AuditService", graph.get(1).get("class").asText());
+        assertEquals(2, graph.get(1).get("depth").asInt());
+        assertEquals("cursor", root.get("pagination").asText());
     }
 
     @Test
@@ -300,6 +301,70 @@ class QuillToolsTest {
         JsonNode dependsOn = root.get("depends_on");
         assertNull(dependsOn.get(0).get("depends_on"),
                 "depth=1 should not expand nested dependencies");
+    }
+
+    @Test
+    void getDependenciesCanReturnCompactMetricsOnly() throws Exception {
+        JsonNode root = JSON.readTree(new QuillTools().getDependencies(
+                jdbi, "OrderService", "both", 1, false, 50, 0, null));
+
+        assertFalse(root.get("nodes_included").asBoolean());
+        assertEquals(1, root.get("metrics").get("fan_out").asInt());
+        assertNull(root.get("depends_on"));
+        assertNull(root.get("depended_by"));
+        assertNull(root.get("pagination"));
+    }
+
+    @Test
+    void getDependenciesPaginatesDepthOneWithOffset() throws Exception {
+        JsonNode first = JSON.readTree(new QuillTools().getDependencies(
+                jdbi, "StripePaymentService", "both", 1, true, 1, 0, null));
+        assertEquals(1, first.get("showing").asInt());
+        assertEquals(2, first.get("total").asInt());
+        assertEquals(1, first.get("next_offset").asInt());
+        assertTrue(first.get("has_more").asBoolean());
+
+        JsonNode second = JSON.readTree(new QuillTools().getDependencies(
+                jdbi, "StripePaymentService", "both", 1, true, 1, 1, null));
+        assertEquals(1, second.get("showing").asInt());
+        assertEquals(2, second.get("total").asInt());
+        assertFalse(second.get("has_more").asBoolean());
+        assertNotEquals(relationClass(first), relationClass(second));
+    }
+
+    @Test
+    void getDependenciesContinuesDeepBreadthFirstTraversalWithCursor() throws Exception {
+        JsonNode first = JSON.readTree(new QuillTools().getDependencies(
+                jdbi, "OrderService", "outbound", 2, true, 1, 0, null));
+        assertEquals("org.acme.StripePaymentService",
+                first.get("graph").get(0).get("class").asText());
+        assertEquals(1, first.get("graph").get(0).get("depth").asInt());
+        assertTrue(first.get("has_more").asBoolean());
+        String cursor = first.get("next_cursor").asText();
+
+        JsonNode second = JSON.readTree(new QuillTools().getDependencies(
+                jdbi, "OrderService", "outbound", 2, true, 1, 0, cursor));
+        assertEquals("org.acme.AuditService",
+                second.get("graph").get(0).get("class").asText());
+        assertEquals(2, second.get("graph").get(0).get("depth").asInt());
+        assertFalse(second.get("has_more").asBoolean());
+    }
+
+    @Test
+    void getDependenciesRejectsCursorForDifferentTraversal() throws Exception {
+        JsonNode first = JSON.readTree(new QuillTools().getDependencies(
+                jdbi, "OrderService", "outbound", 2, true, 1, 0, null));
+        String cursor = first.get("next_cursor").asText();
+
+        JsonNode invalid = JSON.readTree(new QuillTools().getDependencies(
+                jdbi, "OrderService", "both", 2, true, 1, 0, cursor));
+        assertEquals("Invalid or expired dependency cursor", invalid.get("error").asText());
+    }
+
+    private static String relationClass(JsonNode page) {
+        JsonNode outbound = page.get("depends_on");
+        if (outbound != null && !outbound.isEmpty()) return outbound.get(0).get("class").asText();
+        return page.get("depended_by").get(0).get("class").asText();
     }
 
     @Test

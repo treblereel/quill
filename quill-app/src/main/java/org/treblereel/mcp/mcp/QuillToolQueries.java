@@ -54,6 +54,12 @@ public final class QuillToolQueries {
         return structure.getDependencies(jdbi, target, direction, depth);
     }
 
+    String getDependencies(Jdbi jdbi, String target, String direction, int depth,
+            boolean includeNodes, int limit, int offset, String cursor) {
+        return structure.getDependencies(jdbi, target, direction, depth,
+                includeNodes, limit, offset, cursor);
+    }
+
     String getInjectionPoints(Jdbi jdbi, String target) {
         return structure.getInjectionPoints(jdbi, target);
     }

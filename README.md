@@ -125,7 +125,10 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
 `outputSchema`. Quill does not duplicate the JSON payload as text content.
 
 - **search_classes** — find classes by wildcard pattern; supports `limit`/`offset`
-- **get_dependencies** — dependencies for a class, addressable by FQCN or source path
+- **get_dependencies** — complete dependency metrics plus an optional relation graph,
+  addressable by FQCN or source path. Use `include_nodes=false` for a compact metrics-only
+  response. Depth-one relations use `limit`/`offset`; deeper breadth-first traversals return
+  an opaque `next_cursor`.
 - **assess_change_risk** — class blast radius or file-level risk based on file
   criticality, coupling, churn, and bus factor; accepts class names and arbitrary paths
 - **get_overview** — compact project summary by default; set `details=true` for diagnostic

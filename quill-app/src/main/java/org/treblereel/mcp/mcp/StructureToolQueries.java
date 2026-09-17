@@ -9,13 +9,17 @@ import static org.treblereel.mcp.mcp.ToolResponseSupport.isProducer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.IntConsumer;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.BeanRecord;
@@ -137,6 +141,15 @@ final class StructureToolQueries {
     }
 
     String getDependencies(Jdbi jdbi, String target, String direction, int depth) {
+        return getDependencies(jdbi, target, direction, depth,
+                true, MAX_GRAPH_NODES, 0, null);
+    }
+
+    String getDependencies(Jdbi jdbi, String target, String direction, int depth,
+            boolean includeNodes, int limit, int offset, String cursor) {
+        if (!Set.of("inbound", "outbound", "both").contains(direction)) {
+            return errorResponse("Invalid direction: expected inbound, outbound, or both");
+        }
         var lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
@@ -161,71 +174,183 @@ final class StructureToolQueries {
             IndexReader.findBeanByClassId(jdbi, cls.id())
                     .ifPresent(bean -> root.put("scope", bean.scope()));
         }
-        int[] naiveTokens = {cls.sourceTokens()};
-        Set<Integer> visited = new HashSet<>();
-        visited.add(cls.id());
-        GraphBudget budget = new GraphBudget(MAX_GRAPH_NODES);
-        expandDependencies(jdbi, cls.id(), direction, depth, root, visited,
-                tokens -> naiveTokens[0] += tokens, budget);
-        if (budget.truncated) {
-            root.put("truncated", true);
-            root.put("node_limit", MAX_GRAPH_NODES);
+        if (!includeNodes) {
+            root.put("nodes_included", false);
+            appendMeta(root, jdbi, cls.sourceTokens());
+            return root.toString();
         }
-        appendMeta(root, jdbi, naiveTokens[0]);
+        if (depth == 1) {
+            if (cursor != null && !cursor.isBlank()) {
+                return errorResponse("cursor is only supported when depth > 1");
+            }
+            List<GraphRelation> relations = relationsFor(jdbi, cls.id(), direction, 1);
+            int from = Math.min(offset, relations.size());
+            int to = (int) Math.min((long) from + limit, relations.size());
+            List<GraphRelation> page = relations.subList(from, to);
+            int naiveTokens = cls.sourceTokens() + renderDepthOne(jdbi, root, page);
+            root.put("pagination", "offset");
+            appendPage(root, page.size(), relations.size(), limit, offset);
+            appendMeta(root, jdbi, naiveTokens);
+            return root.toString();
+        }
+        if (offset != 0) {
+            return errorResponse("offset is only supported when depth = 1; use cursor for deeper graphs");
+        }
+        List<GraphRelation> graph = breadthFirstRelations(jdbi, cls.id(), direction, depth);
+        int cursorOffset = decodeCursor(jdbi, cursor, cls.id(), direction, depth);
+        if (cursorOffset < 0) return errorResponse("Invalid or expired dependency cursor");
+        int from = Math.min(cursorOffset, graph.size());
+        int to = (int) Math.min((long) from + limit, graph.size());
+        List<GraphRelation> page = graph.subList(from, to);
+        int naiveTokens = cls.sourceTokens() + renderBreadthFirst(jdbi, root, page);
+        boolean hasMore = to < graph.size();
+        root.put("pagination", "cursor");
+        root.put("showing", page.size());
+        root.put("total", graph.size());
+        root.put("limit", limit);
+        root.put("has_more", hasMore);
+        root.put("truncated", cursorOffset > 0 || hasMore);
+        if (hasMore) {
+            root.put("next_cursor", encodeCursor(jdbi, cls.id(), direction, depth, to));
+        }
+        appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }
 
-    private void expandDependencies(Jdbi jdbi, int classId, String direction, int depth,
-            ObjectNode node, Set<Integer> visited, IntConsumer tokenAccum, GraphBudget budget) {
-        ClassRecord current = IndexReader.findClassById(jdbi, classId).orElse(null);
-        List<DependencyRecord> dependencies = IndexReader.findDependencies(
-                jdbi, classId, direction);
-        Set<Integer> relatedClassIds = new HashSet<>();
-        for (DependencyRecord dependency : dependencies) {
-            relatedClassIds.add(dependency.fromClassId() == classId
-                    ? dependency.toClassId() : dependency.fromClassId());
+    private List<GraphRelation> breadthFirstRelations(
+            Jdbi jdbi, int rootClassId, String direction, int maxDepth) {
+        List<GraphRelation> graph = new ArrayList<>();
+        ArrayDeque<Frontier> frontier = new ArrayDeque<>();
+        Set<Integer> expanded = new HashSet<>();
+        Set<Integer> scheduled = new HashSet<>();
+        Set<DependencyKey> seen = new HashSet<>();
+        frontier.add(new Frontier(rootClassId, 0));
+        scheduled.add(rootClassId);
+        while (!frontier.isEmpty()) {
+            Frontier current = frontier.removeFirst();
+            if (current.depth() >= maxDepth || !expanded.add(current.classId())) continue;
+            for (GraphRelation relation : relationsFor(
+                    jdbi, current.classId(), direction, current.depth() + 1)) {
+                if (seen.add(DependencyKey.of(relation.dependency()))) graph.add(relation);
+                if (scheduled.add(relation.related().id())) {
+                    frontier.addLast(new Frontier(relation.related().id(), relation.depth()));
+                }
+            }
         }
-        Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
-                IndexReader.findClassOccurrencesByClassIds(jdbi, relatedClassIds);
+        return graph;
+    }
+
+    private List<GraphRelation> relationsFor(
+            Jdbi jdbi, int classId, String direction, int relationDepth) {
+        List<DependencyRecord> dependencies = IndexReader.findDependencies(jdbi, classId, direction);
+        Set<Integer> classIds = new HashSet<>();
+        classIds.add(classId);
         for (DependencyRecord dependency : dependencies) {
-            if (dependency.fromClassId() == classId) {
-                if (!budget.claim()) break;
-                IndexReader.findClassById(jdbi, dependency.toClassId()).ifPresent(value -> {
-                    ObjectNode child = array(node, "depends_on").addObject();
-                    child.put("class", value.className());
-                    child.put("kind", dependency.kind());
-                    if (dependency.occurrenceCount() > 1) {
-                        child.put("occurrences", dependency.occurrenceCount());
-                    }
-                    if (current != null) appendEvidence(child, current, dependency);
-                    appendContext(child, value);
-                    appendOccurrences(child, occurrencesByClass.get(value.id()));
-                    tokenAccum.accept(value.sourceTokens());
-                    if (depth > 1 && visited.add(value.id())) {
-                        expandDependencies(jdbi, value.id(), direction, depth - 1, child,
-                                visited, tokenAccum, budget);
-                    }
-                });
+            classIds.add(dependency.fromClassId());
+            classIds.add(dependency.toClassId());
+        }
+        Map<Integer, ClassRecord> classes = IndexReader.findClassesByIds(jdbi, List.copyOf(classIds));
+        ClassRecord current = classes.get(classId);
+        List<GraphRelation> relations = new ArrayList<>();
+        for (DependencyRecord dependency : dependencies) {
+            boolean outbound = !"inbound".equals(direction)
+                    && dependency.fromClassId() == classId;
+            int relatedId = outbound ? dependency.toClassId() : dependency.fromClassId();
+            ClassRecord related = classes.get(relatedId);
+            if (current != null && related != null) {
+                relations.add(new GraphRelation(current, related, dependency,
+                        outbound ? "outbound" : "inbound", relationDepth));
             }
-            if (dependency.toClassId() == classId) {
-                if (!budget.claim()) break;
-                IndexReader.findClassById(jdbi, dependency.fromClassId()).ifPresent(value -> {
-                    ObjectNode child = array(node, "depended_by").addObject();
-                    child.put("class", value.className());
-                    child.put("kind", dependency.kind());
-                    if (dependency.occurrenceCount() > 1) {
-                        child.put("occurrences", dependency.occurrenceCount());
-                    }
-                    appendEvidence(child, value, dependency);
-                    appendContext(child, value);
-                    appendOccurrences(child, occurrencesByClass.get(value.id()));
-                    tokenAccum.accept(value.sourceTokens());
-                    if (depth > 1 && visited.add(value.id())) {
-                        expandDependencies(jdbi, value.id(), direction, depth - 1, child,
-                                visited, tokenAccum, budget);
-                    }
-                });
-            }
+        }
+        relations.sort(Comparator
+                .comparing((GraphRelation value) -> value.related().className())
+                .thenComparing(GraphRelation::relationDirection)
+                .thenComparing(value -> value.dependency().kind())
+                .thenComparingInt(value -> value.dependency().fromClassId())
+                .thenComparingInt(value -> value.dependency().toClassId()));
+        return relations;
+    }
+
+    private int renderDepthOne(Jdbi jdbi, ObjectNode root, List<GraphRelation> relations) {
+        int tokens = 0;
+        Map<Integer, List<ClassOccurrenceRecord>> occurrences = occurrences(jdbi, relations);
+        for (GraphRelation relation : relations) {
+            String arrayName = "outbound".equals(relation.relationDirection())
+                    ? "depends_on" : "depended_by";
+            ObjectNode child = array(root, arrayName).addObject();
+            renderRelation(child, relation, occurrences.get(relation.related().id()));
+            tokens += relation.related().sourceTokens();
+        }
+        return tokens;
+    }
+
+    private int renderBreadthFirst(Jdbi jdbi, ObjectNode root, List<GraphRelation> relations) {
+        int tokens = 0;
+        ArrayNode graph = root.putArray("graph");
+        Map<Integer, List<ClassOccurrenceRecord>> occurrences = occurrences(jdbi, relations);
+        for (GraphRelation relation : relations) {
+            ObjectNode child = graph.addObject();
+            child.put("depth", relation.depth());
+            child.put("parent", relation.current().className());
+            child.put("relation_direction", relation.relationDirection());
+            renderRelation(child, relation, occurrences.get(relation.related().id()));
+            tokens += relation.related().sourceTokens();
+        }
+        return tokens;
+    }
+
+    private Map<Integer, List<ClassOccurrenceRecord>> occurrences(
+            Jdbi jdbi, List<GraphRelation> relations) {
+        return IndexReader.findClassOccurrencesByClassIds(jdbi,
+                relations.stream().map(value -> value.related().id()).distinct().toList());
+    }
+
+    private void renderRelation(ObjectNode child, GraphRelation relation,
+            List<ClassOccurrenceRecord> occurrences) {
+        ClassRecord related = relation.related();
+        DependencyRecord dependency = relation.dependency();
+        child.put("class", related.className());
+        child.put("kind", dependency.kind());
+        if (dependency.occurrenceCount() > 1) {
+            child.put("occurrences", dependency.occurrenceCount());
+        }
+        ClassRecord caller = "outbound".equals(relation.relationDirection())
+                ? relation.current() : related;
+        appendEvidence(child, caller, dependency);
+        appendContext(child, related);
+        appendOccurrences(child, occurrences);
+    }
+
+    private String encodeCursor(
+            Jdbi jdbi, int classId, String direction, int depth, int offset) {
+        ObjectNode value = JSON.createObjectNode();
+        value.put("v", 1);
+        value.put("index", IndexReader.getMetadata(jdbi).getOrDefault("index_id", ""));
+        value.put("class_id", classId);
+        value.put("direction", direction);
+        value.put("depth", depth);
+        value.put("offset", offset);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                value.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private int decodeCursor(
+            Jdbi jdbi, String cursor, int classId, String direction, int depth) {
+        if (cursor == null || cursor.isBlank()) return 0;
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor),
+                    StandardCharsets.UTF_8);
+            var value = JSON.readTree(decoded);
+            String indexId = IndexReader.getMetadata(jdbi).getOrDefault("index_id", "");
+            if (value.path("v").asInt() != 1
+                    || !Objects.equals(value.path("index").asText(), indexId)
+                    || value.path("class_id").asInt() != classId
+                    || !Objects.equals(value.path("direction").asText(), direction)
+                    || value.path("depth").asInt() != depth
+                    || value.path("offset").asInt(-1) < 0) return -1;
+            return value.path("offset").asInt();
+        } catch (Exception ignored) {
+            return -1;
         }
     }
 
@@ -390,21 +515,21 @@ final class StructureToolQueries {
         else node.put("source_set", cls.sourceSet());
     }
 
-    private static final class GraphBudget {
-        private int remaining;
-        private boolean truncated;
+    private record Frontier(int classId, int depth) {}
 
-        private GraphBudget(int limit) {
-            remaining = limit;
-        }
+    private record GraphRelation(
+            ClassRecord current,
+            ClassRecord related,
+            DependencyRecord dependency,
+            String relationDirection,
+            int depth) {}
 
-        private boolean claim() {
-            if (remaining == 0) {
-                truncated = true;
-                return false;
-            }
-            remaining--;
-            return true;
+    private record DependencyKey(
+            int fromClassId, int toClassId, String kind, Integer injectionPointId) {
+
+        private static DependencyKey of(DependencyRecord dependency) {
+            return new DependencyKey(dependency.fromClassId(), dependency.toClassId(),
+                    dependency.kind(), dependency.injectionPointId());
         }
     }
 }

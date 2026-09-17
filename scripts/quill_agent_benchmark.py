@@ -222,7 +222,7 @@ class SourceTools:
         if name == "git_history":
             command = [
                 "git", "log", f"-{arguments['limit']}", "--date=iso-strict",
-                "--format=%H%x09%ad%x09%s",
+                "--format=%H%x09%an%x09%ad%x09%s",
             ]
             if arguments["name_status"]:
                 command.append("--name-status")

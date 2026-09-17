@@ -117,6 +117,27 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
 
         self.assertEqual("OldGenerator.java", result)
 
+    def test_git_history_includes_author(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"],
+                           cwd=project, check=True)
+            subprocess.run(["git", "config", "user.name", "Benchmark Author"],
+                           cwd=project, check=True)
+            (project / "A.java").write_text("class A {}\n", encoding="utf-8")
+            subprocess.run(["git", "add", "A.java"], cwd=project, check=True)
+            subprocess.run(["git", "commit", "-qm", "initial"], cwd=project, check=True)
+
+            result = SourceTools(project, 1000).call("git_history", {
+                "path": "A.java", "limit": 10, "name_status": False,
+            })
+
+        fields = result.strip().split("\t")
+        self.assertEqual(4, len(fields))
+        self.assertEqual("Benchmark Author", fields[1])
+        self.assertEqual("initial", fields[3])
+
     def test_parses_fenced_json(self):
         self.assertEqual({"observed": {"x": True}},
                          parse_final_json('```json\n{"observed":{"x":true}}\n```'))

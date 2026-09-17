@@ -264,6 +264,31 @@ def latency_summary(values: list[float], errors: int = 0) -> dict[str, Any]:
     }
 
 
+def coverage_summary(responses: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize Quill payload compression without treating it as agent savings."""
+    metadata = []
+    for response in responses:
+        content = response.get("result", {}).get("structuredContent")
+        if isinstance(content, dict) and isinstance(content.get("_meta"), dict):
+            metadata.append(content["_meta"])
+    response_tokens = [value.get("response_tokens") for value in metadata
+                       if isinstance(value.get("response_tokens"), (int, float))]
+    coverage_tokens = [value.get("naive_tokens") for value in metadata
+                       if isinstance(value.get("naive_tokens"), (int, float))]
+    compression = [value.get("compression") for value in metadata
+                   if isinstance(value.get("compression"), (int, float))]
+    if not response_tokens or not coverage_tokens or not compression:
+        return {"coverage_samples": 0}
+    return {
+        "coverage_samples": min(len(response_tokens), len(coverage_tokens), len(compression)),
+        "response_tokens_p50": round(percentile(response_tokens, 0.50), 2),
+        "indexed_source_coverage_tokens_p50": round(percentile(coverage_tokens, 0.50), 2),
+        "payload_compression_factor_p50": round(percentile(compression, 0.50), 2),
+        "compression_baseline": "indexed_source_coverage",
+        "compression_is_agent_token_savings": False,
+    }
+
+
 def benchmark_mcp(command: list[str], project: Path, warmup: int,
                   samples_per_tool: int, concurrency: list[int],
                   timeout_seconds: int) -> dict[str, Any]:
@@ -298,6 +323,7 @@ def benchmark_mcp(command: list[str], project: Path, warmup: int,
         for name, tool_arguments in TOOLS:
             latencies = []
             errors = 0
+            responses = []
             for _ in range(samples_per_tool):
                 started = time.perf_counter()
                 client.send(next_id, "tools/call", {
@@ -308,8 +334,11 @@ def benchmark_mcp(command: list[str], project: Path, warmup: int,
                 latencies.append((time.perf_counter() - started) * 1000)
                 if "error" in response or response.get("result", {}).get("isError") is True:
                     errors += 1
+                else:
+                    responses.append(response)
                 next_id += 1
-            tools.append({"tool": name, **latency_summary(latencies, errors)})
+            tools.append({"tool": name, **latency_summary(latencies, errors),
+                          **coverage_summary(responses)})
 
         batches = []
         for size in concurrency:
@@ -402,11 +431,18 @@ def print_report(result: dict[str, Any], output: Path) -> None:
             f"{phase}={millis}ms" for phase, millis in timings.items()))
     print(f"Index: {result['index']['database_count']} DB, "
           f"{result['index']['size_mib']:.2f} MiB")
-    print("\ntool                  samples  p50(ms)  p95(ms)  max(ms)  errors")
+    print("\ntool                  samples  p50(ms)  p95(ms)  max(ms)  errors  "
+          "payload/coverage tokens  factor")
     for tool in result["mcp"]["tools"]:
+        payload = tool.get("response_tokens_p50", "n/a")
+        coverage = tool.get("indexed_source_coverage_tokens_p50", "n/a")
+        factor = tool.get("payload_compression_factor_p50", "n/a")
         print(f"{tool['tool']:<21} {tool['samples']:>7}  "
               f"{tool['p50_latency_ms']:>7.2f}  {tool['p95_latency_ms']:>7.2f}  "
-              f"{tool['max_latency_ms']:>7.2f}  {tool['errors']:>6}")
+              f"{tool['max_latency_ms']:>7.2f}  {tool['errors']:>6}  "
+              f"{str(payload) + '/' + str(coverage):>23}  {str(factor):>6}")
+    print("Payload compression compares the MCP response with indexed source coverage; "
+          "it is not measured agent token savings.")
     print("\nrequests  total(s)  req/s    p50(ms)  p95(ms)  max(ms)  errors")
     for batch in result["mcp"]["batches"]:
         print(f"{batch['concurrent_requests']:>8}  {batch['elapsed_seconds']:>8.3f}  "
@@ -445,7 +481,7 @@ def main() -> int:
             return cold["exit_code"] or 1
         database_count, size_bytes = index_size(project)
         result = {
-            "schema_version": 2,
+            "schema_version": 3,
             "measured_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "host": host_metadata(),
             "project": str(project),

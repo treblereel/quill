@@ -2,7 +2,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from quill_benchmark import (IndexSandbox, latency_summary, parse_concurrency,
+from quill_benchmark import (IndexSandbox, coverage_summary, latency_summary, parse_concurrency,
                              parse_phase_timings, percentile)
 
 
@@ -28,6 +28,28 @@ class QuillBenchmarkTest(unittest.TestCase):
             "max_latency_ms": 40.0,
             "errors": 1,
         }, summary)
+
+    def test_coverage_summary_names_the_source_coverage_baseline(self):
+        responses = [{"result": {"structuredContent": {"_meta": {
+            "response_tokens": value,
+            "naive_tokens": value * 10,
+            "compression": 10.0,
+        }}}} for value in (20, 10, 30)]
+
+        self.assertEqual({
+            "coverage_samples": 3,
+            "response_tokens_p50": 20,
+            "indexed_source_coverage_tokens_p50": 200,
+            "payload_compression_factor_p50": 10.0,
+            "compression_baseline": "indexed_source_coverage",
+            "compression_is_agent_token_savings": False,
+        }, coverage_summary(responses))
+
+    def test_coverage_summary_tolerates_error_responses(self):
+        self.assertEqual({"coverage_samples": 0}, coverage_summary([
+            {"result": {"isError": True}},
+            {"error": {"message": "failed"}},
+        ]))
 
     def test_parse_phase_timings(self):
         stderr = ("[quill] Indexing sample...\n"

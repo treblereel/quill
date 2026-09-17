@@ -35,6 +35,8 @@ final class ToolResponseSupport {
         metaNode.put("response_tokens", meta.responseTokens());
         metaNode.put("naive_tokens", meta.naiveTokens());
         metaNode.put("compression", meta.compression());
+        metaNode.put("compression_baseline", "indexed_source_coverage");
+        metaNode.put("compression_is_agent_token_savings", false);
         String projectRoot = IndexReader.getMetadata(jdbi).get("project_root");
         if (projectRoot != null) {
             ProjectIndexStore.readRecovery(Path.of(projectRoot)).ifPresent(recovery -> {

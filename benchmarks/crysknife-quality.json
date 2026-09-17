@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "name": "Crysknife architecture and index quality",
+  "project_revision": "1387cce2d244bdf33b8eec5a22ae6bea7143ee26",
+  "tasks": [
+    {
+      "id": "navigation-resolution-context",
+      "prompt": "Determine whether Navigation.navGraph resolves unambiguously and explain every candidate with its module.",
+      "expected": {
+        "status": "context_required",
+        "base_module": "ui/core",
+        "generated_module": "tests/j2cl-tests",
+        "generated_candidate_selected_without_context": false
+      }
+    },
+    {
+      "id": "bean-manager-coupling",
+      "prompt": "Measure BeanManager fan-in and distinguish handwritten from generated consumers.",
+      "expected": {
+        "total_dependents": 497,
+        "source_dependents": 15,
+        "generated_dependents": 482
+      }
+    },
+    {
+      "id": "constructor-only-dependency",
+      "prompt": "Find the static fan-in of BeanProcessorTask and verify constructor-only references are counted.",
+      "expected": {
+        "fan_in": 2,
+        "application_processor_constructor_reference": true
+      }
+    },
+    {
+      "id": "processor-service-descriptor",
+      "prompt": "Assess the current annotation-processor service descriptor and explain its risk.",
+      "expected": {
+        "lifecycle": "current",
+        "kind": "service_descriptor",
+        "high_risk": true
+      }
+    },
+    {
+      "id": "historical-hotspot-filtering",
+      "prompt": "Check whether deleted ScopedBeanGenerator and legacy TemplatedGenerator paths appear in default hotspot results.",
+      "expected": {
+        "deleted_paths_in_default_hotspots": false,
+        "deleted_paths_available_as_historical": true
+      }
+    }
+  ]
+}

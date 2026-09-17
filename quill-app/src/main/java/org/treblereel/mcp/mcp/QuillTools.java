@@ -34,7 +34,7 @@ public final class QuillTools {
 
     @Tool(structured = true, description = "Find CDI/Spring beans, producers, interceptors, or decorators. Returns DI and source context.")
     public String list_beans(
-            @ToolArg(description = "Class name filter (supports * wildcard)") Optional<String> class_name,
+            @ToolArg(description = "Short class name, FQCN, source path, or * wildcard filter") Optional<String> class_name,
             @ToolArg(description = "Scope filter, e.g. @ApplicationScoped or @Singleton") Optional<String> scope,
             @ToolArg(description = "Bean kind: CLASS, PRODUCER_METHOD, PRODUCER_FIELD, INTERCEPTOR, DECORATOR") Optional<String> kind,
             @ToolArg(description = "Build profile filter, e.g. dev") Optional<String> profile,

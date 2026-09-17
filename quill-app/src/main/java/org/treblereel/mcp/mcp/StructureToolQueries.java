@@ -92,6 +92,11 @@ final class StructureToolQueries {
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier, String module, String sourceSet,
             int limit, int offset) {
+        if (className != null && !className.contains("*")) {
+            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, className);
+            if (lookup.error() != null) return classLookupError(jdbi, lookup, className);
+            className = lookup.cls().className();
+        }
         Map<String, String> filter = new HashMap<>();
         if (className != null) filter.put("class_name", className);
         if (scope != null) filter.put("scope", scope);

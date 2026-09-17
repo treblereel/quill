@@ -131,6 +131,27 @@ class QuillToolsTest {
     }
 
     @Test
+    void getBeansResolvesShortClassName() throws Exception {
+        var tools = new QuillTools();
+        JsonNode shortName = JSON.readTree(tools.getBeans(
+                jdbi, "StripePaymentService", null, null, null, null));
+        JsonNode fqcn = JSON.readTree(tools.getBeans(
+                jdbi, "org.acme.StripePaymentService", null, null, null, null));
+
+        assertEquals(1, shortName.get("total").asInt());
+        assertEquals(fqcn.get("beans"), shortName.get("beans"));
+    }
+
+    @Test
+    void getBeansReturnsCandidatesForUnknownClassName() throws Exception {
+        JsonNode result = JSON.readTree(new QuillTools().getBeans(
+                jdbi, "PaymentServ", null, null, null, null));
+
+        assertEquals("Class not found", result.get("error").asText());
+        assertTrue(result.get("candidates").toString().contains("PaymentService"));
+    }
+
+    @Test
     void singleProjectQueryFailureReturnsStructuredToolError() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("DROP TABLE dependencies");

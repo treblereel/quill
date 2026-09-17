@@ -22,6 +22,8 @@ NUMERIC_FIELDS = (
     "requests",
     "manual_verification_steps",
     "source_fallback_count",
+    "source_first_count",
+    "quill_bypass_count",
 )
 
 
@@ -136,6 +138,8 @@ def score_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
             "incorrect_facts": incorrect,
             "missing_facts": missing,
             "source_fallbacks": actual_task.get("source_fallbacks", []),
+            "source_first_calls": actual_task.get("source_first_calls", []),
+            "quill_bypassed": actual_task.get("quill_bypassed", False),
             **measurements,
         })
 
@@ -163,6 +167,7 @@ def compare(with_quill: dict[str, Any], without_quill: dict[str, Any]) -> dict[s
     for field in ("fact_accuracy", "task_completion_rate", "duration_seconds",
                   "total_tokens", "uncached_tokens", "model_requests", "requests",
                   "manual_verification_steps", "source_fallback_count",
+                  "source_first_count", "quill_bypass_count",
                   "incorrect_facts", "missing_facts"):
         deltas[field] = round(left[field] - right[field], 4)
     return {
@@ -210,7 +215,8 @@ def percentile(values: list[float], fraction: float) -> float:
 def summarize_runs(scores: list[dict[str, Any]]) -> dict[str, Any]:
     fields = ("fact_accuracy", "task_completion_rate", "duration_seconds",
               "total_tokens", "uncached_tokens", "model_requests", "requests",
-              "manual_verification_steps", "source_fallback_count")
+              "manual_verification_steps", "source_fallback_count",
+              "source_first_count", "quill_bypass_count")
     summary: dict[str, Any] = {"run_count": len(scores), "metrics": {}}
     for field in fields:
         values = [score["totals"][field] for score in scores]
@@ -251,7 +257,7 @@ def print_report(report: dict[str, Any]) -> None:
     print(f"Task benchmark: {report['suite']}")
     if report.get("schema_version") == 2:
         print(f"paired runs: {report['run_count']}")
-        print("mode           accuracy median/p95  seconds median/p95  uncached median/p95  fallbacks")
+        print("mode           accuracy median/p95  seconds median/p95  uncached median/p95  fallback  source-first  bypass")
         for key in ("with_quill", "without_quill"):
             metrics = report[key]["summary"]["metrics"]
             print(f"{key:<14} "
@@ -261,9 +267,11 @@ def print_report(report: dict[str, Any]) -> None:
                   f"{metrics['duration_seconds']['p95']:<7.2f}  "
                   f"{metrics['uncached_tokens']['median']:>8.0f}/"
                   f"{metrics['uncached_tokens']['p95']:<8.0f}  "
-                  f"{metrics['source_fallback_count']['median']:>5.1f}")
+                  f"{metrics['source_fallback_count']['median']:>8.1f}  "
+                  f"{metrics['source_first_count']['median']:>12.1f}  "
+                  f"{metrics['quill_bypass_count']['median']:>6.1f}")
         return
-    print("mode           accuracy  complete  seconds  tokens  uncached  model req  tools  manual  fallback  wrong  missing")
+    print("mode           accuracy  complete  seconds  tokens  uncached  model req  tools  manual  fallback  source-first  bypass  wrong  missing")
     for key in ("with_quill", "without_quill"):
         totals = report[key]["totals"]
         print(f"{key:<14} {totals['fact_accuracy'] * 100:>7.1f}%  "
@@ -272,6 +280,8 @@ def print_report(report: dict[str, Any]) -> None:
               f"{totals['uncached_tokens']:>8.0f}  {totals['model_requests']:>9.0f}  "
               f"{totals['requests']:>5.0f}  {totals['manual_verification_steps']:>6.0f}  "
               f"{totals['source_fallback_count']:>8.0f}  "
+              f"{totals['source_first_count']:>12.0f}  "
+              f"{totals['quill_bypass_count']:>6.0f}  "
               f"{totals['incorrect_facts']:>5.0f}  {totals['missing_facts']:>7.0f}")
 
 

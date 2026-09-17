@@ -5,7 +5,7 @@ import subprocess
 
 from quill_agent_benchmark import (ResponsesClient, SourceTools, json_type, parse_final_json,
                                    quill_outcome_flags, run_agent, selected_quill_tools,
-                                   source_fallbacks)
+                                   source_fallbacks, tool_usage_diagnostics)
 
 
 class FakeResponses:
@@ -59,6 +59,8 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
         self.assertEqual(1, result["requests"])
         self.assertEqual(1, result["manual_verification_steps"])
         self.assertEqual(0, result["source_fallback_count"])
+        self.assertEqual(1, result["source_first_count"])
+        self.assertFalse(result["quill_bypassed"])
         self.assertEqual("first", transport.payloads[1]["previous_response_id"])
         self.assertEqual(6, result["tool_catalog_count"])
         self.assertGreater(result["tool_catalog_bytes"], 0)
@@ -158,6 +160,30 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
         self.assertEqual("quill_get_dependencies", fallbacks[0]["quill_tool"])
         self.assertEqual("source_search", fallbacks[0]["source_tool"])
         self.assertEqual(flags, fallbacks[0]["quill_outcome_flags"])
+
+    def test_reports_source_first_and_quill_bypass_separately(self):
+        trace = [
+            {"round": 1, "tool": "source_search", "provider": "source"},
+            {"round": 2, "tool": "read_file", "provider": "source"},
+        ]
+
+        diagnostics = tool_usage_diagnostics(trace, quill_advertised=True)
+
+        self.assertEqual(2, diagnostics["source_first_count"])
+        self.assertEqual(0, diagnostics["quill_call_count"])
+        self.assertTrue(diagnostics["quill_bypassed"])
+
+    def test_source_before_quill_is_source_first_but_not_bypass(self):
+        trace = [
+            {"round": 1, "tool": "source_search", "provider": "source"},
+            {"round": 2, "tool": "quill_get_dependencies", "provider": "quill"},
+            {"round": 3, "tool": "read_file", "provider": "source"},
+        ]
+
+        diagnostics = tool_usage_diagnostics(trace, quill_advertised=True)
+
+        self.assertEqual(1, diagnostics["source_first_count"])
+        self.assertFalse(diagnostics["quill_bypassed"])
 
 
 if __name__ == "__main__":

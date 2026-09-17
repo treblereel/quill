@@ -63,6 +63,10 @@ every Responses API call:
 - `source_fallback_count` and `source_fallbacks` identify source searches or file reads performed
   after a Quill call, including the preceding Quill tool and non-sensitive response flags such as
   `not_found`, `stale`, `truncated`, `unknown`, or `unsupported`;
+- `source_first_count` and `source_first_calls` identify source tools used before the first Quill
+  call, rather than incorrectly counting them as fallbacks;
+- `quill_bypassed` and `quill_bypass_count` identify tasks where Quill tools were advertised but
+  the agent never invoked one;
 - `requests` counts source and MCP tool calls;
 - `manual_verification_steps` counts direct source-file reads.
 

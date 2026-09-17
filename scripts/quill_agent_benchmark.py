@@ -426,6 +426,28 @@ def source_fallbacks(tool_trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return fallbacks
 
 
+def tool_usage_diagnostics(tool_trace: list[dict[str, Any]],
+                           quill_advertised: bool) -> dict[str, Any]:
+    """Classify source-first calls and tasks that never invoke advertised Quill tools."""
+    first_quill = next((index for index, trace in enumerate(tool_trace)
+                        if trace.get("provider") == "quill"), None)
+    source_first = [
+        {"round": trace.get("round"), "source_tool": trace.get("tool")}
+        for index, trace in enumerate(tool_trace)
+        if trace.get("provider") == "source"
+        and (first_quill is None or index < first_quill)
+    ]
+    quill_calls = sum(trace.get("provider") == "quill" for trace in tool_trace)
+    source_calls = sum(trace.get("provider") == "source" for trace in tool_trace)
+    return {
+        "quill_call_count": quill_calls,
+        "source_call_count": source_calls,
+        "source_first_count": len(source_first),
+        "source_first_calls": source_first,
+        "quill_bypassed": bool(quill_advertised and quill_calls == 0),
+    }
+
+
 class ResponsesClient:
     def __init__(self, api_key: str, api_base: str, timeout: int,
                  transport: Callable[[dict[str, Any]], dict[str, Any]] | None = None):
@@ -598,6 +620,7 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
         raise RuntimeError(f"Task {task.get('id')} exceeded 30 model requests")
     parsed = parse_final_json(final_text)
     fallbacks = source_fallbacks(tool_trace)
+    usage_diagnostics = tool_usage_diagnostics(tool_trace, bool(quill_tools))
     return {
         "id": task["id"],
         "observed": parsed["observed"],
@@ -615,6 +638,8 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
         "tool_trace": tool_trace,
         "source_fallback_count": len(fallbacks),
         "source_fallbacks": fallbacks,
+        **usage_diagnostics,
+        "quill_bypass_count": int(usage_diagnostics["quill_bypassed"]),
         "requests": source.calls + (quill.calls if quill else 0),
         "manual_verification_steps": source.manual_verification_steps,
     }

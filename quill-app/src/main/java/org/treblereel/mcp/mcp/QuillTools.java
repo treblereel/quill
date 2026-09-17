@@ -120,6 +120,15 @@ public final class QuillTools {
                 p.jdbi(), clamp(commits.orElse(10), 1, 200)));
     }
 
+    @Tool(structured = true, description = "Inspect ordered META-INF/services provider declarations captured at indexing time. Use for ServiceLoader and annotation-processor pipelines instead of reading descriptors and reconstructing provider order manually. "
+            + "Returns: {descriptors: [{file, service, providers: [{provider, line, position}], provider_count, order_can_affect_execution, order_sensitivity, reason}], showing, _meta}")
+    public String inspect_service_descriptors(
+            @ToolArg(description = "Optional service FQCN or short name, e.g. javax.annotation.processing.Processor") Optional<String> service,
+            @ToolArg(description = "Project name to query (from get_overview). Omit to query all projects.") Optional<String> project) {
+        return forAllProjects(project.orElse(null),
+                p -> queries.inspectServiceDescriptors(p.jdbi(), service.orElse(null)));
+    }
+
     @Tool(structured = true, description = "Get a high-level project overview. Call this FIRST when starting work on a project — gives framework, class/bean counts, architecture hubs, and known problems. "
             + "Returns: {project: {framework, classes, beans, total_source_tokens, indexed_at, last_commit, dependency_index, dependency_index_detail?, service_descriptors, service_registrations}, "
             + "beans_by_scope: {...}, beans_by_kind: {...}, "
@@ -205,6 +214,10 @@ public final class QuillTools {
 
     String resolveEntities(Jdbi jdbi, List<String> targets) {
         return queries.resolveEntities(jdbi, targets);
+    }
+
+    String inspectServiceDescriptors(Jdbi jdbi, String service) {
+        return queries.inspectServiceDescriptors(jdbi, service);
     }
 
     String getCoChanges(Jdbi jdbi, String target, int limit) {

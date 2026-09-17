@@ -71,7 +71,15 @@ class QuillToolsTest {
         IndexWriter.write(jdbi, classes, beans, ips, deps,
                 Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "abc1234",
                         "dependency_index", "degraded",
-                        "dependency_index_detail", "1/2 modules resolved"));
+                        "dependency_index_detail", "1/2 modules resolved",
+                        "service_registrations_detail", """
+                                [{"serviceType":"javax.annotation.processing.Processor",
+                                  "providerType":"org.acme.FirstProcessor",
+                                  "descriptorPath":"processor/src/main/resources/META-INF/services/javax.annotation.processing.Processor","line":1},
+                                 {"serviceType":"javax.annotation.processing.Processor",
+                                  "providerType":"org.acme.SecondProcessor",
+                                  "descriptorPath":"processor/src/main/resources/META-INF/services/javax.annotation.processing.Processor","line":3}]
+                                """));
 
         var gitCommits = List.of(
                 new GitCommitRecord(1, "aaa1111aaa1111aaa1111aaa1111aaa1111aaa111", "aaa1111",
@@ -212,6 +220,20 @@ class QuillToolsTest {
         assertEquals("src/main/java/org/acme/DeletedGenerator.java",
                 deleted.get("historical_paths").get(0).get("file").asText());
         assertEquals("not_found", result.get("entities").get(2).get("resolution").asText());
+    }
+
+    @Test
+    void inspectServiceDescriptorsPreservesProviderOrder() throws Exception {
+        JsonNode result = JSON.readTree(new QuillTools().inspectServiceDescriptors(
+                jdbi, "Processor"));
+        JsonNode descriptor = result.get("descriptors").get(0);
+        assertEquals(2, descriptor.get("provider_count").asInt());
+        assertEquals("org.acme.FirstProcessor",
+                descriptor.get("providers").get(0).get("provider").asText());
+        assertEquals(1, descriptor.get("providers").get(0).get("position").asInt());
+        assertEquals(3, descriptor.get("providers").get(1).get("line").asInt());
+        assertTrue(descriptor.get("order_can_affect_execution").asBoolean());
+        assertEquals("potentially_significant", descriptor.get("order_sensitivity").asText());
     }
 
     @Test

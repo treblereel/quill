@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,6 +50,8 @@ import org.treblereel.mcp.model.ResolutionStatus;
 import org.treblereel.mcp.model.ResolutionTrace;
 
 public class ProjectInitializer {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     public enum FailureReason {
         LOCK_FAILED,
@@ -391,6 +395,7 @@ public class ProjectInitializer {
         List<ExternalDepRecord> externalDeps;
         int serviceDescriptorCount;
         int serviceRegistrationCount;
+        List<ServiceProviderScanner.Registration> serviceRegistrations;
         List<ExternalDepRecord> bytecodeServiceExternalDeps = new ArrayList<>();
         GitAnalyzer.GitAnalysisResult gitResult;
         try (BackgroundTask<GitAnalyzer.GitAnalysisResult> gitTask =
@@ -415,6 +420,7 @@ public class ProjectInitializer {
                     ServiceProviderScanner.scan(root, moduleDirectories);
             serviceDescriptorCount = services.descriptorCount();
             serviceRegistrationCount = services.registrations().size();
+            serviceRegistrations = services.registrations();
             ServiceProviderScanner.ResolvedDependencies serviceDependencies =
                     ServiceProviderScanner.resolve(services, classNameToSqliteId);
             remappedDeps.addAll(serviceDependencies.internal());
@@ -494,6 +500,7 @@ public class ProjectInitializer {
                 Integer.toString(scanResult.cacheShards()));
         metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
+        metadata.put("service_registrations_detail", toJson(serviceRegistrations));
         metadata.put("framework", isSpring && isCdi ? "Mixed"
                 : isSpring ? "Spring" : isCdi ? "CDI" : "Plain");
         metadata.put("dependency_index", depResult.status().name().toLowerCase());
@@ -606,6 +613,14 @@ public class ProjectInitializer {
                 + (gitResult.isEmpty() ? "" : ", " + gitResult.commits().size() + " git commits")
                 + depStatus + ".");
         return InitializationResult.success(startedAtNanos);
+    }
+
+    private static String toJson(Object value) {
+        try {
+            return JSON.writeValueAsString(value);
+        } catch (JsonProcessingException error) {
+            throw new IllegalStateException("Could not serialize index metadata", error);
+        }
     }
 
     static CodexConfigInstaller.Result ensureCodexConfig(Path root, boolean indexOnly) {

@@ -12,6 +12,7 @@ public final class QuillToolQueries {
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
     private final ExternalDependencyQueries externalDependencies =
             new ExternalDependencyQueries();
+    private final ServiceDescriptorQueries serviceDescriptors = new ServiceDescriptorQueries();
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier) {
@@ -80,5 +81,9 @@ public final class QuillToolQueries {
 
     String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {
         return externalDependencies.getExternalDeps(jdbi, target, library, limit);
+    }
+
+    String inspectServiceDescriptors(Jdbi jdbi, String service) {
+        return serviceDescriptors.inspect(jdbi, service);
     }
 }

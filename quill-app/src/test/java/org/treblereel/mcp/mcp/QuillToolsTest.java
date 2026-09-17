@@ -713,6 +713,47 @@ class QuillToolsTest {
     }
 
     @Test
+    void structuralQueriesExposeDuplicateOccurrencesAndFilterByOccurrenceModule()
+            throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_occurrences
+                      (id, class_id, class_name, module, source_set, output_directory,
+                       class_file, source_file, origin)
+                    VALUES (?, 3, 'org.acme.StripePaymentService', ?, 'main', ?, ?, ?, ?)""",
+                    1, "app-one", "app-one/target/classes",
+                    "app-one/target/classes/org/acme/StripePaymentService.class",
+                    "app-one/src/main/java/org/acme/StripePaymentService.java", "source");
+            handle.execute("""
+                    INSERT INTO class_occurrences
+                      (id, class_id, class_name, module, source_set, output_directory,
+                       class_file, source_file, origin)
+                    VALUES (?, 3, 'org.acme.StripePaymentService', ?, 'main', ?, ?, ?, ?)""",
+                    2, "app-two", "app-two/target/classes",
+                    "app-two/target/classes/org/acme/StripePaymentService.class",
+                    "app-two/target/generated-sources/annotations/org/acme/StripePaymentService.java",
+                    "generated");
+        });
+
+        QuillToolQueries queries = new QuillToolQueries();
+        JsonNode search = JSON.readTree(
+                queries.searchClasses(jdbi, "StripePaymentService", "app-two", "main", 10));
+        JsonNode found = search.path("classes").get(0);
+        assertEquals(2, found.path("occurrence_count").asInt());
+        assertEquals("app-one", found.path("class_occurrences").get(0).path("module").asText());
+        assertEquals("app-two", found.path("class_occurrences").get(1).path("module").asText());
+
+        JsonNode beans = JSON.readTree(queries.getBeans(jdbi, "*StripePaymentService*",
+                null, null, null, null, "app-two", "main", 10));
+        assertEquals(1, beans.path("total").asInt());
+        assertEquals(2, beans.path("beans").get(0).path("occurrence_count").asInt());
+
+        JsonNode dependencies = JSON.readTree(
+                queries.getDependencies(jdbi, "StripePaymentService", "both", 1));
+        assertEquals(2, dependencies.path("occurrence_count").asInt());
+    }
+
+    @Test
     void documentationOnlyWorktreeDoesNotMakeStructureStale() throws Exception {
         Path repository = tempDir.resolve("docs-repository");
         Path source = repository.resolve("src/main/java/example/App.java");

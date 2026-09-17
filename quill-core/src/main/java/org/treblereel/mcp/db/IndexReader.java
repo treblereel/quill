@@ -42,8 +42,18 @@ public final class IndexReader {
                 if (filter.containsKey("scope")) sb.append(" AND b.scope = :scope");
                 if (filter.containsKey("kind")) sb.append(" AND b.kind = :kind");
                 if (filter.containsKey("qualifier")) sb.append(" AND b.qualifiers LIKE :qualifier");
-                if (filter.containsKey("module")) sb.append(" AND c.module = :module");
-                if (filter.containsKey("source_set")) sb.append(" AND c.source_set = :sourceSet");
+                if (filter.containsKey("module")) {
+                    sb.append(" AND (EXISTS (SELECT 1 FROM class_occurrences co "
+                            + "WHERE co.class_id = c.id AND co.module = :module) OR "
+                            + "(NOT EXISTS (SELECT 1 FROM class_occurrences co "
+                            + "WHERE co.class_id = c.id) AND c.module = :module))");
+                }
+                if (filter.containsKey("source_set")) {
+                    sb.append(" AND (EXISTS (SELECT 1 FROM class_occurrences co "
+                            + "WHERE co.class_id = c.id AND co.source_set = :sourceSet) OR "
+                            + "(NOT EXISTS (SELECT 1 FROM class_occurrences co "
+                            + "WHERE co.class_id = c.id) AND c.source_set = :sourceSet))");
+                }
             }
 
             var q = h.createQuery(sb.toString());
@@ -248,8 +258,14 @@ public final class IndexReader {
             String module, String sourceSet, int limit) {
         String sql = "SELECT * FROM classes WHERE class_name LIKE :pattern "
                 + "AND lifecycle = 'current' AND origin != 'orphan_output' "
-                + (module != null ? "AND module = :module " : "")
-                + (sourceSet != null ? "AND source_set = :sourceSet " : "")
+                + (module != null ? "AND (EXISTS (SELECT 1 FROM class_occurrences co "
+                        + "WHERE co.class_id = classes.id AND co.module = :module) OR "
+                        + "(NOT EXISTS (SELECT 1 FROM class_occurrences co "
+                        + "WHERE co.class_id = classes.id) AND classes.module = :module)) " : "")
+                + (sourceSet != null ? "AND (EXISTS (SELECT 1 FROM class_occurrences co "
+                        + "WHERE co.class_id = classes.id AND co.source_set = :sourceSet) OR "
+                        + "(NOT EXISTS (SELECT 1 FROM class_occurrences co "
+                        + "WHERE co.class_id = classes.id) AND classes.source_set = :sourceSet)) " : "")
                 + "ORDER BY class_name LIMIT :limit";
         String pattern = namePattern.replace("*", "%");
         if (!pattern.contains("%")) {
@@ -327,6 +343,22 @@ public final class IndexReader {
         });
     }
 
+    public static Map<Integer, List<ClassOccurrenceRecord>> findClassOccurrencesByClassIds(
+            Jdbi jdbi, Collection<Integer> classIds) {
+        if (classIds == null || classIds.isEmpty()) return Map.of();
+        return jdbi.withHandle(h -> {
+            Map<Integer, List<ClassOccurrenceRecord>> result = new LinkedHashMap<>();
+            h.createQuery("SELECT * FROM class_occurrences WHERE class_id IN (<ids>) "
+                            + "ORDER BY class_id, module, source_set, output_directory, class_file")
+                    .bindList("ids", new LinkedHashSet<>(classIds))
+                    .map((rs, ctx) -> mapClassOccurrence(rs))
+                    .forEach(record -> result.computeIfAbsent(record.classId(),
+                            ignored -> new ArrayList<>()).add(record));
+            result.replaceAll((ignored, values) -> List.copyOf(values));
+            return result;
+        });
+    }
+
     private static ClassRecord mapClass(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new ClassRecord(
                 rs.getInt("id"), rs.getString("class_name"), rs.getString("kind"),
@@ -336,6 +368,15 @@ public final class IndexReader {
                 rs.getObject("file_id") != null ? rs.getInt("file_id") : null,
                 rs.getString("origin"), rs.getString("lifecycle"),
                 rs.getString("module"), rs.getString("source_set"));
+    }
+
+    private static ClassOccurrenceRecord mapClassOccurrence(java.sql.ResultSet rs)
+            throws java.sql.SQLException {
+        return new ClassOccurrenceRecord(
+                rs.getInt("id"), rs.getInt("class_id"), rs.getString("class_name"),
+                rs.getString("module"), rs.getString("source_set"),
+                rs.getString("output_directory"), rs.getString("class_file"),
+                rs.getString("source_file"), rs.getString("origin"));
     }
 
     private static FileRecord mapFile(java.sql.ResultSet rs) throws java.sql.SQLException {

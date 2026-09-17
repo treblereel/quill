@@ -18,6 +18,7 @@ import java.util.function.IntConsumer;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.BeanRecord;
+import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
@@ -41,6 +42,9 @@ final class StructureToolQueries {
         List<ClassRecord> limited = hasMore ? classes.subList(0, limit) : classes;
         Map<Integer, BeanRecord> beansByClass = IndexReader.findBeansByClassIds(
                 jdbi, limited.stream().map(ClassRecord::id).toList());
+        Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
+                IndexReader.findClassOccurrencesByClassIds(
+                        jdbi, limited.stream().map(ClassRecord::id).toList());
 
         ObjectNode root = JSON.createObjectNode();
         ArrayNode arr = root.putArray("classes");
@@ -56,6 +60,7 @@ final class StructureToolQueries {
             BeanRecord bean = beansByClass.get(value.id());
             if (bean != null) node.put("scope", bean.scope());
             node.put("source_tokens", value.sourceTokens());
+            appendOccurrences(node, occurrencesByClass.get(value.id()));
             naiveTokens += value.sourceTokens();
         }
         root.put("showing", limited.size());
@@ -86,6 +91,9 @@ final class StructureToolQueries {
         List<BeanRecord> limited = beans.size() > limit ? beans.subList(0, limit) : beans;
         Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(
                 jdbi, limited.stream().map(BeanRecord::classId).toList());
+        Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
+                IndexReader.findClassOccurrencesByClassIds(
+                        jdbi, limited.stream().map(BeanRecord::classId).toList());
         ObjectNode root = JSON.createObjectNode();
         ArrayNode arr = root.putArray("beans");
         int naiveTokens = 0;
@@ -106,6 +114,7 @@ final class StructureToolQueries {
             if (beanClass != null) {
                 node.put("source", beanClass.sourceFile() + ":" + beanClass.sourceLine());
                 appendContext(node, beanClass);
+                appendOccurrences(node, occurrencesByClass.get(beanClass.id()));
                 naiveTokens += beanClass.sourceTokens();
             }
         }
@@ -125,6 +134,8 @@ final class StructureToolQueries {
         root.put("origin", cls.origin());
         root.put("lifecycle", cls.lifecycle());
         appendContext(root, cls);
+        appendOccurrences(root, IndexReader.findClassOccurrencesByClassIds(
+                jdbi, List.of(cls.id())).get(cls.id()));
         ObjectNode metrics = root.putObject("metrics");
         metrics.put("fan_in", IndexReader.countDependents(jdbi, cls.id()));
         metrics.put("incoming_edges", IndexReader.countDependencyEdges(jdbi, cls.id(), true));
@@ -157,6 +168,13 @@ final class StructureToolQueries {
         ClassRecord current = IndexReader.findClassById(jdbi, classId).orElse(null);
         List<DependencyRecord> dependencies = IndexReader.findDependencies(
                 jdbi, classId, direction);
+        Set<Integer> relatedClassIds = new HashSet<>();
+        for (DependencyRecord dependency : dependencies) {
+            relatedClassIds.add(dependency.fromClassId() == classId
+                    ? dependency.toClassId() : dependency.fromClassId());
+        }
+        Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
+                IndexReader.findClassOccurrencesByClassIds(jdbi, relatedClassIds);
         ArrayNode dependsOn = node.putArray("depends_on");
         ArrayNode dependedBy = node.putArray("depended_by");
         for (DependencyRecord dependency : dependencies) {
@@ -169,6 +187,7 @@ final class StructureToolQueries {
                     child.put("occurrences", dependency.occurrenceCount());
                     if (current != null) appendEvidence(child, current, dependency);
                     appendContext(child, value);
+                    appendOccurrences(child, occurrencesByClass.get(value.id()));
                     tokenAccum.accept(value.sourceTokens());
                     if (depth > 1 && visited.add(value.id())) {
                         expandDependencies(jdbi, value.id(), direction, depth - 1, child,
@@ -185,6 +204,7 @@ final class StructureToolQueries {
                     child.put("occurrences", dependency.occurrenceCount());
                     appendEvidence(child, value, dependency);
                     appendContext(child, value);
+                    appendOccurrences(child, occurrencesByClass.get(value.id()));
                     tokenAccum.accept(value.sourceTokens());
                     if (depth > 1 && visited.add(value.id())) {
                         expandDependencies(jdbi, value.id(), direction, depth - 1, child,
@@ -204,6 +224,24 @@ final class StructureToolQueries {
             item.put("file", caller.sourceFile());
             item.put("line", line);
             item.put("kind", dependency.kind());
+        }
+    }
+
+    private static void appendOccurrences(
+            ObjectNode node, List<ClassOccurrenceRecord> occurrences) {
+        if (occurrences == null || occurrences.size() < 2) return;
+        node.put("occurrence_count", occurrences.size());
+        ArrayNode values = node.putArray("class_occurrences");
+        for (ClassOccurrenceRecord occurrence : occurrences) {
+            ObjectNode value = values.addObject();
+            value.put("module", occurrence.module());
+            value.put("source_set", occurrence.sourceSet());
+            value.put("origin", occurrence.origin());
+            value.put("output_directory", occurrence.outputDirectory());
+            value.put("class_file", occurrence.classFile());
+            if (occurrence.sourceFile() != null) {
+                value.put("source_file", occurrence.sourceFile());
+            }
         }
     }
 

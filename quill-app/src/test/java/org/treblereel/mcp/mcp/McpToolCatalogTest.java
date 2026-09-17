@@ -213,6 +213,19 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void implementationDiscoveryDoesNotExposeAmbiguousOccurrenceFilters() {
+        AsyncToolSpecification implementations = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1)).stream()
+                .filter(candidate -> candidate.tool().name().equals("find_implementations"))
+                .findFirst().orElseThrow();
+
+        String schema = implementations.tool().inputSchema().toString();
+        assertTrue(!schema.contains("\"module\""), schema);
+        assertTrue(!schema.contains("\"source_set\""), schema);
+    }
+
+    @Test
     void unconfiguredQuillProjectIsAnMcpToolError() {
         QuillTools tools = new QuillTools(new ProjectRegistry());
         AsyncToolSpecification overview = McpToolCatalog.create(

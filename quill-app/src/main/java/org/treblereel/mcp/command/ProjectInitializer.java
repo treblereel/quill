@@ -269,7 +269,9 @@ public class ProjectInitializer {
     private static InitializationResult initializeLockedDetailed(
             Path root, boolean indexOnly, boolean compiledBeforeIndex, Path incrementalBase,
             long startedAtNanos, PhaseTimings timings) {
-        List<Path> classesDirs = ProjectLayout.findClassesDirs(root, true);
+        ProjectLayout.ClassesDiscovery classesDiscovery =
+                ProjectLayout.discoverClassesDirs(root, true);
+        List<Path> classesDirs = classesDiscovery.classesDirectories();
         timings.finish("class_discovery");
 
         if (classesDirs.isEmpty()) {
@@ -512,6 +514,9 @@ public class ProjectInitializer {
                 Integer.toString(initialWorktree.structuralChanges().size()));
         metadata.put("compiled_before_index", Boolean.toString(compiledBeforeIndex));
         metadata.put("structure_scope", "compiled_snapshot");
+        metadata.put("module_discovery_scope", classesDiscovery.moduleScope());
+        metadata.put("module_discovery_complete",
+                Boolean.toString(classesDiscovery.complete()));
         metadata.put("application_index_cache_hits",
                 Integer.toString(scanResult.cacheHits()));
         metadata.put("application_index_cache_shards",

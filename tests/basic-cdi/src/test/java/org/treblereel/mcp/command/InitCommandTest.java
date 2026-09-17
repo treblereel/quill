@@ -57,6 +57,8 @@ class InitCommandTest {
         assertEquals(PROJECT_ROOT.toString(), meta.get("project_root"));
         assertNotNull(meta.get("dependency_index"));
         assertNotNull(meta.get("dependency_index_detail"));
+        assertEquals("maven_reactor", meta.get("module_discovery_scope"));
+        assertEquals("true", meta.get("module_discovery_complete"));
     }
 
     @Test

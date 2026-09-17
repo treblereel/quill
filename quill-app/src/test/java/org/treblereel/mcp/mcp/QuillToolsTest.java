@@ -75,6 +75,8 @@ class QuillToolsTest {
                         "git_scanned_commits", "3",
                         "git_repository_commits", "3",
                         "git_history_complete", "true",
+                        "module_discovery_scope", "maven_reactor",
+                        "module_discovery_complete", "true",
                         "service_registrations_detail", """
                                 [{"serviceType":"javax.annotation.processing.Processor",
                                   "providerType":"org.acme.FirstProcessor",
@@ -939,6 +941,11 @@ class QuillToolsTest {
         assertEquals(List.of("checkout-one", "checkout-two"),
                 result.path("generated_modules").valueStream().map(JsonNode::asText).toList());
         assertTrue(result.path("selection_depends_on_application_context").asBoolean());
+        assertEquals("maven_reactor",
+                result.path("index_scope").path("module_discovery").asText());
+        assertTrue(result.path("index_scope").path("complete").asBoolean());
+        assertTrue(result.path("index_scope")
+                .path("excludes_undeclared_project_directories").asBoolean());
         assertEquals("org.acme.StripePaymentService",
                 result.path("implementations").get(0).path("class").asText());
         assertEquals(2, result.path("implementations").get(0)

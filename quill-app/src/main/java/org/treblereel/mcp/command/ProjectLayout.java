@@ -23,9 +23,20 @@ import org.treblereel.mcp.core.MavenProjectDiscovery;
 /** Discovers compiled project layout and fingerprints the build inputs it represents. */
 final class ProjectLayout {
 
+    record ClassesDiscovery(
+            List<Path> classesDirectories, String moduleScope, boolean complete) {
+        ClassesDiscovery {
+            classesDirectories = List.copyOf(classesDirectories);
+        }
+    }
+
     private ProjectLayout() {}
 
     static List<Path> findClassesDirs(Path root, boolean refreshGradleClasspath) {
+        return discoverClassesDirs(root, refreshGradleClasspath).classesDirectories();
+    }
+
+    static ClassesDiscovery discoverClassesDirs(Path root, boolean refreshGradleClasspath) {
         BuildSystem buildSystem = BuildSystem.detect(root);
         if (buildSystem == BuildSystem.MAVEN) {
             MavenProjectDiscovery.Discovery discovery = MavenProjectDiscovery.discover(root);
@@ -37,7 +48,8 @@ final class ProjectLayout {
             if (!discovery.complete()) {
                 result.addAll(scanClassesDirs(root, path -> path.endsWith("target/classes")));
             }
-            return List.copyOf(result);
+            return new ClassesDiscovery(
+                    List.copyOf(result), "maven_reactor", discovery.complete());
         }
 
         GradleProjectDiscovery.Discovery discovery = refreshGradleClasspath
@@ -49,7 +61,8 @@ final class ProjectLayout {
         if (!discovery.complete()) {
             result.addAll(scanClassesDirs(root, ProjectLayout::isGradleMainClassesDir));
         }
-        return List.copyOf(result);
+        return new ClassesDiscovery(
+                List.copyOf(result), "gradle_multiproject", discovery.complete());
     }
 
     static List<Path> findSourceRoots(List<Path> moduleDirectories) {

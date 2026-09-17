@@ -272,6 +272,16 @@ final class StructureToolQueries {
         root.set("generated_modules", JSON.valueToTree(summary.generatedModules()));
         root.put("selection_depends_on_application_context",
                 summary.occurrenceCount() > 1);
+        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        ObjectNode scope = root.putObject("index_scope");
+        scope.put("module_discovery",
+                metadata.getOrDefault("module_discovery_scope", "unknown"));
+        scope.put("complete", Boolean.parseBoolean(
+                metadata.getOrDefault("module_discovery_complete", "false")));
+        scope.put("compiled_outputs_only", true);
+        scope.put("excludes_undeclared_project_directories",
+                Boolean.parseBoolean(
+                        metadata.getOrDefault("module_discovery_complete", "false")));
 
         ArrayNode array = root.putArray("implementations");
         int naiveTokens = base.sourceTokens();

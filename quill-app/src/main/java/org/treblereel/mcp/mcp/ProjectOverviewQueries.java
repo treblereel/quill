@@ -43,6 +43,10 @@ final class ProjectOverviewQueries {
         if (meta.containsKey("dependency_index_detail")) {
             project.put("dependency_index_detail", meta.get("dependency_index_detail"));
         }
+        project.put("service_descriptors",
+                Integer.parseInt(meta.getOrDefault("service_descriptors", "0")));
+        project.put("service_registrations",
+                Integer.parseInt(meta.getOrDefault("service_registrations", "0")));
 
         ObjectNode scopeNode = root.putObject("beans_by_scope");
         IndexReader.countBeansByScope(jdbi).forEach(scopeNode::put);

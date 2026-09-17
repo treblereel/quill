@@ -102,6 +102,20 @@ class AnnotationProcessingIndexTest {
     }
 
     @Test
+    void indexesServiceDescriptorProviderSemantics() {
+        var provider = IndexReader.findClassByName(jdbi,
+                "org.treblereel.mcp.fixture.processor.FirstRoundProcessor")
+                .orElseThrow();
+
+        assertTrue(IndexReader.findExternalDeps(jdbi, provider.id()).stream()
+                .anyMatch(dependency -> dependency.externalType()
+                                .equals("javax.annotation.processing.Processor")
+                        && dependency.usageKind().equals("SERVICE_PROVIDES")));
+        assertEquals("1", IndexReader.getMetadata(jdbi).get("service_descriptors"));
+        assertEquals("2", IndexReader.getMetadata(jdbi).get("service_registrations"));
+    }
+
+    @Test
     void assessesAnnotationProcessorServiceDescriptorAsHighRiskFile() throws Exception {
         var result = JSON.readTree(new QuillTools().getRisk(jdbi,
                 "processor/src/main/resources/META-INF/services/"

@@ -27,6 +27,10 @@ Quill scans Maven `target/classes` and Gradle `build/classes/*/main` directories
 compiled `.class` files, builds a [Jandex](https://smallrye.io/jandex/) index, and
 resolves CDI or Spring dependency injection directly from bytecode metadata. Quill
 itself does not use or start Quarkus; the target framework is detected automatically.
+It also recognizes project-local `META-INF/services` registrations, JPMS
+`provides ... with ...` declarations, and direct `ServiceLoader.load(Service.class)`
+calls. These appear in dependency results as `SERVICE_PROVIDES` and
+`SERVICE_CONSUMES` edges without requiring another bytecode pass.
 The result is stored as an immutable SQLite generation under `.quill/`; `refs.json`
 atomically points each commit and branch at its active generation. This lets an MCP
 request finish reading the previous snapshot while `quill update` publishes the next

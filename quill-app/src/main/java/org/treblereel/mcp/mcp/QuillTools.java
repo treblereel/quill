@@ -110,7 +110,7 @@ public final class QuillTools {
     }
 
     @Tool(structured = true, description = "Get a high-level project overview. Call this FIRST when starting work on a project — gives framework, class/bean counts, architecture hubs, and known problems. "
-            + "Returns: {project: {framework, classes, beans, total_source_tokens, indexed_at, last_commit, dependency_index, dependency_index_detail?}, "
+            + "Returns: {project: {framework, classes, beans, total_source_tokens, indexed_at, last_commit, dependency_index, dependency_index_detail?, service_descriptors, service_registrations}, "
             + "beans_by_scope: {...}, beans_by_kind: {...}, "
             + "architecture_hubs: [{class, dependents, is_bean}], "
             + "problems: {unsatisfied_count, unsatisfied_injection_points_sample: [{bean, field, type}], ambiguous_count, ambiguous_injection_points_sample: [...]}, "

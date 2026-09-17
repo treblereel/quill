@@ -12,6 +12,7 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.ModuleVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
@@ -86,14 +87,18 @@ public final class BytecodeDependencyScanner {
         public MethodVisitor visitMethod(int access, String name, String descriptor,
                 String signature, String[] exceptions) {
             return new MethodVisitor(Opcodes.ASM9) {
+                private Type directClassLiteral;
+
                 @Override
                 public void visitTypeInsn(int opcode, String type) {
+                    directClassLiteral = null;
                     add(type, opcode == Opcodes.NEW ? "CONSTRUCTS" : "TYPE_USE");
                 }
 
                 @Override
                 public void visitFieldInsn(int opcode, String fieldOwner, String fieldName,
                         String fieldDescriptor) {
+                    directClassLiteral = null;
                     add(fieldOwner, "FIELD_ACCESS");
                     addType(Type.getType(fieldDescriptor), "TYPE_USE");
                 }
@@ -101,6 +106,13 @@ public final class BytecodeDependencyScanner {
                 @Override
                 public void visitMethodInsn(int opcode, String methodOwner, String methodName,
                         String methodDescriptor, boolean isInterface) {
+                    if (methodOwner.equals("java/util/ServiceLoader")
+                            && (methodName.equals("load") || methodName.equals("loadInstalled"))
+                            && directClassLiteral != null) {
+                        addService(owner, directClassLiteral.getInternalName(),
+                                "SERVICE_CONSUMES");
+                    }
+                    directClassLiteral = null;
                     if (!"<init>".equals(methodName)) add(methodOwner, "CALLS");
                     addMethodTypes(methodDescriptor);
                 }
@@ -108,6 +120,7 @@ public final class BytecodeDependencyScanner {
                 @Override
                 public void visitInvokeDynamicInsn(String name, String descriptor,
                         Handle bootstrapMethodHandle, Object... bootstrapMethodArguments) {
+                    directClassLiteral = null;
                     addMethodTypes(descriptor);
                     add(bootstrapMethodHandle.getOwner(), "CALLS");
                     for (Object argument : bootstrapMethodArguments) {
@@ -122,11 +135,39 @@ public final class BytecodeDependencyScanner {
 
                 @Override
                 public void visitLdcInsn(Object value) {
+                    directClassLiteral = value instanceof Type type
+                            && type.getSort() == Type.OBJECT ? type : null;
                     if (value instanceof Type type) addType(type, "TYPE_USE");
                 }
 
                 @Override
+                public void visitInsn(int opcode) {
+                    directClassLiteral = null;
+                }
+
+                @Override
+                public void visitIntInsn(int opcode, int operand) {
+                    directClassLiteral = null;
+                }
+
+                @Override
+                public void visitVarInsn(int opcode, int variable) {
+                    directClassLiteral = null;
+                }
+
+                @Override
+                public void visitJumpInsn(int opcode, org.objectweb.asm.Label label) {
+                    directClassLiteral = null;
+                }
+
+                @Override
+                public void visitIincInsn(int variable, int increment) {
+                    directClassLiteral = null;
+                }
+
+                @Override
                 public void visitMultiANewArrayInsn(String descriptor, int dimensions) {
+                    directClassLiteral = null;
                     addType(Type.getType(descriptor), "TYPE_USE");
                 }
 
@@ -166,6 +207,28 @@ public final class BytecodeDependencyScanner {
                     edges.merge(new Edge(owner, target, kind), 1, Integer::sum);
                 }
             };
+        }
+
+        @Override
+        public ModuleVisitor visitModule(String name, int access, String version) {
+            return new ModuleVisitor(Opcodes.ASM9) {
+                @Override
+                public void visitProvide(String service, String... providers) {
+                    for (String provider : providers) {
+                        addService(provider, service, "SERVICE_PROVIDES");
+                    }
+                }
+            };
+        }
+
+        private void addService(
+                String fromInternalName, String toInternalName, String kind) {
+            String from = className(fromInternalName);
+            String to = className(toInternalName);
+            if (from.equals(to) || !applicationClasses.contains(from)) {
+                return;
+            }
+            edges.merge(new Edge(from, to, kind), 1, Integer::sum);
         }
     }
 

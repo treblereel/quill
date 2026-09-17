@@ -29,6 +29,7 @@ import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.core.FileInventory;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.JandexScanner;
+import org.treblereel.mcp.core.ServiceProviderScanner;
 import org.treblereel.mcp.core.SpringResolver;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.db.IndexWriter;
@@ -382,6 +383,9 @@ public class ProjectInitializer {
 
         List<DependencyRecord> remappedDeps = new ArrayList<>(persisted.dependencies());
         List<ExternalDepRecord> externalDeps;
+        int serviceDescriptorCount;
+        int serviceRegistrationCount;
+        List<ExternalDepRecord> bytecodeServiceExternalDeps = new ArrayList<>();
         GitAnalyzer.GitAnalysisResult gitResult;
         try (BackgroundTask<GitAnalyzer.GitAnalysisResult> gitTask =
                 BackgroundTask.start("quill-git-analysis", () -> GitAnalyzer.hasGitRepo(root)
@@ -394,12 +398,27 @@ public class ProjectInitializer {
                 if (from != null && to != null) {
                     remappedDeps.add(new DependencyRecord(from, to, dependency.kind(), null,
                             dependency.occurrences()));
+                } else if (from != null && dependency.kind().startsWith("SERVICE_")) {
+                    bytecodeServiceExternalDeps.add(new ExternalDepRecord(
+                            from, dependency.toClass(), dependency.kind()));
                 }
             }
-
-            externalDeps = JandexScanner.extractExternalDeps(
-                    scanResult.index(), classNameToSqliteId);
             timings.finish("bytecode_analysis");
+
+            ServiceProviderScanner.Result services =
+                    ServiceProviderScanner.scan(root, moduleDirectories);
+            serviceDescriptorCount = services.descriptorCount();
+            serviceRegistrationCount = services.registrations().size();
+            ServiceProviderScanner.ResolvedDependencies serviceDependencies =
+                    ServiceProviderScanner.resolve(services, classNameToSqliteId);
+            remappedDeps.addAll(serviceDependencies.internal());
+            timings.finish("service_analysis");
+
+            externalDeps = new ArrayList<>(JandexScanner.extractExternalDeps(
+                    scanResult.index(), classNameToSqliteId));
+            externalDeps.addAll(bytecodeServiceExternalDeps);
+            externalDeps.addAll(serviceDependencies.external());
+            timings.finish("external_dependency_analysis");
 
             gitResult = gitTask.await();
             timings.record("git_analysis", gitTask.elapsedMillis());
@@ -459,6 +478,8 @@ public class ProjectInitializer {
                 Integer.toString(scanResult.cacheHits()));
         metadata.put("application_index_cache_shards",
                 Integer.toString(scanResult.cacheShards()));
+        metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
+        metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
         metadata.put("framework", isSpring && isCdi ? "Mixed"
                 : isSpring ? "Spring" : isCdi ? "CDI" : "Plain");
         metadata.put("dependency_index", depResult.status().name().toLowerCase());

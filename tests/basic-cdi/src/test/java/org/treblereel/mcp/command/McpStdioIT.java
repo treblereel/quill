@@ -654,8 +654,13 @@ class McpStdioIT {
 
     private Path resolveNativeImage() {
         String configured = System.getProperty("native.image.path");
-        if (configured != null && !configured.isBlank()) return Path.of(configured);
-        return PROJECT_ROOT.getParent().getParent().resolve(
+        Path image = configured != null && !configured.isBlank() ? Path.of(configured)
+                : PROJECT_ROOT.getParent().getParent().resolve(
                 BuildSystem.isWindows() ? "quill-app/target/quill.exe" : "quill-app/target/quill");
+        if (Boolean.getBoolean("native.tests.required")) {
+            assertTrue(Files.isExecutable(image),
+                    "Native quality gate requires an executable image at " + image);
+        }
+        return image;
     }
 }

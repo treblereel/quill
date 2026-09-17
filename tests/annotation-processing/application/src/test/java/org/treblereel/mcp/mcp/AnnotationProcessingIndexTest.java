@@ -134,6 +134,10 @@ class AnnotationProcessingIndexTest {
         Path repositoryRoot = PROJECT_ROOT.getParent().getParent();
         Path nativeImage = repositoryRoot.resolve(BuildSystem.isWindows()
                 ? "quill-app/target/quill.exe" : "quill-app/target/quill");
+        if (Boolean.getBoolean("native.tests.required")) {
+            assertTrue(Files.isExecutable(nativeImage),
+                    "Native quality gate requires an executable image at " + nativeImage);
+        }
         Assumptions.assumeTrue(Files.isExecutable(nativeImage),
                 "native image is only present in the native quality gate");
 

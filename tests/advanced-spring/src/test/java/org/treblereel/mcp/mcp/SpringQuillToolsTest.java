@@ -142,19 +142,24 @@ class SpringQuillToolsTest {
         var tools = new QuillTools();
         String result = tools.getDependencies(jdbi, "OrderController", "outbound", 2);
         JsonNode root = JSON.readTree(result);
-        JsonNode dependsOn = root.get("depends_on");
-        assertEquals(2, dependsOn.size());
+        JsonNode graph = root.get("graph");
+        assertNotNull(graph);
         boolean hasUserService = false;
-        JsonNode userServiceNested = null;
-        for (JsonNode dep : dependsOn) {
-            if ("com.example.UserService".equals(dep.get("class").asText())) {
+        boolean hasUserServiceDependency = false;
+        for (JsonNode relation : graph) {
+            if (relation.get("depth").asInt() == 1
+                    && "com.example.UserService".equals(relation.get("class").asText())) {
                 hasUserService = true;
-                userServiceNested = dep.get("depends_on");
+            }
+            if (relation.get("depth").asInt() == 2
+                    && "com.example.UserService".equals(relation.get("parent").asText())) {
+                hasUserServiceDependency = true;
             }
         }
         assertTrue(hasUserService, "OrderController should depend on UserService");
-        assertNotNull(userServiceNested, "depth=2 should expand UserService dependencies");
-        assertTrue(userServiceNested.size() >= 1);
+        assertTrue(hasUserServiceDependency,
+                "depth=2 should expand UserService dependencies in the BFS graph");
+        assertEquals("cursor", root.get("pagination").asText());
     }
 
     @Test

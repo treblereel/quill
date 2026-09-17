@@ -16,6 +16,31 @@ class IndexWriterReaderTest {
     @TempDir Path tempDir;
 
     @Test
+    void persistsMultiplePhysicalOccurrencesForOneLogicalClass() {
+        Jdbi database = QuillDatabase.create(tempDir.resolve("occurrences.db"));
+        List<ClassRecord> classes = List.of(
+                new ClassRecord(0, "example.Registry", "CLASS", null, List.of(),
+                        "app-one/src/main/java/example/Registry.java", 1, false, 10));
+        List<ClassOccurrenceRecord> occurrences = List.of(
+                new ClassOccurrenceRecord(1, 1, "example.Registry", "app-one", "main",
+                        "app-one/target/classes", "app-one/target/classes/example/Registry.class",
+                        "app-one/src/main/java/example/Registry.java", "source"),
+                new ClassOccurrenceRecord(2, 1, "example.Registry", "app-two", "main",
+                        "app-two/target/classes", "app-two/target/classes/example/Registry.class",
+                        "app-two/target/generated-sources/annotations/example/Registry.java",
+                        "generated"));
+
+        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), occurrences);
+
+        var rows = database.withHandle(handle -> handle.createQuery(
+                        "SELECT module, origin FROM class_occurrences ORDER BY module")
+                .map((row, context) -> row.getString("module") + ":" + row.getString("origin"))
+                .list());
+        assertEquals(List.of("app-one:source", "app-two:generated"), rows);
+    }
+
+    @Test
     void dependencyMetricsSeparateUniqueClassesFromEdgeOccurrences() {
         Jdbi jdbi = QuillDatabase.create(tempDir.resolve("dependency-metrics.db"));
         List<ClassRecord> classes = List.of(

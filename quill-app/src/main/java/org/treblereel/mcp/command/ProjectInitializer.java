@@ -28,6 +28,7 @@ import org.treblereel.mcp.core.BeanResolver;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.BytecodeDependencyScanner;
 import org.treblereel.mcp.core.ClassFileSnapshot;
+import org.treblereel.mcp.core.ClassOccurrenceScanner;
 import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.core.FileInventory;
 import org.treblereel.mcp.core.GitAnalyzer;
@@ -40,6 +41,7 @@ import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.CdiProblem;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
@@ -337,6 +339,8 @@ public class ProjectInitializer {
         for (int i = 0; i < classes.size(); i++) {
             classNameToSqliteId.put(classes.get(i).className(), i + 1);
         }
+        List<ClassOccurrenceRecord> classOccurrences = ClassOccurrenceScanner.scan(
+                root, classFiles, classDirectoryOwners, classNameToSqliteId);
 
         Map<String, Integer> sourceFileToClassId = new HashMap<>();
         for (int i = 0; i < classes.size(); i++) {
@@ -498,6 +502,7 @@ public class ProjectInitializer {
                 Integer.toString(scanResult.cacheHits()));
         metadata.put("application_index_cache_shards",
                 Integer.toString(scanResult.cacheShards()));
+        metadata.put("class_occurrences", Integer.toString(classOccurrences.size()));
         metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
         metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
@@ -521,7 +526,7 @@ public class ProjectInitializer {
                         contextualInjectionPoints, remappedDeps, metadata,
                         externalDeps, remappedProblems,
                         gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
-                        inventory.files());
+                        inventory.files(), classOccurrences);
                 timings.record("database_inserts", writeTimings.insertsMillis());
                 timings.record("database_indexes", writeTimings.indexesMillis());
                 timings.record("database_transaction_overhead",
@@ -536,7 +541,7 @@ public class ProjectInitializer {
                                 contextualInjectionPoints, remappedDeps, metadata,
                                 externalDeps, remappedProblems,
                                 gitResult.fileStats(), gitResult.commits(),
-                                gitResult.commitFiles(), inventory.files());
+                                gitResult.commitFiles(), inventory.files(), classOccurrences);
                 timings.record("database_delta", writeTimings.deltaMillis());
                 timings.record("database_transaction_overhead",
                         writeTimings.transactionOverheadMillis());

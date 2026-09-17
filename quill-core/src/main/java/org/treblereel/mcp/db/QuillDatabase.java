@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 4;
+    static final int SCHEMA_VERSION = 5;
 
     private QuillDatabase() {}
 
@@ -67,6 +67,19 @@ public final class QuillDatabase {
                     lifecycle TEXT NOT NULL DEFAULT 'current',
                     module TEXT,
                     source_set TEXT
+                )""");
+            h.execute("""
+                CREATE TABLE IF NOT EXISTS class_occurrences (
+                    id INTEGER PRIMARY KEY,
+                    class_id INTEGER NOT NULL REFERENCES classes(id),
+                    class_name TEXT NOT NULL,
+                    module TEXT NOT NULL,
+                    source_set TEXT NOT NULL,
+                    output_directory TEXT NOT NULL,
+                    class_file TEXT NOT NULL,
+                    source_file TEXT,
+                    origin TEXT NOT NULL,
+                    UNIQUE(class_name, output_directory, class_file)
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS beans (
@@ -169,6 +182,9 @@ public final class QuillDatabase {
         h.execute("CREATE INDEX IF NOT EXISTS idx_classes_name ON classes(class_name)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_classes_context ON classes(module, source_set)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_classes_file ON classes(file_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_occurrences_class ON class_occurrences(class_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_occurrences_name ON class_occurrences(class_name)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_occurrences_context ON class_occurrences(module, source_set)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_repository_path ON files(repository_path)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_lifecycle ON files(lifecycle)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_ip_bean ON injection_points(bean_id)");

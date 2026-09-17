@@ -17,7 +17,8 @@ public final class IndexWriter {
     private static final String[] ALL_TABLES = {
             "git_commit_files", "git_commits", "git_file_stats",
             "class_external_deps", "cdi_problems",
-            "dependencies", "injection_points", "beans", "classes", "files", "metadata"
+            "dependencies", "injection_points", "beans", "class_occurrences", "classes",
+            "files", "metadata"
     };
 
     private IndexWriter() {}
@@ -46,6 +47,9 @@ public final class IndexWriter {
             "id", "class_name", "kind", "superclass", "interfaces", "source_file",
             "source_line", "is_bean", "source_tokens", "file_id", "origin", "lifecycle",
             "module", "source_set");
+    private static final TableSpec CLASS_OCCURRENCES = new TableSpec("class_occurrences",
+            "id", "class_id", "class_name", "module", "source_set", "output_directory",
+            "class_file", "source_file", "origin");
     private static final TableSpec BEANS = new TableSpec("beans",
             "id", "class_id", "kind", "scope", "qualifiers", "stereotypes",
             "is_alternative", "priority", "profiles", "declaring_class_id", "member_name",
@@ -71,11 +75,11 @@ public final class IndexWriter {
     private static final TableSpec COMMIT_FILES = new TableSpec("git_commit_files",
             "commit_id", "class_id", "file_path", "change_type");
     private static final List<TableSpec> INSERT_ORDER = List.of(
-            FILES, CLASSES, BEANS, INJECTION_POINTS, DEPENDENCIES, METADATA,
+            FILES, CLASSES, CLASS_OCCURRENCES, BEANS, INJECTION_POINTS, DEPENDENCIES, METADATA,
             EXTERNAL_DEPS, PROBLEMS, FILE_STATS, COMMITS, COMMIT_FILES);
     private static final List<TableSpec> DELETE_ORDER = List.of(
             COMMIT_FILES, FILE_STATS, EXTERNAL_DEPS, PROBLEMS, DEPENDENCIES,
-            INJECTION_POINTS, BEANS, COMMITS, CLASSES, FILES, METADATA);
+            INJECTION_POINTS, BEANS, COMMITS, CLASS_OCCURRENCES, CLASSES, FILES, METADATA);
 
     public static void writeAll(Jdbi jdbi,
             List<ClassRecord> classes, List<BeanRecord> beans,
@@ -85,7 +89,7 @@ public final class IndexWriter {
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files) {
         writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, false);
+                externalDeps, problems, fileStats, commits, commitFiles, files, List.of(), false);
     }
 
     public static WriteTimings writeFresh(Jdbi jdbi,
@@ -96,7 +100,19 @@ public final class IndexWriter {
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files) {
         return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, true);
+                externalDeps, problems, fileStats, commits, commitFiles, files, List.of(), true);
+    }
+
+    public static WriteTimings writeFresh(Jdbi jdbi,
+            List<ClassRecord> classes, List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
+            Map<String, String> metadata,
+            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
+            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
+            List<GitCommitFile> commitFiles, List<FileRecord> files,
+            List<ClassOccurrenceRecord> occurrences) {
+        return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
+                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences, true);
     }
 
     /**
@@ -111,6 +127,18 @@ public final class IndexWriter {
             List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files) {
+        return writeIncremental(jdbi, classes, beans, injectionPoints, dependencies, metadata,
+                externalDeps, problems, fileStats, commits, commitFiles, files, List.of());
+    }
+
+    public static IncrementalWriteTimings writeIncremental(Jdbi jdbi,
+            List<ClassRecord> classes, List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
+            Map<String, String> metadata,
+            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
+            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
+            List<GitCommitFile> commitFiles, List<FileRecord> files,
+            List<ClassOccurrenceRecord> occurrences) {
         long startedAt = System.nanoTime();
         long[] deltaNanos = new long[1];
         long[] counts = new long[3];
@@ -121,7 +149,7 @@ public final class IndexWriter {
                     createDesiredTables(tx);
                     populateDesiredTables(tx, classes, beans, injectionPoints, dependencies,
                             metadata, externalDeps, problems, fileStats, commits, commitFiles,
-                            files);
+                            files, occurrences);
                     createDesiredIndexes(tx);
                     long deltaStartedAt = System.nanoTime();
                     for (TableSpec table : DELETE_ORDER) {
@@ -164,9 +192,11 @@ public final class IndexWriter {
             Map<String, String> metadata,
             List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files) {
+            List<GitCommitFile> commitFiles, List<FileRecord> files,
+            List<ClassOccurrenceRecord> occurrences) {
         insertDesiredFiles(h, files);
         insertDesiredClasses(h, classes);
+        insertDesiredClassOccurrences(h, occurrences);
         insertDesiredBeans(h, beans);
         insertDesiredInjectionPoints(h, injectionPoints);
         insertDesiredDependencies(h, dependencies);
@@ -252,6 +282,23 @@ public final class IndexWriter {
         } catch (SQLException e) {
             throw new RuntimeException("Failed to write desired classes", e);
         }
+    }
+
+    private static void insertDesiredClassOccurrences(
+            Handle h, List<ClassOccurrenceRecord> occurrences) {
+        executeBatch(h,
+                "INSERT INTO desired_class_occurrences (id, class_id, class_name, module, source_set, output_directory, class_file, source_file, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                occurrences, (statement, occurrence) -> {
+                    statement.setInt(1, occurrence.id());
+                    statement.setInt(2, occurrence.classId());
+                    statement.setString(3, occurrence.className());
+                    statement.setString(4, occurrence.module());
+                    statement.setString(5, occurrence.sourceSet());
+                    statement.setString(6, occurrence.outputDirectory());
+                    statement.setString(7, occurrence.classFile());
+                    statement.setString(8, occurrence.sourceFile());
+                    statement.setString(9, occurrence.origin());
+                });
     }
 
     private static void insertDesiredBeans(Handle h, List<BeanRecord> beans) {
@@ -397,7 +444,7 @@ public final class IndexWriter {
             List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
             List<GitFileStats> fileStats, List<GitCommitRecord> commits,
             List<GitCommitFile> commitFiles, List<FileRecord> files,
-            boolean freshDatabase) {
+            List<ClassOccurrenceRecord> occurrences, boolean freshDatabase) {
         long transactionStartedAt = System.nanoTime();
         long[] insertsNanos = new long[1];
         long[] indexesNanos = new long[1];
@@ -412,6 +459,7 @@ public final class IndexWriter {
             long insertsStartedAt = System.nanoTime();
             insertFiles(h, files);
             insertClasses(h, classes);
+            insertClassOccurrences(h, occurrences);
             insertBeans(h, beans);
             insertInjectionPoints(h, injectionPoints);
             insertDependencies(h, dependencies);
@@ -440,7 +488,8 @@ public final class IndexWriter {
             List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
             Map<String, String> metadata) {
         jdbi.useTransaction(h -> {
-            for (String table : new String[]{"dependencies", "injection_points", "beans", "classes", "files", "metadata"}) {
+            for (String table : new String[]{"dependencies", "injection_points", "beans",
+                    "class_occurrences", "classes", "files", "metadata"}) {
                 h.execute("DELETE FROM " + table);
             }
             h.execute("DELETE FROM sqlite_sequence");
@@ -495,6 +544,23 @@ public final class IndexWriter {
                     statement.setString(11, c.lifecycle());
                     statement.setString(12, c.module());
                     statement.setString(13, c.sourceSet());
+                });
+    }
+
+    private static void insertClassOccurrences(
+            Handle h, List<ClassOccurrenceRecord> occurrences) {
+        executeBatch(h,
+                "INSERT INTO class_occurrences (id, class_id, class_name, module, source_set, output_directory, class_file, source_file, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                occurrences, (statement, occurrence) -> {
+                    statement.setInt(1, occurrence.id());
+                    statement.setInt(2, occurrence.classId());
+                    statement.setString(3, occurrence.className());
+                    statement.setString(4, occurrence.module());
+                    statement.setString(5, occurrence.sourceSet());
+                    statement.setString(6, occurrence.outputDirectory());
+                    statement.setString(7, occurrence.classFile());
+                    statement.setString(8, occurrence.sourceFile());
+                    statement.setString(9, occurrence.origin());
                 });
     }
 

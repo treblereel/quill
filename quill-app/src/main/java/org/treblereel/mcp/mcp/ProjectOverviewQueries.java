@@ -27,6 +27,10 @@ final class ProjectOverviewQueries {
     }
 
     String getOverview(Jdbi jdbi) {
+        return getOverview(jdbi, true);
+    }
+
+    String getOverview(Jdbi jdbi, boolean details) {
         Map<String, String> meta = IndexReader.getMetadata(jdbi);
         ObjectNode root = JSON.createObjectNode();
 
@@ -38,9 +42,11 @@ final class ProjectOverviewQueries {
         project.put("classes", classCount);
         project.put("beans", beanCount);
         project.put("total_source_tokens", totalTokens);
-        project.put("index_id", meta.get("index_id"));
-        project.put("indexed_at", meta.getOrDefault("indexed_at", "unknown"));
-        project.put("last_commit", meta.getOrDefault("last_commit", "unknown"));
+        if (details) {
+            project.put("index_id", meta.get("index_id"));
+            project.put("indexed_at", meta.getOrDefault("indexed_at", "unknown"));
+            project.put("last_commit", meta.getOrDefault("last_commit", "unknown"));
+        }
         project.put("dependency_index", meta.getOrDefault("dependency_index", "unknown"));
         if (meta.containsKey("dependency_index_detail")) {
             project.put("dependency_index_detail", meta.get("dependency_index_detail"));
@@ -64,17 +70,19 @@ final class ProjectOverviewQueries {
                 Optional.ofNullable(hubClasses.get(hub.classId()))
                         .ifPresent(cls -> appendHub(hubs, hub, cls, "combined")));
 
-        ObjectNode rankings = root.putObject("architecture_hub_rankings");
-        writeHubRanking(rankings, "source", hubMetrics,
-                IndexReader.ArchitectureHub::sourceDependents, hubClasses);
-        writeHubRanking(rankings, "generated", hubMetrics,
-                IndexReader.ArchitectureHub::generatedDependents, hubClasses);
-        writeHubRanking(rankings, "production", hubMetrics,
-                IndexReader.ArchitectureHub::productionDependents, hubClasses);
-        writeHubRanking(rankings, "test", hubMetrics,
-                IndexReader.ArchitectureHub::testDependents, hubClasses);
-        rankings.put("scope_note", "production/test are classified by source_set; "
-                + "source/generated are independent origin dimensions");
+        if (details) {
+            ObjectNode rankings = root.putObject("architecture_hub_rankings");
+            writeHubRanking(rankings, "source", hubMetrics,
+                    IndexReader.ArchitectureHub::sourceDependents, hubClasses);
+            writeHubRanking(rankings, "generated", hubMetrics,
+                    IndexReader.ArchitectureHub::generatedDependents, hubClasses);
+            writeHubRanking(rankings, "production", hubMetrics,
+                    IndexReader.ArchitectureHub::productionDependents, hubClasses);
+            writeHubRanking(rankings, "test", hubMetrics,
+                    IndexReader.ArchitectureHub::testDependents, hubClasses);
+            rankings.put("scope_note", "production/test are classified by source_set; "
+                    + "source/generated are independent origin dimensions");
+        }
 
         ObjectNode problems = root.putObject("problems");
         List<InjectionPointRecord> unsatisfied = IndexReader.findUnsatisfiedInjectionPoints(jdbi);
@@ -94,7 +102,7 @@ final class ProjectOverviewQueries {
         Map<Integer, ClassRecord> problemClasses = IndexReader.findClassesByIds(jdbi,
                 problemBeans.values().stream().map(BeanRecord::classId).toList());
         problems.put("unsatisfied_count", unsatisfied.size());
-        if (!unsatisfied.isEmpty()) {
+        if (details && !unsatisfied.isEmpty()) {
             List<InjectionPointRecord> unsatLimited = unsatisfied.size() > 10
                     ? unsatisfied.subList(0, 10) : unsatisfied;
             ArrayNode unsatArr = problems.putArray("unsatisfied_injection_points_sample");
@@ -110,7 +118,7 @@ final class ProjectOverviewQueries {
             }
         }
         problems.put("ambiguous_count", ambiguous.size());
-        if (!ambiguous.isEmpty()) {
+        if (details && !ambiguous.isEmpty()) {
             List<InjectionPointRecord> ambLimited = ambiguous.size() > 10
                     ? ambiguous.subList(0, 10) : ambiguous;
             ArrayNode ambArr = problems.putArray("ambiguous_injection_points_sample");
@@ -125,24 +133,26 @@ final class ProjectOverviewQueries {
                 appendResolutionEvidence(node, ip);
             }
         }
-        writeResolutionGroup(problems, "unknown", unknown, problemBeans, problemClasses);
+        writeResolutionGroup(problems, "unknown", unknown, problemBeans, problemClasses, details);
         writeResolutionGroup(problems, "context_required", contextRequired,
-                problemBeans, problemClasses);
+                problemBeans, problemClasses, details);
         writeResolutionGroup(problems, "unsupported_mechanism", unsupported,
-                problemBeans, problemClasses);
+                problemBeans, problemClasses, details);
 
         List<CdiProblem> cdiProblems = IndexReader.findCdiProblems(jdbi);
         if (!cdiProblems.isEmpty()) {
             problems.put("cdi_spec_violation_count", cdiProblems.size());
-            ArrayNode cdiArr = problems.putArray("cdi_spec_violations");
-            for (CdiProblem p : cdiProblems.stream().limit(MAX_PROBLEM_DETAILS).toList()) {
-                ObjectNode node = cdiArr.addObject();
-                node.put("class", p.className());
-                node.put("type", p.problemType());
-                node.put("message", p.message());
-            }
-            if (cdiProblems.size() > MAX_PROBLEM_DETAILS) {
-                problems.put("cdi_spec_violations_truncated", true);
+            if (details) {
+                ArrayNode cdiArr = problems.putArray("cdi_spec_violations");
+                for (CdiProblem p : cdiProblems.stream().limit(MAX_PROBLEM_DETAILS).toList()) {
+                    ObjectNode node = cdiArr.addObject();
+                    node.put("class", p.className());
+                    node.put("type", p.problemType());
+                    node.put("message", p.message());
+                }
+                if (cdiProblems.size() > MAX_PROBLEM_DETAILS) {
+                    problems.put("cdi_spec_violations_truncated", true);
+                }
             }
         }
 
@@ -174,9 +184,9 @@ final class ProjectOverviewQueries {
 
     private static void writeResolutionGroup(ObjectNode problems, String name,
             List<InjectionPointRecord> points, Map<Integer, BeanRecord> beans,
-            Map<Integer, ClassRecord> classes) {
+            Map<Integer, ClassRecord> classes, boolean details) {
         problems.put(name + "_count", points.size());
-        if (points.isEmpty()) return;
+        if (!details || points.isEmpty()) return;
         ArrayNode sample = problems.putArray(name + "_injection_points_sample");
         for (InjectionPointRecord ip : points.stream().limit(10).toList()) {
             ObjectNode node = sample.addObject();

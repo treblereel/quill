@@ -124,17 +124,22 @@ Once indexed, Quill exposes these tools via MCP:
 Every tool result includes native MCP `structuredContent` and an advertised object
 `outputSchema`. Quill does not duplicate the JSON payload as text content.
 
-- **search_classes** — find classes by wildcard pattern
+- **search_classes** — find classes by wildcard pattern; supports `limit`/`offset`
 - **get_dependencies** — dependencies for a class, addressable by FQCN or source path
 - **assess_change_risk** — class blast radius or file-level risk based on file
   criticality, coupling, churn, and bus factor; accepts class names and arbitrary paths
-- **get_overview** — project summary (class/bean counts, architecture hubs, problems)
-- **list_beans** — filter beans by scope, kind, qualifier (CDI and Spring)
+- **get_overview** — compact project summary by default; set `details=true` for diagnostic
+  samples and per-dimension architecture-hub rankings
+- **list_beans** — filter beans by scope, kind, qualifier (CDI and Spring); supports
+  `limit`/`offset`
 - **list_injection_points** — injection resolution status for a bean
 - **find_git_hotspots** — current hotspots plus a live dirty-worktree overlay; deleted
-  historical paths are opt-in with `include_historical`
+  historical paths are opt-in with `include_historical`; supports `limit`/`offset`
 - **find_co_changed_files** — files that change together (hidden coupling)
 - **list_external_dependencies** — third-party library usage
+
+Paginated responses use the same `showing`, `total`, `limit`, `offset`, `has_more`,
+`truncated`, and optional `next_offset` fields.
 
 ## Connect Quill to Claude Code or Codex
 

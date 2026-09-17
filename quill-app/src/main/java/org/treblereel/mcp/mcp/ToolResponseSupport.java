@@ -40,6 +40,17 @@ final class ToolResponseSupport {
         }
     }
 
+    static void appendPage(ObjectNode root, int showing, int total, int limit, int offset) {
+        boolean hasMore = offset + showing < total;
+        root.put("showing", showing);
+        root.put("total", total);
+        root.put("limit", limit);
+        root.put("offset", offset);
+        root.put("has_more", hasMore);
+        root.put("truncated", offset > 0 || hasMore);
+        if (hasMore) root.put("next_offset", offset + showing);
+    }
+
     static String errorResponse(String message) {
         return JSON.createObjectNode().put("error", message).toString();
     }

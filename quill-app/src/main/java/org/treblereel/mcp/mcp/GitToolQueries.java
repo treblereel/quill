@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendPage;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
@@ -38,13 +39,18 @@ final class GitToolQueries {
     }
 
     String getHotspots(Jdbi jdbi, int limit, String since, boolean includeHistorical) {
+        return getHotspots(jdbi, limit, 0, since, includeHistorical);
+    }
+
+    String getHotspots(Jdbi jdbi, int limit, int offset, String since,
+            boolean includeHistorical) {
         Map<String, String> metadata = IndexReader.getMetadata(jdbi);
         WorktreeInspector.Snapshot worktree = worktreeSnapshot(metadata);
         boolean hasGit = IndexReader.hasGitData(jdbi);
         if (!hasGit && !worktree.dirty()) return errorResponse(NO_GIT_MESSAGE);
 
         HotspotSelection selection = hasGit
-                ? selectHotspots(jdbi, worktree, limit, since, includeHistorical)
+                ? selectHotspots(jdbi, worktree, limit, offset, since, includeHistorical)
                 : new HotspotSelection(List.of(), 0);
         List<GitFileStats> hotspots = selection.shown();
         Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(jdbi, hotspots.stream()
@@ -79,9 +85,7 @@ final class GitToolQueries {
             node.put("last_modified", s.lastModified());
             node.put("last_author", s.lastAuthor());
         }
-        root.put("showing", hotspots.size());
-        root.put("total", selection.total());
-        root.put("truncated", selection.total() > hotspots.size());
+        appendPage(root, hotspots.size(), selection.total(), limit, offset);
         root.put("worktree_total", worktree.changes().size());
         appendMeta(root, jdbi, 0);
         return root.toString();
@@ -185,7 +189,7 @@ final class GitToolQueries {
     private record HotspotSelection(List<GitFileStats> shown, int total) {}
 
     private HotspotSelection selectHotspots(Jdbi jdbi, WorktreeInspector.Snapshot worktree,
-            int limit, String since, boolean includeHistorical) {
+            int limit, int offset, String since, boolean includeHistorical) {
         List<GitFileStats> matching = IndexReader.findHotspots(jdbi, Integer.MAX_VALUE, since);
         if (!includeHistorical) {
             matching = matching.stream()
@@ -193,7 +197,9 @@ final class GitToolQueries {
                     .toList();
         }
         int total = matching.size();
-        List<GitFileStats> shown = total > limit ? matching.subList(0, limit) : matching;
+        int from = Math.min(offset, total);
+        int to = (int) Math.min((long) from + limit, total);
+        List<GitFileStats> shown = matching.subList(from, to);
         return new HotspotSelection(shown, total);
     }
 
@@ -368,6 +374,6 @@ final class GitToolQueries {
     List<GitFileStats> currentHotspots(
             Jdbi jdbi, Map<String, String> metadata, int limit) {
         WorktreeInspector.Snapshot worktree = worktreeSnapshot(metadata);
-        return selectHotspots(jdbi, worktree, limit, null, false).shown();
+        return selectHotspots(jdbi, worktree, limit, 0, null, false).shown();
     }
 }

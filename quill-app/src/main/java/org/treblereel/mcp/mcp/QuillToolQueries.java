@@ -27,6 +27,11 @@ public final class QuillToolQueries {
         return structure.searchClasses(jdbi, pattern, module, sourceSet, limit);
     }
 
+    String searchClasses(Jdbi jdbi, String pattern, String module, String sourceSet,
+            int limit, int offset) {
+        return structure.searchClasses(jdbi, pattern, module, sourceSet, limit, offset);
+    }
+
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier, int limit) {
         return structure.getBeans(jdbi, className, scope, kind, profile, qualifier, limit);
@@ -36,6 +41,13 @@ public final class QuillToolQueries {
             String profile, String qualifier, String module, String sourceSet, int limit) {
         return structure.getBeans(jdbi, className, scope, kind, profile, qualifier,
                 module, sourceSet, limit);
+    }
+
+    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+            String profile, String qualifier, String module, String sourceSet,
+            int limit, int offset) {
+        return structure.getBeans(jdbi, className, scope, kind, profile, qualifier,
+                module, sourceSet, limit, offset);
     }
 
     String getDependencies(Jdbi jdbi, String target, String direction, int depth) {
@@ -53,6 +65,11 @@ public final class QuillToolQueries {
     String getHotspots(
             Jdbi jdbi, int limit, String since, boolean includeHistorical) {
         return git.getHotspots(jdbi, limit, since, includeHistorical);
+    }
+
+    String getHotspots(Jdbi jdbi, int limit, int offset, String since,
+            boolean includeHistorical) {
+        return git.getHotspots(jdbi, limit, offset, since, includeHistorical);
     }
 
     String getFileHistory(Jdbi jdbi, String target, int limit) {
@@ -73,6 +90,10 @@ public final class QuillToolQueries {
 
     String getOverview(Jdbi jdbi) {
         return overview.getOverview(jdbi);
+    }
+
+    String getOverview(Jdbi jdbi, boolean details) {
+        return overview.getOverview(jdbi, details);
     }
 
     String getRisk(Jdbi jdbi, String target) {

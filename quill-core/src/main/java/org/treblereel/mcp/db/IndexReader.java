@@ -256,6 +256,11 @@ public final class IndexReader {
 
     public static List<ClassRecord> searchClasses(Jdbi jdbi, String namePattern,
             String module, String sourceSet, int limit) {
+        return searchClasses(jdbi, namePattern, module, sourceSet, limit, 0);
+    }
+
+    public static List<ClassRecord> searchClasses(Jdbi jdbi, String namePattern,
+            String module, String sourceSet, int limit, int offset) {
         String sql = "SELECT * FROM classes WHERE class_name LIKE :pattern "
                 + "AND lifecycle = 'current' AND origin != 'orphan_output' "
                 + (module != null ? "AND (EXISTS (SELECT 1 FROM class_occurrences co "
@@ -266,7 +271,7 @@ public final class IndexReader {
                         + "WHERE co.class_id = classes.id AND co.source_set = :sourceSet) OR "
                         + "(NOT EXISTS (SELECT 1 FROM class_occurrences co "
                         + "WHERE co.class_id = classes.id) AND classes.source_set = :sourceSet)) " : "")
-                + "ORDER BY class_name LIMIT :limit";
+                + "ORDER BY class_name LIMIT :limit OFFSET :offset";
         String pattern = namePattern.replace("*", "%");
         if (!pattern.contains("%")) {
             pattern = "%" + pattern + "%";
@@ -276,11 +281,35 @@ public final class IndexReader {
                 {
                     var query = h.createQuery(sql)
                             .bind("pattern", finalPattern)
-                            .bind("limit", limit);
+                            .bind("limit", limit)
+                            .bind("offset", offset);
                     if (module != null) query.bind("module", module);
                     if (sourceSet != null) query.bind("sourceSet", sourceSet);
                     return query.map((rs, ctx) -> mapClass(rs)).list();
                 });
+    }
+
+    public static int countClasses(Jdbi jdbi, String namePattern,
+            String module, String sourceSet) {
+        String sql = "SELECT COUNT(*) FROM classes WHERE class_name LIKE :pattern "
+                + "AND lifecycle = 'current' AND origin != 'orphan_output' "
+                + (module != null ? "AND (EXISTS (SELECT 1 FROM class_occurrences co "
+                        + "WHERE co.class_id = classes.id AND co.module = :module) OR "
+                        + "(NOT EXISTS (SELECT 1 FROM class_occurrences co "
+                        + "WHERE co.class_id = classes.id) AND classes.module = :module)) " : "")
+                + (sourceSet != null ? "AND (EXISTS (SELECT 1 FROM class_occurrences co "
+                        + "WHERE co.class_id = classes.id AND co.source_set = :sourceSet) OR "
+                        + "(NOT EXISTS (SELECT 1 FROM class_occurrences co "
+                        + "WHERE co.class_id = classes.id) AND classes.source_set = :sourceSet)) " : "");
+        String pattern = namePattern.replace("*", "%");
+        if (!pattern.contains("%")) pattern = "%" + pattern + "%";
+        String finalPattern = pattern;
+        return jdbi.withHandle(handle -> {
+            var query = handle.createQuery(sql).bind("pattern", finalPattern);
+            if (module != null) query.bind("module", module);
+            if (sourceSet != null) query.bind("sourceSet", sourceSet);
+            return query.mapTo(Integer.class).one();
+        });
     }
 
     public static Optional<BeanRecord> findBeanByClassId(Jdbi jdbi, int classId) {

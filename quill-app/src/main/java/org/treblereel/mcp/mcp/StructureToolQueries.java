@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendPage;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.isProducer;
@@ -32,14 +33,19 @@ final class StructureToolQueries {
     private static final int MAX_GRAPH_NODES = 200;
 
     String searchClasses(Jdbi jdbi, String pattern, int limit) {
-        return searchClasses(jdbi, pattern, null, null, limit);
+        return searchClasses(jdbi, pattern, null, null, limit, 0);
     }
 
     String searchClasses(Jdbi jdbi, String pattern, String module, String sourceSet, int limit) {
+        return searchClasses(jdbi, pattern, module, sourceSet, limit, 0);
+    }
+
+    String searchClasses(Jdbi jdbi, String pattern, String module, String sourceSet,
+            int limit, int offset) {
         List<ClassRecord> classes = IndexReader.searchClasses(
-                jdbi, pattern, module, sourceSet, limit + 1);
-        boolean hasMore = classes.size() > limit;
-        List<ClassRecord> limited = hasMore ? classes.subList(0, limit) : classes;
+                jdbi, pattern, module, sourceSet, limit, offset);
+        int total = IndexReader.countClasses(jdbi, pattern, module, sourceSet);
+        List<ClassRecord> limited = classes;
         Map<Integer, BeanRecord> beansByClass = IndexReader.findBeansByClassIds(
                 jdbi, limited.stream().map(ClassRecord::id).toList());
         Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
@@ -63,9 +69,7 @@ final class StructureToolQueries {
             appendOccurrences(node, occurrencesByClass.get(value.id()));
             naiveTokens += value.sourceTokens();
         }
-        root.put("showing", limited.size());
-        if (hasMore) root.put("total", ">" + limit + " (use a more specific pattern)");
-        else root.put("total", limited.size());
+        appendPage(root, limited.size(), total, limit, offset);
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }
@@ -77,6 +81,13 @@ final class StructureToolQueries {
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier, String module, String sourceSet, int limit) {
+        return getBeans(jdbi, className, scope, kind, profile, qualifier,
+                module, sourceSet, limit, 0);
+    }
+
+    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+            String profile, String qualifier, String module, String sourceSet,
+            int limit, int offset) {
         Map<String, String> filter = new HashMap<>();
         if (className != null) filter.put("class_name", className);
         if (scope != null) filter.put("scope", scope);
@@ -88,7 +99,9 @@ final class StructureToolQueries {
 
         List<BeanRecord> beans = IndexReader.findBeans(jdbi, filter.isEmpty() ? null : filter);
         int total = beans.size();
-        List<BeanRecord> limited = beans.size() > limit ? beans.subList(0, limit) : beans;
+        int from = Math.min(offset, beans.size());
+        int to = (int) Math.min((long) from + limit, beans.size());
+        List<BeanRecord> limited = beans.subList(from, to);
         Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(
                 jdbi, limited.stream().map(BeanRecord::classId).toList());
         Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
@@ -118,8 +131,7 @@ final class StructureToolQueries {
                 naiveTokens += beanClass.sourceTokens();
             }
         }
-        root.put("showing", limited.size());
-        root.put("total", total);
+        appendPage(root, limited.size(), total, limit, offset);
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }

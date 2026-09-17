@@ -146,7 +146,7 @@ class QuillToolsTest {
         String result = new QuillTools(registry).list_beans(
                 Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
                 Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.empty());
+                Optional.empty(), Optional.empty());
 
         JsonNode root = JSON.readTree(result);
         assertTrue(root.get("error").asText().contains("broken-project"));
@@ -272,7 +272,8 @@ class QuillToolsTest {
             }
         };
 
-        JsonNode result = JSON.readTree(new QuillTools(registry).get_overview(Optional.empty()));
+        JsonNode result = JSON.readTree(new QuillTools(registry).get_overview(
+                Optional.empty(), Optional.empty()));
         assertEquals("a-project", result.get("projects").get(0).get("project").asText());
         assertEquals("z-project", result.get("projects").get(1).get("project").asText());
     }
@@ -613,6 +614,45 @@ class QuillToolsTest {
         JsonNode root = JSON.readTree(result);
         assertEquals(1, root.get("showing").asInt());
         assertEquals(3, root.get("total").asInt());
+    }
+
+    @Test
+    void listBeansUsesStablePaginationEnvelopeAndOffset() throws Exception {
+        JsonNode root = JSON.readTree(new QuillToolQueries().getBeans(
+                jdbi, null, null, null, null, null, null, null, 1, 1));
+
+        assertEquals(1, root.path("showing").asInt());
+        assertEquals(3, root.path("total").asInt());
+        assertEquals(1, root.path("limit").asInt());
+        assertEquals(1, root.path("offset").asInt());
+        assertTrue(root.path("has_more").asBoolean());
+        assertEquals(2, root.path("next_offset").asInt());
+        assertTrue(root.path("truncated").asBoolean());
+    }
+
+    @Test
+    void searchClassesReportsExactTotalAndNextOffset() throws Exception {
+        JsonNode root = JSON.readTree(new QuillToolQueries().searchClasses(
+                jdbi, "org.acme.*", null, null, 1, 0));
+
+        assertEquals(1, root.path("showing").asInt());
+        assertEquals(4, root.path("total").asInt());
+        assertTrue(root.path("has_more").asBoolean());
+        assertEquals(1, root.path("next_offset").asInt());
+    }
+
+    @Test
+    void compactOverviewOmitsDiagnosticSamplesAndDuplicateRankings() throws Exception {
+        ProjectOverviewQueries overview = new ProjectOverviewQueries(new GitToolQueries());
+        JsonNode root = JSON.readTree(overview.getOverview(jdbi, false));
+
+        assertFalse(root.has("architecture_hub_rankings"));
+        assertFalse(root.path("problems").has("unknown_injection_points_sample"));
+        assertEquals(1, root.path("problems").path("unknown_count").asInt());
+
+        JsonNode detailed = JSON.readTree(overview.getOverview(jdbi, true));
+        assertTrue(detailed.has("architecture_hub_rankings"));
+        assertTrue(detailed.path("problems").has("unknown_injection_points_sample"));
     }
 
     @Test

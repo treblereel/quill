@@ -42,11 +42,13 @@ public final class QuillTools {
             @ToolArg(description = "Module path filter relative to the project root, or '.' for the root module") Optional<String> module,
             @ToolArg(description = "Source set filter, e.g. main or test") Optional<String> source_set,
             @ToolArg(description = "Max results to return (default: 50)") Optional<Integer> limit,
+            @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getBeans(p.jdbi(),
                 class_name.orElse(null), scope.orElse(null), kind.orElse(null),
                 profile.orElse(null), qualifier.orElse(null), module.orElse(null),
-                source_set.orElse(null), clamp(limit.orElse(50), 1, 100)));
+                source_set.orElse(null), clamp(limit.orElse(50), 1, 100),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
     @Tool(structured = true, description = "Get a class graph with unique fan-in/out, edge counts, origin breakdown, and call-site evidence.")
@@ -72,9 +74,11 @@ public final class QuillTools {
             @ToolArg(description = "Max results (default: 10)") Optional<Integer> limit,
             @ToolArg(description = "Only commits after this date, ISO format YYYY-MM-DD") Optional<String> since,
             @ToolArg(description = "Include deleted/historical paths (default: false)") Optional<Boolean> include_historical,
+            @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getHotspots(p.jdbi(),
-                clamp(limit.orElse(10), 1, 100), since.orElse(null),
+                clamp(limit.orElse(10), 1, 100),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE), since.orElse(null),
                 include_historical.orElse(false)));
     }
 
@@ -121,8 +125,10 @@ public final class QuillTools {
 
     @Tool(structured = true, description = "Summarize frameworks, beans/classes, architecture hubs, DI problems, libraries, Git activity, and freshness.")
     public String get_overview(
+            @ToolArg(description = "Include diagnostic samples and all hub rankings (default: false)") Optional<Boolean> details,
             @ToolArg(description = "Project to query; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getOverview(p.jdbi()));
+        return forAllProjects(project.orElse(null),
+                p -> queries.getOverview(p.jdbi(), details.orElse(false)));
     }
 
     @Tool(structured = true, description = "Search current classes by wildcard name with source, origin, module, and bean context.")
@@ -131,10 +137,12 @@ public final class QuillTools {
             @ToolArg(description = "Module path filter relative to the project root, or '.' for the root module") Optional<String> module,
             @ToolArg(description = "Source set filter, e.g. main or test") Optional<String> source_set,
             @ToolArg(description = "Max results (default: 30)") Optional<Integer> limit,
+            @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.searchClasses(
                 p.jdbi(), pattern, module.orElse(null), source_set.orElse(null),
-                clamp(limit.orElse(30), 1, 100)));
+                clamp(limit.orElse(30), 1, 100),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
     @Tool(structured = true, description = "Score class/file change risk from coupling, criticality, churn, bus factor, and fan-in/out.")

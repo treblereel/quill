@@ -6,7 +6,7 @@
     {
       "id": "navigation-implementation-context",
       "quill_tools": ["search_classes", "get_dependencies"],
-      "prompt": "Determine whether one NavigationGraph implementation can be selected safely for the whole repository. Identify the module containing the base graph and return a sorted list of every module whose build output contains a generated implementation with the same FQCN.",
+      "prompt": "Determine whether one NavigationGraph implementation can be selected safely for the root Maven reactor. Identify the module containing the base graph and return a sorted list of every reactor module whose build output contains a generated implementation with the same FQCN. Exclude standalone Maven builds that are not declared transitively by the root pom.xml.",
       "expected": {
         "selection_depends_on_application_context": true,
         "base_module": "ui/core",
@@ -31,9 +31,9 @@
       "quill_tools": ["get_dependencies"],
       "prompt": "Measure BeanManager fan-in and distinguish handwritten source consumers from generated consumers.",
       "expected": {
-        "total_dependents": 375,
+        "total_dependents": 497,
         "source_dependents": 15,
-        "generated_dependents": 360
+        "generated_dependents": 482
       }
     },
     {

@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "name": "Casehub Engine agent effectiveness",
+  "project_revision": "54c21d0d5806922e723de2782f4ad8419cf5dc63",
+  "tasks": [
+    {
+      "id": "case-definition-coupling",
+      "quill_tools": ["get_dependencies"],
+      "prompt": "Measure the inbound static coupling of io.casehub.api.model.CaseDefinition. Return its module, unique fan-in, incoming edge count, and the source/generated dependent-class breakdown.",
+      "expected": {
+        "module": "api",
+        "fan_in": 102,
+        "incoming_edges": 889,
+        "source_dependents": 102,
+        "generated_dependents": 0
+      }
+    },
+    {
+      "id": "config-manager-injection-resolution",
+      "quill_tools": ["list_injection_points"],
+      "prompt": "Analyze the configManager field injection in io.casehub.engine.internal.engine.DefaultCaseDefinitionRegistry. Return its resolution status and reason, the selected candidate FQCN, and the number of excluded candidates.",
+      "expected": {
+        "resolution": "resolved",
+        "reason": "UNIQUE_CONTEXT_CANDIDATE",
+        "selected_candidate": "io.casehub.engine.internal.config.impl.QuarkusConfigManager",
+        "excluded_candidate_count": 2
+      }
+    },
+    {
+      "id": "callable-task-service-descriptor",
+      "quill_tools": ["inspect_service_descriptors"],
+      "prompt": "Inspect the ServiceLoader descriptor for io.serverlessworkflow.impl.executors.CallableTaskBuilder. Return its repository path, provider count, ordered provider FQCNs, and whether provider order can affect execution according to static analysis.",
+      "expected": {
+        "descriptor": "flow/src/main/resources/META-INF/services/io.serverlessworkflow.impl.executors.CallableTaskBuilder",
+        "provider_count": 1,
+        "providers": [
+          "io.casehub.engine.flow.CasehubCallableTaskBuilder"
+        ],
+        "order_can_affect_execution": false
+      }
+    },
+    {
+      "id": "mapper-history-coverage",
+      "quill_tools": ["get_file_history"],
+      "prompt": "Inspect at most the 100 most recent commits touching api/src/main/java/io/casehub/api/model/converter/CaseDefinitionYamlMapper.java. Return how many commits are available in that requested window, the number of distinct authors, and the latest author. Do not estimate beyond the history actually returned.",
+      "expected": {
+        "commits_in_requested_window": 100,
+        "distinct_authors": 3,
+        "latest_author": "Mark Proctor"
+      }
+    },
+    {
+      "id": "runtime-bean-producers",
+      "quill_tools": ["list_beans"],
+      "prompt": "Inspect io.casehub.engine.internal.quarkus.RuntimeBeans. Return its module, class scope, and the number of producer methods declared directly by that class.",
+      "expected": {
+        "module": "runtime",
+        "class_scope": "@ApplicationScoped",
+        "producer_method_count": 75
+      }
+    }
+  ]
+}

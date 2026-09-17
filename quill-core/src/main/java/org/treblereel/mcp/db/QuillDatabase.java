@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 10;
+    static final int SCHEMA_VERSION = 11;
 
     private QuillDatabase() {}
 
@@ -114,6 +114,20 @@ public final class QuillDatabase {
                     evidence_lines TEXT NOT NULL DEFAULT '[]',
                     UNIQUE(from_class_id, from_method, from_descriptor,
                            to_class_id, to_method, to_descriptor, invocation_kind)
+                )""");
+            h.execute("""
+                CREATE TABLE IF NOT EXISTS field_accesses (
+                    from_class_id INTEGER NOT NULL REFERENCES classes(id),
+                    from_method TEXT NOT NULL,
+                    from_descriptor TEXT NOT NULL,
+                    to_class_id INTEGER NOT NULL REFERENCES classes(id),
+                    field_name TEXT NOT NULL,
+                    field_descriptor TEXT NOT NULL,
+                    access_kind TEXT NOT NULL,
+                    occurrence_count INTEGER NOT NULL DEFAULT 1,
+                    evidence_lines TEXT NOT NULL DEFAULT '[]',
+                    UNIQUE(from_class_id, from_method, from_descriptor,
+                           to_class_id, field_name, field_descriptor, access_kind)
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS module_classpath (
@@ -233,6 +247,8 @@ public final class QuillDatabase {
         h.execute("CREATE INDEX IF NOT EXISTS idx_members_class ON class_members(class_id, kind, name)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_calls_from ON method_calls(from_class_id, from_method)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_calls_to ON method_calls(to_class_id, to_method)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_fields_from ON field_accesses(from_class_id, from_method)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_fields_to ON field_accesses(to_class_id, field_name)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_module_classpath_visible ON module_classpath(visible_module)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_repository_path ON files(repository_path)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_files_lifecycle ON files(lifecycle)");

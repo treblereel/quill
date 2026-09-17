@@ -61,6 +61,31 @@ class BytecodeDependencyScannerTest {
     }
 
     @Test
+    void recordsExactFieldReadsAndWrites() throws URISyntaxException {
+        Path testClasses = Path.of(BytecodeDependencyScannerTest.class.getProtectionDomain()
+                .getCodeSource().getLocation().toURI());
+
+        BytecodeDependencyScanner.ScanResult result = BytecodeDependencyScanner.analyze(
+                ClassFileSnapshot.capture(List.of(testClasses)));
+
+        assertEquals(1, result.fieldAccesses().stream()
+                .filter(access -> access.fromClass().equals(Consumer.class.getName()))
+                .filter(access -> access.fromMethod().equals("setValue"))
+                .filter(access -> access.toClass().equals(Consumer.class.getName()))
+                .filter(access -> access.fieldName().equals("value"))
+                .filter(access -> access.fieldDescriptor().equals("I"))
+                .filter(access -> access.accessKind().equals("write_instance"))
+                .filter(access -> !access.evidenceLines().isEmpty())
+                .count());
+        assertEquals(1, result.fieldAccesses().stream()
+                .filter(access -> access.fromClass().equals(Consumer.class.getName()))
+                .filter(access -> access.fromMethod().equals("getValue"))
+                .filter(access -> access.fieldName().equals("value"))
+                .filter(access -> access.accessKind().equals("read_instance"))
+                .count());
+    }
+
+    @Test
     void snapshotSupportsAllIndexingPassesAfterClassFilesDisappear() throws Exception {
         copyClass(Consumer.class);
         copyClass(Constructed.class);
@@ -154,8 +179,18 @@ class BytecodeDependencyScannerTest {
     }
 
     static final class Consumer {
+        private int value;
+
         Object create() {
             return new Constructed();
+        }
+
+        void setValue(int value) {
+            this.value = value;
+        }
+
+        int getValue() {
+            return value;
         }
     }
 

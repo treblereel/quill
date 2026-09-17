@@ -207,6 +207,40 @@ class IndexWriterReaderTest {
     }
 
     @Test
+    void persistsAggregatesAndIncrementallyRemovesFieldAccesses() {
+        Path dbPath = tempDir.resolve("field-accesses.db");
+        Jdbi database = QuillDatabase.create(dbPath);
+        List<ClassRecord> classes = List.of(
+                new ClassRecord(0, "example.Caller", "CLASS", "java.lang.Object", List.of(),
+                        "src/main/java/example/Caller.java", 1, false, 20),
+                new ClassRecord(0, "example.Target", "CLASS", "java.lang.Object", List.of(),
+                        "src/main/java/example/Target.java", 1, false, 20));
+        List<FieldAccessRecord> accesses = List.of(
+                new FieldAccessRecord(1, "read", "()V", 2, "value", "I",
+                        "read_instance", 2, List.of(11, 14)),
+                new FieldAccessRecord(1, "write", "()V", 2, "value", "I",
+                        "write_instance", 1, List.of(19)));
+        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), accesses);
+
+        var usages = IndexReader.findFieldUsages(database);
+        assertEquals(1, usages.size());
+        assertEquals("value", usages.getFirst().fieldName());
+        assertEquals("I", usages.getFirst().descriptor());
+        assertEquals(1, usages.getFirst().readerClassCount());
+        assertEquals(2, usages.getFirst().readOccurrences());
+        assertEquals(1, usages.getFirst().writerClassCount());
+        assertEquals(1, usages.getFirst().writeOccurrences());
+
+        IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), classes,
+                List.of(), List.of(), List.of(), Map.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of());
+        assertTrue(IndexReader.findFieldUsages(database).isEmpty());
+    }
+
+    @Test
     void dependencyMetricsSeparateUniqueClassesFromEdgeOccurrences() {
         Jdbi jdbi = QuillDatabase.create(tempDir.resolve("dependency-metrics.db"));
         List<ClassRecord> classes = List.of(

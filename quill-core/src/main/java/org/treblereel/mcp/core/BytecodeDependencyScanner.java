@@ -37,14 +37,31 @@ public final class BytecodeDependencyScanner {
             int occurrences,
             List<Integer> evidenceLines) {}
 
+    public record StaticFieldAccess(
+            String fromClass,
+            String fromMethod,
+            String fromDescriptor,
+            String toClass,
+            String fieldName,
+            String fieldDescriptor,
+            String accessKind,
+            int occurrences,
+            List<Integer> evidenceLines) {}
+
     public record ScanResult(
-            List<StaticDependency> dependencies, List<StaticMethodCall> methodCalls) {}
+            List<StaticDependency> dependencies,
+            List<StaticMethodCall> methodCalls,
+            List<StaticFieldAccess> fieldAccesses) {}
 
     private record Edge(String fromClass, String toClass, String kind) {}
 
     private record CallEdge(
             String fromClass, String fromMethod, String fromDescriptor,
             String toClass, String toMethod, String toDescriptor, String invocationKind) {}
+
+    private record FieldEdge(
+            String fromClass, String fromMethod, String fromDescriptor,
+            String toClass, String fieldName, String fieldDescriptor, String accessKind) {}
 
     public static List<StaticDependency> scan(List<Path> classesDirectories) {
         return analyze(ClassFileSnapshot.capture(classesDirectories)).dependencies();
@@ -85,9 +102,10 @@ public final class BytecodeDependencyScanner {
             List<ClassFileSnapshot.Entry> entries, Set<String> applicationClasses) {
         Map<Edge, EdgeEvidence> edges = new LinkedHashMap<>();
         Map<CallEdge, EdgeEvidence> calls = new LinkedHashMap<>();
+        Map<FieldEdge, EdgeEvidence> fields = new LinkedHashMap<>();
         for (ClassFileSnapshot.Entry entry : entries) {
             new ClassReader(entry.bytecode()).accept(
-                    new DependencyClassVisitor(applicationClasses, edges, calls),
+                    new DependencyClassVisitor(applicationClasses, edges, calls, fields),
                     ClassReader.SKIP_FRAMES);
         }
 
@@ -113,22 +131,39 @@ public final class BytecodeDependencyScanner {
                         .thenComparing(StaticMethodCall::toMethod)
                         .thenComparing(StaticMethodCall::toDescriptor))
                 .toList();
-        return new ScanResult(dependencies, methodCalls);
+        List<StaticFieldAccess> fieldAccesses = fields.entrySet().stream()
+                .map(entry -> new StaticFieldAccess(
+                        entry.getKey().fromClass(), entry.getKey().fromMethod(),
+                        entry.getKey().fromDescriptor(), entry.getKey().toClass(),
+                        entry.getKey().fieldName(), entry.getKey().fieldDescriptor(),
+                        entry.getKey().accessKind(), entry.getValue().occurrences,
+                        List.copyOf(entry.getValue().lines)))
+                .sorted(Comparator.comparing(StaticFieldAccess::fromClass)
+                        .thenComparing(StaticFieldAccess::fromMethod)
+                        .thenComparing(StaticFieldAccess::fromDescriptor)
+                        .thenComparing(StaticFieldAccess::toClass)
+                        .thenComparing(StaticFieldAccess::fieldName)
+                        .thenComparing(StaticFieldAccess::fieldDescriptor)
+                        .thenComparing(StaticFieldAccess::accessKind))
+                .toList();
+        return new ScanResult(dependencies, methodCalls, fieldAccesses);
     }
 
     private static final class DependencyClassVisitor extends ClassVisitor {
         private final Set<String> applicationClasses;
         private final Map<Edge, EdgeEvidence> edges;
         private final Map<CallEdge, EdgeEvidence> calls;
+        private final Map<FieldEdge, EdgeEvidence> fields;
         private String owner;
 
         private DependencyClassVisitor(
                 Set<String> applicationClasses, Map<Edge, EdgeEvidence> edges,
-                Map<CallEdge, EdgeEvidence> calls) {
+                Map<CallEdge, EdgeEvidence> calls, Map<FieldEdge, EdgeEvidence> fields) {
             super(Opcodes.ASM9);
             this.applicationClasses = applicationClasses;
             this.edges = edges;
             this.calls = calls;
+            this.fields = fields;
         }
 
         @Override
@@ -161,6 +196,8 @@ public final class BytecodeDependencyScanner {
                 public void visitFieldInsn(int opcode, String fieldOwner, String fieldName,
                         String fieldDescriptor) {
                     directClassLiteral = null;
+                    addFieldAccess(fieldOwner, fieldName, fieldDescriptor,
+                            fieldAccessKind(opcode));
                     add(fieldOwner, "FIELD_ACCESS");
                     addType(Type.getType(fieldDescriptor), "TYPE_USE");
                 }
@@ -189,10 +226,18 @@ public final class BytecodeDependencyScanner {
                     add(bootstrapMethodHandle.getOwner(), "CALLS");
                     for (Object argument : bootstrapMethodArguments) {
                         if (argument instanceof Handle handle) {
-                            addCall(handle.getOwner(), handle.getName(), handle.getDesc(),
-                                    "dynamic");
-                            add(handle.getOwner(), "CALLS");
-                            addMethodTypes(handle.getDesc());
+                            String accessKind = fieldHandleAccessKind(handle.getTag());
+                            if (accessKind == null) {
+                                addCall(handle.getOwner(), handle.getName(), handle.getDesc(),
+                                        "dynamic");
+                                add(handle.getOwner(), "CALLS");
+                                addMethodTypes(handle.getDesc());
+                            } else {
+                                addFieldAccess(handle.getOwner(), handle.getName(),
+                                        handle.getDesc(), accessKind);
+                                add(handle.getOwner(), "FIELD_ACCESS");
+                                addType(Type.getType(handle.getDesc()), "TYPE_USE");
+                            }
                         } else if (argument instanceof Type type) {
                             addType(type, "TYPE_USE");
                         }
@@ -284,6 +329,17 @@ public final class BytecodeDependencyScanner {
                                     target, methodName, methodDescriptor, kind),
                             ignored -> new EdgeEvidence()).add(currentLine);
                 }
+
+                private void addFieldAccess(String internalName, String fieldName,
+                        String fieldDescriptor, String kind) {
+                    if (internalName == null || fieldName == null || fieldDescriptor == null
+                            || kind == null) return;
+                    String target = className(internalName);
+                    if (!applicationClasses.contains(target)) return;
+                    fields.computeIfAbsent(new FieldEdge(owner, callerMethod, callerDescriptor,
+                                    target, fieldName, fieldDescriptor, kind),
+                            ignored -> new EdgeEvidence()).add(currentLine);
+                }
             };
         }
 
@@ -332,6 +388,26 @@ public final class BytecodeDependencyScanner {
             case Opcodes.INVOKESPECIAL -> "special";
             case Opcodes.INVOKEVIRTUAL -> "virtual";
             default -> "unknown";
+        };
+    }
+
+    private static String fieldAccessKind(int opcode) {
+        return switch (opcode) {
+            case Opcodes.GETFIELD -> "read_instance";
+            case Opcodes.PUTFIELD -> "write_instance";
+            case Opcodes.GETSTATIC -> "read_static";
+            case Opcodes.PUTSTATIC -> "write_static";
+            default -> "unknown";
+        };
+    }
+
+    private static String fieldHandleAccessKind(int tag) {
+        return switch (tag) {
+            case Opcodes.H_GETFIELD -> "read_instance";
+            case Opcodes.H_PUTFIELD -> "write_instance";
+            case Opcodes.H_GETSTATIC -> "read_static";
+            case Opcodes.H_PUTSTATIC -> "write_static";
+            default -> null;
         };
     }
 }

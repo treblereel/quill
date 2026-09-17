@@ -17,7 +17,7 @@ public final class IndexWriter {
     private static final String[] ALL_TABLES = {
             "git_commit_files", "git_commits", "git_file_stats",
             "class_external_deps", "cdi_problems",
-            "dependencies", "method_calls", "injection_points", "beans", "class_members",
+            "dependencies", "field_accesses", "method_calls", "injection_points", "beans", "class_members",
             "class_annotations",
             "class_occurrences", "module_classpath", "classes",
             "files", "metadata"
@@ -61,6 +61,10 @@ public final class IndexWriter {
             "from_class_id", "from_method", "from_descriptor", "to_class_id",
             "to_method", "to_descriptor", "invocation_kind", "occurrence_count",
             "evidence_lines");
+    private static final TableSpec FIELD_ACCESSES = new TableSpec("field_accesses",
+            "from_class_id", "from_method", "from_descriptor", "to_class_id",
+            "field_name", "field_descriptor", "access_kind", "occurrence_count",
+            "evidence_lines");
     private static final TableSpec BEANS = new TableSpec("beans",
             "id", "class_id", "kind", "scope", "qualifiers", "stereotypes",
             "is_alternative", "is_default", "priority", "profiles", "declaring_class_id",
@@ -87,11 +91,12 @@ public final class IndexWriter {
             "commit_id", "class_id", "file_path", "change_type");
     private static final List<TableSpec> INSERT_ORDER = List.of(
             FILES, CLASSES, CLASS_OCCURRENCES, CLASS_ANNOTATIONS, CLASS_MEMBERS,
-            METHOD_CALLS, BEANS,
+            METHOD_CALLS, FIELD_ACCESSES, BEANS,
             INJECTION_POINTS, DEPENDENCIES, METADATA,
             EXTERNAL_DEPS, PROBLEMS, FILE_STATS, COMMITS, COMMIT_FILES);
     private static final List<TableSpec> DELETE_ORDER = List.of(
-            COMMIT_FILES, FILE_STATS, EXTERNAL_DEPS, PROBLEMS, DEPENDENCIES, METHOD_CALLS,
+            COMMIT_FILES, FILE_STATS, EXTERNAL_DEPS, PROBLEMS, DEPENDENCIES,
+            FIELD_ACCESSES, METHOD_CALLS,
             INJECTION_POINTS, BEANS, COMMITS, CLASS_MEMBERS, CLASS_ANNOTATIONS, CLASS_OCCURRENCES,
             CLASSES, FILES, METADATA);
 
@@ -172,9 +177,26 @@ public final class IndexWriter {
             List<ClassAnnotationRecord> annotations,
             List<ClassMemberRecord> members,
             List<MethodCallRecord> methodCalls) {
+        return writeFresh(jdbi, classes, beans, injectionPoints, dependencies, metadata,
+                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
+                annotations, members, methodCalls, List.of());
+    }
+
+    public static WriteTimings writeFresh(Jdbi jdbi,
+            List<ClassRecord> classes, List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
+            Map<String, String> metadata,
+            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
+            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
+            List<GitCommitFile> commitFiles, List<FileRecord> files,
+            List<ClassOccurrenceRecord> occurrences,
+            List<ClassAnnotationRecord> annotations,
+            List<ClassMemberRecord> members,
+            List<MethodCallRecord> methodCalls,
+            List<FieldAccessRecord> fieldAccesses) {
         return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
                 externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, members, methodCalls, true);
+                annotations, members, methodCalls, fieldAccesses, true);
     }
 
     /**
@@ -246,6 +268,23 @@ public final class IndexWriter {
             List<ClassAnnotationRecord> annotations,
             List<ClassMemberRecord> members,
             List<MethodCallRecord> methodCalls) {
+        return writeIncremental(jdbi, classes, beans, injectionPoints, dependencies, metadata,
+                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
+                annotations, members, methodCalls, List.of());
+    }
+
+    public static IncrementalWriteTimings writeIncremental(Jdbi jdbi,
+            List<ClassRecord> classes, List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
+            Map<String, String> metadata,
+            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
+            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
+            List<GitCommitFile> commitFiles, List<FileRecord> files,
+            List<ClassOccurrenceRecord> occurrences,
+            List<ClassAnnotationRecord> annotations,
+            List<ClassMemberRecord> members,
+            List<MethodCallRecord> methodCalls,
+            List<FieldAccessRecord> fieldAccesses) {
         long startedAt = System.nanoTime();
         long[] deltaNanos = new long[1];
         long[] counts = new long[3];
@@ -256,7 +295,7 @@ public final class IndexWriter {
                     createDesiredTables(tx);
                     populateDesiredTables(tx, classes, beans, injectionPoints, dependencies,
                             metadata, externalDeps, problems, fileStats, commits, commitFiles,
-                            files, occurrences, annotations, members, methodCalls);
+                            files, occurrences, annotations, members, methodCalls, fieldAccesses);
                     createDesiredIndexes(tx);
                     long deltaStartedAt = System.nanoTime();
                     for (TableSpec table : DELETE_ORDER) {
@@ -303,13 +342,15 @@ public final class IndexWriter {
             List<ClassOccurrenceRecord> occurrences,
             List<ClassAnnotationRecord> annotations,
             List<ClassMemberRecord> members,
-            List<MethodCallRecord> methodCalls) {
+            List<MethodCallRecord> methodCalls,
+            List<FieldAccessRecord> fieldAccesses) {
         insertDesiredFiles(h, files);
         insertDesiredClasses(h, classes);
         insertDesiredClassOccurrences(h, occurrences);
         insertDesiredClassAnnotations(h, annotations);
         insertDesiredClassMembers(h, members);
         insertDesiredMethodCalls(h, methodCalls);
+        insertDesiredFieldAccesses(h, fieldAccesses);
         insertDesiredBeans(h, beans);
         insertDesiredInjectionPoints(h, injectionPoints);
         insertDesiredDependencies(h, dependencies);
@@ -462,6 +503,24 @@ public final class IndexWriter {
                 });
     }
 
+    private static void insertDesiredFieldAccesses(
+            Handle h, List<FieldAccessRecord> fieldAccesses) {
+        executeBatch(h,
+                "INSERT INTO desired_field_accesses (from_class_id, from_method, from_descriptor, to_class_id, field_name, field_descriptor, access_kind, occurrence_count, evidence_lines) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                fieldAccesses, (statement, access) -> {
+                    statement.setInt(1, access.fromClassId());
+                    statement.setString(2, access.fromMethod());
+                    statement.setString(3, access.fromDescriptor());
+                    statement.setInt(4, access.toClassId());
+                    statement.setString(5, access.fieldName());
+                    statement.setString(6, access.fieldDescriptor());
+                    statement.setString(7, access.accessKind());
+                    statement.setInt(8, access.occurrenceCount());
+                    statement.setString(9, access.evidenceLines().isEmpty()
+                            ? "[]" : toJson(access.evidenceLines()));
+                });
+    }
+
     private static void insertDesiredBeans(Handle h, List<BeanRecord> beans) {
         try (PreparedStatement statement = h.getConnection().prepareStatement(
                 "INSERT INTO desired_beans (id, class_id, kind, scope, qualifiers, stereotypes, is_alternative, is_default, priority, profiles, declaring_class_id, member_name, bean_types) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
@@ -611,6 +670,24 @@ public final class IndexWriter {
             List<ClassMemberRecord> members,
             List<MethodCallRecord> methodCalls,
             boolean freshDatabase) {
+        return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
+                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
+                annotations, members, methodCalls, List.of(), freshDatabase);
+    }
+
+    private static WriteTimings writeAll(Jdbi jdbi,
+            List<ClassRecord> classes, List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
+            Map<String, String> metadata,
+            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
+            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
+            List<GitCommitFile> commitFiles, List<FileRecord> files,
+            List<ClassOccurrenceRecord> occurrences,
+            List<ClassAnnotationRecord> annotations,
+            List<ClassMemberRecord> members,
+            List<MethodCallRecord> methodCalls,
+            List<FieldAccessRecord> fieldAccesses,
+            boolean freshDatabase) {
         long transactionStartedAt = System.nanoTime();
         long[] insertsNanos = new long[1];
         long[] indexesNanos = new long[1];
@@ -629,6 +706,7 @@ public final class IndexWriter {
             insertClassAnnotations(h, annotations);
             insertClassMembers(h, members);
             insertMethodCalls(h, methodCalls);
+            insertFieldAccesses(h, fieldAccesses);
             insertBeans(h, beans);
             insertInjectionPoints(h, injectionPoints);
             insertDependencies(h, dependencies);
@@ -792,6 +870,23 @@ public final class IndexWriter {
                     statement.setInt(8, call.occurrenceCount());
                     statement.setString(9, call.evidenceLines().isEmpty()
                             ? "[]" : toJson(call.evidenceLines()));
+                });
+    }
+
+    private static void insertFieldAccesses(Handle h, List<FieldAccessRecord> fieldAccesses) {
+        executeBatch(h,
+                "INSERT INTO field_accesses (from_class_id, from_method, from_descriptor, to_class_id, field_name, field_descriptor, access_kind, occurrence_count, evidence_lines) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                fieldAccesses, (statement, access) -> {
+                    statement.setInt(1, access.fromClassId());
+                    statement.setString(2, access.fromMethod());
+                    statement.setString(3, access.fromDescriptor());
+                    statement.setInt(4, access.toClassId());
+                    statement.setString(5, access.fieldName());
+                    statement.setString(6, access.fieldDescriptor());
+                    statement.setString(7, access.accessKind());
+                    statement.setInt(8, access.occurrenceCount());
+                    statement.setString(9, access.evidenceLines().isEmpty()
+                            ? "[]" : toJson(access.evidenceLines()));
                 });
     }
 

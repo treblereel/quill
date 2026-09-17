@@ -10,107 +10,117 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.IndexReader.MethodInboundUsage;
+import org.treblereel.mcp.db.IndexReader.FieldUsage;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 
-/** Finds private methods with no matching inbound bytecode call. */
-final class UnusedMethodQueries {
+/** Finds private fields with no indexed reads, conservatively excluding runtime-managed fields. */
+final class UnusedFieldQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final Set<String> CONVENTIONAL_CALLBACKS = Set.of(
-            "readObject", "readObjectNoData", "readResolve",
-            "writeObject", "writeReplace", "finalize");
 
-    String findUnusedMethods(Jdbi jdbi, String module, boolean includeGenerated,
-            boolean includeTests, int limit, int offset) {
+    String findUnusedFields(Jdbi jdbi, String module, boolean includeGenerated,
+            boolean includeTests, boolean includeWriteOnly, int limit, int offset) {
         List<ClassRecord> classes = IndexReader.findAllClasses(jdbi);
         Map<Integer, List<ClassMemberRecord>> members = IndexReader.findClassMembers(
                 jdbi, classes.stream().map(ClassRecord::id).toList());
-        Map<MethodKey, MethodInboundUsage> usages = new HashMap<>();
-        for (MethodInboundUsage usage : IndexReader.findMethodInboundUsages(jdbi)) {
-            usages.put(new MethodKey(usage.classId(), usage.method(), usage.descriptor()), usage);
+        Map<FieldKey, FieldUsage> usages = new HashMap<>();
+        for (FieldUsage usage : IndexReader.findFieldUsages(jdbi)) {
+            usages.put(new FieldKey(usage.classId(), usage.fieldName(), usage.descriptor()), usage);
         }
-
-        Map<String, Integer> excluded = new java.util.LinkedHashMap<>();
+        Set<String> serializableClasses = serializableClasses(classes);
+        Map<String, Integer> excluded = new LinkedHashMap<>();
         List<Candidate> candidates = new ArrayList<>();
-        int analyzedPrivateMethods = 0;
+        int analyzedPrivateFields = 0;
         for (ClassRecord cls : classes) {
             if (!inRequestedScope(cls, module, includeGenerated, includeTests, excluded)) continue;
             for (ClassMemberRecord member : members.getOrDefault(cls.id(), List.of())) {
-                if (!"METHOD".equals(member.kind()) || !hasModifier(member, "private")) continue;
-                analyzedPrivateMethods++;
+                if (!"FIELD".equals(member.kind()) || !hasModifier(member, "private")) continue;
+                analyzedPrivateFields++;
                 if (!member.annotations().isEmpty()) {
-                    increment(excluded, "annotated_method");
+                    increment(excluded, "annotated_field");
                     continue;
                 }
-                if (hasModifier(member, "native")) {
-                    increment(excluded, "native_method");
+                if (hasModifier(member, "static") && hasModifier(member, "final")) {
+                    increment(excluded, "static_final_constant");
                     continue;
                 }
-                if (CONVENTIONAL_CALLBACKS.contains(member.name())) {
-                    increment(excluded, "conventional_runtime_callback");
+                if (serializableClasses.contains(cls.className())) {
+                    increment(excluded, "serializable_state");
                     continue;
                 }
-                String descriptor = JvmDescriptors.methodDescriptor(member);
+                String descriptor = JvmDescriptors.fieldDescriptor(member);
                 if (descriptor == null) {
                     increment(excluded, "descriptor_not_resolved");
                     continue;
                 }
-                MethodInboundUsage usage = usages.get(
-                        new MethodKey(cls.id(), member.name(), descriptor));
-                if (usage != null) {
-                    increment(excluded, "inbound_bytecode_call");
+                FieldUsage usage = usages.get(new FieldKey(cls.id(), member.name(), descriptor));
+                int reads = usage == null ? 0 : usage.readOccurrences();
+                int writes = usage == null ? 0 : usage.writeOccurrences();
+                if (reads > 0) {
+                    increment(excluded, "indexed_read");
                     continue;
                 }
-                candidates.add(new Candidate(cls, member, descriptor,
-                        cls.isBean() ? "low" : "medium"));
+                if (writes > 0 && !includeWriteOnly) {
+                    increment(excluded, "write_only_not_requested");
+                    continue;
+                }
+                String classification = writes > 0 ? "write_only" : "never_accessed";
+                String confidence = writes > 0 || cls.isBean() ? "low" : "medium";
+                candidates.add(new Candidate(cls, member, descriptor, usage,
+                        classification, confidence));
             }
         }
         candidates.sort(Comparator
                 .comparingInt((Candidate candidate) -> confidenceOrder(candidate.confidence()))
                 .thenComparing(candidate -> candidate.owner().className())
-                .thenComparing(candidate -> candidate.member().signature()));
+                .thenComparing(candidate -> candidate.member().name()));
 
         int from = Math.min(offset, candidates.size());
         int to = (int) Math.min((long) from + limit, candidates.size());
         List<Candidate> page = candidates.subList(from, to);
         ObjectNode root = JSON.createObjectNode();
-        root.put("classification", "private_method_candidates_not_proven_dead_code");
+        root.put("classification", "private_field_candidates_not_proven_dead_code");
         root.put("visibility_scope", "private_only");
         if (module == null) root.putNull("module_filter");
         else root.put("module_filter", module);
         root.put("include_generated", includeGenerated);
         root.put("include_tests", includeTests);
-        root.put("analyzed_private_methods", analyzedPrivateMethods);
+        root.put("include_write_only", includeWriteOnly);
+        root.put("analyzed_private_fields", analyzedPrivateFields);
         root.set("excluded_reason_counts", JSON.valueToTree(excluded));
         ArrayNode limitations = root.putArray("limitations");
-        limitations.add("Reflection, JNI, serialization, configuration, and framework conventions can invoke private methods without a bytecode call");
-        limitations.add("Annotated, native, and known Java serialization callback methods are excluded conservatively");
-        limitations.add("Method identity is matched by owner, name, and erased JVM descriptor; unresolved generic descriptors are excluded");
+        limitations.add("Reflection, JNI, serialization, persistence, templates, configuration, and framework conventions can access private fields without bytecode instructions");
+        limitations.add("Annotated fields, static-final constants, and fields on known Serializable classes are excluded conservatively");
+        limitations.add("Write-only fields are lower-confidence candidates and are opt-in");
         limitations.add("Only the indexed compiled snapshot is analyzed; inspect freshness metadata before deleting code");
 
         ArrayNode values = root.putArray("candidates");
-        int naiveTokens = 0;
         Set<Integer> countedClasses = new HashSet<>();
+        int naiveTokens = 0;
         for (Candidate candidate : page) {
             ClassRecord cls = candidate.owner();
             ClassMemberRecord member = candidate.member();
+            FieldUsage usage = candidate.usage();
             ObjectNode node = values.addObject();
             node.put("class", cls.className());
-            node.put("method", member.name());
+            node.put("field", member.name());
             node.put("signature", member.signature());
             node.put("descriptor", candidate.descriptor());
-            node.set("parameters", JSON.valueToTree(member.parameterTypes()));
-            node.put("return_type", member.typeName());
+            node.put("type", member.typeName());
             node.put("modifiers", member.modifiers());
+            node.put("candidate_kind", candidate.classification());
             node.put("confidence", candidate.confidence());
-            node.put("reason", "no_matching_inbound_bytecode_call");
+            node.put("read_occurrences", usage == null ? 0 : usage.readOccurrences());
+            node.put("reader_classes", usage == null ? 0 : usage.readerClassCount());
+            node.put("write_occurrences", usage == null ? 0 : usage.writeOccurrences());
+            node.put("writer_classes", usage == null ? 0 : usage.writerClassCount());
             if (cls.sourceFile() == null) node.putNull("source");
             else node.put("source", cls.sourceFile() + ":" + cls.sourceLine());
             node.put("origin", cls.origin());
@@ -118,17 +128,32 @@ final class UnusedMethodQueries {
             else node.put("module", cls.module());
             if (cls.sourceSet() == null) node.putNull("source_set");
             else node.put("source_set", cls.sourceSet());
-            if (cls.isBean()) {
-                node.putArray("cautions").add(
-                        "Declaring class is a DI bean; framework lifecycle conventions may apply");
-            } else {
-                node.putArray("cautions");
+            ArrayNode cautions = node.putArray("cautions");
+            if (cls.isBean()) cautions.add("Declaring class is a DI bean");
+            if ("write_only".equals(candidate.classification())) {
+                cautions.add("The field is written by indexed bytecode but no indexed read was found");
             }
             if (countedClasses.add(cls.id())) naiveTokens += cls.sourceTokens();
         }
         appendPage(root, page.size(), candidates.size(), limit, offset);
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
+    }
+
+    private static Set<String> serializableClasses(List<ClassRecord> classes) {
+        Set<String> result = new HashSet<>();
+        boolean changed;
+        do {
+            changed = false;
+            for (ClassRecord cls : classes) {
+                if (result.contains(cls.className())) continue;
+                boolean serializable = cls.interfaces().contains("java.io.Serializable")
+                        || result.contains(cls.superclass())
+                        || cls.interfaces().stream().anyMatch(result::contains);
+                if (serializable && result.add(cls.className())) changed = true;
+            }
+        } while (changed);
+        return result;
     }
 
     private static boolean inRequestedScope(ClassRecord cls, String module,
@@ -164,11 +189,13 @@ final class UnusedMethodQueries {
         return "medium".equals(confidence) ? 0 : 1;
     }
 
-    private record MethodKey(int classId, String method, String descriptor) {}
+    private record FieldKey(int classId, String fieldName, String descriptor) {}
 
     private record Candidate(
             ClassRecord owner,
             ClassMemberRecord member,
             String descriptor,
+            FieldUsage usage,
+            String classification,
             String confidence) {}
 }

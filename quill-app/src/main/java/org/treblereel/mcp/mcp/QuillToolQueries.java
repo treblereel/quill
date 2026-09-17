@@ -16,6 +16,7 @@ public final class QuillToolQueries {
     private final MethodOverrideQueries methodOverrides = new MethodOverrideQueries();
     private final UnusedClassQueries unusedClasses = new UnusedClassQueries();
     private final UnusedMethodQueries unusedMethods = new UnusedMethodQueries();
+    private final UnusedFieldQueries unusedFields = new UnusedFieldQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -95,6 +96,12 @@ public final class QuillToolQueries {
             boolean includeTests, int limit, int offset) {
         return unusedMethods.findUnusedMethods(
                 jdbi, module, includeGenerated, includeTests, limit, offset);
+    }
+
+    String findUnusedFields(Jdbi jdbi, String module, boolean includeGenerated,
+            boolean includeTests, boolean includeWriteOnly, int limit, int offset) {
+        return unusedFields.findUnusedFields(jdbi, module, includeGenerated,
+                includeTests, includeWriteOnly, limit, offset);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

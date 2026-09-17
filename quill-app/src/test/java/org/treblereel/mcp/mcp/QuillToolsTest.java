@@ -736,6 +736,95 @@ class QuillToolsTest {
     }
 
     @Test
+    void findUnusedFieldsUsesExactDescriptorsAndConservativeExclusions() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes
+                      (class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.PlainState', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/PlainState.java', 1,
+                            0, 30, 'source', 'current', '.', 'main'),
+                           ('org.acme.SerializableState', 'CLASS', 'java.lang.Object',
+                            '["java.io.Serializable"]',
+                            'src/main/java/org/acme/SerializableState.java', 1,
+                            0, 20, 'source', 'current', '.', 'main')""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    SELECT id, 'FIELD', 'unused', 'unused:int', 'int', '[]', 'private', '[]'
+                    FROM classes WHERE class_name = 'org.acme.PlainState'
+                    UNION ALL
+                    SELECT id, 'FIELD', 'writeOnly', 'writeOnly:java.lang.String',
+                           'java.lang.String', '[]', 'private', '[]'
+                    FROM classes WHERE class_name = 'org.acme.PlainState'
+                    UNION ALL
+                    SELECT id, 'FIELD', 'used', 'used:java.lang.String',
+                           'java.lang.String', '[]', 'private', '[]'
+                    FROM classes WHERE class_name = 'org.acme.PlainState'
+                    UNION ALL
+                    SELECT id, 'FIELD', 'injected', 'injected:org.acme.Service',
+                           'org.acme.Service', '[]', 'private', '["jakarta.inject.Inject"]'
+                    FROM classes WHERE class_name = 'org.acme.PlainState'
+                    UNION ALL
+                    SELECT id, 'FIELD', 'CONSTANT', 'CONSTANT:int', 'int', '[]',
+                           'private static final', '[]'
+                    FROM classes WHERE class_name = 'org.acme.PlainState'
+                    UNION ALL
+                    SELECT id, 'FIELD', 'serialized', 'serialized:int', 'int', '[]',
+                           'private', '[]'
+                    FROM classes WHERE class_name = 'org.acme.SerializableState'""");
+            handle.execute("""
+                    INSERT INTO field_accesses
+                      (from_class_id, from_method, from_descriptor, to_class_id,
+                       field_name, field_descriptor, access_kind,
+                       occurrence_count, evidence_lines)
+                    SELECT id, 'initialize', '()V', id, 'writeOnly',
+                           'Ljava/lang/String;', 'write_instance', 1, '[12]'
+                    FROM classes WHERE class_name = 'org.acme.PlainState'
+                    UNION ALL
+                    SELECT id, 'initialize', '()V', id, 'used',
+                           'Ljava/lang/String;', 'write_instance', 1, '[13]'
+                    FROM classes WHERE class_name = 'org.acme.PlainState'
+                    UNION ALL
+                    SELECT id, 'value', '()Ljava/lang/String;', id, 'used',
+                           'Ljava/lang/String;', 'read_instance', 2, '[17,20]'
+                    FROM classes WHERE class_name = 'org.acme.PlainState'""");
+        });
+
+        QuillTools tools = new QuillTools();
+        JsonNode defaults = JSON.readTree(tools.findUnusedFields(
+                jdbi, null, false, false, false, 20, 0));
+        JsonNode expanded = JSON.readTree(tools.findUnusedFields(
+                jdbi, null, false, false, true, 20, 0));
+
+        assertEquals("private_field_candidates_not_proven_dead_code",
+                defaults.path("classification").asText());
+        assertEquals(1, defaults.path("total").asInt());
+        assertEquals("unused", defaults.path("candidates").get(0).path("field").asText());
+        assertEquals("I", defaults.path("candidates").get(0).path("descriptor").asText());
+        assertEquals("never_accessed",
+                defaults.path("candidates").get(0).path("candidate_kind").asText());
+        assertEquals(2, expanded.path("total").asInt());
+        JsonNode writeOnly = expanded.path("candidates").valueStream()
+                .filter(candidate -> candidate.path("field").asText().equals("writeOnly"))
+                .findFirst().orElseThrow();
+        assertEquals("write_only", writeOnly.path("candidate_kind").asText());
+        assertEquals(1, writeOnly.path("write_occurrences").asInt());
+        assertEquals(1, defaults.path("excluded_reason_counts")
+                .path("annotated_field").asInt());
+        assertEquals(1, defaults.path("excluded_reason_counts")
+                .path("static_final_constant").asInt());
+        assertEquals(1, defaults.path("excluded_reason_counts")
+                .path("serializable_state").asInt());
+        assertEquals(1, defaults.path("excluded_reason_counts")
+                .path("indexed_read").asInt());
+        assertEquals(1, defaults.path("excluded_reason_counts")
+                .path("write_only_not_requested").asInt());
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

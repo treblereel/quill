@@ -50,6 +50,7 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
+import org.treblereel.mcp.model.FieldAccessRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 import org.treblereel.mcp.model.MethodCallRecord;
@@ -418,6 +419,7 @@ public class ProjectInitializer {
         List<ServiceProviderScanner.Registration> serviceRegistrations;
         List<ExternalDepRecord> bytecodeServiceExternalDeps = new ArrayList<>();
         List<MethodCallRecord> methodCalls = new ArrayList<>();
+        List<FieldAccessRecord> fieldAccesses = new ArrayList<>();
         GitAnalyzer.GitAnalysisResult gitResult;
         try (BackgroundTask<GitAnalyzer.GitAnalysisResult> gitTask =
                 BackgroundTask.start("quill-git-analysis", () -> GitAnalyzer.hasGitRepo(root)
@@ -444,6 +446,16 @@ public class ProjectInitializer {
                     methodCalls.add(new MethodCallRecord(from, call.fromMethod(),
                             call.fromDescriptor(), to, call.toMethod(), call.toDescriptor(),
                             call.invocationKind(), call.occurrences(), call.evidenceLines()));
+                }
+            }
+            for (BytecodeDependencyScanner.StaticFieldAccess access : bytecode.fieldAccesses()) {
+                Integer from = classNameToSqliteId.get(access.fromClass());
+                Integer to = classNameToSqliteId.get(access.toClass());
+                if (from != null && to != null) {
+                    fieldAccesses.add(new FieldAccessRecord(from, access.fromMethod(),
+                            access.fromDescriptor(), to, access.fieldName(),
+                            access.fieldDescriptor(), access.accessKind(), access.occurrences(),
+                            access.evidenceLines()));
                 }
             }
             timings.finish("bytecode_analysis");
@@ -552,6 +564,7 @@ public class ProjectInitializer {
         metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
         metadata.put("method_calls", Integer.toString(methodCalls.size()));
+        metadata.put("field_accesses", Integer.toString(fieldAccesses.size()));
         metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
         metadata.put("framework", isSpring && isCdi ? "Mixed"
                 : isSpring ? "Spring" : isCdi ? "CDI" : "Plain");
@@ -574,7 +587,7 @@ public class ProjectInitializer {
                         externalDeps, remappedProblems,
                         gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
                         inventory.files(), classOccurrences, classAnnotations, classMembers,
-                        methodCalls);
+                        methodCalls, fieldAccesses);
                 timings.record("database_inserts", writeTimings.insertsMillis());
                 timings.record("database_indexes", writeTimings.indexesMillis());
                 timings.record("database_transaction_overhead",
@@ -590,7 +603,7 @@ public class ProjectInitializer {
                                 externalDeps, remappedProblems,
                                 gitResult.fileStats(), gitResult.commits(),
                                 gitResult.commitFiles(), inventory.files(), classOccurrences,
-                                classAnnotations, classMembers, methodCalls);
+                                classAnnotations, classMembers, methodCalls, fieldAccesses);
                 timings.record("database_delta", writeTimings.deltaMillis());
                 timings.record("database_transaction_overhead",
                         writeTimings.transactionOverheadMillis());

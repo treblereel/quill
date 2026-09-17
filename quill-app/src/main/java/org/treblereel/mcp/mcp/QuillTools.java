@@ -209,6 +209,22 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Find private fields without indexed reads; write-only fields are opt-in and results are conservative dead-code candidates.")
+    public String find_unused_fields(
+            @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
+            @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,
+            @ToolArg(description = "Include test classes; default false") Optional<Boolean> include_tests,
+            @ToolArg(description = "Include fields that are written but never read; default false") Optional<Boolean> include_write_only,
+            @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findUnusedFields(
+                p.jdbi(), module.orElse(null), include_generated.orElse(false),
+                include_tests.orElse(false), include_write_only.orElse(false),
+                clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -403,6 +419,12 @@ public final class QuillTools {
             boolean includeTests, int limit, int offset) {
         return queries.findUnusedMethods(
                 jdbi, module, includeGenerated, includeTests, limit, offset);
+    }
+
+    String findUnusedFields(Jdbi jdbi, String module, boolean includeGenerated,
+            boolean includeTests, boolean includeWriteOnly, int limit, int offset) {
+        return queries.findUnusedFields(jdbi, module, includeGenerated,
+                includeTests, includeWriteOnly, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

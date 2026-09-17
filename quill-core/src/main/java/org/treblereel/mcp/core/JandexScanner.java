@@ -259,7 +259,7 @@ public final class JandexScanner {
                 result.add(new ClassMemberRecord(classId,
                         constructor ? "CONSTRUCTOR" : "METHOD", name, signature, type,
                         parameters, java.lang.reflect.Modifier.toString(method.flags()),
-                        memberAnnotations(method.annotations(), AnnotationTarget.Kind.METHOD)));
+                        methodAnnotations(method.annotations())));
             }
         }
         return result;
@@ -274,6 +274,16 @@ public final class JandexScanner {
         return annotations.stream()
                 .filter(annotation -> annotation.target() != null
                         && annotation.target().kind() == targetKind)
+                .map(annotation -> annotation.name().toString())
+                .distinct().sorted().toList();
+    }
+
+    private static List<String> methodAnnotations(Collection<AnnotationInstance> annotations) {
+        return annotations.stream()
+                .filter(annotation -> annotation.target() != null
+                        && (annotation.target().kind() == AnnotationTarget.Kind.METHOD
+                                || annotation.target().kind()
+                                        == AnnotationTarget.Kind.METHOD_PARAMETER))
                 .map(annotation -> annotation.name().toString())
                 .distinct().sorted().toList();
     }

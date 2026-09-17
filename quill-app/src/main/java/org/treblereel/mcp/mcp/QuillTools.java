@@ -225,6 +225,22 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Find statically identifiable application and framework entry points with detection evidence.")
+    public String find_entry_points(
+            @ToolArg(description = "Kind: main, rest_resource, rest_endpoint, observer, scheduled, message_consumer, annotation_processor, service_provider, or all") Optional<String> kind,
+            @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
+            @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,
+            @ToolArg(description = "Include test classes; default false") Optional<Boolean> include_tests,
+            @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findEntryPoints(
+                p.jdbi(), kind.orElse(null), module.orElse(null),
+                include_generated.orElse(false), include_tests.orElse(false),
+                clamp(limit.orElse(100), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -425,6 +441,12 @@ public final class QuillTools {
             boolean includeTests, boolean includeWriteOnly, int limit, int offset) {
         return queries.findUnusedFields(jdbi, module, includeGenerated,
                 includeTests, includeWriteOnly, limit, offset);
+    }
+
+    String findEntryPoints(Jdbi jdbi, String kind, String module,
+            boolean includeGenerated, boolean includeTests, int limit, int offset) {
+        return queries.findEntryPoints(jdbi, kind, module,
+                includeGenerated, includeTests, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

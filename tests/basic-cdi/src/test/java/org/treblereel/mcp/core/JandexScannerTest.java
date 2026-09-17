@@ -154,6 +154,22 @@ class JandexScannerTest {
     }
 
     @Test
+    void retainsMethodParameterAnnotationsForFrameworkEntryPointDiscovery() throws Exception {
+        Indexer indexer = new Indexer();
+        indexer.indexClass(ObserverParam.class);
+        indexer.indexClass(ObserverFixture.class);
+        Index observerIndex = indexer.complete();
+
+        var observe = JandexScanner.extractClassMembers(observerIndex,
+                        Map.of(ObserverFixture.class.getName(), 1)).stream()
+                .filter(member -> member.kind().equals("METHOD"))
+                .filter(member -> member.name().equals("observe"))
+                .findFirst().orElseThrow();
+
+        assertTrue(observe.annotations().contains(ObserverParam.class.getName()));
+    }
+
+    @Test
     void resolvesSourcesInRootOrderAndCountsTokens() throws Exception {
         Path relative = Path.of("org/treblereel/mcp/fixture/PaymentService.java");
         Path first = tempDir.resolve("first");
@@ -224,4 +240,12 @@ class JandexScannerTest {
 
     @ComposedMarker
     static class MetaAnnotated {}
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.PARAMETER)
+    @interface ObserverParam {}
+
+    static class ObserverFixture {
+        void observe(@ObserverParam String event) {}
+    }
 }

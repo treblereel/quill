@@ -137,6 +137,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   descriptors while excluding annotated, native, and conventional runtime callback methods
 - **find_unused_fields** — find private fields with no exact indexed bytecode reads; annotated,
   serializable, and static-final fields are excluded, while write-only candidates are opt-in
+- **find_entry_points** — discover main methods, REST resources/endpoints, observers, scheduled
+  methods, message consumers, annotation processors, and ServiceLoader providers
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
   annotation name or FQCN, with pagination and source/generated breakdown
 - **find_implementations** — find direct/transitive subclasses and implementors, including

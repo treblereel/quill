@@ -321,6 +321,30 @@ public final class IndexReader {
                 .list());
     }
 
+    public static Map<Integer, List<ClassAnnotationRecord>> findClassAnnotations(
+            Jdbi jdbi, Collection<Integer> classIds) {
+        if (classIds == null || classIds.isEmpty()) return Map.of();
+        return jdbi.withHandle(handle -> {
+            Map<Integer, List<ClassAnnotationRecord>> result = new LinkedHashMap<>();
+            List<Integer> ids = List.copyOf(classIds);
+            for (int from = 0; from < ids.size(); from += 500) {
+                List<Integer> batch = ids.subList(from, Math.min(from + 500, ids.size()));
+                handle.createQuery("""
+                                SELECT class_id, annotation_name, direct, via_annotation
+                                FROM class_annotations WHERE class_id IN (<classIds>)
+                                ORDER BY class_id, direct DESC, annotation_name, via_annotation""")
+                        .bindList("classIds", batch)
+                        .map((rs, ctx) -> new ClassAnnotationRecord(
+                                rs.getInt("class_id"), rs.getString("annotation_name"),
+                                rs.getBoolean("direct"), rs.getString("via_annotation")))
+                        .forEach(annotation -> result
+                                .computeIfAbsent(annotation.classId(), ignored -> new ArrayList<>())
+                                .add(annotation));
+            }
+            return result;
+        });
+    }
+
     public static List<ClassMemberRecord> findClassMembers(Jdbi jdbi, int classId) {
         return jdbi.withHandle(h -> h.createQuery("""
                         SELECT class_id, kind, name, signature, type_name, parameter_types,

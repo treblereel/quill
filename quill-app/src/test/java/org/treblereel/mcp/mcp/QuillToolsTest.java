@@ -825,6 +825,91 @@ class QuillToolsTest {
     }
 
     @Test
+    void findEntryPointsClassifiesFrameworkMethodsAndServiceProviders() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes
+                      (class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.MainApp', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/MainApp.java', 1,
+                            0, 20, 'source', 'current', '.', 'main'),
+                           ('org.acme.GreetingResource', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/GreetingResource.java', 1,
+                            1, 35, 'source', 'current', '.', 'main'),
+                           ('org.acme.EventHandlers', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/EventHandlers.java', 1,
+                            1, 40, 'source', 'current', '.', 'main'),
+                           ('org.acme.FirstProcessor', 'CLASS',
+                            'javax.annotation.processing.AbstractProcessor',
+                            '["javax.annotation.processing.Processor"]',
+                            'src/main/java/org/acme/FirstProcessor.java', 1,
+                            0, 25, 'source', 'current', '.', 'main'),
+                           ('org.acme.PluginProvider', 'CLASS', 'java.lang.Object',
+                            '["java.lang.Runnable"]',
+                            'src/main/java/org/acme/PluginProvider.java', 1,
+                            0, 15, 'source', 'current', '.', 'main')""");
+            handle.execute("""
+                    INSERT INTO class_annotations(class_id, annotation_name, direct, via_annotation)
+                    SELECT id, 'jakarta.ws.rs.Path', 1, NULL FROM classes
+                    WHERE class_name = 'org.acme.GreetingResource'""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    SELECT id, 'METHOD', 'main', 'main(java.lang.String[]):void', 'void',
+                           '["java.lang.String[]"]', 'public static', '[]'
+                    FROM classes WHERE class_name = 'org.acme.MainApp'
+                    UNION ALL
+                    SELECT id, 'METHOD', 'hello', 'hello():java.lang.String',
+                           'java.lang.String', '[]', 'public', '["jakarta.ws.rs.GET"]'
+                    FROM classes WHERE class_name = 'org.acme.GreetingResource'
+                    UNION ALL
+                    SELECT id, 'METHOD', 'observe', 'observe(java.lang.String):void', 'void',
+                           '["java.lang.String"]', '', '["jakarta.enterprise.event.Observes"]'
+                    FROM classes WHERE class_name = 'org.acme.EventHandlers'
+                    UNION ALL
+                    SELECT id, 'METHOD', 'tick', 'tick():void', 'void', '[]', '',
+                           '["io.quarkus.scheduler.Scheduled"]'
+                    FROM classes WHERE class_name = 'org.acme.EventHandlers'
+                    UNION ALL
+                    SELECT id, 'METHOD', 'consume', 'consume(java.lang.String):void', 'void',
+                           '["java.lang.String"]', '',
+                           '["org.eclipse.microprofile.reactive.messaging.Incoming"]'
+                    FROM classes WHERE class_name = 'org.acme.EventHandlers'""");
+            handle.execute("UPDATE metadata SET value = ? WHERE key = ?", """
+                    [{"serviceType":"javax.annotation.processing.Processor",
+                      "providerType":"org.acme.FirstProcessor",
+                      "descriptorPath":"processor/src/main/resources/META-INF/services/javax.annotation.processing.Processor","line":1},
+                     {"serviceType":"java.lang.Runnable",
+                      "providerType":"org.acme.PluginProvider",
+                      "descriptorPath":"app/src/main/resources/META-INF/services/java.lang.Runnable","line":1}]
+                    """, "service_registrations_detail");
+        });
+
+        QuillTools tools = new QuillTools();
+        JsonNode result = JSON.readTree(tools.findEntryPoints(
+                jdbi, null, null, false, false, 20, 0));
+        JsonNode processors = JSON.readTree(tools.findEntryPoints(
+                jdbi, "annotation_processor", null, false, false, 20, 0));
+
+        assertEquals(8, result.path("total").asInt());
+        assertEquals(1, result.path("counts_by_kind").path("main").asInt());
+        assertEquals(1, result.path("counts_by_kind").path("rest_resource").asInt());
+        assertEquals(1, result.path("counts_by_kind").path("rest_endpoint").asInt());
+        assertEquals(1, result.path("counts_by_kind").path("observer").asInt());
+        assertEquals(1, result.path("counts_by_kind").path("scheduled").asInt());
+        assertEquals(1, result.path("counts_by_kind").path("message_consumer").asInt());
+        assertEquals(1, result.path("counts_by_kind").path("annotation_processor").asInt());
+        assertEquals(1, result.path("counts_by_kind").path("service_provider").asInt());
+        assertEquals(1, processors.path("total").asInt());
+        assertEquals("service_descriptor_registration",
+                processors.path("entry_points").get(0).path("detection_rule").asText());
+        assertEquals("javax.annotation.processing.Processor",
+                processors.path("entry_points").get(0).path("service").path("type").asText());
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

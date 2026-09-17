@@ -24,6 +24,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.jdbi.v3.core.Jdbi;
 import org.jboss.jandex.Index;
+import org.treblereel.mcp.core.ApplicationContextResolver;
 import org.treblereel.mcp.core.BeanResolver;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.BytecodeDependencyScanner;
@@ -47,11 +48,6 @@ import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
-import org.treblereel.mcp.model.CandidateDisposition;
-import org.treblereel.mcp.model.ResolutionCandidate;
-import org.treblereel.mcp.model.ResolutionConfidence;
-import org.treblereel.mcp.model.ResolutionStatus;
-import org.treblereel.mcp.model.ResolutionTrace;
 
 public class ProjectInitializer {
 
@@ -466,14 +462,23 @@ public class ProjectInitializer {
         FileInventory.Result inventory = FileInventory.build(root, moduleDirectories, sourceRoots,
                 classes, gitResult.fileStats(), initialWorktree);
         classes = inventory.classes();
-        List<InjectionPointRecord> contextualInjectionPoints = requireApplicationContext(
-                persisted.injectionPoints(), remappedBeans, classes);
-        Set<Integer> contextRequiredInjectionIds = contextualInjectionPoints.stream()
-                .filter(point -> point.resolutionStatus() == ResolutionStatus.CONTEXT_REQUIRED)
-                .map(InjectionPointRecord::id)
-                .collect(java.util.stream.Collectors.toSet());
-        remappedDeps.removeIf(dependency -> dependency.injectionPointId() != null
-                && contextRequiredInjectionIds.contains(dependency.injectionPointId()));
+        List<InjectionPointRecord> contextualInjectionPoints = ApplicationContextResolver.refine(
+                persisted.injectionPoints(), remappedBeans, classes, classOccurrences,
+                moduleClasspath);
+        Map<Integer, BeanRecord> beansById = new HashMap<>();
+        remappedBeans.forEach(bean -> beansById.put(bean.id(), bean));
+        remappedDeps.removeIf(dependency -> dependency.injectionPointId() != null);
+        for (InjectionPointRecord point : contextualInjectionPoints) {
+            BeanRecord owner = beansById.get(point.beanId());
+            BeanRecord target = point.resolvedBeanId() == null
+                    ? null : beansById.get(point.resolvedBeanId());
+            if (owner != null && target != null) {
+                remappedDeps.add(new DependencyRecord(owner.classId(), target.classId(),
+                        InjectionPointRecord.STATIC_SPRING.equals(point.resolutionStrategy())
+                                ? "SPRING_INJECT" : "CDI_INJECT",
+                        point.id()));
+            }
+        }
         Set<Integer> currentClassIds = new HashSet<>();
         for (int i = 0; i < classes.size(); i++) {
             ClassRecord cls = classes.get(i);
@@ -662,57 +667,6 @@ public class ProjectInitializer {
     static PersistedResolution mergePersistedResolutions(
             List<PersistedResolution> parts, boolean mixedFrameworks) {
         return ResolutionPersistenceMapper.merge(parts, mixedFrameworks);
-    }
-
-    static List<InjectionPointRecord> requireApplicationContext(
-            List<InjectionPointRecord> injectionPoints, List<BeanRecord> beans,
-            List<ClassRecord> classes) {
-        Map<Integer, BeanRecord> beansById = new HashMap<>();
-        beans.forEach(bean -> beansById.put(bean.id(), bean));
-        Map<Integer, ClassRecord> classesById = new HashMap<>();
-        for (int i = 0; i < classes.size(); i++) {
-            classesById.put(i + 1, classes.get(i));
-        }
-
-        List<InjectionPointRecord> result = new ArrayList<>(injectionPoints.size());
-        for (InjectionPointRecord point : injectionPoints) {
-            Set<String> candidateModules = new LinkedHashSet<>();
-            for (ResolutionCandidate candidate : point.resolutionTrace().candidates()) {
-                if (candidate.beanId() == null || "QUALIFIER_MISMATCH".equals(candidate.reason())
-                        || "INACTIVE_ALTERNATIVE".equals(candidate.reason())) {
-                    continue;
-                }
-                BeanRecord bean = beansById.get(candidate.beanId());
-                ClassRecord cls = bean == null ? null : classesById.get(bean.classId());
-                if (cls != null && cls.module() != null) candidateModules.add(cls.module());
-            }
-            if (candidateModules.size() < 2) {
-                result.add(point);
-                continue;
-            }
-
-            List<String> limitations = new ArrayList<>(point.limitations());
-            limitations.add("Candidates belong to multiple modules and Quill has not selected "
-                    + "an application runtime classpath.");
-            List<ResolutionCandidate> candidates = point.resolutionTrace().candidates().stream()
-                    .map(candidate -> candidate.disposition() == CandidateDisposition.SELECTED
-                            ? new ResolutionCandidate(candidate.beanId(), candidate.className(),
-                                    candidate.relatedBeanId(), CandidateDisposition.ELIGIBLE,
-                                    "SELECTED_WITHOUT_APPLICATION_CONTEXT", candidate.rules())
-                            : candidate)
-                    .toList();
-            List<String> appliedRules = new ArrayList<>(point.resolutionTrace().appliedRules());
-            appliedRules.add("MODULE_CONTEXT_CHECK");
-            List<String> unsupportedRules = new ArrayList<>(
-                    point.resolutionTrace().unsupportedRules());
-            unsupportedRules.add("APPLICATION_RUNTIME_CLASSPATH");
-            result.add(new InjectionPointRecord(point.id(), point.beanId(), point.kind(),
-                    point.targetType(), point.qualifiers(), point.fieldName(), null,
-                    ResolutionStatus.CONTEXT_REQUIRED, "APPLICATION_CONTEXT",
-                    "APPLICATION_CONTEXT_REQUIRED", ResolutionConfidence.LOW, limitations,
-                    new ResolutionTrace(candidates, appliedRules, unsupportedRules)));
-        }
-        return List.copyOf(result);
     }
 
     static List<Path> findClassesDirs(Path root) {

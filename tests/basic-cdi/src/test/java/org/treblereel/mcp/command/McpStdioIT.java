@@ -335,6 +335,8 @@ class McpStdioIT {
             boolean hasGetDeps = false;
             boolean hasListIps = false;
             for (JsonNode tool : tools) {
+                assertEquals("object", tool.path("outputSchema").path("type").asText(),
+                        "Every Quill tool should advertise structured output: " + tool);
                 String name = tool.get("name").asText();
                 if ("list_beans".equals(name)) hasListBeans = true;
                 if ("get_dependencies".equals(name)) hasGetDeps = true;
@@ -352,6 +354,8 @@ class McpStdioIT {
             assertNotNull(content, "Result should have content array");
             String text = content.get(0).get("text").asText();
             JsonNode beansResult = JSON.readTree(text);
+            assertEquals(beansResult, callResp.get("result").get("structuredContent"),
+                    "Structured content and compatibility text must describe the same result");
             assertTrue(beansResult.get("total").asInt() >= minimumBeans,
                     "Should find at least " + minimumBeans + " beans");
             assertTrue(beansResult.has("_meta"), "Response should contain _meta envelope");
@@ -363,6 +367,8 @@ class McpStdioIT {
             assertTrue(invalidCall.get("isError").asBoolean());
             assertTrue(invalidCall.get("content").get(0).get("text").asText()
                     .contains("Unknown argument"));
+            assertEquals("Unknown argument: unexpected",
+                    invalidCall.path("structuredContent").path("error").asText());
         } finally {
             proc.destroyForcibly();
             proc.waitFor(5, TimeUnit.SECONDS);
@@ -527,6 +533,8 @@ class McpStdioIT {
             String text = toolResponse.get("result").get("content").get(0).get("text").asText();
             assertTrue(text.contains("broken-native-project"), text);
             assertTrue(text.contains("uninitialized"), text);
+            assertEquals(JSON.readTree(text),
+                    toolResponse.path("result").path("structuredContent"));
         } finally {
             proc.getOutputStream().close();
             if (!proc.waitFor(5, TimeUnit.SECONDS)) proc.destroyForcibly();

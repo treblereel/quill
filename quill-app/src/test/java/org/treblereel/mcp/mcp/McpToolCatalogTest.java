@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.McpServerFeatures.AsyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.io.BufferedWriter;
@@ -26,6 +28,7 @@ import reactor.core.scheduler.Schedulers;
 
 class McpToolCatalogTest {
 
+    private static final ObjectMapper JSON = new ObjectMapper();
     private final Scheduler workers = Schedulers.newBoundedElastic(1, 4, "timeout-test");
     private final Scheduler responses = Schedulers.newSingle("timeout-response-test");
 
@@ -147,6 +150,44 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void structuredToolAdvertisesOutputSchemaAndReturnsJsonWithTextFallback() throws Exception {
+        StructuredTools tools = new StructuredTools();
+        AsyncToolSpecification specification = McpToolCatalog.create(
+                        tools, StructuredTools.class, workers, responses, Duration.ofSeconds(1))
+                .getFirst();
+
+        assertEquals("object", specification.tool().outputSchema().get("type"));
+        assertEquals(true, specification.tool().outputSchema().get("additionalProperties"));
+
+        McpSchema.CallToolResult result = specification.callHandler()
+                .apply(null, new McpSchema.CallToolRequest(
+                        "structured", Map.of("target", "OrderService"), Map.of()))
+                .block(Duration.ofSeconds(2));
+        JsonNode textJson = JSON.readTree(text(result));
+        assertEquals(textJson, result.structuredContent());
+        assertEquals("OrderService", textJson.path("target").asText());
+
+        McpSchema.CallToolResult invalid = specification.callHandler()
+                .apply(null, new McpSchema.CallToolRequest(
+                        "structured", Map.of("unexpected", true), Map.of()))
+                .block(Duration.ofSeconds(2));
+        assertTrue(Boolean.TRUE.equals(invalid.isError()));
+        assertEquals("Unknown argument: unexpected",
+                ((JsonNode) invalid.structuredContent()).path("error").asText());
+    }
+
+    @Test
+    void everyQuillToolAdvertisesStructuredObjectOutput() {
+        QuillTools tools = new QuillTools(new ProjectRegistry());
+
+        for (AsyncToolSpecification specification : McpToolCatalog.create(
+                tools, workers, responses, Duration.ofSeconds(1))) {
+            assertEquals("object", specification.tool().outputSchema().get("type"),
+                    specification.tool().name());
+        }
+    }
+
+    @Test
     void unconfiguredQuillProjectIsAnMcpToolError() {
         QuillTools tools = new QuillTools(new ProjectRegistry());
         AsyncToolSpecification overview = McpToolCatalog.create(
@@ -265,6 +306,13 @@ class McpToolCatalogTest {
                 @ToolArg(description = "Optional limit") Optional<Integer> limit) {
             invocations++;
             if (target.equals("missing")) return "{\"error\":\"target not found\"}";
+            return "{\"target\":\"" + target + "\"}";
+        }
+    }
+
+    static final class StructuredTools {
+        @Tool(description = "Returns structured data", structured = true)
+        public String structured(@ToolArg(description = "Required target") String target) {
             return "{\"target\":\"" + target + "\"}";
         }
     }

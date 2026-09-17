@@ -32,7 +32,7 @@ public final class QuillTools {
         this.queries = new QuillToolQueries();
     }
 
-    @Tool(description = "List beans (CDI or Spring) with optional filtering. Use instead of grep/find when looking for injectable services, producers, interceptors, or decorators. "
+    @Tool(structured = true, description = "List beans (CDI or Spring) with optional filtering. Use instead of grep/find when looking for injectable services, producers, interceptors, or decorators. "
             + "Returns: {beans: [{class, kind, scope, qualifiers, bean_types, profiles, source}], total, showing, _meta}")
     public String list_beans(
             @ToolArg(description = "Class name filter (supports * wildcard)") Optional<String> class_name,
@@ -47,7 +47,7 @@ public final class QuillTools {
                 profile.orElse(null), qualifier.orElse(null), clamp(limit.orElse(50), 1, 100)));
     }
 
-    @Tool(description = "Get dependency graph for a specific bean or class. Use instead of grep for imports/references when you need to understand what a class uses or what uses it. "
+    @Tool(structured = true, description = "Get dependency graph for a specific bean or class. Use instead of grep for imports/references when you need to understand what a class uses or what uses it. "
             + "Returns unique fan-in/fan-out separately from reference occurrence counts and groups metrics by source/generated origin. "
             + "Returns: {target, origin, lifecycle, metrics, depends_on: [{class, kind, occurrences}], depended_by: [{class, kind, occurrences}], _meta}")
     public String get_dependencies(
@@ -59,7 +59,7 @@ public final class QuillTools {
                 p.jdbi(), target, direction.orElse("both"), clamp(depth.orElse(1), 1, 5)));
     }
 
-    @Tool(description = "Get injection points for a bean with resolution status. Use when checking what a bean injects and whether injections resolve correctly. "
+    @Tool(structured = true, description = "Get injection points for a bean with resolution status. Use when checking what a bean injects and whether injections resolve correctly. "
             + "Returns: {target, injection_points: [{kind, field, required_type, qualifiers, resolved_to, resolution}], unsatisfied: [], ambiguous: [], _meta}")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -68,7 +68,7 @@ public final class QuillTools {
                 p -> queries.getInjectionPoints(p.jdbi(), target));
     }
 
-    @Tool(description = "Get most frequently changed files/classes by git commit count. Use instead of git log when looking for volatile or high-churn areas of the codebase. "
+    @Tool(structured = true, description = "Get most frequently changed files/classes by git commit count. Use instead of git log when looking for volatile or high-churn areas of the codebase. "
             + "Returns: {worktree_changes, hotspots: [{file, lifecycle, class?, is_bean?, commit_count, distinct_authors, last_modified, last_author}], showing, total, truncated, _meta}")
     public String find_git_hotspots(
             @ToolArg(description = "Max results (default: 10)") Optional<Integer> limit,
@@ -80,7 +80,7 @@ public final class QuillTools {
                 include_historical.orElse(false)));
     }
 
-    @Tool(description = "Get git commit history for a specific class or file. Use instead of git log when you need change history for a particular class. "
+    @Tool(structured = true, description = "Get git commit history for a specific class or file. Use instead of git log when you need change history for a particular class. "
             + "Returns: {target, file, commits: [{hash, author, date, message}], total_commits, _meta}")
     public String get_file_history(
             @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
@@ -90,7 +90,7 @@ public final class QuillTools {
                 p.jdbi(), target, clamp(limit.orElse(10), 1, 100)));
     }
 
-    @Tool(description = "Find files that frequently change together with a given class. Reveals hidden coupling. Use before refactoring to find files you might also need to change. "
+    @Tool(structured = true, description = "Find files that frequently change together with a given class. Reveals hidden coupling. Use before refactoring to find files you might also need to change. "
             + "Returns: {target, co_changes: [{file, class?, co_change_count, coupling_ratio}], _meta}")
     public String find_co_changed_files(
             @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
@@ -100,7 +100,7 @@ public final class QuillTools {
                 p.jdbi(), target, clamp(limit.orElse(10), 1, 100)));
     }
 
-    @Tool(description = "Get recently changed classes from git history. Use to understand what was modified recently and by whom. "
+    @Tool(structured = true, description = "Get recently changed classes from git history. Use to understand what was modified recently and by whom. "
             + "Returns: {recent_changes: [{commit, author, date, message, files: [{file, change_type, class?, is_bean?}]}], _meta}")
     public String get_recent_changes(
             @ToolArg(description = "Number of recent commits to inspect (default: 10)") Optional<Integer> commits,
@@ -109,7 +109,7 @@ public final class QuillTools {
                 p.jdbi(), clamp(commits.orElse(10), 1, 200)));
     }
 
-    @Tool(description = "Get a high-level project overview. Call this FIRST when starting work on a project — gives framework, class/bean counts, architecture hubs, and known problems. "
+    @Tool(structured = true, description = "Get a high-level project overview. Call this FIRST when starting work on a project — gives framework, class/bean counts, architecture hubs, and known problems. "
             + "Returns: {project: {framework, classes, beans, total_source_tokens, indexed_at, last_commit, dependency_index, dependency_index_detail?}, "
             + "beans_by_scope: {...}, beans_by_kind: {...}, "
             + "architecture_hubs: [{class, dependents, is_bean}], "
@@ -122,7 +122,7 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), p -> queries.getOverview(p.jdbi()));
     }
 
-    @Tool(description = "Search for classes by name pattern (supports * wildcard). Returns all classes, not just beans. Use instead of grep/find when looking for a class by name. "
+    @Tool(structured = true, description = "Search for classes by name pattern (supports * wildcard). Returns all classes, not just beans. Use instead of grep/find when looking for a class by name. "
             + "Returns: {classes: [{class, source, origin, lifecycle, is_bean, scope?, source_tokens}], showing, total, _meta}")
     public String search_classes(
             @ToolArg(description = "Class name pattern (supports * wildcard, e.g. '*Service', 'io.casehub.*.model.*')") String pattern,
@@ -132,7 +132,7 @@ public final class QuillTools {
                 p.jdbi(), pattern, clamp(limit.orElse(30), 1, 100)));
     }
 
-    @Tool(description = "Assess the risk of changing a class or project file. Use before modifying code, build configuration, resources, service descriptors, or CI configuration. "
+    @Tool(structured = true, description = "Assess the risk of changing a class or project file. Use before modifying code, build configuration, resources, service descriptors, or CI configuration. "
             + "Returns: {target, risk_score (0-10), risk_level (LOW/MEDIUM/HIGH/CRITICAL), "
             + "target_type (class/file), signals: {fan_in?, fan_out?, file_criticality?, git_churn?, bus_factor?, coupling?: {value, edges?, breakdown?, score, weight, note}}, recommendation, _meta}")
     public String assess_change_risk(
@@ -141,7 +141,7 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), p -> queries.getRisk(p.jdbi(), target));
     }
 
-    @Tool(description = "Show external library dependencies. Use to find which classes use a specific library (e.g. Jackson, JPA) or what third-party types a class depends on. "
+    @Tool(structured = true, description = "Show external library dependencies. Use to find which classes use a specific library (e.g. Jackson, JPA) or what third-party types a class depends on. "
             + "Per-class: {target, external_dependencies: {field: [...], extends: [...]}, total_external_types}. "
             + "Per-library: {library_filter, classes_using_library: [...]}. "
             + "Summary: {libraries: [{package, used_by_classes}]}")

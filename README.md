@@ -110,6 +110,10 @@ exit code. Use `quill doctor --json` for a stable, versioned machine-readable re
 
 Once indexed, Quill exposes these tools via MCP:
 
+Every tool result includes native MCP `structuredContent` and an advertised object
+`outputSchema`. The equivalent JSON remains in text content as a compatibility fallback for
+clients that do not yet consume structured tool results.
+
 - **search_classes** — find classes by wildcard pattern
 - **get_dependencies** — dependencies for a class, addressable by FQCN or source path
 - **assess_change_risk** — class blast radius or file-level risk based on file

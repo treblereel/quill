@@ -23,6 +23,9 @@ import reactor.core.scheduler.Scheduler;
 final class McpToolCatalog {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Map<String, Object> OBJECT_OUTPUT_SCHEMA = Map.of(
+            "type", "object",
+            "additionalProperties", true);
 
     private McpToolCatalog() {}
 
@@ -47,9 +50,11 @@ final class McpToolCatalog {
             Object tools, Method method, Scheduler toolScheduler,
             Scheduler responseScheduler, Duration requestTimeout) {
         Tool annotation = method.getAnnotation(Tool.class);
-        McpSchema.Tool tool = McpSchema.Tool.builder(method.getName(), inputSchema(method))
-                .description(annotation.description())
-                .build();
+        McpSchema.Tool.Builder toolBuilder =
+                McpSchema.Tool.builder(method.getName(), inputSchema(method))
+                        .description(annotation.description());
+        if (annotation.structured()) toolBuilder.outputSchema(OBJECT_OUTPUT_SCHEMA);
+        McpSchema.Tool tool = toolBuilder.build();
 
         return AsyncToolSpecification.builder()
                 .tool(tool)
@@ -58,12 +63,13 @@ final class McpToolCatalog {
                         .subscribeOn(toolScheduler)
                         .timeout(requestTimeout)
                         .onErrorResume(RejectedExecutionException.class,
-                                ignored -> Mono.just(result("Server busy; retry later", true)))
+                                ignored -> Mono.just(result("Server busy; retry later", true,
+                                        annotation.structured())))
                         .onErrorResume(TimeoutException.class, ignored -> Mono.just(result(
                                 "Tool timed out after " + requestTimeout.toSeconds()
                                         + " seconds; retry with a narrower query or increase "
                                         + "QUILL_MCP_REQUEST_TIMEOUT",
-                                true)))
+                                true, annotation.structured())))
                         // The SDK stdio transport uses a unicast outbound sink whose concurrent
                         // tryEmitNext calls may fail. Serialize completion signals while keeping
                         // the actual tool work parallel.
@@ -93,6 +99,7 @@ final class McpToolCatalog {
 
     private static McpSchema.CallToolResult invoke(
             Object tools, Method method, Map<String, Object> arguments) {
+        boolean structured = method.getAnnotation(Tool.class).structured();
         Map<String, Object> args = arguments == null ? Map.of() : arguments;
         try {
             Object[] values = new Object[method.getParameterCount()];
@@ -102,7 +109,7 @@ final class McpToolCatalog {
             Optional<String> unknown = args.keySet().stream()
                     .filter(name -> !acceptedArguments.contains(name)).findFirst();
             if (unknown.isPresent()) {
-                return result("Unknown argument: " + unknown.get(), true);
+                return result("Unknown argument: " + unknown.get(), true, structured);
             }
             for (int i = 0; i < parameters.length; i++) {
                 Parameter parameter = parameters[i];
@@ -112,26 +119,39 @@ final class McpToolCatalog {
                             value, optionalArgument(parameter.getParameterizedType())));
                 } else {
                     if (value == null) {
-                        return result("Missing required argument: " + parameter.getName(), true);
+                        return result("Missing required argument: " + parameter.getName(), true,
+                                structured);
                     }
                     values[i] = convert(value, parameter.getType());
                 }
             }
             String text = (String) method.invoke(tools, values);
-            return result(text, isToolError(text));
+            return result(text, isToolError(text), structured);
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
-            return result("Tool failed: " + ProjectRegistry.safeMessage(cause), true);
+            return result("Tool failed: " + ProjectRegistry.safeMessage(cause), true, structured);
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
-            return result("Tool failed: " + ProjectRegistry.safeMessage(e), true);
+            return result("Tool failed: " + ProjectRegistry.safeMessage(e), true, structured);
         }
     }
 
-    private static McpSchema.CallToolResult result(String text, boolean error) {
-        return McpSchema.CallToolResult.builder()
+    private static McpSchema.CallToolResult result(
+            String text, boolean error, boolean structured) {
+        McpSchema.CallToolResult.Builder builder = McpSchema.CallToolResult.builder()
                 .content(List.of(McpSchema.TextContent.builder(text).build()))
-                .isError(error)
-                .build();
+                .isError(error);
+        if (structured) builder.structuredContent(structuredContent(text, error));
+        return builder.build();
+    }
+
+    private static Object structuredContent(String text, boolean error) {
+        try {
+            var parsed = JSON.readTree(text);
+            if (parsed != null && parsed.isObject()) return parsed;
+        } catch (Exception ignored) {
+            // Catalog-generated failures are plain text for compatibility with older clients.
+        }
+        return JSON.createObjectNode().put(error ? "error" : "result", text);
     }
 
     private static Object convertOptional(Object value, Class<?> targetType) {

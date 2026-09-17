@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "name": "Crysknife agent effectiveness",
+  "project_revision": "1387cce2d244bdf33b8eec5a22ae6bea7143ee26",
+  "tasks": [
+    {
+      "id": "navigation-implementation-context",
+      "prompt": "Determine whether one NavigationGraph implementation can be selected safely for the whole repository. Identify the module containing the base graph and return a sorted list of every module whose build output contains a generated implementation with the same FQCN.",
+      "expected": {
+        "selection_depends_on_application_context": true,
+        "base_module": "ui/core",
+        "generated_modules": [
+          "tests/j2cl-tests",
+          "tests/j2cl-tests-navigation",
+          "tests/j2cl-tests-templates"
+        ],
+        "generated_implementation_count": 3
+      }
+    },
+    {
+      "id": "bean-manager-coupling",
+      "prompt": "Measure BeanManager fan-in and distinguish handwritten source consumers from generated consumers.",
+      "expected": {
+        "total_dependents": 375,
+        "source_dependents": 15,
+        "generated_dependents": 360
+      }
+    },
+    {
+      "id": "constructor-only-dependency",
+      "prompt": "Find the static fan-in of BeanProcessorTask and determine whether ApplicationProcessor constructs it directly.",
+      "expected": {
+        "fan_in": 2,
+        "application_processor_constructor_reference": true
+      }
+    },
+    {
+      "id": "processor-service-descriptor",
+      "prompt": "Inspect the annotation-processor service descriptor. Determine how many processors it declares and whether their order can affect the generation pipeline.",
+      "expected": {
+        "processor_count": 3,
+        "order_can_affect_generation": true
+      }
+    },
+    {
+      "id": "deleted-generator-history",
+      "prompt": "Determine whether ScopedBeanGenerator.java and the legacy TemplatedGenerator.java are present in the current tree and whether paths with those names existed in Git history.",
+      "expected": {
+        "scoped_bean_generator_current": false,
+        "templated_generator_current": false,
+        "scoped_bean_generator_historical": true,
+        "templated_generator_historical": true
+      }
+    }
+  ]
+}

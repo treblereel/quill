@@ -17,10 +17,12 @@ def run(mode, first, second):
         "mode": mode,
         "tasks": [
             {"id": "one", "observed": first, "duration_seconds": 2,
-             "input_tokens": 100, "output_tokens": 20, "requests": 2,
+             "input_tokens": 100, "cached_input_tokens": 40,
+             "output_tokens": 20, "model_requests": 1, "requests": 2,
              "manual_verification_steps": 1},
             {"id": "two", "observed": second, "duration_seconds": 3,
-             "input_tokens": 200, "output_tokens": 30, "requests": 3,
+             "input_tokens": 200, "cached_input_tokens": 50,
+             "output_tokens": 30, "model_requests": 2, "requests": 3,
              "manual_verification_steps": 2},
         ],
     }
@@ -38,6 +40,8 @@ class QuillTaskBenchmarkTest(unittest.TestCase):
         self.assertEqual(1, result["totals"]["missing_facts"])
         self.assertEqual(0.6667, result["totals"]["fact_accuracy"])
         self.assertEqual(350, result["totals"]["total_tokens"])
+        self.assertEqual(260, result["totals"]["uncached_tokens"])
+        self.assertEqual(3, result["totals"]["model_requests"])
         self.assertEqual(5, result["totals"]["requests"])
         self.assertEqual(3, result["totals"]["manual_verification_steps"])
 
@@ -64,6 +68,15 @@ class QuillTaskBenchmarkTest(unittest.TestCase):
         ]}
         with self.assertRaises(ValueError):
             score_run(SUITE, invalid)
+
+    def test_rejects_mismatched_project_revision(self):
+        suite = {**SUITE, "project_revision": "expected"}
+        capture = run("with_quill", {"status": "resolved", "fan_in": 2},
+                      {"deleted": False})
+        capture["project_revision"] = "different"
+
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            score_run(suite, capture)
 
 
 if __name__ == "__main__":

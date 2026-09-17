@@ -13,7 +13,9 @@ from typing import Any
 NUMERIC_FIELDS = (
     "duration_seconds",
     "input_tokens",
+    "cached_input_tokens",
     "output_tokens",
+    "model_requests",
     "requests",
     "manual_verification_steps",
 )
@@ -55,6 +57,11 @@ def _tasks_by_id(document: dict[str, Any], label: str) -> dict[str, dict[str, An
 
 
 def score_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
+    expected_revision = suite.get("project_revision")
+    if expected_revision and run.get("project_revision") != expected_revision:
+        raise ValueError(
+            f"Run revision {run.get('project_revision')} does not match suite "
+            f"revision {expected_revision}")
     expected_tasks = _tasks_by_id(suite, "suite")
     actual_tasks = _tasks_by_id(run, "run")
     unknown = sorted(actual_tasks.keys() - expected_tasks.keys())
@@ -97,6 +104,9 @@ def score_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(f"Run task {task_id} {field} must be non-negative")
             measurements[field] = value
             totals[field] += value
+        if measurements["cached_input_tokens"] > measurements["input_tokens"]:
+            raise ValueError(
+                f"Run task {task_id} cached_input_tokens exceeds input_tokens")
         task_scores.append({
             "task_id": task_id,
             "complete": complete,
@@ -112,6 +122,9 @@ def score_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
     totals["task_completion_rate"] = round(
         totals["complete_tasks"] / len(expected_tasks), 4)
     totals["total_tokens"] = totals["input_tokens"] + totals["output_tokens"]
+    totals["uncached_tokens"] = (totals["input_tokens"]
+                                 - totals["cached_input_tokens"]
+                                 + totals["output_tokens"])
     return {
         "mode": run.get("mode", "unspecified"),
         "task_count": len(expected_tasks),
@@ -125,7 +138,8 @@ def compare(with_quill: dict[str, Any], without_quill: dict[str, Any]) -> dict[s
     right = without_quill["totals"]
     deltas = {}
     for field in ("fact_accuracy", "task_completion_rate", "duration_seconds",
-                  "total_tokens", "requests", "manual_verification_steps",
+                  "total_tokens", "uncached_tokens", "model_requests", "requests",
+                  "manual_verification_steps",
                   "incorrect_facts", "missing_facts"):
         deltas[field] = round(left[field] - right[field], 4)
     return {
@@ -154,13 +168,14 @@ def build_report(suite: dict[str, Any], with_run: dict[str, Any],
 
 def print_report(report: dict[str, Any]) -> None:
     print(f"Task benchmark: {report['suite']}")
-    print("mode           accuracy  complete  seconds  tokens  requests  manual checks  wrong  missing")
+    print("mode           accuracy  complete  seconds  tokens  uncached  model req  tools  manual  wrong  missing")
     for key in ("with_quill", "without_quill"):
         totals = report[key]["totals"]
         print(f"{key:<14} {totals['fact_accuracy'] * 100:>7.1f}%  "
               f"{totals['task_completion_rate'] * 100:>7.1f}%  "
               f"{totals['duration_seconds']:>7.2f}  {totals['total_tokens']:>6.0f}  "
-              f"{totals['requests']:>8.0f}  {totals['manual_verification_steps']:>13.0f}  "
+              f"{totals['uncached_tokens']:>8.0f}  {totals['model_requests']:>9.0f}  "
+              f"{totals['requests']:>5.0f}  {totals['manual_verification_steps']:>6.0f}  "
               f"{totals['incorrect_facts']:>5.0f}  {totals['missing_facts']:>7.0f}")
 
 

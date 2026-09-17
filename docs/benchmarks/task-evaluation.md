@@ -1,18 +1,63 @@
 # Paired task evaluation
 
 Latency and payload compression do not prove that an agent completes engineering tasks more
-accurately or with fewer tokens. Quill therefore keeps two benchmark layers separate:
+accurately or with fewer tokens. Quill therefore keeps three benchmark stages separate:
 
 1. `scripts/quill_benchmark.py` measures indexing, memory, MCP latency, concurrency, and payload
    size relative to the indexed source covered by a response.
-2. `scripts/quill_task_benchmark.py` scores the same task suite completed by the same agent once
-   with Quill and once without Quill.
+2. `scripts/quill_agent_benchmark.py` runs the same task suite through the OpenAI Responses API
+   once with Quill and once without Quill.
+3. `scripts/quill_task_benchmark.py` scores the two captured runs.
 
-The second layer measures fact accuracy, completed tasks, elapsed time, actual agent input/output
-tokens, requests, and manual verification steps. It does not use Quill's `compression` field as an
-estimate of agent savings.
+The paired benchmark measures fact accuracy, completed tasks, elapsed time, actual agent
+input/output tokens, model requests, tool calls, and manual verification steps. It does not use
+Quill's `compression` field as an estimate of agent savings.
 
-## Capture protocol
+## Automated paired run
+
+The runner starts a clean model context for every task and mode. Both modes receive the same
+read-only `rg`, file-read, and Git-history functions, including ignored build outputs but excluding
+`.git` and `.quill`; the Quill mode additionally receives the tools advertised by the local Quill
+MCP server. Expected values are deliberately not sent to the model. The order is alternated
+between tasks so one mode does not always benefit from running second.
+
+Set an API key, build Quill, and run against the exact revision pinned by the suite:
+
+```bash
+export OPENAI_API_KEY=...
+python3 scripts/quill_agent_benchmark.py \
+  --suite benchmarks/crysknife-agent-effectiveness.json \
+  --project /path/to/crysknife \
+  --quill quill-app/target/quill \
+  --model gpt-5.6-terra \
+  --reasoning-effort medium
+```
+
+`gpt-5.6-terra` with medium reasoning is the benchmark default, so the final two options may be
+omitted. Always record overrides when comparing results produced by a different model or effort.
+
+The runner rejects a different Git revision or dirty worktree by default. `--allow-dirty` is
+available for intentional worktree experiments, but such results are not comparable to the pinned
+suite without a corresponding rebaseline.
+
+The generated `*-with-quill.json` and `*-without-quill.json` files contain the usage returned by
+every Responses API call:
+
+- `input_tokens` includes cached and uncached input;
+- `cached_input_tokens` is reported separately;
+- `output_tokens` includes model output accounted by the API;
+- `model_requests` counts Responses API calls;
+- `response_ids` and `response_models` preserve an audit trail and the resolved model version;
+- `requests` counts source and MCP tool calls;
+- `manual_verification_steps` counts direct source-file reads.
+
+`total_tokens = input_tokens + output_tokens`. The scorer additionally reports
+`uncached_tokens = input_tokens - cached_input_tokens + output_tokens`. Tool schemas and prior tool
+results are naturally included in API input usage; do not add their estimated sizes a second time.
+Quill startup and MCP discovery happen before the task timer because a normal editor session keeps
+the server running, but Quill tool latency during the task is included.
+
+## Manual capture protocol
 
 Use the same model, reasoning level, initial checkout, task prompt, and time/token limits for both
 runs. The only intended difference is whether the Quill MCP tools are available. Start a clean
@@ -28,7 +73,9 @@ agent context for every task and record one result object:
   },
   "duration_seconds": 24.8,
   "input_tokens": 4100,
+  "cached_input_tokens": 1200,
   "output_tokens": 620,
+  "model_requests": 3,
   "requests": 4,
   "manual_verification_steps": 1
 }
@@ -44,22 +91,26 @@ Store the captured tasks in two JSON documents:
 ```
 
 The `observed` keys must match the task's `expected` keys. Missing values are counted separately
-from incorrect values. `requests` counts MCP, shell, search, and file-read operations initiated to
-answer the task. A manual verification step is an explicit source inspection used to confirm a
-tool or search result.
+from incorrect values. `requests` counts MCP, search, Git, and file-read operations initiated to
+answer the task. A manual verification step is a direct source inspection used to confirm a tool
+or search result.
 
 ## Score the pair
 
-The Crysknife suite is pinned to the project revision stored in
-`benchmarks/crysknife-quality.json`. Score two captures with:
+The neutral Crysknife agent suite is pinned to the project revision stored in
+`benchmarks/crysknife-agent-effectiveness.json`. The separate
+`benchmarks/crysknife-quality.json` suite checks Quill-specific response contracts and must not be
+used to claim an agent advantage. Score two effectiveness captures with:
 
 ```bash
 python3 scripts/quill_task_benchmark.py \
-  --suite benchmarks/crysknife-quality.json \
-  --with-quill target/benchmarks/crysknife-with-quill.json \
-  --without-quill target/benchmarks/crysknife-without-quill.json \
+  --suite benchmarks/crysknife-agent-effectiveness.json \
+  --with-quill target/benchmarks/crysknife-agent-effectiveness-with-quill.json \
+  --without-quill target/benchmarks/crysknife-agent-effectiveness-without-quill.json \
   --output target/benchmarks/crysknife-comparison.json
 ```
 
 Do not compare runs from different project revisions. Rebaseline expected facts explicitly when
-the target project changes.
+the target project changes. For a publishable result, repeat complete paired runs 10–20 times,
+alternate which condition runs first, and report median and p95 alongside correctness. A single
+pair is useful for debugging the protocol, not for claiming a stable token-saving percentage.

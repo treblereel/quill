@@ -73,8 +73,9 @@ It reports peak process-tree memory, index size, and p50/p95 latency for bursts 
 4, 16, and 100 requests. Existing `.quill` data is backed up and restored by default;
 machine-readable results are written below `target/benchmarks/`.
 The reported payload compression baseline is indexed source coverage, not measured agent token
-savings. For a controlled with/without-Quill comparison of accuracy, actual tokens, time,
-requests, and manual verification, use the paired task evaluation described in
+savings. For an automated, controlled with/without-Quill Responses API comparison of accuracy,
+actual and cached tokens, time, model/tool requests, and manual verification, use the paired task
+evaluation described in
 [`docs/benchmarks/task-evaluation.md`](docs/benchmarks/task-evaluation.md).
 CI also runs a generated 400-class, 32-dependency-JAR native smoke fixture on Linux and
 Windows. It verifies dependency-cache miss and hit behavior with intentionally broad time,

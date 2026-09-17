@@ -129,6 +129,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   annotation name or FQCN, with pagination and source/generated breakdown
 - **find_implementations** — find direct/transitive subclasses and implementors, including
   generated occurrences grouped by module and evidence about reactor-discovery completeness
+- **find_usages** — find bytecode calls, constructor calls, field access, type references,
+  injection, inheritance, annotations, and ServiceLoader usages with evidence and pagination
 - **get_dependencies** — complete dependency metrics plus an optional relation graph,
   addressable by FQCN or source path. Use `include_nodes=false` for a compact metrics-only
   response. Depth-one relations use `limit`/`offset`; deeper breadth-first traversals return

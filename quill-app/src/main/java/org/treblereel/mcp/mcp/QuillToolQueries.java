@@ -7,6 +7,7 @@ import org.jdbi.v3.core.Jdbi;
 public final class QuillToolQueries {
 
     private final StructureToolQueries structure = new StructureToolQueries();
+    private final UsageToolQueries usages = new UsageToolQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -36,6 +37,11 @@ public final class QuillToolQueries {
             boolean includeMetaAnnotations, int limit, int offset) {
         return structure.getAnnotatedClasses(
                 jdbi, annotation, includeMetaAnnotations, limit, offset);
+    }
+
+    String findUsages(Jdbi jdbi, String target, String usageKind,
+            String module, int limit, int offset) {
+        return usages.findUsages(jdbi, target, usageKind, module, limit, offset);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

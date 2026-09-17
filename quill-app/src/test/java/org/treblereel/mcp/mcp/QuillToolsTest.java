@@ -228,6 +228,60 @@ class QuillToolsTest {
     }
 
     @Test
+    void findUsagesReturnsConstructorEvidenceAndFiltersKinds() throws Exception {
+        JsonNode result = JSON.readTree(new QuillTools().findUsages(
+                jdbi, "AuditService", "constructor_call", null, 10, 0));
+
+        assertEquals("org.acme.AuditService", result.path("target").asText());
+        assertEquals("class", result.path("granularity").asText());
+        assertEquals(1, result.path("usage_group_count").asInt());
+        JsonNode usage = result.path("usages").get(0);
+        assertEquals("org.acme.StripePaymentService", usage.path("class").asText());
+        assertEquals("constructor_call", usage.path("usage_kind").asText());
+        assertEquals("CONSTRUCTS", usage.path("indexed_kind").asText());
+        assertEquals(42, usage.path("evidence_lines").get(0).asInt());
+    }
+
+    @Test
+    void findUsagesIncludesInheritanceAndSupportsPagination() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO dependencies
+                  (from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                VALUES (1, 2, 'TYPE_USE', 2, '[18,21]')"""));
+
+        QuillTools tools = new QuillTools();
+        JsonNode first = JSON.readTree(
+                tools.findUsages(jdbi, "PaymentService", null, null, 1, 0));
+        JsonNode second = JSON.readTree(
+                tools.findUsages(jdbi, "PaymentService", null, null, 1, 1));
+
+        assertEquals(2, first.path("total").asInt());
+        assertTrue(first.path("has_more").asBoolean());
+        assertEquals("inheritance", first.path("usages").get(0).path("usage_kind").asText());
+        assertEquals("type_reference", second.path("usages").get(0)
+                .path("usage_kind").asText());
+        assertEquals(2, second.path("usages").get(0).path("occurrences").asInt());
+    }
+
+    @Test
+    void findUsagesValidatesKindAndFiltersModule() throws Exception {
+        jdbi.useHandle(handle -> handle.execute(
+                "UPDATE classes SET module = 'payments' WHERE id = 3"));
+        QuillTools tools = new QuillTools();
+
+        JsonNode matching = JSON.readTree(tools.findUsages(
+                jdbi, "AuditService", null, "payments", 10, 0));
+        JsonNode excluded = JSON.readTree(tools.findUsages(
+                jdbi, "AuditService", null, "orders", 10, 0));
+        JsonNode invalid = JSON.readTree(tools.findUsages(
+                jdbi, "AuditService", "reflection", null, 10, 0));
+
+        assertEquals(1, matching.path("total").asInt());
+        assertEquals(0, excluded.path("total").asInt());
+        assertTrue(invalid.path("error").asText().startsWith("Invalid usage_kind"));
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

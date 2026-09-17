@@ -81,6 +81,20 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Find class usages from bytecode, DI, inheritance, annotations, and ServiceLoader evidence.")
+    public String find_usages(
+            @ToolArg(description = "Current class name (short or FQCN), or its source path") String target,
+            @ToolArg(description = "Usage kind; omit or use all for every supported kind") Optional<String> usage_kind,
+            @ToolArg(description = "Module path filter relative to the project root") Optional<String> module,
+            @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
+            @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
+            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findUsages(
+                p.jdbi(), target, usage_kind.orElse(null), module.orElse(null),
+                clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -227,6 +241,11 @@ public final class QuillTools {
             String module, String sourceSet, int limit, int offset) {
         return queries.findImplementations(
                 jdbi, target, transitive, module, sourceSet, limit, offset);
+    }
+
+    String findUsages(Jdbi jdbi, String target, String usageKind,
+            String module, int limit, int offset) {
+        return queries.findUsages(jdbi, target, usageKind, module, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

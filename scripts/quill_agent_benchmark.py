@@ -162,9 +162,24 @@ class SourceTools:
         self.output_limit = output_limit
         self.calls = 0
         self.manual_verification_steps = 0
+        self.last_call: dict[str, Any] | None = None
 
     def call(self, name: str, arguments: dict[str, Any]) -> str:
         self.calls += 1
+        started = time.perf_counter()
+        result = ""
+        error_type: str | None = None
+        try:
+            result = self._call(name, arguments)
+            return result
+        except BaseException as exc:
+            error_type = type(exc).__name__
+            raise
+        finally:
+            self.last_call = call_trace(
+                name, "source", arguments, result, started, error_type)
+
+    def _call(self, name: str, arguments: dict[str, Any]) -> str:
         if name == "list_project_files":
             command = ["rg", "--files", "--hidden", "--no-ignore",
                        "--glob", "!.git/**", "--glob", "!.quill/**"]
@@ -259,6 +274,7 @@ class QuillTools:
         self.next_id = 1
         self.calls = 0
         self.definitions: list[dict[str, Any]] = []
+        self.last_call: dict[str, Any] | None = None
 
     def __enter__(self) -> "QuillTools":
         try:
@@ -309,11 +325,36 @@ class QuillTools:
 
     def call(self, exposed_name: str, arguments: dict[str, Any]) -> str:
         self.calls += 1
-        result = self._request("tools/call", {
-            "name": exposed_name.removeprefix("quill_"),
-            "arguments": arguments,
-        })
-        return clipped(json.dumps(result, ensure_ascii=False), self.output_limit)
+        started = time.perf_counter()
+        output = ""
+        error_type: str | None = None
+        try:
+            result = self._request("tools/call", {
+                "name": exposed_name.removeprefix("quill_"),
+                "arguments": arguments,
+            })
+            output = clipped(json.dumps(result, ensure_ascii=False), self.output_limit)
+            return output
+        except BaseException as exc:
+            error_type = type(exc).__name__
+            raise
+        finally:
+            self.last_call = call_trace(
+                exposed_name, "quill", arguments, output, started, error_type)
+
+
+def call_trace(name: str, provider: str, arguments: dict[str, Any], output: str,
+               started: float, error_type: str | None) -> dict[str, Any]:
+    """Return metadata useful for cost diagnosis without persisting tool contents."""
+    return {
+        "tool": name,
+        "provider": provider,
+        "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+        "argument_bytes": len(json.dumps(arguments, ensure_ascii=False).encode()),
+        "output_bytes": len(output.encode()),
+        "status": "ok" if error_type is None else "error",
+        "error_type": error_type,
+    }
 
 
 class ResponsesClient:
@@ -380,6 +421,7 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
         raise ValueError(f"Task {task.get('id')} has no expected object")
     expected_shape = {key: json_type(value) for key, value in expected.items()}
     tools = [*SOURCE_TOOLS, *(quill.definitions if quill else [])]
+    tool_catalog_bytes = len(json.dumps(tools, ensure_ascii=False).encode())
     instructions = (
         "You are evaluating a Java project. Answer only from tool evidence. "
         "Do not modify files or run builds. Quill is an index aid; verify claims in source when needed. "
@@ -393,6 +435,8 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
               "model_requests": 0}
     response_ids: list[str] = []
     response_models: set[str] = set()
+    model_rounds: list[dict[str, Any]] = []
+    tool_trace: list[dict[str, Any]] = []
     final_text: str | None = None
     started = time.perf_counter()
     while totals["model_requests"] < 30:
@@ -408,30 +452,49 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
         }
         if previous_response_id:
             payload["previous_response_id"] = previous_response_id
+        request_started = time.perf_counter()
         response = client.create(payload)
+        request_duration_ms = round((time.perf_counter() - request_started) * 1000, 3)
         totals["model_requests"] += 1
         if isinstance(response.get("id"), str):
             response_ids.append(response["id"])
         if isinstance(response.get("model"), str):
             response_models.add(response["model"])
         usage = response.get("usage") or {}
-        totals["input_tokens"] += int(usage.get("input_tokens", 0))
-        totals["cached_input_tokens"] += int(
+        round_input = int(usage.get("input_tokens", 0))
+        round_cached = int(
             (usage.get("input_tokens_details") or {}).get("cached_tokens", 0))
-        totals["output_tokens"] += int(usage.get("output_tokens", 0))
+        round_output = int(usage.get("output_tokens", 0))
+        totals["input_tokens"] += round_input
+        totals["cached_input_tokens"] += round_cached
+        totals["output_tokens"] += round_output
         previous_response_id = response.get("id")
         calls = [item for item in response.get("output", [])
                  if item.get("type") == "function_call"]
+        model_rounds.append({
+            "round": totals["model_requests"],
+            "response_id": response.get("id"),
+            "duration_ms": request_duration_ms,
+            "input_tokens": round_input,
+            "cached_input_tokens": round_cached,
+            "output_tokens": round_output,
+            "tool_calls": len(calls),
+        })
         if calls:
             outputs = []
             for call in calls:
                 args = json.loads(call.get("arguments", "{}"))
                 name = call["name"]
+                provider = quill if name.startswith("quill_") and quill else source
                 try:
-                    result = (quill.call(name, args) if name.startswith("quill_") and quill
-                              else source.call(name, args))
+                    result = provider.call(name, args)
                 except (OSError, ValueError, subprocess.SubprocessError) as exc:
                     result = f"Tool error: {exc}"
+                if provider.last_call:
+                    tool_trace.append({
+                        "round": totals["model_requests"],
+                        **provider.last_call,
+                    })
                 outputs.append({"type": "function_call_output",
                                 "call_id": call["call_id"], "output": result})
             next_input = outputs
@@ -454,6 +517,10 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
         "model_requests": totals["model_requests"],
         "response_ids": response_ids,
         "response_models": sorted(response_models),
+        "tool_catalog_count": len(tools),
+        "tool_catalog_bytes": tool_catalog_bytes,
+        "model_rounds": model_rounds,
+        "tool_trace": tool_trace,
         "requests": source.calls + (quill.calls if quill else 0),
         "manual_verification_steps": source.manual_verification_steps,
     }

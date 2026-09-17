@@ -58,6 +58,19 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
         self.assertEqual(1, result["requests"])
         self.assertEqual(1, result["manual_verification_steps"])
         self.assertEqual("first", transport.payloads[1]["previous_response_id"])
+        self.assertEqual(6, result["tool_catalog_count"])
+        self.assertGreater(result["tool_catalog_bytes"], 0)
+        self.assertEqual(2, len(result["model_rounds"]))
+        self.assertEqual(100, result["model_rounds"][0]["input_tokens"])
+        self.assertEqual(1, result["model_rounds"][0]["tool_calls"])
+        self.assertEqual(1, len(result["tool_trace"]))
+        trace = result["tool_trace"][0]
+        self.assertEqual("read_file", trace["tool"])
+        self.assertEqual("source", trace["provider"])
+        self.assertEqual("ok", trace["status"])
+        self.assertGreater(trace["argument_bytes"], 0)
+        self.assertGreater(trace["output_bytes"], 0)
+        self.assertGreaterEqual(trace["duration_ms"], 0)
 
     def test_rejects_paths_outside_project(self):
         with tempfile.TemporaryDirectory() as directory:

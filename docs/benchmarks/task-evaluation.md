@@ -48,6 +48,10 @@ every Responses API call:
 - `output_tokens` includes model output accounted by the API;
 - `model_requests` counts Responses API calls;
 - `response_ids` and `response_models` preserve an audit trail and the resolved model version;
+- `tool_catalog_count` and `tool_catalog_bytes` expose tool-discovery overhead;
+- `model_rounds` records latency and token usage for every Responses API call;
+- `tool_trace` records tool name/provider, latency, argument/output byte counts, and status without
+  duplicating potentially sensitive tool contents;
 - `requests` counts source and MCP tool calls;
 - `manual_verification_steps` counts direct source-file reads.
 

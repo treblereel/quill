@@ -4,7 +4,8 @@ from pathlib import Path
 import subprocess
 
 from quill_agent_benchmark import (ResponsesClient, SourceTools, json_type, parse_final_json,
-                                   run_agent, selected_quill_tools)
+                                   quill_outcome_flags, run_agent, selected_quill_tools,
+                                   source_fallbacks)
 
 
 class FakeResponses:
@@ -57,6 +58,7 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
         self.assertEqual(["test-model-2026-01-01"], result["response_models"])
         self.assertEqual(1, result["requests"])
         self.assertEqual(1, result["manual_verification_steps"])
+        self.assertEqual(0, result["source_fallback_count"])
         self.assertEqual("first", transport.payloads[1]["previous_response_id"])
         self.assertEqual(6, result["tool_catalog_count"])
         self.assertGreater(result["tool_catalog_bytes"], 0)
@@ -132,6 +134,30 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
         self.assertEqual([{"name": "quill_get_dependencies"}], selected)
         with self.assertRaisesRegex(ValueError, "unknown Quill tools"):
             selected_quill_tools({"id": "bad", "quill_tools": ["missing"]}, quill)
+
+    def test_reports_source_calls_after_quill_with_response_limitations(self):
+        flags = quill_outcome_flags({
+            "isError": False,
+            "structuredContent": {
+                "resolution_status": "unknown",
+                "_meta": {"structure_stale": True},
+                "_response_budget": {"truncated": True},
+            },
+        })
+        trace = [
+            {"round": 1, "tool": "quill_get_dependencies", "provider": "quill",
+             "status": "ok", "outcome_flags": flags},
+            {"round": 2, "tool": "source_search", "provider": "source", "status": "ok"},
+            {"round": 3, "tool": "read_file", "provider": "source", "status": "ok"},
+        ]
+
+        fallbacks = source_fallbacks(trace)
+
+        self.assertEqual(["stale", "truncated", "unknown"], flags)
+        self.assertEqual(2, len(fallbacks))
+        self.assertEqual("quill_get_dependencies", fallbacks[0]["quill_tool"])
+        self.assertEqual("source_search", fallbacks[0]["source_tool"])
+        self.assertEqual(flags, fallbacks[0]["quill_outcome_flags"])
 
 
 if __name__ == "__main__":

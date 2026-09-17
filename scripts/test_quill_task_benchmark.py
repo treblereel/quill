@@ -20,11 +20,13 @@ def run(mode, first, second):
             {"id": "one", "observed": first, "duration_seconds": 2,
              "input_tokens": 100, "cached_input_tokens": 40,
              "output_tokens": 20, "model_requests": 1, "requests": 2,
-             "manual_verification_steps": 1},
+             "manual_verification_steps": 1, "source_fallback_count": 2,
+             "source_fallbacks": [{"quill_tool": "quill_get_dependencies",
+                                    "source_tool": "source_search"}]},
             {"id": "two", "observed": second, "duration_seconds": 3,
              "input_tokens": 200, "cached_input_tokens": 50,
              "output_tokens": 30, "model_requests": 2, "requests": 3,
-             "manual_verification_steps": 2},
+             "manual_verification_steps": 2, "source_fallback_count": 0},
         ],
     }
 
@@ -45,6 +47,8 @@ class QuillTaskBenchmarkTest(unittest.TestCase):
         self.assertEqual(3, result["totals"]["model_requests"])
         self.assertEqual(5, result["totals"]["requests"])
         self.assertEqual(3, result["totals"]["manual_verification_steps"])
+        self.assertEqual(2, result["totals"]["source_fallback_count"])
+        self.assertEqual(1, len(result["tasks"][0]["source_fallbacks"]))
 
     def test_comparison_uses_paired_runs_and_not_compression(self):
         with_quill = run("with_quill",

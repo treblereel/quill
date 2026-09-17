@@ -330,11 +330,13 @@ class QuillTools:
         started = time.perf_counter()
         output = ""
         error_type: str | None = None
+        outcome_flags: list[str] = []
         try:
             result = self._request("tools/call", {
                 "name": exposed_name.removeprefix("quill_"),
                 "arguments": arguments,
             })
+            outcome_flags = quill_outcome_flags(result)
             output = clipped(json.dumps(result, ensure_ascii=False), self.output_limit)
             return output
         except BaseException as exc:
@@ -342,13 +344,15 @@ class QuillTools:
             raise
         finally:
             self.last_call = call_trace(
-                exposed_name, "quill", arguments, output, started, error_type)
+                exposed_name, "quill", arguments, output, started, error_type,
+                outcome_flags)
 
 
 def call_trace(name: str, provider: str, arguments: dict[str, Any], output: str,
-               started: float, error_type: str | None) -> dict[str, Any]:
+               started: float, error_type: str | None,
+               outcome_flags: list[str] | None = None) -> dict[str, Any]:
     """Return metadata useful for cost diagnosis without persisting tool contents."""
-    return {
+    trace = {
         "tool": name,
         "provider": provider,
         "duration_ms": round((time.perf_counter() - started) * 1000, 3),
@@ -357,6 +361,69 @@ def call_trace(name: str, provider: str, arguments: dict[str, Any], output: str,
         "status": "ok" if error_type is None else "error",
         "error_type": error_type,
     }
+    if outcome_flags:
+        trace["outcome_flags"] = outcome_flags
+    return trace
+
+
+def quill_outcome_flags(result: dict[str, Any]) -> list[str]:
+    """Classify response limitations without retaining indexed project contents."""
+    flags: set[str] = set()
+    if result.get("isError") is True:
+        flags.add("error")
+    structured = result.get("structuredContent")
+    if not isinstance(structured, dict):
+        return sorted(flags)
+
+    def inspect(value: Any, key: str = "") -> None:
+        normalized_key = key.lower()
+        if isinstance(value, dict):
+            for child_key, child in value.items():
+                inspect(child, str(child_key))
+        elif isinstance(value, list):
+            for child in value:
+                inspect(child, key)
+        elif isinstance(value, bool) and value:
+            if normalized_key in {"commit_stale", "structure_stale", "stale_warning"}:
+                flags.add("stale")
+            elif normalized_key == "truncated":
+                flags.add("truncated")
+        elif isinstance(value, str):
+            normalized_value = value.lower()
+            if normalized_key == "error":
+                flags.add("error")
+                if "not found" in normalized_value:
+                    flags.add("not_found")
+            if normalized_key in {"status", "resolution_status"}:
+                if normalized_value == "unknown":
+                    flags.add("unknown")
+                elif normalized_value == "unsupported_mechanism":
+                    flags.add("unsupported")
+
+    inspect(structured)
+    return sorted(flags)
+
+
+def source_fallbacks(tool_trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Find source-tool calls made after the latest Quill query in one task."""
+    latest_quill: dict[str, Any] | None = None
+    fallbacks: list[dict[str, Any]] = []
+    for trace in tool_trace:
+        provider = trace.get("provider")
+        if provider == "quill":
+            latest_quill = trace
+        elif provider == "source" and latest_quill is not None:
+            fallback = {
+                "round": trace.get("round"),
+                "quill_tool": latest_quill.get("tool"),
+                "source_tool": trace.get("tool"),
+                "quill_status": latest_quill.get("status"),
+            }
+            flags = latest_quill.get("outcome_flags")
+            if flags:
+                fallback["quill_outcome_flags"] = flags
+            fallbacks.append(fallback)
+    return fallbacks
 
 
 class ResponsesClient:
@@ -530,6 +597,7 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
     if final_text is None:
         raise RuntimeError(f"Task {task.get('id')} exceeded 30 model requests")
     parsed = parse_final_json(final_text)
+    fallbacks = source_fallbacks(tool_trace)
     return {
         "id": task["id"],
         "observed": parsed["observed"],
@@ -545,6 +613,8 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
         "quill_tools_advertised": [tool["name"] for tool in quill_tools],
         "model_rounds": model_rounds,
         "tool_trace": tool_trace,
+        "source_fallback_count": len(fallbacks),
+        "source_fallbacks": fallbacks,
         "requests": source.calls + (quill.calls if quill else 0),
         "manual_verification_steps": source.manual_verification_steps,
     }

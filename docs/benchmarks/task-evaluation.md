@@ -60,6 +60,9 @@ every Responses API call:
 - `model_rounds` records latency and token usage for every Responses API call;
 - `tool_trace` records tool name/provider, latency, argument/output byte counts, and status without
   duplicating potentially sensitive tool contents;
+- `source_fallback_count` and `source_fallbacks` identify source searches or file reads performed
+  after a Quill call, including the preceding Quill tool and non-sensitive response flags such as
+  `not_found`, `stale`, `truncated`, `unknown`, or `unsupported`;
 - `requests` counts source and MCP tool calls;
 - `manual_verification_steps` counts direct source-file reads.
 

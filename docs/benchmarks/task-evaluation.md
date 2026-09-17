@@ -44,7 +44,9 @@ suite without a corresponding rebaseline.
 Runs alternate the first condition by task and repetition. With more than one repetition the
 generated files contain a `runs` array; the scorer reports median and p95. Suites may declare
 deterministic `accepted` alternatives for semantically equivalent facts such as Maven artifact ids
-and repository module paths without exposing those alternatives to the model.
+and repository module paths without exposing those alternatives to the model. A task may also
+declare a `quill_tools` allowlist selected before the model runs. This models client-side tool
+search/routing without forcing a Quill call or loading the full catalog on every turn.
 
 The generated `*-with-quill.json` and `*-without-quill.json` files contain the usage returned by
 every Responses API call:

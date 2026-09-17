@@ -5,6 +5,7 @@
   "tasks": [
     {
       "id": "navigation-implementation-context",
+      "quill_tools": ["search_classes", "get_dependencies"],
       "prompt": "Determine whether one NavigationGraph implementation can be selected safely for the whole repository. Identify the module containing the base graph and return a sorted list of every module whose build output contains a generated implementation with the same FQCN.",
       "expected": {
         "selection_depends_on_application_context": true,
@@ -27,6 +28,7 @@
     },
     {
       "id": "bean-manager-coupling",
+      "quill_tools": ["get_dependencies"],
       "prompt": "Measure BeanManager fan-in and distinguish handwritten source consumers from generated consumers.",
       "expected": {
         "total_dependents": 375,
@@ -36,6 +38,7 @@
     },
     {
       "id": "constructor-only-dependency",
+      "quill_tools": ["get_dependencies"],
       "prompt": "Find the static fan-in of BeanProcessorTask and determine whether ApplicationProcessor constructs it directly.",
       "expected": {
         "fan_in": 2,
@@ -44,6 +47,7 @@
     },
     {
       "id": "processor-service-descriptor",
+      "quill_tools": ["inspect_service_descriptors"],
       "prompt": "Inspect the annotation-processor service descriptor. Determine how many processors it declares and whether their order can affect the generation pipeline.",
       "expected": {
         "processor_count": 3,
@@ -52,6 +56,7 @@
     },
     {
       "id": "deleted-generator-history",
+      "quill_tools": ["resolve_entities"],
       "prompt": "Determine whether ScopedBeanGenerator.java and the legacy TemplatedGenerator.java are present in the current tree and whether paths with those names existed in Git history.",
       "expected": {
         "scoped_bean_generator_current": false,

@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 
 from quill_agent_benchmark import (ResponsesClient, SourceTools, json_type, parse_final_json,
-                                   run_agent)
+                                   run_agent, selected_quill_tools)
 
 
 class FakeResponses:
@@ -121,6 +121,17 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
         self.assertEqual("boolean", json_type(True))
         self.assertEqual("integer", json_type(42))
         self.assertEqual("array", json_type(["a"]))
+
+    def test_selects_declared_quill_tools_without_exposing_the_full_catalog(self):
+        quill = type("FakeQuill", (), {"definitions": [
+            {"name": "quill_get_dependencies"},
+            {"name": "quill_get_overview"},
+        ]})()
+        selected = selected_quill_tools(
+            {"id": "one", "quill_tools": ["get_dependencies"]}, quill)
+        self.assertEqual([{"name": "quill_get_dependencies"}], selected)
+        with self.assertRaisesRegex(ValueError, "unknown Quill tools"):
+            selected_quill_tools({"id": "bad", "quill_tools": ["missing"]}, quill)
 
 
 if __name__ == "__main__":

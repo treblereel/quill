@@ -13,19 +13,27 @@ final class ProjectConfiguration {
 
             ## Quill — Codebase Intelligence (MCP)
 
-            This project is indexed by Quill. **Always prefer Quill MCP tools over grep/find/Explore agents** for:
+            This project is indexed by Quill. Choose the cheapest sufficient evidence:
+
+            - Use source search/read for an exact literal in a known file.
+            - Use Quill for project-wide aggregation, generated outputs, dependency graphs, DI resolution, history, and change risk.
+            - Trust a fresh Quill result when its evidence directly proves the fact; verify stale, unknown, or unsupported claims in source.
+
+            Quill tools:
 
             - **Searching classes:** `search_classes` — faster than grep, supports wildcard patterns (`*Service`, `*Strategy*`)
             - **Dependency analysis:** `get_dependencies` — what a class depends on and what depends on it
             - **Risk assessment:** `assess_change_risk` — class blast radius or file risk from criticality, churn, bus factor, and coupling
             - **Project overview:** `get_overview` — call first to orient (class/bean counts, architecture hubs, problems)
             - **Git hotspots:** `find_git_hotspots` — most frequently changed files/classes
+            - **Current/history lookup:** `resolve_entities` — current, deleted, and historical paths
             - **Co-change analysis:** `find_co_changed_files` — files that change together (hidden coupling)
+            - **Service descriptors:** `inspect_service_descriptors` — ordered ServiceLoader/processor providers
             - **Beans:** `list_beans` — list/filter beans by scope, kind, qualifier (CDI and Spring)
             - **Injection points:** `list_injection_points` — injection resolution status for a bean
             - **External deps:** `list_external_dependencies` — third-party library usage
 
-            **Tip:** Add `"alwaysLoad": true` to the quill server in `.mcp.json` so tool schemas are loaded eagerly (no ToolSearch needed).
+            If the client supports tool search, load only the relevant Quill tools for the current task.
             """;
 
     private ProjectConfiguration() {}

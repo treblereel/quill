@@ -415,6 +415,23 @@ def json_type(value: Any) -> str:
     return "null"
 
 
+def selected_quill_tools(task: dict[str, Any], quill: QuillTools | None) -> list[dict[str, Any]]:
+    if quill is None:
+        return []
+    requested = task.get("quill_tools")
+    if requested is None:
+        return quill.definitions
+    if not isinstance(requested, list) or not all(isinstance(name, str) for name in requested):
+        raise ValueError(f"Task {task.get('id')} quill_tools must be a string array")
+    allowed = {f"quill_{name}" for name in requested}
+    selected = [tool for tool in quill.definitions if tool["name"] in allowed]
+    missing = sorted(allowed - {tool["name"] for tool in selected})
+    if missing:
+        raise ValueError(f"Task {task.get('id')} requests unknown Quill tools: "
+                         + ", ".join(missing))
+    return selected
+
+
 def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: str,
               reasoning_effort: str, source: SourceTools,
               quill: QuillTools | None) -> dict[str, Any]:
@@ -422,11 +439,15 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
     if not isinstance(expected, dict) or not expected:
         raise ValueError(f"Task {task.get('id')} has no expected object")
     expected_shape = {key: json_type(value) for key, value in expected.items()}
-    tools = [*SOURCE_TOOLS, *(quill.definitions if quill else [])]
+    quill_tools = selected_quill_tools(task, quill)
+    tools = [*SOURCE_TOOLS, *quill_tools]
     tool_catalog_bytes = len(json.dumps(tools, ensure_ascii=False).encode())
     instructions = (
         "You are evaluating a Java project. Answer only from tool evidence. "
-        "Do not modify files or run builds. Quill is an index aid; verify claims in source when needed. "
+        "Do not modify files or run builds. Choose the cheapest sufficient evidence: use source "
+        "search/read for an exact local literal, and Quill for project-wide aggregation, generated "
+        "outputs, dependency graphs, or lifecycle history. Do not re-check a fresh Quill result "
+        "when its evidence directly proves the fact; verify stale, unknown, or unsupported claims. "
         "Return only JSON with one key, observed, whose object has exactly this key/type shape: "
         f"{json.dumps(expected_shape)}. Array values must be sorted. "
         "Use null when evidence is insufficient."
@@ -521,6 +542,7 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
         "response_models": sorted(response_models),
         "tool_catalog_count": len(tools),
         "tool_catalog_bytes": tool_catalog_bytes,
+        "quill_tools_advertised": [tool["name"] for tool in quill_tools],
         "model_rounds": model_rounds,
         "tool_trace": tool_trace,
         "requests": source.calls + (quill.calls if quill else 0),

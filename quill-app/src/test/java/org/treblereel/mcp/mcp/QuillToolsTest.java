@@ -456,9 +456,8 @@ class QuillToolsTest {
         assertTrue(gitSummary.get("top_hotspots").size() >= 1);
 
         assertTrue(root.has("_meta"));
-        assertEquals("indexed_source_coverage",
-                root.path("_meta").path("compression_baseline").asText());
-        assertFalse(root.path("_meta").path("compression_is_agent_token_savings").asBoolean());
+        assertTrue(root.path("_meta").has("indexed_commit"));
+        assertFalse(root.path("_meta").has("compression"));
     }
 
     @Test

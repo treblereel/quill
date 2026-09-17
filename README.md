@@ -72,7 +72,7 @@ python3 scripts/quill_benchmark.py \
 It reports peak process-tree memory, index size, and p50/p95 latency for bursts of
 4, 16, and 100 requests. Existing `.quill` data is backed up and restored by default;
 machine-readable results are written below `target/benchmarks/`.
-The reported payload compression baseline is indexed source coverage, not measured agent token
+It reports actual structured-response byte sizes, without treating source coverage as token
 savings. For an automated, controlled with/without-Quill Responses API comparison of accuracy,
 actual and cached tokens, time, model/tool requests, and manual verification, use the paired task
 evaluation described in

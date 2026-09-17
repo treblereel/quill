@@ -2,7 +2,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from quill_benchmark import (IndexSandbox, coverage_summary, latency_summary, parse_concurrency,
+from quill_benchmark import (IndexSandbox, latency_summary, parse_concurrency, payload_summary,
                              parse_phase_timings, percentile)
 
 
@@ -29,24 +29,15 @@ class QuillBenchmarkTest(unittest.TestCase):
             "errors": 1,
         }, summary)
 
-    def test_coverage_summary_names_the_source_coverage_baseline(self):
-        responses = [{"result": {"structuredContent": {"_meta": {
-            "response_tokens": value,
-            "naive_tokens": value * 10,
-            "compression": 10.0,
-        }}}} for value in (20, 10, 30)]
+    def test_payload_summary_measures_actual_structured_bytes(self):
+        responses = [{"result": {"structuredContent": {"value": "x" * size}}}
+                     for size in (20, 10, 30)]
+        summary = payload_summary(responses)
+        self.assertEqual(3, summary["payload_samples"])
+        self.assertLess(summary["response_bytes_p50"], summary["response_bytes_p95"])
 
-        self.assertEqual({
-            "coverage_samples": 3,
-            "response_tokens_p50": 20,
-            "indexed_source_coverage_tokens_p50": 200,
-            "payload_compression_factor_p50": 10.0,
-            "compression_baseline": "indexed_source_coverage",
-            "compression_is_agent_token_savings": False,
-        }, coverage_summary(responses))
-
-    def test_coverage_summary_tolerates_error_responses(self):
-        self.assertEqual({"coverage_samples": 0}, coverage_summary([
+    def test_payload_summary_tolerates_error_responses(self):
+        self.assertEqual({"payload_samples": 0}, payload_summary([
             {"result": {"isError": True}},
             {"error": {"message": "failed"}},
         ]))

@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.command.ProjectIndexStore;
-import org.treblereel.mcp.core.TokenCounter;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.MetaEnvelope;
 
@@ -16,13 +15,11 @@ final class ToolResponseSupport {
     private ToolResponseSupport() {}
 
     static void appendMeta(ObjectNode root, Jdbi jdbi, int naiveTokens) {
-        int responseTokens = TokenCounter.count(root.toString());
-        MetaEnvelope meta = MetaEnvelope.from(jdbi, responseTokens, naiveTokens);
+        MetaEnvelope meta = MetaEnvelope.from(jdbi, 0, 0);
         ObjectNode metaNode = root.putObject("_meta");
         metaNode.put("index_id", meta.indexId());
         metaNode.put("indexed_at", meta.indexedAt());
         metaNode.put("indexed_commit", meta.lastCommit());
-        metaNode.put("last_commit", meta.lastCommit());
         if (meta.currentCommit() == null) metaNode.putNull("current_commit");
         else metaNode.put("current_commit", meta.currentCommit());
         metaNode.put("commit_stale", meta.commitStale());
@@ -32,11 +29,6 @@ final class ToolResponseSupport {
         metaNode.put("structure_stale", meta.structureStale());
         metaNode.set("stale_reasons", JSON.valueToTree(meta.staleReasons()));
         metaNode.put("stale_warning", meta.staleWarning());
-        metaNode.put("response_tokens", meta.responseTokens());
-        metaNode.put("naive_tokens", meta.naiveTokens());
-        metaNode.put("compression", meta.compression());
-        metaNode.put("compression_baseline", "indexed_source_coverage");
-        metaNode.put("compression_is_agent_token_savings", false);
         String projectRoot = IndexReader.getMetadata(jdbi).get("project_root");
         if (projectRoot != null) {
             ProjectIndexStore.readRecovery(Path.of(projectRoot)).ifPresent(recovery -> {

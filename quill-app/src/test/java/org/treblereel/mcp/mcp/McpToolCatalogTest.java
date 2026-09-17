@@ -202,6 +202,17 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void quillCatalogStaysCompact() {
+        int characters = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1)).stream()
+                .mapToInt(specification -> specification.tool().description().length()
+                        + specification.tool().inputSchema().toString().length())
+                .sum();
+        assertTrue(characters < 9_000, "catalog characters: " + characters);
+    }
+
+    @Test
     void unconfiguredQuillProjectIsAnMcpToolError() {
         QuillTools tools = new QuillTools(new ProjectRegistry());
         AsyncToolSpecification overview = McpToolCatalog.create(

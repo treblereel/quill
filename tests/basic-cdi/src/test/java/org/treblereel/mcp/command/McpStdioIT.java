@@ -124,7 +124,7 @@ class McpStdioIT {
             sendRequest(input, 2, "tools/call",
                     "{\"name\":\"get_overview\",\"arguments\":{}}");
 
-            JsonNode overview = toolText(readResponse(output, 2));
+            JsonNode overview = toolStructured(readResponse(output, 2));
             assertEquals("Plain", overview.path("project").path("framework").asText());
             assertTrue(overview.path("_meta").path("commit_stale").asBoolean());
             assertTrue(overview.path("_meta").path("stale_reasons").toString()
@@ -211,7 +211,7 @@ class McpStdioIT {
 
             sendRequest(input, 2, "tools/call",
                     "{\"name\":\"get_overview\",\"arguments\":{}}");
-            String previousIndex = toolText(readResponse(output, 2))
+            String previousIndex = toolStructured(readResponse(output, 2))
                     .path("_meta").path("index_id").asText();
             Path previousDatabase = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
 
@@ -244,7 +244,7 @@ class McpStdioIT {
                 int overviewId = 10_000 + publication;
                 sendRequest(input, overviewId, "tools/call",
                         "{\"name\":\"get_overview\",\"arguments\":{}}");
-                String currentIndex = toolText(readResponse(output, overviewId))
+                String currentIndex = toolStructured(readResponse(output, overviewId))
                         .path("_meta").path("index_id").asText();
                 assertNotEquals(previousIndex, currentIndex,
                         "The long-lived MCP process must observe the newly published generation");
@@ -352,10 +352,8 @@ class McpStdioIT {
             assertNotNull(callResp.get("result"), "tools/call should return a result");
             JsonNode content = callResp.get("result").get("content");
             assertNotNull(content, "Result should have content array");
-            String text = content.get(0).get("text").asText();
-            JsonNode beansResult = JSON.readTree(text);
-            assertEquals(beansResult, callResp.get("result").get("structuredContent"),
-                    "Structured content and compatibility text must describe the same result");
+            assertNoTextPayload(callResp.get("result"));
+            JsonNode beansResult = callResp.get("result").get("structuredContent");
             assertTrue(beansResult.get("total").asInt() >= minimumBeans,
                     "Should find at least " + minimumBeans + " beans");
             assertTrue(beansResult.has("_meta"), "Response should contain _meta envelope");
@@ -365,8 +363,7 @@ class McpStdioIT {
             JsonNode invalidCall = readResponse(stdout, 4).get("result");
             assertNotNull(invalidCall, "Invalid tool input should return a tool result");
             assertTrue(invalidCall.get("isError").asBoolean());
-            assertTrue(invalidCall.get("content").get(0).get("text").asText()
-                    .contains("Unknown argument"));
+            assertNoTextPayload(invalidCall);
             assertEquals("Unknown argument: unexpected",
                     invalidCall.path("structuredContent").path("error").asText());
         } finally {
@@ -458,8 +455,8 @@ class McpStdioIT {
                         .filter(entry -> entry.getKey() >= 100)
                         .map(Map.Entry::getValue)
                         .anyMatch(response -> response.path("result").path("isError").asBoolean()
-                                && response.path("result").path("content").get(0)
-                                        .path("text").asText().contains("Server busy"));
+                                && response.path("result").path("structuredContent")
+                                        .path("error").asText().contains("Server busy"));
                 assertTrue(busy, "A saturated bounded queue must return an explicit busy error");
             }
         } finally {
@@ -530,11 +527,10 @@ class McpStdioIT {
                     "{\"name\":\"get_overview\",\"arguments\":{}}");
             JsonNode toolResponse = readResponse(stdout, 3);
             assertNotNull(toolResponse.get("result"), "Broken index should be a tool result, not a transport failure");
-            String text = toolResponse.get("result").get("content").get(0).get("text").asText();
-            assertTrue(text.contains("broken-native-project"), text);
-            assertTrue(text.contains("uninitialized"), text);
-            assertEquals(JSON.readTree(text),
-                    toolResponse.path("result").path("structuredContent"));
+            JsonNode structured = toolResponse.path("result").path("structuredContent");
+            assertTrue(structured.toString().contains("broken-native-project"), structured::toString);
+            assertTrue(structured.has("uninitialized"), structured::toString);
+            assertNoTextPayload(toolResponse.path("result"));
         } finally {
             proc.getOutputStream().close();
             if (!proc.waitFor(5, TimeUnit.SECONDS)) proc.destroyForcibly();
@@ -633,9 +629,18 @@ class McpStdioIT {
         return ordered;
     }
 
-    private static JsonNode toolText(JsonNode response) throws IOException {
-        return JSON.readTree(response.path("result").path("content").get(0)
-                .path("text").asText());
+    private static JsonNode toolStructured(JsonNode response) {
+        return response.path("result").path("structuredContent");
+    }
+
+    private static void assertNoTextPayload(JsonNode result) {
+        JsonNode content = result.path("content");
+        assertTrue(content.isArray(), "Tool result should contain the MCP content array");
+        for (JsonNode item : content) {
+            assertTrue(!"text".equals(item.path("type").asText())
+                            || item.path("text").asText().isBlank(),
+                    "Structured result must not duplicate its payload as text: " + content);
+        }
     }
 
     private Path resolveAppJar() throws IOException {

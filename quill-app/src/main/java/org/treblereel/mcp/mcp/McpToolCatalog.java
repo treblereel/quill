@@ -138,9 +138,12 @@ final class McpToolCatalog {
     private static McpSchema.CallToolResult result(
             String text, boolean error, boolean structured) {
         McpSchema.CallToolResult.Builder builder = McpSchema.CallToolResult.builder()
-                .content(List.of(McpSchema.TextContent.builder(text).build()))
                 .isError(error);
-        if (structured) builder.structuredContent(structuredContent(text, error));
+        if (structured) {
+            builder.structuredContent(structuredContent(text, error));
+        } else {
+            builder.content(List.of(McpSchema.TextContent.builder(text).build()));
+        }
         return builder.build();
     }
 
@@ -149,7 +152,7 @@ final class McpToolCatalog {
             var parsed = JSON.readTree(text);
             if (parsed != null && parsed.isObject()) return parsed;
         } catch (Exception ignored) {
-            // Catalog-generated failures are plain text for compatibility with older clients.
+            // Catalog-generated failures are converted to a stable structured envelope.
         }
         return JSON.createObjectNode().put(error ? "error" : "result", text);
     }

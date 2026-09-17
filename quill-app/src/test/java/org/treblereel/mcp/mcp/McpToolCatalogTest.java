@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.McpServerFeatures.AsyncToolSpecification;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.io.BufferedWriter;
@@ -28,7 +27,6 @@ import reactor.core.scheduler.Schedulers;
 
 class McpToolCatalogTest {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
     private final Scheduler workers = Schedulers.newBoundedElastic(1, 4, "timeout-test");
     private final Scheduler responses = Schedulers.newSingle("timeout-response-test");
 
@@ -163,9 +161,9 @@ class McpToolCatalogTest {
                 .apply(null, new McpSchema.CallToolRequest(
                         "structured", Map.of("target", "OrderService"), Map.of()))
                 .block(Duration.ofSeconds(2));
-        JsonNode textJson = JSON.readTree(text(result));
-        assertEquals(textJson, result.structuredContent());
-        assertEquals("OrderService", textJson.path("target").asText());
+        assertTrue(result.content().isEmpty());
+        JsonNode structured = (JsonNode) result.structuredContent();
+        assertEquals("OrderService", structured.path("target").asText());
 
         McpSchema.CallToolResult invalid = specification.callHandler()
                 .apply(null, new McpSchema.CallToolRequest(
@@ -201,7 +199,9 @@ class McpToolCatalogTest {
                 .block(Duration.ofSeconds(2));
 
         assertTrue(Boolean.TRUE.equals(result.isError()));
-        assertTrue(text(result).contains("No projects configured"));
+        assertTrue(result.content().isEmpty());
+        assertTrue(((JsonNode) result.structuredContent()).path("error").asText()
+                .contains("No projects configured"));
     }
 
     @Test

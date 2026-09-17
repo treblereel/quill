@@ -151,8 +151,8 @@ class AnnotationProcessingIndexTest {
             input.flush();
 
             var response = readResponse(output, 2);
-            var result = JSON.readTree(response.path("result").path("content").get(0)
-                    .path("text").asText());
+            assertNoTextPayload(response.path("result"));
+            var result = response.path("result").path("structuredContent");
             assertEquals(1, result.path("signals").path("fan_in").path("value").asInt());
             assertEquals(1, result.path("signals").path("fan_in").path("edges").asInt());
 
@@ -162,8 +162,8 @@ class AnnotationProcessingIndexTest {
                     + "javax.annotation.processing.Processor\"}}}\n");
             input.flush();
             var fileResponse = readResponse(output, 3);
-            var fileRisk = JSON.readTree(fileResponse.path("result").path("content").get(0)
-                    .path("text").asText());
+            assertNoTextPayload(fileResponse.path("result"));
+            var fileRisk = fileResponse.path("result").path("structuredContent");
             assertEquals("file", fileRisk.path("target_type").asText());
             assertEquals("service_descriptor", fileRisk.path("kind").asText());
             assertTrue(fileRisk.path("risk_score").asDouble() >= 6.0);
@@ -189,5 +189,14 @@ class AnnotationProcessingIndexTest {
             if (json.path("id").asInt(-1) == expectedId) return json;
         }
         throw new AssertionError("Timed out waiting for MCP response " + expectedId);
+    }
+
+    private static void assertNoTextPayload(com.fasterxml.jackson.databind.JsonNode result) {
+        for (var item : result.path("content")) {
+            assertTrue(!"text".equals(item.path("type").asText())
+                            || item.path("text").asText().isBlank(),
+                    "Structured result must not duplicate its payload as text: "
+                            + result.path("content"));
+        }
     }
 }

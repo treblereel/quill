@@ -603,6 +603,72 @@ class QuillToolsTest {
     }
 
     @Test
+    void findUnusedClassesExcludesRuntimeRootsAndSupportsScopeOptions() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes
+                      (class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.UnusedHelper', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/UnusedHelper.java', 1,
+                            0, 80, 'source', 'current', '.', 'main'),
+                           ('org.acme.UnusedContract', 'INTERFACE', NULL, '[]',
+                            'src/main/java/org/acme/UnusedContract.java', 1,
+                            0, 20, 'source', 'current', '.', 'main'),
+                           ('org.acme.FrameworkHook', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/FrameworkHook.java', 1,
+                            0, 50, 'source', 'current', '.', 'main'),
+                           ('org.acme.MainApp', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/MainApp.java', 1,
+                            0, 60, 'source', 'current', '.', 'main'),
+                           ('org.acme.FirstProcessor', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/FirstProcessor.java', 1,
+                            0, 70, 'source', 'current', '.', 'main'),
+                           ('org.acme.GeneratedHelper', 'CLASS', 'java.lang.Object', '[]',
+                            'target/generated-sources/org/acme/GeneratedHelper.java', 1,
+                            0, 30, 'generated', 'current', '.', 'main'),
+                           ('org.acme.TestHelper', 'CLASS', 'java.lang.Object', '[]',
+                            'src/test/java/org/acme/TestHelper.java', 1,
+                            0, 40, 'source', 'current', '.', 'test')""");
+            handle.execute("""
+                    INSERT INTO class_annotations(class_id, annotation_name, direct, via_annotation)
+                    SELECT id, 'org.acme.RuntimeHook', 1, NULL FROM classes
+                    WHERE class_name = 'org.acme.FrameworkHook'""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    SELECT id, 'METHOD', 'main', 'main(java.lang.String[]):void', 'void',
+                           '["java.lang.String[]"]', 'public static', '[]'
+                    FROM classes WHERE class_name = 'org.acme.MainApp'""");
+        });
+
+        QuillTools tools = new QuillTools();
+        JsonNode defaults = JSON.readTree(tools.findUnusedClasses(
+                jdbi, null, false, false, 20, 0));
+        JsonNode expanded = JSON.readTree(tools.findUnusedClasses(
+                jdbi, null, true, true, 20, 0));
+
+        assertEquals("candidates_not_proven_dead_code",
+                defaults.path("classification").asText());
+        assertEquals(2, defaults.path("total").asInt());
+        assertEquals("org.acme.UnusedHelper",
+                defaults.path("candidates").get(0).path("class").asText());
+        assertEquals("medium", defaults.path("candidates").get(0)
+                .path("confidence").asText());
+        assertEquals("low", defaults.path("candidates").get(1)
+                .path("confidence").asText());
+        assertEquals(4, expanded.path("total").asInt());
+        assertTrue(defaults.path("excluded_reason_counts")
+                .path("hierarchy_reference").asInt() >= 1);
+        assertEquals(1, defaults.path("excluded_reason_counts")
+                .path("service_provider").asInt());
+        assertEquals(1, defaults.path("excluded_reason_counts")
+                .path("main_entry_point").asInt());
+        assertTrue(defaults.path("service_descriptor_evidence_available").asBoolean());
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

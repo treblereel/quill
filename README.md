@@ -131,6 +131,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   invocation kinds, occurrence counts, and source-line evidence
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected
   method or overload, with hierarchy paths and Java modifier checks
+- **find_unused_classes** — find conservative dead-code candidates while excluding indexed
+  references, hierarchy use, DI/framework roots, main classes, and ServiceLoader providers
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
   annotation name or FQCN, with pagination and source/generated breakdown
 - **find_implementations** — find direct/transitive subclasses and implementors, including

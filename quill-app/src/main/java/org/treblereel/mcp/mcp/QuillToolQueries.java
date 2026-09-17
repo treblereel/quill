@@ -14,6 +14,7 @@ public final class QuillToolQueries {
     private final SymbolSearchQueries symbolSearch = new SymbolSearchQueries();
     private final CallHierarchyQueries callHierarchy = new CallHierarchyQueries();
     private final MethodOverrideQueries methodOverrides = new MethodOverrideQueries();
+    private final UnusedClassQueries unusedClasses = new UnusedClassQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -81,6 +82,12 @@ public final class QuillToolQueries {
             String signature, boolean transitive, int limit, int offset) {
         return methodOverrides.findMethodOverrides(
                 jdbi, target, method, signature, transitive, limit, offset);
+    }
+
+    String findUnusedClasses(Jdbi jdbi, String module, boolean includeGenerated,
+            boolean includeTests, int limit, int offset) {
+        return unusedClasses.findUnusedClasses(
+                jdbi, module, includeGenerated, includeTests, limit, offset);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

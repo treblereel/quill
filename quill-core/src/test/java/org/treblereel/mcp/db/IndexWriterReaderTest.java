@@ -109,6 +109,44 @@ class IndexWriterReaderTest {
     }
 
     @Test
+    void reportsEvidenceForUnusedClassClassification() {
+        Jdbi database = QuillDatabase.create(tempDir.resolve("unused-classes.db"));
+        List<ClassRecord> classes = List.of(
+                new ClassRecord(0, "example.Root", "INTERFACE", null, List.of(),
+                        "src/main/java/example/Root.java", 1, false, 10),
+                new ClassRecord(0, "example.Child", "CLASS", "java.lang.Object",
+                        List.of("example.Root"), "src/main/java/example/Child.java", 1, false, 20),
+                new ClassRecord(0, "example.Entry", "CLASS", "java.lang.Object", List.of(),
+                        "src/main/java/example/Entry.java", 1, false, 30),
+                new ClassRecord(0, "example.Candidate", "CLASS", "java.lang.Object", List.of(),
+                        "src/main/java/example/Candidate.java", 1, false, 40));
+        List<DependencyRecord> dependencies = List.of(
+                new DependencyRecord(2, 1, "TYPE_REFERENCE", null, 2, List.of(7, 9)));
+        List<ClassAnnotationRecord> annotations = List.of(
+                new ClassAnnotationRecord(3, "example.FrameworkHook", true, null));
+        List<ClassMemberRecord> members = List.of(
+                new ClassMemberRecord(3, "METHOD", "main",
+                        "main(java.lang.String[]):void", "void",
+                        List.of("java.lang.String[]"), "public static", List.of()));
+        IndexWriter.writeFresh(database, classes, List.of(), List.of(), dependencies, Map.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                annotations, members);
+
+        Map<String, UnusedClassCandidate> evidence = IndexReader
+                .findUnusedClassCandidates(database).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        item -> item.classRecord().className(), item -> item));
+
+        assertEquals(1, evidence.get("example.Root").inboundClassCount());
+        assertEquals(2, evidence.get("example.Root").inboundOccurrenceCount());
+        assertEquals(1, evidence.get("example.Root").hierarchyUserCount());
+        assertEquals(1, evidence.get("example.Entry").directAnnotationCount());
+        assertTrue(evidence.get("example.Entry").hasMainMethod());
+        assertEquals(0, evidence.get("example.Candidate").inboundClassCount());
+        assertEquals(0, evidence.get("example.Candidate").hierarchyUserCount());
+    }
+
+    @Test
     void searchesClassAndMemberSymbolsWithKindFiltering() {
         Jdbi database = QuillDatabase.create(tempDir.resolve("symbol-search.db"));
         List<ClassRecord> classes = List.of(new ClassRecord(

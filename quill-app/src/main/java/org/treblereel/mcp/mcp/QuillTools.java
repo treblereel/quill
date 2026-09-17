@@ -181,6 +181,20 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Find conservative candidates for unused indexed classes; results are not proof of dead code.")
+    public String find_unused_classes(
+            @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
+            @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,
+            @ToolArg(description = "Include test classes; default false") Optional<Boolean> include_tests,
+            @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findUnusedClasses(
+                p.jdbi(), module.orElse(null), include_generated.orElse(false),
+                include_tests.orElse(false), clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -363,6 +377,12 @@ public final class QuillTools {
             String signature, boolean transitive, int limit, int offset) {
         return queries.findMethodOverrides(
                 jdbi, target, method, signature, transitive, limit, offset);
+    }
+
+    String findUnusedClasses(Jdbi jdbi, String module, boolean includeGenerated,
+            boolean includeTests, int limit, int offset) {
+        return queries.findUnusedClasses(
+                jdbi, module, includeGenerated, includeTests, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

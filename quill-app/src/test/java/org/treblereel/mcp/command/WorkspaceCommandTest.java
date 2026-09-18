@@ -77,6 +77,7 @@ class WorkspaceCommandTest {
 
     @Test
     void reportsMachineReadableStatus() throws Exception {
+        createCompiledRepository("engine");
         execute("workspace", "init", "--project", workspace.toString(), "--depth", "2");
 
         Captured status = execute("workspace", "status", "--project", workspace.toString(),
@@ -88,6 +89,16 @@ class WorkspaceCommandTest {
                 json.path("workspace_root").asText());
         assertEquals(2, json.path("discovery_depth").asInt());
         assertTrue(json.path("excludes").isArray());
+        assertEquals(1, json.path("repository_count").asInt());
+        var repository = json.path("repositories").get(0);
+        assertEquals("engine", repository.path("name").asText());
+        assertTrue(repository.path("supported").asBoolean());
+        assertTrue(repository.path("compiled").asBoolean());
+        assertTrue(repository.path("indexed").asBoolean());
+        assertEquals(17, repository.path("indexSchema").asInt());
+        assertEquals(17, repository.path("currentSchema").asInt());
+        assertEquals("installed", repository.path("buildIntegration").asText());
+        assertTrue(repository.path("queryReady").asBoolean());
     }
 
     @Test

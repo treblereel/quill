@@ -143,6 +143,8 @@ surface. `router` is standalone and exposes only `get_overview`, `search_tools`,
 tool-schema context. Tool responses and the underlying index are identical across profiles.
 
 - **search_classes** — find classes by wildcard pattern; supports `limit`/`offset`
+- **get_project_dependencies** — list resolved Maven/Gradle artifacts and consuming modules
+  from Quill's cached runtime classpaths without invoking the build
 - **search_symbols** — search class, method, field, and constructor declarations by name or
   signature, with kind filtering and pagination
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with

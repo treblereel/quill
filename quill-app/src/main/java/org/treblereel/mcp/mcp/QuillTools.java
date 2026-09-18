@@ -24,6 +24,7 @@ public final class QuillTools {
 
     private final ProjectRegistry registry;
     private final QuillToolQueries queries;
+    private final ProjectDependencyQueries projectDependencies;
 
     public QuillTools() {
         this(new ProjectRegistry());
@@ -32,6 +33,7 @@ public final class QuillTools {
     public QuillTools(ProjectRegistry registry) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.queries = new QuillToolQueries();
+        this.projectDependencies = new ProjectDependencyQueries();
     }
 
     @Tool(structured = true, description = "Find CDI/Spring beans, producers, interceptors, or decorators. Returns DI and source context.")
@@ -275,6 +277,20 @@ public final class QuillTools {
                 p.jdbi(), module.orElse(null), direction.orElse("both"),
                 clamp(depth.orElse(2), 1, 10), clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
+    @Tool(structured = true,
+            description = "List resolved Maven or Gradle dependency artifacts and the modules that use them without invoking a build.")
+    public String get_project_dependencies(
+            @ToolArg(description = "Module path relative to the project root; omit for all") Optional<String> module,
+            @ToolArg(description = "Substring of group, artifact, version, or JAR name") Optional<String> query,
+            @ToolArg(description = "Page size; default 100, max 200") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p ->
+                projectDependencies.getProjectDependencies(p.root(), module.orElse(null),
+                        query.orElse(null), clamp(limit.orElse(100), 1, 200),
+                        clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
     @Tool(structured = true, description = "Inspect package dependency coupling.")

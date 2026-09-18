@@ -1,7 +1,6 @@
 package org.treblereel.mcp.workspace;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -25,11 +24,12 @@ class WorkspaceCoordinateCatalogTest {
         assertEquals(2, catalog.modules().size());
         assertEquals(2, catalog.modulesByGa().get("io.casehub:shared-api").size());
         assertTrue(catalog.diagnostics().stream().anyMatch(value ->
-                value.contains("provided by 2 workspace modules")));
+                value.contains("provided by 2 workspace modules: engine:.@1.0, "
+                        + "platform:.@2.0")));
     }
 
     @Test
-    void unsupportedRepositoryDoesNotHideValidCoordinates() throws Exception {
+    void unsupportedRepositoryIsOutsideTheJavaCoordinateCatalog() throws Exception {
         WorkspaceManifest manifest = WorkspaceManifestStore.initialize(workspace, 1);
         mavenRepository("engine", "io.casehub", "engine-api", "1.0");
         Path unsupported = Files.createDirectories(workspace.resolve("notes"));
@@ -38,11 +38,10 @@ class WorkspaceCoordinateCatalogTest {
         WorkspaceCoordinateCatalog.Result catalog =
                 WorkspaceCoordinateCatalog.discover(manifest);
 
-        assertFalse(catalog.complete());
+        assertTrue(catalog.complete(), catalog.diagnostics().toString());
         assertEquals("engine", catalog.modulesByGa().get("io.casehub:engine-api")
                 .getFirst().repository());
-        assertTrue(catalog.diagnostics().stream().anyMatch(value ->
-                value.contains("Repository 'notes'")));
+        assertTrue(catalog.diagnostics().isEmpty());
     }
 
     private void mavenRepository(String name, String group, String artifact, String version)

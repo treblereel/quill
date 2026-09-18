@@ -5,6 +5,8 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ProjectCoordinatesDiscovery;
 
 /** Workspace-wide mapping from build coordinates to local repository modules. */
@@ -47,6 +49,13 @@ public final class WorkspaceCoordinateCatalog {
         List<String> diagnostics = new ArrayList<>(repositories.diagnostics());
         boolean complete = repositories.diagnostics().isEmpty();
         for (WorkspaceDiscovery.Repository repository : repositories.repositories()) {
+            try {
+                BuildSystem.detect(repository.root());
+            } catch (IllegalArgumentException unsupported) {
+                // A workspace may intentionally contain documentation, web, and other non-Java
+                // repositories. They are outside this catalog rather than incomplete Java data.
+                continue;
+            }
             ProjectCoordinatesDiscovery.Result coordinates =
                     ProjectCoordinatesDiscovery.discover(repository.root());
             complete &= coordinates.complete();
@@ -69,9 +78,16 @@ public final class WorkspaceCoordinateCatalog {
         byGa.forEach((ga, candidates) -> {
             if (candidates.size() > 1) {
                 diagnostics.add("Coordinate '" + ga + "' is provided by "
-                        + candidates.size() + " workspace modules");
+                        + candidates.size() + " workspace modules: "
+                        + candidates.stream().map(WorkspaceCoordinateCatalog::candidate)
+                                .collect(Collectors.joining(", ")));
             }
         });
         return new Result(modules, byGa, complete, diagnostics);
+    }
+
+    private static String candidate(Module module) {
+        return module.repository() + ":" + module.module()
+                + (module.version() == null ? "" : "@" + module.version());
     }
 }

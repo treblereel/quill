@@ -77,6 +77,17 @@ class ExternalSymbolQueriesTest {
     }
 
     @Test
+    void exactClassNameDoesNotInspectNestedClasses() throws Exception {
+        appendJar("2.0", Fixture.Inner.class);
+
+        var result = JSON.readTree(new ExternalSymbolQueries().search(jdbi, temp,
+                "nestedOnly", "method", Fixture.class.getName(), null, 20, 0));
+
+        assertEquals(0, result.path("total").asInt());
+        assertEquals(1, result.path("discovery").path("classes_inspected").asInt());
+    }
+
+    @Test
     void groupsTheSameClassAcrossDependencyVersions() throws Exception {
         appendJar("2.0", Fixture.class);
 
@@ -112,6 +123,10 @@ class ExternalSymbolQueriesTest {
     static final class Fixture {
         String greet(String name) {
             return "hello " + name;
+        }
+
+        static final class Inner {
+            void nestedOnly() {}
         }
     }
 

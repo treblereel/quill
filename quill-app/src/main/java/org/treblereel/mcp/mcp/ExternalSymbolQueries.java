@@ -45,10 +45,7 @@ final class ExternalSymbolQueries {
         Catalog catalog = catalog(jdbi, root);
         List<ClassRef> candidates = catalog.classes().stream()
                 .filter(ref -> className == null || className.isBlank()
-                        || ref.className().equals(className)
-                        || simpleName(ref.className()).equals(className)
-                        || ref.className().toLowerCase(Locale.ROOT)
-                                .contains(className.toLowerCase(Locale.ROOT)))
+                        || matchesClassName(ref.className(), className))
                 .filter(ref -> memberSearch
                         || ref.className().toLowerCase(Locale.ROOT).contains(needle))
                 .filter(ref -> libraryNeedle.isEmpty()
@@ -296,6 +293,12 @@ final class ExternalSymbolQueries {
     private static String simpleName(String className) {
         int separator = Math.max(className.lastIndexOf('.'), className.lastIndexOf('$'));
         return separator < 0 ? className : className.substring(separator + 1);
+    }
+
+    private static boolean matchesClassName(String candidate, String requested) {
+        String value = requested.strip();
+        return value.indexOf('.') >= 0 || value.indexOf('$') >= 0
+                ? candidate.equals(value) : simpleName(candidate).equals(value);
     }
 
     private static String error(String message) {

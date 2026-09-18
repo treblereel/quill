@@ -133,9 +133,9 @@ public class ProjectRegistry {
 
     private void repairOutdatedSchema(ProjectScope.Project project, Path projectRoot,
             List<String> errors) {
-        if (!ProjectIndexStore.hasOutdatedGenerations(projectRoot)) return;
         Object repairLock = schemaRepairLocks.computeIfAbsent(projectRoot, ignored -> new Object());
         synchronized (repairLock) {
+            if (ProjectIndexStore.findBestAvailableDb(projectRoot) != null) return;
             if (!ProjectIndexStore.hasOutdatedGenerations(projectRoot)) return;
             ProjectInitializer.InitializationResult repair =
                     ProjectInitializer.initializeDetailed(projectRoot, true);

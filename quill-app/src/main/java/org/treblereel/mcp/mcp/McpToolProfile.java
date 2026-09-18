@@ -13,7 +13,7 @@ public final class McpToolProfile {
             "search_symbols", "find_usages", "find_symbol_usages", "get_dependencies",
             "find_impacted_tests", "assess_change_risk", "get_build_status",
             "get_build_problems", "get_file_problems", "get_project_dependencies", "list_project_tree",
-            "search_files");
+            "search_files", "get_worktree_status");
     private static final Set<String> CODE = union(CORE, Set.of(
             "find_implementations", "get_type_hierarchy", "get_call_hierarchy",
             "find_method_overrides", "find_unused_classes", "find_unused_methods",
@@ -31,7 +31,7 @@ public final class McpToolProfile {
     private static final Set<String> GIT = Set.of(
             "get_overview", "resolve_entities", "find_git_hotspots", "get_file_history",
             "find_co_changed_files", "get_recent_changes", "assess_change_risk",
-            "compare_index", "get_build_status");
+            "compare_index", "get_build_status", "get_worktree_status");
     private static final Set<String> NAMES = Set.of("full", "router", "core", "code", "di", "git");
 
     private final boolean full;

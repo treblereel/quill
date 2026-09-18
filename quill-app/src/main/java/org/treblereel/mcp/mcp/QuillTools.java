@@ -26,6 +26,7 @@ public final class QuillTools {
     private final QuillToolQueries queries;
     private final ProjectDependencyQueries projectDependencies;
     private final FileNavigationQueries fileNavigation;
+    private final WorktreeStatusQueries worktreeStatus;
 
     public QuillTools() {
         this(new ProjectRegistry());
@@ -36,6 +37,7 @@ public final class QuillTools {
         this.queries = new QuillToolQueries();
         this.projectDependencies = new ProjectDependencyQueries();
         this.fileNavigation = new FileNavigationQueries();
+        this.worktreeStatus = new WorktreeStatusQueries();
     }
 
     @Tool(structured = true, description = "Find CDI/Spring beans, producers, interceptors, or decorators. Returns DI and source context.")
@@ -323,6 +325,19 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), p -> fileNavigation.searchFiles(
                 p.jdbi(), pattern, module.orElse(null), kind.orElse(null),
                 include_deleted.orElse(false), clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
+    @Tool(structured = true,
+            description = "Inspect the live Git branch, indexed versus current commit, and dirty worktree files.")
+    public String get_worktree_status(
+            @ToolArg(description = "Status filter: added, modified, deleted, untracked, or conflicting") Optional<String> status,
+            @ToolArg(description = "Results per page; default 100, max 500") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> worktreeStatus.getWorktreeStatus(
+                p.jdbi(), p.root(), status.orElse(null),
+                clamp(limit.orElse(100), 1, 500),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 

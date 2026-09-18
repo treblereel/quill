@@ -192,6 +192,18 @@ public final class GitAnalyzer {
         }
     }
 
+    /** Returns the current branch name, or {@code null} outside a readable Git repository. */
+    public static String resolveBranch(Path projectRoot) {
+        Path gitDir = findGitDir(projectRoot);
+        if (gitDir == null) return null;
+        try (Repository repository = new FileRepositoryBuilder()
+                .setGitDir(gitDir.toFile()).readEnvironment().build()) {
+            return repository.getBranch();
+        } catch (IOException error) {
+            return null;
+        }
+    }
+
     public static String resolveCurrentBranch(Path projectRoot) {
         Path gitDir = findGitDir(projectRoot);
         if (gitDir == null) return null;

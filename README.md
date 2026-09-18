@@ -149,6 +149,8 @@ tool-schema context. Tool responses and the underlying index are identical acros
   module, source-set, lifecycle, and dirty-worktree context
 - **get_file_problems** — filter captured Maven/Gradle build diagnostics by one or more source
   paths; reports the last observed build and never starts one
+- **get_worktree_status** — inspect live branch/HEAD, indexed commit, and paged dirty files with
+  structural-change classification
 - **search_symbols** — search class, method, field, and constructor declarations by name or
   signature, with kind filtering and pagination
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with

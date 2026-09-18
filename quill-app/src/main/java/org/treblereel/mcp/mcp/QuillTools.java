@@ -88,6 +88,15 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Assess cross-repo change risk.")
+    public String assess_workspace_change_risk(
+            @ToolArg(description = "Class or source path") String target,
+            @ToolArg(description = "Provider repository") Optional<String> provider_repository,
+            @ToolArg(description = "Dependency depth") Optional<Integer> max_depth) {
+        return ResponseBudget.apply(workspace.assessRisk(target,
+                provider_repository.orElse(null), clamp(max_depth.orElse(3), 1, 10)));
+    }
+
     @Tool(structured = true, description = "Find CDI/Spring beans, producers, interceptors, or decorators. Returns DI and source context.")
     public String list_beans(
             @ToolArg(description = "Short class name, FQCN, source path, or * wildcard filter") Optional<String> class_name,

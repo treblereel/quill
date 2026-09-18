@@ -114,6 +114,22 @@ class WorkspaceToolQueriesTest {
                 .get(0).path("usage_kind").asText());
     }
 
+    @Test
+    void assessesProviderAndDownstreamRisk() throws Exception {
+        JsonNode result = JSON.readTree(tools.assess_workspace_change_risk(
+                "io.casehub.engine.EngineService", Optional.of("engine"), Optional.of(3)));
+
+        assertEquals("engine", result.path("provider_repository").asText());
+        assertEquals(1, result.path("direct_consumer_count").asInt());
+        assertEquals(0, result.path("transitive_consumer_count").asInt());
+        assertTrue(result.path("workspace_risk_score").asDouble()
+                >= result.path("provider_risk").path("risk_score").asDouble());
+        JsonNode downstream = result.path("downstream").get(0);
+        assertEquals("platform", downstream.path("repository").asText());
+        assertEquals(1, downstream.path("depth").asInt());
+        assertEquals(1, downstream.path("usageGroups").asInt());
+    }
+
     private void createRepository(String name, String artifact, String className, String extra)
             throws Exception {
         Path root = Files.createDirectories(workspace.resolve(name));

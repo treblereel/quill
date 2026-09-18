@@ -14,7 +14,8 @@ public final class McpToolProfile {
             "find_impacted_tests", "assess_change_risk", "get_build_status",
             "get_build_problems", "get_file_problems", "get_project_dependencies", "list_project_tree",
             "search_files", "get_worktree_status", "list_workspace_repositories",
-            "get_workspace_dependencies", "resolve_workspace_entity", "find_workspace_usages");
+            "get_workspace_dependencies", "resolve_workspace_entity", "find_workspace_usages",
+            "assess_workspace_change_risk");
     private static final Set<String> CODE = union(CORE, Set.of(
             "find_implementations", "get_type_hierarchy", "get_call_hierarchy",
             "find_method_overrides", "find_unused_classes", "find_unused_methods",

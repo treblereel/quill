@@ -366,6 +366,18 @@ class McpStdioIT {
             assertNoTextPayload(invalidCall);
             assertEquals("Unknown argument: unexpected",
                     invalidCall.path("structuredContent").path("error").asText());
+
+            if (projectRoot.getFileName().toString().equals("gradle-basic")) {
+                sendRequest(stdin, 5, "tools/call",
+                        "{\"name\":\"find_configuration_references\",\"arguments\":{"
+                                + "\"key\":\"greeting.prefix\"}}");
+                JsonNode configuration = readResponse(stdout, 5)
+                        .path("result").path("structuredContent");
+                assertEquals(1, configuration.path("definition_count").asInt(),
+                        configuration.toString());
+                assertEquals("src/main/resources/application.properties",
+                        configuration.path("references").get(0).path("file").asText());
+            }
         } finally {
             proc.destroyForcibly();
             proc.waitFor(5, TimeUnit.SECONDS);

@@ -606,6 +606,42 @@ public final class IndexReader {
                         .list());
     }
 
+    /** Returns class-level dependency edges whose endpoints are both current indexed classes. */
+    public static List<DependencyRecord> findCurrentDependencyGraph(
+            Jdbi jdbi, String module, boolean includeGenerated, boolean includeTests) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT d.* FROM dependencies d
+                JOIN classes source ON source.id = d.from_class_id
+                JOIN classes target ON target.id = d.to_class_id
+                WHERE source.lifecycle = 'current' AND source.origin != 'orphan_output'
+                  AND target.lifecycle = 'current' AND target.origin != 'orphan_output'
+                  AND source.id != target.id
+                """);
+        if (module != null && !module.isBlank()) {
+            sql.append(" AND source.module = :module AND target.module = :module");
+        }
+        if (!includeGenerated) {
+            sql.append(" AND source.origin != 'generated' AND target.origin != 'generated'");
+        }
+        if (!includeTests) {
+            sql.append(" AND COALESCE(source.source_set, 'main') != 'test'");
+            sql.append(" AND COALESCE(target.source_set, 'main') != 'test'");
+        }
+        sql.append(" ORDER BY d.from_class_id, d.to_class_id, d.kind");
+        return jdbi.withHandle(h -> {
+            var query = h.createQuery(sql.toString());
+            if (module != null && !module.isBlank()) query.bind("module", module);
+            return query.map((rs, ctx) -> new DependencyRecord(
+                            rs.getInt("from_class_id"), rs.getInt("to_class_id"),
+                            rs.getString("kind"),
+                            rs.getObject("injection_point_id") != null
+                                    ? rs.getInt("injection_point_id") : null,
+                            rs.getInt("occurrence_count"),
+                            parseIntList(rs.getString("evidence_lines"))))
+                    .list();
+        });
+    }
+
     private static List<Integer> parseIntList(String value) {
         if (value == null || value.length() < 2) return List.of();
         String body = value.substring(1, value.length() - 1).trim();

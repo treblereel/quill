@@ -19,6 +19,7 @@ public final class QuillToolQueries {
     private final UnusedFieldQueries unusedFields = new UnusedFieldQueries();
     private final EntryPointQueries entryPoints = new EntryPointQueries();
     private final ModuleGraphQueries moduleGraph = new ModuleGraphQueries();
+    private final CycleQueries cycles = new CycleQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -115,6 +116,12 @@ public final class QuillToolQueries {
     String getModuleGraph(Jdbi jdbi, String module, String direction,
             int depth, int limit, int offset) {
         return moduleGraph.getModuleGraph(jdbi, module, direction, depth, limit, offset);
+    }
+
+    String findCycles(Jdbi jdbi, String scope, String module,
+            boolean includeGenerated, boolean includeTests, int limit, int offset) {
+        return cycles.findCycles(jdbi, scope, module,
+                includeGenerated, includeTests, limit, offset);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

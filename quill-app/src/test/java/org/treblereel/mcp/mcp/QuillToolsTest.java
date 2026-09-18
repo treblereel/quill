@@ -962,6 +962,76 @@ class QuillToolsTest {
     }
 
     @Test
+    void findCyclesReturnsClassComponentsAndRepresentativePath() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes
+                      (class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.Container', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/Container.java', 1,
+                            0, 10, 'source', 'current', 'app', 'main'),
+                           ('org.acme.Container$Worker', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/Container.java', 3,
+                            0, 5, 'source', 'current', 'app', 'main')
+                    """);
+            handle.execute("""
+                    INSERT INTO dependencies(from_class_id, to_class_id, kind,
+                                             occurrence_count, evidence_lines)
+                    VALUES (4, 1, 'CLASS_REFERENCE', 1, '[7]'),
+                           (1, 4, 'METHOD_CALL', 2, '[18,21]'),
+                           (5, 6, 'CONSTRUCTS', 1, '[]'),
+                           (6, 5, 'TYPE_USE', 1, '[]')
+                    """);
+        });
+
+        JsonNode result = JSON.readTree(new QuillTools().findCycles(
+                jdbi, "class", null, false, false, 20, 0));
+
+        assertEquals("class", result.path("scope").asText());
+        assertEquals(1, result.path("total").asInt());
+        assertEquals("collapsed_into_top_level_owner",
+                result.path("nested_class_handling").asText());
+        JsonNode cycle = result.path("cycles").get(0);
+        assertEquals(3, cycle.path("member_count").asInt());
+        assertEquals("org.acme.AuditService",
+                cycle.path("representative_path").get(0).asText());
+        assertEquals(cycle.path("representative_path").get(0).asText(),
+                cycle.path("representative_path")
+                        .get(cycle.path("representative_path").size() - 1).asText());
+        assertTrue(cycle.path("edges").valueStream()
+                .anyMatch(edge -> edge.path("kinds").toString().contains("CDI_INJECT")));
+    }
+
+    @Test
+    void findCyclesUsesOnlyDirectModuleDependencies() throws Exception {
+        IndexWriter.writeModuleClasspath(jdbi, List.of(
+                new ModuleClasspathRecord("app", "app", 0, "self"),
+                new ModuleClasspathRecord("app", "service", 1, "project_dependency"),
+                new ModuleClasspathRecord("app", "common", 2, "project_dependency"),
+                new ModuleClasspathRecord("service", "service", 0, "self"),
+                new ModuleClasspathRecord("service", "app", 1, "project_dependency"),
+                new ModuleClasspathRecord("common", "common", 0, "self")));
+
+        JsonNode result = JSON.readTree(new QuillTools().findCycles(
+                jdbi, "module", null, false, false, 20, 0));
+
+        assertEquals(1, result.path("total").asInt());
+        assertEquals(2, result.path("cycles").get(0).path("member_count").asInt());
+        assertEquals(3, result.path("cycles").get(0)
+                .path("representative_path").size());
+        assertFalse(result.path("cycles").get(0).path("members").toString()
+                .contains("common"));
+    }
+
+    @Test
+    void findCyclesRejectsUnknownScope() throws Exception {
+        JsonNode result = JSON.readTree(new QuillTools().findCycles(
+                jdbi, "package", null, false, false, 20, 0));
+        assertEquals("Invalid scope: expected class or module", result.path("error").asText());
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

@@ -21,14 +21,17 @@ class FileInventoryTest {
         Path generatedRoot = tempDir.resolve("target/generated-sources/annotations");
         Path service = tempDir.resolve(
                 "src/main/resources/META-INF/services/javax.annotation.processing.Processor");
+        Path testResource = tempDir.resolve("src/test/resources/fixtures/order.json");
         Files.createDirectories(sourceRoot.resolve("example"));
         Files.createDirectories(generatedRoot.resolve("example"));
         Files.createDirectories(service.getParent());
+        Files.createDirectories(testResource.getParent());
         Files.writeString(sourceRoot.resolve("example/Current.java"),
                 "package example; class Current {}\n");
         Files.writeString(generatedRoot.resolve("example/Generated.java"),
                 "package example; class Generated {}\n");
         Files.writeString(service, "example.Processor\n");
+        Files.writeString(testResource, "{}\n");
 
         List<ClassRecord> classes = List.of(
                 cls(1, "example.Current", sourceRoot.resolve("example/Current.java").toString()),
@@ -55,6 +58,9 @@ class FileInventoryTest {
         assertEquals("service_descriptor", result.files().stream()
                 .filter(file -> file.projectPath().contains("META-INF/services"))
                 .findFirst().orElseThrow().kind());
+        assertEquals("test", result.files().stream()
+                .filter(file -> file.projectPath().equals("src/test/resources/fixtures/order.json"))
+                .findFirst().orElseThrow().sourceSet());
     }
 
     @Test

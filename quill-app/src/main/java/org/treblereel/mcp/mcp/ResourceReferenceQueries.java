@@ -77,7 +77,8 @@ final class ResourceReferenceQueries {
             result.put("usage_count", usageCount);
             result.putArray("limitations")
                     .add("Only constant paths passed to supported classpath resource APIs are resolved")
-                    .add("Dynamic paths are reported as unknown");
+                    .add("Dynamic paths are reported as unknown")
+                    .add("Non-classpath Spring resources are reported as unsupported, not missing");
             appendPage(result, rows.size(), definitionCount + usageCount, limit, offset);
             appendMeta(result, jdbi, 0);
             return result.toString();
@@ -103,17 +104,36 @@ final class ResourceReferenceQueries {
         node.put("member", text(row, "member"));
         node.put("api", text(row, "api"));
         nullable(node, "source", row.get("source"));
-        boolean dynamic = text(row, "kind").equals("dynamic_resource");
-        List<String> files = dynamic ? List.of() : jdbi.withHandle(handle -> handle.createQuery(
-                        "SELECT project_path FROM files WHERE lifecycle = 'current' "
-                                + "AND project_path LIKE :suffix ESCAPE '!' ORDER BY project_path")
-                .bind("suffix", "%/resources/" + escapeLike(text(row, "resource_path")))
-                .mapTo(String.class).list());
-        node.put("resolution_status", dynamic ? "unknown"
-                : files.isEmpty() ? "unsatisfied" : "resolved");
+        String kind = text(row, "kind");
+        boolean dynamic = kind.equals("dynamic_resource");
+        boolean external = kind.equals("external_resource");
+        List<String> files = dynamic || external ? List.of()
+                : definitions(jdbi, text(row, "resource_path"), kind);
+        node.put("resolution_status", dynamic ? "unknown" : external
+                ? "unsupported_mechanism" : files.isEmpty() ? "unsatisfied" : "resolved");
+        node.put("resolution_strategy", dynamic ? "dynamic_resource_path" : external
+                ? "external_resource" : kind.equals("resource_bundle")
+                        ? "resource_bundle_family" : "classpath_resource");
         node.put("confidence", dynamic ? 0.0 : 1.0);
         ArrayNode definitions = node.putArray("definition_files");
         files.forEach(definitions::add);
+    }
+
+    private static List<String> definitions(Jdbi jdbi, String path, String kind) {
+        String exact = "%/resources/" + escapeLike(path);
+        if (!kind.equals("resource_bundle") || !path.endsWith(".properties")) {
+            return jdbi.withHandle(handle -> handle.createQuery(
+                            "SELECT project_path FROM files WHERE lifecycle = 'current' "
+                                    + "AND project_path LIKE :exact ESCAPE '!' ORDER BY project_path")
+                    .bind("exact", exact).mapTo(String.class).list());
+        }
+        String stem = path.substring(0, path.length() - ".properties".length());
+        String localized = "%/resources/" + escapeLike(stem) + "!_%.properties";
+        return jdbi.withHandle(handle -> handle.createQuery(
+                        "SELECT project_path FROM files WHERE lifecycle = 'current' AND "
+                                + "(project_path LIKE :exact ESCAPE '!' OR "
+                                + "project_path LIKE :localized ESCAPE '!') ORDER BY project_path")
+                .bind("exact", exact).bind("localized", localized).mapTo(String.class).list());
     }
 
     private static int count(Jdbi jdbi, String table, String where,

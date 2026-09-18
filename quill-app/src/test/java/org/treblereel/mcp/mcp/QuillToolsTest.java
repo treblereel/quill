@@ -2250,6 +2250,50 @@ class QuillToolsTest {
     }
 
     @Test
+    void findResourceReferencesDistinguishesBundleFamiliesAndExternalLocations() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO files
+                      (project_path, repository_path, kind, origin, lifecycle, module, source_set)
+                    VALUES ('src/test/resources/messages_en_CA.properties',
+                            'src/test/resources/messages_en_CA.properties',
+                            'resource', 'resource', 'current', '.', 'test')
+                    """);
+            handle.execute("""
+                    INSERT INTO resource_usages
+                      (resource_path, kind, class_id, class_name, member, api, source,
+                       module, source_set)
+                    VALUES ('messages.properties', 'resource_bundle', 1,
+                            'org.acme.OrderService', 'messages',
+                            'java.util.ResourceBundle#getBundle',
+                            'src/main/java/org/acme/OrderService.java', '.', 'main'),
+                           ('file:/tmp/order.html', 'external_resource', 1,
+                            'org.acme.OrderService', 'external',
+                            'org.springframework.core.io.ResourceLoader#getResource',
+                            'src/main/java/org/acme/OrderService.java', '.', 'main')
+                    """);
+        });
+
+        JsonNode bundle = JSON.readTree(new QuillToolQueries().findResourceReferences(
+                jdbi, "messages.properties", null, null, 20, 0));
+        JsonNode bundleUsage = bundle.path("references").valueStream()
+                .filter(value -> value.path("entry_type").asText().equals("usage"))
+                .findFirst().orElseThrow();
+        assertEquals("resolved", bundleUsage.path("resolution_status").asText());
+        assertEquals("resource_bundle_family",
+                bundleUsage.path("resolution_strategy").asText());
+        assertEquals("src/test/resources/messages_en_CA.properties",
+                bundleUsage.path("definition_files").get(0).asText());
+
+        JsonNode external = JSON.readTree(new QuillToolQueries().findResourceReferences(
+                jdbi, "file:/tmp/order.html", null, null, 20, 0));
+        JsonNode externalUsage = external.path("references").get(0);
+        assertEquals("unsupported_mechanism",
+                externalUsage.path("resolution_status").asText());
+        assertEquals(0, externalUsage.path("definition_files").size());
+    }
+
+    @Test
     void findFrameworkEndpointsReturnsRoutesAndDirectCalls() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

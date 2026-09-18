@@ -38,6 +38,7 @@ public final class FileInventory {
         Set<Path> rootsToScan = new LinkedHashSet<>(sourceRoots);
         for (Path module : moduleDirectories) {
             rootsToScan.add(module.resolve("src/main/resources"));
+            rootsToScan.add(module.resolve("src/test/resources"));
         }
         for (Path sourceRoot : rootsToScan) {
             addTree(root, repositoryRoot, sourceRoot, byRepositoryPath, worktreeStatuses);

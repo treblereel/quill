@@ -42,11 +42,18 @@ class ProgrammaticConfigurationScannerTest {
                 .equals("org.springframework.core.env.Environment#getProperty")));
         assertTrue(usages.stream().anyMatch(usage -> usage.annotation()
                 .equals("org.eclipse.microprofile.config.Config#getValue")));
-        assertEquals(List.of("templates/order.html"),
-                ProgrammaticConfigurationScanner.scan(
+        var resources = ProgrammaticConfigurationScanner.scan(
                         ClassFileSnapshot.capture(List.of(tempDir)), Map.of(className, 1),
-                        Map.of(className, cls)).resourceUsages().stream()
-                        .map(ConfigurationScanner.ResourceUsage::resourcePath).toList());
+                        Map.of(className, cls)).resourceUsages();
+        assertEquals(List.of("example/relative.txt", "file:/tmp/order.html",
+                        "messages.properties", "templates/order.html"),
+                resources.stream().map(ConfigurationScanner.ResourceUsage::resourcePath).toList());
+        assertEquals("external_resource", resources.stream()
+                .filter(resource -> resource.resourcePath().startsWith("file:"))
+                .findFirst().orElseThrow().kind());
+        assertEquals("resource_bundle", resources.stream()
+                .filter(resource -> resource.resourcePath().equals("messages.properties"))
+                .findFirst().orElseThrow().kind());
     }
 
     private static byte[] consumerBytecode() {
@@ -60,6 +67,21 @@ class ProgrammaticConfigurationScannerTest {
         method.visitLdcInsn("app.name");
         method.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/System", "getProperty",
                 "(Ljava/lang/String;)Ljava/lang/String;", false);
+        method.visitInsn(Opcodes.POP);
+        method.visitLdcInsn(org.objectweb.asm.Type.getObjectType("example/ConfigConsumer"));
+        method.visitLdcInsn("relative.txt");
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Class", "getResource",
+                "(Ljava/lang/String;)Ljava/net/URL;", false);
+        method.visitInsn(Opcodes.POP);
+        method.visitVarInsn(Opcodes.ALOAD, 1);
+        method.visitLdcInsn("file:/tmp/order.html");
+        method.visitMethodInsn(Opcodes.INVOKEINTERFACE,
+                "org/springframework/core/io/ResourceLoader", "getResource",
+                "(Ljava/lang/String;)Lorg/springframework/core/io/Resource;", true);
+        method.visitInsn(Opcodes.POP);
+        method.visitLdcInsn("messages");
+        method.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/ResourceBundle", "getBundle",
+                "(Ljava/lang/String;)Ljava/util/ResourceBundle;", false);
         method.visitInsn(Opcodes.POP);
         method.visitVarInsn(Opcodes.ALOAD, 1);
         method.visitLdcInsn("service.timeout");

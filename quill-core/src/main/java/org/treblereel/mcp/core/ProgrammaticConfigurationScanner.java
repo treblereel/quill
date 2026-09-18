@@ -70,6 +70,8 @@ final class ProgrammaticConfigurationScanner {
 
     private static final class LookupVisitor extends MethodVisitor {
         private static final Object UNKNOWN = new Object();
+        private record ClassLiteral(String className) {}
+        private record NormalizedResource(String path, String kind) {}
         private final int classId;
         private final String className;
         private final String method;
@@ -94,7 +96,10 @@ final class ProgrammaticConfigurationScanner {
 
         @Override
         public void visitLdcInsn(Object value) {
-            stack.push(value instanceof String ? value : UNKNOWN);
+            if (value instanceof String) stack.push(value);
+            else if (value instanceof Type type && type.getSort() == Type.OBJECT) {
+                stack.push(new ClassLiteral(type.getClassName()));
+            } else stack.push(UNKNOWN);
         }
 
         @Override
@@ -131,7 +136,7 @@ final class ProgrammaticConfigurationScanner {
             Type[] argumentTypes = Type.getArgumentTypes(descriptor);
             Object[] arguments = new Object[argumentTypes.length];
             for (int i = argumentTypes.length - 1; i >= 0; i--) arguments[i] = pop();
-            if (opcode != Opcodes.INVOKESTATIC) pop();
+            Object receiver = opcode == Opcodes.INVOKESTATIC ? null : pop();
 
             String api = supportedApi(owner, name, descriptor);
             if (api != null && arguments.length > 0) {
@@ -147,12 +152,14 @@ final class ProgrammaticConfigurationScanner {
             }
             String resourceApi = supportedResourceApi(owner, name, descriptor);
             if (resourceApi != null && arguments.length > 0) {
-                String path = arguments[0] instanceof String value
-                        ? normalizeResource(value, resourceApi) : DYNAMIC_KEY;
-                String identity = classId + "\n" + method + "\n" + resourceApi + "\n" + path;
+                NormalizedResource normalized = arguments[0] instanceof String value
+                        ? normalizeResource(value, resourceApi, className, receiver)
+                        : new NormalizedResource(DYNAMIC_KEY, "dynamic_resource");
+                String identity = classId + "\n" + method + "\n" + resourceApi + "\n"
+                        + normalized.path();
                 if (unique.add(identity)) {
-                    resources.add(new ConfigurationScanner.ResourceUsage(path,
-                            path.equals(DYNAMIC_KEY) ? "dynamic_resource" : "resource",
+                    resources.add(new ConfigurationScanner.ResourceUsage(normalized.path(),
+                            normalized.kind(),
                             classId, className, method, resourceApi,
                             cls == null ? null : cls.sourceFile(),
                             cls == null ? null : cls.module(),
@@ -226,13 +233,34 @@ final class ProgrammaticConfigurationScanner {
         return null;
     }
 
-    private static String normalizeResource(String value, String api) {
+    private static LookupVisitor.NormalizedResource normalizeResource(
+            String value, String api, String consumerClass, Object receiver) {
         String normalized = value.replace('\\', '/');
         if (api.equals("java.util.ResourceBundle#getBundle")) {
             normalized = normalized.replace('.', '/') + ".properties";
+            return normalized.isBlank()
+                    ? new LookupVisitor.NormalizedResource(DYNAMIC_KEY, "dynamic_resource")
+                    : new LookupVisitor.NormalizedResource(normalized, "resource_bundle");
         }
-        if (normalized.startsWith("classpath:")) normalized = normalized.substring(10);
+        if (api.equals("org.springframework.core.io.ResourceLoader#getResource")) {
+            if (normalized.startsWith("classpath*:")) normalized = normalized.substring(11);
+            else if (normalized.startsWith("classpath:")) normalized = normalized.substring(10);
+            else if (normalized.matches("^[A-Za-z][A-Za-z0-9+.-]*:.*")) {
+                return new LookupVisitor.NormalizedResource(normalized, "external_resource");
+            }
+        }
+        boolean absolute = normalized.startsWith("/");
         while (normalized.startsWith("/")) normalized = normalized.substring(1);
-        return normalized.isBlank() ? DYNAMIC_KEY : normalized;
+        if (normalized.isBlank()) {
+            return new LookupVisitor.NormalizedResource(DYNAMIC_KEY, "dynamic_resource");
+        }
+        if (api.startsWith("java.lang.Class#") && !absolute) {
+            String anchor = receiver instanceof LookupVisitor.ClassLiteral literal
+                    ? literal.className() : consumerClass;
+            int packageEnd = anchor.lastIndexOf('.');
+            if (packageEnd >= 0) normalized = anchor.substring(0, packageEnd)
+                    .replace('.', '/') + "/" + normalized;
+        }
+        return new LookupVisitor.NormalizedResource(normalized, "resource");
     }
 }

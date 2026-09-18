@@ -15,9 +15,14 @@ public interface ProjectScope {
         }
     }
 
-    record Snapshot(long revision, List<Project> projects) {
+    record Snapshot(long revision, List<Project> projects, List<String> diagnostics) {
         public Snapshot {
             projects = List.copyOf(projects);
+            diagnostics = List.copyOf(diagnostics);
+        }
+
+        public Snapshot(long revision, List<Project> projects) {
+            this(revision, projects, List.of());
         }
     }
 

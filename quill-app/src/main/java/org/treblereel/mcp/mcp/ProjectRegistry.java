@@ -51,8 +51,9 @@ public class ProjectRegistry {
 
     public Resolution resolve() {
         List<ProjectEntry> result = new ArrayList<>();
-        List<String> errors = new ArrayList<>();
-        for (ProjectScope.Project p : scope.snapshot().projects()) {
+        ProjectScope.Snapshot snapshot = scope.snapshot();
+        List<String> errors = new ArrayList<>(snapshot.diagnostics());
+        for (ProjectScope.Project p : snapshot.projects()) {
             String buildEventError = buildEvents.consume(p.root());
             if (buildEventError != null) {
                 errors.add("Project '" + p.name() + "': " + buildEventError);

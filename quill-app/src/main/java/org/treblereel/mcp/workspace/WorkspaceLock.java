@@ -21,11 +21,20 @@ public final class WorkspaceLock implements AutoCloseable {
     }
 
     public static WorkspaceLock tryAcquire(Path workspaceRoot) throws IOException {
+        return tryAcquire(workspaceRoot, false);
+    }
+
+    public static WorkspaceLock tryAcquireShared(Path workspaceRoot) throws IOException {
+        return tryAcquire(workspaceRoot, true);
+    }
+
+    private static WorkspaceLock tryAcquire(Path workspaceRoot, boolean shared)
+            throws IOException {
         Path lockPath = workspaceRoot.toAbsolutePath().normalize().resolve(FILE);
         FileChannel channel = FileChannel.open(lockPath,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
         try {
-            FileLock lock = channel.tryLock();
+            FileLock lock = channel.tryLock(0, Long.MAX_VALUE, shared);
             if (lock == null) {
                 channel.close();
                 return null;

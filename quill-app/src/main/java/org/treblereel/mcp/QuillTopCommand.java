@@ -13,8 +13,10 @@ import org.treblereel.mcp.command.StatusCommand;
 import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.command.WorkspaceCommand;
 import org.treblereel.mcp.mcp.ProjectRegistry;
+import org.treblereel.mcp.mcp.WorkspaceProjectScope;
 import org.treblereel.mcp.mcp.McpStdioServer;
 import org.treblereel.mcp.mcp.McpToolProfile;
+import org.treblereel.mcp.workspace.WorkspaceLock;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.IVersionProvider;
@@ -31,6 +33,9 @@ public class QuillTopCommand implements Callable<Integer> {
 
     @Option(names = "--project", description = "Project path(s) to serve via MCP (repeatable)")
     List<Path> projects;
+
+    @Option(names = "--workspace", description = "Initialized workspace root to serve via MCP")
+    Path workspace;
 
     @Option(names = "--tools", description = "MCP tool profiles: full, router, core, code, di, git; "
             + "comma-separated unions are allowed (default: full)")
@@ -81,18 +86,34 @@ public class QuillTopCommand implements Callable<Integer> {
     }
 
     @Override
-    public Integer call() {
+    public Integer call() throws Exception {
         if (mcp) {
-            ProjectRegistry registry = new ProjectRegistry();
-            if (projects != null && !projects.isEmpty()) {
-                for (Path p : projects) {
-                    registry.register(p);
+            ProjectRegistry registry;
+            WorkspaceLock workspaceLock = null;
+            if (workspace != null) {
+                if (projects != null && !projects.isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "--workspace cannot be combined with --project");
                 }
+                WorkspaceProjectScope workspaceScope = new WorkspaceProjectScope(workspace);
+                workspaceLock = WorkspaceLock.tryAcquireShared(workspaceScope.root());
+                if (workspaceLock == null) {
+                    throw new IllegalStateException("Workspace is being cleared: "
+                            + workspaceScope.root());
+                }
+                registry = new ProjectRegistry(workspaceScope);
             } else {
-                registry.register(null);
+                registry = new ProjectRegistry();
+                if (projects != null && !projects.isEmpty()) {
+                    for (Path p : projects) registry.register(p);
+                } else {
+                    registry.register(null);
+                }
             }
-            McpStdioServer.start(registry, System.in, System.out,
-                    McpToolProfile.parse(toolProfiles));
+            try (WorkspaceLock lock = workspaceLock) {
+                McpStdioServer.start(registry, System.in, System.out,
+                        McpToolProfile.parse(toolProfiles));
+            }
             return CommandLine.ExitCode.OK;
         }
         System.err.println("Use a subcommand (init, update, status, doctor, clean)"

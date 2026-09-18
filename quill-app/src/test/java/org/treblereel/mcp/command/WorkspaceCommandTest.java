@@ -113,6 +113,16 @@ class WorkspaceCommandTest {
     }
 
     @Test
+    void clearRefusesAWorkspaceServedByMcpSharedLock() throws Exception {
+        execute("workspace", "init", "--project", workspace.toString());
+        try (WorkspaceLock ignored = WorkspaceLock.tryAcquireShared(workspace)) {
+            Captured result = execute("workspace", "clear", "--project", workspace.toString());
+            assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+            assertTrue(Files.isRegularFile(WorkspaceManifestStore.manifest(workspace)));
+        }
+    }
+
+    @Test
     void workspaceCanBeInitializedAgainAfterClear() throws Exception {
         execute("workspace", "init", "--project", workspace.toString());
         execute("workspace", "clear", "--project", workspace.toString());
@@ -121,6 +131,21 @@ class WorkspaceCommandTest {
 
         assertEquals(CommandLine.ExitCode.OK, result.exitCode());
         assertTrue(Files.isRegularFile(WorkspaceManifestStore.manifest(workspace)));
+    }
+
+    @Test
+    void refreshDiscoversRepositoriesWithoutRunningTheirBuilds() throws Exception {
+        execute("workspace", "init", "--project", workspace.toString());
+        Path repository = Files.createDirectories(workspace.resolve("engine"));
+        Files.createDirectories(repository.resolve(".git"));
+        Files.writeString(repository.resolve("pom.xml"), "<project/>");
+
+        Captured result = execute("workspace", "refresh", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+        assertTrue(result.stdout().contains("Repositories: 1"));
+        assertTrue(result.stdout().contains("engine ->"));
+        assertFalse(Files.exists(repository.resolve("target")));
     }
 
     private Captured execute(String... arguments) {

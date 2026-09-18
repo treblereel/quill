@@ -576,7 +576,6 @@ public class ProjectInitializer {
         metadata.put("configuration_definitions",
                 Integer.toString(configuration.definitions().size()));
         metadata.put("configuration_usages", Integer.toString(configuration.usages().size()));
-        metadata.put("configuration_references_detail", configurationJson(configuration));
         metadata.put("framework_endpoints_detail", frameworkEndpointsJson(frameworkEndpoints));
         metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
         metadata.put("framework", isSpring && isCdi ? "Mixed"
@@ -624,7 +623,9 @@ public class ProjectInitializer {
                         + " inserted, " + writeTimings.rowsDeleted() + " deleted, "
                         + writeTimings.rowsUnchanged() + " unchanged.");
             }
-            IndexWriter.writeModuleClasspath(QuillDatabase.openWritable(stagedDb), moduleClasspath);
+            Jdbi stagedIndex = QuillDatabase.openWritable(stagedDb);
+            IndexWriter.writeConfigurationReferences(stagedIndex, configuration);
+            IndexWriter.writeModuleClasspath(stagedIndex, moduleClasspath);
             long validationStartedAt = System.nanoTime();
             ProjectIndexStore.validateForPublication(stagedDb);
             boolean headChanged = !headMatches(root, initialHead);
@@ -735,37 +736,6 @@ public class ProjectInitializer {
             return row;
         }).toList();
         return toJson(rows);
-    }
-
-    static String configurationJson(ConfigurationScanner.Result configuration) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("definitions", configuration.definitions().stream().map(definition -> {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("key", definition.key());
-            row.put("kind", definition.kind());
-            row.put("file", definition.file());
-            row.put("line", definition.line());
-            row.put("module", definition.module());
-            row.put("sourceSet", definition.sourceSet());
-            return row;
-        }).toList());
-        result.put("usages", configuration.usages().stream().map(usage -> {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("key", usage.key());
-            row.put("kind", usage.kind());
-            row.put("classId", usage.classId());
-            row.put("className", usage.className());
-            if (usage.member() != null) row.put("member", usage.member());
-            if (usage.parameterIndex() != null) {
-                row.put("parameterIndex", usage.parameterIndex());
-            }
-            row.put("annotation", usage.annotation());
-            if (usage.source() != null) row.put("source", usage.source());
-            if (usage.module() != null) row.put("module", usage.module());
-            if (usage.sourceSet() != null) row.put("sourceSet", usage.sourceSet());
-            return row;
-        }).toList());
-        return toJson(result);
     }
 
     static CodexConfigInstaller.Result ensureCodexConfig(Path root, boolean indexOnly) {

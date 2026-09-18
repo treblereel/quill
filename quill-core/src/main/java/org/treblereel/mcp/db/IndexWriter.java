@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.model.*;
 
 public final class IndexWriter {
@@ -17,6 +18,7 @@ public final class IndexWriter {
     private static final String[] ALL_TABLES = {
             "git_commit_files", "git_commits", "git_file_stats",
             "class_external_deps", "cdi_problems",
+            "configuration_usages", "configuration_definitions",
             "dependencies", "field_accesses", "method_calls", "injection_points", "beans", "class_members",
             "class_annotations",
             "class_occurrences", "module_classpath", "classes",
@@ -759,6 +761,44 @@ public final class IndexWriter {
                 h.execute("DELETE FROM " + table);
             }
             insertGitData(h, fileStats, commits, commitFiles);
+        });
+    }
+
+    /** Replaces the normalized configuration-reference graph in one transaction. */
+    public static void writeConfigurationReferences(
+            Jdbi jdbi, ConfigurationScanner.Result configuration) {
+        jdbi.useTransaction(h -> {
+            h.execute("DELETE FROM configuration_usages");
+            h.execute("DELETE FROM configuration_definitions");
+            executeBatch(h,
+                    "INSERT INTO configuration_definitions "
+                            + "(key, kind, file, line, module, source_set) "
+                            + "VALUES (?, ?, ?, ?, ?, ?)",
+                    configuration.definitions(), (statement, definition) -> {
+                        statement.setString(1, definition.key());
+                        statement.setString(2, definition.kind());
+                        statement.setString(3, definition.file());
+                        statement.setInt(4, definition.line());
+                        statement.setString(5, definition.module());
+                        statement.setString(6, definition.sourceSet());
+                    });
+            executeBatch(h,
+                    "INSERT INTO configuration_usages "
+                            + "(key, kind, class_id, class_name, member, parameter_index, "
+                            + "annotation, source, module, source_set) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    configuration.usages(), (statement, usage) -> {
+                        statement.setString(1, usage.key());
+                        statement.setString(2, usage.kind());
+                        statement.setInt(3, usage.classId());
+                        statement.setString(4, usage.className());
+                        statement.setString(5, usage.member());
+                        statement.setObject(6, usage.parameterIndex());
+                        statement.setString(7, usage.annotation());
+                        statement.setString(8, usage.source());
+                        statement.setString(9, usage.module());
+                        statement.setString(10, usage.sourceSet());
+                    });
         });
     }
 

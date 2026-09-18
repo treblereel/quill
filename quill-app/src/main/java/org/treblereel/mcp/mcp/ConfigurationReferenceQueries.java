@@ -4,23 +4,17 @@ import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendPage;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
 
-/** Searches indexed configuration definitions and annotation-based consumers. */
+/** Searches normalized configuration definitions and annotation-based consumers. */
 final class ConfigurationReferenceQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -32,170 +26,205 @@ final class ConfigurationReferenceQueries {
         if (!KINDS.contains(normalizedKind)) {
             return errorResponse("Invalid kind: expected all, property, prefix, or persistence");
         }
-        String detail = IndexReader.getMetadata(jdbi).get("configuration_references_detail");
-        if (detail == null) {
-            return errorResponse("Configuration references are unavailable; re-run 'quill init'");
-        }
         try {
-            JsonNode indexed = JSON.readTree(detail);
-            Pattern keyPattern = wildcard(key);
-            List<JsonNode> definitions = elements(indexed.path("definitions")).stream()
-                    .filter(value -> matchesKey(value.path("key").asText(), keyPattern))
-                    .filter(value -> matchesModule(value, module))
-                    .filter(value -> matchesDefinitionKind(value, normalizedKind))
-                    .toList();
-            List<JsonNode> usages = elements(indexed.path("usages")).stream()
-                    .filter(value -> matchesUsageKey(value, key, keyPattern))
-                    .filter(value -> matchesClass(value, className))
-                    .filter(value -> matchesModule(value, module))
-                    .filter(value -> matchesUsageKind(value, normalizedKind))
-                    .toList();
+            Filters filters = filters(key, className, normalizedKind, module);
+            int definitionCount = count(jdbi, "configuration_definitions d",
+                    filters.definitionWhere(), filters.bindings());
+            int usageCount = count(jdbi, "configuration_usages u",
+                    filters.usageWhere(), filters.bindings());
+            int total = definitionCount + usageCount;
+            List<Map<String, Object>> references = page(jdbi, filters, limit, offset);
 
-            if ((className != null && !className.isBlank())
-                    || normalizedKind.equals("prefix")) {
-                Set<String> usedKeys = usages.stream().map(value -> value.path("key").asText())
-                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-                definitions = definitions.stream()
-                        .filter(value -> relevantDefinition(value, usedKeys, usages)).toList();
-            }
-
-            Map<String, List<JsonNode>> definitionsByKey = new HashMap<>();
-            definitions.forEach(value -> definitionsByKey
-                    .computeIfAbsent(value.path("key").asText(), ignored -> new ArrayList<>())
-                    .add(value));
-            List<Reference> references = new ArrayList<>();
-            definitions.forEach(value -> references.add(new Reference("definition", value)));
-            usages.forEach(value -> references.add(new Reference("usage", value)));
-            references.sort(Comparator.comparing((Reference value) ->
-                            value.value().path("key").asText())
-                    .thenComparing(value -> value.type().equals("definition") ? 0 : 1)
-                    .thenComparing(value -> value.value().path("file").asText(
-                            value.value().path("className").asText())));
-
-            int from = Math.min(offset, references.size());
-            int to = Math.min(from + limit, references.size());
             ObjectNode result = JSON.createObjectNode();
-            if (key == null || key.isBlank()) result.putNull("key");
-            else result.put("key", key);
-            if (className == null || className.isBlank()) result.putNull("class");
-            else result.put("class", className);
+            putNullable(result, "key", key);
+            putNullable(result, "class", className);
             result.put("kind", normalizedKind);
-            if (module == null || module.isBlank()) result.putNull("module");
-            else result.put("module", module);
+            putNullable(result, "module", module);
             ArrayNode values = result.putArray("references");
-            for (Reference reference : references.subList(from, to)) {
+            for (Map<String, Object> reference : references) {
                 ObjectNode node = values.addObject();
-                node.put("entry_type", reference.type());
-                copy(reference.value(), node);
-                if (reference.type().equals("usage")) {
-                    List<JsonNode> matches = matchingDefinitions(
-                            reference.value(), definitionsByKey, definitions);
-                    node.put("resolved", !matches.isEmpty());
-                    node.put("definition_count", matches.size());
+                String entryType = text(reference, "entry_type");
+                node.put("entry_type", entryType);
+                node.put("key", text(reference, "key"));
+                node.put("kind", text(reference, "kind"));
+                putNullable(node, "module", reference.get("module"));
+                putNullable(node, "sourceSet", reference.get("source_set"));
+                if (entryType.equals("definition")) {
+                    node.put("file", text(reference, "file"));
+                    node.put("line", number(reference, "line"));
+                } else {
+                    node.put("classId", number(reference, "class_id"));
+                    node.put("className", text(reference, "class_name"));
+                    putNullable(node, "member", reference.get("member"));
+                    putNullable(node, "parameterIndex", reference.get("parameter_index"));
+                    node.put("annotation", text(reference, "annotation"));
+                    putNullable(node, "source", reference.get("source"));
+                    Resolution resolution = resolve(jdbi, text(reference, "key"),
+                            text(reference, "kind"), module);
+                    node.put("resolved", resolution.count() > 0);
+                    node.put("definition_count", resolution.count());
                     ArrayNode files = node.putArray("definition_files");
-                    matches.stream().map(value -> value.path("file").asText())
-                            .distinct().sorted().forEach(files::add);
+                    resolution.files().forEach(files::add);
                 }
             }
-            result.put("definition_count", definitions.size());
-            result.put("usage_count", usages.size());
+            result.put("definition_count", definitionCount);
+            result.put("usage_count", usageCount);
             result.put("values_indexed", false);
             result.putArray("limitations")
                     .add("Configuration values are intentionally not stored")
                     .add("Consumers are limited to supported bytecode-visible annotations")
                     .add("Programmatic, environment-variable, YAML list, and dynamic key lookups are not resolved");
-            appendPage(result, to - from, references.size(), limit, offset);
+            appendPage(result, references.size(), total, limit, offset);
             appendMeta(result, jdbi, 0);
             return result.toString();
-        } catch (RuntimeException | java.io.IOException error) {
-            return errorResponse("Indexed configuration metadata is invalid");
+        } catch (RuntimeException error) {
+            return errorResponse("Could not query indexed configuration references");
         }
     }
 
-    private static List<JsonNode> matchingDefinitions(JsonNode usage,
-            Map<String, List<JsonNode>> byKey, List<JsonNode> all) {
-        String key = usage.path("key").asText();
-        if (usage.path("kind").asText().equals("config_prefix")) {
-            return all.stream().filter(value -> {
-                String candidate = value.path("key").asText();
-                return candidate.equals(key) || candidate.startsWith(key + ".");
-            }).toList();
+    private static List<Map<String, Object>> page(
+            Jdbi jdbi, Filters filters, int limit, int offset) {
+        String sql = """
+                SELECT entry_type, key, kind, file, line, module, source_set,
+                       class_id, class_name, member, parameter_index, annotation, source
+                FROM (
+                    SELECT 'definition' AS entry_type, 0 AS entry_rank,
+                           d.key, d.kind, d.file, d.line, d.module, d.source_set,
+                           NULL AS class_id, NULL AS class_name, NULL AS member,
+                           NULL AS parameter_index, NULL AS annotation, NULL AS source
+                    FROM configuration_definitions d WHERE %s
+                    UNION ALL
+                    SELECT 'usage' AS entry_type, 1 AS entry_rank,
+                           u.key, u.kind, NULL AS file, NULL AS line, u.module, u.source_set,
+                           u.class_id, u.class_name, u.member, u.parameter_index,
+                           u.annotation, u.source
+                    FROM configuration_usages u WHERE %s
+                ) references_page
+                ORDER BY key, entry_rank, COALESCE(file, class_name),
+                         COALESCE(member, ''), COALESCE(parameter_index, -1)
+                LIMIT :limit OFFSET :offset
+                """.formatted(filters.definitionWhere(), filters.usageWhere());
+        Map<String, Object> bindings = new LinkedHashMap<>(filters.bindings());
+        bindings.put("limit", limit);
+        bindings.put("offset", offset);
+        return jdbi.withHandle(handle -> handle.createQuery(sql)
+                .bindMap(bindings).mapToMap().list());
+    }
+
+    private static int count(Jdbi jdbi, String table, String where,
+            Map<String, Object> bindings) {
+        return jdbi.withHandle(handle -> handle.createQuery(
+                        "SELECT count(*) FROM " + table + " WHERE " + where)
+                .bindMap(bindings).mapTo(Integer.class).one());
+    }
+
+    private static Resolution resolve(Jdbi jdbi, String key, String kind, String module) {
+        String relation = kind.equals("config_prefix")
+                ? "(d.key = :resolved_key OR d.key LIKE :resolved_prefix ESCAPE '!')"
+                : "d.key = :resolved_key";
+        String moduleFilter = module == null || module.isBlank()
+                ? "" : " AND d.module = :resolved_module";
+        Map<String, Object> bindings = new LinkedHashMap<>();
+        bindings.put("resolved_key", key);
+        bindings.put("resolved_prefix", escapeLike(key) + ".%");
+        if (!moduleFilter.isEmpty()) bindings.put("resolved_module", module);
+        List<String> files = jdbi.withHandle(handle -> handle.createQuery(
+                        "SELECT DISTINCT d.file FROM configuration_definitions d WHERE "
+                                + relation + moduleFilter + " ORDER BY d.file")
+                .bindMap(bindings).mapTo(String.class).list());
+        int count = jdbi.withHandle(handle -> handle.createQuery(
+                        "SELECT count(*) FROM configuration_definitions d WHERE "
+                                + relation + moduleFilter)
+                .bindMap(bindings).mapTo(Integer.class).one());
+        return new Resolution(count, files);
+    }
+
+    private static Filters filters(
+            String key, String className, String kind, String module) {
+        Map<String, Object> bindings = new LinkedHashMap<>();
+        String definitionKey = "1 = 1";
+        String usageKey = "1 = 1";
+        if (key != null && !key.isBlank()) {
+            bindings.put("key_pattern", wildcardLike(key));
+            int wildcard = key.indexOf('*');
+            String literalPrefix = key.substring(0, wildcard < 0 ? key.length() : wildcard)
+                    .strip();
+            bindings.put("literal_prefix", literalPrefix);
+            definitionKey = "d.key LIKE :key_pattern ESCAPE '!'";
+            usageKey = "(u.key LIKE :key_pattern ESCAPE '!' OR "
+                    + "(u.kind = 'config_prefix' AND "
+                    + "(:literal_prefix = u.key OR :literal_prefix LIKE u.key || '.%')))";
         }
-        return byKey.getOrDefault(key, List.of());
-    }
-
-    private static boolean relevantDefinition(
-            JsonNode definition, Set<String> keys, List<JsonNode> usages) {
-        String candidate = definition.path("key").asText();
-        if (keys.contains(candidate)) return true;
-        return usages.stream().anyMatch(usage -> usage.path("kind").asText()
-                .equals("config_prefix") && (candidate.equals(usage.path("key").asText())
-                        || candidate.startsWith(usage.path("key").asText() + ".")));
-    }
-
-    private static boolean matchesDefinitionKind(JsonNode value, String kind) {
-        String indexed = value.path("kind").asText();
-        return kind.equals("all")
-                || kind.equals("property") && !indexed.equals("persistence_unit")
-                || kind.equals("prefix") && !indexed.equals("persistence_unit")
-                || kind.equals("persistence") && indexed.equals("persistence_unit");
-    }
-
-    private static boolean matchesUsageKind(JsonNode value, String kind) {
-        String indexed = value.path("kind").asText();
-        return kind.equals("all")
-                || kind.equals("property") && indexed.equals("config_key")
-                || kind.equals("prefix") && indexed.equals("config_prefix")
-                || kind.equals("persistence") && indexed.equals("persistence_unit");
-    }
-
-    private static boolean matchesClass(JsonNode value, String className) {
-        if (className == null || className.isBlank()) return true;
-        String candidate = value.path("className").asText();
-        return candidate.equals(className) || candidate.endsWith("." + className);
-    }
-
-    private static boolean matchesModule(JsonNode value, String module) {
-        return module == null || module.isBlank() || module.equals(value.path("module").asText());
-    }
-
-    private static boolean matchesKey(String candidate, Pattern pattern) {
-        return pattern == null || pattern.matcher(candidate).matches();
-    }
-
-    private static boolean matchesUsageKey(JsonNode usage, String requested, Pattern pattern) {
-        String indexed = usage.path("key").asText();
-        if (matchesKey(indexed, pattern)) return true;
-        if (!usage.path("kind").asText().equals("config_prefix")
-                || requested == null || requested.isBlank()) {
-            return false;
+        String definitionModule = "1 = 1";
+        String usageModule = "1 = 1";
+        if (module != null && !module.isBlank()) {
+            bindings.put("module", module);
+            definitionModule = "d.module = :module";
+            usageModule = "u.module = :module";
         }
-        int wildcard = requested.indexOf('*');
-        String literalPrefix = (wildcard < 0 ? requested : requested.substring(0, wildcard))
-                .strip();
-        return literalPrefix.equals(indexed) || literalPrefix.startsWith(indexed + ".");
+        String usageClass = "1 = 1";
+        if (className != null && !className.isBlank()) {
+            bindings.put("class_name", className);
+            bindings.put("class_suffix", "%." + escapeLike(className));
+            usageClass = "(u.class_name = :class_name "
+                    + "OR u.class_name LIKE :class_suffix ESCAPE '!')";
+        }
+        String definitionKind = switch (kind) {
+            case "persistence" -> "d.kind = 'persistence_unit'";
+            case "property", "prefix" -> "d.kind <> 'persistence_unit'";
+            default -> "1 = 1";
+        };
+        String usageKind = switch (kind) {
+            case "persistence" -> "u.kind = 'persistence_unit'";
+            case "property" -> "u.kind = 'config_key'";
+            case "prefix" -> "u.kind = 'config_prefix'";
+            default -> "1 = 1";
+        };
+        String usageWhere = String.join(" AND ", usageKey, usageClass, usageModule, usageKind);
+        String definitionWhere = String.join(" AND ", definitionKey, definitionModule,
+                definitionKind);
+        if ((className != null && !className.isBlank()) || kind.equals("prefix")) {
+            String relatedUsage = usageWhere.replace("u.", "ru.");
+            definitionWhere += " AND EXISTS (SELECT 1 FROM configuration_usages ru WHERE "
+                    + relatedUsage + " AND (d.key = ru.key OR "
+                    + "(ru.kind = 'config_prefix' AND d.key LIKE ru.key || '.%')))";
+        }
+        return new Filters(definitionWhere, usageWhere, bindings);
     }
 
-    private static Pattern wildcard(String value) {
-        if (value == null || value.isBlank()) return null;
-        StringBuilder regex = new StringBuilder("^");
+    private static String wildcardLike(String value) {
+        StringBuilder result = new StringBuilder();
         for (char character : value.toCharArray()) {
-            if (character == '*') regex.append(".*");
-            else regex.append(Pattern.quote(String.valueOf(character)));
+            if (character == '*') result.append('%');
+            else if (character == '%' || character == '_' || character == '!') {
+                result.append('!').append(character);
+            } else result.append(character);
         }
-        return Pattern.compile(regex.append('$').toString());
+        return result.toString();
     }
 
-    private static List<JsonNode> elements(JsonNode array) {
-        if (!array.isArray()) return List.of();
-        List<JsonNode> result = new ArrayList<>();
-        array.forEach(result::add);
-        return result;
+    private static String escapeLike(String value) {
+        return value.replace("!", "!!").replace("%", "!%").replace("_", "!_");
     }
 
-    private static void copy(JsonNode source, ObjectNode target) {
-        source.properties().forEach(entry -> target.set(entry.getKey(), entry.getValue()));
+    private static String text(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        return value == null ? "" : value.toString();
     }
 
-    private record Reference(String type, JsonNode value) {}
+    private static int number(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        return value instanceof Number number ? number.intValue() : 0;
+    }
+
+    private static void putNullable(ObjectNode node, String key, Object value) {
+        if (value == null || value.toString().isBlank()) node.putNull(key);
+        else if (value instanceof Number number) node.put(key, number.intValue());
+        else node.put(key, value.toString());
+    }
+
+    private record Filters(
+            String definitionWhere, String usageWhere, Map<String, Object> bindings) {}
+
+    private record Resolution(int count, List<String> files) {}
 }

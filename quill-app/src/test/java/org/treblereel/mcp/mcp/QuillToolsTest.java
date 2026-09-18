@@ -2149,38 +2149,36 @@ class QuillToolsTest {
 
     @Test
     void findConfigurationReferencesLinksDefinitionsWithoutExposingValues() throws Exception {
-        jdbi.useHandle(handle -> handle.createUpdate("""
-                        INSERT INTO metadata(key, value)
-                        VALUES ('configuration_references_detail', :value)
-                        ON CONFLICT(key) DO UPDATE SET value = excluded.value""")
-                .bind("value", """
-                        {"definitions":[
-                          {"key":"orders.region","kind":"property",
-                           "file":"src/main/resources/application.properties","line":1,
-                           "module":".","sourceSet":"main"},
-                          {"key":"orders.timeout","kind":"yaml_property",
-                           "file":"src/main/resources/application.yml","line":2,
-                           "module":".","sourceSet":"main"},
-                          {"key":"unrelated.enabled","kind":"property",
-                           "file":"src/main/resources/application.properties","line":3,
-                           "module":".","sourceSet":"main"}],
-                         "usages":[
-                          {"key":"orders.region","kind":"config_key","classId":1,
-                           "className":"org.acme.OrderService","member":"region",
-                           "annotation":"org.springframework.beans.factory.annotation.Value",
-                           "source":"src/main/java/org/acme/OrderService.java",
-                           "module":".","sourceSet":"main"},
-                          {"key":"orders","kind":"config_prefix","classId":1,
-                           "className":"org.acme.OrderService",
-                           "annotation":"org.springframework.boot.context.properties.ConfigurationProperties",
-                           "source":"src/main/java/org/acme/OrderService.java",
-                           "module":".","sourceSet":"main"}]}
-                        """).execute());
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO configuration_definitions
+                      (key, kind, file, line, module, source_set) VALUES
+                      ('orders.region', 'property',
+                       'src/main/resources/application.properties', 1, '.', 'main'),
+                      ('orders.timeout', 'yaml_property',
+                       'src/main/resources/application.yml', 2, '.', 'main'),
+                      ('unrelated.enabled', 'property',
+                       'src/main/resources/application.properties', 3, '.', 'main')
+                    """);
+            handle.execute("""
+                    INSERT INTO configuration_usages
+                      (key, kind, class_id, class_name, member, parameter_index,
+                       annotation, source, module, source_set) VALUES
+                      ('orders.region', 'config_key', 1, 'org.acme.OrderService',
+                       'region', NULL,
+                       'org.springframework.beans.factory.annotation.Value',
+                       'src/main/java/org/acme/OrderService.java', '.', 'main'),
+                      ('orders', 'config_prefix', 1, 'org.acme.OrderService',
+                       NULL, NULL,
+                       'org.springframework.boot.context.properties.ConfigurationProperties',
+                       'src/main/java/org/acme/OrderService.java', '.', 'main')
+                    """);
+        });
 
         JsonNode result = JSON.readTree(new QuillToolQueries().findConfigurationReferences(
                 jdbi, "orders*", "OrderService", "all", null, 20, 0));
 
-        assertEquals(4, result.path("total").asInt());
+        assertEquals(4, result.path("total").asInt(), result.toString());
         assertEquals(2, result.path("definition_count").asInt());
         assertEquals(2, result.path("usage_count").asInt());
         assertFalse(result.path("values_indexed").asBoolean());

@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 15;
+    static final int SCHEMA_VERSION = 16;
 
     private QuillDatabase() {}
 
@@ -231,6 +231,32 @@ public final class QuillDatabase {
                     problem_type TEXT NOT NULL,
                     message TEXT NOT NULL
                 )""");
+            h.execute("""
+                CREATE TABLE IF NOT EXISTS configuration_definitions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    file TEXT NOT NULL,
+                    line INTEGER NOT NULL,
+                    module TEXT NOT NULL,
+                    source_set TEXT NOT NULL,
+                    UNIQUE(key, kind, file, line, module, source_set)
+                )""");
+            h.execute("""
+                CREATE TABLE IF NOT EXISTS configuration_usages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    class_id INTEGER NOT NULL REFERENCES classes(id),
+                    class_name TEXT NOT NULL,
+                    member TEXT,
+                    parameter_index INTEGER,
+                    annotation TEXT NOT NULL,
+                    source TEXT,
+                    module TEXT NOT NULL,
+                    source_set TEXT NOT NULL,
+                    UNIQUE(key, kind, class_id, member, parameter_index, annotation)
+                )""");
             if (createIndexes) createIndexes(h);
             h.execute("PRAGMA user_version = " + SCHEMA_VERSION);
         });
@@ -267,6 +293,11 @@ public final class QuillDatabase {
         h.execute("CREATE INDEX IF NOT EXISTS idx_ced_class ON class_external_deps(class_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_ced_type ON class_external_deps(external_type)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_cdip_class ON cdi_problems(class_id)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_config_def_key ON configuration_definitions(key)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_config_def_module ON configuration_definitions(module, source_set)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_config_use_key ON configuration_usages(key, kind)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_config_use_class ON configuration_usages(class_name)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_config_use_module ON configuration_usages(module, source_set)");
     }
 
     private static void prepareExistingDatabase(Path dbPath) {

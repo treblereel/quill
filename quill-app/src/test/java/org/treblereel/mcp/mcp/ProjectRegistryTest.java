@@ -102,19 +102,6 @@ class ProjectRegistryTest {
         assertEquals(1, registry.resolve().projects().size());
     }
 
-    @Test
-    void preparesSqliteQueryPathBeforeServingRequests() throws IOException {
-        Path project = Files.createDirectories(tempDir.resolve("request-prewarmed-project"));
-        Files.createFile(project.resolve("pom.xml"));
-        createPublishedDatabase(project, "request-prewarmed");
-
-        ProjectRegistry registry = new ProjectRegistry();
-        registry.register(project);
-
-        assertDoesNotThrow(registry::prepareRequestPath);
-        assertEquals(1, registry.resolve().projects().size());
-    }
-
     private static Path createPublishedDatabase(Path project, String indexId) throws IOException {
         Path quillDir = Files.createDirectories(project.resolve(".quill"));
         Path database = quillDir.resolve(indexId + ".db");

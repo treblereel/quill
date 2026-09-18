@@ -16,19 +16,6 @@ final class PositionSymbolQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    static void prewarm(Jdbi jdbi) {
-        // Force the lazy SQLite/JDBI driver and row mapper path to initialize before the
-        // server advertises readiness. The first semantic request should not pay that cost.
-        jdbi.withHandle(handle -> handle.createQuery("""
-                        SELECT class_name, source_line
-                        FROM classes WHERE lifecycle = 'current'
-                        ORDER BY id LIMIT 1
-                        """)
-                .map((row, context) -> new EnclosingClass(
-                        row.getString("class_name"), row.getInt("source_line")))
-                .findFirst());
-    }
-
     String getSymbolAtPosition(Jdbi jdbi, Path root, String sourcePath, int line, int column) {
         String normalized = sourcePath.strip().replace('\\', '/');
         Path file = root.resolve(normalized).normalize();

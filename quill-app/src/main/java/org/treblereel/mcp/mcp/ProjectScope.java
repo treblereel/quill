@@ -27,4 +27,12 @@ public interface ProjectScope {
     }
 
     Snapshot snapshot();
+
+    default List<Project> select(Snapshot snapshot, String selector) {
+        if (selector == null || selector.isBlank()) return snapshot.projects();
+        String normalized = selector.strip();
+        return snapshot.projects().stream()
+                .filter(project -> project.name().equalsIgnoreCase(normalized))
+                .toList();
+    }
 }

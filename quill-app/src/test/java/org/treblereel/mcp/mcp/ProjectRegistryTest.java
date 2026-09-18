@@ -134,6 +134,28 @@ class ProjectRegistryTest {
     }
 
     @Test
+    void selectorAvoidsOpeningUnselectedProjectIndexes() throws IOException {
+        Path selected = Files.createDirectories(tempDir.resolve("selected"));
+        Files.createFile(selected.resolve("pom.xml"));
+        createPublishedDatabase(selected, "selected");
+        Path broken = Files.createDirectories(tempDir.resolve("broken"));
+        Files.createFile(broken.resolve("pom.xml"));
+        Path brokenQuill = Files.createDirectories(broken.resolve(".quill"));
+        Files.writeString(brokenQuill.resolve("bad.db"), "broken");
+        Files.writeString(brokenQuill.resolve("refs.json"), "{\"@worktree\":\"bad\"}");
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(selected);
+        registry.register(broken);
+
+        ProjectRegistry.Resolution resolution = registry.resolve("selected");
+
+        assertEquals(1, resolution.projects().size());
+        assertTrue(resolution.errors().isEmpty(),
+                "An explicitly unselected broken repository must not affect the request");
+        assertEquals(1, registry.cachedDatabaseCount());
+    }
+
+    @Test
     void singleRegisteredProjectPreservesItsNameAndCanonicalRoot() throws IOException {
         Path project = Files.createDirectories(tempDir.resolve("single-project"));
         Files.createFile(project.resolve("pom.xml"));

@@ -1485,6 +1485,17 @@ class QuillToolsTest {
             public Resolution resolve() {
                 return new Resolution(List.of(new ProjectEntry(name, tempDir, jdbi)), List.of());
             }
+
+            @Override
+            public Resolution resolve(String selector) {
+                return name.equalsIgnoreCase(selector)
+                        ? resolve() : new Resolution(List.of(), List.of());
+            }
+
+            @Override
+            public List<String> configuredProjectNames() {
+                return List.of(name);
+            }
         };
     }
 

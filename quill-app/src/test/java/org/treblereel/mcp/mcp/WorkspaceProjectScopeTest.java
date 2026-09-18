@@ -57,6 +57,31 @@ class WorkspaceProjectScopeTest {
         assertEquals(java.util.List.of("worktree"), names(scope.snapshot()));
     }
 
+    @Test
+    void selectsRepositoryByNamePathAndMavenCoordinate() throws Exception {
+        WorkspaceManifestStore.initialize(workspace, 1);
+        Path engine = repository("engine");
+        Files.writeString(engine.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>io.casehub</groupId><artifactId>engine-api</artifactId>
+                  <version>1.0</version>
+                </project>
+                """);
+        repository("platform");
+        WorkspaceProjectScope scope = new WorkspaceProjectScope(workspace);
+        ProjectScope.Snapshot snapshot = scope.snapshot();
+
+        assertEquals(java.util.List.of("engine"),
+                names(scope.select(snapshot, "ENGINE")));
+        assertEquals(java.util.List.of("engine"),
+                names(scope.select(snapshot, "engine")));
+        assertEquals(java.util.List.of("engine"),
+                names(scope.select(snapshot,
+                        engine.resolve("src/main/java/Example.java").toString())));
+        assertEquals(java.util.List.of("engine"),
+                names(scope.select(snapshot, "io.casehub:engine-api")));
+    }
+
     private Path repository(String relative) throws Exception {
         Path root = Files.createDirectories(workspace.resolve(relative));
         Files.createDirectories(root.resolve(".git"));
@@ -66,5 +91,9 @@ class WorkspaceProjectScopeTest {
 
     private static java.util.List<String> names(ProjectScope.Snapshot snapshot) {
         return snapshot.projects().stream().map(ProjectScope.Project::name).toList();
+    }
+
+    private static java.util.List<String> names(java.util.List<ProjectScope.Project> projects) {
+        return projects.stream().map(ProjectScope.Project::name).toList();
     }
 }

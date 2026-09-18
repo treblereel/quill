@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.treblereel.mcp.workspace.WorkspaceDiscovery;
 import org.treblereel.mcp.workspace.WorkspaceManifest;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
+import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
 
 /** Dynamically reconciled project scope for an explicitly initialized workspace. */
 public final class WorkspaceProjectScope implements ProjectScope {
@@ -47,6 +48,28 @@ public final class WorkspaceProjectScope implements ProjectScope {
         return manifest.root();
     }
 
+    @Override
+    public List<Project> select(Snapshot snapshot, String selector) {
+        if (selector == null || selector.isBlank()) return snapshot.projects();
+        String value = selector.strip();
+        List<Project> direct = snapshot.projects().stream()
+                .filter(project -> project.name().equalsIgnoreCase(value)
+                        || relative(project.root()).equalsIgnoreCase(normalize(value))
+                        || containsAbsolute(project.root(), value))
+                .toList();
+        if (!direct.isEmpty() || !value.contains(":")) return direct;
+
+        WorkspaceCoordinateCatalog.Result coordinates =
+                WorkspaceCoordinateCatalog.discover(manifest);
+        var providers = coordinates.modulesByGa().getOrDefault(value, List.of());
+        var repositoryNames = providers.stream()
+                .map(WorkspaceCoordinateCatalog.Module::repository)
+                .collect(java.util.stream.Collectors.toSet());
+        return snapshot.projects().stream()
+                .filter(project -> repositoryNames.contains(project.name()))
+                .toList();
+    }
+
     private synchronized Snapshot reconcile(boolean force) {
         State previous = state.get();
         long now = System.nanoTime();
@@ -66,5 +89,27 @@ public final class WorkspaceProjectScope implements ProjectScope {
         Snapshot snapshot = new Snapshot(revision, projects, discovery.diagnostics());
         state.set(new State(snapshot, discovery.fingerprint(), now));
         return snapshot;
+    }
+
+    private String relative(Path projectRoot) {
+        return normalize(manifest.root().relativize(projectRoot));
+    }
+
+    private boolean containsAbsolute(Path projectRoot, String selector) {
+        try {
+            Path path = Path.of(selector);
+            return path.isAbsolute()
+                    && path.toAbsolutePath().normalize().startsWith(projectRoot);
+        } catch (RuntimeException invalidPath) {
+            return false;
+        }
+    }
+
+    private static String normalize(String value) {
+        return value.replace('\\', '/');
+    }
+
+    private static String normalize(Path value) {
+        return value.toString().replace('\\', '/');
     }
 }

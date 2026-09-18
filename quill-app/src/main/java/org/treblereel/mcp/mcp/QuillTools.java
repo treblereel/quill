@@ -870,22 +870,20 @@ public final class QuillTools {
 
     private String forAllProjects(String projectFilter,
             Function<ProjectRegistry.ProjectEntry, String> perProject) {
-        ProjectRegistry.Resolution resolution = registry.resolve();
+        boolean filtered = projectFilter != null && !projectFilter.isBlank();
+        ProjectRegistry.Resolution resolution = filtered
+                ? registry.resolve(projectFilter) : registry.resolve();
         List<ProjectRegistry.ProjectEntry> projects = resolution.projects();
         List<String> errors = resolution.errors();
+        if (filtered && projects.isEmpty()) {
+            String filter = projectFilter.strip();
+            List<String> available = registry.configuredProjectNames();
+            return errorResponse("Project '" + filter + "' not found. Available: " + available);
+        }
         if (projects.isEmpty() && errors.isEmpty()) {
             return errorResponse("No projects configured. Start quill with --project <path>.");
         }
-        if (projectFilter != null && !projectFilter.isBlank()) {
-            String filter = projectFilter.strip();
-            projects = projects.stream()
-                    .filter(p -> p.name().equalsIgnoreCase(filter))
-                    .toList();
-            if (projects.isEmpty()) {
-                List<String> available = resolution.projects().stream()
-                        .map(ProjectRegistry.ProjectEntry::name).toList();
-                return errorResponse("Project '" + filter + "' not found. Available: " + available);
-            }
+        if (filtered) {
             errors = List.of();
         }
         if (projects.size() == 1 && errors.isEmpty()) {

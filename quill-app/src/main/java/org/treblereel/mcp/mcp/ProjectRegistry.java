@@ -27,7 +27,7 @@ public class ProjectRegistry {
 
     private final ProjectScope scope;
     private final SingleProjectScope mutableScope;
-    private record IndexHandle(Jdbi jdbi, AtomicLong lastSeen) {}
+    private record IndexHandle(Path projectRoot, Jdbi jdbi, AtomicLong lastSeen) {}
 
     private final ConcurrentHashMap<Path, IndexHandle> databases = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, AtomicLong> projectRoots = new ConcurrentHashMap<>();
@@ -56,20 +56,29 @@ public class ProjectRegistry {
     }
 
     public Resolution resolve() {
+        return resolve(null);
+    }
+
+    public Resolution resolve(String selector) {
         long resolutionId = resolutionSequence.incrementAndGet();
         List<ProjectEntry> result = new ArrayList<>();
         ProjectScope.Snapshot snapshot = scope.snapshot();
         List<String> errors = new ArrayList<>(snapshot.diagnostics());
         Set<Path> activeDatabases = ConcurrentHashMap.newKeySet();
-        Set<Path> activeRoots = ConcurrentHashMap.newKeySet();
-        for (ProjectScope.Project p : snapshot.projects()) {
-            Path projectRoot = p.root().toAbsolutePath().normalize();
-            activeRoots.add(projectRoot);
+        Set<Path> configuredRoots = snapshot.projects().stream()
+                .map(project -> project.root().toAbsolutePath().normalize())
+                .collect(java.util.stream.Collectors.toSet());
+        Set<Path> selectedRoots = ConcurrentHashMap.newKeySet();
+        for (Path projectRoot : configuredRoots) {
             projectRoots.compute(projectRoot, (ignored, seen) -> {
                 if (seen == null) return new AtomicLong(resolutionId);
                 seen.accumulateAndGet(resolutionId, Math::max);
                 return seen;
             });
+        }
+        for (ProjectScope.Project p : scope.select(snapshot, selector)) {
+            Path projectRoot = p.root().toAbsolutePath().normalize();
+            selectedRoots.add(projectRoot);
             String buildEventError = buildEvents.consume(p.root());
             if (buildEventError != null) {
                 errors.add("Project '" + p.name() + "': " + buildEventError);
@@ -85,7 +94,7 @@ public class ProjectRegistry {
                 activeDatabases.add(normalizedDb);
                 IndexHandle handle = databases.compute(normalizedDb, (path, cached) -> {
                     if (cached == null) {
-                        return new IndexHandle(QuillDatabase.open(path),
+                        return new IndexHandle(projectRoot, QuillDatabase.open(path),
                                 new AtomicLong(resolutionId));
                     }
                     cached.lastSeen().accumulateAndGet(resolutionId, Math::max);
@@ -96,16 +105,18 @@ public class ProjectRegistry {
                 errors.add("Project '" + p.name() + "': " + safeMessage(e));
             }
         }
-        evictInactive(resolutionId, activeDatabases, activeRoots);
+        evictInactive(resolutionId, activeDatabases, configuredRoots, selectedRoots);
         return new Resolution(List.copyOf(result), List.copyOf(errors));
     }
 
     private void evictInactive(long resolutionId, Set<Path> activeDatabases,
-            Set<Path> activeRoots) {
-        databases.entrySet().removeIf(entry -> !activeDatabases.contains(entry.getKey())
-                && entry.getValue().lastSeen().get() < resolutionId);
+            Set<Path> configuredRoots, Set<Path> selectedRoots) {
+        databases.entrySet().removeIf(entry -> entry.getValue().lastSeen().get() < resolutionId
+                && (!configuredRoots.contains(entry.getValue().projectRoot())
+                || (selectedRoots.contains(entry.getValue().projectRoot())
+                && !activeDatabases.contains(entry.getKey()))));
         projectRoots.entrySet().removeIf(entry -> {
-            if (activeRoots.contains(entry.getKey())
+            if (configuredRoots.contains(entry.getKey())
                     || entry.getValue().get() >= resolutionId) return false;
             WorktreeSnapshotCache.shared().invalidate(entry.getKey());
             return true;
@@ -158,6 +169,10 @@ public class ProjectRegistry {
 
     public boolean isEmpty() {
         return scope.snapshot().projects().isEmpty();
+    }
+
+    public List<String> configuredProjectNames() {
+        return scope.snapshot().projects().stream().map(ProjectScope.Project::name).toList();
     }
 
     int cachedDatabaseCount() {

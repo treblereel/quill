@@ -11,6 +11,7 @@ import org.treblereel.mcp.command.DoctorCommand;
 import org.treblereel.mcp.command.InitCommand;
 import org.treblereel.mcp.command.StatusCommand;
 import org.treblereel.mcp.command.UpdateCommand;
+import org.treblereel.mcp.command.WorkspaceCommand;
 import org.treblereel.mcp.mcp.ProjectRegistry;
 import org.treblereel.mcp.mcp.McpStdioServer;
 import org.treblereel.mcp.mcp.McpToolProfile;
@@ -22,7 +23,7 @@ import picocli.CommandLine.Option;
 @Command(name = "quill", mixinStandardHelpOptions = true,
         versionProvider = QuillTopCommand.VersionProvider.class,
         subcommands = {InitCommand.class, UpdateCommand.class, StatusCommand.class,
-                DoctorCommand.class, CleanCommand.class})
+                DoctorCommand.class, CleanCommand.class, WorkspaceCommand.class})
 public class QuillTopCommand implements Callable<Integer> {
 
     @Option(names = "--mcp", description = "Start an MCP server (stdio transport)")

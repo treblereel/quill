@@ -4,6 +4,10 @@
     "allDeclaredMethods": true
   },
   {
+    "name": "org.treblereel.mcp.mcp.RouterTools",
+    "allDeclaredMethods": true
+  },
+  {
     "name": "org.treblereel.mcp.model.ResolutionCandidate",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true

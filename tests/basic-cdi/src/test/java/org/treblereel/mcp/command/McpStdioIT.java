@@ -83,6 +83,26 @@ class McpStdioIT {
     }
 
     @Test
+    void nativeRouterCatalogMatchesJvmArtifact() throws Exception {
+        Path appJar = resolveAppJar();
+        Path nativeImage = resolveNativeImage();
+        Assumptions.assumeTrue(Files.exists(appJar));
+        Assumptions.assumeTrue(Files.isExecutable(nativeImage),
+                "Skipping: native image not found (build with -Pnative)");
+
+        JsonNode jvmCatalog = readToolCatalog(
+                List.of("java", "-jar", appJar.toString(), "--tools", "router"));
+        JsonNode nativeCatalog = readToolCatalog(
+                List.of(nativeImage.toString(), "--tools", "router"));
+        assertEquals(jvmCatalog, nativeCatalog,
+                "Native router catalog must exactly match the JVM artifact");
+        assertEquals(Set.of("execute_tool", "get_overview", "search_tools"),
+                java.util.stream.StreamSupport.stream(nativeCatalog.spliterator(), false)
+                        .map(tool -> tool.path("name").asText())
+                        .collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
     void mcpServesStaleGenerationWhileCurrentHeadIsNotIndexed() throws Exception {
         Path appJar = resolveAppJar();
         Assumptions.assumeTrue(Files.exists(appJar));

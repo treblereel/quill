@@ -7,10 +7,13 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.jgit.api.Git;
 import org.jdbi.v3.core.Jdbi;
+import org.jdbi.v3.core.statement.SqlLogger;
+import org.jdbi.v3.core.statement.StatementContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -2291,6 +2294,62 @@ class QuillToolsTest {
         assertEquals("unsupported_mechanism",
                 externalUsage.path("resolution_status").asText());
         assertEquals(0, externalUsage.path("definition_files").size());
+    }
+
+    @Test
+    void referenceQueriesResolveFullPagesWithBoundedSqlStatements() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO files
+                      (project_path, repository_path, kind, origin, lifecycle, module, source_set)
+                    VALUES ('src/main/resources/templates/order.html',
+                            'src/main/resources/templates/order.html',
+                            'resource', 'resource', 'current', '.', 'main')
+                    """);
+            handle.execute("""
+                    INSERT INTO configuration_definitions
+                      (key, kind, file, line, module, source_set)
+                    VALUES ('app.name', 'property',
+                            'src/main/resources/application.properties', 1, '.', 'main')
+                    """);
+            for (int index = 0; index < 100; index++) {
+                handle.createUpdate("""
+                        INSERT INTO configuration_usages
+                          (key, kind, class_id, class_name, member, annotation, source,
+                           module, source_set)
+                        VALUES ('app.name', 'config_key', 1, 'org.acme.OrderService', :member,
+                                'java.lang.System#getProperty',
+                                'src/main/java/org/acme/OrderService.java', '.', 'main')
+                        """).bind("member", "config" + index).execute();
+                handle.createUpdate("""
+                        INSERT INTO resource_usages
+                          (resource_path, kind, class_id, class_name, member, api, source,
+                           module, source_set)
+                        VALUES ('templates/order.html', 'resource', 1,
+                                'org.acme.OrderService', :member,
+                                'java.lang.Class#getResource',
+                                'src/main/java/org/acme/OrderService.java', '.', 'main')
+                        """).bind("member", "resource" + index).execute();
+            }
+        });
+
+        AtomicInteger statements = new AtomicInteger();
+        jdbi.setSqlLogger(new SqlLogger() {
+            @Override
+            public void logAfterExecution(StatementContext context) {
+                statements.incrementAndGet();
+            }
+        });
+        JsonNode configuration = JSON.readTree(new QuillToolQueries()
+                .findConfigurationReferences(jdbi, "app.name", null, "all", null, 100, 0));
+        assertEquals(101, configuration.path("total").asInt());
+        assertTrue(statements.get() <= 10, "configuration SQL statements: " + statements);
+
+        statements.set(0);
+        JsonNode resources = JSON.readTree(new QuillToolQueries()
+                .findResourceReferences(jdbi, "templates/order.html", null, null, 100, 0));
+        assertEquals(101, resources.path("total").asInt());
+        assertTrue(statements.get() <= 10, "resource SQL statements: " + statements);
     }
 
     @Test

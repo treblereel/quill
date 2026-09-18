@@ -7,7 +7,9 @@ import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -34,6 +36,7 @@ final class ConfigurationReferenceQueries {
                     filters.usageWhere(), filters.bindings());
             int total = definitionCount + usageCount;
             List<Map<String, Object>> references = page(jdbi, filters, limit, offset);
+            Map<ResolutionKey, Resolution> resolutions = resolveAll(jdbi, references, module);
 
             ObjectNode result = JSON.createObjectNode();
             putNullable(result, "key", key);
@@ -62,7 +65,9 @@ final class ConfigurationReferenceQueries {
                     String usageKind = text(reference, "kind");
                     boolean dynamic = usageKind.equals("dynamic_config_key");
                     Resolution resolution = dynamic ? new Resolution(0, List.of())
-                            : resolve(jdbi, text(reference, "key"), usageKind, module);
+                            : resolutions.getOrDefault(
+                                    new ResolutionKey(text(reference, "key"), usageKind),
+                                    new Resolution(0, List.of()));
                     node.put("resolved", !dynamic && resolution.count() > 0);
                     node.put("resolution_status", dynamic ? "unknown"
                             : resolution.count() > 0 ? "resolved" : "unsatisfied");
@@ -127,25 +132,61 @@ final class ConfigurationReferenceQueries {
                 .bindMap(bindings).mapTo(Integer.class).one());
     }
 
-    private static Resolution resolve(Jdbi jdbi, String key, String kind, String module) {
-        String relation = kind.equals("config_prefix")
-                ? "(d.key = :resolved_key OR d.key LIKE :resolved_prefix ESCAPE '!')"
-                : "d.key = :resolved_key";
-        String moduleFilter = module == null || module.isBlank()
-                ? "" : " AND d.module = :resolved_module";
+    private static Map<ResolutionKey, Resolution> resolveAll(
+            Jdbi jdbi, List<Map<String, Object>> references, String module) {
+        Set<ResolutionKey> keys = new LinkedHashSet<>();
+        for (Map<String, Object> reference : references) {
+            if (!"usage".equals(text(reference, "entry_type"))) continue;
+            String kind = text(reference, "kind");
+            if (!kind.equals("dynamic_config_key")) {
+                keys.add(new ResolutionKey(text(reference, "key"), kind));
+            }
+        }
+        if (keys.isEmpty()) return Map.of();
+
+        List<String> relations = new ArrayList<>();
         Map<String, Object> bindings = new LinkedHashMap<>();
-        bindings.put("resolved_key", key);
-        bindings.put("resolved_prefix", escapeLike(key) + ".%");
-        if (!moduleFilter.isEmpty()) bindings.put("resolved_module", module);
-        List<String> files = jdbi.withHandle(handle -> handle.createQuery(
-                        "SELECT DISTINCT d.file FROM configuration_definitions d WHERE "
-                                + relation + moduleFilter + " ORDER BY d.file")
-                .bindMap(bindings).mapTo(String.class).list());
-        int count = jdbi.withHandle(handle -> handle.createQuery(
-                        "SELECT count(*) FROM configuration_definitions d WHERE "
-                                + relation + moduleFilter)
-                .bindMap(bindings).mapTo(Integer.class).one());
-        return new Resolution(count, files);
+        int index = 0;
+        for (ResolutionKey key : keys) {
+            String exact = "resolved_key_" + index;
+            bindings.put(exact, key.key());
+            if (key.kind().equals("config_prefix")) {
+                String prefix = "resolved_prefix_" + index;
+                bindings.put(prefix, escapeLike(key.key()) + ".%");
+                relations.add("(d.key = :" + exact + " OR d.key LIKE :" + prefix
+                        + " ESCAPE '!')");
+            } else {
+                relations.add("d.key = :" + exact);
+            }
+            index++;
+        }
+        String moduleFilter = "";
+        if (module != null && !module.isBlank()) {
+            moduleFilter = " AND d.module = :resolved_module";
+            bindings.put("resolved_module", module);
+        }
+        String sql = "SELECT d.key, d.file FROM configuration_definitions d WHERE ("
+                + String.join(" OR ", relations) + ")" + moduleFilter
+                + " ORDER BY d.key, d.file";
+        List<Map<String, Object>> definitions = jdbi.withHandle(handle -> handle.createQuery(sql)
+                .bindMap(bindings).mapToMap().list());
+        Map<ResolutionKey, Resolution> result = new LinkedHashMap<>();
+        for (ResolutionKey key : keys) {
+            int count = 0;
+            Set<String> files = new LinkedHashSet<>();
+            for (Map<String, Object> definition : definitions) {
+                String definitionKey = text(definition, "key");
+                boolean matches = definitionKey.equals(key.key())
+                        || key.kind().equals("config_prefix")
+                                && definitionKey.startsWith(key.key() + ".");
+                if (matches) {
+                    count++;
+                    files.add(text(definition, "file"));
+                }
+            }
+            result.put(key, new Resolution(count, List.copyOf(files)));
+        }
+        return result;
     }
 
     private static Filters filters(
@@ -236,4 +277,6 @@ final class ConfigurationReferenceQueries {
             String definitionWhere, String usageWhere, Map<String, Object> bindings) {}
 
     private record Resolution(int count, List<String> files) {}
+
+    private record ResolutionKey(String key, String kind) {}
 }

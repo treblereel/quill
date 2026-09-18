@@ -7,9 +7,12 @@ import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 
 /** Finds classpath resources and bytecode-visible consumers. */
@@ -64,6 +67,7 @@ final class ResourceReferenceQueries {
                     LIMIT :limit OFFSET :offset
                     """.formatted(definitionWhere, usageWhere))
                     .bindMap(pageBindings).mapToMap().list());
+            Map<ResourceKey, List<String>> definitions = definitions(jdbi, rows);
 
             ObjectNode result = JSON.createObjectNode();
             result.put("path", path);
@@ -72,7 +76,8 @@ final class ResourceReferenceQueries {
             if (module == null || module.isBlank()) result.putNull("module");
             else result.put("module", module);
             ArrayNode references = result.putArray("references");
-            for (Map<String, Object> row : rows) appendReference(jdbi, references, row);
+            for (Map<String, Object> row : rows) appendReference(
+                    references, row, definitions.getOrDefault(resourceKey(row), List.of()));
             result.put("definition_count", definitionCount);
             result.put("usage_count", usageCount);
             result.putArray("limitations")
@@ -87,7 +92,8 @@ final class ResourceReferenceQueries {
         }
     }
 
-    private static void appendReference(Jdbi jdbi, ArrayNode target, Map<String, Object> row) {
+    private static void appendReference(
+            ArrayNode target, Map<String, Object> row, List<String> files) {
         ObjectNode node = target.addObject();
         String type = text(row, "entry_type");
         node.put("entry_type", type);
@@ -107,8 +113,6 @@ final class ResourceReferenceQueries {
         String kind = text(row, "kind");
         boolean dynamic = kind.equals("dynamic_resource");
         boolean external = kind.equals("external_resource");
-        List<String> files = dynamic || external ? List.of()
-                : definitions(jdbi, text(row, "resource_path"), kind);
         node.put("resolution_status", dynamic ? "unknown" : external
                 ? "unsupported_mechanism" : files.isEmpty() ? "unsatisfied" : "resolved");
         node.put("resolution_strategy", dynamic ? "dynamic_resource_path" : external
@@ -119,21 +123,62 @@ final class ResourceReferenceQueries {
         files.forEach(definitions::add);
     }
 
-    private static List<String> definitions(Jdbi jdbi, String path, String kind) {
-        String exact = "%/resources/" + escapeLike(path);
-        if (!kind.equals("resource_bundle") || !path.endsWith(".properties")) {
-            return jdbi.withHandle(handle -> handle.createQuery(
-                            "SELECT project_path FROM files WHERE lifecycle = 'current' "
-                                    + "AND project_path LIKE :exact ESCAPE '!' ORDER BY project_path")
-                    .bind("exact", exact).mapTo(String.class).list());
+    private static Map<ResourceKey, List<String>> definitions(
+            Jdbi jdbi, List<Map<String, Object>> rows) {
+        Set<ResourceKey> keys = new LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            if (!"usage".equals(text(row, "entry_type"))) continue;
+            ResourceKey key = resourceKey(row);
+            if (!key.kind().equals("dynamic_resource")
+                    && !key.kind().equals("external_resource")) keys.add(key);
         }
-        String stem = path.substring(0, path.length() - ".properties".length());
-        String localized = "%/resources/" + escapeLike(stem) + "!_%.properties";
-        return jdbi.withHandle(handle -> handle.createQuery(
-                        "SELECT project_path FROM files WHERE lifecycle = 'current' AND "
-                                + "(project_path LIKE :exact ESCAPE '!' OR "
-                                + "project_path LIKE :localized ESCAPE '!') ORDER BY project_path")
-                .bind("exact", exact).bind("localized", localized).mapTo(String.class).list());
+        if (keys.isEmpty()) return Map.of();
+
+        List<String> predicates = new ArrayList<>();
+        Map<String, Object> bindings = new LinkedHashMap<>();
+        int index = 0;
+        for (ResourceKey key : keys) {
+            String exact = "resource_exact_" + index;
+            bindings.put(exact, "%/resources/" + escapeLike(key.path()));
+            String predicate = "project_path LIKE :" + exact + " ESCAPE '!'";
+            if (key.kind().equals("resource_bundle") && key.path().endsWith(".properties")) {
+                String localized = "resource_localized_" + index;
+                String stem = key.path().substring(
+                        0, key.path().length() - ".properties".length());
+                bindings.put(localized, "%/resources/" + escapeLike(stem)
+                        + "!_%.properties");
+                predicate = "(" + predicate + " OR project_path LIKE :" + localized
+                        + " ESCAPE '!')";
+            }
+            predicates.add(predicate);
+            index++;
+        }
+        String sql = "SELECT project_path FROM files WHERE lifecycle = 'current' AND ("
+                + String.join(" OR ", predicates) + ") ORDER BY project_path";
+        List<String> files = jdbi.withHandle(handle -> handle.createQuery(sql)
+                .bindMap(bindings).mapTo(String.class).list());
+        Map<ResourceKey, List<String>> result = new LinkedHashMap<>();
+        for (ResourceKey key : keys) {
+            result.put(key, files.stream().filter(file -> matches(file, key)).toList());
+        }
+        return result;
+    }
+
+    private static boolean matches(String file, ResourceKey key) {
+        String marker = "/resources/";
+        int resourceStart = file.lastIndexOf(marker);
+        if (resourceStart < 0) return false;
+        String relative = file.substring(resourceStart + marker.length());
+        if (relative.equals(key.path())) return true;
+        if (!key.kind().equals("resource_bundle") || !key.path().endsWith(".properties")) {
+            return false;
+        }
+        String stem = key.path().substring(0, key.path().length() - ".properties".length());
+        return relative.startsWith(stem + "_") && relative.endsWith(".properties");
+    }
+
+    private static ResourceKey resourceKey(Map<String, Object> row) {
+        return new ResourceKey(text(row, "resource_path"), text(row, "kind"));
     }
 
     private static int count(Jdbi jdbi, String table, String where,
@@ -174,4 +219,6 @@ final class ResourceReferenceQueries {
         if (value == null || value.toString().isBlank()) node.putNull(key);
         else node.put(key, value.toString());
     }
+
+    private record ResourceKey(String path, String kind) {}
 }

@@ -1,6 +1,7 @@
 package org.treblereel.mcp.command;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
@@ -43,7 +44,8 @@ public final class WorkspaceStatusCommand implements Callable<Integer> {
             root.put("created_at", manifest.createdAt());
             root.put("manifest", WorkspaceManifestStore.manifest(manifest.root()).toString());
             root.put("repository_count", snapshot.projects().size());
-            root.set("repositories", JSON.valueToTree(repositoryStatuses));
+            ArrayNode repositories = root.putArray("repositories");
+            repositoryStatuses.forEach(status -> repositories.add(statusJson(status)));
             root.set("diagnostics", JSON.valueToTree(snapshot.diagnostics()));
             root.put("module_count", coordinates.modules().size());
             root.put("coordinates_complete", coordinates.complete());
@@ -77,5 +79,29 @@ public final class WorkspaceStatusCommand implements Callable<Integer> {
         if (!status.indexed()) return "index missing";
         if (!status.fresh()) return "indexed (" + status.indexHealth() + ")";
         return "ready";
+    }
+
+    private static ObjectNode statusJson(WorkspaceRepositoryStatusInspector.Status status) {
+        ObjectNode result = JSON.createObjectNode();
+        result.put("name", status.name());
+        result.put("root", status.root().toString());
+        result.put("supported", status.supported());
+        if (status.buildSystem() == null) result.putNull("buildSystem");
+        else result.put("buildSystem", status.buildSystem());
+        result.put("compiled", status.compiled());
+        result.put("compiledDirectories", status.compiledDirectories());
+        result.put("indexed", status.indexed());
+        result.put("indexHealth", status.indexHealth());
+        if (status.indexSchema() == null) result.putNull("indexSchema");
+        else result.put("indexSchema", status.indexSchema());
+        result.put("currentSchema", status.currentSchema());
+        result.put("fresh", status.fresh());
+        ArrayNode staleReasons = result.putArray("staleReasons");
+        status.staleReasons().forEach(staleReasons::add);
+        result.put("buildIntegration", status.buildIntegration());
+        result.put("queryReady", status.queryReady());
+        if (status.diagnostic() == null) result.putNull("diagnostic");
+        else result.put("diagnostic", status.diagnostic());
+        return result;
     }
 }

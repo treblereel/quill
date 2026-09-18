@@ -22,7 +22,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
-import org.treblereel.mcp.workspace.WorkspaceRepositoryStateStore;
 
 @Tag("e2e")
 class McpStdioIT {
@@ -432,10 +431,22 @@ class McpStdioIT {
 
         assertTrue(process.waitFor(30, TimeUnit.SECONDS));
         assertEquals(0, process.exitValue(), output.toString());
-        Path state = WorkspaceRepositoryStateStore.path(workspace);
+        Path state = WorkspaceManifestStore.directory(workspace).resolve("repositories.json");
         assertTrue(Files.isRegularFile(state));
         assertEquals("engine", JSON.readTree(state.toFile())
                 .path("repositories").get(0).path("name").asText());
+
+        Process status = new ProcessBuilder(nativeImage.toString(), "workspace", "status",
+                "--project", workspace.toString(), "--json")
+                .redirectErrorStream(true)
+                .start();
+        ByteArrayOutputStream statusOutput = new ByteArrayOutputStream();
+        status.getInputStream().transferTo(statusOutput);
+        assertTrue(status.waitFor(30, TimeUnit.SECONDS));
+        assertEquals(0, status.exitValue(), statusOutput.toString());
+        JsonNode statusJson = JSON.readTree(statusOutput.toByteArray());
+        assertEquals("engine", statusJson.path("repositories").get(0).path("name").asText());
+        assertTrue(statusJson.path("repositories").get(0).has("queryReady"));
     }
 
     private void assertWorkspaceRepositoryCount(BufferedWriter input, BufferedReader output,

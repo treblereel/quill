@@ -228,9 +228,13 @@ public final class IndexWriter {
             List<MethodCallRecord> methodCalls,
             List<FieldAccessRecord> fieldAccesses,
             ConfigurationScanner.Result configuration) {
-        return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, members, methodCalls, fieldAccesses, configuration, true);
+        return writeFresh(jdbi, new IndexSnapshot(classes, beans, injectionPoints, dependencies,
+                metadata, externalDeps, problems, fileStats, commits, commitFiles, files,
+                occurrences, annotations, members, methodCalls, fieldAccesses, configuration));
+    }
+
+    public static WriteTimings writeFresh(Jdbi jdbi, IndexSnapshot snapshot) {
+        return writeAll(jdbi, snapshot, true);
     }
 
     /**
@@ -338,6 +342,13 @@ public final class IndexWriter {
             List<MethodCallRecord> methodCalls,
             List<FieldAccessRecord> fieldAccesses,
             ConfigurationScanner.Result configuration) {
+        return writeIncremental(jdbi, new IndexSnapshot(classes, beans, injectionPoints,
+                dependencies, metadata, externalDeps, problems, fileStats, commits, commitFiles,
+                files, occurrences, annotations, members, methodCalls, fieldAccesses,
+                configuration));
+    }
+
+    public static IncrementalWriteTimings writeIncremental(Jdbi jdbi, IndexSnapshot snapshot) {
         long startedAt = System.nanoTime();
         long[] deltaNanos = new long[1];
         long[] counts = new long[3];
@@ -346,10 +357,7 @@ public final class IndexWriter {
             try {
                 h.useTransaction(tx -> {
                     createDesiredTables(tx);
-                    populateDesiredTables(tx, classes, beans, injectionPoints, dependencies,
-                            metadata, externalDeps, problems, fileStats, commits, commitFiles,
-                            files, occurrences, annotations, members, methodCalls, fieldAccesses,
-                            configuration);
+                    populateDesiredTables(tx, snapshot);
                     createDesiredIndexes(tx);
                     long deltaStartedAt = System.nanoTime();
                     for (TableSpec table : DELETE_ORDER) {
@@ -386,38 +394,26 @@ public final class IndexWriter {
         }
     }
 
-    private static void populateDesiredTables(Handle h,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members,
-            List<MethodCallRecord> methodCalls,
-            List<FieldAccessRecord> fieldAccesses,
-            ConfigurationScanner.Result configuration) {
-        insertDesiredFiles(h, files);
-        insertDesiredClasses(h, classes);
-        insertDesiredClassOccurrences(h, occurrences);
-        insertDesiredClassAnnotations(h, annotations);
-        insertDesiredClassMembers(h, members);
-        insertDesiredMethodCalls(h, methodCalls);
-        insertDesiredFieldAccesses(h, fieldAccesses);
-        insertDesiredConfigurationDefinitions(h, configuration.definitions());
-        insertDesiredConfigurationUsages(h, configuration.usages());
-        insertDesiredResourceUsages(h, configuration.resourceUsages());
-        insertDesiredBeans(h, beans);
-        insertDesiredInjectionPoints(h, injectionPoints);
-        insertDesiredDependencies(h, dependencies);
-        insertDesiredMetadata(h, metadata);
-        insertDesiredExternalDeps(h, externalDeps);
-        insertDesiredProblems(h, problems);
-        insertDesiredFileStats(h, fileStats);
-        insertDesiredCommits(h, commits);
-        insertDesiredCommitFiles(h, commitFiles);
+    private static void populateDesiredTables(Handle h, IndexSnapshot snapshot) {
+        insertDesiredFiles(h, snapshot.files());
+        insertDesiredClasses(h, snapshot.classes());
+        insertDesiredClassOccurrences(h, snapshot.classOccurrences());
+        insertDesiredClassAnnotations(h, snapshot.classAnnotations());
+        insertDesiredClassMembers(h, snapshot.classMembers());
+        insertDesiredMethodCalls(h, snapshot.methodCalls());
+        insertDesiredFieldAccesses(h, snapshot.fieldAccesses());
+        insertDesiredConfigurationDefinitions(h, snapshot.configuration().definitions());
+        insertDesiredConfigurationUsages(h, snapshot.configuration().usages());
+        insertDesiredResourceUsages(h, snapshot.configuration().resourceUsages());
+        insertDesiredBeans(h, snapshot.beans());
+        insertDesiredInjectionPoints(h, snapshot.injectionPoints());
+        insertDesiredDependencies(h, snapshot.dependencies());
+        insertDesiredMetadata(h, snapshot.metadata());
+        insertDesiredExternalDeps(h, snapshot.externalDependencies());
+        insertDesiredProblems(h, snapshot.problems());
+        insertDesiredFileStats(h, snapshot.gitFileStats());
+        insertDesiredCommits(h, snapshot.gitCommits());
+        insertDesiredCommitFiles(h, snapshot.gitCommitFiles());
     }
 
     private static void createDesiredIndexes(Handle h) {
@@ -804,6 +800,14 @@ public final class IndexWriter {
             List<FieldAccessRecord> fieldAccesses,
             ConfigurationScanner.Result configuration,
             boolean freshDatabase) {
+        return writeAll(jdbi, new IndexSnapshot(classes, beans, injectionPoints, dependencies,
+                metadata, externalDeps, problems, fileStats, commits, commitFiles, files,
+                occurrences, annotations, members, methodCalls, fieldAccesses, configuration),
+                freshDatabase);
+    }
+
+    private static WriteTimings writeAll(
+            Jdbi jdbi, IndexSnapshot snapshot, boolean freshDatabase) {
         long transactionStartedAt = System.nanoTime();
         long[] insertsNanos = new long[1];
         long[] indexesNanos = new long[1];
@@ -816,23 +820,24 @@ public final class IndexWriter {
             }
 
             long insertsStartedAt = System.nanoTime();
-            insertFiles(h, files);
-            insertClasses(h, classes);
-            insertClassOccurrences(h, occurrences);
-            insertClassAnnotations(h, annotations);
-            insertClassMembers(h, members);
-            insertMethodCalls(h, methodCalls);
-            insertFieldAccesses(h, fieldAccesses);
-            insertConfigurationDefinitions(h, configuration.definitions());
-            insertConfigurationUsages(h, configuration.usages());
-            insertResourceUsages(h, configuration.resourceUsages());
-            insertBeans(h, beans);
-            insertInjectionPoints(h, injectionPoints);
-            insertDependencies(h, dependencies);
-            insertMetadata(h, metadata);
-            insertExternalDeps(h, externalDeps);
-            insertProblems(h, problems);
-            insertGitData(h, fileStats, commits, commitFiles);
+            insertFiles(h, snapshot.files());
+            insertClasses(h, snapshot.classes());
+            insertClassOccurrences(h, snapshot.classOccurrences());
+            insertClassAnnotations(h, snapshot.classAnnotations());
+            insertClassMembers(h, snapshot.classMembers());
+            insertMethodCalls(h, snapshot.methodCalls());
+            insertFieldAccesses(h, snapshot.fieldAccesses());
+            insertConfigurationDefinitions(h, snapshot.configuration().definitions());
+            insertConfigurationUsages(h, snapshot.configuration().usages());
+            insertResourceUsages(h, snapshot.configuration().resourceUsages());
+            insertBeans(h, snapshot.beans());
+            insertInjectionPoints(h, snapshot.injectionPoints());
+            insertDependencies(h, snapshot.dependencies());
+            insertMetadata(h, snapshot.metadata());
+            insertExternalDeps(h, snapshot.externalDependencies());
+            insertProblems(h, snapshot.problems());
+            insertGitData(h, snapshot.gitFileStats(), snapshot.gitCommits(),
+                    snapshot.gitCommitFiles());
             insertsNanos[0] = System.nanoTime() - insertsStartedAt;
             if (freshDatabase) {
                 long indexesStartedAt = System.nanoTime();

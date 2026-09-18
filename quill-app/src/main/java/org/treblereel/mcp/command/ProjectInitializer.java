@@ -42,6 +42,7 @@ import org.treblereel.mcp.core.ServiceProviderScanner;
 import org.treblereel.mcp.core.SpringResolver;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.db.IndexWriter;
+import org.treblereel.mcp.db.IndexSnapshot;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.CdiProblem;
@@ -590,19 +591,19 @@ public class ProjectInitializer {
                 ProjectLayout.computeStateFingerprint(root, classesDirs, classFiles.fingerprint()));
         timings.finish("index_metadata");
 
+        IndexSnapshot snapshot = new IndexSnapshot(classes, remappedBeans,
+                contextualInjectionPoints, remappedDeps, metadata, externalDeps,
+                remappedProblems, gitResult.fileStats(), gitResult.commits(),
+                gitResult.commitFiles(), inventory.files(), classOccurrences,
+                classAnnotations, classMembers, methodCalls, fieldAccesses, configuration);
+
         long databaseStartedAt = System.nanoTime();
         try {
             if (incrementalBase == null) {
                 long schemaStartedAt = System.nanoTime();
                 Jdbi jdbi = QuillDatabase.createForBulkLoad(stagedDb);
                 timings.record("database_schema", elapsedMillis(schemaStartedAt));
-                IndexWriter.WriteTimings writeTimings = IndexWriter.writeFreshWithConfiguration(
-                        jdbi, classes, remappedBeans,
-                        contextualInjectionPoints, remappedDeps, metadata,
-                        externalDeps, remappedProblems,
-                        gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
-                        inventory.files(), classOccurrences, classAnnotations, classMembers,
-                        methodCalls, fieldAccesses, configuration);
+                IndexWriter.WriteTimings writeTimings = IndexWriter.writeFresh(jdbi, snapshot);
                 timings.record("database_inserts", writeTimings.insertsMillis());
                 timings.record("database_indexes", writeTimings.indexesMillis());
                 timings.record("database_transaction_overhead",
@@ -613,14 +614,7 @@ public class ProjectInitializer {
                 timings.record("database_clone", elapsedMillis(cloneStartedAt));
                 Jdbi jdbi = QuillDatabase.openWritable(stagedDb);
                 IndexWriter.IncrementalWriteTimings writeTimings =
-                        IndexWriter.writeIncrementalWithConfiguration(
-                                jdbi, classes, remappedBeans,
-                                contextualInjectionPoints, remappedDeps, metadata,
-                                externalDeps, remappedProblems,
-                                gitResult.fileStats(), gitResult.commits(),
-                                gitResult.commitFiles(), inventory.files(), classOccurrences,
-                                classAnnotations, classMembers, methodCalls, fieldAccesses,
-                                configuration);
+                        IndexWriter.writeIncremental(jdbi, snapshot);
                 timings.record("database_delta", writeTimings.deltaMillis());
                 timings.record("database_transaction_overhead",
                         writeTimings.transactionOverheadMillis());

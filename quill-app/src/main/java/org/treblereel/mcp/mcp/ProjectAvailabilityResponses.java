@@ -51,7 +51,8 @@ final class ProjectAvailabilityResponses {
         else root.put("recommended_action", issue.recommendedAction());
         root.put("build_was_started", issue.buildWasStarted());
         root.put("decision_owner", "mcp_client");
-        root.put("retryable", !"unsupported_project".equals(issue.code()));
+        root.put("retryable", !"unsupported_project".equals(issue.code())
+                && !"metadata_only".equals(issue.code()));
         return root;
     }
 }

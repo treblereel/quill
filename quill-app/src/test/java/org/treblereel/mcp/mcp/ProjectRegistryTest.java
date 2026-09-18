@@ -121,6 +121,48 @@ class ProjectRegistryTest {
     }
 
     @Test
+    void pureParentPomIsReportedAsMetadataOnly() throws IOException {
+        Path project = Files.createDirectories(tempDir.resolve("parent"));
+        Files.writeString(project.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>parent</artifactId><version>1</version>
+                  <packaging>pom</packaging>
+                </project>
+                """);
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project);
+
+        ProjectRegistry.Resolution resolution = registry.resolve();
+
+        assertTrue(resolution.projects().isEmpty());
+        ProjectRegistry.ProjectIssue issue = resolution.issues().getFirst();
+        assertEquals("metadata_only", issue.code());
+        assertFalse(issue.buildWasStarted());
+    }
+
+    @Test
+    void pomAggregatorWithCodeModuleStillRequiresBuild() throws IOException {
+        Path project = Files.createDirectories(tempDir.resolve("reactor"));
+        Files.writeString(project.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>reactor</artifactId><version>1</version>
+                  <packaging>pom</packaging><modules><module>service</module></modules>
+                </project>
+                """);
+        Path service = Files.createDirectories(project.resolve("service"));
+        Files.writeString(service.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <parent><groupId>org.acme</groupId><artifactId>reactor</artifactId>
+                    <version>1</version></parent><artifactId>service</artifactId>
+                </project>
+                """);
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project);
+
+        assertEquals("build_required", registry.resolve().issues().getFirst().code());
+    }
+
+    @Test
     void publishedGenerationReplacesTheCachedDatabase() throws IOException {
         Path project = Files.createDirectories(tempDir.resolve("updated-project"));
         Files.createFile(project.resolve("pom.xml"));

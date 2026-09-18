@@ -776,7 +776,10 @@ class McpStdioIT {
             assertNotNull(toolResponse.get("result"), "Broken index should be a tool result, not a transport failure");
             JsonNode structured = toolResponse.path("result").path("structuredContent");
             assertTrue(structured.toString().contains("broken-native-project"), structured::toString);
-            assertTrue(structured.has("uninitialized"), structured::toString);
+            assertEquals("build_required", structured.path("status").asText(), structured::toString);
+            assertEquals("build_required", structured.path("error").asText(), structured::toString);
+            assertEquals("mcp_client", structured.path("decision_owner").asText(), structured::toString);
+            assertFalse(structured.path("build_was_started").asBoolean(true), structured::toString);
             assertNoTextPayload(toolResponse.path("result"));
         } finally {
             proc.getOutputStream().close();

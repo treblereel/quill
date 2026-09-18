@@ -13,6 +13,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.command.ProjectIndexStore;
 import org.treblereel.mcp.command.ProjectInitializer;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.ProjectCodeExpectation;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.QuillDatabase;
 
@@ -180,6 +181,13 @@ public class ProjectRegistry {
             ProjectScope.Project project, BuildSystem buildSystem) {
         Path root = project.root().toAbsolutePath().normalize();
         if (!ProjectInitializer.findClassesDirs(root).isEmpty()) return null;
+        if (ProjectCodeExpectation.inspect(root, buildSystem)
+                == ProjectCodeExpectation.State.METADATA_ONLY) {
+            return new ProjectIssue(project.name(), root, "metadata_only",
+                    buildSystem.name().toLowerCase(java.util.Locale.ROOT),
+                    "Build metadata does not declare JVM code that should produce main classes",
+                    "No build or Quill code index is required unless JVM modules are added", false);
+        }
         String action = buildSystem == BuildSystem.MAVEN
                 ? "Decide whether to run the project's Maven compile/package command, then retry"
                 : "Decide whether to run the project's Gradle classes/build command, then retry";

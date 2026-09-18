@@ -31,7 +31,7 @@ final class ExternalSymbolQueries {
     private static final ConcurrentHashMap<Path, Catalog> CATALOGS = new ConcurrentHashMap<>();
 
     String search(Jdbi jdbi, Path root, String pattern, String kind, String className,
-            String library, int limit, int offset) {
+            String library, String matchMode, boolean includeOccurrences, int limit, int offset) {
         if (pattern == null || pattern.isBlank()) return error("Search pattern must not be blank");
         String requestedKind = kind == null || kind.isBlank()
                 ? "all" : kind.strip().toLowerCase(Locale.ROOT);
@@ -40,6 +40,8 @@ final class ExternalSymbolQueries {
             return error("Member search requires class_name to bound dependency bytecode scanning");
         }
         String needle = pattern.strip().toLowerCase(Locale.ROOT).replace("*", "");
+        MatchMode matching = MatchMode.parse(matchMode);
+        if (matching == null) return error("match_mode must be exact, prefix, or contains");
         String libraryNeedle = library == null ? ""
                 : library.strip().toLowerCase(Locale.ROOT).replace("*", "");
         Catalog catalog = catalog(jdbi, root);
@@ -47,13 +49,14 @@ final class ExternalSymbolQueries {
                 .filter(ref -> className == null || className.isBlank()
                         || matchesClassName(ref.className(), className))
                 .filter(ref -> memberSearch
-                        || ref.className().toLowerCase(Locale.ROOT).contains(needle))
+                        || matches(ref.className(), needle, matching))
                 .filter(ref -> libraryNeedle.isEmpty()
                         || ref.className().toLowerCase(Locale.ROOT).contains(libraryNeedle)
                         || ref.artifact().toLowerCase(Locale.ROOT).contains(libraryNeedle))
                 .sorted(Comparator.comparing(ClassRef::className)).toList();
         if (memberSearch) {
-            return searchMembers(catalog, candidates, pattern, requestedKind, limit, offset);
+            return searchMembers(catalog, candidates, pattern, requestedKind, matching,
+                    limit, offset);
         }
         Map<String, List<ClassRef>> grouped = new LinkedHashMap<>();
         candidates.forEach(match -> grouped.computeIfAbsent(
@@ -64,6 +67,7 @@ final class ExternalSymbolQueries {
         int to = Math.min(from + limit, matches.size());
         ObjectNode result = JSON.createObjectNode();
         result.put("pattern", pattern);
+        result.put("match_mode", matching.value);
         result.put("total", matches.size());
         result.put("showing", to - from);
         result.put("offset", offset);
@@ -74,10 +78,15 @@ final class ExternalSymbolQueries {
             item.put("kind", "class");
             item.put("name", simpleName(match.getKey()));
             item.put("class_name", match.getKey());
-            ArrayNode occurrences = item.putArray("occurrences");
-            match.getValue().stream().sorted(Comparator.comparing(ClassRef::artifact))
-                    .forEach(ref -> occurrences.addObject()
-                            .put("artifact", ref.artifact()).put("jar", ref.jar().toString()));
+            ArrayNode artifacts = item.putArray("artifacts");
+            match.getValue().stream().map(ClassRef::artifact).distinct().sorted()
+                    .forEach(artifacts::add);
+            if (includeOccurrences) {
+                ArrayNode occurrences = item.putArray("occurrences");
+                match.getValue().stream().sorted(Comparator.comparing(ClassRef::artifact))
+                        .forEach(ref -> occurrences.addObject()
+                                .put("artifact", ref.artifact()).put("jar", ref.jar().toString()));
+            }
             item.put("version_count", match.getValue().size());
         });
         result.put("source", "resolved_dependency_jars");
@@ -153,7 +162,7 @@ final class ExternalSymbolQueries {
     }
 
     private static String searchMembers(Catalog catalog, List<ClassRef> candidates,
-            String pattern, String kind, int limit, int offset) {
+            String pattern, String kind, MatchMode matching, int limit, int offset) {
         String needle = pattern.strip().toLowerCase(Locale.ROOT).replace("*", "");
         Map<String, ExternalMember> unique = new LinkedHashMap<>();
         for (ClassRef ref : candidates) {
@@ -164,7 +173,7 @@ final class ExternalSymbolQueries {
                     Member member = new Member("field", field.name(), field.toString(),
                             field.type().toString(),
                             java.lang.reflect.Modifier.toString(field.flags()));
-                    addMember(unique, ref, member, needle);
+                    addMember(unique, ref, member, needle, matching);
                 }
             } else {
                 for (MethodInfo method : info.methods()) {
@@ -175,7 +184,7 @@ final class ExternalSymbolQueries {
                             method.name().equals("<init>") ? simpleName(ref.className()) : method.name(),
                             method.toString(), method.returnType().toString(),
                             java.lang.reflect.Modifier.toString(method.flags()));
-                    addMember(unique, ref, member, needle);
+                    addMember(unique, ref, member, needle, matching);
                 }
             }
         }
@@ -188,6 +197,7 @@ final class ExternalSymbolQueries {
         ObjectNode result = JSON.createObjectNode();
         result.put("pattern", pattern);
         result.put("kind", kind);
+        result.put("match_mode", matching.value);
         result.put("total", matches.size());
         result.put("showing", to - from);
         result.put("offset", offset);
@@ -213,9 +223,10 @@ final class ExternalSymbolQueries {
     }
 
     private static void addMember(Map<String, ExternalMember> target, ClassRef ref,
-            Member member, String needle) {
-        String searchable = (member.name() + " " + member.signature()).toLowerCase(Locale.ROOT);
-        if (!searchable.contains(needle)) return;
+            Member member, String needle, MatchMode matching) {
+        String name = member.name().toLowerCase(Locale.ROOT);
+        String signature = member.signature().toLowerCase(Locale.ROOT);
+        if (!matching.test(name, needle) && !matching.test(signature, needle)) return;
         String key = ref.className() + "\0" + member.kind() + "\0" + member.signature();
         target.putIfAbsent(key, new ExternalMember(ref, member));
     }
@@ -301,6 +312,12 @@ final class ExternalSymbolQueries {
                 ? candidate.equals(value) : simpleName(candidate).equals(value);
     }
 
+    private static boolean matches(String className, String needle, MatchMode mode) {
+        String qualified = className.toLowerCase(Locale.ROOT);
+        String simple = simpleName(className).toLowerCase(Locale.ROOT);
+        return mode.test(qualified, needle) || mode.test(simple, needle);
+    }
+
     private static String error(String message) {
         return JSON.createObjectNode().put("error", message).toString();
     }
@@ -315,4 +332,31 @@ final class ExternalSymbolQueries {
     private record Member(String kind, String name, String signature,
             String type, String modifiers) {}
     private record ExternalMember(ClassRef ref, Member member) {}
+
+    private enum MatchMode {
+        EXACT("exact"), PREFIX("prefix"), CONTAINS("contains");
+
+        private final String value;
+
+        MatchMode(String value) {
+            this.value = value;
+        }
+
+        static MatchMode parse(String value) {
+            String normalized = value == null || value.isBlank()
+                    ? "contains" : value.strip().toLowerCase(Locale.ROOT);
+            for (MatchMode mode : values()) {
+                if (mode.value.equals(normalized)) return mode;
+            }
+            return null;
+        }
+
+        boolean test(String value, String needle) {
+            return switch (this) {
+                case EXACT -> value.equals(needle);
+                case PREFIX -> value.startsWith(needle);
+                case CONTAINS -> value.contains(needle);
+            };
+        }
+    }
 }

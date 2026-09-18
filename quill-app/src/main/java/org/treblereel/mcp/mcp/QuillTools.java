@@ -366,12 +366,15 @@ public final class QuillTools {
             @ToolArg(description = "Kind: class, interface, annotation, enum, record, field, constructor, method, or all") Optional<String> kind,
             @ToolArg(description = "External class short name or FQCN; required for field, constructor, and method searches") Optional<String> class_name,
             @ToolArg(description = "Dependency package prefix or wildcard") Optional<String> library,
+            @ToolArg(description = "Match mode: exact, prefix, or contains (default)") Optional<String> match_mode,
+            @ToolArg(description = "Include full dependency JAR paths; default false") Optional<Boolean> include_occurrences,
             @ToolArg(description = "Results per page; default 50, max 200") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> externalSymbols.search(
                 p.jdbi(), p.root(), pattern, kind.orElse(null), class_name.orElse(null),
-                library.orElse(null),
+                library.orElse(null), match_mode.orElse("contains"),
+                include_occurrences.orElse(false),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }

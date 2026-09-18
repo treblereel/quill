@@ -49,7 +49,8 @@ class ExternalSymbolQueriesTest {
     @Test
     void searchesResolvedDependencyJarClasses() throws Exception {
         var result = JSON.readTree(new ExternalSymbolQueries()
-                .search(jdbi, temp, "Fixture", "class", null, "fixture", 20, 0));
+                .search(jdbi, temp, "Fixture", "class", null, "fixture",
+                        "contains", false, 20, 0));
 
         assertEquals(1, result.path("total").asInt());
         assertTrue(result.path("symbols").get(0).path("class_name").asText()
@@ -60,7 +61,8 @@ class ExternalSymbolQueriesTest {
     @Test
     void searchesMembersWithinAnExplicitExternalClass() throws Exception {
         var result = JSON.readTree(new ExternalSymbolQueries()
-                .search(jdbi, temp, "greet", "method", "Fixture", null, 20, 0));
+                .search(jdbi, temp, "greet", "method", "Fixture", null,
+                        "exact", false, 20, 0));
 
         assertEquals(1, result.path("total").asInt());
         assertEquals("method", result.path("symbols").get(0).path("kind").asText());
@@ -71,7 +73,8 @@ class ExternalSymbolQueriesTest {
     @Test
     void rejectsUnboundedMemberSearch() throws Exception {
         var result = JSON.readTree(new ExternalSymbolQueries()
-                .search(jdbi, temp, "greet", "method", null, null, 20, 0));
+                .search(jdbi, temp, "greet", "method", null, null,
+                        "contains", false, 20, 0));
 
         assertTrue(result.path("error").asText().contains("requires class_name"));
     }
@@ -81,7 +84,8 @@ class ExternalSymbolQueriesTest {
         appendJar("2.0", Fixture.Inner.class);
 
         var result = JSON.readTree(new ExternalSymbolQueries().search(jdbi, temp,
-                "nestedOnly", "method", Fixture.class.getName(), null, 20, 0));
+                "nestedOnly", "method", Fixture.class.getName(), null,
+                "contains", false, 20, 0));
 
         assertEquals(0, result.path("total").asInt());
         assertEquals(1, result.path("discovery").path("classes_inspected").asInt());
@@ -92,11 +96,32 @@ class ExternalSymbolQueriesTest {
         appendJar("2.0", Fixture.class);
 
         var result = JSON.readTree(new ExternalSymbolQueries()
-                .search(jdbi, temp, "Fixture", "class", null, "fixture", 20, 0));
+                .search(jdbi, temp, "Fixture", "class", null, "fixture",
+                        "contains", true, 20, 0));
 
         assertEquals(1, result.path("total").asInt());
         assertEquals(2, result.path("symbols").get(0).path("version_count").asInt());
         assertEquals(2, result.path("symbols").get(0).path("occurrences").size());
+    }
+
+    @Test
+    void compactClassSearchOmitsJarPaths() throws Exception {
+        var result = JSON.readTree(new ExternalSymbolQueries().search(jdbi, temp,
+                "Fixture", "class", null, null, "exact", false, 20, 0));
+
+        var symbol = result.path("symbols").get(0);
+        assertEquals("exact", result.path("match_mode").asText());
+        assertEquals(1, symbol.path("artifacts").size());
+        assertTrue(symbol.path("occurrences").isMissingNode());
+        assertFalse(result.toString().contains(temp.toString()));
+    }
+
+    @Test
+    void validatesMatchMode() throws Exception {
+        var result = JSON.readTree(new ExternalSymbolQueries().search(jdbi, temp,
+                "Fixture", "class", null, null, "fuzzy", false, 20, 0));
+
+        assertTrue(result.path("error").asText().contains("match_mode"));
     }
 
     @Test

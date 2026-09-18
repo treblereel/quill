@@ -260,6 +260,24 @@ class McpToolCatalogTest {
                 structured.path("tools").get(0).path("name").asText());
         assertEquals("object",
                 structured.path("tools").get(0).path("input_schema").path("type").asText());
+        assertEquals("quill", structured.path("guidance")
+                .path("recommended_channel").asText());
+    }
+
+    @Test
+    void routerRecommendsSourceSearchForExactLiteralQueries() {
+        RouterTools router = new RouterTools(new QuillTools(new ProjectRegistry()));
+
+        JsonNode result;
+        try {
+            result = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                    router.search_tools("exact literal rg", java.util.Optional.of(5)));
+        } catch (Exception error) {
+            throw new AssertionError(error);
+        }
+
+        assertEquals("source_search",
+                result.path("guidance").path("recommended_channel").asText());
     }
 
     @Test

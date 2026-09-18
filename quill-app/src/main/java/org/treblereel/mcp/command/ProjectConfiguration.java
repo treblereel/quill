@@ -15,9 +15,10 @@ final class ProjectConfiguration {
 
             This project is indexed by Quill. Choose the cheapest sufficient evidence:
 
-            - Use source search/read for an exact literal in a known file.
+            - Use `rg`/source read for an exact literal, a known path, or one concrete occurrence.
             - Use Quill for project-wide aggregation, generated outputs, dependency graphs, DI resolution, history, and change risk.
             - Trust a fresh Quill result when its evidence directly proves the fact; verify stale, unknown, or unsupported claims in source.
+            - Do not call both by default: start with the cheaper sufficient channel, then cross-check only when evidence is incomplete or consequential.
 
             Quill tools:
 

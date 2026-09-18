@@ -144,6 +144,18 @@ surface. `router` is standalone and exposes only `get_overview`, `search_tools`,
 `execute_tool`; it discovers the full catalog on demand and substantially reduces the initial
 tool-schema context. Tool responses and the underlying index are identical across profiles.
 
+Choose the cheapest evidence source for the question:
+
+- Use `rg` plus a targeted file read for an exact literal, a known path, or one concrete
+  occurrence. Constructor text in one known file is usually cheaper this way.
+- Use Quill for semantic symbol resolution, dependency/call graphs, implementations, DI,
+  generated classes, Git aggregation, deleted history, and change risk.
+- Do not query both automatically. Cross-check source only when Quill reports stale/unknown data,
+  or when a consequential conclusion needs direct line-level confirmation.
+
+The router profile returns the same policy in `search_tools.guidance`, including a query-specific
+`recommended_channel` hint.
+
 - **search_classes** — find classes by wildcard pattern; supports `limit`/`offset`
 - **get_project_dependencies** — list resolved Maven/Gradle artifacts and consuming modules
   from Quill's cached runtime classpaths without invoking the build

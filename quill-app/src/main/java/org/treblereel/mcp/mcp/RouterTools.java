@@ -46,6 +46,12 @@ final class RouterTools {
         result.put("query", query);
         result.put("total", matches.size());
         result.put("showing", Math.min(pageSize, matches.size()));
+        ObjectNode guidance = result.putObject("guidance");
+        guidance.put("recommended_channel", recommendedChannel(terms));
+        guidance.put("use_source_search_for",
+                "exact literals, known paths, and confirming one concrete source occurrence");
+        guidance.put("use_quill_for",
+                "semantic symbols, dependency/call graphs, DI, generated code, history, and risk");
         ArrayNode listed = result.putArray("tools");
         matches.stream().limit(pageSize).forEach(method -> {
             ObjectNode item = listed.addObject();
@@ -85,6 +91,27 @@ final class RouterTools {
                 + method.getAnnotation(Tool.class).description() + " "
                 + McpToolCatalog.inputSchema(method)).toLowerCase();
         return Arrays.stream(terms).allMatch(searchable::contains);
+    }
+
+    private static String recommendedChannel(String[] terms) {
+        if (Arrays.stream(terms).anyMatch(SetLikeTerms.SOURCE::contains)) {
+            return "source_search";
+        }
+        if (Arrays.stream(terms).anyMatch(SetLikeTerms.QUILL::contains)) {
+            return "quill";
+        }
+        return "quill_if_semantic";
+    }
+
+    private static final class SetLikeTerms {
+        private static final java.util.Set<String> SOURCE = java.util.Set.of(
+                "literal", "text", "string", "known", "path", "grep", "rg");
+        private static final java.util.Set<String> QUILL = java.util.Set.of(
+                "dependency", "dependencies", "graph", "call", "injection", "bean",
+                "history", "risk", "generated", "override", "implementation",
+                "implementations");
+
+        private SetLikeTerms() {}
     }
 
     private static String error(String message) {

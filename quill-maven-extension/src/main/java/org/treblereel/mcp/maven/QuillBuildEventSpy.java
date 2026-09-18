@@ -7,6 +7,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 import javax.inject.Named;
@@ -15,7 +19,7 @@ import org.apache.maven.eventspy.AbstractEventSpy;
 import org.apache.maven.execution.ExecutionEvent;
 import org.apache.maven.execution.MavenSession;
 
-/** Records a successful Maven session for lazy consumption by Quill. */
+/** Records the result of a Maven session for lazy consumption by Quill. */
 @Named
 @Singleton
 public final class QuillBuildEventSpy extends AbstractEventSpy {
@@ -28,7 +32,6 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
         }
         MavenSession session = execution.getSession();
         if (session == null || session.getResult() == null
-                || session.getResult().hasExceptions()
                 || isInternal(session.getUserProperties())) {
             return;
         }
@@ -39,7 +42,9 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
         Path root = eventRoot(reactorRoot, topLevelRoot);
         if (root == null) return;
         try {
-            writeEvent(root.toAbsolutePath().normalize());
+            boolean successful = !session.getResult().hasExceptions();
+            writeEvent(root.toAbsolutePath().normalize(), successful,
+                    failureMessages(session.getResult().getExceptions()));
         } catch (IOException e) {
             // A notification must never turn a successful user build into a failed build.
             System.err.println("[quill] Could not record Maven build completion: "
@@ -57,6 +62,11 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
     }
 
     static void writeEvent(Path root) throws IOException {
+        writeEvent(root, true, List.of());
+    }
+
+    static void writeEvent(Path root, boolean successful, List<String> failureMessages)
+            throws IOException {
         Path directory = root.resolve(".quill/build-events");
         Files.createDirectories(directory);
         long now = System.currentTimeMillis();
@@ -64,8 +74,14 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
         Path destination = directory.resolve(name);
         Path temporary = Files.createTempFile(directory, ".maven-", ".tmp");
         try {
-            String json = "{\"version\":1,\"buildTool\":\"maven\","
-                    + "\"successful\":true,\"finishedAt\":" + now + "}\n";
+            String encoded = String.join(",", failureMessages.stream().limit(50)
+                    .map(message -> Base64.getEncoder().encodeToString(
+                            message.getBytes(StandardCharsets.UTF_8)))
+                    .map(value -> "\"" + value + "\"")
+                    .toList());
+            String json = "{\"version\":2,\"buildTool\":\"maven\","
+                    + "\"successful\":" + successful + ",\"finishedAt\":" + now + ","
+                    + "\"failureMessagesBase64\":[" + encoded + "]}\n";
             Files.writeString(temporary, json, StandardCharsets.UTF_8,
                     StandardOpenOption.TRUNCATE_EXISTING);
             try {
@@ -76,5 +92,21 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
         } finally {
             Files.deleteIfExists(temporary);
         }
+    }
+
+    static List<String> failureMessages(List<Throwable> failures) {
+        LinkedHashSet<String> messages = new LinkedHashSet<>();
+        if (failures == null) return List.of();
+        for (Throwable failure : failures) {
+            Throwable current = failure;
+            int depth = 0;
+            while (current != null && depth++ < 20 && messages.size() < 50) {
+                String message = current.getMessage();
+                messages.add(current.getClass().getName()
+                        + (message == null || message.isBlank() ? "" : ": " + message));
+                current = current.getCause();
+            }
+        }
+        return new ArrayList<>(messages);
     }
 }

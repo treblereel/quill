@@ -32,6 +32,7 @@ final class ProjectConfiguration {
             - **Service descriptors:** `inspect_service_descriptors` — ordered ServiceLoader/processor providers
             - **Beans:** `list_beans` — list/filter beans by scope, kind, qualifier (CDI and Spring)
             - **Injection points:** `list_injection_points` — injection resolution status for a bean
+            - **Build errors:** `get_build_problems` — diagnostics captured from the last Maven/Gradle build
             - **External deps:** `list_external_dependencies` — third-party library usage
 
             If the client supports tool search, load only the relevant Quill tools for the current task.

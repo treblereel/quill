@@ -24,11 +24,27 @@ class QuillBuildEventSpyTest {
             assertEquals(1, events.size());
             assertTrue(events.getFirst().getFileName().toString().startsWith("maven-"));
             String json = Files.readString(events.getFirst());
-            assertTrue(json.contains("\"version\":1"));
+            assertTrue(json.contains("\"version\":2"));
             assertTrue(json.contains("\"buildTool\":\"maven\""));
             assertTrue(json.contains("\"successful\":true"));
             assertTrue(json.matches("(?s).*\"finishedAt\":[1-9][0-9]*.*"));
+            assertTrue(json.contains("\"failureMessagesBase64\":[]"));
         }
+    }
+
+    @Test
+    void writesFailedBuildMessagesWithoutJsonEscapingRisk() throws Exception {
+        QuillBuildEventSpy.writeEvent(tempDir, false,
+                java.util.List.of("Compilation failed:\nSample.java:[7,3] bad \"token\""));
+
+        Path event;
+        try (var files = Files.list(tempDir.resolve(".quill/build-events"))) {
+            event = files.findFirst().orElseThrow();
+        }
+        String json = Files.readString(event);
+        assertTrue(json.contains("\"successful\":false"));
+        assertTrue(json.contains("\"failureMessagesBase64\":[\""));
+        assertTrue(!json.contains("bad \"token\""));
     }
 
     @Test

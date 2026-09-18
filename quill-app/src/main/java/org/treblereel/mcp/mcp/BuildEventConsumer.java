@@ -3,10 +3,13 @@ package org.treblereel.mcp.mcp;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -15,15 +18,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.core.WorktreeInspector;
 
-/** Consumes successful-build markers before MCP opens an immutable index generation. */
+/** Consumes build-result markers before MCP opens an immutable index generation. */
 final class BuildEventConsumer {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final int PROTOCOL_VERSION = 1;
+    private static final int PROTOCOL_VERSION = 2;
     private static final Duration MAX_CLOCK_SKEW = Duration.ofMinutes(5);
     private static final Set<String> BUILD_TOOLS = Set.of("maven", "gradle");
     private static final Set<String> FIELDS =
-            Set.of("version", "buildTool", "successful", "finishedAt");
+            Set.of("version", "buildTool", "successful", "finishedAt",
+                    "failureMessagesBase64");
 
     private final ConcurrentHashMap<Path, Object> projectLocks = new ConcurrentHashMap<>();
 
@@ -61,6 +65,12 @@ final class BuildEventConsumer {
                 BuildEvent latest = events.stream()
                         .max(Comparator.comparingLong(BuildEvent::finishedAt))
                         .orElseThrow();
+                persistBuildState(normalized, latest);
+                if (!latest.successful()) {
+                    delete(events.stream().map(BuildEvent::file).toList());
+                    removeIfEmpty(directory);
+                    return null;
+                }
                 Optional<String> newerInput = newerStructuralInput(normalized, latest.finishedAt());
                 if (newerInput.isPresent()) {
                     delete(events.stream().map(BuildEvent::file).toList());
@@ -94,18 +104,33 @@ final class BuildEventConsumer {
             JsonNode buildTool = root.get("buildTool");
             JsonNode successful = root.get("successful");
             JsonNode finishedAt = root.get("finishedAt");
+            JsonNode messages = root.get("failureMessagesBase64");
             if (version == null || !version.isIntegralNumber()
                     || version.intValue() != PROTOCOL_VERSION
                     || buildTool == null || !buildTool.isTextual()
                     || !BUILD_TOOLS.contains(buildTool.textValue())
-                    || successful == null || !successful.isBoolean() || !successful.booleanValue()
-                    || finishedAt == null || !finishedAt.isIntegralNumber()) {
+                    || successful == null || !successful.isBoolean()
+                    || finishedAt == null || !finishedAt.isIntegralNumber()
+                    || messages == null || !messages.isArray() || messages.size() > 50) {
                 return Optional.empty();
             }
             long timestamp = finishedAt.longValue();
             long latestAllowed = System.currentTimeMillis() + MAX_CLOCK_SKEW.toMillis();
             if (timestamp <= 0 || timestamp > latestAllowed) return Optional.empty();
-            return Optional.of(new BuildEvent(file, timestamp));
+            List<String> failureMessages = new ArrayList<>();
+            for (JsonNode message : messages) {
+                if (!message.isTextual() || message.textValue().length() > 100_000) {
+                    return Optional.empty();
+                }
+                byte[] decoded = Base64.getDecoder().decode(message.textValue());
+                if (decoded.length > 64_000) return Optional.empty();
+                failureMessages.add(new String(decoded, StandardCharsets.UTF_8));
+            }
+            if (successful.booleanValue() && !failureMessages.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(new BuildEvent(file, buildTool.textValue(),
+                    successful.booleanValue(), timestamp, List.copyOf(failureMessages)));
         } catch (IOException | RuntimeException ignored) {
             return Optional.empty();
         }
@@ -152,5 +177,30 @@ final class BuildEventConsumer {
         }
     }
 
-    private record BuildEvent(Path file, long finishedAt) {}
+    private static void persistBuildState(Path root, BuildEvent event) throws IOException {
+        Path quill = Files.createDirectories(root.resolve(".quill"));
+        Path destination = quill.resolve("build-state.json");
+        Path temporary = Files.createTempFile(quill, ".build-state-", ".tmp");
+        try {
+            var state = JSON.createObjectNode();
+            state.put("version", PROTOCOL_VERSION);
+            state.put("buildTool", event.buildTool());
+            state.put("successful", event.successful());
+            state.put("finishedAt", event.finishedAt());
+            state.set("failureMessages", JSON.valueToTree(event.failureMessages()));
+            JSON.writeValue(temporary.toFile(), state);
+            try {
+                Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private record BuildEvent(
+            Path file, String buildTool, boolean successful, long finishedAt,
+            List<String> failureMessages) {}
 }

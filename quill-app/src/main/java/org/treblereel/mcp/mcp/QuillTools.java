@@ -344,6 +344,19 @@ public final class QuillTools {
                 p -> queries.getBuildStatus(p.jdbi(), p.root()));
     }
 
+    @Tool(structured = true, description = "Read errors captured by the last Maven or Gradle build.")
+    public String get_build_problems(
+            @ToolArg(description = "Severity: all or error") Optional<String> severity,
+            @ToolArg(description = "Exact module filter") Optional<String> module,
+            @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
+            @ToolArg(description = "Offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.getBuildProblems(
+                p.root(), severity.orElse("all"), module.orElse(null),
+                clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -609,6 +622,11 @@ public final class QuillTools {
 
     String getBuildStatus(Jdbi jdbi, Path projectRoot) {
         return queries.getBuildStatus(jdbi, projectRoot);
+    }
+
+    String getBuildProblems(Path projectRoot, String severity, String module,
+            int limit, int offset) {
+        return queries.getBuildProblems(projectRoot, severity, module, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

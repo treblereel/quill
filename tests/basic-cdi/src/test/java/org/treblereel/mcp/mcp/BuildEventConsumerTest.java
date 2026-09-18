@@ -79,7 +79,7 @@ class BuildEventConsumerTest {
         assertTrue(ProjectInitializer.initialize(PROJECT_ROOT, true));
         Path events = Files.createDirectories(QUILL_DIR.resolve("build-events"));
         Files.writeString(events.resolve("invalid.json"),
-                "{\"version\":1,\"buildTool\":\"maven\",\"successful\":true}");
+                "{\"version\":2,\"buildTool\":\"maven\",\"successful\":true}");
 
         ProjectRegistry registry = new ProjectRegistry();
         registry.register(PROJECT_ROOT);
@@ -91,7 +91,8 @@ class BuildEventConsumerTest {
     }
 
     private static void writeEvent(Path event, long finishedAt) throws Exception {
-        Files.writeString(event, "{\"version\":1,\"buildTool\":\"maven\","
-                + "\"successful\":true,\"finishedAt\":" + finishedAt + "}");
+        Files.writeString(event, "{\"version\":2,\"buildTool\":\"maven\","
+                + "\"successful\":true,\"finishedAt\":" + finishedAt
+                + ",\"failureMessagesBase64\":[]}");
     }
 }

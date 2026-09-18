@@ -151,12 +151,14 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   nested classes are collapsed into their top-level owner to suppress compiler-structure noise
 - **compare_index** — compare the active immutable index with a retained generation, including
   class/member, static dependency, bean, and injection-resolution deltas
-- **get_build_status** — inspect build-success integration, compiled outputs, pending events,
+- **get_build_status** — inspect build-result integration, compiled outputs, pending events,
   index freshness, and the next required action without invoking Maven or Gradle
+- **get_build_problems** — read normalized errors captured from the last Maven or Gradle build,
+  including source positions and module filtering, without starting a build
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
   annotation name or FQCN, with pagination and source/generated breakdown
-- **find_annotated_symbols** — find annotated types, methods, fields, and constructors by short
-  annotation name or FQCN; type meta-annotations are supported and member limitations are explicit
+- **find_annotated_symbols** — find annotated types, methods, fields, constructors, and parameters
+  by short annotation name or FQCN, preserving parameter position, name, and type
 - **find_framework_endpoints** — find Spring MVC and JAX-RS routes with HTTP methods, constant
   class/method paths, module/source context, and bounded direct project-call evidence
 - **find_implementations** — find direct/transitive subclasses and implementors, including
@@ -304,7 +306,7 @@ Unmatched stale class outputs are classified as `orphan_output` and excluded fro
 current graph. Git history remains queryable by its historical path without treating a
 deleted class as current code.
 
-Normal `quill init` installs a reversible build-success integration instead of Git
+Normal `quill init` installs a reversible build-result integration instead of Git
 hooks. Maven uses `.mvn/extensions.xml`; Gradle gets a Quill-managed block in the root
 `settings.gradle[.kts]`. A successful build writes a small atomic JSON event below
 `.quill/build-events/`. Before serving the next MCP request, Quill consumes that event

@@ -9,7 +9,7 @@ import java.nio.file.StandardCopyOption;
 import org.treblereel.mcp.QuillTopCommand;
 import org.treblereel.mcp.core.BuildSystem;
 
-/** Installs and removes the build-success notification owned by Quill. */
+/** Installs and removes the build-result notification owned by Quill. */
 final class BuildIntegrationInstaller {
 
     private static final String START = "quill:build-integration:start";
@@ -100,7 +100,7 @@ final class BuildIntegrationInstaller {
             Path expected = root.resolve(Files.isRegularFile(root.resolve("build.gradle.kts"))
                     ? "settings.gradle.kts" : "settings.gradle");
             return new Inspection(State.MISSING, expected,
-                    "Gradle build-success integration is not installed");
+                    "Gradle build integration is not installed");
         }
         try {
             String content = Files.readString(file);
@@ -115,12 +115,13 @@ final class BuildIntegrationInstaller {
                         "Gradle settings do not configure Quill build events");
             }
             if (!content.contains("quill.internal") || !content.contains("finishedAt")
+                    || !content.contains("failureMessagesBase64")
                     || !content.contains("version")) {
                 return new Inspection(State.OUTDATED, file,
-                        "Gradle build-success integration uses an older protocol");
+                        "Gradle build integration uses an older protocol");
             }
             return new Inspection(State.INSTALLED, file,
-                    "Managed Gradle build-success integration is current");
+                    "Managed Gradle build integration is current");
         } catch (IOException error) {
             return new Inspection(State.INVALID, file,
                     "Could not read Gradle integration: " + error.getMessage());
@@ -171,12 +172,20 @@ final class BuildIntegrationInstaller {
     private static String groovyGradleBlock() {
         return GRADLE_START + "\n"
                 + "gradle.buildFinished { result ->\n"
-                + "    if (result.failure == null && System.getProperty('quill.internal') != 'true') {\n"
+                + "    if (System.getProperty('quill.internal') != 'true') {\n"
                 + "        def dir = new File(settingsDir, '.quill/build-events')\n"
                 + "        dir.mkdirs()\n"
                 + "        def event = new File(dir, 'gradle-' + System.currentTimeMillis() + '-' + UUID.randomUUID() + '.json')\n"
                 + "        def temporary = File.createTempFile('.gradle-', '.tmp', dir)\n"
-                + "        temporary.text = '{\"version\":1,\"buildTool\":\"gradle\",\"successful\":true,\"finishedAt\":' + System.currentTimeMillis() + '}'\n"
+                + "        def messages = []\n"
+                + "        def current = result.failure\n"
+                + "        while (current != null && messages.size() < 50) {\n"
+                + "            def text = current.class.name + (current.message ? ': ' + current.message : '')\n"
+                + "            messages << Base64.encoder.encodeToString(text.getBytes('UTF-8'))\n"
+                + "            current = current.cause\n"
+                + "        }\n"
+                + "        def encoded = groovy.json.JsonOutput.toJson(messages)\n"
+                + "        temporary.text = '{\"version\":2,\"buildTool\":\"gradle\",\"successful\":' + (result.failure == null) + ',\"finishedAt\":' + System.currentTimeMillis() + ',\"failureMessagesBase64\":' + encoded + '}'\n"
                 + "        try {\n"
                 + "            java.nio.file.Files.move(temporary.toPath(), event.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)\n"
                 + "        } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {\n"
@@ -189,12 +198,20 @@ final class BuildIntegrationInstaller {
     private static String kotlinGradleBlock() {
         return GRADLE_START + "\n"
                 + "gradle.buildFinished {\n"
-                + "    if (failure == null && System.getProperty(\"quill.internal\") != \"true\") {\n"
+                + "    if (System.getProperty(\"quill.internal\") != \"true\") {\n"
                 + "        val dir = file(\".quill/build-events\").apply { mkdirs() }\n"
                 + "        val now = System.currentTimeMillis()\n"
                 + "        val event = dir.resolve(\"gradle-$now-${java.util.UUID.randomUUID()}.json\")\n"
                 + "        val temporary = kotlin.io.path.createTempFile(dir.toPath(), \".gradle-\", \".tmp\")\n"
-                + "        java.nio.file.Files.writeString(temporary, \"{\\\"version\\\":1,\\\"buildTool\\\":\\\"gradle\\\",\\\"successful\\\":true,\\\"finishedAt\\\":$now}\")\n"
+                + "        val messages = mutableListOf<String>()\n"
+                + "        var current: Throwable? = failure\n"
+                + "        while (current != null && messages.size < 50) {\n"
+                + "            val text = current.javaClass.name + (current.message?.let { \": $it\" } ?: \"\")\n"
+                + "            messages += java.util.Base64.getEncoder().encodeToString(text.toByteArray())\n"
+                + "            current = current.cause\n"
+                + "        }\n"
+                + "        val encoded = messages.joinToString(prefix = \"[\", postfix = \"]\") { \"\\\"$it\\\"\" }\n"
+                + "        java.nio.file.Files.writeString(temporary, \"{\\\"version\\\":2,\\\"buildTool\\\":\\\"gradle\\\",\\\"successful\\\":${failure == null},\\\"finishedAt\\\":$now,\\\"failureMessagesBase64\\\":$encoded}\")\n"
                 + "        try {\n"
                 + "            java.nio.file.Files.move(temporary, event.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)\n"
                 + "        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {\n"

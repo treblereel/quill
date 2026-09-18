@@ -125,6 +125,31 @@ class BuildIntegrationInstallerTest {
         runSuccessfulGradleBuild();
     }
 
+    @Test
+    void failedGradleBuildWritesDiagnosticEvent() throws Exception {
+        assumeGradleAvailable();
+        Files.writeString(tempDir.resolve("settings.gradle.kts"),
+                "rootProject.name = \"integration-test\"\n");
+        Files.writeString(tempDir.resolve("build.gradle"), """
+                tasks.register('broken') {
+                    doLast { throw new GradleException('deliberate build failure') }
+                }
+                """);
+        assertEquals(BuildIntegrationInstaller.Result.INSTALLED,
+                BuildIntegrationInstaller.install(tempDir));
+
+        Process build = new ProcessBuilder("gradle", "broken", "--quiet", "--no-daemon")
+                .directory(tempDir.toFile()).redirectErrorStream(true).start();
+        String output = new String(build.getInputStream().readAllBytes());
+        assertTrue(build.waitFor() != 0, output);
+        try (var events = Files.list(tempDir.resolve(".quill/build-events"))) {
+            Path event = events.findFirst().orElseThrow();
+            String json = Files.readString(event);
+            assertTrue(json.contains("\"successful\":false"));
+            assertFalse(json.contains("\"failureMessagesBase64\":[]"));
+        }
+    }
+
     private void runSuccessfulGradleBuild() throws Exception {
         assertEquals(BuildIntegrationInstaller.Result.INSTALLED,
                 BuildIntegrationInstaller.install(tempDir));
@@ -138,10 +163,11 @@ class BuildIntegrationInstallerTest {
                             .startsWith("gradle-"))
                     .findFirst().orElseThrow();
             String json = Files.readString(event);
-            assertTrue(json.contains("\"version\":1"));
+            assertTrue(json.contains("\"version\":2"));
             assertTrue(json.contains("\"buildTool\":\"gradle\""));
             assertTrue(json.contains("\"successful\":true"));
             assertTrue(json.matches("(?s).*\"finishedAt\":[1-9][0-9]*.*"));
+            assertTrue(json.contains("\"failureMessagesBase64\":[]"));
         }
 
         try (var events = Files.list(tempDir.resolve(".quill/build-events"))) {

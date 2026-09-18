@@ -11,7 +11,7 @@
 
     <artifactId>quill-maven-extension</artifactId>
     <packaging>jar</packaging>
-    <name>Quill Maven build-success extension</name>
+    <name>Quill Maven build-result extension</name>
 
     <dependencies>
         <dependency>

@@ -1,8 +1,8 @@
 package org.treblereel.mcp.mcp;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -15,16 +15,15 @@ class BuildEventProtocolTest {
     Path tempDir;
 
     @Test
-    void discardsEventsOutsideVersionOneContract() throws Exception {
+    void discardsEventsOutsideVersionTwoContract() throws Exception {
         List<String> invalidEvents = List.of(
                 "not-json",
                 "{}",
-                "{\"version\":2,\"buildTool\":\"maven\",\"successful\":true,\"finishedAt\":1}",
-                "{\"version\":1,\"buildTool\":\"ant\",\"successful\":true,\"finishedAt\":1}",
-                "{\"version\":1,\"buildTool\":\"maven\",\"successful\":false,\"finishedAt\":1}",
-                "{\"version\":1,\"buildTool\":\"maven\",\"successful\":true,\"finishedAt\":0}",
-                "{\"version\":1,\"buildTool\":\"maven\",\"successful\":true,\"finishedAt\":\"1\"}",
-                "{\"version\":1,\"buildTool\":\"maven\",\"successful\":true,\"finishedAt\":1,\"extra\":true}");
+                "{\"version\":1,\"buildTool\":\"maven\",\"successful\":true,\"finishedAt\":1,\"failureMessagesBase64\":[]}",
+                "{\"version\":2,\"buildTool\":\"ant\",\"successful\":true,\"finishedAt\":1,\"failureMessagesBase64\":[]}",
+                "{\"version\":2,\"buildTool\":\"maven\",\"successful\":true,\"finishedAt\":0,\"failureMessagesBase64\":[]}",
+                "{\"version\":2,\"buildTool\":\"maven\",\"successful\":true,\"finishedAt\":1,\"failureMessagesBase64\":[\"bad base64\"]}",
+                "{\"version\":2,\"buildTool\":\"maven\",\"successful\":true,\"finishedAt\":1,\"failureMessagesBase64\":[],\"extra\":true}");
         Path events = Files.createDirectories(tempDir.resolve(".quill/build-events"));
         for (int i = 0; i < invalidEvents.size(); i++) {
             Files.writeString(events.resolve("event-" + i + ".json"), invalidEvents.get(i));
@@ -39,10 +38,30 @@ class BuildEventProtocolTest {
         Path events = Files.createDirectories(tempDir.resolve(".quill/build-events"));
         long future = System.currentTimeMillis() + 10 * 60 * 1_000;
         Files.writeString(events.resolve("event.json"),
-                "{\"version\":1,\"buildTool\":\"gradle\",\"successful\":true,"
-                        + "\"finishedAt\":" + future + "}");
+                "{\"version\":2,\"buildTool\":\"gradle\",\"successful\":true,"
+                        + "\"finishedAt\":" + future + ",\"failureMessagesBase64\":[]}");
 
         assertNull(new BuildEventConsumer().consume(tempDir));
         assertFalse(Files.exists(events));
+    }
+
+    @Test
+    void persistsFailedBuildForDiagnosticQueries() throws Exception {
+        Path events = Files.createDirectories(tempDir.resolve(".quill/build-events"));
+        String message = java.util.Base64.getEncoder().encodeToString(
+                "Compilation failed\nmodule/src/main/java/acme/Broken.java:[12,7] cannot find symbol"
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Files.writeString(events.resolve("event.json"),
+                "{\"version\":2,\"buildTool\":\"maven\",\"successful\":false,"
+                        + "\"finishedAt\":" + System.currentTimeMillis()
+                        + ",\"failureMessagesBase64\":[\"" + message + "\"]}");
+
+        assertNull(new BuildEventConsumer().consume(tempDir));
+        assertFalse(Files.exists(events));
+        JsonNode state = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                tempDir.resolve(".quill/build-state.json").toFile());
+        assertFalse(state.path("successful").asBoolean());
+        assertEquals("maven", state.path("buildTool").asText());
+        assertTrue(state.path("failureMessages").get(0).asText().contains("Broken.java"));
     }
 }

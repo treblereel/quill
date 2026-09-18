@@ -61,7 +61,7 @@ public final class BuildStatusInspector {
         ObjectNode events = result.putObject("build_events");
         events.put("pending", pendingEvents);
         events.put("consumed_before_tool_execution", true);
-        events.put("protocol", 1);
+        events.put("protocol", 2);
 
         ObjectNode index = result.putObject("index");
         index.put("index_id", metadata.getOrDefault("index_id", "unknown"));
@@ -104,11 +104,11 @@ public final class BuildStatusInspector {
         if (integration.state() == BuildIntegrationInstaller.State.MISSING
                 || integration.state() == BuildIntegrationInstaller.State.OUTDATED) {
             return new Recommendation("integration_required",
-                    "Run quill init to install the build-success integration");
+                    "Run quill init to install the build-result integration");
         }
         if (pendingEvents > 0) {
             return new Recommendation("refresh_pending",
-                    "Make another MCP request to consume the successful-build event");
+                    "Make another MCP request to consume the build-result event");
         }
         if (freshness.staleReasons().contains("dirty_worktree_not_compiled")) {
             return new Recommendation("build_required", buildSystem == BuildSystem.MAVEN

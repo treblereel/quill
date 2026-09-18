@@ -2171,6 +2171,9 @@ class QuillToolsTest {
                       ('orders', 'config_prefix', 1, 'org.acme.OrderService',
                        NULL, NULL,
                        'org.springframework.boot.context.properties.ConfigurationProperties',
+                       'src/main/java/org/acme/OrderService.java', '.', 'main'),
+                      ('<dynamic>', 'dynamic_config_key', 1, 'org.acme.OrderService',
+                       'lookup', NULL, 'java.lang.System#getProperty',
                        'src/main/java/org/acme/OrderService.java', '.', 'main')
                     """);
         });
@@ -2191,6 +2194,14 @@ class QuillToolsTest {
         assertEquals("src/main/resources/application.properties",
                 directUsage.path("definition_files").get(0).asText());
         assertFalse(result.toString().contains("us-west"));
+
+        JsonNode dynamic = JSON.readTree(new QuillToolQueries().findConfigurationReferences(
+                jdbi, "<dynamic>", null, "property", null, 20, 0));
+        JsonNode dynamicUsage = dynamic.path("references").get(0);
+        assertEquals("unknown", dynamicUsage.path("resolution_status").asText());
+        assertEquals("dynamic_programmatic_lookup",
+                dynamicUsage.path("resolution_strategy").asText());
+        assertFalse(dynamicUsage.path("resolved").asBoolean());
 
         JsonNode exact = JSON.readTree(new QuillToolQueries().findConfigurationReferences(
                 jdbi, "orders.timeout", null, "all", null, 20, 0));

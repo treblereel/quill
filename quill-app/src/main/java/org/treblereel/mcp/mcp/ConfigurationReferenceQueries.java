@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 
-/** Searches normalized configuration definitions and annotation-based consumers. */
+/** Searches normalized configuration definitions and their consumers. */
 final class ConfigurationReferenceQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -59,9 +59,17 @@ final class ConfigurationReferenceQueries {
                     putNullable(node, "parameterIndex", reference.get("parameter_index"));
                     node.put("annotation", text(reference, "annotation"));
                     putNullable(node, "source", reference.get("source"));
-                    Resolution resolution = resolve(jdbi, text(reference, "key"),
-                            text(reference, "kind"), module);
-                    node.put("resolved", resolution.count() > 0);
+                    String usageKind = text(reference, "kind");
+                    boolean dynamic = usageKind.equals("dynamic_config_key");
+                    Resolution resolution = dynamic ? new Resolution(0, List.of())
+                            : resolve(jdbi, text(reference, "key"), usageKind, module);
+                    node.put("resolved", !dynamic && resolution.count() > 0);
+                    node.put("resolution_status", dynamic ? "unknown"
+                            : resolution.count() > 0 ? "resolved" : "unsatisfied");
+                    node.put("resolution_strategy", dynamic ? "dynamic_programmatic_lookup"
+                            : text(reference, "annotation").contains("#")
+                                    ? "constant_programmatic_lookup" : "annotation_lookup");
+                    node.put("confidence", dynamic ? 0.0 : 1.0);
                     node.put("definition_count", resolution.count());
                     ArrayNode files = node.putArray("definition_files");
                     resolution.files().forEach(files::add);
@@ -72,8 +80,9 @@ final class ConfigurationReferenceQueries {
             result.put("values_indexed", false);
             result.putArray("limitations")
                     .add("Configuration values are intentionally not stored")
-                    .add("Consumers are limited to supported bytecode-visible annotations")
-                    .add("Programmatic, environment-variable, YAML list, and dynamic key lookups are not resolved");
+                    .add("Consumers cover supported annotations and common programmatic APIs")
+                    .add("Environment-variable and YAML list lookups are not resolved")
+                    .add("Dynamic programmatic keys are reported as unknown without guessing their value");
             appendPage(result, references.size(), total, limit, offset);
             appendMeta(result, jdbi, 0);
             return result.toString();
@@ -176,7 +185,7 @@ final class ConfigurationReferenceQueries {
         };
         String usageKind = switch (kind) {
             case "persistence" -> "u.kind = 'persistence_unit'";
-            case "property" -> "u.kind = 'config_key'";
+            case "property" -> "u.kind IN ('config_key', 'dynamic_config_key')";
             case "prefix" -> "u.kind = 'config_prefix'";
             default -> "1 = 1";
         };

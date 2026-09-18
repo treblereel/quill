@@ -508,7 +508,8 @@ public class ProjectInitializer {
                 classes, gitResult.fileStats(), initialWorktree);
         classes = inventory.classes();
         ConfigurationScanner.Result configuration = ConfigurationScanner.scan(
-                root, moduleDirectories, scanResult.index(), classNameToSqliteId, classes);
+                root, moduleDirectories, scanResult.index(), classNameToSqliteId, classes,
+                classFiles);
         List<InjectionPointRecord> contextualInjectionPoints = ApplicationContextResolver.refine(
                 persisted.injectionPoints(), remappedBeans, classes, classOccurrences,
                 moduleClasspath);

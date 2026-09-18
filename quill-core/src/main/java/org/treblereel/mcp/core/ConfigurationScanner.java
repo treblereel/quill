@@ -55,6 +55,12 @@ public final class ConfigurationScanner {
 
     public static Result scan(Path projectRoot, List<Path> moduleDirectories,
             IndexView index, Map<String, Integer> classNameToId, List<ClassRecord> classes) {
+        return scan(projectRoot, moduleDirectories, index, classNameToId, classes, null);
+    }
+
+    public static Result scan(Path projectRoot, List<Path> moduleDirectories,
+            IndexView index, Map<String, Integer> classNameToId, List<ClassRecord> classes,
+            ClassFileSnapshot classFiles) {
         Path root = projectRoot.toAbsolutePath().normalize();
         List<Definition> definitions = scanDefinitions(root, moduleDirectories);
         Map<String, ClassRecord> classesByName = classes.stream().collect(
@@ -70,6 +76,10 @@ public final class ConfigurationScanner {
             for (AnnotationInstance annotation : classInfo.annotations()) {
                 addUsages(annotation, classId, classInfo.name().toString(), cls, usages, unique);
             }
+        }
+        if (classFiles != null) {
+            usages.addAll(ProgrammaticConfigurationScanner.scan(
+                    classFiles, classNameToId, classesByName));
         }
         usages.sort(Comparator.comparing(Usage::key)
                 .thenComparing(Usage::className)

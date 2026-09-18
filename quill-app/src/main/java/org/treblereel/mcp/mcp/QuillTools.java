@@ -422,7 +422,7 @@ public final class QuillTools {
                 p -> queries.inspectServiceDescriptors(p.jdbi(), service.orElse(null)));
     }
 
-    @Tool(structured = true, description = "Find configuration definitions and annotated consumers without exposing values.")
+    @Tool(structured = true, description = "Find configuration definitions and annotation/programmatic consumers without exposing values.")
     public String find_configuration_references(
             @ToolArg(description = "Exact key or * wildcard; omit for all") Optional<String> key,
             @ToolArg(description = "Consumer class FQCN or short name") Optional<String> class_name,

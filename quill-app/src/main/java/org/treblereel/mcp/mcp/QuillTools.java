@@ -28,6 +28,7 @@ public final class QuillTools {
     private final FileNavigationQueries fileNavigation;
     private final WorktreeStatusQueries worktreeStatus;
     private final PositionSymbolQueries positionSymbols;
+    private final ExternalSymbolQueries externalSymbols;
 
     public QuillTools() {
         this(new ProjectRegistry());
@@ -40,6 +41,7 @@ public final class QuillTools {
         this.fileNavigation = new FileNavigationQueries();
         this.worktreeStatus = new WorktreeStatusQueries();
         this.positionSymbols = new PositionSymbolQueries();
+        this.externalSymbols = new ExternalSymbolQueries();
     }
 
     @Tool(structured = true, description = "Find CDI/Spring beans, producers, interceptors, or decorators. Returns DI and source context.")
@@ -352,6 +354,33 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> positionSymbols.getSymbolAtPosition(
                 p.jdbi(), p.root(), path, line, column));
+    }
+
+    @Tool(structured = true,
+            description = "Search class and member declarations indexed from external dependency bytecode.")
+    public String search_external_symbols(
+            @ToolArg(description = "Symbol name or signature pattern; supports * wildcard") String pattern,
+            @ToolArg(description = "Kind: class, interface, annotation, enum, record, field, constructor, method, or all") Optional<String> kind,
+            @ToolArg(description = "Dependency package prefix or wildcard") Optional<String> library,
+            @ToolArg(description = "Results per page; default 50, max 200") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> externalSymbols.search(
+                p.jdbi(), pattern, kind.orElse(null), library.orElse(null),
+                clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
+    @Tool(structured = true,
+            description = "Inspect an external dependency class and its bytecode-indexed members.")
+    public String get_external_symbol_details(
+            @ToolArg(description = "External class short name or FQCN") String class_name,
+            @ToolArg(description = "Members per page; default 100, max 200") Optional<Integer> limit,
+            @ToolArg(description = "Member page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> externalSymbols.details(
+                p.jdbi(), class_name, clamp(limit.orElse(100), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
     @Tool(structured = true, description = "Inspect package dependency coupling.")

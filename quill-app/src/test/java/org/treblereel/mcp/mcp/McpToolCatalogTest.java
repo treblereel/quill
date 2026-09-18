@@ -213,7 +213,7 @@ class McpToolCatalogTest {
                         + specification.tool().inputSchema().toString().length())
                 .sum();
         int averageCharacters = characters / tools.size();
-        assertTrue(characters < 19_000 && averageCharacters < 450,
+        assertTrue(characters < 21_000 && averageCharacters < 450,
                 "catalog characters: " + characters + ", average: " + averageCharacters);
     }
 

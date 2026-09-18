@@ -21,7 +21,8 @@ public final class McpToolProfile {
             "get_package_graph", "find_architecture_violations", "find_cycles",
             "get_annotated_classes", "find_annotated_symbols", "find_framework_endpoints",
             "inspect_service_descriptors", "find_configuration_references",
-            "find_resource_references", "list_external_dependencies"));
+            "find_resource_references", "list_external_dependencies",
+            "search_external_symbols", "get_external_symbol_details"));
     private static final Set<String> DI = Set.of(
             "get_overview", "search_classes", "resolve_entities", "list_beans",
             "list_injection_points", "get_dependencies", "find_usages",

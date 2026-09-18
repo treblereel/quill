@@ -153,6 +153,8 @@ tool-schema context. Tool responses and the underlying index are identical acros
   structural-change classification
 - **get_symbol_at_position** — resolve the identifier at a one-based Java/Kotlin source position
   to indexed class/member declarations, with ambiguity and confidence reported explicitly
+- **search_external_symbols** / **get_external_symbol_details** — search and inspect class/member
+  declarations indexed from dependency bytecode without mixing them with application symbols
 - **search_symbols** — search class, method, field, and constructor declarations by name or
   signature, with kind filtering and pagination
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with

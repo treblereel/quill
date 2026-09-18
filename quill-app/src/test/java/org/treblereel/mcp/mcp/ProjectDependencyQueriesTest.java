@@ -32,7 +32,25 @@ class ProjectDependencyQueriesTest {
         Files.createDirectories(second.getParent());
         Files.writeString(first, mavenJar.toString());
         Files.writeString(second, gradleJar.toString());
-        Files.writeString(temp.resolve("pom.xml"), "<project/>");
+        Files.writeString(temp.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>root</artifactId><version>1</version>
+                  <modules><module>api</module><module>worker</module></modules>
+                </project>
+                """);
+        Files.writeString(temp.resolve("api/pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>api</artifactId><version>1</version>
+                  <dependencies><dependency><groupId>com.acme</groupId>
+                    <artifactId>widget</artifactId><version>1.2</version>
+                  </dependency></dependencies>
+                </project>
+                """);
+        Files.writeString(temp.resolve("worker/pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>worker</artifactId><version>1</version>
+                </project>
+                """);
         Jdbi jdbi = database();
         module(jdbi, "api");
         module(jdbi, "worker");
@@ -46,8 +64,14 @@ class ProjectDependencyQueriesTest {
                 result.path("dependencies").get(0).path("id").asText());
         assertEquals("api",
                 result.path("dependencies").get(0).path("used_by_modules").get(0).asText());
+        assertEquals(true, result.path("dependencies").get(0).path("direct").asBoolean());
+        assertEquals("api",
+                result.path("dependencies").get(0).path("direct_in_modules").get(0).asText());
         assertEquals("org.demo:lib:3.0",
                 result.path("dependencies").get(1).path("id").asText());
+        assertFalse(result.path("dependencies").get(1).path("direct").asBoolean());
+        assertEquals("worker",
+                result.path("dependencies").get(1).path("transitive_in_modules").get(0).asText());
     }
 
     @Test

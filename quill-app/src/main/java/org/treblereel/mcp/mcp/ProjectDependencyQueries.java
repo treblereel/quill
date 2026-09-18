@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.DeclaredDependencyDiscovery;
 
 /** Reads the dependency artifacts captured by Quill's Maven or Gradle classpath discovery. */
 final class ProjectDependencyQueries {
@@ -25,6 +26,13 @@ final class ProjectDependencyQueries {
     String getProjectDependencies(Jdbi jdbi, Path root, String module, String query,
             int limit, int offset) {
         List<ClasspathFile> classpaths = findClasspathFiles(jdbi, root);
+        BuildSystem buildSystem = detectBuildSystem(root);
+        Set<String> discoveredModules = new LinkedHashSet<>();
+        classpaths.forEach(classpath -> discoveredModules.add(classpath.module()));
+        DeclaredDependencyDiscovery.Result declared = buildSystem == null
+                ? new DeclaredDependencyDiscovery.Result(
+                        Map.of(), Set.of(), "unavailable", false)
+                : DeclaredDependencyDiscovery.discover(root, buildSystem, discoveredModules);
         Map<String, Artifact> artifacts = new LinkedHashMap<>();
         for (ClasspathFile classpath : classpaths) {
             if (module != null && !module.isBlank()
@@ -52,7 +60,7 @@ final class ProjectDependencyQueries {
         result.put("offset", offset);
         result.put("has_more", to < ordered.size());
         result.put("relationship", "resolved_runtime_classpath");
-        result.put("directness", "unknown");
+        result.put("directness", declared.complete() ? "resolved" : "partial");
         ArrayNode dependencies = result.putArray("dependencies");
         ordered.subList(from, to).forEach(artifact -> {
             ObjectNode item = dependencies.addObject();
@@ -66,13 +74,53 @@ final class ProjectDependencyQueries {
             item.put("jar", artifact.jar().toString());
             ArrayNode modules = item.putArray("used_by_modules");
             artifact.modules().stream().sorted().forEach(modules::add);
+            ArrayNode directModules = item.putArray("direct_in_modules");
+            artifact.modules().stream().sorted()
+                    .filter(candidate -> declared.dependenciesByModule()
+                            .getOrDefault(candidate, Set.of()).contains(value.ga()))
+                    .forEach(directModules::add);
+            ArrayNode transitiveModules = item.putArray("transitive_in_modules");
+            artifact.modules().stream().sorted()
+                    .filter(declared.completeModules()::contains)
+                    .filter(candidate -> !declared.dependenciesByModule()
+                            .getOrDefault(candidate, Set.of()).contains(value.ga()))
+                    .forEach(transitiveModules::add);
+            ArrayNode unknownModules = item.putArray("unknown_in_modules");
+            artifact.modules().stream().sorted()
+                    .filter(candidate -> !declared.completeModules().contains(candidate))
+                    .forEach(unknownModules::add);
+            String itemDirectness;
+            if (!directModules.isEmpty() && transitiveModules.isEmpty() && unknownModules.isEmpty()) {
+                itemDirectness = "direct";
+            } else if (directModules.isEmpty() && !transitiveModules.isEmpty()
+                    && unknownModules.isEmpty()) {
+                itemDirectness = "transitive";
+            } else if (directModules.isEmpty() && transitiveModules.isEmpty()) {
+                itemDirectness = "unknown";
+            } else {
+                itemDirectness = "mixed";
+            }
+            item.put("directness", itemDirectness);
+            item.put("direct", !directModules.isEmpty());
         });
         ObjectNode discovery = result.putObject("discovery");
         discovery.put("classpath_files", classpaths.size());
         discovery.put("build_invoked", false);
-        discovery.put("limitation",
-                "Resolved classpaths do not preserve direct versus transitive declarations");
+        discovery.put("declaration_source", declared.source());
+        discovery.put("declarations_complete", declared.complete());
+        if (!declared.complete()) {
+            discovery.put("limitation", "Missing or unresolved dependency declarations are "
+                    + "reported as transitive until the next Gradle discovery snapshot");
+        }
         return result.toString();
+    }
+
+    private static BuildSystem detectBuildSystem(Path root) {
+        try {
+            return BuildSystem.detect(root);
+        } catch (IllegalArgumentException error) {
+            return null;
+        }
     }
 
     private static List<ClasspathFile> findClasspathFiles(Jdbi jdbi, Path root) {
@@ -177,6 +225,10 @@ final class ProjectDependencyQueries {
             String classifier, String layout) {
         Coordinates(String id, String artifact, String version, String classifier, String layout) {
             this(id, artifact, "unknown", version, classifier, layout);
+        }
+
+        String ga() {
+            return group + ":" + artifact;
         }
     }
 

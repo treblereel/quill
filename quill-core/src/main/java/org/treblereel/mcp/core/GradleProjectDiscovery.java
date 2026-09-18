@@ -269,6 +269,22 @@ public final class GradleProjectDiscovery {
                                             .collect { it.canonicalPath }.sort()
                                             .join(File.pathSeparator), 'UTF-8')
                                         new File(buildDir, 'quill-classpath.sha256').delete()
+                                        def directDependencies = project.configurations
+                                            .collectMany { configuration ->
+                                                configuration.dependencies.collect { dependency ->
+                                                    [dependency.group, dependency.name, configuration.name]
+                                                }
+                                            }
+                                            .findAll { it[0] != null && it[1] != null }
+                                            .unique { it[0] + ':' + it[1] }
+                                            .sort { left, right ->
+                                                (left[0] + ':' + left[1]) <=> (right[0] + ':' + right[1])
+                                            }
+                                        new File(buildDir, 'quill-direct-dependencies.tsv')
+                                            .setText(directDependencies.collect {
+                                                it.collect { field -> field.toString().replace('\\t', ' ') }
+                                                    .join('\\t')
+                                            }.join(System.lineSeparator()), 'UTF-8')
                                     }
                                 }
                             }

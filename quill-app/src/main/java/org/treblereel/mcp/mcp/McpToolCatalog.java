@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
 import reactor.core.publisher.Mono;
@@ -26,6 +27,8 @@ final class McpToolCatalog {
     private static final Map<String, Object> OBJECT_OUTPUT_SCHEMA = Map.of(
             "type", "object",
             "additionalProperties", true);
+    private static final Set<String> SELF_DESCRIBING_ARGUMENTS = Set.of(
+            "project", "limit", "offset", "module", "source_set", "class_name");
 
     private McpToolCatalog() {}
 
@@ -87,7 +90,9 @@ final class McpToolCatalog {
                 property.put("items", Map.of("type", "string"));
             }
             ToolArg arg = parameter.getAnnotation(ToolArg.class);
-            if (arg != null) property.put("description", arg.description());
+            if (arg != null && !SELF_DESCRIBING_ARGUMENTS.contains(parameter.getName())) {
+                property.put("description", arg.description());
+            }
             properties.put(parameter.getName(), property);
             if (!isOptional(parameter.getParameterizedType())) required.add(parameter.getName());
         }

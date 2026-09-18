@@ -211,8 +211,28 @@ class McpToolCatalogTest {
                         + specification.tool().inputSchema().toString().length())
                 .sum();
         int averageCharacters = characters / tools.size();
-        assertTrue(averageCharacters < 550,
+        assertTrue(characters < 16_500,
                 "catalog characters: " + characters + ", average: " + averageCharacters);
+    }
+
+    @Test
+    void omitsRepeatedDescriptionsForSelfDescribingArguments() {
+        AsyncToolSpecification configuration = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1)).stream()
+                .filter(candidate -> candidate.tool().name()
+                        .equals("find_configuration_references"))
+                .findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) configuration.tool()
+                .inputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> project = (Map<String, Object>) properties.get("project");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> key = (Map<String, Object>) properties.get("key");
+
+        assertNull(project.get("description"));
+        assertTrue(key.get("description").toString().contains("wildcard"));
     }
 
     @Test

@@ -57,6 +57,22 @@ class PicocliNativeMetadataTest {
         }
     }
 
+    @Test
+    void toolMetadataKeepsOnlyPublicMethods() throws Exception {
+        String manualConfig =
+                "META-INF/native-image/org.treblereel.mcp/quill-app/reflect-config.json";
+        try (InputStream input = getClass().getClassLoader().getResourceAsStream(manualConfig)) {
+            assertNotNull(input);
+            JsonNode entries = JSON.readTree(input);
+            for (String type : Set.of("org.treblereel.mcp.mcp.QuillTools",
+                    "org.treblereel.mcp.mcp.RouterTools")) {
+                JsonNode entry = findCommand(entries, type);
+                assertTrue(entry.path("allPublicMethods").asBoolean());
+                assertFalse(entry.has("allDeclaredMethods"));
+            }
+        }
+    }
+
     private static JsonNode findCommand(JsonNode commands, String name) {
         for (JsonNode command : commands) {
             if (name.equals(command.path("name").asText())) return command;

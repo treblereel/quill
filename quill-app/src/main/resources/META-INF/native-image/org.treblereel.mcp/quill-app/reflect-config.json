@@ -1,11 +1,11 @@
 [
   {
     "name": "org.treblereel.mcp.mcp.QuillTools",
-    "allDeclaredMethods": true
+    "allPublicMethods": true
   },
   {
     "name": "org.treblereel.mcp.mcp.RouterTools",
-    "allDeclaredMethods": true
+    "allPublicMethods": true
   },
   {
     "name": "org.treblereel.mcp.model.ResolutionCandidate",

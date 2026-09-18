@@ -1108,6 +1108,28 @@ class QuillToolsTest {
     }
 
     @Test
+    void getBuildStatusReportsIntegrationWithoutStartingBuild() throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>sample</artifactId><version>1</version>
+                </project>
+                """);
+        Path classes = Files.createDirectories(tempDir.resolve("target/classes/org/acme"));
+        Files.write(classes.resolve("Sample.class"), new byte[] {0, 1, 2});
+
+        JsonNode result = JSON.readTree(new QuillTools().getBuildStatus(jdbi, tempDir));
+
+        assertEquals("maven", result.path("build_system").asText());
+        assertEquals(1, result.path("compiled_outputs").path("count").asInt());
+        assertEquals("missing", result.path("integration").path("state").asText());
+        assertEquals("integration_required", result.path("status").asText());
+        assertTrue(result.path("action_required").asBoolean());
+        assertFalse(result.path("build_was_started").asBoolean());
+        assertEquals(0, result.path("build_events").path("pending").asInt());
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

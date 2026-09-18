@@ -282,6 +282,13 @@ public final class QuillTools {
                 clamp(limit.orElse(50), 1, 200)));
     }
 
+    @Tool(structured = true, description = "Inspect build integration and compiled-index freshness without running a build.")
+    public String get_build_status(
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null),
+                p -> queries.getBuildStatus(p.jdbi(), p.root()));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -503,6 +510,10 @@ public final class QuillTools {
 
     String compareIndex(Jdbi jdbi, Path projectRoot, String baseline, int detailLimit) {
         return queries.compareIndex(jdbi, projectRoot, baseline, detailLimit);
+    }
+
+    String getBuildStatus(Jdbi jdbi, Path projectRoot) {
+        return queries.getBuildStatus(jdbi, projectRoot);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

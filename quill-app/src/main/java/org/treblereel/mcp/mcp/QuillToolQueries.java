@@ -3,6 +3,7 @@ package org.treblereel.mcp.mcp;
 import java.nio.file.Path;
 import java.util.List;
 import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.command.BuildStatusInspector;
 
 /** Routes tool calls to focused query components. */
 public final class QuillToolQueries {
@@ -128,6 +129,10 @@ public final class QuillToolQueries {
 
     String compareIndex(Jdbi jdbi, Path projectRoot, String baseline, int detailLimit) {
         return indexComparison.compareIndex(jdbi, projectRoot, baseline, detailLimit);
+    }
+
+    String getBuildStatus(Jdbi jdbi, Path projectRoot) {
+        return BuildStatusInspector.inspect(projectRoot, jdbi);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

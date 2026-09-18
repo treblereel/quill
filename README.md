@@ -146,6 +146,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   nested classes are collapsed into their top-level owner to suppress compiler-structure noise
 - **compare_index** — compare the active immutable index with a retained generation, including
   class/member, static dependency, bean, and injection-resolution deltas
+- **get_build_status** — inspect build-success integration, compiled outputs, pending events,
+  index freshness, and the next required action without invoking Maven or Gradle
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
   annotation name or FQCN, with pagination and source/generated breakdown
 - **find_implementations** — find direct/transitive subclasses and implementors, including

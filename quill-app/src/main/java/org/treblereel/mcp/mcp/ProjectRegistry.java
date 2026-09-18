@@ -11,6 +11,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.command.ProjectIndexStore;
+import org.treblereel.mcp.command.ProjectInitializer;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.QuillDatabase;
 
@@ -31,6 +32,7 @@ public class ProjectRegistry {
 
     private final ConcurrentHashMap<Path, IndexHandle> databases = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, AtomicLong> projectRoots = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Path, Object> schemaRepairLocks = new ConcurrentHashMap<>();
     private final AtomicLong resolutionSequence = new AtomicLong();
     private final BuildEventConsumer buildEvents = new BuildEventConsumer();
 
@@ -83,7 +85,12 @@ public class ProjectRegistry {
             if (buildEventError != null) {
                 errors.add("Project '" + p.name() + "': " + buildEventError);
             }
-            Path dbPath = ProjectIndexStore.findBestAvailableDb(p.root());
+            Path candidateDb = ProjectIndexStore.findBestAvailableDb(p.root());
+            if (candidateDb == null) {
+                repairOutdatedSchema(p, projectRoot, errors);
+                candidateDb = ProjectIndexStore.findBestAvailableDb(p.root());
+            }
+            final Path dbPath = candidateDb;
             if (dbPath == null) {
                 errors.add("Project '" + p.name() + "' is not indexed. "
                         + "Run: quill init --project " + p.root());
@@ -119,8 +126,24 @@ public class ProjectRegistry {
             if (configuredRoots.contains(entry.getKey())
                     || entry.getValue().get() >= resolutionId) return false;
             WorktreeSnapshotCache.shared().invalidate(entry.getKey());
+            schemaRepairLocks.remove(entry.getKey());
             return true;
         });
+    }
+
+    private void repairOutdatedSchema(ProjectScope.Project project, Path projectRoot,
+            List<String> errors) {
+        if (!ProjectIndexStore.hasOutdatedGenerations(projectRoot)) return;
+        Object repairLock = schemaRepairLocks.computeIfAbsent(projectRoot, ignored -> new Object());
+        synchronized (repairLock) {
+            if (!ProjectIndexStore.hasOutdatedGenerations(projectRoot)) return;
+            ProjectInitializer.InitializationResult repair =
+                    ProjectInitializer.initializeDetailed(projectRoot, true);
+            if (!repair.successful()) {
+                errors.add("Project '" + project.name()
+                        + "': could not rebuild its outdated index: " + repair.diagnostic());
+            }
+        }
     }
 
     public void prewarm() {

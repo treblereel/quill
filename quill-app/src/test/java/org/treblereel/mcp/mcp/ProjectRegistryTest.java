@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
@@ -183,6 +185,52 @@ class ProjectRegistryTest {
         registry.prewarm(Runnable::run);
 
         assertEquals(1, registry.resolve().projects().size());
+    }
+
+    @Test
+    void concurrentFirstRequestsRebuildAnOutdatedSchemaWithoutRunningABuild() throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("outdated-project"));
+        Files.writeString(project.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>outdated</artifactId><version>1</version>
+                </project>
+                """);
+        Path source = project.resolve("src/main/java/org/acme/App.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; public final class App {}\n");
+        Path classes = Files.createDirectories(project.resolve("target/classes"));
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(
+                null, null, null, "-d", classes.toString(), source.toString()));
+        Path old = createPublishedDatabase(project, "outdated");
+        QuillDatabase.openWritable(old).useHandle(handle ->
+                handle.execute("PRAGMA user_version = 7"));
+
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project);
+        var executor = Executors.newFixedThreadPool(8);
+        List<java.util.concurrent.Future<ProjectRegistry.Resolution>> resolutions;
+        try {
+            resolutions = executor.invokeAll(java.util.stream.IntStream.range(0, 8)
+                    .<java.util.concurrent.Callable<ProjectRegistry.Resolution>>mapToObj(
+                            ignored -> registry::resolve)
+                    .toList());
+        } finally {
+            executor.shutdownNow();
+        }
+
+        for (var resolution : resolutions) {
+            assertTrue(resolution.get().errors().isEmpty(),
+                    resolution.get().errors().toString());
+            assertEquals(1, resolution.get().projects().size());
+        }
+        Path current = org.treblereel.mcp.command.ProjectIndexStore
+                .findBestAvailableDb(project);
+        assertNotNull(current);
+        assertEquals(QuillDatabase.currentSchemaVersion(),
+                QuillDatabase.inspectSchemaVersion(current));
+        assertFalse(Files.exists(old));
+        assertFalse(Files.exists(project.resolve(".mvn/extensions.xml")));
+        assertFalse(Files.exists(project.resolve("CLAUDE.md")));
     }
 
     private static Path createPublishedDatabase(Path project, String indexId) throws IOException {

@@ -125,8 +125,31 @@ public final class ProjectIndexStore {
     }
 
     static int dropOutdatedGenerations(Path root) {
+        List<Path> outdated = outdatedGenerations(root);
+        if (outdated.isEmpty()) return 0;
+
         Path quillDir = root.resolve(".quill");
-        if (!Files.isDirectory(quillDir)) return 0;
+        Set<String> removed = new HashSet<>();
+        for (Path database : outdated) {
+            String fileName = database.getFileName().toString();
+            removed.add(fileName.substring(0, fileName.length() - ".db".length()));
+            deleteDatabaseArtifacts(database);
+        }
+        Path refsPath = quillDir.resolve("refs.json");
+        Map<String, String> refs = readRefs(refsPath);
+        refs.entrySet().removeIf(entry -> removed.contains(entry.getValue()));
+        writeRefs(refsPath, refs);
+        clearRecovery(root);
+        return outdated.size();
+    }
+
+    public static boolean hasOutdatedGenerations(Path root) {
+        return !outdatedGenerations(root).isEmpty();
+    }
+
+    private static List<Path> outdatedGenerations(Path root) {
+        Path quillDir = root.resolve(".quill");
+        if (!Files.isDirectory(quillDir)) return List.of();
         List<Path> outdated = new ArrayList<>();
         try (Stream<Path> files = Files.list(quillDir)) {
             for (Path database : files.filter(Files::isRegularFile)
@@ -146,20 +169,7 @@ public final class ProjectIndexStore {
             throw new IllegalStateException("Could not inspect index generations under "
                     + quillDir, e);
         }
-        if (outdated.isEmpty()) return 0;
-
-        Set<String> removed = new HashSet<>();
-        for (Path database : outdated) {
-            String fileName = database.getFileName().toString();
-            removed.add(fileName.substring(0, fileName.length() - ".db".length()));
-            deleteDatabaseArtifacts(database);
-        }
-        Path refsPath = quillDir.resolve("refs.json");
-        Map<String, String> refs = readRefs(refsPath);
-        refs.entrySet().removeIf(entry -> removed.contains(entry.getValue()));
-        writeRefs(refsPath, refs);
-        clearRecovery(root);
-        return outdated.size();
+        return List.copyOf(outdated);
     }
 
     public static Map<String, String> readRefs(Path refsPath) {

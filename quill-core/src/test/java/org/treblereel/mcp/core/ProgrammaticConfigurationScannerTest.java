@@ -30,7 +30,7 @@ class ProgrammaticConfigurationScannerTest {
 
         List<ConfigurationScanner.Usage> usages = ProgrammaticConfigurationScanner.scan(
                 ClassFileSnapshot.capture(List.of(tempDir)), Map.of(className, 1),
-                Map.of(className, cls));
+                Map.of(className, cls)).configurationUsages();
 
         assertEquals(List.of("<dynamic>", "app.name", "feature.enabled", "service.timeout"),
                 usages.stream().map(ConfigurationScanner.Usage::key).toList());
@@ -42,6 +42,11 @@ class ProgrammaticConfigurationScannerTest {
                 .equals("org.springframework.core.env.Environment#getProperty")));
         assertTrue(usages.stream().anyMatch(usage -> usage.annotation()
                 .equals("org.eclipse.microprofile.config.Config#getValue")));
+        assertEquals(List.of("templates/order.html"),
+                ProgrammaticConfigurationScanner.scan(
+                        ClassFileSnapshot.capture(List.of(tempDir)), Map.of(className, 1),
+                        Map.of(className, cls)).resourceUsages().stream()
+                        .map(ConfigurationScanner.ResourceUsage::resourcePath).toList());
     }
 
     private static byte[] consumerBytecode() {
@@ -68,6 +73,11 @@ class ProgrammaticConfigurationScannerTest {
         method.visitMethodInsn(Opcodes.INVOKEINTERFACE,
                 "org/eclipse/microprofile/config/Config", "getValue",
                 "(Ljava/lang/String;Ljava/lang/Class;)Ljava/lang/Object;", true);
+        method.visitInsn(Opcodes.POP);
+        method.visitLdcInsn(org.objectweb.asm.Type.getObjectType("example/ConfigConsumer"));
+        method.visitLdcInsn("/templates/order.html");
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Class", "getResource",
+                "(Ljava/lang/String;)Ljava/net/URL;", false);
         method.visitInsn(Opcodes.POP);
         method.visitVarInsn(Opcodes.ALOAD, 0);
         method.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/System", "getProperty",

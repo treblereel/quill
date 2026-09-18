@@ -51,7 +51,17 @@ public final class ConfigurationScanner {
             Integer parameterIndex, String annotation, String source, String module,
             String sourceSet) {}
 
-    public record Result(List<Definition> definitions, List<Usage> usages) {}
+    public record ResourceUsage(
+            String resourcePath, String kind, int classId, String className, String member,
+            String api, String source, String module, String sourceSet) {}
+
+    public record Result(
+            List<Definition> definitions, List<Usage> usages,
+            List<ResourceUsage> resourceUsages) {
+        public Result(List<Definition> definitions, List<Usage> usages) {
+            this(definitions, usages, List.of());
+        }
+    }
 
     public static Result scan(Path projectRoot, List<Path> moduleDirectories,
             IndexView index, Map<String, Integer> classNameToId, List<ClassRecord> classes) {
@@ -77,16 +87,18 @@ public final class ConfigurationScanner {
                 addUsages(annotation, classId, classInfo.name().toString(), cls, usages, unique);
             }
         }
-        if (classFiles != null) {
-            usages.addAll(ProgrammaticConfigurationScanner.scan(
-                    classFiles, classNameToId, classesByName));
-        }
+        ProgrammaticConfigurationScanner.ScanResult programmatic = classFiles == null
+                ? ProgrammaticConfigurationScanner.ScanResult.EMPTY
+                : ProgrammaticConfigurationScanner.scan(
+                        classFiles, classNameToId, classesByName);
+        usages.addAll(programmatic.configurationUsages());
         usages.sort(Comparator.comparing(Usage::key)
                 .thenComparing(Usage::className)
                 .thenComparing(value -> value.member() == null ? "" : value.member())
                 .thenComparing(value -> value.parameterIndex() == null
                         ? -1 : value.parameterIndex()));
-        return new Result(List.copyOf(definitions), List.copyOf(usages));
+        return new Result(List.copyOf(definitions), List.copyOf(usages),
+                programmatic.resourceUsages());
     }
 
     private static List<Definition> scanDefinitions(Path root, List<Path> modules) {

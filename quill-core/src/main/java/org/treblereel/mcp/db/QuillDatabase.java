@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 16;
+    static final int SCHEMA_VERSION = 17;
 
     private QuillDatabase() {}
 
@@ -257,6 +257,20 @@ public final class QuillDatabase {
                     source_set TEXT NOT NULL,
                     UNIQUE(key, kind, class_id, member, parameter_index, annotation)
                 )""");
+            h.execute("""
+                CREATE TABLE IF NOT EXISTS resource_usages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    resource_path TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    class_id INTEGER NOT NULL REFERENCES classes(id),
+                    class_name TEXT NOT NULL,
+                    member TEXT NOT NULL,
+                    api TEXT NOT NULL,
+                    source TEXT,
+                    module TEXT NOT NULL,
+                    source_set TEXT NOT NULL,
+                    UNIQUE(resource_path, kind, class_id, member, api)
+                )""");
             if (createIndexes) createIndexes(h);
             h.execute("PRAGMA user_version = " + SCHEMA_VERSION);
         });
@@ -298,6 +312,8 @@ public final class QuillDatabase {
         h.execute("CREATE INDEX IF NOT EXISTS idx_config_use_key ON configuration_usages(key, kind)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_config_use_class ON configuration_usages(class_name)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_config_use_module ON configuration_usages(module, source_set)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_resource_use_path ON resource_usages(resource_path, kind)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_resource_use_class ON resource_usages(class_name)");
     }
 
     private static void prepareExistingDatabase(Path dbPath) {

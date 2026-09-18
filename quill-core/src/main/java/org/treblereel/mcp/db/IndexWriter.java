@@ -20,7 +20,7 @@ public final class IndexWriter {
     private static final String[] ALL_TABLES = {
             "git_commit_files", "git_commits", "git_file_stats",
             "class_external_deps", "cdi_problems",
-            "configuration_usages", "configuration_definitions",
+            "resource_usages", "configuration_usages", "configuration_definitions",
             "dependencies", "field_accesses", "method_calls", "injection_points", "beans", "class_members",
             "class_annotations",
             "class_occurrences", "module_classpath", "classes",
@@ -92,6 +92,9 @@ public final class IndexWriter {
     private static final TableSpec CONFIGURATION_USAGES = new TableSpec(
             "configuration_usages", "key", "kind", "class_id", "class_name", "member",
             "parameter_index", "annotation", "source", "module", "source_set");
+    private static final TableSpec RESOURCE_USAGES = new TableSpec(
+            "resource_usages", "resource_path", "kind", "class_id", "class_name", "member",
+            "api", "source", "module", "source_set");
     private static final TableSpec FILE_STATS = new TableSpec("git_file_stats",
             "file_path", "class_id", "commit_count", "last_modified", "last_author",
             "first_commit", "distinct_authors");
@@ -101,12 +104,13 @@ public final class IndexWriter {
             "commit_id", "class_id", "file_path", "change_type");
     private static final List<TableSpec> INSERT_ORDER = List.of(
             FILES, CLASSES, CLASS_OCCURRENCES, CLASS_ANNOTATIONS, CLASS_MEMBERS,
-            METHOD_CALLS, FIELD_ACCESSES, CONFIGURATION_DEFINITIONS, CONFIGURATION_USAGES, BEANS,
+            METHOD_CALLS, FIELD_ACCESSES, CONFIGURATION_DEFINITIONS, CONFIGURATION_USAGES,
+            RESOURCE_USAGES, BEANS,
             INJECTION_POINTS, DEPENDENCIES, METADATA,
             EXTERNAL_DEPS, PROBLEMS, FILE_STATS, COMMITS, COMMIT_FILES);
     private static final List<TableSpec> DELETE_ORDER = List.of(
             COMMIT_FILES, FILE_STATS, EXTERNAL_DEPS, PROBLEMS, DEPENDENCIES,
-            CONFIGURATION_USAGES, CONFIGURATION_DEFINITIONS,
+            RESOURCE_USAGES, CONFIGURATION_USAGES, CONFIGURATION_DEFINITIONS,
             FIELD_ACCESSES, METHOD_CALLS,
             INJECTION_POINTS, BEANS, COMMITS, CLASS_MEMBERS, CLASS_ANNOTATIONS, CLASS_OCCURRENCES,
             CLASSES, FILES, METADATA);
@@ -404,6 +408,7 @@ public final class IndexWriter {
         insertDesiredFieldAccesses(h, fieldAccesses);
         insertDesiredConfigurationDefinitions(h, configuration.definitions());
         insertDesiredConfigurationUsages(h, configuration.usages());
+        insertDesiredResourceUsages(h, configuration.resourceUsages());
         insertDesiredBeans(h, beans);
         insertDesiredInjectionPoints(h, injectionPoints);
         insertDesiredDependencies(h, dependencies);
@@ -749,6 +754,25 @@ public final class IndexWriter {
                 });
     }
 
+    private static void insertDesiredResourceUsages(
+            Handle h, List<ConfigurationScanner.ResourceUsage> usages) {
+        executeBatch(h,
+                "INSERT INTO desired_resource_usages "
+                        + "(resource_path, kind, class_id, class_name, member, api, source, "
+                        + "module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                usages, (statement, usage) -> {
+                    statement.setString(1, usage.resourcePath());
+                    statement.setString(2, usage.kind());
+                    statement.setInt(3, usage.classId());
+                    statement.setString(4, usage.className());
+                    statement.setString(5, usage.member());
+                    statement.setString(6, usage.api());
+                    statement.setString(7, usage.source());
+                    statement.setString(8, usage.module());
+                    statement.setString(9, usage.sourceSet());
+                });
+    }
+
     private static WriteTimings writeAll(Jdbi jdbi,
             List<ClassRecord> classes, List<BeanRecord> beans,
             List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
@@ -801,6 +825,7 @@ public final class IndexWriter {
             insertFieldAccesses(h, fieldAccesses);
             insertConfigurationDefinitions(h, configuration.definitions());
             insertConfigurationUsages(h, configuration.usages());
+            insertResourceUsages(h, configuration.resourceUsages());
             insertBeans(h, beans);
             insertInjectionPoints(h, injectionPoints);
             insertDependencies(h, dependencies);
@@ -887,6 +912,25 @@ public final class IndexWriter {
                     statement.setString(8, usage.source());
                     statement.setString(9, usage.module());
                     statement.setString(10, usage.sourceSet());
+                });
+    }
+
+    private static void insertResourceUsages(
+            Handle h, List<ConfigurationScanner.ResourceUsage> usages) {
+        executeBatch(h,
+                "INSERT INTO resource_usages "
+                        + "(resource_path, kind, class_id, class_name, member, api, source, "
+                        + "module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                usages, (statement, usage) -> {
+                    statement.setString(1, usage.resourcePath());
+                    statement.setString(2, usage.kind());
+                    statement.setInt(3, usage.classId());
+                    statement.setString(4, usage.className());
+                    statement.setString(5, usage.member());
+                    statement.setString(6, usage.api());
+                    statement.setString(7, usage.source());
+                    statement.setString(8, usage.module());
+                    statement.setString(9, usage.sourceSet());
                 });
     }
 

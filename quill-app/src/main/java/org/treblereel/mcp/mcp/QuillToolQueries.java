@@ -38,6 +38,7 @@ public final class QuillToolQueries {
     private final ServiceDescriptorQueries serviceDescriptors = new ServiceDescriptorQueries();
     private final ConfigurationReferenceQueries configurationReferences =
             new ConfigurationReferenceQueries();
+    private final ResourceReferenceQueries resourceReferences = new ResourceReferenceQueries();
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier) {
@@ -291,5 +292,10 @@ public final class QuillToolQueries {
             String kind, String module, int limit, int offset) {
         return configurationReferences.find(
                 jdbi, key, className, kind, module, limit, offset);
+    }
+
+    String findResourceReferences(Jdbi jdbi, String path, String className,
+            String module, int limit, int offset) {
+        return resourceReferences.find(jdbi, path, className, module, limit, offset);
     }
 }

@@ -28,12 +28,17 @@ class IndexWriterReaderTest {
                 "app.name", "config_key", 1, "example.Service", "name", null,
                 "org.springframework.beans.factory.annotation.Value",
                 "src/main/java/example/Service.java", ".", "main");
+        ConfigurationScanner.ResourceUsage resourceUsage =
+                new ConfigurationScanner.ResourceUsage(
+                        "templates/order.html", "resource", 1, "example.Service", "render",
+                        "java.lang.Class#getResource", "src/main/java/example/Service.java",
+                        ".", "main");
         ConfigurationScanner.Result initial = new ConfigurationScanner.Result(List.of(
                 new ConfigurationScanner.Definition("app.name", "property",
                         "src/main/resources/application.properties", 1, ".", "main"),
                 new ConfigurationScanner.Definition("old.key", "property",
                         "src/main/resources/application.properties", 2, ".", "main")),
-                List.of(usage));
+                List.of(usage), List.of(resourceUsage));
 
         IndexWriter.writeFreshWithConfiguration(database, classes, List.of(), List.of(),
                 List.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
@@ -46,7 +51,7 @@ class IndexWriterReaderTest {
                 initial.definitions().getFirst(),
                 new ConfigurationScanner.Definition("new.key", "property",
                         "src/main/resources/application.properties", 2, ".", "main")),
-                List.of(usage));
+                List.of(usage), List.of(resourceUsage));
         IndexWriter.IncrementalWriteTimings timings =
                 IndexWriter.writeIncrementalWithConfiguration(
                         QuillDatabase.openWritable(dbPath), classes, List.of(), List.of(),
@@ -66,6 +71,10 @@ class IndexWriterReaderTest {
                         "SELECT count(*) FROM configuration_usages")
                 .mapTo(Integer.class).one());
         assertEquals(1, usageCount);
+        int resourceUsageCount = database.withHandle(handle -> handle.createQuery(
+                        "SELECT count(*) FROM resource_usages")
+                .mapTo(Integer.class).one());
+        assertEquals(1, resourceUsageCount);
     }
 
     @Test

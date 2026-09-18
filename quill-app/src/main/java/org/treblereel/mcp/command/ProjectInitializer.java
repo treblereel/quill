@@ -577,6 +577,8 @@ public class ProjectInitializer {
         metadata.put("configuration_definitions",
                 Integer.toString(configuration.definitions().size()));
         metadata.put("configuration_usages", Integer.toString(configuration.usages().size()));
+        metadata.put("resource_usages",
+                Integer.toString(configuration.resourceUsages().size()));
         metadata.put("framework_endpoints_detail", frameworkEndpointsJson(frameworkEndpoints));
         metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
         metadata.put("framework", isSpring && isCdi ? "Mixed"

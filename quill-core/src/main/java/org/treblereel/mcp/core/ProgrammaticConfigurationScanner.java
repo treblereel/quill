@@ -22,10 +22,17 @@ final class ProgrammaticConfigurationScanner {
 
     private ProgrammaticConfigurationScanner() {}
 
-    static List<ConfigurationScanner.Usage> scan(
+    record ScanResult(
+            List<ConfigurationScanner.Usage> configurationUsages,
+            List<ConfigurationScanner.ResourceUsage> resourceUsages) {
+        static final ScanResult EMPTY = new ScanResult(List.of(), List.of());
+    }
+
+    static ScanResult scan(
             ClassFileSnapshot classFiles, Map<String, Integer> classNameToId,
             Map<String, ClassRecord> classesByName) {
         List<ConfigurationScanner.Usage> result = new ArrayList<>();
+        List<ConfigurationScanner.ResourceUsage> resources = new ArrayList<>();
         Set<String> unique = new LinkedHashSet<>();
         for (ClassFileSnapshot.Entry entry : classFiles.entries().stream()
                 .sorted(Comparator.comparing(value -> value.path().toString())).toList()) {
@@ -44,14 +51,21 @@ final class ProgrammaticConfigurationScanner {
                     Integer classId = classNameToId.get(className);
                     if (classId == null) return null;
                     return new LookupVisitor(classId, className, name,
-                            classesByName.get(className), result, unique);
+                            classesByName.get(className), result, resources, unique);
                 }
             }, ClassReader.SKIP_FRAMES);
         }
-        return result.stream().sorted(Comparator.comparing(ConfigurationScanner.Usage::key)
+        List<ConfigurationScanner.Usage> configurations = result.stream()
+                .sorted(Comparator.comparing(ConfigurationScanner.Usage::key)
                 .thenComparing(ConfigurationScanner.Usage::className)
                 .thenComparing(value -> value.member() == null ? "" : value.member()))
                 .toList();
+        List<ConfigurationScanner.ResourceUsage> resourceUsages = resources.stream()
+                .sorted(Comparator.comparing(ConfigurationScanner.ResourceUsage::resourcePath)
+                        .thenComparing(ConfigurationScanner.ResourceUsage::className)
+                        .thenComparing(ConfigurationScanner.ResourceUsage::member))
+                .toList();
+        return new ScanResult(configurations, resourceUsages);
     }
 
     private static final class LookupVisitor extends MethodVisitor {
@@ -61,17 +75,20 @@ final class ProgrammaticConfigurationScanner {
         private final String method;
         private final ClassRecord cls;
         private final List<ConfigurationScanner.Usage> target;
+        private final List<ConfigurationScanner.ResourceUsage> resources;
         private final Set<String> unique;
         private final Deque<Object> stack = new ArrayDeque<>();
 
         private LookupVisitor(int classId, String className, String method, ClassRecord cls,
-                List<ConfigurationScanner.Usage> target, Set<String> unique) {
+                List<ConfigurationScanner.Usage> target,
+                List<ConfigurationScanner.ResourceUsage> resources, Set<String> unique) {
             super(Opcodes.ASM9);
             this.classId = classId;
             this.className = className;
             this.method = method;
             this.cls = cls;
             this.target = target;
+            this.resources = resources;
             this.unique = unique;
         }
 
@@ -128,6 +145,20 @@ final class ProgrammaticConfigurationScanner {
                             cls == null ? null : cls.sourceSet()));
                 }
             }
+            String resourceApi = supportedResourceApi(owner, name, descriptor);
+            if (resourceApi != null && arguments.length > 0) {
+                String path = arguments[0] instanceof String value
+                        ? normalizeResource(value, resourceApi) : DYNAMIC_KEY;
+                String identity = classId + "\n" + method + "\n" + resourceApi + "\n" + path;
+                if (unique.add(identity)) {
+                    resources.add(new ConfigurationScanner.ResourceUsage(path,
+                            path.equals(DYNAMIC_KEY) ? "dynamic_resource" : "resource",
+                            classId, className, method, resourceApi,
+                            cls == null ? null : cls.sourceFile(),
+                            cls == null ? null : cls.module(),
+                            cls == null ? null : cls.sourceSet()));
+                }
+            }
             if (Type.getReturnType(descriptor).getSort() != Type.VOID) stack.push(UNKNOWN);
         }
 
@@ -176,5 +207,32 @@ final class ProgrammaticConfigurationScanner {
             return "org.eclipse.microprofile.config.Config#" + name;
         }
         return null;
+    }
+
+    private static String supportedResourceApi(String owner, String name, String descriptor) {
+        Type[] arguments = Type.getArgumentTypes(descriptor);
+        if (arguments.length == 0 || !arguments[0].equals(Type.getType(String.class))) return null;
+        if ((owner.equals("java/lang/Class") || owner.equals("java/lang/ClassLoader"))
+                && (name.equals("getResource") || name.equals("getResourceAsStream"))) {
+            return owner.replace('/', '.') + "#" + name;
+        }
+        if (owner.equals("org/springframework/core/io/ResourceLoader")
+                && name.equals("getResource")) {
+            return "org.springframework.core.io.ResourceLoader#getResource";
+        }
+        if (owner.equals("java/util/ResourceBundle") && name.equals("getBundle")) {
+            return "java.util.ResourceBundle#getBundle";
+        }
+        return null;
+    }
+
+    private static String normalizeResource(String value, String api) {
+        String normalized = value.replace('\\', '/');
+        if (api.equals("java.util.ResourceBundle#getBundle")) {
+            normalized = normalized.replace('.', '/') + ".properties";
+        }
+        if (normalized.startsWith("classpath:")) normalized = normalized.substring(10);
+        while (normalized.startsWith("/")) normalized = normalized.substring(1);
+        return normalized.isBlank() ? DYNAMIC_KEY : normalized;
     }
 }

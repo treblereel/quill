@@ -2215,6 +2215,41 @@ class QuillToolsTest {
     }
 
     @Test
+    void findResourceReferencesLinksClasspathFilesAndConsumers() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO files
+                      (project_path, repository_path, kind, origin, lifecycle, module, source_set)
+                    VALUES ('src/main/resources/templates/order.html',
+                            'src/main/resources/templates/order.html',
+                            'resource', 'resource', 'current', '.', 'main')
+                    """);
+            handle.execute("""
+                    INSERT INTO resource_usages
+                      (resource_path, kind, class_id, class_name, member, api, source,
+                       module, source_set)
+                    VALUES ('templates/order.html', 'resource', 1,
+                            'org.acme.OrderService', 'render',
+                            'java.lang.Class#getResource',
+                            'src/main/java/org/acme/OrderService.java', '.', 'main')
+                    """);
+        });
+
+        JsonNode result = JSON.readTree(new QuillToolQueries().findResourceReferences(
+                jdbi, "templates/order.html", "OrderService", null, 20, 0));
+
+        assertEquals(2, result.path("total").asInt(), result.toString());
+        assertEquals(1, result.path("definition_count").asInt());
+        assertEquals(1, result.path("usage_count").asInt());
+        JsonNode usage = result.path("references").valueStream()
+                .filter(value -> value.path("entry_type").asText().equals("usage"))
+                .findFirst().orElseThrow();
+        assertEquals("resolved", usage.path("resolution_status").asText());
+        assertEquals("src/main/resources/templates/order.html",
+                usage.path("definition_files").get(0).asText());
+    }
+
+    @Test
     void findFrameworkEndpointsReturnsRoutesAndDirectCalls() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

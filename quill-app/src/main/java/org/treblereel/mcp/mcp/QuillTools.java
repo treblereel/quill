@@ -437,6 +437,20 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Find classpath resources and programmatic consumers without reading resource contents.")
+    public String find_resource_references(
+            @ToolArg(description = "Resource path or * wildcard, e.g. templates/order.html") String path,
+            @ToolArg(description = "Consumer class FQCN or short name") Optional<String> class_name,
+            @ToolArg(description = "Exact module filter") Optional<String> module,
+            @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
+            @ToolArg(description = "Offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findResourceReferences(
+                p.jdbi(), path, class_name.orElse(null), module.orElse(null),
+                clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Summarize frameworks, beans/classes, architecture hubs, DI problems, libraries, Git activity, and freshness.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings (default: false)") Optional<Boolean> details,
@@ -676,6 +690,11 @@ public final class QuillTools {
             String kind, String module, int limit, int offset) {
         return queries.findConfigurationReferences(
                 jdbi, key, className, kind, module, limit, offset);
+    }
+
+    String findResourceReferences(Jdbi jdbi, String path, String className,
+            String module, int limit, int offset) {
+        return queries.findResourceReferences(jdbi, path, className, module, limit, offset);
     }
 
     String getCoChanges(Jdbi jdbi, String target, int limit) {

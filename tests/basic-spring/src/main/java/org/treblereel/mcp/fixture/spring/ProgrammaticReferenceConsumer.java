@@ -7,8 +7,11 @@ import org.springframework.core.io.ResourceLoader;
 
 public class ProgrammaticReferenceConsumer {
 
+    private static final String MODE_KEY = "runtime.mode";
+
     public String runtimeMode() {
-        return System.getProperty("runtime.mode");
+        String key = MODE_KEY;
+        return System.getProperty(key);
     }
 
     public String dynamicProperty(String key) {

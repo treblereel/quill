@@ -12,6 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.treblereel.mcp.model.ClassRecord;
 
 class ProgrammaticConfigurationScannerTest {
@@ -27,12 +28,18 @@ class ProgrammaticConfigurationScannerTest {
         ClassRecord cls = new ClassRecord(0, className, "CLASS", "java.lang.Object", List.of(),
                 "src/main/java/example/ConfigConsumer.java", 1, false, 20,
                 null, "source", "current", ".", "main");
+        ClassRecord customEnvironment = new ClassRecord(0, "example.CustomEnvironment", "CLASS",
+                "java.lang.Object", List.of("org.springframework.core.env.Environment"),
+                "src/main/java/example/CustomEnvironment.java", 1, false, 20);
+        Map<String, ClassRecord> indexedClasses = Map.of(
+                className, cls, customEnvironment.className(), customEnvironment);
 
         List<ConfigurationScanner.Usage> usages = ProgrammaticConfigurationScanner.scan(
                 ClassFileSnapshot.capture(List.of(tempDir)), Map.of(className, 1),
-                Map.of(className, cls)).configurationUsages();
+                indexedClasses).configurationUsages();
 
-        assertEquals(List.of("<dynamic>", "app.name", "feature.enabled", "service.timeout"),
+        assertEquals(List.of("<dynamic>", "app.name", "custom.mode", "feature.enabled",
+                        "local.mode", "service.timeout", "static.mode"),
                 usages.stream().map(ConfigurationScanner.Usage::key).toList());
         assertEquals(1, usages.stream()
                 .filter(usage -> usage.kind().equals("dynamic_config_key")).count());
@@ -44,7 +51,7 @@ class ProgrammaticConfigurationScannerTest {
                 .equals("org.eclipse.microprofile.config.Config#getValue")));
         var resources = ProgrammaticConfigurationScanner.scan(
                         ClassFileSnapshot.capture(List.of(tempDir)), Map.of(className, 1),
-                        Map.of(className, cls)).resourceUsages();
+                        indexedClasses).resourceUsages();
         assertEquals(List.of("example/relative.txt", "file:/tmp/order.html",
                         "messages.properties", "templates/order.html"),
                 resources.stream().map(ConfigurationScanner.ResourceUsage::resourcePath).toList());
@@ -60,10 +67,29 @@ class ProgrammaticConfigurationScannerTest {
         ClassWriter writer = new ClassWriter(0);
         writer.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "example/ConfigConsumer", null,
                 "java/lang/Object", null);
+        writer.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL,
+                "MODE_KEY", Type.getDescriptor(String.class), null, "static.mode").visitEnd();
         MethodVisitor method = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
                 "read", "(Ljava/lang/String;Lorg/springframework/core/env/Environment;"
                         + "Lorg/eclipse/microprofile/config/Config;)V", null, null);
         method.visitCode();
+        method.visitLdcInsn("local.mode");
+        method.visitVarInsn(Opcodes.ASTORE, 3);
+        method.visitVarInsn(Opcodes.ALOAD, 3);
+        method.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/System", "getProperty",
+                "(Ljava/lang/String;)Ljava/lang/String;", false);
+        method.visitInsn(Opcodes.POP);
+        method.visitVarInsn(Opcodes.ALOAD, 1);
+        method.visitLdcInsn("custom.mode");
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
+                "example/CustomEnvironment", "getProperty",
+                "(Ljava/lang/String;)Ljava/lang/String;", false);
+        method.visitInsn(Opcodes.POP);
+        method.visitFieldInsn(Opcodes.GETSTATIC, "example/ConfigConsumer", "MODE_KEY",
+                Type.getDescriptor(String.class));
+        method.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/System", "getProperty",
+                "(Ljava/lang/String;)Ljava/lang/String;", false);
+        method.visitInsn(Opcodes.POP);
         method.visitLdcInsn("app.name");
         method.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/System", "getProperty",
                 "(Ljava/lang/String;)Ljava/lang/String;", false);
@@ -106,7 +132,7 @@ class ProgrammaticConfigurationScannerTest {
                 "(Ljava/lang/String;)Ljava/lang/String;", false);
         method.visitInsn(Opcodes.POP);
         method.visitInsn(Opcodes.RETURN);
-        method.visitMaxs(3, 3);
+        method.visitMaxs(3, 4);
         method.visitEnd();
         writer.visitEnd();
         return writer.toByteArray();

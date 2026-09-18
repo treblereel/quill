@@ -141,20 +141,35 @@ final class GitIndexReader {
 
     static Map<Integer, List<GitCommitFile>> findCommitFiles(
             Jdbi jdbi, Collection<Integer> commitIds, int limit) {
+        return findCommitFiles(jdbi, commitIds, limit, 0);
+    }
+
+    static Map<Integer, List<GitCommitFile>> findCommitFiles(
+            Jdbi jdbi, Collection<Integer> commitIds, int limit, int offset) {
         if (commitIds == null || commitIds.isEmpty()) return Map.of();
         return jdbi.withHandle(handle -> {
             Map<Integer, List<GitCommitFile>> result = new LinkedHashMap<>();
             handle.createQuery("SELECT gcf.* FROM git_commit_files gcf "
                             + "JOIN git_commits gc ON gc.id = gcf.commit_id "
                             + "WHERE gcf.commit_id IN (<ids>) "
-                            + "ORDER BY gc.committed_at DESC, gcf.file_path LIMIT :limit")
+                            + "ORDER BY gc.committed_at DESC, gcf.file_path "
+                            + "LIMIT :limit OFFSET :offset")
                     .bindList("ids", new LinkedHashSet<>(commitIds))
                     .bind("limit", limit)
+                    .bind("offset", offset)
                     .map((rs, ctx) -> mapCommitFile(rs))
                     .forEach(file -> result.computeIfAbsent(
                             file.commitId(), ignored -> new ArrayList<>()).add(file));
             return result;
         });
+    }
+
+    static int countCommitFiles(Jdbi jdbi, Collection<Integer> commitIds) {
+        if (commitIds == null || commitIds.isEmpty()) return 0;
+        return jdbi.withHandle(handle -> handle.createQuery(
+                        "SELECT count(*) FROM git_commit_files WHERE commit_id IN (<ids>)")
+                .bindList("ids", new LinkedHashSet<>(commitIds))
+                .mapTo(Integer.class).one());
     }
 
     static Optional<GitFileStats> findFileStatsByClassId(Jdbi jdbi, int classId) {

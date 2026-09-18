@@ -1437,6 +1437,15 @@ public final class IndexReader {
         return GitIndexReader.findCommitFiles(jdbi, commitIds, limit);
     }
 
+    public static Map<Integer, List<GitCommitFile>> findCommitFiles(
+            Jdbi jdbi, Collection<Integer> commitIds, int limit, int offset) {
+        return GitIndexReader.findCommitFiles(jdbi, commitIds, limit, offset);
+    }
+
+    public static int countCommitFiles(Jdbi jdbi, Collection<Integer> commitIds) {
+        return GitIndexReader.countCommitFiles(jdbi, commitIds);
+    }
+
     public static Optional<GitFileStats> findFileStatsByClassId(Jdbi jdbi, int classId) {
         return GitIndexReader.findFileStatsByClassId(jdbi, classId);
     }

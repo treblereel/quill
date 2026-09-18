@@ -268,6 +268,11 @@ public final class QuillToolQueries {
         return git.getRecentChanges(jdbi, commitCount);
     }
 
+    String getRecentChanges(Jdbi jdbi, int commitCount, int fileLimit, int fileOffset,
+            boolean details) {
+        return git.getRecentChanges(jdbi, commitCount, fileLimit, fileOffset, details);
+    }
+
     String getOverview(Jdbi jdbi) {
         return overview.getOverview(jdbi);
     }

@@ -409,9 +409,15 @@ public final class QuillTools {
     @Tool(structured = true, description = "Get recent commits and their changed files/classes.")
     public String get_recent_changes(
             @ToolArg(description = "Number of recent commits to inspect (default: 10)") Optional<Integer> commits,
+            @ToolArg(description = "Changed files per page (default: 200, max: 200)") Optional<Integer> file_limit,
+            @ToolArg(description = "Changed-file offset (default: 0)") Optional<Integer> file_offset,
+            @ToolArg(description = "Include commit and resolved-class details (default: true)") Optional<Boolean> details,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getRecentChanges(
-                p.jdbi(), clamp(commits.orElse(10), 1, 200)));
+                p.jdbi(), clamp(commits.orElse(10), 1, 200),
+                clamp(file_limit.orElse(200), 1, 200),
+                clamp(file_offset.orElse(0), 0, Integer.MAX_VALUE),
+                details.orElse(true)));
     }
 
     @Tool(structured = true, description = "Inspect ordered META-INF/services providers with lines and order-sensitivity analysis.")
@@ -703,6 +709,11 @@ public final class QuillTools {
 
     String getRecentChanges(Jdbi jdbi, int commitCount) {
         return queries.getRecentChanges(jdbi, commitCount);
+    }
+
+    String getRecentChanges(Jdbi jdbi, int commitCount, int fileLimit, int fileOffset,
+            boolean details) {
+        return queries.getRecentChanges(jdbi, commitCount, fileLimit, fileOffset, details);
     }
 
     String getOverview(Jdbi jdbi) {

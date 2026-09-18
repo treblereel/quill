@@ -1677,6 +1677,23 @@ class QuillToolsTest {
     }
 
     @Test
+    void getRecentChangesPagesFilesAndSupportsCompactResponses() throws Exception {
+        var tools = new QuillTools();
+        JsonNode first = JSON.readTree(tools.getRecentChanges(jdbi, 5, 2, 0, false));
+        JsonNode second = JSON.readTree(tools.getRecentChanges(jdbi, 5, 2, 2, false));
+
+        assertEquals(2, first.path("showing").asInt());
+        assertEquals(6, first.path("total").asInt());
+        assertEquals(2, first.path("next_offset").asInt());
+        assertTrue(first.path("has_more").asBoolean());
+        assertEquals(2, second.path("showing").asInt());
+        assertFalse(first.path("details").asBoolean());
+        JsonNode firstCommit = first.path("recent_changes").get(0);
+        assertFalse(firstCommit.has("author"));
+        assertFalse(firstCommit.path("files").get(0).has("class"));
+    }
+
+    @Test
     void getOverviewReturnsProjectSummary() throws Exception {
         var tools = new QuillTools();
         String result = tools.getOverview(jdbi);

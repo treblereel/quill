@@ -379,39 +379,42 @@ final class GitToolQueries {
     }
 
     String getRecentChanges(Jdbi jdbi, int commitCount) {
+        return getRecentChanges(jdbi, commitCount, MAX_RECENT_CHANGE_FILES, 0, true);
+    }
+
+    String getRecentChanges(Jdbi jdbi, int commitCount, int fileLimit, int fileOffset,
+            boolean details) {
         if (!IndexReader.hasGitData(jdbi)) return errorResponse(NO_GIT_MESSAGE);
 
         List<GitCommitRecord> commits = IndexReader.findRecentCommits(jdbi, commitCount);
+        List<Integer> commitIds = commits.stream().map(GitCommitRecord::id).toList();
+        int totalFiles = IndexReader.countCommitFiles(jdbi, commitIds);
         Map<Integer, List<GitCommitFile>> filesByCommit = IndexReader.findCommitFiles(jdbi,
-                commits.stream().map(GitCommitRecord::id).toList(), MAX_RECENT_CHANGE_FILES + 1);
+                commitIds, fileLimit, fileOffset);
         Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(jdbi, filesByCommit.values()
                 .stream().flatMap(Collection::stream).map(GitCommitFile::classId)
                 .filter(Objects::nonNull).toList());
         ObjectNode root = JSON.createObjectNode();
         ArrayNode arr = root.putArray("recent_changes");
         int fileCount = 0;
-        boolean truncated = false;
 
-        recentCommits:
         for (GitCommitRecord c : commits) {
             ObjectNode node = arr.addObject();
             node.put("commit", c.shortHash());
-            node.put("author", c.author());
-            node.put("date", c.committedAt());
-            node.put("message", c.message());
+            if (details) {
+                node.put("author", c.author());
+                node.put("date", c.committedAt());
+                node.put("message", c.message());
+            }
 
             List<GitCommitFile> files = filesByCommit.getOrDefault(c.id(), List.of());
             ArrayNode filesArr = node.putArray("files");
             for (GitCommitFile f : files) {
-                if (fileCount >= MAX_RECENT_CHANGE_FILES) {
-                    truncated = true;
-                    break recentCommits;
-                }
                 ObjectNode fNode = filesArr.addObject();
                 fileCount++;
                 fNode.put("file", f.filePath());
                 fNode.put("change_type", f.changeType());
-                if (f.classId() != null) {
+                if (details && f.classId() != null) {
                     Optional.ofNullable(classesById.get(f.classId())).ifPresent(cl -> {
                         fNode.put("class", cl.className());
                         fNode.put("is_bean", cl.isBean());
@@ -419,10 +422,9 @@ final class GitToolQueries {
                 }
             }
         }
-        if (truncated) {
-            root.put("truncated", true);
-            root.put("file_limit", MAX_RECENT_CHANGE_FILES);
-        }
+        root.put("commit_count", commits.size());
+        root.put("details", details);
+        appendPage(root, fileCount, totalFiles, fileLimit, fileOffset);
         appendMeta(root, jdbi, 0);
         return root.toString();
     }

@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import java.nio.file.Path;
 import java.util.List;
 import org.jdbi.v3.core.Jdbi;
 
@@ -20,6 +21,7 @@ public final class QuillToolQueries {
     private final EntryPointQueries entryPoints = new EntryPointQueries();
     private final ModuleGraphQueries moduleGraph = new ModuleGraphQueries();
     private final CycleQueries cycles = new CycleQueries();
+    private final IndexComparisonQueries indexComparison = new IndexComparisonQueries();
     private final GitToolQueries git = new GitToolQueries();
     private final ProjectOverviewQueries overview = new ProjectOverviewQueries(git);
     private final ChangeRiskQueries risk = new ChangeRiskQueries();
@@ -122,6 +124,10 @@ public final class QuillToolQueries {
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
         return cycles.findCycles(jdbi, scope, module,
                 includeGenerated, includeTests, limit, offset);
+    }
+
+    String compareIndex(Jdbi jdbi, Path projectRoot, String baseline, int detailLimit) {
+        return indexComparison.compareIndex(jdbi, projectRoot, baseline, detailLimit);
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,

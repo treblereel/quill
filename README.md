@@ -144,6 +144,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
 - **find_cycles** — find strongly connected components in class dependencies or direct
   project-module dependencies, including a representative closed path and internal edge kinds;
   nested classes are collapsed into their top-level owner to suppress compiler-structure noise
+- **compare_index** — compare the active immutable index with a retained generation, including
+  class/member, static dependency, bean, and injection-resolution deltas
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
   annotation name or FQCN, with pagination and source/generated breakdown
 - **find_implementations** — find direct/transitive subclasses and implementors, including

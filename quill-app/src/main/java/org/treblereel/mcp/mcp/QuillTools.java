@@ -3,6 +3,7 @@ package org.treblereel.mcp.mcp;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -271,6 +272,16 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Compare the active index with an earlier local generation.")
+    public String compare_index(
+            @ToolArg(description = "Index id or commit; default previous") Optional<String> baseline,
+            @ToolArg(description = "Details per category; default 50") Optional<Integer> limit,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.compareIndex(
+                p.jdbi(), p.root(), baseline.orElse(null),
+                clamp(limit.orElse(50), 1, 200)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -488,6 +499,10 @@ public final class QuillTools {
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
         return queries.findCycles(jdbi, scope, module,
                 includeGenerated, includeTests, limit, offset);
+    }
+
+    String compareIndex(Jdbi jdbi, Path projectRoot, String baseline, int detailLimit) {
+        return queries.compareIndex(jdbi, projectRoot, baseline, detailLimit);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

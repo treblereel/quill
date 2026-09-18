@@ -1032,6 +1032,82 @@ class QuillToolsTest {
     }
 
     @Test
+    void compareIndexReportsStructuralAndResolutionDeltas() throws Exception {
+        Path quillDir = Files.createDirectories(tempDir.resolve(".quill"));
+        Jdbi baseline = QuillDatabase.create(quillDir.resolve("baseline.db"));
+        IndexWriter.write(baseline,
+                List.of(
+                        new ClassRecord(0, "org.acme.OrderService", "CLASS",
+                                "java.lang.Object", List.of(),
+                                "src/main/java/org/acme/OrderService.java", 10, true, 500),
+                        new ClassRecord(0, "org.acme.PaymentService", "INTERFACE",
+                                null, List.of(),
+                                "src/main/java/org/acme/PaymentService.java", 5, false, 100),
+                        new ClassRecord(0, "org.acme.StripePaymentService", "CLASS",
+                                "java.lang.Object", List.of("org.acme.PaymentService"),
+                                "src/main/java/org/acme/StripePaymentService.java", 8, true, 300)),
+                List.of(
+                        new BeanRecord(0, 1, "CLASS", "@ApplicationScoped",
+                                List.of("@Default"), List.of(), false, null,
+                                null, null, null, List.of("OrderService", "Object")),
+                        new BeanRecord(0, 3, "CLASS", "@ApplicationScoped",
+                                List.of("@Default", "@Premium"), List.of(), false, null,
+                                List.of("prod"), null, null,
+                                List.of("PaymentService", "StripePaymentService", "Object"))),
+                List.of(InjectionPointRecord.staticAnalysis(0, 1, "FIELD", "PaymentService",
+                        List.of("@Default"), "paymentService", 2, false,
+                        InjectionPointRecord.STATIC_CDI).withResolution(2, false,
+                        new ResolutionTrace(List.of(), List.of("TYPE_ASSIGNABILITY"), List.of()))),
+                List.of(new DependencyRecord(1, 3, "CDI_INJECT", 1, 2)),
+                Map.of("index_id", "baseline", "indexed_at", "2026-09-16T10:00:00Z",
+                        "last_commit", "old-commit"));
+        jdbi.useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key, value) VALUES ('index_id', 'current')");
+            handle.execute("UPDATE metadata SET value = '2026-09-17T10:00:00Z' "
+                    + "WHERE key = 'indexed_at'");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'checkout', 'checkout():void', 'void',
+                            '[]', '[public]', '[]')
+                    """);
+        });
+
+        JsonNode result = JSON.readTree(new QuillTools().compareIndex(
+                jdbi, tempDir, null, 20));
+
+        assertEquals("baseline", result.path("baseline").path("index_id").asText());
+        assertEquals("current", result.path("current").path("index_id").asText());
+        assertEquals(1, result.path("classes").path("added_count").asInt());
+        assertEquals("org.acme.AuditService",
+                result.path("classes").path("added").get(0).asText());
+        assertEquals(1, result.path("classes").path("modified_count").asInt());
+        assertEquals(1, result.path("dependencies").path("added_count").asInt());
+        assertEquals(1, result.path("dependencies")
+                .path("occurrence_count_changed_count").asInt());
+        assertEquals(1, result.path("beans").path("added_count").asInt());
+        assertEquals(1, result.path("injections").path("added_count").asInt());
+    }
+
+    @Test
+    void compareIndexListsAvailableBaselinesWhenRequestedOneIsMissing() throws Exception {
+        Files.createDirectories(tempDir.resolve(".quill"));
+        Jdbi baseline = QuillDatabase.create(tempDir.resolve(".quill/baseline.db"));
+        IndexWriter.write(baseline, List.of(), List.of(), List.of(), List.of(),
+                Map.of("index_id", "baseline", "indexed_at", "2026-09-16T10:00:00Z",
+                        "last_commit", "old-commit"));
+        jdbi.useHandle(handle -> handle.execute(
+                "INSERT INTO metadata(key, value) VALUES ('index_id', 'current')"));
+
+        JsonNode result = JSON.readTree(new QuillTools().compareIndex(
+                jdbi, tempDir, "missing", 20));
+
+        assertEquals("Baseline index not found: missing", result.path("error").asText());
+        assertEquals("baseline", result.path("available_baselines").get(0).asText());
+    }
+
+    @Test
     void resolveEntitiesSeparatesCurrentAndHistoricalPaths() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO git_file_stats(file_path, class_id, commit_count, last_modified,

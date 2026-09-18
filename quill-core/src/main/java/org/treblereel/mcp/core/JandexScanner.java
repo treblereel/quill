@@ -10,6 +10,7 @@ import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
+import org.treblereel.mcp.model.FrameworkEndpointRecord;
 
 public final class JandexScanner {
 
@@ -269,6 +270,121 @@ public final class JandexScanner {
         }
         return result;
     }
+
+    /** Extracts Spring MVC and JAX-RS HTTP routes, including constant annotation paths. */
+    public static List<FrameworkEndpointRecord> extractFrameworkEndpoints(
+            IndexView index, Map<String, Integer> classNameToId) {
+        List<FrameworkEndpointRecord> result = new ArrayList<>();
+        for (ClassInfo classInfo : index.getKnownClasses().stream()
+                .sorted(Comparator.comparing(value -> value.name().toString())).toList()) {
+            Integer classId = classNameToId.get(classInfo.name().toString());
+            if (classId == null) continue;
+            List<AnnotationInstance> classAnnotations = classInfo.declaredAnnotations();
+            List<String> springClassPaths = annotationPaths(classAnnotations,
+                    Set.of("org.springframework.web.bind.annotation.RequestMapping"));
+            List<String> jaxClassPaths = annotationPaths(classAnnotations,
+                    Set.of("jakarta.ws.rs.Path", "javax.ws.rs.Path"));
+            for (MethodInfo method : classInfo.methods()) {
+                if (method.name().startsWith("<") || synthetic(method.flags())) continue;
+                List<AnnotationInstance> annotations = method.annotations().stream()
+                        .filter(annotation -> annotation.target() != null
+                                && annotation.target().kind() == AnnotationTarget.Kind.METHOD)
+                        .toList();
+                EndpointMetadata metadata = endpointMetadata(annotations);
+                if (metadata == null) continue;
+                List<String> parameters = method.parameterTypes().stream()
+                        .map(Type::toString).toList();
+                String signature = method.name() + "(" + String.join(",", parameters) + "):"
+                        + method.returnType();
+                result.add(new FrameworkEndpointRecord(
+                        classId, classInfo.name().toString(), method.name(), signature,
+                        method.descriptor(identifier -> resolveTypeVariable(
+                                identifier, method.typeParameters(), classInfo.typeParameters())),
+                        metadata.framework(), metadata.httpMethods(),
+                        "spring".equals(metadata.framework()) ? springClassPaths : jaxClassPaths,
+                        metadata.paths(), metadata.annotations()));
+            }
+        }
+        return result;
+    }
+
+    private static EndpointMetadata endpointMetadata(List<AnnotationInstance> annotations) {
+        Set<String> methods = new TreeSet<>();
+        Set<String> paths = new LinkedHashSet<>();
+        Set<String> matches = new TreeSet<>();
+        String framework = null;
+        for (AnnotationInstance annotation : annotations) {
+            String name = annotation.name().toString();
+            String verb = switch (name) {
+                case "jakarta.ws.rs.GET", "javax.ws.rs.GET" -> "GET";
+                case "jakarta.ws.rs.POST", "javax.ws.rs.POST" -> "POST";
+                case "jakarta.ws.rs.PUT", "javax.ws.rs.PUT" -> "PUT";
+                case "jakarta.ws.rs.DELETE", "javax.ws.rs.DELETE" -> "DELETE";
+                case "jakarta.ws.rs.PATCH", "javax.ws.rs.PATCH" -> "PATCH";
+                case "jakarta.ws.rs.HEAD", "javax.ws.rs.HEAD" -> "HEAD";
+                case "jakarta.ws.rs.OPTIONS", "javax.ws.rs.OPTIONS" -> "OPTIONS";
+                case "org.springframework.web.bind.annotation.GetMapping" -> "GET";
+                case "org.springframework.web.bind.annotation.PostMapping" -> "POST";
+                case "org.springframework.web.bind.annotation.PutMapping" -> "PUT";
+                case "org.springframework.web.bind.annotation.DeleteMapping" -> "DELETE";
+                case "org.springframework.web.bind.annotation.PatchMapping" -> "PATCH";
+                default -> null;
+            };
+            boolean springMapping = name.startsWith("org.springframework.web.bind.annotation.")
+                    && (verb != null || name.endsWith("RequestMapping"));
+            boolean jaxMapping = verb != null && (name.startsWith("jakarta.ws.rs.")
+                    || name.startsWith("javax.ws.rs."));
+            boolean jaxPath = name.equals("jakarta.ws.rs.Path")
+                    || name.equals("javax.ws.rs.Path");
+            if (!springMapping && !jaxMapping && !jaxPath) continue;
+            matches.add(name);
+            if (springMapping) framework = "spring";
+            else if (framework == null) framework = "jax-rs";
+            if (verb != null) methods.add(verb);
+            if (name.endsWith("RequestMapping")) {
+                AnnotationValue methodValue = annotation.value("method");
+                if (methodValue != null) {
+                    try {
+                        methods.addAll(Arrays.asList(methodValue.asEnumArray()));
+                    } catch (IllegalArgumentException ignored) {
+                        methods.add(methodValue.asEnum());
+                    }
+                }
+            }
+            paths.addAll(annotationPaths(annotation));
+        }
+        if (framework == null) return null;
+        if (methods.isEmpty()) methods.add("jax-rs".equals(framework) ? "SUBRESOURCE" : "ANY");
+        if (paths.isEmpty()) paths.add("");
+        return new EndpointMetadata(framework, List.copyOf(methods),
+                List.copyOf(paths), List.copyOf(matches));
+    }
+
+    private static List<String> annotationPaths(
+            Collection<AnnotationInstance> annotations, Set<String> accepted) {
+        return annotations.stream()
+                .filter(annotation -> accepted.contains(annotation.name().toString()))
+                .flatMap(annotation -> annotationPaths(annotation).stream())
+                .distinct().toList();
+    }
+
+    private static List<String> annotationPaths(AnnotationInstance annotation) {
+        AnnotationValue value = annotation.value("path");
+        if (value == null) value = annotation.value("value");
+        if (value == null) return List.of();
+        try {
+            if (value.kind() == AnnotationValue.Kind.ARRAY) {
+                return Arrays.asList(value.asStringArray());
+            }
+            return List.of(value.asString());
+        } catch (IllegalArgumentException ignored) {
+            return List.of();
+        }
+    }
+
+    private record EndpointMetadata(
+            String framework, List<String> httpMethods, List<String> paths,
+            List<String> annotations) {}
 
     private static boolean synthetic(short flags) {
         return (flags & 0x1000) != 0;

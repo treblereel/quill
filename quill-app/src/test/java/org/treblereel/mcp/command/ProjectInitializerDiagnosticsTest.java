@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.ServiceProviderScanner;
+import org.treblereel.mcp.model.FrameworkEndpointRecord;
 
 class ProjectInitializerDiagnosticsTest {
 
@@ -30,6 +31,22 @@ class ProjectInitializerDiagnosticsTest {
         assertEquals("module/META-INF/services/com.acme.Service",
                 registration.path("descriptorPath").asText());
         assertEquals(3, registration.path("line").asInt());
+    }
+
+    @Test
+    void serializesFrameworkEndpointsWithoutReflectiveRecordAccess() throws Exception {
+        String json = ProjectInitializer.frameworkEndpointsJson(List.of(
+                new FrameworkEndpointRecord(7, "com.acme.Orders", "create",
+                        "create(com.acme.Order):void", "(Lcom/acme/Order;)V",
+                        "spring", List.of("POST"), List.of("/orders"),
+                        List.of("/{id}"), List.of("PostMapping"))));
+
+        var endpoint = JSON.readTree(json).get(0);
+        assertEquals(7, endpoint.path("classId").asInt());
+        assertEquals("spring", endpoint.path("framework").asText());
+        assertEquals("POST", endpoint.path("httpMethods").get(0).asText());
+        assertEquals("/orders", endpoint.path("classPaths").get(0).asText());
+        assertEquals("/{id}", endpoint.path("methodPaths").get(0).asText());
     }
 
     @Test

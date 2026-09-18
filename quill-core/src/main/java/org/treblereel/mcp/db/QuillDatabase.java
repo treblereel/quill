@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 13;
+    static final int SCHEMA_VERSION = 14;
 
     private QuillDatabase() {}
 

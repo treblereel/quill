@@ -51,6 +51,7 @@ import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.FieldAccessRecord;
+import org.treblereel.mcp.model.FrameworkEndpointRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 import org.treblereel.mcp.model.MethodCallRecord;
@@ -356,6 +357,9 @@ public class ProjectInitializer {
                         scanResult.index(), annotationLookup, classNameToSqliteId);
         List<ClassMemberRecord> classMembers =
                 JandexScanner.extractClassMembers(scanResult.index(), classNameToSqliteId);
+        List<FrameworkEndpointRecord> frameworkEndpoints =
+                JandexScanner.extractFrameworkEndpoints(
+                        scanResult.index(), classNameToSqliteId);
         List<ClassOccurrenceRecord> classOccurrences = ClassOccurrenceScanner.scan(
                 root, classFiles, classDirectoryOwners, classNameToSqliteId);
 
@@ -565,6 +569,8 @@ public class ProjectInitializer {
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
         metadata.put("method_calls", Integer.toString(methodCalls.size()));
         metadata.put("field_accesses", Integer.toString(fieldAccesses.size()));
+        metadata.put("framework_endpoints", Integer.toString(frameworkEndpoints.size()));
+        metadata.put("framework_endpoints_detail", frameworkEndpointsJson(frameworkEndpoints));
         metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
         metadata.put("framework", isSpring && isCdi ? "Mixed"
                 : isSpring ? "Spring" : isCdi ? "CDI" : "Plain");
@@ -703,6 +709,24 @@ public class ProjectInitializer {
                     return row;
                 })
                 .toList();
+        return toJson(rows);
+    }
+
+    static String frameworkEndpointsJson(List<FrameworkEndpointRecord> endpoints) {
+        List<Map<String, Object>> rows = endpoints.stream().map(endpoint -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("classId", endpoint.classId());
+            row.put("className", endpoint.className());
+            row.put("methodName", endpoint.methodName());
+            row.put("signature", endpoint.signature());
+            row.put("descriptor", endpoint.descriptor());
+            row.put("framework", endpoint.framework());
+            row.put("httpMethods", endpoint.httpMethods());
+            row.put("classPaths", endpoint.classPaths());
+            row.put("methodPaths", endpoint.methodPaths());
+            row.put("annotations", endpoint.annotations());
+            return row;
+        }).toList();
         return toJson(rows);
     }
 

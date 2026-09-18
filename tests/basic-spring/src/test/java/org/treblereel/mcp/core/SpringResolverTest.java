@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
 import org.jboss.jandex.Index;
 import org.jboss.jandex.IndexView;
 import org.jboss.jandex.Indexer;
@@ -69,6 +70,21 @@ class SpringResolverTest {
         var result = SpringResolver.resolve(index);
         assertTrue(result.beans().stream()
                 .anyMatch(b -> hasClassName(result, b, "OrderController")));
+    }
+
+    @Test
+    void extractsFrameworkEndpointMethodsAndPaths() {
+        var endpoints = JandexScanner.extractFrameworkEndpoints(
+                index, Map.of(OrderController.class.getName(), 1));
+
+        assertEquals(1, endpoints.size());
+        var endpoint = endpoints.getFirst();
+        assertEquals("spring", endpoint.framework());
+        assertEquals(List.of("POST"), endpoint.httpMethods());
+        assertEquals(List.of("/orders"), endpoint.classPaths());
+        assertEquals(List.of("/{userId}"), endpoint.methodPaths());
+        assertEquals("handleOrder", endpoint.methodName());
+        assertFalse(endpoint.descriptor().isBlank());
     }
 
     @Test

@@ -460,6 +460,25 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Find Spring MVC and JAX-RS routes.")
+    public String find_framework_endpoints(
+            @ToolArg(description = "spring, jax-rs, or all") Optional<String> framework,
+            @ToolArg(description = "HTTP method") Optional<String> http_method,
+            @ToolArg(description = "Route path prefix") Optional<String> path_prefix,
+            @ToolArg(description = "Module filter") Optional<String> module,
+            @ToolArg(description = "Include generated") Optional<Boolean> include_generated,
+            @ToolArg(description = "Include tests") Optional<Boolean> include_tests,
+            @ToolArg(description = "Limit; max 100") Optional<Integer> limit,
+            @ToolArg(description = "Offset") Optional<Integer> offset,
+            @ToolArg(description = "Project") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findFrameworkEndpoints(
+                p.jdbi(), framework.orElse(null), http_method.orElse(null),
+                path_prefix.orElse(null), module.orElse(null),
+                include_generated.orElse(false), include_tests.orElse(false),
+                clamp(limit.orElse(50), 1, 100),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Score class/file change risk from coupling, criticality, churn, bus factor, and fan-in/out.")
     public String assess_change_risk(
             @ToolArg(description = "Class name (short or FQCN), or any project/repository file path") String target,

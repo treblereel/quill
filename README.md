@@ -157,6 +157,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   annotation name or FQCN, with pagination and source/generated breakdown
 - **find_annotated_symbols** — find annotated types, methods, fields, and constructors by short
   annotation name or FQCN; type meta-annotations are supported and member limitations are explicit
+- **find_framework_endpoints** — find Spring MVC and JAX-RS routes with HTTP methods, constant
+  class/method paths, module/source context, and bounded direct project-call evidence
 - **find_implementations** — find direct/transitive subclasses and implementors, including
   generated occurrences grouped by module and evidence about reactor-discovery completeness
 - **find_usages** — find bytecode calls, constructor calls, field access, type references,

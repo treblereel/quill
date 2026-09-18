@@ -2124,6 +2124,46 @@ class QuillToolsTest {
     }
 
     @Test
+    void findFrameworkEndpointsReturnsRoutesAndDirectCalls() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor,
+                       to_class_id, to_method, to_descriptor, invocation_kind,
+                       occurrence_count, evidence_lines)
+                    VALUES (1, 'submit', '(Ljava/lang/String;)V',
+                            3, 'charge', '(Ljava/lang/String;)V', 'virtual', 2, '[42]')""");
+            handle.createUpdate("""
+                    INSERT INTO metadata(key, value) VALUES ('framework_endpoints_detail', :value)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value""")
+                    .bind("value", """
+                            [{"classId":1,"className":"org.acme.OrderService",
+                              "methodName":"submit","signature":"submit(java.lang.String):void",
+                              "descriptor":"(Ljava/lang/String;)V","framework":"spring",
+                              "httpMethods":["POST"],"classPaths":["/orders"],
+                              "methodPaths":["/{id}"],
+                              "annotations":["org.springframework.web.bind.annotation.PostMapping"]}]
+                            """)
+                    .execute();
+        });
+
+        JsonNode result = JSON.readTree(new QuillToolQueries().findFrameworkEndpoints(
+                jdbi, "spring", "post", "/orders", null,
+                false, false, 10, 0));
+
+        assertEquals(1, result.path("total").asInt());
+        JsonNode endpoint = result.path("endpoints").get(0);
+        assertEquals("/orders/{id}", endpoint.path("paths").get(0).asText());
+        assertEquals("submit", endpoint.path("method").asText());
+        assertEquals(1, endpoint.path("direct_project_call_count").asInt());
+        assertEquals("org.acme.StripePaymentService",
+                endpoint.path("direct_project_calls").get(0).path("class").asText());
+        assertEquals(2, endpoint.path("direct_project_calls").get(0)
+                .path("occurrence_count").asInt());
+        assertTrue(result.path("_meta").isObject());
+    }
+
+    @Test
     void structuralQueriesExposeDuplicateOccurrencesAndFilterByOccurrenceModule()
             throws Exception {
         jdbi.useHandle(handle -> {

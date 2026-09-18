@@ -67,6 +67,11 @@ public final class WorkspaceManifestStore {
     }
 
     public static ClearResult clear(Path requestedRoot) throws IOException {
+        return clear(requestedRoot, () -> {});
+    }
+
+    public static ClearResult clear(Path requestedRoot, LockedAction beforeRemoval)
+            throws IOException {
         Path root = normalizeRoot(requestedRoot);
         Path workspace = directory(root);
         if (!Files.exists(workspace, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
@@ -85,6 +90,7 @@ public final class WorkspaceManifestStore {
             throw new IllegalStateException("Workspace is in use: " + root);
         }
         try (WorkspaceLock lock = acquired) {
+            beforeRemoval.run();
             moveForRemoval(workspace, staged);
             WorkspaceCoordinateCatalog.invalidate(root);
             WorkspaceDependencyGraph.invalidate(root);
@@ -149,4 +155,9 @@ public final class WorkspaceManifestStore {
     }
 
     public record ClearResult(Path root, boolean removed) {}
+
+    @FunctionalInterface
+    public interface LockedAction {
+        void run() throws IOException;
+    }
 }

@@ -128,6 +128,26 @@ class WorkspaceCommandTest {
     }
 
     @Test
+    void clearRepositoriesRemovesIndexesAndBuildIntegration() throws Exception {
+        createCompiledRepository("engine");
+        Files.createDirectories(workspace.resolve("documentation/.git"));
+        assertEquals(CommandLine.ExitCode.OK, execute("workspace", "init",
+                "--project", workspace.toString()).exitCode());
+        Path repository = workspace.resolve("engine");
+        assertTrue(Files.isDirectory(repository.resolve(".quill")));
+        assertTrue(Files.isRegularFile(repository.resolve(".mvn/extensions.xml")));
+
+        Captured result = execute("workspace", "clear", "--project", workspace.toString(),
+                "--repositories");
+
+        assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
+        assertFalse(Files.exists(WorkspaceManifestStore.directory(workspace)));
+        assertFalse(Files.exists(repository.resolve(".quill")));
+        assertFalse(Files.exists(repository.resolve(".mvn/extensions.xml")));
+        assertTrue(result.stdout().contains("Cleaned 1 repositories"), result.stdout());
+    }
+
+    @Test
     void clearRejectsSymbolicWorkspaceDirectory() throws Exception {
         Path outside = Files.createDirectories(workspace.resolve("outside"));
         Path workspaceData = WorkspaceManifestStore.directory(workspace);

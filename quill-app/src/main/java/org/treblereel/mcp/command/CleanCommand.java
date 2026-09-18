@@ -20,29 +20,37 @@ public class CleanCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         Path root = ProjectRootFinder.find(projectPath);
-        Path lockedRoot = root;
-
-        BuildIntegrationInstaller.Result integration = BuildIntegrationInstaller.uninstall(root);
-
         try {
-            boolean existed = Files.exists(lockedRoot.resolve(".quill"));
-            boolean removed = ProjectIndexLock.withLockAndDeleteDirectory(
-                    lockedRoot, () -> cleanIndexData(lockedRoot));
-            removed |= existed;
-            if (removed) {
-                System.out.println("Removed index data from " + lockedRoot.resolve(".quill"));
-            } else {
-                System.out.println("No index data found.");
-            }
+            CleanResult result = cleanProject(root);
+            printResult(root, result);
+            return result.integration() == BuildIntegrationInstaller.Result.FAILED
+                    ? picocli.CommandLine.ExitCode.SOFTWARE
+                    : picocli.CommandLine.ExitCode.OK;
         } catch (IOException e) {
             System.err.println("Failed to clean index: " + e.getMessage());
             return picocli.CommandLine.ExitCode.SOFTWARE;
         }
+    }
 
-        if (integration == BuildIntegrationInstaller.Result.REMOVED) {
+    static CleanResult cleanProject(Path root) throws IOException {
+        Path normalized = root.toAbsolutePath().normalize();
+        BuildIntegrationInstaller.Result integration =
+                BuildIntegrationInstaller.uninstall(normalized);
+        boolean existed = Files.exists(normalized.resolve(".quill"));
+        boolean removed = ProjectIndexLock.withLockAndDeleteDirectory(
+                normalized, () -> cleanIndexData(normalized));
+        return new CleanResult(removed || existed, integration);
+    }
+
+    static void printResult(Path root, CleanResult result) {
+        if (result.indexRemoved()) {
+            System.out.println("Removed index data from " + root.resolve(".quill"));
+        } else {
+            System.out.println("No index data found.");
+        }
+        if (result.integration() == BuildIntegrationInstaller.Result.REMOVED) {
             System.out.println("Build integration removed.");
         }
-        return picocli.CommandLine.ExitCode.OK;
     }
 
     private static boolean cleanIndexData(Path root) throws IOException {
@@ -60,4 +68,6 @@ public class CleanCommand implements Callable<Integer> {
         }
         return removed[0];
     }
+
+    record CleanResult(boolean indexRemoved, BuildIntegrationInstaller.Result integration) {}
 }

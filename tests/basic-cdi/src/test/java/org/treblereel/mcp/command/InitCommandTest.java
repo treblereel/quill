@@ -76,6 +76,29 @@ class InitCommandTest {
     }
 
     @Test
+    void initDropsOutdatedSchemaAndPublishesCurrentGeneration() throws Exception {
+        Files.createDirectories(QUILL_DIR);
+        Path outdated = QUILL_DIR.resolve("outdated.db");
+        QuillDatabase.create(outdated).useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key, value) VALUES ('index_id', 'outdated')");
+            handle.execute("PRAGMA user_version = 7");
+        });
+        Files.writeString(QUILL_DIR.resolve("refs.json"),
+                "{\"@worktree\":\"outdated\"}");
+
+        var result = ProjectInitializer.initializeDetailed(PROJECT_ROOT, true);
+
+        assertTrue(result.successful(), result.diagnostic());
+        assertFalse(Files.exists(outdated));
+        Path current = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
+        assertNotNull(current);
+        assertEquals(QuillDatabase.currentSchemaVersion(),
+                QuillDatabase.inspectSchemaVersion(current));
+        assertTrue(ProjectIndexStore.readRefs(QUILL_DIR.resolve("refs.json"))
+                .values().stream().noneMatch("outdated"::equals));
+    }
+
+    @Test
     void detailedInitializationReportsOrderedPhaseTimings() {
         var result = ProjectInitializer.initializeDetailed(PROJECT_ROOT, true);
 

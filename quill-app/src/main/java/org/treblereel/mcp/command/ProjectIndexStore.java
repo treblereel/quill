@@ -124,6 +124,44 @@ public final class ProjectIndexStore {
         writeRefs(root.resolve(".quill/refs.json"), refs);
     }
 
+    static int dropOutdatedGenerations(Path root) {
+        Path quillDir = root.resolve(".quill");
+        if (!Files.isDirectory(quillDir)) return 0;
+        List<Path> outdated = new ArrayList<>();
+        try (Stream<Path> files = Files.list(quillDir)) {
+            for (Path database : files.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".db"))
+                    .toList()) {
+                try {
+                    int version = QuillDatabase.inspectSchemaVersion(database);
+                    if (version >= 0 && version < QuillDatabase.currentSchemaVersion()) {
+                        outdated.add(database);
+                    }
+                } catch (RuntimeException ignored) {
+                    // Corrupt databases follow the existing recovery path. A newer schema must
+                    // remain untouched so the user can upgrade Quill without losing its index.
+                }
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not inspect index generations under "
+                    + quillDir, e);
+        }
+        if (outdated.isEmpty()) return 0;
+
+        Set<String> removed = new HashSet<>();
+        for (Path database : outdated) {
+            String fileName = database.getFileName().toString();
+            removed.add(fileName.substring(0, fileName.length() - ".db".length()));
+            deleteDatabaseArtifacts(database);
+        }
+        Path refsPath = quillDir.resolve("refs.json");
+        Map<String, String> refs = readRefs(refsPath);
+        refs.entrySet().removeIf(entry -> removed.contains(entry.getValue()));
+        writeRefs(refsPath, refs);
+        clearRecovery(root);
+        return outdated.size();
+    }
+
     public static Map<String, String> readRefs(Path refsPath) {
         return readRefsState(refsPath).refs();
     }

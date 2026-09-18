@@ -290,6 +290,16 @@ public class ProjectInitializer {
                     startedAtNanos);
         }
 
+        int outdatedGenerations = ProjectIndexStore.dropOutdatedGenerations(root);
+        if (outdatedGenerations > 0) {
+            System.err.println("[quill] Removed " + outdatedGenerations
+                    + " outdated index generation(s); rebuilding with schema v"
+                    + QuillDatabase.currentSchemaVersion() + ".");
+            if (incrementalBase != null && !Files.isRegularFile(incrementalBase)) {
+                incrementalBase = null;
+            }
+        }
+
         // Compilation is a prerequisite and is never started by Quill. Capture the authoritative
         // commit/worktree snapshot afterwards so generated tracked files do not make a
         // successful compile look like a concurrent mutation.

@@ -347,6 +347,21 @@ public final class QuillDatabase {
         }
     }
 
+    public static int currentSchemaVersion() {
+        return SCHEMA_VERSION;
+    }
+
+    public static int inspectSchemaVersion(Path dbPath) {
+        if (!Files.isRegularFile(dbPath)) return -1;
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+                var statement = connection.createStatement();
+                var result = statement.executeQuery("PRAGMA user_version")) {
+            return result.next() ? result.getInt(1) : 0;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to inspect index schema at " + dbPath, e);
+        }
+    }
+
     public static Jdbi open(Path dbPath) {
         return openExisting(dbPath, true);
     }

@@ -1092,6 +1092,50 @@ class QuillToolsTest {
     }
 
     @Test
+    void getPackageGraphAggregatesCouplingAndSupportsDirections() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    UPDATE classes
+                    SET class_name = 'org.audit.AuditService',
+                        source_file = 'src/main/java/org/audit/AuditService.java'
+                    WHERE id = 4""");
+            handle.execute("""
+                    INSERT INTO dependencies
+                      (from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    VALUES (4, 1, 'TYPE_REFERENCE', 2, '[8,12]')""");
+        });
+
+        QuillToolQueries queries = new QuillToolQueries();
+        JsonNode graph = JSON.readTree(queries.getPackageGraph(
+                jdbi, null, "both", null, false, false, 1, 0));
+        assertEquals(2, graph.path("package_count").asInt());
+        assertEquals(2, graph.path("total").asInt());
+        assertEquals(1, graph.path("showing").asInt());
+        assertTrue(graph.path("has_more").asBoolean());
+        assertTrue(graph.path("relations").get(0).path("occurrence_count").asInt() >= 1);
+
+        JsonNode inbound = JSON.readTree(queries.getPackageGraph(
+                jdbi, "audit", "inbound", null, false, false, 10, 0));
+        assertEquals("org.audit", inbound.path("package").asText());
+        assertEquals(1, inbound.path("total").asInt());
+        assertEquals("org.acme", inbound.path("relations").get(0).path("from").asText());
+        assertEquals("org.audit", inbound.path("relations").get(0).path("to").asText());
+        assertEquals(1, inbound.path("relations").get(0)
+                .path("occurrences_by_kind").path("CONSTRUCTS").asInt());
+
+        JsonNode outbound = JSON.readTree(queries.getPackageGraph(
+                jdbi, "org.audit", "outbound", null, false, false, 10, 0));
+        assertEquals(1, outbound.path("total").asInt());
+        assertEquals(2, outbound.path("relations").get(0)
+                .path("occurrences_by_kind").path("TYPE_REFERENCE").asInt());
+
+        JsonNode missing = JSON.readTree(queries.getPackageGraph(
+                jdbi, "missing", "both", null, false, false, 10, 0));
+        assertEquals("Package not found: missing", missing.path("error").asText());
+        assertTrue(missing.path("_meta").isObject());
+    }
+
+    @Test
     void findCyclesReturnsClassComponentsAndRepresentativePath() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

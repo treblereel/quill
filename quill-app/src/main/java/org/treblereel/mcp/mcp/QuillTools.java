@@ -277,6 +277,23 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Inspect package dependency coupling.")
+    public String get_package_graph(
+            @ToolArg(description = "Package name/suffix; omit for all") Optional<String> package_name,
+            @ToolArg(description = "inbound, outbound, or both") Optional<String> direction,
+            @ToolArg(description = "Module filter") Optional<String> module,
+            @ToolArg(description = "Include generated classes") Optional<Boolean> include_generated,
+            @ToolArg(description = "Include test classes") Optional<Boolean> include_tests,
+            @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.getPackageGraph(
+                p.jdbi(), package_name.orElse(null), direction.orElse("both"),
+                module.orElse(null), include_generated.orElse(false),
+                include_tests.orElse(false), clamp(limit.orElse(100), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Find class or module dependency cycles.")
     public String find_cycles(
             @ToolArg(description = "class (default) or module") Optional<String> scope,

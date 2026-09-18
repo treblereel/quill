@@ -142,6 +142,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   methods, message consumers, annotation processors, and ServiceLoader providers
 - **get_module_graph** — inspect direct Maven/Gradle project-module dependencies and transitive
   classpath visibility in either direction, with module-level class and bean counts
+- **get_package_graph** — aggregate current static class dependencies into package-level coupling,
+  with inbound/outbound filtering, relation kinds, class-pair counts, and module context
 - **find_cycles** — find strongly connected components in class dependencies or direct
   project-module dependencies, including a representative closed path and internal edge kinds;
   nested classes are collapsed into their top-level owner to suppress compiler-structure noise

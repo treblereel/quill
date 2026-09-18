@@ -48,13 +48,17 @@ public final class WorkspaceProjectScope implements ProjectScope {
         return manifest.root();
     }
 
+    public WorkspaceManifest manifest() {
+        return manifest;
+    }
+
     @Override
     public List<Project> select(Snapshot snapshot, String selector) {
         if (selector == null || selector.isBlank()) return snapshot.projects();
         String value = selector.strip();
         List<Project> direct = snapshot.projects().stream()
                 .filter(project -> project.name().equalsIgnoreCase(value)
-                        || relative(project.root()).equalsIgnoreCase(normalize(value))
+                        || relativeMatches(project.root(), value)
                         || containsAbsolute(project.root(), value))
                 .toList();
         if (!direct.isEmpty() || !value.contains(":")) return direct;
@@ -93,6 +97,14 @@ public final class WorkspaceProjectScope implements ProjectScope {
 
     private String relative(Path projectRoot) {
         return normalize(manifest.root().relativize(projectRoot));
+    }
+
+    private boolean relativeMatches(Path projectRoot, String selector) {
+        String repository = relative(projectRoot);
+        String normalized = normalize(selector);
+        return repository.equalsIgnoreCase(normalized)
+                || normalized.regionMatches(true, 0, repository + "/", 0,
+                        repository.length() + 1);
     }
 
     private boolean containsAbsolute(Path projectRoot, String selector) {

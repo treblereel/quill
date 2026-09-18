@@ -29,6 +29,7 @@ public final class QuillTools {
     private final WorktreeStatusQueries worktreeStatus;
     private final PositionSymbolQueries positionSymbols;
     private final ExternalSymbolQueries externalSymbols;
+    private final WorkspaceToolQueries workspace;
 
     public QuillTools() {
         this(new ProjectRegistry());
@@ -42,6 +43,36 @@ public final class QuillTools {
         this.worktreeStatus = new WorktreeStatusQueries();
         this.positionSymbols = new PositionSymbolQueries();
         this.externalSymbols = new ExternalSymbolQueries();
+        this.workspace = new WorkspaceToolQueries(registry);
+    }
+
+    @Tool(structured = true, description = "List workspace repositories, freshness, and coordinates.")
+    public String list_workspace_repositories(
+            @ToolArg(description = "Include modules; default false") Optional<Boolean> include_modules,
+            @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset) {
+        return ResponseBudget.apply(workspace.listRepositories(include_modules.orElse(false),
+                clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
+    @Tool(structured = true, description = "Get cross-repository dependencies and version drift.")
+    public String get_workspace_dependencies(
+            @ToolArg(description = "Repository; omit for all") Optional<String> repository,
+            @ToolArg(description = "consumers, providers, or both") Optional<String> direction,
+            @ToolArg(description = "Cross-repository only; default true") Optional<Boolean> cross_repository_only,
+            @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset) {
+        return ResponseBudget.apply(workspace.getDependencies(repository.orElse(null),
+                direction.orElse("both"), cross_repository_only.orElse(true),
+                clamp(limit.orElse(100), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
+    @Tool(structured = true, description = "Resolve a workspace repository, coordinate, path, or class.")
+    public String resolve_workspace_entity(
+            @ToolArg(description = "Repository, path, GA, or class") String target) {
+        return ResponseBudget.apply(workspace.resolveEntity(target));
     }
 
     @Tool(structured = true, description = "Find CDI/Spring beans, producers, interceptors, or decorators. Returns DI and source context.")

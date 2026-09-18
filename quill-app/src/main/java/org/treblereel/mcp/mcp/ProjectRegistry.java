@@ -175,6 +175,10 @@ public class ProjectRegistry {
         return scope.snapshot().projects().stream().map(ProjectScope.Project::name).toList();
     }
 
+    WorkspaceProjectScope workspaceScope() {
+        return scope instanceof WorkspaceProjectScope workspace ? workspace : null;
+    }
+
     int cachedDatabaseCount() {
         return databases.size();
     }

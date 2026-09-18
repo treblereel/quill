@@ -3,8 +3,8 @@
 Latency and payload size do not prove that an agent completes engineering tasks more
 accurately or with fewer tokens. Quill therefore keeps three benchmark stages separate:
 
-1. `scripts/quill_benchmark.py` measures indexing, memory, MCP latency, concurrency, and actual
-   structured-response byte size.
+1. `scripts/quill_benchmark.py` measures indexing, memory, MCP latency, concurrency, exact
+   `tools/list` catalog bytes, and actual structured-response byte size.
 2. `scripts/quill_agent_benchmark.py` runs the same task suite through the OpenAI Responses API
    once with Quill and once without Quill.
 3. `scripts/quill_task_benchmark.py` scores the two captured runs.

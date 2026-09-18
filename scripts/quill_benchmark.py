@@ -280,6 +280,18 @@ def payload_summary(responses: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def catalog_summary(response: dict[str, Any]) -> dict[str, int]:
+    """Measure the exact tools/list payload delivered to an MCP client."""
+    tools = response.get("result", {}).get("tools")
+    if not isinstance(tools, list):
+        raise RuntimeError(f"Invalid MCP tools/list response: {response}")
+    return {
+        "tool_catalog_count": len(tools),
+        "tool_catalog_bytes": len(json.dumps(
+            tools, ensure_ascii=False, separators=(",", ":")).encode("utf-8")),
+    }
+
+
 def benchmark_mcp(command: list[str], project: Path, warmup: int,
                   samples_per_tool: int, concurrency: list[int],
                   timeout_seconds: int) -> dict[str, Any]:
@@ -302,6 +314,11 @@ def benchmark_mcp(command: list[str], project: Path, warmup: int,
         client.process.stdin.write(
             '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n')
         client.flush()
+
+        client.send(next_id, "tools/list", {})
+        client.flush()
+        catalog = catalog_summary(client.receive({next_id}, timeout_seconds)[next_id])
+        next_id += 1
 
         for index in range(warmup):
             name, arguments = TOOLS[index % len(TOOLS)]
@@ -369,6 +386,7 @@ def benchmark_mcp(command: list[str], project: Path, warmup: int,
             "startup_seconds": round(startup_seconds, 3),
             "warmup_requests": warmup,
             "samples_per_tool": samples_per_tool,
+            **catalog,
             "tools": tools,
             "batches": batches,
         }
@@ -422,6 +440,8 @@ def print_report(result: dict[str, Any], output: Path) -> None:
             f"{phase}={millis}ms" for phase, millis in timings.items()))
     print(f"Index: {result['index']['database_count']} DB, "
           f"{result['index']['size_mib']:.2f} MiB")
+    print(f"MCP catalog: {result['mcp']['tool_catalog_count']} tools, "
+          f"{result['mcp']['tool_catalog_bytes']} bytes")
     print("\ntool                  samples  p50(ms)  p95(ms)  max(ms)  errors  "
           "payload p50/p95 bytes")
     for tool in result["mcp"]["tools"]:
@@ -469,7 +489,7 @@ def main() -> int:
             return cold["exit_code"] or 1
         database_count, size_bytes = index_size(project)
         result = {
-            "schema_version": 3,
+            "schema_version": 4,
             "measured_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "host": host_metadata(),
             "project": str(project),

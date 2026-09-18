@@ -2,8 +2,8 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from quill_benchmark import (IndexSandbox, latency_summary, parse_concurrency, payload_summary,
-                             parse_phase_timings, percentile)
+from quill_benchmark import (IndexSandbox, catalog_summary, latency_summary, parse_concurrency,
+                             payload_summary, parse_phase_timings, percentile)
 
 
 class QuillBenchmarkTest(unittest.TestCase):
@@ -41,6 +41,20 @@ class QuillBenchmarkTest(unittest.TestCase):
             {"result": {"isError": True}},
             {"error": {"message": "failed"}},
         ]))
+
+    def test_catalog_summary_measures_exact_compact_json_bytes(self):
+        tools = [{"name": "one", "inputSchema": {"type": "object"}},
+                 {"name": "two", "description": "Unicode: ключ"}]
+        summary = catalog_summary({"result": {"tools": tools}})
+        self.assertEqual(2, summary["tool_catalog_count"])
+        self.assertEqual(
+            len(__import__("json").dumps(
+                tools, ensure_ascii=False, separators=(",", ":")).encode("utf-8")),
+            summary["tool_catalog_bytes"])
+
+    def test_catalog_summary_rejects_invalid_response(self):
+        with self.assertRaises(RuntimeError):
+            catalog_summary({"result": {}})
 
     def test_parse_phase_timings(self):
         stderr = ("[quill] Indexing sample...\n"

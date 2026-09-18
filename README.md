@@ -71,6 +71,9 @@ python3 scripts/quill_benchmark.py \
   --project /path/to/large/project
 ```
 
+The JSON and console report include the exact MCP `tools/list` count and byte size, so catalog
+growth is measured alongside response latency and payload size.
+
 It reports peak process-tree memory, index size, and p50/p95 latency for bursts of
 4, 16, and 100 requests. Existing `.quill` data is backed up and restored by default;
 machine-readable results are written below `target/benchmarks/`.

@@ -86,6 +86,8 @@ public final class WorkspaceManifestStore {
         }
         try (WorkspaceLock lock = acquired) {
             moveForRemoval(workspace, staged);
+            WorkspaceCoordinateCatalog.invalidate(root);
+            WorkspaceDependencyGraph.invalidate(root);
             deleteTree(staged);
         }
         return new ClearResult(root, true);

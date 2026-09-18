@@ -5,12 +5,18 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ProjectCoordinatesDiscovery;
 
 /** Workspace-wide mapping from build coordinates to local repository modules. */
 public final class WorkspaceCoordinateCatalog {
+
+    private record CacheEntry(String fingerprint, Result result) {}
+
+    private static final ConcurrentHashMap<java.nio.file.Path, CacheEntry> CACHE =
+            new ConcurrentHashMap<>();
 
     public record Module(
             String repository,
@@ -45,6 +51,31 @@ public final class WorkspaceCoordinateCatalog {
 
     public static Result discover(WorkspaceManifest manifest) {
         WorkspaceDiscovery.Result repositories = WorkspaceDiscovery.discover(manifest);
+        java.nio.file.Path root = manifest.root().toAbsolutePath().normalize();
+        CacheEntry cached = CACHE.get(root);
+        if (cached != null) {
+            String fingerprint = WorkspaceMetadataFingerprint.compute(
+                    repositories, cached.result().modules(), false);
+            if (cached.fingerprint().equals(fingerprint)) return cached.result();
+        }
+        return CACHE.compute(root, (ignored, current) -> {
+            if (current != null) {
+                String fingerprint = WorkspaceMetadataFingerprint.compute(
+                        repositories, current.result().modules(), false);
+                if (current.fingerprint().equals(fingerprint)) return current;
+            }
+            Result result = discoverUncached(repositories);
+            String fingerprint = WorkspaceMetadataFingerprint.compute(
+                    repositories, result.modules(), false);
+            return new CacheEntry(fingerprint, result);
+        }).result();
+    }
+
+    static void invalidate(java.nio.file.Path workspaceRoot) {
+        CACHE.remove(workspaceRoot.toAbsolutePath().normalize());
+    }
+
+    private static Result discoverUncached(WorkspaceDiscovery.Result repositories) {
         List<Module> modules = new ArrayList<>();
         List<String> diagnostics = new ArrayList<>(repositories.diagnostics());
         boolean complete = repositories.diagnostics().isEmpty();

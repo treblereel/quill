@@ -9,12 +9,17 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.DeclaredDependencyDiscovery;
 import org.treblereel.mcp.core.DependencyIndexer;
 
 /** Resolves declared module dependencies onto providers in the same workspace. */
 public final class WorkspaceDependencyGraph {
+
+    private record CacheEntry(String fingerprint, Result result) {}
+
+    private static final ConcurrentHashMap<Path, CacheEntry> CACHE = new ConcurrentHashMap<>();
 
     public record Edge(
             String consumerRepository,
@@ -45,6 +50,23 @@ public final class WorkspaceDependencyGraph {
     public static Result discover(WorkspaceManifest manifest) {
         WorkspaceCoordinateCatalog.Result catalog = WorkspaceCoordinateCatalog.discover(manifest);
         WorkspaceDiscovery.Result repositories = WorkspaceDiscovery.discover(manifest);
+        Path workspaceRoot = manifest.root().toAbsolutePath().normalize();
+        String fingerprint = WorkspaceMetadataFingerprint.compute(
+                repositories, catalog.modules(), true);
+        CacheEntry cached = CACHE.get(workspaceRoot);
+        if (cached != null && cached.fingerprint().equals(fingerprint)) return cached.result();
+        return CACHE.compute(workspaceRoot, (ignored, current) -> {
+            if (current != null && current.fingerprint().equals(fingerprint)) return current;
+            return new CacheEntry(fingerprint, discoverUncached(catalog, repositories));
+        }).result();
+    }
+
+    static void invalidate(Path workspaceRoot) {
+        CACHE.remove(workspaceRoot.toAbsolutePath().normalize());
+    }
+
+    private static Result discoverUncached(WorkspaceCoordinateCatalog.Result catalog,
+            WorkspaceDiscovery.Result repositories) {
         Map<String, Path> roots = new LinkedHashMap<>();
         repositories.repositories().forEach(repository ->
                 roots.put(repository.name(), repository.root()));

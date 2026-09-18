@@ -1,6 +1,8 @@
 package org.treblereel.mcp.workspace;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
@@ -40,6 +42,21 @@ class WorkspaceDependencyGraphTest {
         assertEquals("binary_behind_checkout", edge.status());
         assertTrue(edge.crossRepository());
         assertEquals(java.util.Set.of("compile"), edge.scopes());
+
+        WorkspaceDependencyGraph.Result cached = WorkspaceDependencyGraph.discover(manifest);
+        assertSame(graph, cached);
+
+        Path newerJar = workspace.resolve("m2/io/casehub/provider-api/2.0/provider-api-2.0.jar");
+        Files.createDirectories(newerJar.getParent());
+        Files.createFile(newerJar);
+        Files.writeString(target.resolve("quill-classpath.txt"), newerJar.toString());
+        Files.setLastModifiedTime(target.resolve("quill-classpath.txt"),
+                java.nio.file.attribute.FileTime.fromMillis(
+                        System.currentTimeMillis() + 2_000));
+
+        WorkspaceDependencyGraph.Result changed = WorkspaceDependencyGraph.discover(manifest);
+        assertNotSame(graph, changed);
+        assertEquals("version_match", changed.edges().getFirst().status());
     }
 
     @Test

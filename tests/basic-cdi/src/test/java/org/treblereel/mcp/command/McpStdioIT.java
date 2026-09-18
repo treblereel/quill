@@ -69,6 +69,20 @@ class McpStdioIT {
     }
 
     @Test
+    void nativeToolCatalogMatchesJvmArtifact() throws Exception {
+        Path appJar = resolveAppJar();
+        Path nativeImage = resolveNativeImage();
+        Assumptions.assumeTrue(Files.exists(appJar));
+        Assumptions.assumeTrue(Files.isExecutable(nativeImage),
+                "Skipping: native image not found (build with -Pnative)");
+
+        JsonNode jvmCatalog = readToolCatalog(List.of("java", "-jar", appJar.toString()));
+        JsonNode nativeCatalog = readToolCatalog(List.of(nativeImage.toString()));
+        assertEquals(jvmCatalog, nativeCatalog,
+                "Native MCP catalog must exactly match the JVM artifact; rebuild from the reactor root");
+    }
+
+    @Test
     void mcpServesStaleGenerationWhileCurrentHeadIsNotIndexed() throws Exception {
         Path appJar = resolveAppJar();
         Assumptions.assumeTrue(Files.exists(appJar));
@@ -386,6 +400,33 @@ class McpStdioIT {
 
         String stderrText = stderr.toString(java.nio.charset.StandardCharsets.UTF_8);
         assertFalse(stderrText.contains("restricted method"), stderrText);
+    }
+
+    private JsonNode readToolCatalog(List<String> launcher) throws Exception {
+        List<String> command = new ArrayList<>(launcher);
+        command.add("--mcp");
+        command.add("--project");
+        command.add(PROJECT_ROOT.toString());
+        Process process = new ProcessBuilder(command)
+                .directory(PROJECT_ROOT.toFile())
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        try (BufferedWriter input = new BufferedWriter(
+                        new OutputStreamWriter(process.getOutputStream()));
+                BufferedReader output = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+            sendRequest(input, 1, "initialize", """
+                    {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"catalog-test","version":"1"}}""");
+            assertNotNull(readResponse(output, 1).get("result"));
+            sendNotification(input, "notifications/initialized", "{}");
+            sendRequest(input, 2, "tools/list", "{}");
+            JsonNode tools = readResponse(output, 2).path("result").path("tools");
+            assertTrue(tools.isArray(), "tools/list should return a tools array");
+            return tools.deepCopy();
+        } finally {
+            process.destroyForcibly();
+            process.waitFor(5, TimeUnit.SECONDS);
+        }
     }
 
     private void assertPipelinedToolCalls(List<String> launcher) throws Exception {

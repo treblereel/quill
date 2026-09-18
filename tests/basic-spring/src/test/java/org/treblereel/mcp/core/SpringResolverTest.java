@@ -96,7 +96,9 @@ class SpringResolverTest {
         Path resources = tempDir.resolve("src/main/resources");
         Files.createDirectories(resources.resolve("META-INF"));
         Files.writeString(resources.resolve("application.properties"),
-                "orders.region=us-west\norders.currency USD\n");
+                "orders.region=us-west\norders.currency USD\n"
+                        + "orders\\.escaped=value\norders.empty\n"
+                        + "orders.long\\\n  .name=value\n");
         Files.writeString(resources.resolve("application.yml"),
                 "orders:\n  timeout: 30s\n");
         Files.writeString(resources.resolve("META-INF/persistence.xml"),
@@ -115,6 +117,15 @@ class SpringResolverTest {
         assertTrue(result.definitions().stream()
                 .anyMatch(value -> value.key().equals("orders.currency")
                         && value.kind().equals("property") && value.line() == 2));
+        assertTrue(result.definitions().stream()
+                .anyMatch(value -> value.key().equals("orders.escaped")
+                        && value.kind().equals("property") && value.line() == 3));
+        assertTrue(result.definitions().stream()
+                .anyMatch(value -> value.key().equals("orders.empty")
+                        && value.kind().equals("property") && value.line() == 4));
+        assertTrue(result.definitions().stream()
+                .anyMatch(value -> value.key().equals("orders.long.name")
+                        && value.kind().equals("property") && value.line() == 5));
         assertTrue(result.definitions().stream()
                 .anyMatch(value -> value.key().equals("orders.timeout")
                         && value.kind().equals("yaml_property")));

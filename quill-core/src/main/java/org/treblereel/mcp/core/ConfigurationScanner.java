@@ -1,6 +1,7 @@
 package org.treblereel.mcp.core;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,6 +13,7 @@ import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -128,31 +130,50 @@ public final class ConfigurationScanner {
     private static void parseProperties(Path root, Path file, SourceContext context,
             List<Definition> target) throws IOException {
         List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
-        for (int i = 0; i < lines.size(); i++) {
-            String line = lines.get(i).strip();
-            if (line.isEmpty() || line.startsWith("#") || line.startsWith("!")) continue;
-            int separator = propertySeparator(line);
-            if (separator <= 0) continue;
-            String key = line.substring(0, separator).strip();
-            if (!key.isEmpty()) target.add(new Definition(key, "property", relative(root, file),
-                    i + 1, context.module(), context.sourceSet()));
-        }
-    }
-
-    private static int propertySeparator(String line) {
-        for (int i = 0; i < line.length(); i++) {
-            char value = line.charAt(i);
-            if ((value == '=' || value == ':' || Character.isWhitespace(value))
-                    && !isEscaped(line, i)) {
-                return i;
+        for (LogicalProperty logical : logicalProperties(lines)) {
+            Properties parsed = new Properties();
+            try {
+                parsed.load(new StringReader(logical.value()));
+            } catch (IllegalArgumentException ignored) {
+                continue;
+            }
+            for (String key : parsed.stringPropertyNames()) {
+                if (!key.isEmpty()) target.add(new Definition(key, "property", relative(root, file),
+                        logical.line(), context.module(), context.sourceSet()));
             }
         }
-        return -1;
     }
 
-    private static boolean isEscaped(String value, int index) {
+    private static List<LogicalProperty> logicalProperties(List<String> lines) {
+        List<LogicalProperty> result = new ArrayList<>();
+        StringBuilder current = null;
+        int firstLine = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            String physical = lines.get(i);
+            if (current == null) {
+                String stripped = physical.stripLeading();
+                if (stripped.isEmpty() || stripped.startsWith("#") || stripped.startsWith("!")) {
+                    continue;
+                }
+                current = new StringBuilder(physical);
+                firstLine = i + 1;
+            } else {
+                current.append(physical.stripLeading());
+            }
+            if (hasContinuation(current)) {
+                current.deleteCharAt(current.length() - 1);
+                continue;
+            }
+            result.add(new LogicalProperty(current.toString(), firstLine));
+            current = null;
+        }
+        if (current != null) result.add(new LogicalProperty(current.toString(), firstLine));
+        return result;
+    }
+
+    private static boolean hasContinuation(CharSequence value) {
         int backslashes = 0;
-        for (int i = index - 1; i >= 0 && value.charAt(i) == '\\'; i--) backslashes++;
+        for (int i = value.length() - 1; i >= 0 && value.charAt(i) == '\\'; i--) backslashes++;
         return backslashes % 2 != 0;
     }
 
@@ -335,4 +356,5 @@ public final class ConfigurationScanner {
     private record TargetContext(String member, Integer parameterIndex) {}
     private record SourceContext(String module, String sourceSet) {}
     private record YamlKey(int indent, String key) {}
+    private record LogicalProperty(String value, int line) {}
 }

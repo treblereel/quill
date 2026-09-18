@@ -7,6 +7,7 @@ import java.util.concurrent.Callable;
 import org.treblereel.mcp.workspace.WorkspaceManifest;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 import org.treblereel.mcp.mcp.WorkspaceProjectScope;
+import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -27,6 +28,7 @@ public final class WorkspaceStatusCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         WorkspaceManifest manifest = WorkspaceManifestStore.read(workspaceRoot);
         var snapshot = new WorkspaceProjectScope(manifest.root()).snapshot();
+        var coordinates = WorkspaceCoordinateCatalog.discover(manifest);
         if (json) {
             ObjectNode root = JSON.createObjectNode();
             root.put("workspace_root", manifest.root().toString());
@@ -41,6 +43,9 @@ public final class WorkspaceStatusCommand implements Callable<Integer> {
                             "name", project.name(), "root", project.root().toString()))
                     .toList()));
             root.set("diagnostics", JSON.valueToTree(snapshot.diagnostics()));
+            root.put("module_count", coordinates.modules().size());
+            root.put("coordinates_complete", coordinates.complete());
+            root.set("coordinate_diagnostics", JSON.valueToTree(coordinates.diagnostics()));
             System.out.println(root);
         } else {
             System.out.println("Workspace: " + manifest.root());
@@ -49,6 +54,9 @@ public final class WorkspaceStatusCommand implements Callable<Integer> {
             System.out.println("  Manifest:        "
                     + WorkspaceManifestStore.manifest(manifest.root()));
             System.out.println("  Repositories:    " + snapshot.projects().size());
+            System.out.println("  Modules:         " + coordinates.modules().size());
+            System.out.println("  Coordinates:     "
+                    + (coordinates.complete() ? "complete" : "incomplete"));
         }
         return CommandLine.ExitCode.OK;
     }

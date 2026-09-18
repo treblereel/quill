@@ -1853,6 +1853,49 @@ class QuillToolsTest {
     }
 
     @Test
+    void findAnnotatedSymbolsIncludesTypesAndMembers() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_annotations
+                      (class_id, annotation_name, direct, via_annotation)
+                    VALUES (1, 'org.acme.Tracked', 0, 'org.acme.Specialized')""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    VALUES (1, 'METHOD', 'submit', 'submit():void', 'void', '[]',
+                            'public', '["org.acme.Tracked"]')""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    VALUES (3, 'FIELD', 'audit', 'audit:boolean', 'boolean', '[]',
+                            'private', '["org.acme.Tracked"]')""");
+        });
+
+        QuillToolQueries queries = new QuillToolQueries();
+        JsonNode all = JSON.readTree(queries.findAnnotatedSymbols(
+                jdbi, "@Tracked", "all", true, 2, 0));
+        assertEquals("org.acme.Tracked", all.path("annotation").asText());
+        assertEquals(3, all.path("total").asInt());
+        assertEquals(2, all.path("showing").asInt());
+        assertTrue(all.path("has_more").asBoolean());
+        assertEquals("TYPE", all.path("symbols").get(0).path("kind").asText());
+        assertEquals("meta", all.path("symbols").get(0).path("match").asText());
+        assertEquals("org.acme.Specialized",
+                all.path("symbols").get(0).path("via_annotation").asText());
+
+        JsonNode fields = JSON.readTree(queries.findAnnotatedSymbols(
+                jdbi, "org.acme.Tracked", "field", false, 10, 0));
+        assertEquals(1, fields.path("total").asInt());
+        assertEquals("audit", fields.path("symbols").get(0).path("name").asText());
+        assertEquals("direct", fields.path("symbols").get(0).path("match").asText());
+        assertEquals("type_declarations_only",
+                fields.path("meta_annotation_scope").asText());
+        assertTrue(fields.path("_meta").isObject());
+    }
+
+    @Test
     void structuralQueriesExposeDuplicateOccurrencesAndFilterByOccurrenceModule()
             throws Exception {
         jdbi.useHandle(handle -> {

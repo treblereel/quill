@@ -150,6 +150,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   index freshness, and the next required action without invoking Maven or Gradle
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
   annotation name or FQCN, with pagination and source/generated breakdown
+- **find_annotated_symbols** — find annotated types, methods, fields, and constructors by short
+  annotation name or FQCN; type meta-annotations are supported and member limitations are explicit
 - **find_implementations** — find direct/transitive subclasses and implementors, including
   generated occurrences grouped by module and evidence about reactor-discovery completeness
 - **find_usages** — find bytecode calls, constructor calls, field access, type references,

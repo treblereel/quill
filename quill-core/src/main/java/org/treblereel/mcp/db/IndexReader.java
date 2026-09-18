@@ -41,6 +41,24 @@ public final class IndexReader {
             String sourceSet,
             int sourceTokens) {}
 
+    public record AnnotatedSymbolResult(
+            int classId,
+            String className,
+            String symbolKind,
+            String symbolName,
+            String signature,
+            String typeName,
+            List<String> parameterTypes,
+            String modifiers,
+            String match,
+            String viaAnnotation,
+            String sourceFile,
+            int sourceLine,
+            String origin,
+            String module,
+            String sourceSet,
+            int sourceTokens) {}
+
     public record MethodCallView(
             int fromClassId,
             String fromClass,
@@ -222,6 +240,103 @@ public final class IndexReader {
                 .bind("suffix", suffix)
                 .mapTo(String.class)
                 .list());
+    }
+
+    public static List<String> findSymbolAnnotationNames(Jdbi jdbi, String target) {
+        String normalized = target.startsWith("@") ? target.substring(1) : target;
+        String suffix = "%." + normalized;
+        return jdbi.withHandle(h -> h.createQuery("""
+                        WITH annotation_names(name) AS (
+                            SELECT a.annotation_name
+                            FROM class_annotations a JOIN classes c ON c.id = a.class_id
+                            WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                            UNION
+                            SELECT CAST(annotation.value AS TEXT)
+                            FROM class_members m
+                            JOIN classes c ON c.id = m.class_id
+                            JOIN json_each(m.annotations) annotation
+                            WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                        )
+                        SELECT DISTINCT name FROM annotation_names
+                        WHERE name = :name OR name LIKE :suffix
+                        ORDER BY CASE WHEN name = :name THEN 0 ELSE 1 END, name""")
+                .bind("name", normalized)
+                .bind("suffix", suffix)
+                .mapTo(String.class)
+                .list());
+    }
+
+    public static List<AnnotatedSymbolResult> findAnnotatedSymbols(
+            Jdbi jdbi, String annotationName, String symbolKind,
+            boolean includeMetaAnnotations, int limit, int offset) {
+        String sql = annotatedSymbolsCte() + """
+                SELECT * FROM symbols
+                ORDER BY CASE symbol_kind WHEN 'CLASS' THEN 0 WHEN 'INTERFACE' THEN 0
+                         WHEN 'ENUM' THEN 0 WHEN 'ANNOTATION' THEN 0
+                         WHEN 'RECORD' THEN 0 WHEN 'FIELD' THEN 1
+                         WHEN 'CONSTRUCTOR' THEN 2 ELSE 3 END,
+                         class_name, symbol_name, signature
+                LIMIT :limit OFFSET :offset""";
+        return jdbi.withHandle(handle -> handle.createQuery(sql)
+                .bind("annotation", annotationName)
+                .bind("includeMeta", includeMetaAnnotations ? 1 : 0)
+                .bind("kind", symbolKind)
+                .bind("limit", limit)
+                .bind("offset", offset)
+                .map((rs, ctx) -> new AnnotatedSymbolResult(
+                        rs.getInt("class_id"), rs.getString("class_name"),
+                        rs.getString("symbol_kind"), rs.getString("symbol_name"),
+                        rs.getString("signature"), rs.getString("type_name"),
+                        fromJson(rs.getString("parameter_types")),
+                        rs.getString("modifiers"), rs.getString("match"),
+                        rs.getString("via_annotation"), rs.getString("source_file"),
+                        rs.getInt("source_line"), rs.getString("origin"),
+                        rs.getString("module"), rs.getString("source_set"),
+                        rs.getInt("source_tokens")))
+                .list());
+    }
+
+    public static int countAnnotatedSymbols(Jdbi jdbi, String annotationName,
+            String symbolKind, boolean includeMetaAnnotations) {
+        return jdbi.withHandle(handle -> handle.createQuery(
+                        annotatedSymbolsCte() + "SELECT count(*) FROM symbols")
+                .bind("annotation", annotationName)
+                .bind("includeMeta", includeMetaAnnotations ? 1 : 0)
+                .bind("kind", symbolKind)
+                .mapTo(Integer.class).one());
+    }
+
+    private static String annotatedSymbolsCte() {
+        return """
+                WITH symbols AS (
+                    SELECT c.id AS class_id, c.class_name, c.kind AS symbol_kind,
+                           c.class_name AS symbol_name, NULL AS signature,
+                           c.class_name AS type_name, '[]' AS parameter_types,
+                           '' AS modifiers,
+                           CASE WHEN MAX(a.direct) = 1 THEN 'direct' ELSE 'meta' END AS match,
+                           MIN(CASE WHEN a.direct = 0 THEN a.via_annotation END) AS via_annotation,
+                           c.source_file, c.source_line, c.origin, c.module, c.source_set,
+                           c.source_tokens
+                    FROM classes c JOIN class_annotations a ON a.class_id = c.id
+                    WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                      AND a.annotation_name = :annotation
+                      AND (:includeMeta = 1 OR a.direct = 1)
+                      AND (:kind = 'ALL' OR :kind = 'TYPE')
+                    GROUP BY c.id
+                    UNION ALL
+                    SELECT c.id, c.class_name, m.kind, m.name, m.signature,
+                           m.type_name, m.parameter_types, m.modifiers,
+                           'direct', NULL,
+                           c.source_file, c.source_line, c.origin, c.module, c.source_set,
+                           c.source_tokens
+                    FROM class_members m
+                    JOIN classes c ON c.id = m.class_id
+                    JOIN json_each(m.annotations) annotation
+                    WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                      AND CAST(annotation.value AS TEXT) = :annotation
+                      AND (:kind = 'ALL' OR m.kind = :kind)
+                )
+                """;
     }
 
     public static List<ClassRecord> findAnnotatedClasses(Jdbi jdbi, String annotationName,

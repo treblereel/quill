@@ -88,12 +88,21 @@ class IndexWriterReaderTest {
                 List.of("java.lang.String"), "public", List.of("example.Tracked")));
         IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), initial);
+                List.of(new ClassAnnotationRecord(
+                        1, "example.Tracked", true, null)), initial);
 
         assertEquals("run(java.lang.String):void",
                 IndexReader.findClassMembers(database, 1).getFirst().signature());
         assertEquals("run", IndexReader.findClassMembers(database, List.of(1))
                 .get(1).getFirst().name());
+        assertEquals(List.of("example.Tracked"),
+                IndexReader.findSymbolAnnotationNames(database, "Tracked"));
+        assertEquals(2, IndexReader.countAnnotatedSymbols(
+                database, "example.Tracked", "ALL", true));
+        var annotatedMethods = IndexReader.findAnnotatedSymbols(
+                database, "example.Tracked", "METHOD", true, 10, 0);
+        assertEquals(1, annotatedMethods.size());
+        assertEquals("run", annotatedMethods.getFirst().symbolName());
 
         List<ClassMemberRecord> updated = List.of(new ClassMemberRecord(
                 1, "METHOD", "execute", "execute():boolean", "boolean",

@@ -2,6 +2,7 @@ package org.treblereel.mcp.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -213,6 +214,27 @@ class McpToolCatalogTest {
         int averageCharacters = characters / tools.size();
         assertTrue(characters < 16_500,
                 "catalog characters: " + characters + ", average: " + averageCharacters);
+    }
+
+    @Test
+    void toolProfilesExposeSmallComposableCatalogs() {
+        QuillTools quill = new QuillTools(new ProjectRegistry());
+        var full = McpToolCatalog.create(
+                quill, workers, responses, Duration.ofSeconds(1));
+        var core = McpToolCatalog.create(
+                quill, workers, responses, Duration.ofSeconds(1),
+                McpToolProfile.parse("core"));
+        var combined = McpToolCatalog.create(
+                quill, workers, responses, Duration.ofSeconds(1),
+                McpToolProfile.parse("di,git"));
+
+        assertTrue(core.size() < full.size() / 2, core::toString);
+        assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("get_overview")));
+        assertTrue(core.stream().noneMatch(tool -> tool.tool().name().equals("list_beans")));
+        assertTrue(combined.stream().anyMatch(tool -> tool.tool().name().equals("list_beans")));
+        assertTrue(combined.stream().anyMatch(
+                tool -> tool.tool().name().equals("find_git_hotspots")));
+        assertThrows(IllegalArgumentException.class, () -> McpToolProfile.parse("unknown"));
     }
 
     @Test

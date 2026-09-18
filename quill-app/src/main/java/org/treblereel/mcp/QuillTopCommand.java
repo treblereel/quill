@@ -13,6 +13,7 @@ import org.treblereel.mcp.command.StatusCommand;
 import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.mcp.ProjectRegistry;
 import org.treblereel.mcp.mcp.McpStdioServer;
+import org.treblereel.mcp.mcp.McpToolProfile;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.IVersionProvider;
@@ -29,6 +30,10 @@ public class QuillTopCommand implements Callable<Integer> {
 
     @Option(names = "--project", description = "Project path(s) to serve via MCP (repeatable)")
     List<Path> projects;
+
+    @Option(names = "--tools", description = "MCP tool profiles: full, core, code, di, git; "
+            + "comma-separated unions are allowed (default: full)")
+    String toolProfiles = "full";
 
     public static void main(String[] args) {
         CommandLine commandLine = new CommandLine(new QuillTopCommand());
@@ -85,7 +90,8 @@ public class QuillTopCommand implements Callable<Integer> {
             } else {
                 registry.register(null);
             }
-            McpStdioServer.start(registry, System.in, System.out);
+            McpStdioServer.start(registry, System.in, System.out,
+                    McpToolProfile.parse(toolProfiles));
             return CommandLine.ExitCode.OK;
         }
         System.err.println("Use a subcommand (init, update, status, doctor, clean)"

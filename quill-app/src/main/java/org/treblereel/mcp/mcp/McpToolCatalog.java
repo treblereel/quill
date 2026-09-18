@@ -35,14 +35,30 @@ final class McpToolCatalog {
     static List<AsyncToolSpecification> create(
             QuillTools tools, Scheduler toolScheduler, Scheduler responseScheduler,
             Duration requestTimeout) {
-        return create(tools, QuillTools.class, toolScheduler, responseScheduler, requestTimeout);
+        return create(tools, QuillTools.class, toolScheduler, responseScheduler, requestTimeout,
+                McpToolProfile.full());
+    }
+
+    static List<AsyncToolSpecification> create(
+            QuillTools tools, Scheduler toolScheduler, Scheduler responseScheduler,
+            Duration requestTimeout, McpToolProfile profile) {
+        return create(tools, QuillTools.class, toolScheduler, responseScheduler, requestTimeout,
+                profile);
     }
 
     static List<AsyncToolSpecification> create(
             Object tools, Class<?> toolType, Scheduler toolScheduler,
             Scheduler responseScheduler, Duration requestTimeout) {
+        return create(tools, toolType, toolScheduler, responseScheduler, requestTimeout,
+                McpToolProfile.full());
+    }
+
+    static List<AsyncToolSpecification> create(
+            Object tools, Class<?> toolType, Scheduler toolScheduler,
+            Scheduler responseScheduler, Duration requestTimeout, McpToolProfile profile) {
         return java.util.Arrays.stream(toolType.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(Tool.class))
+                .filter(method -> profile.includes(method.getName()))
                 .sorted(Comparator.comparing(Method::getName))
                 .map(method -> specification(
                         tools, method, toolScheduler, responseScheduler, requestTimeout))

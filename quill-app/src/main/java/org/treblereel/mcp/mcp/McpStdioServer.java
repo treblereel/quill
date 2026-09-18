@@ -26,14 +26,29 @@ public final class McpStdioServer {
     private McpStdioServer() {}
 
     public static void start(ProjectRegistry registry, InputStream input, OutputStream output) {
+        start(registry, input, output, McpToolProfile.full());
+    }
+
+    public static void start(ProjectRegistry registry, InputStream input, OutputStream output,
+            McpToolProfile profile) {
         registry.prewarm();
         start(new QuillTools(registry), QuillTools.class, input, output,
                 positiveEnvironmentDuration(
-                        "QUILL_MCP_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT));
+                        "QUILL_MCP_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT), profile);
+    }
+
+    private static void start(Object tools, Class<?> toolType, InputStream input,
+            OutputStream output, Duration requestTimeout, McpToolProfile profile) {
+        startServer(tools, toolType, input, output, requestTimeout, profile);
     }
 
     static void start(Object tools, Class<?> toolType, InputStream input, OutputStream output,
             Duration requestTimeout) {
+        startServer(tools, toolType, input, output, requestTimeout, McpToolProfile.full());
+    }
+
+    private static void startServer(Object tools, Class<?> toolType, InputStream input,
+            OutputStream output, Duration requestTimeout, McpToolProfile profile) {
         CountDownLatch eof = new CountDownLatch(1);
         InputStream serverInput = new EofAwareInputStream(input, eof);
         var mapper = new JacksonMcpJsonMapper(new ObjectMapper());
@@ -46,7 +61,7 @@ public final class McpStdioServer {
                 "quill-mcp");
         Scheduler responseScheduler = Schedulers.newSingle("quill-mcp-response");
         var specifications = McpToolCatalog.create(
-                tools, toolType, toolScheduler, responseScheduler, requestTimeout);
+                tools, toolType, toolScheduler, responseScheduler, requestTimeout, profile);
 
         var server = McpServer.async(transport)
                 .serverInfo("quill", QuillTopCommand.version())

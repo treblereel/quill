@@ -21,6 +21,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 
 @Tag("e2e")
 class McpStdioIT {
@@ -324,6 +325,92 @@ class McpStdioIT {
         Assumptions.assumeTrue(Files.isExecutable(nativeImage));
         Path gradleProject = prepareGradleProject();
         assertToolsListAndCall(List.of(nativeImage.toString()), gradleProject, 2);
+    }
+
+    @Test
+    void workspaceMcpReconcilesAddedAndRemovedRepositoriesWithoutRestart() throws Exception {
+        Path appJar = resolveAppJar();
+        Assumptions.assumeTrue(Files.exists(appJar));
+        Path workspace = Files.createDirectories(tempDir.resolve("live-workspace"));
+        WorkspaceManifestStore.initialize(workspace, 1);
+        Path engine = createWorkspaceRepository(workspace, "engine", "EngineService");
+
+        Process process = new ProcessBuilder("java", "-jar", appJar.toString(),
+                "--mcp", "--workspace", workspace.toString())
+                .directory(workspace.toFile())
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        try (BufferedWriter input = new BufferedWriter(
+                        new OutputStreamWriter(process.getOutputStream()));
+                BufferedReader output = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+            sendRequest(input, 1, "initialize", """
+                    {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"workspace-test","version":"1"}}""");
+            assertNotNull(readResponse(output, 1).get("result"));
+            sendNotification(input, "notifications/initialized", "{}");
+            assertWorkspaceRepositoryCount(input, output, 10, 1);
+
+            createWorkspaceRepository(workspace, "platform", "PlatformService");
+            assertWorkspaceRepositoryCount(input, output, 20, 2);
+
+            Files.delete(engine.resolve(".git"));
+            assertWorkspaceRepositoryCount(input, output, 40, 1);
+
+            Process clear = new ProcessBuilder("java", "-jar", appJar.toString(),
+                    "workspace", "clear", "--project", workspace.toString())
+                    .redirectErrorStream(true).start();
+            assertNotEquals(0, clear.waitFor(),
+                    "workspace clear must refuse a workspace held by a live MCP server");
+            assertTrue(Files.isRegularFile(WorkspaceManifestStore.manifest(workspace)));
+        } finally {
+            process.getOutputStream().close();
+            if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
+        }
+    }
+
+    private void assertWorkspaceRepositoryCount(BufferedWriter input, BufferedReader output,
+            int firstRequestId, int expected) throws Exception {
+        long deadline = System.currentTimeMillis() + 5_000;
+        int requestId = firstRequestId;
+        JsonNode last = null;
+        while (System.currentTimeMillis() < deadline) {
+            sendRequest(input, requestId, "tools/call",
+                    "{\"name\":\"list_workspace_repositories\",\"arguments\":{}}");
+            last = toolStructured(readResponse(output, requestId));
+            if (last.path("total").asInt(-1) == expected) return;
+            requestId++;
+            Thread.sleep(50);
+        }
+        fail("Expected " + expected + " workspace repositories, last response: " + last);
+    }
+
+    private Path createWorkspaceRepository(Path workspace, String name, String className)
+            throws Exception {
+        Path project = Files.createDirectories(workspace.resolve(name));
+        Files.createDirectories(project.resolve(".git"));
+        Files.writeString(project.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>%s</artifactId><version>1</version>
+                </project>
+                """.formatted(name));
+        Path quill = Files.createDirectories(project.resolve(".quill"));
+        String indexId = name + "-index";
+        var jdbi = QuillDatabase.create(quill.resolve(indexId + ".db"));
+        jdbi.useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key, value) VALUES ('index_id', ?)", indexId);
+            handle.execute("INSERT INTO metadata(key, value) VALUES ('indexed_at', '2026-09-18T00:00:00Z')");
+            handle.execute("INSERT INTO metadata(key, value) VALUES ('last_commit', 'unknown')");
+            handle.execute("INSERT INTO metadata(key, value) VALUES ('project_root', ?)",
+                    project.toString());
+            handle.execute("""
+                    INSERT INTO classes(class_name, kind, source_file, is_bean, module, source_set)
+                    VALUES (?, 'CLASS', ?, 0, '.', 'main')
+                    """, "org.acme." + className,
+                    "src/main/java/org/acme/" + className + ".java");
+        });
+        Files.writeString(quill.resolve("refs.json"),
+                "{\"@worktree\":\"" + indexId + "\"}");
+        return project;
     }
 
     private void assertToolsListAndCall(

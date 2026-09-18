@@ -10,11 +10,63 @@ import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.model.*;
 
 class IndexWriterReaderTest {
 
     @TempDir Path tempDir;
+
+    @Test
+    void incrementallyUpdatesConfigurationReferencesWithoutReplacingStableRows() {
+        Path dbPath = tempDir.resolve("configuration.db");
+        Jdbi database = QuillDatabase.create(dbPath);
+        List<ClassRecord> classes = List.of(new ClassRecord(
+                0, "example.Service", "CLASS", "java.lang.Object", List.of(),
+                "src/main/java/example/Service.java", 1, false, 10));
+        ConfigurationScanner.Usage usage = new ConfigurationScanner.Usage(
+                "app.name", "config_key", 1, "example.Service", "name", null,
+                "org.springframework.beans.factory.annotation.Value",
+                "src/main/java/example/Service.java", ".", "main");
+        ConfigurationScanner.Result initial = new ConfigurationScanner.Result(List.of(
+                new ConfigurationScanner.Definition("app.name", "property",
+                        "src/main/resources/application.properties", 1, ".", "main"),
+                new ConfigurationScanner.Definition("old.key", "property",
+                        "src/main/resources/application.properties", 2, ".", "main")),
+                List.of(usage));
+
+        IndexWriter.writeFreshWithConfiguration(database, classes, List.of(), List.of(),
+                List.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), initial);
+        int stableId = database.withHandle(handle -> handle.createQuery(
+                        "SELECT id FROM configuration_definitions WHERE key = 'app.name'")
+                .mapTo(Integer.class).one());
+
+        ConfigurationScanner.Result updated = new ConfigurationScanner.Result(List.of(
+                initial.definitions().getFirst(),
+                new ConfigurationScanner.Definition("new.key", "property",
+                        "src/main/resources/application.properties", 2, ".", "main")),
+                List.of(usage));
+        IndexWriter.IncrementalWriteTimings timings =
+                IndexWriter.writeIncrementalWithConfiguration(
+                        QuillDatabase.openWritable(dbPath), classes, List.of(), List.of(),
+                        List.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), updated);
+
+        assertTrue(timings.rowsInserted() >= 1);
+        assertTrue(timings.rowsDeleted() >= 1);
+        int updatedStableId = database.withHandle(handle -> handle.createQuery(
+                        "SELECT id FROM configuration_definitions WHERE key = 'app.name'")
+                .mapTo(Integer.class).one());
+        assertEquals(stableId, updatedStableId);
+        assertEquals(List.of("app.name", "new.key"), database.withHandle(handle ->
+                handle.createQuery("SELECT key FROM configuration_definitions ORDER BY key")
+                        .mapTo(String.class).list()));
+        int usageCount = database.withHandle(handle -> handle.createQuery(
+                        "SELECT count(*) FROM configuration_usages")
+                .mapTo(Integer.class).one());
+        assertEquals(1, usageCount);
+    }
 
     @Test
     void persistsMultiplePhysicalOccurrencesForOneLogicalClass() {

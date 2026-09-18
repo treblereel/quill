@@ -593,13 +593,13 @@ public class ProjectInitializer {
                 long schemaStartedAt = System.nanoTime();
                 Jdbi jdbi = QuillDatabase.createForBulkLoad(stagedDb);
                 timings.record("database_schema", elapsedMillis(schemaStartedAt));
-                IndexWriter.WriteTimings writeTimings = IndexWriter.writeFresh(
+                IndexWriter.WriteTimings writeTimings = IndexWriter.writeFreshWithConfiguration(
                         jdbi, classes, remappedBeans,
                         contextualInjectionPoints, remappedDeps, metadata,
                         externalDeps, remappedProblems,
                         gitResult.fileStats(), gitResult.commits(), gitResult.commitFiles(),
                         inventory.files(), classOccurrences, classAnnotations, classMembers,
-                        methodCalls, fieldAccesses);
+                        methodCalls, fieldAccesses, configuration);
                 timings.record("database_inserts", writeTimings.insertsMillis());
                 timings.record("database_indexes", writeTimings.indexesMillis());
                 timings.record("database_transaction_overhead",
@@ -610,12 +610,14 @@ public class ProjectInitializer {
                 timings.record("database_clone", elapsedMillis(cloneStartedAt));
                 Jdbi jdbi = QuillDatabase.openWritable(stagedDb);
                 IndexWriter.IncrementalWriteTimings writeTimings =
-                        IndexWriter.writeIncremental(jdbi, classes, remappedBeans,
+                        IndexWriter.writeIncrementalWithConfiguration(
+                                jdbi, classes, remappedBeans,
                                 contextualInjectionPoints, remappedDeps, metadata,
                                 externalDeps, remappedProblems,
                                 gitResult.fileStats(), gitResult.commits(),
                                 gitResult.commitFiles(), inventory.files(), classOccurrences,
-                                classAnnotations, classMembers, methodCalls, fieldAccesses);
+                                classAnnotations, classMembers, methodCalls, fieldAccesses,
+                                configuration);
                 timings.record("database_delta", writeTimings.deltaMillis());
                 timings.record("database_transaction_overhead",
                         writeTimings.transactionOverheadMillis());
@@ -624,7 +626,6 @@ public class ProjectInitializer {
                         + writeTimings.rowsUnchanged() + " unchanged.");
             }
             Jdbi stagedIndex = QuillDatabase.openWritable(stagedDb);
-            IndexWriter.writeConfigurationReferences(stagedIndex, configuration);
             IndexWriter.writeModuleClasspath(stagedIndex, moduleClasspath);
             long validationStartedAt = System.nanoTime();
             ProjectIndexStore.validateForPublication(stagedDb);

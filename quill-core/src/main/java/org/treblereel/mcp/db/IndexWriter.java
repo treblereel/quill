@@ -15,6 +15,8 @@ import org.treblereel.mcp.model.*;
 public final class IndexWriter {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ConfigurationScanner.Result EMPTY_CONFIGURATION =
+            new ConfigurationScanner.Result(List.of(), List.of());
     private static final String[] ALL_TABLES = {
             "git_commit_files", "git_commits", "git_file_stats",
             "class_external_deps", "cdi_problems",
@@ -84,6 +86,12 @@ public final class IndexWriter {
             "class_id", "external_type", "usage_kind");
     private static final TableSpec PROBLEMS = new TableSpec("cdi_problems",
             "class_id", "class_name", "problem_type", "message");
+    private static final TableSpec CONFIGURATION_DEFINITIONS = new TableSpec(
+            "configuration_definitions", "key", "kind", "file", "line", "module",
+            "source_set");
+    private static final TableSpec CONFIGURATION_USAGES = new TableSpec(
+            "configuration_usages", "key", "kind", "class_id", "class_name", "member",
+            "parameter_index", "annotation", "source", "module", "source_set");
     private static final TableSpec FILE_STATS = new TableSpec("git_file_stats",
             "file_path", "class_id", "commit_count", "last_modified", "last_author",
             "first_commit", "distinct_authors");
@@ -93,11 +101,12 @@ public final class IndexWriter {
             "commit_id", "class_id", "file_path", "change_type");
     private static final List<TableSpec> INSERT_ORDER = List.of(
             FILES, CLASSES, CLASS_OCCURRENCES, CLASS_ANNOTATIONS, CLASS_MEMBERS,
-            METHOD_CALLS, FIELD_ACCESSES, BEANS,
+            METHOD_CALLS, FIELD_ACCESSES, CONFIGURATION_DEFINITIONS, CONFIGURATION_USAGES, BEANS,
             INJECTION_POINTS, DEPENDENCIES, METADATA,
             EXTERNAL_DEPS, PROBLEMS, FILE_STATS, COMMITS, COMMIT_FILES);
     private static final List<TableSpec> DELETE_ORDER = List.of(
             COMMIT_FILES, FILE_STATS, EXTERNAL_DEPS, PROBLEMS, DEPENDENCIES,
+            CONFIGURATION_USAGES, CONFIGURATION_DEFINITIONS,
             FIELD_ACCESSES, METHOD_CALLS,
             INJECTION_POINTS, BEANS, COMMITS, CLASS_MEMBERS, CLASS_ANNOTATIONS, CLASS_OCCURRENCES,
             CLASSES, FILES, METADATA);
@@ -196,9 +205,28 @@ public final class IndexWriter {
             List<ClassMemberRecord> members,
             List<MethodCallRecord> methodCalls,
             List<FieldAccessRecord> fieldAccesses) {
+        return writeFreshWithConfiguration(jdbi, classes, beans, injectionPoints, dependencies,
+                metadata, externalDeps, problems, fileStats, commits, commitFiles, files,
+                occurrences, annotations, members, methodCalls, fieldAccesses,
+                EMPTY_CONFIGURATION);
+    }
+
+    public static WriteTimings writeFreshWithConfiguration(Jdbi jdbi,
+            List<ClassRecord> classes, List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
+            Map<String, String> metadata,
+            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
+            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
+            List<GitCommitFile> commitFiles, List<FileRecord> files,
+            List<ClassOccurrenceRecord> occurrences,
+            List<ClassAnnotationRecord> annotations,
+            List<ClassMemberRecord> members,
+            List<MethodCallRecord> methodCalls,
+            List<FieldAccessRecord> fieldAccesses,
+            ConfigurationScanner.Result configuration) {
         return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
                 externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, members, methodCalls, fieldAccesses, true);
+                annotations, members, methodCalls, fieldAccesses, configuration, true);
     }
 
     /**
@@ -287,6 +315,25 @@ public final class IndexWriter {
             List<ClassMemberRecord> members,
             List<MethodCallRecord> methodCalls,
             List<FieldAccessRecord> fieldAccesses) {
+        return writeIncrementalWithConfiguration(jdbi, classes, beans, injectionPoints,
+                dependencies, metadata, externalDeps, problems, fileStats, commits, commitFiles,
+                files, occurrences, annotations, members, methodCalls, fieldAccesses,
+                EMPTY_CONFIGURATION);
+    }
+
+    public static IncrementalWriteTimings writeIncrementalWithConfiguration(Jdbi jdbi,
+            List<ClassRecord> classes, List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
+            Map<String, String> metadata,
+            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
+            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
+            List<GitCommitFile> commitFiles, List<FileRecord> files,
+            List<ClassOccurrenceRecord> occurrences,
+            List<ClassAnnotationRecord> annotations,
+            List<ClassMemberRecord> members,
+            List<MethodCallRecord> methodCalls,
+            List<FieldAccessRecord> fieldAccesses,
+            ConfigurationScanner.Result configuration) {
         long startedAt = System.nanoTime();
         long[] deltaNanos = new long[1];
         long[] counts = new long[3];
@@ -297,7 +344,8 @@ public final class IndexWriter {
                     createDesiredTables(tx);
                     populateDesiredTables(tx, classes, beans, injectionPoints, dependencies,
                             metadata, externalDeps, problems, fileStats, commits, commitFiles,
-                            files, occurrences, annotations, members, methodCalls, fieldAccesses);
+                            files, occurrences, annotations, members, methodCalls, fieldAccesses,
+                            configuration);
                     createDesiredIndexes(tx);
                     long deltaStartedAt = System.nanoTime();
                     for (TableSpec table : DELETE_ORDER) {
@@ -345,7 +393,8 @@ public final class IndexWriter {
             List<ClassAnnotationRecord> annotations,
             List<ClassMemberRecord> members,
             List<MethodCallRecord> methodCalls,
-            List<FieldAccessRecord> fieldAccesses) {
+            List<FieldAccessRecord> fieldAccesses,
+            ConfigurationScanner.Result configuration) {
         insertDesiredFiles(h, files);
         insertDesiredClasses(h, classes);
         insertDesiredClassOccurrences(h, occurrences);
@@ -353,6 +402,8 @@ public final class IndexWriter {
         insertDesiredClassMembers(h, members);
         insertDesiredMethodCalls(h, methodCalls);
         insertDesiredFieldAccesses(h, fieldAccesses);
+        insertDesiredConfigurationDefinitions(h, configuration.definitions());
+        insertDesiredConfigurationUsages(h, configuration.usages());
         insertDesiredBeans(h, beans);
         insertDesiredInjectionPoints(h, injectionPoints);
         insertDesiredDependencies(h, dependencies);
@@ -662,6 +713,42 @@ public final class IndexWriter {
                 });
     }
 
+    private static void insertDesiredConfigurationDefinitions(
+            Handle h, List<ConfigurationScanner.Definition> definitions) {
+        executeBatch(h,
+                "INSERT INTO desired_configuration_definitions "
+                        + "(key, kind, file, line, module, source_set) VALUES (?, ?, ?, ?, ?, ?)",
+                definitions, (statement, definition) -> {
+                    statement.setString(1, definition.key());
+                    statement.setString(2, definition.kind());
+                    statement.setString(3, definition.file());
+                    statement.setInt(4, definition.line());
+                    statement.setString(5, definition.module());
+                    statement.setString(6, definition.sourceSet());
+                });
+    }
+
+    private static void insertDesiredConfigurationUsages(
+            Handle h, List<ConfigurationScanner.Usage> usages) {
+        executeBatch(h,
+                "INSERT INTO desired_configuration_usages "
+                        + "(key, kind, class_id, class_name, member, parameter_index, "
+                        + "annotation, source, module, source_set) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                usages, (statement, usage) -> {
+                    statement.setString(1, usage.key());
+                    statement.setString(2, usage.kind());
+                    statement.setInt(3, usage.classId());
+                    statement.setString(4, usage.className());
+                    statement.setString(5, usage.member());
+                    statement.setObject(6, usage.parameterIndex());
+                    statement.setString(7, usage.annotation());
+                    statement.setString(8, usage.source());
+                    statement.setString(9, usage.module());
+                    statement.setString(10, usage.sourceSet());
+                });
+    }
+
     private static WriteTimings writeAll(Jdbi jdbi,
             List<ClassRecord> classes, List<BeanRecord> beans,
             List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
@@ -676,7 +763,7 @@ public final class IndexWriter {
             boolean freshDatabase) {
         return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
                 externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, members, methodCalls, List.of(), freshDatabase);
+                annotations, members, methodCalls, List.of(), EMPTY_CONFIGURATION, freshDatabase);
     }
 
     private static WriteTimings writeAll(Jdbi jdbi,
@@ -691,6 +778,7 @@ public final class IndexWriter {
             List<ClassMemberRecord> members,
             List<MethodCallRecord> methodCalls,
             List<FieldAccessRecord> fieldAccesses,
+            ConfigurationScanner.Result configuration,
             boolean freshDatabase) {
         long transactionStartedAt = System.nanoTime();
         long[] insertsNanos = new long[1];
@@ -711,6 +799,8 @@ public final class IndexWriter {
             insertClassMembers(h, members);
             insertMethodCalls(h, methodCalls);
             insertFieldAccesses(h, fieldAccesses);
+            insertConfigurationDefinitions(h, configuration.definitions());
+            insertConfigurationUsages(h, configuration.usages());
             insertBeans(h, beans);
             insertInjectionPoints(h, injectionPoints);
             insertDependencies(h, dependencies);
@@ -764,42 +854,40 @@ public final class IndexWriter {
         });
     }
 
-    /** Replaces the normalized configuration-reference graph in one transaction. */
-    public static void writeConfigurationReferences(
-            Jdbi jdbi, ConfigurationScanner.Result configuration) {
-        jdbi.useTransaction(h -> {
-            h.execute("DELETE FROM configuration_usages");
-            h.execute("DELETE FROM configuration_definitions");
-            executeBatch(h,
-                    "INSERT INTO configuration_definitions "
-                            + "(key, kind, file, line, module, source_set) "
-                            + "VALUES (?, ?, ?, ?, ?, ?)",
-                    configuration.definitions(), (statement, definition) -> {
-                        statement.setString(1, definition.key());
-                        statement.setString(2, definition.kind());
-                        statement.setString(3, definition.file());
-                        statement.setInt(4, definition.line());
-                        statement.setString(5, definition.module());
-                        statement.setString(6, definition.sourceSet());
-                    });
-            executeBatch(h,
-                    "INSERT INTO configuration_usages "
-                            + "(key, kind, class_id, class_name, member, parameter_index, "
-                            + "annotation, source, module, source_set) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    configuration.usages(), (statement, usage) -> {
-                        statement.setString(1, usage.key());
-                        statement.setString(2, usage.kind());
-                        statement.setInt(3, usage.classId());
-                        statement.setString(4, usage.className());
-                        statement.setString(5, usage.member());
-                        statement.setObject(6, usage.parameterIndex());
-                        statement.setString(7, usage.annotation());
-                        statement.setString(8, usage.source());
-                        statement.setString(9, usage.module());
-                        statement.setString(10, usage.sourceSet());
-                    });
-        });
+    private static void insertConfigurationDefinitions(
+            Handle h, List<ConfigurationScanner.Definition> definitions) {
+        executeBatch(h,
+                "INSERT INTO configuration_definitions "
+                        + "(key, kind, file, line, module, source_set) VALUES (?, ?, ?, ?, ?, ?)",
+                definitions, (statement, definition) -> {
+                    statement.setString(1, definition.key());
+                    statement.setString(2, definition.kind());
+                    statement.setString(3, definition.file());
+                    statement.setInt(4, definition.line());
+                    statement.setString(5, definition.module());
+                    statement.setString(6, definition.sourceSet());
+                });
+    }
+
+    private static void insertConfigurationUsages(
+            Handle h, List<ConfigurationScanner.Usage> usages) {
+        executeBatch(h,
+                "INSERT INTO configuration_usages "
+                        + "(key, kind, class_id, class_name, member, parameter_index, "
+                        + "annotation, source, module, source_set) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                usages, (statement, usage) -> {
+                    statement.setString(1, usage.key());
+                    statement.setString(2, usage.kind());
+                    statement.setInt(3, usage.classId());
+                    statement.setString(4, usage.className());
+                    statement.setString(5, usage.member());
+                    statement.setObject(6, usage.parameterIndex());
+                    statement.setString(7, usage.annotation());
+                    statement.setString(8, usage.source());
+                    statement.setString(9, usage.module());
+                    statement.setString(10, usage.sourceSet());
+                });
     }
 
     public static void writeExternalDeps(Jdbi jdbi, List<ExternalDepRecord> deps) {

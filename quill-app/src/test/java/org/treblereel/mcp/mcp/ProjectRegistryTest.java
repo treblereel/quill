@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
@@ -91,6 +93,44 @@ class ProjectRegistryTest {
         var second = registry.resolve().projects().getFirst();
 
         assertSame(first.jdbi(), second.jdbi());
+    }
+
+    @Test
+    void publishedGenerationReplacesTheCachedDatabase() throws IOException {
+        Path project = Files.createDirectories(tempDir.resolve("updated-project"));
+        Files.createFile(project.resolve("pom.xml"));
+        createPublishedDatabase(project, "first");
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project);
+
+        var first = registry.resolve().projects().getFirst().jdbi();
+        createPublishedDatabase(project, "second");
+        var second = registry.resolve().projects().getFirst().jdbi();
+
+        assertNotSame(first, second);
+        assertEquals(1, registry.cachedDatabaseCount(),
+                "An obsolete immutable generation must not remain cached");
+    }
+
+    @Test
+    void removedProjectEvictsItsDatabaseWithoutInvalidatingInFlightReference()
+            throws IOException {
+        Path project = Files.createDirectories(tempDir.resolve("removed-project"));
+        Files.createFile(project.resolve("pom.xml"));
+        createPublishedDatabase(project, "present");
+        AtomicReference<ProjectScope.Snapshot> current = new AtomicReference<>(
+                new ProjectScope.Snapshot(1,
+                        List.of(new ProjectScope.Project("removed-project", project))));
+        ProjectRegistry registry = new ProjectRegistry(current::get);
+
+        var inFlight = registry.resolve().projects().getFirst().jdbi();
+        current.set(new ProjectScope.Snapshot(2, List.of()));
+        assertTrue(registry.resolve().projects().isEmpty());
+
+        assertEquals(0, registry.cachedDatabaseCount());
+        assertEquals("present", inFlight.withHandle(handle -> handle.createQuery(
+                        "SELECT value FROM metadata WHERE key = 'index_id'")
+                .mapTo(String.class).one()));
     }
 
     @Test

@@ -4,6 +4,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -25,7 +27,11 @@ public class ProjectRegistry {
 
     private final ProjectScope scope;
     private final SingleProjectScope mutableScope;
-    private final ConcurrentHashMap<Path, Jdbi> databases = new ConcurrentHashMap<>();
+    private record IndexHandle(Jdbi jdbi, AtomicLong lastSeen) {}
+
+    private final ConcurrentHashMap<Path, IndexHandle> databases = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Path, AtomicLong> projectRoots = new ConcurrentHashMap<>();
+    private final AtomicLong resolutionSequence = new AtomicLong();
     private final BuildEventConsumer buildEvents = new BuildEventConsumer();
 
     public ProjectRegistry() {
@@ -50,10 +56,20 @@ public class ProjectRegistry {
     }
 
     public Resolution resolve() {
+        long resolutionId = resolutionSequence.incrementAndGet();
         List<ProjectEntry> result = new ArrayList<>();
         ProjectScope.Snapshot snapshot = scope.snapshot();
         List<String> errors = new ArrayList<>(snapshot.diagnostics());
+        Set<Path> activeDatabases = ConcurrentHashMap.newKeySet();
+        Set<Path> activeRoots = ConcurrentHashMap.newKeySet();
         for (ProjectScope.Project p : snapshot.projects()) {
+            Path projectRoot = p.root().toAbsolutePath().normalize();
+            activeRoots.add(projectRoot);
+            projectRoots.compute(projectRoot, (ignored, seen) -> {
+                if (seen == null) return new AtomicLong(resolutionId);
+                seen.accumulateAndGet(resolutionId, Math::max);
+                return seen;
+            });
             String buildEventError = buildEvents.consume(p.root());
             if (buildEventError != null) {
                 errors.add("Project '" + p.name() + "': " + buildEventError);
@@ -66,13 +82,34 @@ public class ProjectRegistry {
             }
             try {
                 Path normalizedDb = dbPath.toAbsolutePath().normalize();
-                Jdbi jdbi = databases.computeIfAbsent(normalizedDb, QuillDatabase::open);
-                result.add(new ProjectEntry(p.name(), p.root(), jdbi));
+                activeDatabases.add(normalizedDb);
+                IndexHandle handle = databases.compute(normalizedDb, (path, cached) -> {
+                    if (cached == null) {
+                        return new IndexHandle(QuillDatabase.open(path),
+                                new AtomicLong(resolutionId));
+                    }
+                    cached.lastSeen().accumulateAndGet(resolutionId, Math::max);
+                    return cached;
+                });
+                result.add(new ProjectEntry(p.name(), p.root(), handle.jdbi()));
             } catch (RuntimeException e) {
                 errors.add("Project '" + p.name() + "': " + safeMessage(e));
             }
         }
+        evictInactive(resolutionId, activeDatabases, activeRoots);
         return new Resolution(List.copyOf(result), List.copyOf(errors));
+    }
+
+    private void evictInactive(long resolutionId, Set<Path> activeDatabases,
+            Set<Path> activeRoots) {
+        databases.entrySet().removeIf(entry -> !activeDatabases.contains(entry.getKey())
+                && entry.getValue().lastSeen().get() < resolutionId);
+        projectRoots.entrySet().removeIf(entry -> {
+            if (activeRoots.contains(entry.getKey())
+                    || entry.getValue().get() >= resolutionId) return false;
+            WorktreeSnapshotCache.shared().invalidate(entry.getKey());
+            return true;
+        });
     }
 
     public void prewarm() {
@@ -121,5 +158,9 @@ public class ProjectRegistry {
 
     public boolean isEmpty() {
         return scope.snapshot().projects().isEmpty();
+    }
+
+    int cachedDatabaseCount() {
+        return databases.size();
     }
 }

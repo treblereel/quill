@@ -212,7 +212,7 @@ public final class IndexWriter {
         return writeFreshWithConfiguration(jdbi, classes, beans, injectionPoints, dependencies,
                 metadata, externalDeps, problems, fileStats, commits, commitFiles, files,
                 occurrences, annotations, members, methodCalls, fieldAccesses,
-                EMPTY_CONFIGURATION);
+                EMPTY_CONFIGURATION, List.of());
     }
 
     public static WriteTimings writeFreshWithConfiguration(Jdbi jdbi,
@@ -227,10 +227,12 @@ public final class IndexWriter {
             List<ClassMemberRecord> members,
             List<MethodCallRecord> methodCalls,
             List<FieldAccessRecord> fieldAccesses,
-            ConfigurationScanner.Result configuration) {
+            ConfigurationScanner.Result configuration,
+            List<ResourceUsageRecord> resourceUsages) {
         return writeFresh(jdbi, new IndexSnapshot(classes, beans, injectionPoints, dependencies,
                 metadata, externalDeps, problems, fileStats, commits, commitFiles, files,
-                occurrences, annotations, members, methodCalls, fieldAccesses, configuration));
+                occurrences, annotations, members, methodCalls, fieldAccesses, configuration,
+                resourceUsages));
     }
 
     public static WriteTimings writeFresh(Jdbi jdbi, IndexSnapshot snapshot) {
@@ -326,7 +328,7 @@ public final class IndexWriter {
         return writeIncrementalWithConfiguration(jdbi, classes, beans, injectionPoints,
                 dependencies, metadata, externalDeps, problems, fileStats, commits, commitFiles,
                 files, occurrences, annotations, members, methodCalls, fieldAccesses,
-                EMPTY_CONFIGURATION);
+                EMPTY_CONFIGURATION, List.of());
     }
 
     public static IncrementalWriteTimings writeIncrementalWithConfiguration(Jdbi jdbi,
@@ -341,11 +343,12 @@ public final class IndexWriter {
             List<ClassMemberRecord> members,
             List<MethodCallRecord> methodCalls,
             List<FieldAccessRecord> fieldAccesses,
-            ConfigurationScanner.Result configuration) {
+            ConfigurationScanner.Result configuration,
+            List<ResourceUsageRecord> resourceUsages) {
         return writeIncremental(jdbi, new IndexSnapshot(classes, beans, injectionPoints,
                 dependencies, metadata, externalDeps, problems, fileStats, commits, commitFiles,
                 files, occurrences, annotations, members, methodCalls, fieldAccesses,
-                configuration));
+                configuration, resourceUsages));
     }
 
     public static IncrementalWriteTimings writeIncremental(Jdbi jdbi, IndexSnapshot snapshot) {
@@ -404,7 +407,7 @@ public final class IndexWriter {
         insertDesiredFieldAccesses(h, snapshot.fieldAccesses());
         insertDesiredConfigurationDefinitions(h, snapshot.configuration().definitions());
         insertDesiredConfigurationUsages(h, snapshot.configuration().usages());
-        insertDesiredResourceUsages(h, snapshot.configuration().resourceUsages());
+        insertDesiredResourceUsages(h, snapshot.resourceUsages());
         insertDesiredBeans(h, snapshot.beans());
         insertDesiredInjectionPoints(h, snapshot.injectionPoints());
         insertDesiredDependencies(h, snapshot.dependencies());
@@ -751,7 +754,7 @@ public final class IndexWriter {
     }
 
     private static void insertDesiredResourceUsages(
-            Handle h, List<ConfigurationScanner.ResourceUsage> usages) {
+            Handle h, List<ResourceUsageRecord> usages) {
         executeBatch(h,
                 "INSERT INTO desired_resource_usages "
                         + "(resource_path, kind, class_id, class_name, member, api, source, "
@@ -783,7 +786,8 @@ public final class IndexWriter {
             boolean freshDatabase) {
         return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
                 externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, members, methodCalls, List.of(), EMPTY_CONFIGURATION, freshDatabase);
+                annotations, members, methodCalls, List.of(), EMPTY_CONFIGURATION, List.of(),
+                freshDatabase);
     }
 
     private static WriteTimings writeAll(Jdbi jdbi,
@@ -799,10 +803,12 @@ public final class IndexWriter {
             List<MethodCallRecord> methodCalls,
             List<FieldAccessRecord> fieldAccesses,
             ConfigurationScanner.Result configuration,
+            List<ResourceUsageRecord> resourceUsages,
             boolean freshDatabase) {
         return writeAll(jdbi, new IndexSnapshot(classes, beans, injectionPoints, dependencies,
                 metadata, externalDeps, problems, fileStats, commits, commitFiles, files,
-                occurrences, annotations, members, methodCalls, fieldAccesses, configuration),
+                occurrences, annotations, members, methodCalls, fieldAccesses, configuration,
+                resourceUsages),
                 freshDatabase);
     }
 
@@ -829,7 +835,7 @@ public final class IndexWriter {
             insertFieldAccesses(h, snapshot.fieldAccesses());
             insertConfigurationDefinitions(h, snapshot.configuration().definitions());
             insertConfigurationUsages(h, snapshot.configuration().usages());
-            insertResourceUsages(h, snapshot.configuration().resourceUsages());
+            insertResourceUsages(h, snapshot.resourceUsages());
             insertBeans(h, snapshot.beans());
             insertInjectionPoints(h, snapshot.injectionPoints());
             insertDependencies(h, snapshot.dependencies());
@@ -921,7 +927,7 @@ public final class IndexWriter {
     }
 
     private static void insertResourceUsages(
-            Handle h, List<ConfigurationScanner.ResourceUsage> usages) {
+            Handle h, List<ResourceUsageRecord> usages) {
         executeBatch(h,
                 "INSERT INTO resource_usages "
                         + "(resource_path, kind, class_id, class_name, member, api, source, "

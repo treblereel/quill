@@ -28,8 +28,8 @@ class IndexWriterReaderTest {
                 "app.name", "config_key", 1, "example.Service", "name", null,
                 "org.springframework.beans.factory.annotation.Value",
                 "src/main/java/example/Service.java", ".", "main");
-        ConfigurationScanner.ResourceUsage resourceUsage =
-                new ConfigurationScanner.ResourceUsage(
+        ResourceUsageRecord resourceUsage =
+                new ResourceUsageRecord(
                         "templates/order.html", "resource", 1, "example.Service", "render",
                         "java.lang.Class#getResource", "src/main/java/example/Service.java",
                         ".", "main");
@@ -38,11 +38,12 @@ class IndexWriterReaderTest {
                         "src/main/resources/application.properties", 1, ".", "main"),
                 new ConfigurationScanner.Definition("old.key", "property",
                         "src/main/resources/application.properties", 2, ".", "main")),
-                List.of(usage), List.of(resourceUsage));
+                List.of(usage));
 
         IndexWriter.writeFreshWithConfiguration(database, classes, List.of(), List.of(),
                 List.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), initial);
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), initial,
+                List.of(resourceUsage));
         int stableId = database.withHandle(handle -> handle.createQuery(
                         "SELECT id FROM configuration_definitions WHERE key = 'app.name'")
                 .mapTo(Integer.class).one());
@@ -51,12 +52,13 @@ class IndexWriterReaderTest {
                 initial.definitions().getFirst(),
                 new ConfigurationScanner.Definition("new.key", "property",
                         "src/main/resources/application.properties", 2, ".", "main")),
-                List.of(usage), List.of(resourceUsage));
+                List.of(usage));
         IndexWriter.IncrementalWriteTimings timings =
                 IndexWriter.writeIncrementalWithConfiguration(
                         QuillDatabase.openWritable(dbPath), classes, List.of(), List.of(),
                         List.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), updated);
+                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), updated,
+                        List.of(resourceUsage));
 
         assertTrue(timings.rowsInserted() >= 1);
         assertTrue(timings.rowsDeleted() >= 1);

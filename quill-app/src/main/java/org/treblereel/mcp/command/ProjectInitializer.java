@@ -508,9 +508,10 @@ public class ProjectInitializer {
         FileInventory.Result inventory = FileInventory.build(root, moduleDirectories, sourceRoots,
                 classes, gitResult.fileStats(), initialWorktree);
         classes = inventory.classes();
-        ConfigurationScanner.Result configuration = ConfigurationScanner.scan(
+        ConfigurationScanner.ScanResult references = ConfigurationScanner.scan(
                 root, moduleDirectories, scanResult.index(), classNameToSqliteId, classes,
                 classFiles);
+        ConfigurationScanner.Result configuration = references.configuration();
         List<InjectionPointRecord> contextualInjectionPoints = ApplicationContextResolver.refine(
                 persisted.injectionPoints(), remappedBeans, classes, classOccurrences,
                 moduleClasspath);
@@ -579,7 +580,7 @@ public class ProjectInitializer {
                 Integer.toString(configuration.definitions().size()));
         metadata.put("configuration_usages", Integer.toString(configuration.usages().size()));
         metadata.put("resource_usages",
-                Integer.toString(configuration.resourceUsages().size()));
+                Integer.toString(references.resourceUsages().size()));
         metadata.put("framework_endpoints_detail", frameworkEndpointsJson(frameworkEndpoints));
         metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
         metadata.put("framework", isSpring && isCdi ? "Mixed"
@@ -595,7 +596,8 @@ public class ProjectInitializer {
                 contextualInjectionPoints, remappedDeps, metadata, externalDeps,
                 remappedProblems, gitResult.fileStats(), gitResult.commits(),
                 gitResult.commitFiles(), inventory.files(), classOccurrences,
-                classAnnotations, classMembers, methodCalls, fieldAccesses, configuration);
+                classAnnotations, classMembers, methodCalls, fieldAccesses, configuration,
+                references.resourceUsages());
 
         long databaseStartedAt = System.nanoTime();
         try {

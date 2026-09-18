@@ -15,6 +15,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.ResourceUsageRecord;
 
 /** Finds configuration keys passed to common programmatic configuration APIs. */
 final class ProgrammaticConfigurationScanner {
@@ -25,7 +26,7 @@ final class ProgrammaticConfigurationScanner {
 
     record ScanResult(
             List<ConfigurationScanner.Usage> configurationUsages,
-            List<ConfigurationScanner.ResourceUsage> resourceUsages) {
+            List<ResourceUsageRecord> resourceUsages) {
         static final ScanResult EMPTY = new ScanResult(List.of(), List.of());
     }
 
@@ -33,7 +34,7 @@ final class ProgrammaticConfigurationScanner {
             ClassFileSnapshot classFiles, Map<String, Integer> classNameToId,
             Map<String, ClassRecord> classesByName) {
         List<ConfigurationScanner.Usage> result = new ArrayList<>();
-        List<ConfigurationScanner.ResourceUsage> resources = new ArrayList<>();
+        List<ResourceUsageRecord> resources = new ArrayList<>();
         Set<String> unique = new LinkedHashSet<>();
         for (ClassFileSnapshot.Entry entry : classFiles.entries().stream()
                 .sorted(Comparator.comparing(value -> value.path().toString())).toList()) {
@@ -77,10 +78,10 @@ final class ProgrammaticConfigurationScanner {
                 .thenComparing(ConfigurationScanner.Usage::className)
                 .thenComparing(value -> value.member() == null ? "" : value.member()))
                 .toList();
-        List<ConfigurationScanner.ResourceUsage> resourceUsages = resources.stream()
-                .sorted(Comparator.comparing(ConfigurationScanner.ResourceUsage::resourcePath)
-                        .thenComparing(ConfigurationScanner.ResourceUsage::className)
-                        .thenComparing(ConfigurationScanner.ResourceUsage::member))
+        List<ResourceUsageRecord> resourceUsages = resources.stream()
+                .sorted(Comparator.comparing(ResourceUsageRecord::resourcePath)
+                        .thenComparing(ResourceUsageRecord::className)
+                        .thenComparing(ResourceUsageRecord::member))
                 .toList();
         return new ScanResult(configurations, resourceUsages);
     }
@@ -97,7 +98,7 @@ final class ProgrammaticConfigurationScanner {
         private final ClassRecord cls;
         private final Map<String, ClassRecord> classesByName;
         private final List<ConfigurationScanner.Usage> target;
-        private final List<ConfigurationScanner.ResourceUsage> resources;
+        private final List<ResourceUsageRecord> resources;
         private final Set<String> unique;
         private final Deque<Object> stack = new ArrayDeque<>();
         private final Map<Integer, Object> locals = new HashMap<>();
@@ -106,7 +107,7 @@ final class ProgrammaticConfigurationScanner {
                 String internalClassName, Map<String, String> stringConstants, ClassRecord cls,
                 Map<String, ClassRecord> classesByName,
                 List<ConfigurationScanner.Usage> target,
-                List<ConfigurationScanner.ResourceUsage> resources, Set<String> unique) {
+                List<ResourceUsageRecord> resources, Set<String> unique) {
             super(Opcodes.ASM9);
             this.classId = classId;
             this.className = className;
@@ -192,7 +193,7 @@ final class ProgrammaticConfigurationScanner {
                 String identity = classId + "\n" + method + "\n" + resourceApi + "\n"
                         + normalized.path();
                 if (unique.add(identity)) {
-                    resources.add(new ConfigurationScanner.ResourceUsage(normalized.path(),
+                    resources.add(new ResourceUsageRecord(normalized.path(),
                             normalized.kind(),
                             classId, className, method, resourceApi,
                             cls == null ? null : cls.sourceFile(),

@@ -22,6 +22,7 @@ import org.jboss.jandex.AnnotationValue;
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.IndexView;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.ResourceUsageRecord;
 
 /** Indexes configuration definitions and annotation-based consumers. */
 public final class ConfigurationScanner {
@@ -51,24 +52,16 @@ public final class ConfigurationScanner {
             Integer parameterIndex, String annotation, String source, String module,
             String sourceSet) {}
 
-    public record ResourceUsage(
-            String resourcePath, String kind, int classId, String className, String member,
-            String api, String source, String module, String sourceSet) {}
+    public record Result(List<Definition> definitions, List<Usage> usages) {}
 
-    public record Result(
-            List<Definition> definitions, List<Usage> usages,
-            List<ResourceUsage> resourceUsages) {
-        public Result(List<Definition> definitions, List<Usage> usages) {
-            this(definitions, usages, List.of());
-        }
-    }
+    public record ScanResult(Result configuration, List<ResourceUsageRecord> resourceUsages) {}
 
-    public static Result scan(Path projectRoot, List<Path> moduleDirectories,
+    public static ScanResult scan(Path projectRoot, List<Path> moduleDirectories,
             IndexView index, Map<String, Integer> classNameToId, List<ClassRecord> classes) {
         return scan(projectRoot, moduleDirectories, index, classNameToId, classes, null);
     }
 
-    public static Result scan(Path projectRoot, List<Path> moduleDirectories,
+    public static ScanResult scan(Path projectRoot, List<Path> moduleDirectories,
             IndexView index, Map<String, Integer> classNameToId, List<ClassRecord> classes,
             ClassFileSnapshot classFiles) {
         Path root = projectRoot.toAbsolutePath().normalize();
@@ -97,7 +90,7 @@ public final class ConfigurationScanner {
                 .thenComparing(value -> value.member() == null ? "" : value.member())
                 .thenComparing(value -> value.parameterIndex() == null
                         ? -1 : value.parameterIndex()));
-        return new Result(List.copyOf(definitions), List.copyOf(usages),
+        return new ScanResult(new Result(List.copyOf(definitions), List.copyOf(usages)),
                 programmatic.resourceUsages());
     }
 

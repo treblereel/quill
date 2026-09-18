@@ -107,7 +107,7 @@ class SpringResolverTest {
                 1, true, 10, null, "source", "current", ".", "main"));
 
         var result = ConfigurationScanner.scan(tempDir, List.of(tempDir), index,
-                Map.of(OrderController.class.getName(), 1), classes);
+                Map.of(OrderController.class.getName(), 1), classes).configuration();
 
         assertTrue(result.definitions().stream()
                 .anyMatch(value -> value.key().equals("orders.region")

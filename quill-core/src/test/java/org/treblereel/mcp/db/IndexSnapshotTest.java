@@ -26,7 +26,7 @@ class IndexSnapshotTest {
         IndexSnapshot snapshot = new IndexSnapshot(classes, List.of(), List.of(), List.of(),
                 metadata, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
-                new ConfigurationScanner.Result(definitions, List.of()));
+                new ConfigurationScanner.Result(definitions, List.of()), List.of());
         classes.clear();
         metadata.clear();
         definitions.clear();

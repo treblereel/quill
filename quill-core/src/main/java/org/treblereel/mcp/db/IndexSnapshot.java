@@ -18,6 +18,7 @@ import org.treblereel.mcp.model.GitCommitRecord;
 import org.treblereel.mcp.model.GitFileStats;
 import org.treblereel.mcp.model.InjectionPointRecord;
 import org.treblereel.mcp.model.MethodCallRecord;
+import org.treblereel.mcp.model.ResourceUsageRecord;
 
 /** Complete immutable logical state published as one SQLite index generation. */
 public record IndexSnapshot(
@@ -37,7 +38,8 @@ public record IndexSnapshot(
         List<ClassMemberRecord> classMembers,
         List<MethodCallRecord> methodCalls,
         List<FieldAccessRecord> fieldAccesses,
-        ConfigurationScanner.Result configuration) {
+        ConfigurationScanner.Result configuration,
+        List<ResourceUsageRecord> resourceUsages) {
 
     public IndexSnapshot {
         classes = List.copyOf(classes);
@@ -60,7 +62,7 @@ public record IndexSnapshot(
                 ? new ConfigurationScanner.Result(List.of(), List.of())
                 : new ConfigurationScanner.Result(
                         List.copyOf(configuration.definitions()),
-                        List.copyOf(configuration.usages()),
-                        List.copyOf(configuration.resourceUsages()));
+                        List.copyOf(configuration.usages()));
+        resourceUsages = List.copyOf(resourceUsages);
     }
 }

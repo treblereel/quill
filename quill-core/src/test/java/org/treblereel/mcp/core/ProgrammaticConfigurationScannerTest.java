@@ -14,6 +14,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.ResourceUsageRecord;
 
 class ProgrammaticConfigurationScannerTest {
 
@@ -54,7 +55,7 @@ class ProgrammaticConfigurationScannerTest {
                         indexedClasses).resourceUsages();
         assertEquals(List.of("example/relative.txt", "file:/tmp/order.html",
                         "messages.properties", "templates/order.html"),
-                resources.stream().map(ConfigurationScanner.ResourceUsage::resourcePath).toList());
+                resources.stream().map(ResourceUsageRecord::resourcePath).toList());
         assertEquals("external_resource", resources.stream()
                 .filter(resource -> resource.resourcePath().startsWith("file:"))
                 .findFirst().orElseThrow().kind());

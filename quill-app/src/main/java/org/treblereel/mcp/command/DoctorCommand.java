@@ -66,8 +66,14 @@ public class DoctorCommand implements Callable<Integer> {
 
         ProjectDiagnostics.Report diagnostics = ProjectDiagnostics.inspect(normalized);
         if (!diagnostics.indexed()) {
-            checks.add(Check.error("index", diagnostics.errorMessage(),
-                    "Run `quill init --project " + normalized + "` after compiling the project"));
+            String action = switch (diagnostics.errorCode()) {
+                case "INDEX_REFRESH_PENDING" -> "Start Quill through MCP or make any MCP tool request";
+                case "INDEX_INCOMPATIBLE" -> "Run `quill init --project " + normalized
+                        + "` with the current Quill binary";
+                default -> "Run `quill init --project " + normalized
+                        + "` after compiling the project";
+            };
+            checks.add(Check.error("index", diagnostics.errorMessage(), action));
         } else {
             switch (diagnostics.health()) {
                 case "healthy" -> checks.add(Check.pass("index", "Index is healthy at generation "

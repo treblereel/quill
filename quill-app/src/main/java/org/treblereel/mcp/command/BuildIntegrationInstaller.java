@@ -191,6 +191,8 @@ final class BuildIntegrationInstaller {
                 + "        } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {\n"
                 + "            java.nio.file.Files.move(temporary.toPath(), event.toPath())\n"
                 + "        }\n"
+                + "        def events = dir.listFiles()?.findAll { it.isFile() && it.name.endsWith('.json') }?.sort { a, b -> a.lastModified() <=> b.lastModified() }\n"
+                + "        events?.take(Math.max(0, events.size() - 16))?.each { it.delete() }\n"
                 + "    }\n"
                 + "}\n" + GRADLE_END;
     }
@@ -217,6 +219,7 @@ final class BuildIntegrationInstaller {
                 + "        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {\n"
                 + "            java.nio.file.Files.move(temporary, event.toPath())\n"
                 + "        }\n"
+                + "        dir.listFiles()?.filter { it.isFile && it.name.endsWith(\".json\") }?.sortedBy { it.lastModified() }?.dropLast(16)?.forEach { it.delete() }\n"
                 + "    }\n"
                 + "}\n" + GRADLE_END;
     }

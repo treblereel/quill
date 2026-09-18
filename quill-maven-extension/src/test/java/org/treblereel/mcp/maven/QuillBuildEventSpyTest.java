@@ -63,4 +63,15 @@ class QuillBuildEventSpyTest {
         assertEquals(reactor, QuillBuildEventSpy.eventRoot(reactor, selectedModule));
         assertEquals(selectedModule, QuillBuildEventSpy.eventRoot(null, selectedModule));
     }
+
+    @Test
+    void boundsPendingEventQueue() throws Exception {
+        for (int index = 0; index < 24; index++) {
+            QuillBuildEventSpy.writeEvent(tempDir);
+        }
+
+        try (var files = Files.list(tempDir.resolve(".quill/build-events"))) {
+            assertEquals(16, files.filter(Files::isRegularFile).count());
+        }
+    }
 }

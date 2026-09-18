@@ -24,6 +24,8 @@ import org.apache.maven.execution.MavenSession;
 @Singleton
 public final class QuillBuildEventSpy extends AbstractEventSpy {
 
+    private static final int MAX_PENDING_EVENTS = 16;
+
     @Override
     public void onEvent(Object event) {
         if (!(event instanceof ExecutionEvent execution)
@@ -89,8 +91,29 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
             } catch (AtomicMoveNotSupportedException ignored) {
                 Files.move(temporary, destination);
             }
+            pruneOldEvents(directory);
         } finally {
             Files.deleteIfExists(temporary);
+        }
+    }
+
+    private static void pruneOldEvents(Path directory) throws IOException {
+        List<Path> events;
+        try (var files = Files.list(directory)) {
+            events = files.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".json"))
+                    .sorted((left, right) -> {
+                        try {
+                            int modified = Files.getLastModifiedTime(left)
+                                    .compareTo(Files.getLastModifiedTime(right));
+                            return modified != 0 ? modified : left.compareTo(right);
+                        } catch (IOException ignored) {
+                            return left.compareTo(right);
+                        }
+                    }).toList();
+        }
+        for (int index = 0; index < events.size() - MAX_PENDING_EVENTS; index++) {
+            Files.deleteIfExists(events.get(index));
         }
     }
 

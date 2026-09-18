@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,8 +20,9 @@ public final class ProjectDiagnostics {
         Path normalizedRoot = root.toAbsolutePath().normalize();
         Path database = ProjectIndexStore.findBestAvailableDb(normalizedRoot);
         if (database == null) {
-            return Report.unavailable(normalizedRoot, "NO_VALID_INDEX",
-                    "No valid index found. Run: quill init --project " + normalizedRoot);
+            Unavailable unavailable = unavailable(normalizedRoot);
+            return Report.unavailable(normalizedRoot, unavailable.health(), unavailable.code(),
+                    unavailable.message());
         }
 
         try {
@@ -37,7 +40,53 @@ public final class ProjectDiagnostics {
             return new Report(normalizedRoot, true, health, database, metadata, freshness,
                     statistics, recovery, null, null);
         } catch (RuntimeException failure) {
-            return Report.unavailable(normalizedRoot, "INDEX_UNREADABLE", safeMessage(failure));
+            return Report.unavailable(normalizedRoot, "corrupt", "INDEX_UNREADABLE",
+                    safeMessage(failure));
+        }
+    }
+
+    private static Unavailable unavailable(Path root) {
+        long pending = regularFileCount(root.resolve(".quill/build-events"), null);
+        if (pending > 0) {
+            return new Unavailable("refresh_pending", "INDEX_REFRESH_PENDING",
+                    pending + " build event" + (pending == 1 ? " is" : "s are")
+                            + " waiting to refresh the index. Make an MCP request to consume "
+                            + (pending == 1 ? "it." : "them."));
+        }
+        Path directory = root.resolve(".quill");
+        List<Path> databases = regularFiles(directory, ".db");
+        if (databases.isEmpty()) {
+            return new Unavailable("missing", "INDEX_MISSING",
+                    "No index has been created. Run: quill init --project " + root);
+        }
+        for (Path candidate : databases) {
+            try {
+                QuillDatabase.open(candidate);
+            } catch (QuillDatabase.SchemaVersionException incompatible) {
+                return new Unavailable("incompatible", "INDEX_INCOMPATIBLE",
+                        safeMessage(incompatible));
+            } catch (RuntimeException ignored) {
+                // Inspect the remaining generations before classifying all of them as corrupt.
+            }
+        }
+        return new Unavailable("corrupt", "INDEX_CORRUPT",
+                "Index generations exist but none can be opened or recovered. "
+                        + "Run: quill init --project " + root);
+    }
+
+    private static long regularFileCount(Path directory, String suffix) {
+        return regularFiles(directory, suffix).size();
+    }
+
+    private static List<Path> regularFiles(Path directory, String suffix) {
+        if (!Files.isDirectory(directory)) return List.of();
+        try (var files = Files.list(directory)) {
+            return files.filter(Files::isRegularFile)
+                    .filter(path -> suffix == null
+                            || path.getFileName().toString().endsWith(suffix))
+                    .sorted().toList();
+        } catch (IOException ignored) {
+            return List.of();
         }
     }
 
@@ -78,8 +127,8 @@ public final class ProjectDiagnostics {
             metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
         }
 
-        static Report unavailable(Path root, String code, String message) {
-            return new Report(root, false, "unavailable", null, Map.of(), null, null,
+        static Report unavailable(Path root, String health, String code, String message) {
+            return new Report(root, false, health, null, Map.of(), null, null,
                     ProjectIndexStore.readRecovery(root).orElse(null), code, message);
         }
 
@@ -87,4 +136,6 @@ public final class ProjectDiagnostics {
             return freshness == null ? List.of() : freshness.staleReasons();
         }
     }
+
+    private record Unavailable(String health, String code, String message) {}
 }

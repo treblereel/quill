@@ -32,9 +32,40 @@ class StatusCommandTest {
         assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
         JsonNode json = JSON.readTree(result.stdout());
         assertFalse(json.path("indexed").asBoolean());
-        assertEquals("unavailable", json.path("health").asText());
-        assertEquals("NO_VALID_INDEX", json.path("error").path("code").asText());
+        assertEquals("missing", json.path("health").asText());
+        assertEquals("INDEX_MISSING", json.path("error").path("code").asText());
         assertTrue(json.path("index").isNull());
+    }
+
+    @Test
+    void jsonDistinguishesPendingRefreshFromMissingIndex() throws Exception {
+        Files.createFile(project.resolve("pom.xml"));
+        Path events = Files.createDirectories(project.resolve(".quill/build-events"));
+        Files.writeString(events.resolve("maven-event.json"), "{}");
+
+        Captured result = executeJson();
+
+        JsonNode json = JSON.readTree(result.stdout());
+        assertEquals("refresh_pending", json.path("health").asText());
+        assertEquals("INDEX_REFRESH_PENDING", json.path("error").path("code").asText());
+        assertTrue(json.path("error").path("message").asText().contains("1 build event"));
+    }
+
+    @Test
+    void jsonDistinguishesIncompatibleIndex() throws Exception {
+        Files.createFile(project.resolve("pom.xml"));
+        Path quill = Files.createDirectories(project.resolve(".quill"));
+        Path database = quill.resolve("old.db");
+        try (var connection = java.sql.DriverManager.getConnection("jdbc:sqlite:" + database);
+                var statement = connection.createStatement()) {
+            statement.execute("PRAGMA user_version = 1");
+        }
+
+        Captured result = executeJson();
+
+        JsonNode json = JSON.readTree(result.stdout());
+        assertEquals("incompatible", json.path("health").asText());
+        assertEquals("INDEX_INCOMPATIBLE", json.path("error").path("code").asText());
     }
 
     @Test

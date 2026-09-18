@@ -3,12 +3,12 @@ package org.treblereel.mcp.mcp;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.command.ProjectIndexStore;
-import org.treblereel.mcp.core.ProjectRootFinder;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.QuillDatabase;
 
@@ -23,25 +23,26 @@ public class ProjectRegistry {
     public record ProjectEntry(String name, Path root, Jdbi jdbi) {}
     public record Resolution(List<ProjectEntry> projects, List<String> errors) {}
 
-    private record RegisteredProject(String name, Path root) {}
-
-    private final List<RegisteredProject> projects = new ArrayList<>();
+    private final ProjectScope scope;
+    private final SingleProjectScope mutableScope;
     private final ConcurrentHashMap<Path, Jdbi> databases = new ConcurrentHashMap<>();
     private final BuildEventConsumer buildEvents = new BuildEventConsumer();
 
+    public ProjectRegistry() {
+        this(new SingleProjectScope());
+    }
+
+    public ProjectRegistry(ProjectScope scope) {
+        this.scope = Objects.requireNonNull(scope, "scope");
+        this.mutableScope = scope instanceof SingleProjectScope single ? single : null;
+    }
+
     public void register(Path projectPath) {
-        try {
-            Path resolved = ProjectRootFinder.find(projectPath);
-            String name = resolved.getFileName().toString();
-            String uniqueName = dedup(name);
-            projects.add(new RegisteredProject(uniqueName, resolved));
-        } catch (IllegalArgumentException e) {
-            Path fallback = projectPath == null
-                    ? Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
-                    : projectPath.toAbsolutePath().normalize();
-            String name = fallback.getFileName().toString();
-            projects.add(new RegisteredProject(dedup(name), fallback));
+        if (mutableScope == null) {
+            throw new IllegalStateException("Projects are managed by "
+                    + scope.getClass().getSimpleName());
         }
+        mutableScope.register(projectPath);
     }
 
     public List<ProjectEntry> initialized() {
@@ -51,7 +52,7 @@ public class ProjectRegistry {
     public Resolution resolve() {
         List<ProjectEntry> result = new ArrayList<>();
         List<String> errors = new ArrayList<>();
-        for (RegisteredProject p : projects) {
+        for (ProjectScope.Project p : scope.snapshot().projects()) {
             String buildEventError = buildEvents.consume(p.root());
             if (buildEventError != null) {
                 errors.add("Project '" + p.name() + "': " + buildEventError);
@@ -78,7 +79,7 @@ public class ProjectRegistry {
     }
 
     void prewarm(Executor executor) {
-        List<RegisteredProject> snapshot = List.copyOf(projects);
+        List<ProjectScope.Project> snapshot = scope.snapshot().projects();
         executor.execute(() -> {
             try {
                 Resolution resolution = resolve();
@@ -88,7 +89,7 @@ public class ProjectRegistry {
                 // A normal request will report the same project-specific error.
             }
         });
-        for (RegisteredProject project : snapshot) {
+        for (ProjectScope.Project project : snapshot) {
             executor.execute(() -> {
                 try {
                     WorktreeSnapshotCache.shared().get(project.root());
@@ -118,22 +119,6 @@ public class ProjectRegistry {
     }
 
     public boolean isEmpty() {
-        return projects.isEmpty();
-    }
-
-    private String dedup(String name) {
-        String candidate = name;
-        int suffix = 1;
-        while (hasName(candidate)) {
-            candidate = name + "-" + suffix++;
-        }
-        return candidate;
-    }
-
-    private boolean hasName(String name) {
-        for (RegisteredProject p : projects) {
-            if (p.name().equals(name)) return true;
-        }
-        return false;
+        return scope.snapshot().projects().isEmpty();
     }
 }

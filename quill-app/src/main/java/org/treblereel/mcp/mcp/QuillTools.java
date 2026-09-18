@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -929,6 +930,9 @@ public final class QuillTools {
         List<ProjectRegistry.ProjectEntry> projects = resolution.projects();
         List<String> errors = resolution.errors();
         if (filtered && projects.isEmpty()) {
+            if (!resolution.issues().isEmpty()) {
+                return ProjectAvailabilityResponses.error(resolution.issues().getFirst());
+            }
             if (!errors.isEmpty()) {
                 return errorResponse(String.join("; ", errors));
             }
@@ -939,13 +943,17 @@ public final class QuillTools {
         if (projects.isEmpty() && errors.isEmpty()) {
             return errorResponse("No projects configured. Start quill with --project <path>.");
         }
+        if (projects.isEmpty() && !resolution.issues().isEmpty()) {
+            return ProjectAvailabilityResponses.error(resolution.issues());
+        }
         if (filtered) {
             errors = List.of();
         }
         if (projects.size() == 1 && errors.isEmpty()) {
             ProjectResult result = runForProject(projects.get(0), perProject);
             return result.error() == null
-                    ? ResponseBudget.apply(result.json())
+                    ? ResponseBudget.apply(appendProjectWarnings(
+                            result.json(), resolution.issues()))
                     : errorResponse("Project '" + result.name() + "': " + result.error());
         }
 
@@ -979,9 +987,37 @@ public final class QuillTools {
         }
         if (!errors.isEmpty()) {
             ArrayNode uninitialized = root.putArray("uninitialized");
-            errors.forEach(uninitialized::add);
+            Set<String> issueMessages = resolution.issues().stream()
+                    .map(ProjectRegistry.ProjectIssue::legacyMessage)
+                    .collect(java.util.stream.Collectors.toSet());
+            errors.stream().filter(error -> !issueMessages.contains(error))
+                    .forEach(uninitialized::add);
+            if (uninitialized.isEmpty()) root.remove("uninitialized");
+        }
+        if (!resolution.issues().isEmpty()) {
+            Set<String> queryable = projects.stream().map(ProjectRegistry.ProjectEntry::name)
+                    .collect(java.util.stream.Collectors.toSet());
+            List<ProjectRegistry.ProjectIssue> warnings = resolution.issues().stream()
+                    .filter(issue -> queryable.contains(issue.project())).toList();
+            List<ProjectRegistry.ProjectIssue> unavailable = resolution.issues().stream()
+                    .filter(issue -> !queryable.contains(issue.project())).toList();
+            ProjectAvailabilityResponses.append(root, "project_warnings", warnings);
+            ProjectAvailabilityResponses.append(root, unavailable);
         }
         return ResponseBudget.apply(root.toString());
+    }
+
+    private static String appendProjectWarnings(
+            String json, List<ProjectRegistry.ProjectIssue> issues) {
+        if (issues.isEmpty()) return json;
+        try {
+            JsonNode parsed = JSON.readTree(json);
+            if (!(parsed instanceof ObjectNode root)) return json;
+            ProjectAvailabilityResponses.append(root, "project_warnings", issues);
+            return root.toString();
+        } catch (Exception ignored) {
+            return json;
+        }
     }
 
     private ProjectResult runForProject(ProjectRegistry.ProjectEntry project,

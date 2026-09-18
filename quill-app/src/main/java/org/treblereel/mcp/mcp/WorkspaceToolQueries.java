@@ -34,6 +34,8 @@ final class WorkspaceToolQueries {
         ProjectRegistry.Resolution initialized = registry.resolve();
         Map<String, ProjectRegistry.ProjectEntry> entries = new LinkedHashMap<>();
         initialized.projects().forEach(entry -> entries.put(entry.name(), entry));
+        Map<String, ProjectRegistry.ProjectIssue> issues = new LinkedHashMap<>();
+        initialized.issues().forEach(issue -> issues.put(issue.project(), issue));
         WorkspaceCoordinateCatalog.Result coordinates =
                 WorkspaceCoordinateCatalog.discover(scope.manifest());
         Map<String, List<WorkspaceCoordinateCatalog.Module>> modules = new LinkedHashMap<>();
@@ -54,6 +56,11 @@ final class WorkspaceToolQueries {
             node.put("relative_path", normalize(scope.root().relativize(project.root()).toString()));
             ProjectRegistry.ProjectEntry entry = entries.get(project.name());
             node.put("indexed", entry != null);
+            ProjectRegistry.ProjectIssue issue = issues.get(project.name());
+            node.put("status", issue != null ? issue.code()
+                    : entry != null ? "ready" : "unavailable");
+            if (issue != null) node.set("availability",
+                    ProjectAvailabilityResponses.details(issue));
             node.put("branch", nullToUnknown(GitAnalyzer.resolveBranch(project.root())));
             node.put("current_commit", nullToUnknown(GitAnalyzer.resolveHead(project.root())));
             var worktree = WorktreeSnapshotCache.shared().get(project.root());
@@ -97,6 +104,8 @@ final class WorkspaceToolQueries {
         }
         WorkspaceDependencyGraph.Result graph =
                 WorkspaceDependencyGraph.discover(scope.manifest());
+        ProjectRegistry.Resolution availability = repository == null || repository.isBlank()
+                ? null : registry.resolve(repository);
         List<WorkspaceDependencyGraph.Edge> selected = graph.edges().stream()
                 .filter(edge -> !crossRepositoryOnly || edge.crossRepository())
                 .filter(edge -> repository == null || repository.isBlank()
@@ -116,6 +125,9 @@ final class WorkspaceToolQueries {
         ToolResponseSupport.appendPage(root, to - from, total, limit, offset);
         root.put("complete", graph.complete());
         appendDiagnostics(root, graph.diagnostics());
+        if (availability != null) {
+            ProjectAvailabilityResponses.append(root, availability.issues());
+        }
         return root.toString();
     }
 
@@ -129,7 +141,8 @@ final class WorkspaceToolQueries {
                     "repository", project.name(), project.root().toString(), null, null, null));
         }
 
-        for (ProjectRegistry.ProjectEntry project : registry.resolve().projects()) {
+        ProjectRegistry.Resolution availability = registry.resolve();
+        for (ProjectRegistry.ProjectEntry project : availability.projects()) {
             List<ClassRecord> classes = new ArrayList<>(
                     IndexReader.findClassesByName(project.jdbi(), target));
             if (classes.isEmpty()) classes.addAll(IndexReader.findClassesByShortName(
@@ -147,10 +160,14 @@ final class WorkspaceToolQueries {
 
         ObjectNode root = JSON.createObjectNode();
         root.put("target", target);
-        root.put("resolution", candidates.isEmpty() ? "not_found"
+        root.put("resolution", candidates.isEmpty() && !availability.issues().isEmpty() ? "unknown"
+                : candidates.isEmpty() ? "not_found"
                 : candidates.size() == 1 ? "resolved" : "ambiguous");
         ArrayNode values = root.putArray("candidates");
         candidates.values().forEach(candidate -> values.add(candidateJson(candidate)));
+        if (candidates.isEmpty()) {
+            ProjectAvailabilityResponses.append(root, availability.issues());
+        }
         return root.toString();
     }
 
@@ -158,6 +175,12 @@ final class WorkspaceToolQueries {
             int limit, int offset) {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null) return workspaceRequired();
+        if (providerRepository != null && !providerRepository.isBlank()) {
+            ProjectRegistry.Resolution availability = registry.resolve(providerRepository);
+            if (availability.projects().isEmpty() && !availability.issues().isEmpty()) {
+                return ProjectAvailabilityResponses.error(availability.issues());
+            }
+        }
         List<ProviderClass> providers = findProviderClasses(target, providerRepository);
         if (providers.isEmpty()) return error("Workspace class not found: " + target);
         if (providers.size() > 1) {
@@ -250,6 +273,12 @@ final class WorkspaceToolQueries {
     String assessRisk(String target, String providerRepository, int maxDepth) {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null) return workspaceRequired();
+        if (providerRepository != null && !providerRepository.isBlank()) {
+            ProjectRegistry.Resolution availability = registry.resolve(providerRepository);
+            if (availability.projects().isEmpty() && !availability.issues().isEmpty()) {
+                return ProjectAvailabilityResponses.error(availability.issues());
+            }
+        }
         List<ProviderClass> providers = findProviderClasses(target, providerRepository);
         if (providers.isEmpty()) return error("Workspace class not found: " + target);
         if (providers.size() > 1) {

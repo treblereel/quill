@@ -32,7 +32,13 @@ class ProjectRegistryTest {
         ProjectRegistry.ProjectEntry entry = registry.resolve().projects().stream()
                 .findFirst().orElse(null);
         assertNull(entry, "An unindexed project must not be exposed as queryable");
-        assertTrue(registry.uninitializedErrors().getFirst().contains("my-project"));
+        ProjectRegistry.Resolution resolution = registry.resolve();
+        assertTrue(resolution.errors().getFirst().contains("my-project"));
+        ProjectRegistry.ProjectIssue issue = resolution.issues().getFirst();
+        assertEquals("build_required", issue.code());
+        assertEquals("maven", issue.buildSystem());
+        assertFalse(issue.buildWasStarted());
+        assertTrue(issue.recommendedAction().contains("Decide whether"));
     }
 
     @Test
@@ -95,6 +101,23 @@ class ProjectRegistryTest {
         var second = registry.resolve().projects().getFirst();
 
         assertSame(first.jdbi(), second.jdbi());
+    }
+
+    @Test
+    void indexedProjectWithoutCompiledOutputsRemainsQueryableButReportsBuildRequired()
+            throws IOException {
+        Path project = Files.createDirectories(tempDir.resolve("cleaned-project"));
+        Files.createFile(project.resolve("pom.xml"));
+        createPublishedDatabase(project, "cleaned");
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project);
+
+        ProjectRegistry.Resolution resolution = registry.resolve();
+
+        assertEquals(1, resolution.projects().size());
+        assertTrue(resolution.errors().isEmpty());
+        assertEquals("build_required", resolution.issues().getFirst().code());
+        assertFalse(resolution.issues().getFirst().buildWasStarted());
     }
 
     @Test

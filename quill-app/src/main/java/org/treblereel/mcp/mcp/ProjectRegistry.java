@@ -12,6 +12,7 @@ import java.util.concurrent.Executors;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.command.ProjectIndexStore;
 import org.treblereel.mcp.command.ProjectInitializer;
+import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.QuillDatabase;
 
@@ -24,7 +25,32 @@ public class ProjectRegistry {
     });
 
     public record ProjectEntry(String name, Path root, Jdbi jdbi) {}
-    public record Resolution(List<ProjectEntry> projects, List<String> errors) {}
+    public record ProjectIssue(
+            String project,
+            Path projectRoot,
+            String code,
+            String buildSystem,
+            String message,
+            String recommendedAction,
+            boolean buildWasStarted) {
+
+        String legacyMessage() {
+            return "Project '" + project + "': " + message;
+        }
+    }
+
+    public record Resolution(
+            List<ProjectEntry> projects, List<String> errors, List<ProjectIssue> issues) {
+        public Resolution(List<ProjectEntry> projects, List<String> errors) {
+            this(projects, errors, List.of());
+        }
+
+        public Resolution {
+            projects = List.copyOf(projects);
+            errors = List.copyOf(errors);
+            issues = List.copyOf(issues);
+        }
+    }
 
     private final ProjectScope scope;
     private final SingleProjectScope mutableScope;
@@ -66,6 +92,7 @@ public class ProjectRegistry {
         List<ProjectEntry> result = new ArrayList<>();
         ProjectScope.Snapshot snapshot = scope.snapshot();
         List<String> errors = new ArrayList<>(snapshot.diagnostics());
+        List<ProjectIssue> issues = new ArrayList<>();
         Set<Path> activeDatabases = ConcurrentHashMap.newKeySet();
         Set<Path> configuredRoots = snapshot.projects().stream()
                 .map(project -> project.root().toAbsolutePath().normalize())
@@ -92,8 +119,9 @@ public class ProjectRegistry {
             }
             final Path dbPath = candidateDb;
             if (dbPath == null) {
-                errors.add("Project '" + p.name() + "' is not indexed. "
-                        + "Run: quill init --project " + p.root());
+                ProjectIssue issue = unavailableProjectIssue(p);
+                issues.add(issue);
+                errors.add(issue.legacyMessage());
                 continue;
             }
             try {
@@ -108,12 +136,65 @@ public class ProjectRegistry {
                     return cached;
                 });
                 result.add(new ProjectEntry(p.name(), p.root(), handle.jdbi()));
+                ProjectIssue buildIssue = buildRequiredIssue(p);
+                if (buildIssue != null) issues.add(buildIssue);
             } catch (RuntimeException e) {
-                errors.add("Project '" + p.name() + "': " + safeMessage(e));
+                ProjectIssue issue = new ProjectIssue(p.name(), projectRoot,
+                        "index_unavailable", buildSystem(projectRoot), safeMessage(e),
+                        "Repair or recreate the Quill index, then retry the MCP request", false);
+                issues.add(issue);
+                errors.add(issue.legacyMessage());
             }
         }
         evictInactive(resolutionId, activeDatabases, configuredRoots, selectedRoots);
-        return new Resolution(List.copyOf(result), List.copyOf(errors));
+        return new Resolution(result, errors, issues);
+    }
+
+    private static ProjectIssue unavailableProjectIssue(ProjectScope.Project project) {
+        Path root = project.root().toAbsolutePath().normalize();
+        BuildSystem buildSystem;
+        try {
+            buildSystem = BuildSystem.detect(root);
+        } catch (IllegalArgumentException unsupported) {
+            return new ProjectIssue(project.name(), root, "unsupported_project", null,
+                    "Quill could not detect a supported Maven or Gradle Java project",
+                    "Select a supported repository or configure the workspace exclusions", false);
+        }
+        ProjectIssue buildIssue = buildRequiredIssue(project, buildSystem);
+        if (buildIssue != null) return buildIssue;
+        return new ProjectIssue(project.name(), root, "index_required",
+                buildSystem.name().toLowerCase(java.util.Locale.ROOT),
+                "Compiled classes are available, but no usable Quill index was found",
+                "Run quill init for this project, then retry the MCP request", false);
+    }
+
+    private static ProjectIssue buildRequiredIssue(ProjectScope.Project project) {
+        try {
+            return buildRequiredIssue(project, BuildSystem.detect(project.root()));
+        } catch (IllegalArgumentException unsupported) {
+            return null;
+        }
+    }
+
+    private static ProjectIssue buildRequiredIssue(
+            ProjectScope.Project project, BuildSystem buildSystem) {
+        Path root = project.root().toAbsolutePath().normalize();
+        if (!ProjectInitializer.findClassesDirs(root).isEmpty()) return null;
+        String action = buildSystem == BuildSystem.MAVEN
+                ? "Decide whether to run the project's Maven compile/package command, then retry"
+                : "Decide whether to run the project's Gradle classes/build command, then retry";
+        return new ProjectIssue(project.name(), root, "build_required",
+                buildSystem.name().toLowerCase(java.util.Locale.ROOT),
+                "No compiled main classes were found; Quill did not start a build",
+                action, false);
+    }
+
+    private static String buildSystem(Path root) {
+        try {
+            return BuildSystem.detect(root).name().toLowerCase(java.util.Locale.ROOT);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private void evictInactive(long resolutionId, Set<Path> activeDatabases,

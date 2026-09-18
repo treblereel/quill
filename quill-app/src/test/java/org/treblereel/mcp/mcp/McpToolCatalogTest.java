@@ -14,6 +14,8 @@ import java.io.OutputStreamWriter;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
@@ -23,11 +25,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import reactor.core.Disposable;
 import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
 class McpToolCatalogTest {
+
+    @TempDir Path tempDir;
 
     private final Scheduler workers = Schedulers.newBoundedElastic(1, 4, "timeout-test");
     private final Scheduler responses = Schedulers.newSingle("timeout-response-test");
@@ -132,6 +137,28 @@ class McpToolCatalogTest {
         assertTrue(!Boolean.TRUE.equals(successful.isError()));
         assertEquals("{\"target\":\"OrderService\"}", text(successful));
         assertEquals(2, tools.invocations);
+    }
+
+    @Test
+    void unbuiltProjectIsReportedAsStructuredMcpError() throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), "<project/>");
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(tempDir);
+        AsyncToolSpecification overview = McpToolCatalog.create(
+                        new QuillTools(registry), workers, responses, Duration.ofSeconds(2))
+                .stream().filter(tool -> tool.tool().name().equals("get_overview"))
+                .findFirst().orElseThrow();
+
+        McpSchema.CallToolResult result = overview.callHandler()
+                .apply(null, new McpSchema.CallToolRequest(
+                        "get_overview", Map.of("details", false), Map.of()))
+                .block(Duration.ofSeconds(3));
+
+        assertTrue(Boolean.TRUE.equals(result.isError()));
+        JsonNode structured = (JsonNode) result.structuredContent();
+        assertEquals("build_required", structured.path("error").asText());
+        assertEquals("mcp_client", structured.path("decision_owner").asText());
+        assertTrue(!structured.path("build_was_started").asBoolean(true));
     }
 
     @Test

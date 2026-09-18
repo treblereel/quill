@@ -113,8 +113,38 @@ class WorkspaceToolQueriesTest {
         JsonNode result = JSON.readTree(isolatedTools.get_overview(
                 Optional.of(false), Optional.of("broken")));
 
-        assertTrue(result.path("error").asText().contains("is not indexed"), result.toString());
-        assertFalse(result.path("error").asText().contains("not found"), result.toString());
+        assertEquals("build_required", result.path("error").asText(), result.toString());
+        assertEquals("build_required", result.path("status").asText());
+        assertEquals("broken", result.path("project").asText());
+        assertEquals("maven", result.path("build_system").asText());
+        assertEquals("mcp_client", result.path("decision_owner").asText());
+        assertFalse(result.path("build_was_started").asBoolean(true));
+        assertTrue(result.path("recommended_action").asText().contains("Decide whether"));
+    }
+
+    @Test
+    void repositoryCatalogExposesBuildRequiredState() throws Exception {
+        Path repository = Files.createDirectories(workspace.resolve("unbuilt"));
+        Files.createDirectories(repository.resolve(".git"));
+        Files.writeString(repository.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>unbuilt</artifactId><version>1</version>
+                </project>
+                """);
+
+        QuillTools refreshed = new QuillTools(
+                new ProjectRegistry(new WorkspaceProjectScope(workspace)));
+        JsonNode result = JSON.readTree(refreshed.list_workspace_repositories(
+                Optional.empty(), Optional.of(10), Optional.empty()));
+        JsonNode unbuilt = java.util.stream.StreamSupport.stream(
+                        result.path("repositories").spliterator(), false)
+                .filter(node -> "unbuilt".equals(node.path("name").asText()))
+                .findFirst().orElseThrow();
+
+        assertEquals("build_required", unbuilt.path("status").asText());
+        assertEquals("mcp_client",
+                unbuilt.path("availability").path("decision_owner").asText());
+        assertFalse(unbuilt.path("availability").path("build_was_started").asBoolean(true));
     }
 
     @Test

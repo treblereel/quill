@@ -762,7 +762,7 @@ public class ProjectInitializer {
         return ResolutionPersistenceMapper.merge(parts, mixedFrameworks);
     }
 
-    static List<Path> findClassesDirs(Path root) {
+    public static List<Path> findClassesDirs(Path root) {
         return ProjectLayout.findClassesDirs(root, false);
     }
 

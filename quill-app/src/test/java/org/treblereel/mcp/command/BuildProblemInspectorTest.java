@@ -114,6 +114,8 @@ class BuildProblemInspectorTest {
         state.put("buildTool", buildTool);
         state.put("successful", successful);
         state.put("finishedAt", System.currentTimeMillis());
+        state.put("captureScope", buildTool.equals("gradle") ? "task_output" : "exception_chain");
+        state.putArray("diagnostics").add(message);
         state.putArray("failureMessages").add(message);
         JSON.writeValue(quill.resolve("build-state.json").toFile(), state);
     }

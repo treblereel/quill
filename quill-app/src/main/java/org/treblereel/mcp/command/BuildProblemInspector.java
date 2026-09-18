@@ -71,8 +71,18 @@ public final class BuildProblemInspector {
             boolean successful = state.path("successful").asBoolean(false);
             ObjectNode result = base(successful ? "success" : "failed",
                     buildTool, finishedAt > 0 ? Instant.ofEpochMilli(finishedAt) : null);
+            String captureScope = state.path("captureScope").asText("exception_chain");
+            result.put("capture_scope", captureScope);
+            result.remove("limitations");
+            ArrayNode limitations = result.putArray("limitations");
+            if (captureScope.equals("task_output")) {
+                limitations.add("Diagnostics are bounded to the first 200 captured build-output chunks");
+            } else {
+                limitations.add("Maven diagnostics are limited to messages exposed by the build exception chain");
+            }
             List<Problem> problems = successful ? List.of()
-                    : parseProblems(root, state.path("failureMessages"));
+                    : parseProblems(root, state.path("diagnostics"),
+                            state.path("failureMessages"));
             if (!normalizedSeverity.equals("all")) {
                 problems = problems.stream()
                         .filter(problem -> problem.severity().equals(normalizedSeverity)).toList();
@@ -138,20 +148,17 @@ public final class BuildProblemInspector {
         else result.put("finished_at", finishedAt.toString());
         result.put("build_was_started", false);
         result.put("located_problem_count", 0);
-        result.put("capture_scope", "build_failure_exception_chain");
+        result.put("capture_scope", "unknown");
         result.putArray("limitations").add(
                 "Compiler diagnostics written only to console may not appear in the captured exception chain");
         return result;
     }
 
-    private static List<Problem> parseProblems(Path root, JsonNode messages) {
+    private static List<Problem> parseProblems(
+            Path root, JsonNode diagnostics, JsonNode messages) {
         Map<String, Problem> unique = new LinkedHashMap<>();
-        if (messages.isArray()) {
-            for (JsonNode value : messages) {
-                if (!value.isTextual() || value.textValue().isBlank()) continue;
-                parseMessage(root, value.textValue(), unique);
-            }
-        }
+        parseValues(root, diagnostics, unique);
+        parseValues(root, messages, unique);
         if (unique.isEmpty()) {
             Problem fallback = new Problem("error", "Build failed without diagnostic messages",
                     null, null, null, null, null, null, null, null,
@@ -159,6 +166,16 @@ public final class BuildProblemInspector {
             unique.put(fallback.key(), fallback);
         }
         return new ArrayList<>(unique.values());
+    }
+
+    private static void parseValues(
+            Path root, JsonNode messages, Map<String, Problem> unique) {
+        if (messages.isArray()) {
+            for (JsonNode value : messages) {
+                if (!value.isTextual() || value.textValue().isBlank()) continue;
+                parseMessage(root, value.textValue(), unique);
+            }
+        }
     }
 
     private static void parseMessage(Path root, String raw, Map<String, Problem> target) {

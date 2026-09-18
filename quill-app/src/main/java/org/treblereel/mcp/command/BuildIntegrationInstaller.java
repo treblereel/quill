@@ -116,7 +116,9 @@ final class BuildIntegrationInstaller {
             }
             if (!content.contains("quill.internal") || !content.contains("finishedAt")
                     || !content.contains("failureMessagesBase64")
-                    || !content.contains("version")) {
+                    || !content.contains("diagnosticsBase64")
+                    || !(content.contains("\"version\":3")
+                            || content.contains("\\\"version\\\":3"))) {
                 return new Inspection(State.OUTDATED, file,
                         "Gradle build integration uses an older protocol");
             }
@@ -171,6 +173,15 @@ final class BuildIntegrationInstaller {
 
     private static String groovyGradleBlock() {
         return GRADLE_START + "\n"
+                + "def quillDiagnostics = java.util.Collections.synchronizedList([])\n"
+                + "gradle.beforeProject { project ->\n"
+                + "    project.tasks.configureEach { task ->\n"
+                + "        task.logging.addStandardErrorListener { text -> if (quillDiagnostics.size() < 200) quillDiagnostics << text }\n"
+                + "        task.logging.addStandardOutputListener { text ->\n"
+                + "            if (quillDiagnostics.size() < 200 && text ==~ /(?s).*(\\.java:|\\.kt:|\\.groovy:|error:|warning:).*/) quillDiagnostics << text\n"
+                + "        }\n"
+                + "    }\n"
+                + "}\n"
                 + "gradle.buildFinished { result ->\n"
                 + "    if (System.getProperty('quill.internal') != 'true') {\n"
                 + "        def dir = new File(settingsDir, '.quill/build-events')\n"
@@ -185,7 +196,8 @@ final class BuildIntegrationInstaller {
                 + "            current = current.cause\n"
                 + "        }\n"
                 + "        def encoded = groovy.json.JsonOutput.toJson(messages)\n"
-                + "        temporary.text = '{\"version\":2,\"buildTool\":\"gradle\",\"successful\":' + (result.failure == null) + ',\"finishedAt\":' + System.currentTimeMillis() + ',\"failureMessagesBase64\":' + encoded + '}'\n"
+                + "        def diagnostics = groovy.json.JsonOutput.toJson(quillDiagnostics.take(200).collect { Base64.encoder.encodeToString(it.take(64000).getBytes('UTF-8')) })\n"
+                + "        temporary.text = '{\"version\":3,\"buildTool\":\"gradle\",\"successful\":' + (result.failure == null) + ',\"finishedAt\":' + System.currentTimeMillis() + ',\"captureScope\":\"task_output\",\"failureMessagesBase64\":' + encoded + ',\"diagnosticsBase64\":' + diagnostics + '}'\n"
                 + "        try {\n"
                 + "            java.nio.file.Files.move(temporary.toPath(), event.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)\n"
                 + "        } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {\n"
@@ -199,6 +211,15 @@ final class BuildIntegrationInstaller {
 
     private static String kotlinGradleBlock() {
         return GRADLE_START + "\n"
+                + "val quillDiagnostics = java.util.Collections.synchronizedList(mutableListOf<String>())\n"
+                + "gradle.beforeProject {\n"
+                + "    tasks.configureEach {\n"
+                + "        logging.addStandardErrorListener(org.gradle.api.logging.StandardOutputListener { text -> if (quillDiagnostics.size < 200) quillDiagnostics.add(text.toString()) })\n"
+                + "        logging.addStandardOutputListener(org.gradle.api.logging.StandardOutputListener { text ->\n"
+                + "            if (quillDiagnostics.size < 200 && listOf(\".java:\", \".kt:\", \".groovy:\", \"error:\", \"warning:\").any(text::contains)) quillDiagnostics.add(text.toString())\n"
+                + "        })\n"
+                + "    }\n"
+                + "}\n"
                 + "gradle.buildFinished {\n"
                 + "    if (System.getProperty(\"quill.internal\") != \"true\") {\n"
                 + "        val dir = file(\".quill/build-events\").apply { mkdirs() }\n"
@@ -213,7 +234,8 @@ final class BuildIntegrationInstaller {
                 + "            current = current.cause\n"
                 + "        }\n"
                 + "        val encoded = messages.joinToString(prefix = \"[\", postfix = \"]\") { \"\\\"$it\\\"\" }\n"
-                + "        java.nio.file.Files.writeString(temporary, \"{\\\"version\\\":2,\\\"buildTool\\\":\\\"gradle\\\",\\\"successful\\\":${failure == null},\\\"finishedAt\\\":$now,\\\"failureMessagesBase64\\\":$encoded}\")\n"
+                + "        val diagnostics = quillDiagnostics.take(200).joinToString(prefix = \"[\", postfix = \"]\") { \"\\\"${java.util.Base64.getEncoder().encodeToString(it.take(64000).toByteArray())}\\\"\" }\n"
+                + "        java.nio.file.Files.writeString(temporary, \"{\\\"version\\\":3,\\\"buildTool\\\":\\\"gradle\\\",\\\"successful\\\":${failure == null},\\\"finishedAt\\\":$now,\\\"captureScope\\\":\\\"task_output\\\",\\\"failureMessagesBase64\\\":$encoded,\\\"diagnosticsBase64\\\":$diagnostics}\")\n"
                 + "        try {\n"
                 + "            java.nio.file.Files.move(temporary, event.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)\n"
                 + "        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {\n"

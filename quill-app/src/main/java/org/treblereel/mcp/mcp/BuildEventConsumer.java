@@ -22,12 +22,12 @@ import org.treblereel.mcp.core.WorktreeInspector;
 final class BuildEventConsumer {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final int PROTOCOL_VERSION = 2;
+    private static final int PROTOCOL_VERSION = 3;
     private static final Duration MAX_CLOCK_SKEW = Duration.ofMinutes(5);
     private static final Set<String> BUILD_TOOLS = Set.of("maven", "gradle");
     private static final Set<String> FIELDS =
-            Set.of("version", "buildTool", "successful", "finishedAt",
-                    "failureMessagesBase64");
+            Set.of("version", "buildTool", "successful", "finishedAt", "captureScope",
+                    "failureMessagesBase64", "diagnosticsBase64");
 
     private final ConcurrentHashMap<Path, Object> projectLocks = new ConcurrentHashMap<>();
 
@@ -105,35 +105,50 @@ final class BuildEventConsumer {
             JsonNode successful = root.get("successful");
             JsonNode finishedAt = root.get("finishedAt");
             JsonNode messages = root.get("failureMessagesBase64");
+            JsonNode diagnostics = root.get("diagnosticsBase64");
+            JsonNode captureScope = root.get("captureScope");
             if (version == null || !version.isIntegralNumber()
                     || version.intValue() != PROTOCOL_VERSION
                     || buildTool == null || !buildTool.isTextual()
                     || !BUILD_TOOLS.contains(buildTool.textValue())
                     || successful == null || !successful.isBoolean()
                     || finishedAt == null || !finishedAt.isIntegralNumber()
-                    || messages == null || !messages.isArray() || messages.size() > 50) {
+                    || captureScope == null || !captureScope.isTextual()
+                    || !Set.of("exception_chain", "task_output").contains(captureScope.textValue())
+                    || messages == null || !messages.isArray() || messages.size() > 50
+                    || diagnostics == null || !diagnostics.isArray()
+                    || diagnostics.size() > 200) {
                 return Optional.empty();
             }
             long timestamp = finishedAt.longValue();
             long latestAllowed = System.currentTimeMillis() + MAX_CLOCK_SKEW.toMillis();
             if (timestamp <= 0 || timestamp > latestAllowed) return Optional.empty();
-            List<String> failureMessages = new ArrayList<>();
-            for (JsonNode message : messages) {
-                if (!message.isTextual() || message.textValue().length() > 100_000) {
-                    return Optional.empty();
-                }
-                byte[] decoded = Base64.getDecoder().decode(message.textValue());
-                if (decoded.length > 64_000) return Optional.empty();
-                failureMessages.add(new String(decoded, StandardCharsets.UTF_8));
-            }
+            List<String> failureMessages = decode(messages);
+            List<String> compilerDiagnostics = decode(diagnostics);
             if (successful.booleanValue() && !failureMessages.isEmpty()) {
                 return Optional.empty();
             }
             return Optional.of(new BuildEvent(file, buildTool.textValue(),
-                    successful.booleanValue(), timestamp, List.copyOf(failureMessages)));
+                    successful.booleanValue(), timestamp, captureScope.textValue(),
+                    List.copyOf(failureMessages), List.copyOf(compilerDiagnostics)));
         } catch (IOException | RuntimeException ignored) {
             return Optional.empty();
         }
+    }
+
+    private static List<String> decode(JsonNode values) {
+        List<String> decodedValues = new ArrayList<>();
+        for (JsonNode value : values) {
+            if (!value.isTextual() || value.textValue().length() > 100_000) {
+                throw new IllegalArgumentException("Invalid encoded build diagnostic");
+            }
+            byte[] decoded = Base64.getDecoder().decode(value.textValue());
+            if (decoded.length > 64_000) {
+                throw new IllegalArgumentException("Build diagnostic exceeds 64 KiB");
+            }
+            decodedValues.add(new String(decoded, StandardCharsets.UTF_8));
+        }
+        return decodedValues;
     }
 
     private static Optional<String> newerStructuralInput(Path root, long finishedAt) {
@@ -187,7 +202,9 @@ final class BuildEventConsumer {
             state.put("buildTool", event.buildTool());
             state.put("successful", event.successful());
             state.put("finishedAt", event.finishedAt());
+            state.put("captureScope", event.captureScope());
             state.set("failureMessages", JSON.valueToTree(event.failureMessages()));
+            state.set("diagnostics", JSON.valueToTree(event.diagnostics()));
             JSON.writeValue(temporary.toFile(), state);
             try {
                 Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE,
@@ -202,5 +219,5 @@ final class BuildEventConsumer {
 
     private record BuildEvent(
             Path file, String buildTool, boolean successful, long finishedAt,
-            List<String> failureMessages) {}
+            String captureScope, List<String> failureMessages, List<String> diagnostics) {}
 }

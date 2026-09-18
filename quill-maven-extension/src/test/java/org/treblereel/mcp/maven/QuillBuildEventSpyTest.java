@@ -24,11 +24,12 @@ class QuillBuildEventSpyTest {
             assertEquals(1, events.size());
             assertTrue(events.getFirst().getFileName().toString().startsWith("maven-"));
             String json = Files.readString(events.getFirst());
-            assertTrue(json.contains("\"version\":2"));
+            assertTrue(json.contains("\"version\":3"));
             assertTrue(json.contains("\"buildTool\":\"maven\""));
             assertTrue(json.contains("\"successful\":true"));
             assertTrue(json.matches("(?s).*\"finishedAt\":[1-9][0-9]*.*"));
             assertTrue(json.contains("\"failureMessagesBase64\":[]"));
+            assertTrue(json.contains("\"diagnosticsBase64\":[]"));
         }
     }
 
@@ -44,7 +45,20 @@ class QuillBuildEventSpyTest {
         String json = Files.readString(event);
         assertTrue(json.contains("\"successful\":false"));
         assertTrue(json.contains("\"failureMessagesBase64\":[\""));
+        assertTrue(json.contains("\"diagnosticsBase64\":[\""));
         assertTrue(!json.contains("bad \"token\""));
+    }
+
+    @Test
+    void extractsLocatedCompilerDiagnosticsFromExceptionMessages() {
+        var diagnostics = QuillBuildEventSpy.compilerDiagnostics(java.util.List.of("""
+                Compilation failed
+                /workspace/src/main/java/acme/Broken.java:[7,3] cannot find symbol
+                lifecycle execution failed
+                """));
+
+        assertEquals(1, diagnostics.size());
+        assertTrue(diagnostics.getFirst().contains("Broken.java:[7,3]"));
     }
 
     @Test

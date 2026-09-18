@@ -91,8 +91,9 @@ class BuildEventConsumerTest {
     }
 
     private static void writeEvent(Path event, long finishedAt) throws Exception {
-        Files.writeString(event, "{\"version\":2,\"buildTool\":\"maven\","
+        Files.writeString(event, "{\"version\":3,\"buildTool\":\"maven\","
                 + "\"successful\":true,\"finishedAt\":" + finishedAt
-                + ",\"failureMessagesBase64\":[]}");
+                + ",\"captureScope\":\"exception_chain\","
+                + "\"failureMessagesBase64\":[],\"diagnosticsBase64\":[]}");
     }
 }

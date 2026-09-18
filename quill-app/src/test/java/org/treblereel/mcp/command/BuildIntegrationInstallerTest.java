@@ -130,15 +130,14 @@ class BuildIntegrationInstallerTest {
         assumeGradleAvailable();
         Files.writeString(tempDir.resolve("settings.gradle.kts"),
                 "rootProject.name = \"integration-test\"\n");
-        Files.writeString(tempDir.resolve("build.gradle"), """
-                tasks.register('broken') {
-                    doLast { throw new GradleException('deliberate build failure') }
-                }
-                """);
+        Files.writeString(tempDir.resolve("build.gradle"), "plugins { id 'java' }\n");
+        Path broken = tempDir.resolve("src/main/java/acme/Broken.java");
+        Files.createDirectories(broken.getParent());
+        Files.writeString(broken, "package acme; class Broken { Missing value; }\n");
         assertEquals(BuildIntegrationInstaller.Result.INSTALLED,
                 BuildIntegrationInstaller.install(tempDir));
 
-        Process build = new ProcessBuilder("gradle", "broken", "--quiet", "--no-daemon")
+        Process build = new ProcessBuilder("gradle", "compileJava", "--quiet", "--no-daemon")
                 .directory(tempDir.toFile()).redirectErrorStream(true).start();
         String output = new String(build.getInputStream().readAllBytes());
         assertTrue(build.waitFor() != 0, output);
@@ -147,6 +146,12 @@ class BuildIntegrationInstallerTest {
             String json = Files.readString(event);
             assertTrue(json.contains("\"successful\":false"));
             assertFalse(json.contains("\"failureMessagesBase64\":[]"));
+            assertTrue(json.contains("\"captureScope\":\"task_output\""));
+            var eventJson = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+            assertFalse(eventJson.path("diagnosticsBase64").isEmpty());
+            String decoded = new String(java.util.Base64.getDecoder().decode(
+                    eventJson.path("diagnosticsBase64").get(0).asText()));
+            assertTrue(decoded.contains("Broken.java"), decoded);
         }
     }
 
@@ -163,11 +168,12 @@ class BuildIntegrationInstallerTest {
                             .startsWith("gradle-"))
                     .findFirst().orElseThrow();
             String json = Files.readString(event);
-            assertTrue(json.contains("\"version\":2"));
+            assertTrue(json.contains("\"version\":3"));
             assertTrue(json.contains("\"buildTool\":\"gradle\""));
             assertTrue(json.contains("\"successful\":true"));
             assertTrue(json.matches("(?s).*\"finishedAt\":[1-9][0-9]*.*"));
             assertTrue(json.contains("\"failureMessagesBase64\":[]"));
+            assertTrue(json.contains("\"diagnosticsBase64\":[]"));
         }
 
         try (var events = Files.list(tempDir.resolve(".quill/build-events"))) {

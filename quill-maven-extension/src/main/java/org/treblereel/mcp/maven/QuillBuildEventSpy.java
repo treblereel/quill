@@ -45,8 +45,9 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
         if (root == null) return;
         try {
             boolean successful = !session.getResult().hasExceptions();
-            writeEvent(root.toAbsolutePath().normalize(), successful,
-                    failureMessages(session.getResult().getExceptions()));
+            List<String> messages = failureMessages(session.getResult().getExceptions());
+            writeEvent(root.toAbsolutePath().normalize(), successful, messages,
+                    compilerDiagnostics(messages));
         } catch (IOException e) {
             // A notification must never turn a successful user build into a failed build.
             System.err.println("[quill] Could not record Maven build completion: "
@@ -64,11 +65,16 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
     }
 
     static void writeEvent(Path root) throws IOException {
-        writeEvent(root, true, List.of());
+        writeEvent(root, true, List.of(), List.of());
     }
 
     static void writeEvent(Path root, boolean successful, List<String> failureMessages)
             throws IOException {
+        writeEvent(root, successful, failureMessages, compilerDiagnostics(failureMessages));
+    }
+
+    static void writeEvent(Path root, boolean successful, List<String> failureMessages,
+            List<String> diagnostics) throws IOException {
         Path directory = root.resolve(".quill/build-events");
         Files.createDirectories(directory);
         long now = System.currentTimeMillis();
@@ -76,14 +82,13 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
         Path destination = directory.resolve(name);
         Path temporary = Files.createTempFile(directory, ".maven-", ".tmp");
         try {
-            String encoded = String.join(",", failureMessages.stream().limit(50)
-                    .map(message -> Base64.getEncoder().encodeToString(
-                            message.getBytes(StandardCharsets.UTF_8)))
-                    .map(value -> "\"" + value + "\"")
-                    .toList());
-            String json = "{\"version\":2,\"buildTool\":\"maven\","
+            String encoded = encoded(failureMessages, 50);
+            String encodedDiagnostics = encoded(diagnostics, 200);
+            String json = "{\"version\":3,\"buildTool\":\"maven\","
                     + "\"successful\":" + successful + ",\"finishedAt\":" + now + ","
-                    + "\"failureMessagesBase64\":[" + encoded + "]}\n";
+                    + "\"captureScope\":\"exception_chain\","
+                    + "\"failureMessagesBase64\":[" + encoded + "],"
+                    + "\"diagnosticsBase64\":[" + encodedDiagnostics + "]}\n";
             Files.writeString(temporary, json, StandardCharsets.UTF_8,
                     StandardOpenOption.TRUNCATE_EXISTING);
             try {
@@ -131,5 +136,25 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
             }
         }
         return new ArrayList<>(messages);
+    }
+
+    static List<String> compilerDiagnostics(List<String> messages) {
+        if (messages == null) return List.of();
+        LinkedHashSet<String> diagnostics = new LinkedHashSet<>();
+        for (String message : messages) {
+            if (message == null) continue;
+            message.lines().map(String::strip)
+                    .filter(line -> line.matches("(?i).+\\.(java|kt|groovy)(?::|:\\[).*"))
+                    .limit(200 - diagnostics.size()).forEach(diagnostics::add);
+            if (diagnostics.size() >= 200) break;
+        }
+        return List.copyOf(diagnostics);
+    }
+
+    private static String encoded(List<String> values, int limit) {
+        return String.join(",", values.stream().limit(limit)
+                .map(message -> Base64.getEncoder().encodeToString(
+                        message.getBytes(StandardCharsets.UTF_8)))
+                .map(value -> "\"" + value + "\"").toList());
     }
 }

@@ -59,6 +59,7 @@ final class AnnotatedSymbolQueries {
             node.put("class", symbol.className());
             node.put("name", symbol.symbolName());
             if (symbol.signature() != null) node.put("signature", symbol.signature());
+            if (symbol.descriptor() != null) node.put("descriptor", symbol.descriptor());
             if (symbol.typeName() != null) node.put("type", symbol.typeName());
             if (!symbol.parameterTypes().isEmpty()) {
                 node.set("parameter_types", JSON.valueToTree(symbol.parameterTypes()));

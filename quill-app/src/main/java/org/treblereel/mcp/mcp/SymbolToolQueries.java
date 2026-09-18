@@ -92,6 +92,7 @@ final class SymbolToolQueries {
             node.put("kind", member.kind().toLowerCase(Locale.ROOT));
             node.put("name", member.name());
             node.put("signature", member.signature());
+            node.put("descriptor", member.descriptor());
             node.put("type", member.typeName());
             node.set("parameters", JSON.valueToTree(member.parameterTypes()));
             node.put("modifiers", member.modifiers());

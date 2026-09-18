@@ -156,6 +156,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   generated occurrences grouped by module and evidence about reactor-discovery completeness
 - **find_usages** — find bytecode calls, constructor calls, field access, type references,
   injection, inheritance, annotations, and ServiceLoader usages with evidence and pagination
+- **find_symbol_usages** — find exact method, constructor, or field usages by declaration
+  signature/JVM descriptor, including call or read/write evidence and pagination
 - **get_symbol_details** — inspect hierarchy, annotations, declared members, DI context,
   dependency metrics, implementations, occurrences, and external types for one class
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,

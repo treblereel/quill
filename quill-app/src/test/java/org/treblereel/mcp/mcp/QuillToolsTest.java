@@ -546,6 +546,77 @@ class QuillToolsTest {
     }
 
     @Test
+    void findSymbolUsagesResolvesOverloadsConstructorsAndFieldAccess() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'submit', 'submit(java.lang.String):void',
+                            '(Ljava/lang/String;)V', 'void', '["java.lang.String"]',
+                            'public', '[]'),
+                           (1, 'METHOD', 'submit', 'submit(int):void',
+                            '(I)V', 'void', '["int"]', 'public', '[]'),
+                           (1, 'CONSTRUCTOR', 'OrderService',
+                            'OrderService(java.lang.String)', '(Ljava/lang/String;)V',
+                            'org.acme.OrderService', '["java.lang.String"]',
+                            'public', '[]'),
+                           (1, 'FIELD', 'status', 'status:java.lang.String',
+                            'Ljava/lang/String;', 'java.lang.String', '[]',
+                            'private', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor,
+                       to_class_id, to_method, to_descriptor, invocation_kind,
+                       occurrence_count, evidence_lines)
+                    VALUES (3, 'run', '()V', 1, 'submit',
+                            '(Ljava/lang/String;)V', 'virtual', 2, '[31,35]'),
+                           (4, 'run', '()V', 1, 'submit', '(I)V',
+                            'virtual', 1, '[18]'),
+                           (3, 'create', '()V', 1, '<init>',
+                            '(Ljava/lang/String;)V', 'special', 1, '[12]')""");
+            handle.execute("""
+                    INSERT INTO field_accesses
+                      (from_class_id, from_method, from_descriptor,
+                       to_class_id, field_name, field_descriptor, access_kind,
+                       occurrence_count, evidence_lines)
+                    VALUES (3, 'read', '()V', 1, 'status', 'Ljava/lang/String;',
+                            'read_instance', 2, '[41,44]'),
+                           (4, 'write', '()V', 1, 'status', 'Ljava/lang/String;',
+                            'write_instance', 1, '[22]')""");
+        });
+
+        QuillToolQueries queries = new QuillToolQueries();
+        JsonNode ambiguous = JSON.readTree(queries.findSymbolUsages(
+                jdbi, "OrderService", "submit", "method", null, "all", 10, 0));
+        assertEquals("Ambiguous symbol", ambiguous.path("error").asText());
+        assertEquals(2, ambiguous.path("candidates").size());
+
+        JsonNode method = JSON.readTree(queries.findSymbolUsages(
+                jdbi, "OrderService", "submit", "method", "(Ljava/lang/String;)V",
+                "all", 10, 0));
+        assertEquals(1, method.path("total").asInt());
+        assertEquals("(Ljava/lang/String;)V", method.path("descriptor").asText());
+        assertEquals(List.of(31, 35), method.path("usages").get(0)
+                .path("evidence_lines").valueStream().map(JsonNode::asInt).toList());
+        assertEquals("org.acme.StripePaymentService",
+                method.path("usages").get(0).path("caller").path("class").asText());
+
+        JsonNode constructor = JSON.readTree(queries.findSymbolUsages(
+                jdbi, "OrderService", null, "constructor",
+                "OrderService(java.lang.String)", "all", 10, 0));
+        assertEquals(1, constructor.path("total").asInt());
+        assertEquals("special", constructor.path("usages").get(0)
+                .path("invocation_kind").asText());
+
+        JsonNode reads = JSON.readTree(queries.findSymbolUsages(
+                jdbi, "OrderService", "status", "field", null, "read", 10, 0));
+        assertEquals(1, reads.path("total").asInt());
+        assertEquals("read", reads.path("usages").get(0).path("usage_kind").asText());
+        assertEquals(2, reads.path("usages").get(0).path("occurrence_count").asInt());
+    }
+
+    @Test
     void findMethodOverridesHandlesOverloadsAndTransitiveDescendants() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

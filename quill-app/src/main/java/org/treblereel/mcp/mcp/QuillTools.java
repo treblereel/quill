@@ -96,6 +96,22 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Find exact bytecode usages of a method, constructor, or field declaration.")
+    public String find_symbol_usages(
+            @ToolArg(description = "Declaring class name or source path") String target,
+            @ToolArg(description = "Member name; optional for constructors") Optional<String> name,
+            @ToolArg(description = "Symbol kind: method, constructor, or field") String kind,
+            @ToolArg(description = "Exact source signature or JVM descriptor; required when overloaded") Optional<String> signature,
+            @ToolArg(description = "For fields: all, read, or write (default: all)") Optional<String> access,
+            @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
+            @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
+            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findSymbolUsages(
+                p.jdbi(), target, name.orElse(null), kind, signature.orElse(null),
+                access.orElse("all"), clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect a class and its members.")
     public String get_symbol_details(
             @ToolArg(description = "Class or source path") String target,

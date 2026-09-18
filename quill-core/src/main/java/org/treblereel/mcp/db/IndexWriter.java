@@ -55,8 +55,8 @@ public final class IndexWriter {
     private static final TableSpec CLASS_ANNOTATIONS = new TableSpec("class_annotations",
             "class_id", "annotation_name", "direct", "via_annotation");
     private static final TableSpec CLASS_MEMBERS = new TableSpec("class_members",
-            "class_id", "kind", "name", "signature", "type_name", "parameter_types",
-            "modifiers", "annotations");
+            "class_id", "kind", "name", "signature", "descriptor", "type_name",
+            "parameter_types", "modifiers", "annotations");
     private static final TableSpec METHOD_CALLS = new TableSpec("method_calls",
             "from_class_id", "from_method", "from_descriptor", "to_class_id",
             "to_method", "to_descriptor", "invocation_kind", "occurrence_count",
@@ -470,17 +470,18 @@ public final class IndexWriter {
     private static void insertDesiredClassMembers(
             Handle h, List<ClassMemberRecord> members) {
         executeBatch(h,
-                "INSERT INTO desired_class_members (class_id, kind, name, signature, type_name, parameter_types, modifiers, annotations) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO desired_class_members (class_id, kind, name, signature, descriptor, type_name, parameter_types, modifiers, annotations) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 members, (statement, member) -> {
                     statement.setInt(1, member.classId());
                     statement.setString(2, member.kind());
                     statement.setString(3, member.name());
                     statement.setString(4, member.signature());
-                    statement.setString(5, member.typeName());
-                    statement.setString(6, member.parameterTypes().isEmpty()
+                    statement.setString(5, member.descriptor());
+                    statement.setString(6, member.typeName());
+                    statement.setString(7, member.parameterTypes().isEmpty()
                             ? "[]" : toJson(member.parameterTypes()));
-                    statement.setString(7, member.modifiers());
-                    statement.setString(8, member.annotations().isEmpty()
+                    statement.setString(8, member.modifiers());
+                    statement.setString(9, member.annotations().isEmpty()
                             ? "[]" : toJson(member.annotations()));
                 });
     }
@@ -841,17 +842,18 @@ public final class IndexWriter {
 
     private static void insertClassMembers(Handle h, List<ClassMemberRecord> members) {
         executeBatch(h,
-                "INSERT INTO class_members (class_id, kind, name, signature, type_name, parameter_types, modifiers, annotations) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO class_members (class_id, kind, name, signature, descriptor, type_name, parameter_types, modifiers, annotations) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 members, (statement, member) -> {
                     statement.setInt(1, member.classId());
                     statement.setString(2, member.kind());
                     statement.setString(3, member.name());
                     statement.setString(4, member.signature());
-                    statement.setString(5, member.typeName());
-                    statement.setString(6, member.parameterTypes().isEmpty()
+                    statement.setString(5, member.descriptor());
+                    statement.setString(6, member.typeName());
+                    statement.setString(7, member.parameterTypes().isEmpty()
                             ? "[]" : toJson(member.parameterTypes()));
-                    statement.setString(7, member.modifiers());
-                    statement.setString(8, member.annotations().isEmpty()
+                    statement.setString(8, member.modifiers());
+                    statement.setString(9, member.annotations().isEmpty()
                             ? "[]" : toJson(member.annotations()));
                 });
     }

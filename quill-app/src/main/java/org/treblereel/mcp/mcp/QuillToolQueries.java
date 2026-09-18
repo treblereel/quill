@@ -15,6 +15,7 @@ public final class QuillToolQueries {
     private final TypeHierarchyQueries typeHierarchy = new TypeHierarchyQueries();
     private final SymbolSearchQueries symbolSearch = new SymbolSearchQueries();
     private final AnnotatedSymbolQueries annotatedSymbols = new AnnotatedSymbolQueries();
+    private final SymbolUsageQueries symbolUsages = new SymbolUsageQueries();
     private final CallHierarchyQueries callHierarchy = new CallHierarchyQueries();
     private final MethodOverrideQueries methodOverrides = new MethodOverrideQueries();
     private final UnusedClassQueries unusedClasses = new UnusedClassQueries();
@@ -86,6 +87,12 @@ public final class QuillToolQueries {
             boolean includeMetaAnnotations, int limit, int offset) {
         return annotatedSymbols.findAnnotatedSymbols(
                 jdbi, annotation, kind, includeMetaAnnotations, limit, offset);
+    }
+
+    String findSymbolUsages(Jdbi jdbi, String target, String name, String kind,
+            String signature, String access, int limit, int offset) {
+        return symbolUsages.findSymbolUsages(
+                jdbi, target, name, kind, signature, access, limit, offset);
     }
 
     String getCallHierarchy(Jdbi jdbi, String target, String method,

@@ -30,6 +30,7 @@ public final class IndexReader {
             String symbolKind,
             String symbolName,
             String signature,
+            String descriptor,
             String typeName,
             List<String> parameterTypes,
             String modifiers,
@@ -47,6 +48,7 @@ public final class IndexReader {
             String symbolKind,
             String symbolName,
             String signature,
+            String descriptor,
             String typeName,
             List<String> parameterTypes,
             String modifiers,
@@ -97,6 +99,22 @@ public final class IndexReader {
             int readOccurrences,
             int writerClassCount,
             int writeOccurrences) {}
+
+    public record FieldAccessView(
+            int fromClassId,
+            String fromClass,
+            String fromSource,
+            int fromSourceLine,
+            String fromOrigin,
+            String fromModule,
+            int fromSourceTokens,
+            String fromMethod,
+            String fromDescriptor,
+            String fieldName,
+            String fieldDescriptor,
+            String accessKind,
+            int occurrenceCount,
+            List<Integer> evidenceLines) {}
 
     public static List<ClassRecord> findAllClasses(Jdbi jdbi) {
         return jdbi.withHandle(h ->
@@ -286,7 +304,8 @@ public final class IndexReader {
                 .map((rs, ctx) -> new AnnotatedSymbolResult(
                         rs.getInt("class_id"), rs.getString("class_name"),
                         rs.getString("symbol_kind"), rs.getString("symbol_name"),
-                        rs.getString("signature"), rs.getString("type_name"),
+                        rs.getString("signature"), rs.getString("descriptor"),
+                        rs.getString("type_name"),
                         fromJson(rs.getString("parameter_types")),
                         rs.getString("modifiers"), rs.getString("match"),
                         rs.getString("via_annotation"), rs.getString("source_file"),
@@ -311,7 +330,8 @@ public final class IndexReader {
                 WITH symbols AS (
                     SELECT c.id AS class_id, c.class_name, c.kind AS symbol_kind,
                            c.class_name AS symbol_name, NULL AS signature,
-                           c.class_name AS type_name, '[]' AS parameter_types,
+                           NULL AS descriptor, c.class_name AS type_name,
+                           '[]' AS parameter_types,
                            '' AS modifiers,
                            CASE WHEN MAX(a.direct) = 1 THEN 'direct' ELSE 'meta' END AS match,
                            MIN(CASE WHEN a.direct = 0 THEN a.via_annotation END) AS via_annotation,
@@ -325,7 +345,7 @@ public final class IndexReader {
                     GROUP BY c.id
                     UNION ALL
                     SELECT c.id, c.class_name, m.kind, m.name, m.signature,
-                           m.type_name, m.parameter_types, m.modifiers,
+                           m.descriptor, m.type_name, m.parameter_types, m.modifiers,
                            'direct', NULL,
                            c.source_file, c.source_line, c.origin, c.module, c.source_set,
                            c.source_tokens
@@ -462,7 +482,7 @@ public final class IndexReader {
 
     public static List<ClassMemberRecord> findClassMembers(Jdbi jdbi, int classId) {
         return jdbi.withHandle(h -> h.createQuery("""
-                        SELECT class_id, kind, name, signature, type_name, parameter_types,
+                        SELECT class_id, kind, name, signature, descriptor, type_name, parameter_types,
                                modifiers, annotations
                         FROM class_members WHERE class_id = :classId
                         ORDER BY CASE kind WHEN 'FIELD' THEN 0 WHEN 'CONSTRUCTOR' THEN 1 ELSE 2 END,
@@ -481,7 +501,7 @@ public final class IndexReader {
             for (int from = 0; from < ids.size(); from += 500) {
                 List<Integer> batch = ids.subList(from, Math.min(from + 500, ids.size()));
                 handle.createQuery("""
-                                SELECT class_id, kind, name, signature, type_name, parameter_types,
+                                SELECT class_id, kind, name, signature, descriptor, type_name, parameter_types,
                                        modifiers, annotations
                                 FROM class_members WHERE class_id IN (<classIds>)
                                 ORDER BY class_id,
@@ -507,7 +527,8 @@ public final class IndexReader {
                 WITH symbols AS (
                     SELECT c.id AS class_id, c.class_name, c.kind AS class_kind,
                            c.kind AS symbol_kind, c.class_name AS symbol_name,
-                           NULL AS signature, NULL AS type_name, '[]' AS parameter_types,
+                           NULL AS signature, NULL AS descriptor, NULL AS type_name,
+                           '[]' AS parameter_types,
                            '' AS modifiers, '[]' AS annotations,
                            c.source_file, c.source_line, c.origin, c.module, c.source_set,
                            c.source_tokens
@@ -517,7 +538,7 @@ public final class IndexReader {
                     UNION ALL
                     SELECT c.id AS class_id, c.class_name, c.kind AS class_kind,
                            m.kind AS symbol_kind, m.name AS symbol_name,
-                           m.signature, m.type_name, m.parameter_types,
+                           m.signature, m.descriptor, m.type_name, m.parameter_types,
                            m.modifiers, m.annotations,
                            c.source_file, c.source_line, c.origin, c.module, c.source_set,
                            c.source_tokens
@@ -539,7 +560,8 @@ public final class IndexReader {
                     rs.getInt("class_id"), rs.getString("class_name"),
                     rs.getString("class_kind"), rs.getString("symbol_kind"),
                     rs.getString("symbol_name"), rs.getString("signature"),
-                    rs.getString("type_name"), fromJson(rs.getString("parameter_types")),
+                    rs.getString("descriptor"), rs.getString("type_name"),
+                    fromJson(rs.getString("parameter_types")),
                     rs.getString("modifiers"), fromJson(rs.getString("annotations")),
                     rs.getString("source_file"), rs.getInt("source_line"),
                     rs.getString("origin"), rs.getString("module"),
@@ -612,6 +634,113 @@ public final class IndexReader {
                     rs.getString("to_method"), rs.getString("to_descriptor"),
                     rs.getString("invocation_kind"), rs.getInt("occurrence_count"),
                     parseIntList(rs.getString("evidence_lines")))).list();
+        });
+    }
+
+    public static List<MethodCallView> findExactMethodUsages(Jdbi jdbi, int classId,
+            String method, String descriptor, int limit, int offset) {
+        String sql = """
+                SELECT mc.*, source.class_name AS from_class,
+                       source.source_file AS from_source,
+                       source.source_line AS from_source_line,
+                       source.origin AS from_origin, source.module AS from_module,
+                       source.source_tokens AS from_source_tokens,
+                       target.class_name AS to_class,
+                       target.source_file AS to_source,
+                       target.source_line AS to_source_line,
+                       target.origin AS to_origin, target.module AS to_module,
+                       target.source_tokens AS to_source_tokens
+                FROM method_calls mc
+                JOIN classes source ON source.id = mc.from_class_id
+                JOIN classes target ON target.id = mc.to_class_id
+                WHERE source.lifecycle = 'current' AND source.origin != 'orphan_output'
+                  AND target.lifecycle = 'current' AND target.origin != 'orphan_output'
+                  AND mc.to_class_id = :classId AND mc.to_method = :method
+                  AND mc.to_descriptor = :descriptor
+                ORDER BY from_class, from_method, from_descriptor, invocation_kind
+                LIMIT :limit OFFSET :offset""";
+        return jdbi.withHandle(handle -> handle.createQuery(sql)
+                .bind("classId", classId)
+                .bind("method", method)
+                .bind("descriptor", descriptor)
+                .bind("limit", limit)
+                .bind("offset", offset)
+                .map((rs, ctx) -> mapMethodCall(rs)).list());
+    }
+
+    public static int countExactMethodUsages(
+            Jdbi jdbi, int classId, String method, String descriptor) {
+        return jdbi.withHandle(handle -> handle.createQuery("""
+                        SELECT count(*) FROM method_calls mc
+                        JOIN classes source ON source.id = mc.from_class_id
+                        JOIN classes target ON target.id = mc.to_class_id
+                        WHERE source.lifecycle = 'current'
+                          AND source.origin != 'orphan_output'
+                          AND target.lifecycle = 'current'
+                          AND target.origin != 'orphan_output'
+                          AND mc.to_class_id = :classId AND mc.to_method = :method
+                          AND mc.to_descriptor = :descriptor""")
+                .bind("classId", classId)
+                .bind("method", method)
+                .bind("descriptor", descriptor)
+                .mapTo(Integer.class).one());
+    }
+
+    public static List<FieldAccessView> findExactFieldUsages(Jdbi jdbi, int classId,
+            String field, String descriptor, String accessKind, int limit, int offset) {
+        String accessPredicate = accessKind == null ? "" : " AND fa.access_kind LIKE :accessKind";
+        String sql = """
+                SELECT fa.*, source.class_name AS from_class,
+                       source.source_file AS from_source,
+                       source.source_line AS from_source_line,
+                       source.origin AS from_origin, source.module AS from_module,
+                       source.source_tokens AS from_source_tokens
+                FROM field_accesses fa
+                JOIN classes source ON source.id = fa.from_class_id
+                JOIN classes target ON target.id = fa.to_class_id
+                WHERE source.lifecycle = 'current' AND source.origin != 'orphan_output'
+                  AND target.lifecycle = 'current' AND target.origin != 'orphan_output'
+                  AND fa.to_class_id = :classId AND fa.field_name = :field
+                  AND fa.field_descriptor = :descriptor
+                """ + accessPredicate
+                + " ORDER BY from_class, from_method, from_descriptor, access_kind"
+                + " LIMIT :limit OFFSET :offset";
+        return jdbi.withHandle(handle -> {
+            var query = handle.createQuery(sql)
+                    .bind("classId", classId).bind("field", field)
+                    .bind("descriptor", descriptor).bind("limit", limit)
+                    .bind("offset", offset);
+            if (accessKind != null) query.bind("accessKind", accessKind + "_%");
+            return query.map((rs, ctx) -> new FieldAccessView(
+                    rs.getInt("from_class_id"), rs.getString("from_class"),
+                    rs.getString("from_source"), rs.getInt("from_source_line"),
+                    rs.getString("from_origin"), rs.getString("from_module"),
+                    rs.getInt("from_source_tokens"), rs.getString("from_method"),
+                    rs.getString("from_descriptor"), rs.getString("field_name"),
+                    rs.getString("field_descriptor"), rs.getString("access_kind"),
+                    rs.getInt("occurrence_count"),
+                    parseIntList(rs.getString("evidence_lines")))).list();
+        });
+    }
+
+    public static int countExactFieldUsages(Jdbi jdbi, int classId,
+            String field, String descriptor, String accessKind) {
+        String accessPredicate = accessKind == null ? "" : " AND fa.access_kind LIKE :accessKind";
+        String sql = """
+                SELECT count(*) FROM field_accesses fa
+                JOIN classes source ON source.id = fa.from_class_id
+                JOIN classes target ON target.id = fa.to_class_id
+                WHERE source.lifecycle = 'current' AND source.origin != 'orphan_output'
+                  AND target.lifecycle = 'current' AND target.origin != 'orphan_output'
+                  AND fa.to_class_id = :classId AND fa.field_name = :field
+                  AND fa.field_descriptor = :descriptor
+                """ + accessPredicate;
+        return jdbi.withHandle(handle -> {
+            var query = handle.createQuery(sql)
+                    .bind("classId", classId).bind("field", field)
+                    .bind("descriptor", descriptor);
+            if (accessKind != null) query.bind("accessKind", accessKind + "_%");
+            return query.mapTo(Integer.class).one();
         });
     }
 
@@ -1125,9 +1254,27 @@ public final class IndexReader {
             throws java.sql.SQLException {
         return new ClassMemberRecord(
                 rs.getInt("class_id"), rs.getString("kind"), rs.getString("name"),
-                rs.getString("signature"), rs.getString("type_name"),
+                rs.getString("signature"), rs.getString("descriptor"),
+                rs.getString("type_name"),
                 fromJson(rs.getString("parameter_types")), rs.getString("modifiers"),
                 fromJson(rs.getString("annotations")));
+    }
+
+    private static MethodCallView mapMethodCall(java.sql.ResultSet rs)
+            throws java.sql.SQLException {
+        return new MethodCallView(
+                rs.getInt("from_class_id"), rs.getString("from_class"),
+                rs.getString("from_source"), rs.getInt("from_source_line"),
+                rs.getString("from_origin"), rs.getString("from_module"),
+                rs.getInt("from_source_tokens"),
+                rs.getString("from_method"), rs.getString("from_descriptor"),
+                rs.getInt("to_class_id"), rs.getString("to_class"),
+                rs.getString("to_source"), rs.getInt("to_source_line"),
+                rs.getString("to_origin"), rs.getString("to_module"),
+                rs.getInt("to_source_tokens"),
+                rs.getString("to_method"), rs.getString("to_descriptor"),
+                rs.getString("invocation_kind"), rs.getInt("occurrence_count"),
+                parseIntList(rs.getString("evidence_lines")));
     }
 
     private static ClassOccurrenceRecord mapClassOccurrence(java.sql.ResultSet rs)

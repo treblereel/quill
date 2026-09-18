@@ -207,6 +207,13 @@ class IndexWriterReaderTest {
         assertEquals("(Ljava/lang/String;)Z", inboundUsages.getFirst().descriptor());
         assertEquals(1, inboundUsages.getFirst().callerClassCount());
         assertEquals(2, inboundUsages.getFirst().occurrenceCount());
+        var exact = IndexReader.findExactMethodUsages(
+                database, 2, "execute", "(Ljava/lang/String;)Z", 10, 0);
+        assertEquals(1, exact.size());
+        assertEquals(1, IndexReader.countExactMethodUsages(
+                database, 2, "execute", "(Ljava/lang/String;)Z"));
+        assertEquals(0, IndexReader.countExactMethodUsages(
+                database, 2, "execute", "()Z"));
 
         IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), classes,
                 List.of(), List.of(), List.of(), Map.of(), List.of(), List.of(), List.of(),
@@ -241,6 +248,13 @@ class IndexWriterReaderTest {
         assertEquals(2, usages.getFirst().readOccurrences());
         assertEquals(1, usages.getFirst().writerClassCount());
         assertEquals(1, usages.getFirst().writeOccurrences());
+        var reads = IndexReader.findExactFieldUsages(
+                database, 2, "value", "I", "read", 10, 0);
+        assertEquals(1, reads.size());
+        assertEquals("read_instance", reads.getFirst().accessKind());
+        assertEquals(List.of(11, 14), reads.getFirst().evidenceLines());
+        assertEquals(1, IndexReader.countExactFieldUsages(
+                database, 2, "value", "I", "write"));
 
         IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), classes,
                 List.of(), List.of(), List.of(), Map.of(), List.of(), List.of(), List.of(),

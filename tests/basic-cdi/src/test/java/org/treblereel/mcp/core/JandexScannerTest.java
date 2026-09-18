@@ -127,11 +127,14 @@ class JandexScannerTest {
         assertTrue(members.stream().anyMatch(member -> member.classId() == orderService
                 && member.kind().equals("FIELD")
                 && member.name().equals("paymentService")
+                && member.descriptor().startsWith("L")
                 && member.annotations().contains("jakarta.inject.Inject")));
         assertTrue(members.stream().anyMatch(member -> member.classId() == orderService
-                && member.kind().equals("CONSTRUCTOR")));
+                && member.kind().equals("CONSTRUCTOR")
+                && member.descriptor().endsWith(")V")));
         assertTrue(members.stream().anyMatch(member -> member.classId() == orderService
                 && member.kind().equals("METHOD")
+                && member.descriptor().startsWith("(Ljava/lang/String;)")
                 && member.signature().contains("createOrder(java.lang.String)")));
     }
 
@@ -167,6 +170,26 @@ class JandexScannerTest {
                 .findFirst().orElseThrow();
 
         assertTrue(observe.annotations().contains(ObserverParam.class.getName()));
+    }
+
+    @Test
+    void storesErasedDescriptorsForGenericMembers() throws Exception {
+        Indexer indexer = new Indexer();
+        indexer.indexClass(GenericFixture.class);
+        Index genericIndex = indexer.complete();
+
+        var members = JandexScanner.extractClassMembers(
+                genericIndex, Map.of(GenericFixture.class.getName(), 1));
+        var classGeneric = members.stream()
+                .filter(member -> member.name().equals("classGeneric"))
+                .findFirst().orElseThrow();
+        var methodGeneric = members.stream()
+                .filter(member -> member.name().equals("methodGeneric"))
+                .findFirst().orElseThrow();
+
+        assertEquals("(Ljava/lang/Number;)Ljava/lang/Number;", classGeneric.descriptor());
+        assertEquals("(Ljava/lang/CharSequence;)Ljava/lang/CharSequence;",
+                methodGeneric.descriptor());
     }
 
     @Test
@@ -247,5 +270,15 @@ class JandexScannerTest {
 
     static class ObserverFixture {
         void observe(@ObserverParam String event) {}
+    }
+
+    static class GenericFixture<T extends Number> {
+        T classGeneric(T value) {
+            return value;
+        }
+
+        <V extends CharSequence> V methodGeneric(V value) {
+            return value;
+        }
     }
 }

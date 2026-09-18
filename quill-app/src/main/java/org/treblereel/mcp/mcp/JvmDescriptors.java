@@ -9,6 +9,9 @@ final class JvmDescriptors {
     private JvmDescriptors() {}
 
     static String methodDescriptor(ClassMemberRecord member) {
+        if (member.descriptor() != null && !member.descriptor().isBlank()) {
+            return member.descriptor();
+        }
         Type returnType = asmType(member.typeName());
         if (returnType == null) return null;
         Type[] parameters = new Type[member.parameterTypes().size()];
@@ -20,6 +23,9 @@ final class JvmDescriptors {
     }
 
     static String fieldDescriptor(ClassMemberRecord member) {
+        if (member.descriptor() != null && !member.descriptor().isBlank()) {
+            return member.descriptor();
+        }
         Type type = asmType(member.typeName());
         return type == null || type.getSort() == Type.VOID ? null : type.getDescriptor();
     }

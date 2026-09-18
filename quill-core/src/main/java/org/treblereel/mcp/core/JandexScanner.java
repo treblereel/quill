@@ -234,7 +234,10 @@ public final class JandexScanner {
                     .sorted(Comparator.comparing(FieldInfo::name)).toList()) {
                 String type = field.type().toString();
                 result.add(new ClassMemberRecord(classId, "FIELD", field.name(),
-                        field.name() + ":" + type, type, List.of(),
+                        field.name() + ":" + type,
+                        field.type().descriptor(identifier -> resolveTypeVariable(
+                                identifier, List.of(), classInfo.typeParameters())),
+                        type, List.of(),
                         java.lang.reflect.Modifier.toString(field.flags()),
                         memberAnnotations(field.annotations(), AnnotationTarget.Kind.FIELD)));
             }
@@ -257,8 +260,10 @@ public final class JandexScanner {
                 String signature = name + "(" + String.join(",", parameters) + ")"
                         + (constructor ? "" : ":" + type);
                 result.add(new ClassMemberRecord(classId,
-                        constructor ? "CONSTRUCTOR" : "METHOD", name, signature, type,
-                        parameters, java.lang.reflect.Modifier.toString(method.flags()),
+                        constructor ? "CONSTRUCTOR" : "METHOD", name, signature,
+                        method.descriptor(identifier -> resolveTypeVariable(
+                                identifier, method.typeParameters(), classInfo.typeParameters())),
+                        type, parameters, java.lang.reflect.Modifier.toString(method.flags()),
                         methodAnnotations(method.annotations())));
             }
         }
@@ -267,6 +272,15 @@ public final class JandexScanner {
 
     private static boolean synthetic(short flags) {
         return (flags & 0x1000) != 0;
+    }
+
+    private static Type resolveTypeVariable(String identifier,
+            List<TypeVariable> methodVariables, List<TypeVariable> classVariables) {
+        return Stream.concat(methodVariables.stream(), classVariables.stream())
+                .filter(variable -> variable.identifier().equals(identifier))
+                .findFirst()
+                .flatMap(variable -> variable.bounds().stream().findFirst())
+                .orElseGet(() -> Type.create(Object.class));
     }
 
     private static List<String> memberAnnotations(

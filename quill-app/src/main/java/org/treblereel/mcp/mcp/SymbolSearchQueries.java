@@ -56,6 +56,7 @@ final class SymbolSearchQueries {
             else node.put("source_set", match.sourceSet());
             if (match.signature() != null) {
                 node.put("signature", match.signature());
+                node.put("descriptor", match.descriptor());
                 node.put("type", match.typeName());
                 node.set("parameters", JSON.valueToTree(match.parameterTypes()));
                 node.put("modifiers", match.modifiers());

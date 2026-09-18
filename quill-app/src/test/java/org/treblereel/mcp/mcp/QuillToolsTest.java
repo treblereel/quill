@@ -1452,6 +1452,43 @@ class QuillToolsTest {
     }
 
     @Test
+    void singleProjectResultKeepsTheUnwrappedResponseContract() throws Exception {
+        ProjectRegistry registry = singleProjectRegistry("only-project");
+        QuillTools tools = new QuillTools(registry);
+
+        JsonNode implicit = JSON.readTree(tools.get_overview(
+                Optional.of(false), Optional.empty()));
+        JsonNode explicit = JSON.readTree(tools.get_overview(
+                Optional.of(false), Optional.of("ONLY-PROJECT")));
+
+        assertTrue(implicit.has("project"));
+        assertFalse(implicit.has("projects"),
+                "A single-project response must not gain a workspace-style wrapper");
+        assertEquals(implicit, explicit,
+                "Selecting the only project explicitly must not change the payload");
+    }
+
+    @Test
+    void singleProjectUnknownFilterReportsTheConfiguredProject() throws Exception {
+        QuillTools tools = new QuillTools(singleProjectRegistry("only-project"));
+
+        JsonNode result = JSON.readTree(tools.get_overview(
+                Optional.empty(), Optional.of("missing")));
+
+        assertEquals("Project 'missing' not found. Available: [only-project]",
+                result.path("error").asText());
+    }
+
+    private ProjectRegistry singleProjectRegistry(String name) {
+        return new ProjectRegistry() {
+            @Override
+            public Resolution resolve() {
+                return new Resolution(List.of(new ProjectEntry(name, tempDir, jdbi)), List.of());
+            }
+        };
+    }
+
+    @Test
     void getDependenciesDepth2ExpandsTransitive() throws Exception {
         var tools = new QuillTools();
         String result = tools.getDependencies(jdbi, "OrderService", "outbound", 2);

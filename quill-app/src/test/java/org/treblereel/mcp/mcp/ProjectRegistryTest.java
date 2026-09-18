@@ -25,6 +25,10 @@ class ProjectRegistryTest {
         registry.register(nested);
 
         assertFalse(registry.isEmpty());
+        ProjectRegistry.ProjectEntry entry = registry.resolve().projects().stream()
+                .findFirst().orElse(null);
+        assertNull(entry, "An unindexed project must not be exposed as queryable");
+        assertTrue(registry.uninitializedErrors().getFirst().contains("my-project"));
     }
 
     @Test
@@ -87,6 +91,23 @@ class ProjectRegistryTest {
         var second = registry.resolve().projects().getFirst();
 
         assertSame(first.jdbi(), second.jdbi());
+    }
+
+    @Test
+    void singleRegisteredProjectPreservesItsNameAndCanonicalRoot() throws IOException {
+        Path project = Files.createDirectories(tempDir.resolve("single-project"));
+        Files.createFile(project.resolve("pom.xml"));
+        createPublishedDatabase(project, "single");
+
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project.resolve("."));
+
+        ProjectRegistry.Resolution resolution = registry.resolve();
+        assertTrue(resolution.errors().isEmpty());
+        assertEquals(1, resolution.projects().size());
+        assertEquals("single-project", resolution.projects().getFirst().name());
+        assertEquals(project.toAbsolutePath().normalize(),
+                resolution.projects().getFirst().root());
     }
 
     @Test

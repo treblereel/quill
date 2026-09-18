@@ -81,8 +81,8 @@ final class WorkspaceToolQueries {
         }
         ToolResponseSupport.appendPage(root, to - from, total, limit, offset);
         root.put("coordinates_complete", coordinates.complete());
-        root.set("diagnostics", JSON.valueToTree(mergeDiagnostics(
-                initialized.errors(), snapshot.diagnostics(), coordinates.diagnostics())));
+        appendDiagnostics(root, mergeDiagnostics(
+                initialized.errors(), snapshot.diagnostics(), coordinates.diagnostics()));
         return root.toString();
     }
 
@@ -115,7 +115,7 @@ final class WorkspaceToolQueries {
         }
         ToolResponseSupport.appendPage(root, to - from, total, limit, offset);
         root.put("complete", graph.complete());
-        root.set("diagnostics", JSON.valueToTree(graph.diagnostics()));
+        appendDiagnostics(root, graph.diagnostics());
         return root.toString();
     }
 
@@ -233,7 +233,7 @@ final class WorkspaceToolQueries {
         ToolResponseSupport.appendPage(root, to - from, total, limit, offset);
         root.put("candidate_consumer_count", consumerEdges.size());
         root.put("complete", graph.complete());
-        root.set("diagnostics", JSON.valueToTree(diagnostics));
+        appendDiagnostics(root, diagnostics);
         root.putArray("limitations").add(
                 "Only repositories declaring the provider artifact are queried");
         return root.toString();
@@ -317,7 +317,7 @@ final class WorkspaceToolQueries {
         root.put("version_drift_count", drifted);
         root.set("downstream", JSON.valueToTree(downstream));
         root.put("complete", graph.complete());
-        root.set("diagnostics", JSON.valueToTree(graph.diagnostics()));
+        appendDiagnostics(root, graph.diagnostics());
         root.putArray("limitations")
                 .add("Transitive impact is repository-level dependency reachability")
                 .add("Usage and test evidence is calculated only for direct consumers");
@@ -391,6 +391,13 @@ final class WorkspaceToolQueries {
         Set<String> merged = new LinkedHashSet<>();
         for (List<String> group : groups) merged.addAll(group);
         return List.copyOf(merged);
+    }
+
+    private static void appendDiagnostics(ObjectNode root, List<String> diagnostics) {
+        int limit = Math.min(10, diagnostics.size());
+        root.put("diagnostic_count", diagnostics.size());
+        root.set("diagnostics", JSON.valueToTree(diagnostics.subList(0, limit)));
+        root.put("diagnostics_truncated", limit < diagnostics.size());
     }
 
     private static String nullToUnknown(String value) {

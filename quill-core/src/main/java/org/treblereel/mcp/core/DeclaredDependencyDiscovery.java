@@ -19,13 +19,22 @@ import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 /** Reads direct dependency declarations without invoking the target build. */
 public final class DeclaredDependencyDiscovery {
 
-    public record Result(Map<String, Set<String>> dependenciesByModule, Set<String> completeModules,
-            String source, boolean complete) {
+    public record Result(Map<String, Set<String>> dependenciesByModule,
+            Map<String, Map<String, Set<String>>> scopesByModule,
+            Set<String> completeModules, String source, boolean complete) {
         public Result {
             Map<String, Set<String>> copy = new LinkedHashMap<>();
             dependenciesByModule.forEach((module, dependencies) ->
                     copy.put(module, Set.copyOf(dependencies)));
             dependenciesByModule = Map.copyOf(copy);
+            Map<String, Map<String, Set<String>>> scopeCopy = new LinkedHashMap<>();
+            scopesByModule.forEach((module, dependencies) -> {
+                Map<String, Set<String>> values = new LinkedHashMap<>();
+                dependencies.forEach((dependency, scopes) ->
+                        values.put(dependency, Set.copyOf(scopes)));
+                scopeCopy.put(module, Map.copyOf(values));
+            });
+            scopesByModule = Map.copyOf(scopeCopy);
             completeModules = Set.copyOf(completeModules);
         }
     }
@@ -41,24 +50,28 @@ public final class DeclaredDependencyDiscovery {
 
     private static Result discoverMaven(Path root, Set<String> modules) {
         Map<String, Set<String>> result = new LinkedHashMap<>();
+        Map<String, Map<String, Set<String>>> scopes = new LinkedHashMap<>();
         Set<String> completeModules = new LinkedHashSet<>();
         boolean complete = true;
         for (String module : modules) {
             Path directory = module.equals(".") ? root : root.resolve(module);
             Set<String> dependencies = new LinkedHashSet<>();
+            Map<String, Set<String>> moduleScopes = new LinkedHashMap<>();
             if (readMavenDependencies(directory.resolve("pom.xml"), dependencies,
-                    new LinkedHashSet<>(), new Properties())) {
+                    moduleScopes, new LinkedHashSet<>(), new Properties())) {
                 completeModules.add(module);
             } else {
                 complete = false;
             }
             result.put(module, dependencies);
+            scopes.put(module, moduleScopes);
         }
-        return new Result(result, completeModules, "maven_model", complete);
+        return new Result(result, scopes, completeModules, "maven_model", complete);
     }
 
     private static boolean readMavenDependencies(Path pom, Set<String> result,
-            Set<Path> visited, Properties inheritedProperties) {
+            Map<String, Set<String>> scopes, Set<Path> visited,
+            Properties inheritedProperties) {
         Path normalized = pom.toAbsolutePath().normalize();
         if (!visited.add(normalized) || !Files.isRegularFile(normalized)) return false;
         Model model = readModel(normalized);
@@ -81,18 +94,19 @@ public final class DeclaredDependencyDiscovery {
                     .normalize();
             if (Files.isDirectory(parent)) parent = parent.resolve("pom.xml");
             if (Files.isRegularFile(parent)) {
-                complete &= readMavenDependencies(parent, result, visited, properties);
+                complete &= readMavenDependencies(parent, result, scopes, visited, properties);
             }
         }
-        complete &= addDependencies(model.getDependencies(), result, properties);
+        complete &= addDependencies(model.getDependencies(), result, scopes, properties);
         for (Profile profile : model.getProfiles()) {
-            complete &= addDependencies(profile.getDependencies(), result, properties);
+            complete &= addDependencies(profile.getDependencies(), result, scopes, properties);
         }
         return complete;
     }
 
     private static boolean addDependencies(
-            java.util.List<Dependency> dependencies, Set<String> result, Properties properties) {
+            java.util.List<Dependency> dependencies, Set<String> result,
+            Map<String, Set<String>> scopes, Properties properties) {
         boolean complete = true;
         for (Dependency dependency : dependencies) {
             String group = interpolate(dependency.getGroupId(), properties);
@@ -101,7 +115,11 @@ public final class DeclaredDependencyDiscovery {
                     || artifact.contains("${")) {
                 complete = false;
             } else {
-                result.add(group + ":" + artifact);
+                String ga = group + ":" + artifact;
+                result.add(ga);
+                String scope = dependency.getScope() == null || dependency.getScope().isBlank()
+                        ? "compile" : interpolate(dependency.getScope(), properties);
+                scopes.computeIfAbsent(ga, ignored -> new LinkedHashSet<>()).add(scope);
             }
         }
         return complete;
@@ -109,18 +127,25 @@ public final class DeclaredDependencyDiscovery {
 
     private static Result discoverGradle(Path root, Set<String> modules) {
         Map<String, Set<String>> result = new LinkedHashMap<>();
+        Map<String, Map<String, Set<String>>> scopes = new LinkedHashMap<>();
         Set<String> completeModules = new LinkedHashSet<>();
         boolean complete = true;
         for (String module : modules) {
             Path directory = module.equals(".") ? root : root.resolve(module);
             Path snapshot = directory.resolve("build/quill-direct-dependencies.tsv");
             Set<String> dependencies = new LinkedHashSet<>();
+            Map<String, Set<String>> moduleScopes = new LinkedHashMap<>();
             if (Files.isRegularFile(snapshot)) {
                 try {
                     for (String line : Files.readAllLines(snapshot, StandardCharsets.UTF_8)) {
                         String[] fields = line.split("\\t", -1);
                         if (fields.length >= 2 && !fields[0].isBlank() && !fields[1].isBlank()) {
-                            dependencies.add(fields[0] + ":" + fields[1]);
+                            String ga = fields[0] + ":" + fields[1];
+                            dependencies.add(ga);
+                            String scope = fields.length >= 3 && !fields[2].isBlank()
+                                    ? fields[2] : "unknown";
+                            moduleScopes.computeIfAbsent(ga, ignored -> new LinkedHashSet<>())
+                                    .add(scope);
                         }
                     }
                     completeModules.add(module);
@@ -131,8 +156,10 @@ public final class DeclaredDependencyDiscovery {
                 complete = false;
             }
             result.put(module, dependencies);
+            scopes.put(module, moduleScopes);
         }
-        return new Result(result, completeModules, "gradle_discovery_snapshot", complete);
+        return new Result(result, scopes, completeModules,
+                "gradle_discovery_snapshot", complete);
     }
 
     private static Model readModel(Path pom) {

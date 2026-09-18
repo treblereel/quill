@@ -43,6 +43,8 @@ class DeclaredDependencyDiscoveryTest {
         assertTrue(result.complete());
         assertEquals(Set.of("com.acme:widget", "org.slf4j:slf4j-api"),
                 result.dependenciesByModule().get("app"));
+        assertEquals(Set.of("compile"),
+                result.scopesByModule().get("app").get("com.acme:widget"));
     }
 
     @Test
@@ -58,6 +60,8 @@ class DeclaredDependencyDiscoveryTest {
         assertFalse(result.complete());
         assertEquals(Set.of("api"), result.completeModules());
         assertEquals(Set.of("org.demo:lib"), result.dependenciesByModule().get("api"));
+        assertEquals(Set.of("runtimeClasspath"),
+                result.scopesByModule().get("api").get("org.demo:lib"));
         assertTrue(result.dependenciesByModule().get("worker").isEmpty());
     }
 }

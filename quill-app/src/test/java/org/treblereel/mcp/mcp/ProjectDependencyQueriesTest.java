@@ -56,7 +56,8 @@ class ProjectDependencyQueriesTest {
         module(jdbi, "worker");
 
         var result = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null, 100, 0));
+                .getProjectDependencies(jdbi, temp, null, null,
+                        null, null, null, null, 100, 0));
 
         assertEquals(2, result.path("total").asInt());
         assertFalse(result.path("discovery").path("build_invoked").asBoolean());
@@ -65,6 +66,8 @@ class ProjectDependencyQueriesTest {
         assertEquals("api",
                 result.path("dependencies").get(0).path("used_by_modules").get(0).asText());
         assertEquals(true, result.path("dependencies").get(0).path("direct").asBoolean());
+        assertEquals("compile", result.path("dependencies").get(0)
+                .path("declared_scopes").get(0).asText());
         assertEquals("api",
                 result.path("dependencies").get(0).path("direct_in_modules").get(0).asText());
         assertEquals("org.demo:lib:3.0",
@@ -91,10 +94,43 @@ class ProjectDependencyQueriesTest {
         module(jdbi, ".");
 
         var filtered = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, ".", "beta", 1, 0));
+                .getProjectDependencies(jdbi, temp, ".", "beta",
+                        null, null, null, null, 1, 0));
 
         assertEquals(1, filtered.path("total").asInt());
         assertEquals("b:beta:2", filtered.path("dependencies").get(0).path("id").asText());
+    }
+
+    @Test
+    void filtersByCoordinatesDirectnessAndScope() throws Exception {
+        Path repository = temp.resolve(".m2/repository");
+        Path direct = repository.resolve("com/acme/widget/1/widget-1.jar");
+        Path transitive = repository.resolve("org/other/helper/2/helper-2.jar");
+        Files.createDirectories(direct.getParent());
+        Files.createDirectories(transitive.getParent());
+        Files.write(direct, new byte[] {1});
+        Files.write(transitive, new byte[] {1});
+        Path classpath = temp.resolve("target/quill-classpath.txt");
+        Files.createDirectories(classpath.getParent());
+        Files.writeString(classpath, direct + java.io.File.pathSeparator + transitive);
+        Files.writeString(temp.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>root</artifactId><version>1</version>
+                  <dependencies><dependency><groupId>com.acme</groupId>
+                    <artifactId>widget</artifactId><version>1</version><scope>runtime</scope>
+                  </dependency></dependencies>
+                </project>
+                """);
+        Jdbi jdbi = database();
+        module(jdbi, ".");
+
+        var result = JSON.readTree(new ProjectDependencyQueries()
+                .getProjectDependencies(jdbi, temp, null, null,
+                        "direct", "acme", "widget", "runtime", 100, 0));
+
+        assertEquals(1, result.path("total").asInt());
+        assertEquals("com.acme:widget:1",
+                result.path("dependencies").get(0).path("id").asText());
     }
 
     @Test
@@ -115,12 +151,14 @@ class ProjectDependencyQueriesTest {
 
         ProjectDependencyQueries.prewarm(jdbi, temp);
         var warm = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null, 100, 0));
+                .getProjectDependencies(jdbi, temp, null, null,
+                        null, null, null, null, 100, 0));
         assertEquals("hit", warm.path("discovery").path("metadata_cache").asText());
 
         Files.writeString(classpath, alpha + java.io.File.pathSeparator + beta);
         var refreshed = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null, 100, 0));
+                .getProjectDependencies(jdbi, temp, null, null,
+                        null, null, null, null, 100, 0));
         assertEquals("miss", refreshed.path("discovery").path("metadata_cache").asText());
         assertEquals(2, refreshed.path("total").asInt());
     }

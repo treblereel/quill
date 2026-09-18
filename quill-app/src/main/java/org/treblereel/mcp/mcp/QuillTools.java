@@ -292,12 +292,18 @@ public final class QuillTools {
     public String get_project_dependencies(
             @ToolArg(description = "Module path relative to the project root; omit for all") Optional<String> module,
             @ToolArg(description = "Substring of group, artifact, version, or JAR name") Optional<String> query,
+            @ToolArg(description = "Directness filter: direct, transitive, mixed, or unknown") Optional<String> directness,
+            @ToolArg(description = "Group-id substring") Optional<String> group,
+            @ToolArg(description = "Artifact-id substring") Optional<String> artifact,
+            @ToolArg(description = "Declared Maven scope or Gradle configuration") Optional<String> scope,
             @ToolArg(description = "Page size; default 100, max 200") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p ->
                 projectDependencies.getProjectDependencies(p.jdbi(), p.root(), module.orElse(null),
-                        query.orElse(null), clamp(limit.orElse(100), 1, 200),
+                        query.orElse(null), directness.orElse(null), group.orElse(null),
+                        artifact.orElse(null), scope.orElse(null),
+                        clamp(limit.orElse(100), 1, 200),
                         clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 

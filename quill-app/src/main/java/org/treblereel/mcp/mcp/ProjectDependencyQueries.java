@@ -28,7 +28,15 @@ final class ProjectDependencyQueries {
             new ConcurrentHashMap<>();
 
     String getProjectDependencies(Jdbi jdbi, Path root, String module, String query,
+            String directness, String group, String artifactName, String scope,
             int limit, int offset) {
+        String requestedDirectness = normalized(directness);
+        if (!requestedDirectness.isEmpty()
+                && !Set.of("direct", "transitive", "mixed", "unknown")
+                        .contains(requestedDirectness)) {
+            return JSON.createObjectNode().put("error",
+                    "directness must be direct, transitive, mixed, or unknown").toString();
+        }
         DependencyMetadata metadata = metadata(jdbi, root);
         List<ClasspathFile> classpaths = metadata.classpaths();
         DeclaredDependencyDiscovery.Result declared = metadata.declared();
@@ -48,8 +56,16 @@ final class ProjectDependencyQueries {
                         .modules().add(classpath.module());
             }
         }
-        List<Artifact> ordered = artifacts.values().stream()
-                .sorted(Comparator.comparing(artifact -> artifact.coordinates().id()))
+        List<ArtifactView> ordered = artifacts.values().stream()
+                .map(value -> view(value, declared))
+                .filter(value -> requestedDirectness.isEmpty()
+                        || value.directness().equals(requestedDirectness))
+                .filter(value -> contains(value.artifact().coordinates().group(), group))
+                .filter(value -> contains(value.artifact().coordinates().artifact(), artifactName))
+                .filter(value -> normalized(scope).isEmpty()
+                        || value.scopes().stream().anyMatch(candidate ->
+                                candidate.equalsIgnoreCase(scope.strip())))
+                .sorted(Comparator.comparing(value -> value.artifact().coordinates().id()))
                 .toList();
         int from = Math.min(offset, ordered.size());
         int to = Math.min(from + limit, ordered.size());
@@ -62,7 +78,8 @@ final class ProjectDependencyQueries {
         result.put("relationship", "resolved_runtime_classpath");
         result.put("directness", declared.complete() ? "resolved" : "partial");
         ArrayNode dependencies = result.putArray("dependencies");
-        ordered.subList(from, to).forEach(artifact -> {
+        ordered.subList(from, to).forEach(view -> {
+            Artifact artifact = view.artifact();
             ObjectNode item = dependencies.addObject();
             Coordinates value = artifact.coordinates();
             item.put("id", value.id());
@@ -75,33 +92,15 @@ final class ProjectDependencyQueries {
             ArrayNode modules = item.putArray("used_by_modules");
             artifact.modules().stream().sorted().forEach(modules::add);
             ArrayNode directModules = item.putArray("direct_in_modules");
-            artifact.modules().stream().sorted()
-                    .filter(candidate -> declared.dependenciesByModule()
-                            .getOrDefault(candidate, Set.of()).contains(value.ga()))
-                    .forEach(directModules::add);
+            view.directModules().forEach(directModules::add);
             ArrayNode transitiveModules = item.putArray("transitive_in_modules");
-            artifact.modules().stream().sorted()
-                    .filter(declared.completeModules()::contains)
-                    .filter(candidate -> !declared.dependenciesByModule()
-                            .getOrDefault(candidate, Set.of()).contains(value.ga()))
-                    .forEach(transitiveModules::add);
+            view.transitiveModules().forEach(transitiveModules::add);
             ArrayNode unknownModules = item.putArray("unknown_in_modules");
-            artifact.modules().stream().sorted()
-                    .filter(candidate -> !declared.completeModules().contains(candidate))
-                    .forEach(unknownModules::add);
-            String itemDirectness;
-            if (!directModules.isEmpty() && transitiveModules.isEmpty() && unknownModules.isEmpty()) {
-                itemDirectness = "direct";
-            } else if (directModules.isEmpty() && !transitiveModules.isEmpty()
-                    && unknownModules.isEmpty()) {
-                itemDirectness = "transitive";
-            } else if (directModules.isEmpty() && transitiveModules.isEmpty()) {
-                itemDirectness = "unknown";
-            } else {
-                itemDirectness = "mixed";
-            }
-            item.put("directness", itemDirectness);
-            item.put("direct", !directModules.isEmpty());
+            view.unknownModules().forEach(unknownModules::add);
+            ArrayNode scopes = item.putArray("declared_scopes");
+            view.scopes().forEach(scopes::add);
+            item.put("directness", view.directness());
+            item.put("direct", !view.directModules().isEmpty());
         });
         ObjectNode discovery = result.putObject("discovery");
         discovery.put("classpath_files", classpaths.size());
@@ -198,7 +197,7 @@ final class ProjectDependencyQueries {
         BuildSystem buildSystem = detectBuildSystem(key);
         DeclaredDependencyDiscovery.Result declared = buildSystem == null
                 ? new DeclaredDependencyDiscovery.Result(
-                        Map.of(), Set.of(), "unavailable", false)
+                        Map.of(), Map.of(), Set.of(), "unavailable", false)
                 : DeclaredDependencyDiscovery.discover(key, buildSystem, modules);
         DependencyMetadata created = new DependencyMetadata(
                 List.copyOf(classpaths), List.copyOf(parsed), declared, false);
@@ -233,6 +232,43 @@ final class ProjectDependencyQueries {
         String value = module.strip().replace('\\', '/');
         if (value.equals("./") || value.isEmpty()) return ".";
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    private static String normalized(String value) {
+        return value == null ? "" : value.strip().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static boolean contains(String value, String filter) {
+        return normalized(filter).isEmpty()
+                || value.toLowerCase(java.util.Locale.ROOT).contains(normalized(filter));
+    }
+
+    private static ArtifactView view(
+            Artifact artifact, DeclaredDependencyDiscovery.Result declared) {
+        List<String> direct = artifact.modules().stream().sorted()
+                .filter(candidate -> declared.dependenciesByModule()
+                        .getOrDefault(candidate, Set.of())
+                        .contains(artifact.coordinates().ga())).toList();
+        List<String> transitive = artifact.modules().stream().sorted()
+                .filter(declared.completeModules()::contains)
+                .filter(candidate -> !direct.contains(candidate)).toList();
+        List<String> unknown = artifact.modules().stream().sorted()
+                .filter(candidate -> !declared.completeModules().contains(candidate)).toList();
+        String directness;
+        if (!direct.isEmpty() && transitive.isEmpty() && unknown.isEmpty()) {
+            directness = "direct";
+        } else if (direct.isEmpty() && !transitive.isEmpty() && unknown.isEmpty()) {
+            directness = "transitive";
+        } else if (direct.isEmpty() && transitive.isEmpty()) {
+            directness = "unknown";
+        } else {
+            directness = "mixed";
+        }
+        List<String> scopes = direct.stream()
+                .flatMap(module -> declared.scopesByModule().getOrDefault(module, Map.of())
+                        .getOrDefault(artifact.coordinates().ga(), Set.of()).stream())
+                .distinct().sorted().toList();
+        return new ArtifactView(artifact, direct, transitive, unknown, scopes, directness);
     }
 
     static Coordinates coordinates(Path jar) {
@@ -299,4 +335,7 @@ final class ProjectDependencyQueries {
     }
     private record CachedMetadata(String fingerprint, DependencyMetadata metadata) {}
     private record Artifact(Coordinates coordinates, Path jar, Set<String> modules) {}
+    private record ArtifactView(Artifact artifact, List<String> directModules,
+            List<String> transitiveModules, List<String> unknownModules,
+            List<String> scopes, String directness) {}
 }

@@ -361,12 +361,14 @@ public final class QuillTools {
     public String search_external_symbols(
             @ToolArg(description = "Symbol name or signature pattern; supports * wildcard") String pattern,
             @ToolArg(description = "Kind: class, interface, annotation, enum, record, field, constructor, method, or all") Optional<String> kind,
+            @ToolArg(description = "External class short name or FQCN; required for field, constructor, and method searches") Optional<String> class_name,
             @ToolArg(description = "Dependency package prefix or wildcard") Optional<String> library,
             @ToolArg(description = "Results per page; default 50, max 200") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> externalSymbols.search(
-                p.jdbi(), p.root(), pattern, kind.orElse(null), library.orElse(null),
+                p.jdbi(), p.root(), pattern, kind.orElse(null), class_name.orElse(null),
+                library.orElse(null),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }

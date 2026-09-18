@@ -49,12 +49,54 @@ class ExternalSymbolQueriesTest {
     @Test
     void searchesResolvedDependencyJarClasses() throws Exception {
         var result = JSON.readTree(new ExternalSymbolQueries()
-                .search(jdbi, temp, "Fixture", "class", "fixture", 20, 0));
+                .search(jdbi, temp, "Fixture", "class", null, "fixture", 20, 0));
 
         assertEquals(1, result.path("total").asInt());
         assertTrue(result.path("symbols").get(0).path("class_name").asText()
                 .endsWith("ExternalSymbolQueriesTest$Fixture"));
         assertEquals(1, result.path("discovery").path("jar_count").asInt());
+    }
+
+    @Test
+    void searchesMembersWithinAnExplicitExternalClass() throws Exception {
+        var result = JSON.readTree(new ExternalSymbolQueries()
+                .search(jdbi, temp, "greet", "method", "Fixture", null, 20, 0));
+
+        assertEquals(1, result.path("total").asInt());
+        assertEquals("method", result.path("symbols").get(0).path("kind").asText());
+        assertEquals("greet", result.path("symbols").get(0).path("name").asText());
+        assertEquals(1, result.path("discovery").path("classes_inspected").asInt());
+    }
+
+    @Test
+    void rejectsUnboundedMemberSearch() throws Exception {
+        var result = JSON.readTree(new ExternalSymbolQueries()
+                .search(jdbi, temp, "greet", "method", null, null, 20, 0));
+
+        assertTrue(result.path("error").asText().contains("requires class_name"));
+    }
+
+    @Test
+    void groupsTheSameClassAcrossDependencyVersions() throws Exception {
+        appendJar("2.0", Fixture.class);
+
+        var result = JSON.readTree(new ExternalSymbolQueries()
+                .search(jdbi, temp, "Fixture", "class", null, "fixture", 20, 0));
+
+        assertEquals(1, result.path("total").asInt());
+        assertEquals(2, result.path("symbols").get(0).path("version_count").asInt());
+        assertEquals(2, result.path("symbols").get(0).path("occurrences").size());
+    }
+
+    @Test
+    void shortNameAmbiguityReturnsCandidatesInsteadOfChoosingArbitrarily() throws Exception {
+        appendJar("2.0", Other.Fixture.class);
+
+        var result = JSON.readTree(new ExternalSymbolQueries()
+                .details(jdbi, temp, "Fixture", 20, 0));
+
+        assertTrue(result.path("error").asText().contains("ambiguous"));
+        assertEquals(2, result.path("candidates").size());
     }
 
     @Test
@@ -71,5 +113,25 @@ class ExternalSymbolQueriesTest {
         String greet(String name) {
             return "hello " + name;
         }
+    }
+
+    static final class Other {
+        static final class Fixture {}
+    }
+
+    private void appendJar(String version, Class<?> type) throws Exception {
+        Path jar = temp.resolve("repository/org/demo/fixture/" + version
+                + "/fixture-" + version + ".jar");
+        Files.createDirectories(jar.getParent());
+        String entryName = type.getName().replace('.', '/') + ".class";
+        try (InputStream bytecode = type.getClassLoader().getResourceAsStream(entryName);
+                JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
+            output.putNextEntry(new JarEntry(entryName));
+            bytecode.transferTo(output);
+            output.closeEntry();
+        }
+        Path classpath = temp.resolve("target/quill-classpath.txt");
+        Files.writeString(classpath, java.io.File.pathSeparator + jar,
+                java.nio.file.StandardOpenOption.APPEND);
     }
 }

@@ -351,8 +351,10 @@ compiled main classes are indexed. If a raw POM cannot be read or a declared mod
 is unavailable, Quill falls back to scanning `target/classes` so partially checked
 out and generated reactors remain usable. Maven itself is not embedded. The dependency
 Jandex index is built in up to eight deterministic shards and cached at
-`target/quill-dependencies.idx`; it is invalidated
-when the ordered runtime classpath or a dependency JAR's size or timestamp changes.
+`~/.quill/cache/dependencies/<fingerprint>.idx`; it is shared between projects and
+invalidated when the ordered runtime classpath or a dependency JAR's size or timestamp
+changes. Set `QUILL_CACHE_DIR` to move the shared cache. Quill retains at most 16
+dependency indexes and 512 MiB, pruning older entries after publishing a new one.
 Multi-release JARs contribute only the variant effective for Quill's Java runtime;
 when multiple JARs contain the same class, the first classpath entry wins, matching
 JVM class loading.
@@ -370,8 +372,7 @@ removed projects.
 Quill does not modify project build files or embed the Gradle Tooling API. Discovery
 and dependency classpath caches are written under `build/` directories and invalidated
 when Gradle build files, version catalogs, wrapper properties, or `buildSrc` change.
-The sharded dependency Jandex index is cached at `build/quill-dependencies.idx` with
-the same classpath and JAR invalidation used for Maven.
+The sharded dependency Jandex index uses the same shared cache and invalidation as Maven.
 On Windows it uses `gradlew.bat`; Maven projects use `mvnw.cmd`. If a wrapper is absent,
 Quill falls back to `gradle` or `mvn` from `PATH`.
 

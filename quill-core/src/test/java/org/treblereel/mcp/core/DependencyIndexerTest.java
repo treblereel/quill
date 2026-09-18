@@ -21,12 +21,27 @@ import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class DependencyIndexerTest {
 
     @TempDir Path tempDir;
+    private String previousCacheDirectory;
+
+    @BeforeEach
+    void isolateSharedCache() {
+        previousCacheDirectory = System.getProperty("quill.cache.dir");
+        System.setProperty("quill.cache.dir", tempDir.resolve("shared-cache").toString());
+    }
+
+    @AfterEach
+    void restoreSharedCacheConfiguration() {
+        if (previousCacheDirectory == null) System.clearProperty("quill.cache.dir");
+        else System.setProperty("quill.cache.dir", previousCacheDirectory);
+    }
 
     @Test
     void classDirectoryOwnersPreserveClasspathOrder() {
@@ -354,7 +369,9 @@ class DependencyIndexerTest {
 
         assertEquals(DependencyIndexer.Status.COMPLETE, result.status());
         assertNotNull(result.index().getClassByName("org.jboss.jandex.Index"));
-        assertTrue(Files.isRegularFile(moduleDir.resolve("build/quill-dependencies.idx")));
+        String fingerprint = DependencyIndexer.dependencyCacheFingerprint(List.of(jandexJar));
+        assertTrue(Files.isRegularFile(DependencyIndexer.dependencyCachePath(fingerprint)));
+        assertFalse(Files.exists(moduleDir.resolve("build/quill-dependencies.idx")));
     }
 
     @Test
@@ -522,7 +539,8 @@ class DependencyIndexerTest {
                 DependencyIndexer.buildFingerprint(projectDir));
 
         DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir));
-        Files.writeString(projectDir.resolve("target/quill-dependencies.idx"), "corrupt");
+        String fingerprint = DependencyIndexer.dependencyCacheFingerprint(List.of(jar));
+        Files.writeString(DependencyIndexer.dependencyCachePath(fingerprint), "corrupt");
 
         DependencyIndexer.DependencyIndexResult rebuilt =
                 DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir));
@@ -544,7 +562,8 @@ class DependencyIndexerTest {
                 DependencyIndexer.buildFingerprint(projectDir));
 
         DependencyIndexer.buildDependencyIndex(projectDir, List.of(classesDir));
-        Path cache = projectDir.resolve("target/quill-dependencies.idx");
+        String fingerprint = DependencyIndexer.dependencyCacheFingerprint(jars);
+        Path cache = DependencyIndexer.dependencyCachePath(fingerprint);
         byte[] complete = Files.readAllBytes(cache);
         Files.write(cache, Arrays.copyOf(complete, complete.length - 64));
 
@@ -553,6 +572,23 @@ class DependencyIndexerTest {
         assertEquals(DependencyIndexer.Status.COMPLETE, rebuilt.status());
         assertTrue(rebuilt.detail().contains("JARs indexed"));
         assertFalse(rebuilt.index().getKnownClasses().isEmpty());
+    }
+
+    @Test
+    void dependencyIndexIsReusedAcrossProjects() throws Exception {
+        Path jar = findJarOnClasspath("jandex");
+        assertNotNull(jar);
+        Path first = prepareProjectWithClasspath("first-project", jar);
+        Path second = prepareProjectWithClasspath("second-project", jar);
+
+        var indexed = DependencyIndexer.buildDependencyIndex(
+                first, List.of(first.resolve("target/classes")));
+        var reused = DependencyIndexer.buildDependencyIndex(
+                second, List.of(second.resolve("target/classes")));
+
+        assertTrue(indexed.detail().contains("JARs indexed"));
+        assertTrue(reused.detail().contains("loaded from cache"));
+        assertNotNull(reused.index().getClassByName("org.jboss.jandex.Index"));
     }
 
     @Test
@@ -625,6 +661,16 @@ class DependencyIndexerTest {
         assertEquals(3, DependencyIndexer.workerCount(3, 16, 8_192 * mib, null));
         assertEquals(4, DependencyIndexer.workerCount(20, 16, 8_192 * mib, "4"));
         assertEquals(8, DependencyIndexer.workerCount(20, 16, 8_192 * mib, "invalid"));
+    }
+
+    private Path prepareProjectWithClasspath(String name, Path jar) throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve(name));
+        Files.createDirectories(project.resolve("target/classes"));
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        Files.writeString(project.resolve("target/quill-classpath.txt"), jar.toString());
+        Files.writeString(project.resolve("target/quill-classpath.sha256"),
+                DependencyIndexer.buildFingerprint(project));
+        return project;
     }
 
     private static Path findJarOnClasspath(String nameFragment) {

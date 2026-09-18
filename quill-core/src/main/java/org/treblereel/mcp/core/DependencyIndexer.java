@@ -38,7 +38,11 @@ import org.jboss.jandex.IndexWriter;
 public final class DependencyIndexer {
 
     private static final String CACHE_FORMAT = "quill-jandex-cache-v4";
-    private static final String CACHE_FILE = "quill-dependencies.idx";
+    private static final String CACHE_DIRECTORY = "dependencies";
+    private static final String CACHE_DIRECTORY_PROPERTY = "quill.cache.dir";
+    private static final String CACHE_DIRECTORY_ENV = "QUILL_CACHE_DIR";
+    private static final int MAX_SHARED_CACHE_ENTRIES = 16;
+    private static final long MAX_SHARED_CACHE_BYTES = 512L * 1024 * 1024;
     private static final String FAILURE_CACHE_FORMAT = "quill-classpath-failure-v1";
     private static final String FAILURE_CACHE_FILE = "quill-classpath.failed";
     static final Duration GENERATION_FAILURE_BACKOFF = Duration.ofMinutes(5);
@@ -184,7 +188,7 @@ public final class DependencyIndexer {
 
         long cacheReadStartedAt = System.nanoTime();
         String cacheFingerprint = dependencyCacheFingerprint(jars);
-        ShardedIndex index = readCachedIndex(projectRoot, buildSystem, cacheFingerprint);
+        ShardedIndex index = readCachedIndex(cacheFingerprint);
         timings.put("dependency_cache_read", elapsedMillis(cacheReadStartedAt));
         boolean cacheHit = index != null;
         if (cacheHit) {
@@ -195,7 +199,7 @@ public final class DependencyIndexer {
             index = indexJars(jars);
             timings.put("dependency_jar_index", elapsedMillis(jarIndexStartedAt));
             long cacheWriteStartedAt = System.nanoTime();
-            writeCachedIndex(projectRoot, buildSystem, cacheFingerprint, index);
+            writeCachedIndex(cacheFingerprint, index);
             timings.put("dependency_cache_write", elapsedMillis(cacheWriteStartedAt));
         }
 
@@ -698,10 +702,9 @@ public final class DependencyIndexer {
         }
     }
 
-    private static ShardedIndex readCachedIndex(
-            Path projectRoot, BuildSystem buildSystem, String fingerprint) {
+    private static ShardedIndex readCachedIndex(String fingerprint) {
         if (fingerprint == null) return null;
-        Path cache = dependencyCachePath(projectRoot, buildSystem);
+        Path cache = dependencyCachePath(fingerprint);
         if (!Files.isRegularFile(cache)) return null;
         try (DataInputStream input = new DataInputStream(
                 new BufferedInputStream(Files.newInputStream(cache)))) {
@@ -755,10 +758,9 @@ public final class DependencyIndexer {
         return new IndexReader(new ByteArrayInputStream(serialized)).read();
     }
 
-    private static void writeCachedIndex(Path projectRoot, BuildSystem buildSystem,
-            String fingerprint, ShardedIndex index) {
+    private static void writeCachedIndex(String fingerprint, ShardedIndex index) {
         if (fingerprint == null) return;
-        Path cache = dependencyCachePath(projectRoot, buildSystem);
+        Path cache = dependencyCachePath(fingerprint);
         Path temporary = null;
         try {
             Files.createDirectories(cache.getParent());
@@ -781,6 +783,7 @@ public final class DependencyIndexer {
             } catch (AtomicMoveNotSupportedException ignored) {
                 Files.move(temporary, cache, StandardCopyOption.REPLACE_EXISTING);
             }
+            pruneSharedCache(cache);
         } catch (IOException ignored) {
             // The cache is optional; indexing remains correct without it.
         } finally {
@@ -794,8 +797,47 @@ public final class DependencyIndexer {
         }
     }
 
-    private static Path dependencyCachePath(Path projectRoot, BuildSystem buildSystem) {
-        return projectRoot.resolve(buildSystem == BuildSystem.MAVEN ? "target" : "build")
-                .resolve(CACHE_FILE);
+    static Path dependencyCachePath(String fingerprint) {
+        return sharedCacheRoot().resolve(CACHE_DIRECTORY).resolve(fingerprint + ".idx");
+    }
+
+    private static Path sharedCacheRoot() {
+        String configured = System.getProperty(CACHE_DIRECTORY_PROPERTY);
+        if (configured == null || configured.isBlank()) configured = System.getenv(CACHE_DIRECTORY_ENV);
+        if (configured != null && !configured.isBlank()) {
+            return Path.of(configured).toAbsolutePath().normalize();
+        }
+        return Path.of(System.getProperty("user.home"), ".quill", "cache");
+    }
+
+    private static void pruneSharedCache(Path current) {
+        Path directory = current.getParent();
+        try (var files = Files.list(directory)) {
+            List<Path> entries = files
+                    .filter(path -> path.getFileName().toString().endsWith(".idx"))
+                    .sorted(Comparator.comparingLong(DependencyIndexer::lastModified)
+                            .reversed())
+                    .toList();
+            long retainedBytes = 0;
+            for (int i = 0; i < entries.size(); i++) {
+                Path entry = entries.get(i);
+                long size = Files.size(entry);
+                boolean retain = entry.equals(current)
+                        || (i < MAX_SHARED_CACHE_ENTRIES
+                                && retainedBytes + size <= MAX_SHARED_CACHE_BYTES);
+                if (retain) retainedBytes += size;
+                else Files.deleteIfExists(entry);
+            }
+        } catch (IOException ignored) {
+            // Cache pruning is best effort and never affects indexing correctness.
+        }
+    }
+
+    private static long lastModified(Path path) {
+        try {
+            return Files.getLastModifiedTime(path).toMillis();
+        } catch (IOException ignored) {
+            return Long.MIN_VALUE;
+        }
     }
 }

@@ -33,6 +33,11 @@ public final class BuildProblemInspector {
 
     public static String inspect(Path projectRoot, String severity, String module,
             int limit, int offset) {
+        return inspect(projectRoot, severity, module, List.of(), limit, offset);
+    }
+
+    public static String inspect(Path projectRoot, String severity, String module,
+            List<String> paths, int limit, int offset) {
         Path root = projectRoot.toAbsolutePath().normalize();
         String normalizedSeverity = severity == null
                 ? "all" : severity.strip().toLowerCase(Locale.ROOT);
@@ -64,6 +69,20 @@ public final class BuildProblemInspector {
             if (module != null && !module.isBlank()) {
                 problems = problems.stream()
                         .filter(problem -> module.equals(problem.module())).toList();
+            }
+            List<String> normalizedPaths = normalizePaths(paths);
+            long unlocatedProblems = problems.stream()
+                    .filter(problem -> problem.source() == null).count();
+            if (!normalizedPaths.isEmpty()) {
+                problems = problems.stream()
+                        .filter(problem -> problem.source() != null
+                                && normalizedPaths.stream().anyMatch(path ->
+                                        problem.source().equals(path)
+                                                || problem.source().endsWith("/" + path)))
+                        .toList();
+                ArrayNode requested = result.putArray("requested_paths");
+                normalizedPaths.forEach(requested::add);
+                result.put("unlocated_problems_excluded", unlocatedProblems);
             }
             int from = Math.min(offset, problems.size());
             int to = Math.min(from + limit, problems.size());
@@ -161,6 +180,14 @@ public final class BuildProblemInspector {
             // Keep compiler-provided text when it is not a valid local path.
         }
         return cleaned;
+    }
+
+    private static List<String> normalizePaths(List<String> paths) {
+        if (paths == null || paths.isEmpty()) return List.of();
+        return paths.stream().filter(path -> path != null && !path.isBlank())
+                .map(String::strip).map(path -> path.replace('\\', '/'))
+                .map(path -> path.startsWith("./") ? path.substring(2) : path)
+                .distinct().toList();
     }
 
     private static String module(String source) {

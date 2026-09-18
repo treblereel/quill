@@ -147,6 +147,8 @@ tool-schema context. Tool responses and the underlying index are identical acros
   from Quill's cached runtime classpaths without invoking the build
 - **list_project_tree** / **search_files** — navigate the indexed project inventory with
   module, source-set, lifecycle, and dirty-worktree context
+- **get_file_problems** — filter captured Maven/Gradle build diagnostics by one or more source
+  paths; reports the last observed build and never starts one
 - **search_symbols** — search class, method, field, and constructor declarations by name or
   signature, with kind filtering and pagination
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with

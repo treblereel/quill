@@ -406,6 +406,21 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true,
+            description = "Read last-build diagnostics for one or more repository-relative source files without running a build.")
+    public String get_file_problems(
+            @ToolArg(description = "Repository-relative source paths") List<String> paths,
+            @ToolArg(description = "Severity: all or error") Optional<String> severity,
+            @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
+            @ToolArg(description = "Offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        if (paths.isEmpty()) return errorResponse("paths must not be empty");
+        return forAllProjects(project.orElse(null), p -> queries.getFileProblems(
+                p.root(), paths, severity.orElse("all"),
+                clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
@@ -711,6 +726,11 @@ public final class QuillTools {
     String getBuildProblems(Path projectRoot, String severity, String module,
             int limit, int offset) {
         return queries.getBuildProblems(projectRoot, severity, module, limit, offset);
+    }
+
+    String getFileProblems(Path projectRoot, List<String> paths, String severity,
+            int limit, int offset) {
+        return queries.getFileProblems(projectRoot, paths, severity, limit, offset);
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {

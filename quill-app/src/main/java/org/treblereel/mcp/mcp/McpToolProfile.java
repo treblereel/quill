@@ -12,7 +12,7 @@ public final class McpToolProfile {
             "get_overview", "search_classes", "resolve_entities", "get_symbol_details",
             "search_symbols", "find_usages", "find_symbol_usages", "get_dependencies",
             "find_impacted_tests", "assess_change_risk", "get_build_status",
-            "get_build_problems", "get_project_dependencies", "list_project_tree",
+            "get_build_problems", "get_file_problems", "get_project_dependencies", "list_project_tree",
             "search_files");
     private static final Set<String> CODE = union(CORE, Set.of(
             "find_implementations", "get_type_hierarchy", "get_call_hierarchy",

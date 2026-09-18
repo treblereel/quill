@@ -196,6 +196,12 @@ public final class QuillToolQueries {
         return BuildProblemInspector.inspect(projectRoot, severity, module, limit, offset);
     }
 
+    String getFileProblems(Path projectRoot, List<String> paths, String severity,
+            int limit, int offset) {
+        return BuildProblemInspector.inspect(
+                projectRoot, severity, null, paths, limit, offset);
+    }
+
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier, int limit) {
         return structure.getBeans(jdbi, className, scope, kind, profile, qualifier, limit);

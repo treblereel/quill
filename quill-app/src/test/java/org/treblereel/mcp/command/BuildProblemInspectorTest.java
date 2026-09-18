@@ -62,6 +62,26 @@ class BuildProblemInspectorTest {
         assertEquals("none", result.path("recommended_action").asText());
     }
 
+    @Test
+    void filtersCapturedProblemsBySeveralSourcePaths() throws Exception {
+        writeState(false, "maven", """
+                %s/module-a/src/main/java/acme/Broken.java:[12,7] cannot find symbol
+                %s/module-b/src/main/java/acme/Other.java:[3,1] incompatible types
+                java.lang.IllegalStateException: unlocated build failure
+                """.formatted(tempDir, tempDir));
+
+        JsonNode result = JSON.readTree(BuildProblemInspector.inspect(
+                tempDir, "all", null,
+                java.util.List.of("module-b/src/main/java/acme/Other.java"), 50, 0));
+
+        assertEquals(1, result.path("total").asInt());
+        assertEquals("module-b/src/main/java/acme/Other.java",
+                result.path("problems").get(0).path("source").asText());
+        assertEquals(1, result.path("requested_paths").size());
+        assertEquals(0, result.path("unlocated_problems_excluded").asInt());
+        assertFalse(result.path("build_was_started").asBoolean());
+    }
+
     private void writeState(boolean successful, String buildTool, String message)
             throws Exception {
         Path quill = Files.createDirectories(tempDir.resolve(".quill"));

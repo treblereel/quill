@@ -100,6 +100,11 @@ the router must remain at most 20% of the full catalog, preventing silent contex
 | `quill status` | Show current index status |
 | `quill doctor` | Diagnose compiled outputs, index freshness, build integration, and client setup |
 | `quill clean` | Remove `.quill` and build integration |
+| `quill workspace init` | Discover and initialize all suitable repositories in a workspace |
+| `quill workspace refresh` | Reconcile added/removed repositories and index missing repositories |
+| `quill workspace status` | Show workspace configuration and per-repository readiness |
+| `quill workspace clear` | Remove workspace metadata while preserving repository indexes |
+| `quill workspace clear --repositories` | Also remove repository indexes and build integration |
 
 The `--timings` phases include independently measured background work such as
 dependency and Git analysis. Because those phases can overlap, their durations are
@@ -121,6 +126,47 @@ finish the concurrent checkout/build/edit and run `quill update` again.
 re-indexing the project. Warnings (for example, missing build integration) keep exit code 0;
 failed requirements such as missing compiled outputs or an unreadable index return a non-zero
 exit code. Use `quill doctor --json` for a stable, versioned machine-readable report.
+
+## Federated Workspaces
+
+A workspace is a directory containing independent Git repositories that may depend on one
+another. Single-project commands and MCP configuration continue to work unchanged.
+
+Compile the repositories with their normal build commands, then initialize the workspace:
+
+```bash
+quill workspace init --project /absolute/path/to/workspace
+quill workspace status --project /absolute/path/to/workspace
+quill --mcp --workspace /absolute/path/to/workspace
+```
+
+`workspace init` discovers Git repositories at depth one by default; use `--depth N` for nested
+checkouts. It initializes every Maven or Gradle repository that already has compiled main classes.
+Unsupported and uncompiled repositories are reported and skipped. Quill never starts a Maven or
+Gradle build while indexing them. `--index-only` creates indexes without installing build-result
+integration or modifying repository-local client configuration.
+
+The MCP server reconciles added and removed repositories while it is running. A newly added
+repository becomes routable immediately; run `workspace refresh` after compiling it to create its
+missing index. Refresh reports `added`, `removed`, `indexed`, `skipped`, `unchanged`, and `failed`
+counts and never starts a build. Removed repositories disappear from subsequent routing snapshots;
+their on-disk data is not deleted.
+
+`workspace status --json` reports whether every repository is supported, compiled, indexed,
+fresh, on the current SQLite schema, and equipped with current build integration. Maven/Gradle
+coordinates route requests to local providers. If multiple checkouts intentionally publish the
+same coordinate, Quill preserves the ambiguity and reports each `repository:module@version`
+candidate instead of silently choosing one.
+
+Workspace MCP tools accept a repository name, relative/absolute path, or unambiguous Maven/Gradle
+coordinate where a project selector is supported. The workspace-specific tools are
+`list_workspace_repositories`, `get_workspace_dependencies`, `resolve_workspace_entity`,
+`find_workspace_usages`, and `assess_workspace_change_risk`.
+
+Normal `workspace clear` removes only `.quill-workspace` and preserves every repository index.
+Use the explicit destructive form `workspace clear --repositories` to additionally run Quill's
+normal cleanup for every supported repository, removing `.quill` and Quill-managed Maven/Gradle
+build integration. Neither form deletes source code or invokes a build.
 
 ## MCP Tools
 
@@ -238,6 +284,12 @@ The router profile returns the same policy in `search_tools.guidance`, including
   indexed-history coverage
 - **find_co_changed_files** — files that change together (hidden coupling)
 - **list_external_dependencies** — third-party library usage
+- **list_workspace_repositories** — list dynamically discovered repositories and index readiness
+- **get_workspace_dependencies** — resolve declared dependencies onto providers in other local
+  workspace repositories and report binary/version drift
+- **resolve_workspace_entity** — resolve a class across repositories with explicit ambiguity
+- **find_workspace_usages** — find cross-repository usages of an indexed class
+- **assess_workspace_change_risk** — aggregate change impact across repository boundaries
 
 Paginated responses use the same `showing`, `total`, `limit`, `offset`, `has_more`,
 `truncated`, and optional `next_offset` fields.
@@ -253,6 +305,15 @@ Initialize the project once before connecting an MCP client:
 Quill is a local stdio MCP server. The client starts it on demand and communicates
 with it over stdin/stdout; you do not need to run a daemon. Absolute paths are
 recommended because an MCP client's process working directory is not guaranteed.
+
+For workspace mode, configure the client command as:
+
+```bash
+/absolute/path/to/quill --mcp --workspace /absolute/path/to/workspace
+```
+
+`--workspace` and `--project` are mutually exclusive. The same stdio process routes each request
+to the selected repository or aggregates it across the workspace when the tool supports that.
 
 ### Claude Code
 

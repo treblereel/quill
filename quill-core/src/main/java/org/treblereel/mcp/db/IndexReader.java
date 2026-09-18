@@ -1393,44 +1393,7 @@ public final class IndexReader {
     }
 
     public static List<GitFileStats> findHotspots(Jdbi jdbi, int limit, String since) {
-        if (since == null) {
-            return jdbi.withHandle(h ->
-                    h.createQuery("SELECT * FROM git_file_stats WHERE commit_count > 0 ORDER BY commit_count DESC LIMIT :limit")
-                            .bind("limit", limit)
-                            .map((rs, ctx) -> mapGitFileStats(rs))
-                            .list());
-        }
-        return jdbi.withHandle(h ->
-                h.createQuery("""
-                        SELECT gcf.file_path, gfs.class_id,
-                               COUNT(DISTINCT gc.id) as commit_count,
-                               MAX(gc.committed_at) as last_modified,
-                               MAX(CASE WHEN gc.committed_at = (
-                                   SELECT MAX(gc2.committed_at) FROM git_commits gc2
-                                   JOIN git_commit_files gcf2 ON gc2.id = gcf2.commit_id
-                                   WHERE gcf2.file_path = gcf.file_path AND gc2.committed_at >= :since
-                               ) THEN gc.author END) as last_author,
-                               MIN(gc.committed_at) as first_commit,
-                               COUNT(DISTINCT gc.author) as distinct_authors
-                        FROM git_commit_files gcf
-                        JOIN git_commits gc ON gcf.commit_id = gc.id
-                        LEFT JOIN git_file_stats gfs ON gcf.file_path = gfs.file_path
-                        WHERE gc.committed_at >= :since
-                        GROUP BY gcf.file_path
-                        ORDER BY commit_count DESC
-                        LIMIT :limit""")
-                        .bind("since", since)
-                        .bind("limit", limit)
-                        .map((rs, ctx) -> new GitFileStats(
-                                0,
-                                rs.getString("file_path"),
-                                rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
-                                rs.getInt("commit_count"),
-                                rs.getString("last_modified"),
-                                rs.getString("last_author"),
-                                rs.getString("first_commit"),
-                                rs.getInt("distinct_authors")))
-                        .list());
+        return GitIndexReader.findHotspots(jdbi, limit, since);
     }
 
     public static List<GitCommitRecord> findFileHistory(Jdbi jdbi, int classId, int limit) {
@@ -1439,18 +1402,7 @@ public final class IndexReader {
 
     public static List<GitCommitRecord> findFileHistory(
             Jdbi jdbi, int classId, int limit, int offset) {
-        return jdbi.withHandle(h ->
-                h.createQuery("""
-                        SELECT gc.* FROM git_commits gc
-                        JOIN git_commit_files gcf ON gc.id = gcf.commit_id
-                        WHERE gcf.class_id = :classId
-                        ORDER BY gc.committed_at DESC
-                        LIMIT :limit OFFSET :offset""")
-                        .bind("classId", classId)
-                        .bind("limit", limit)
-                        .bind("offset", offset)
-                        .map((rs, ctx) -> mapGitCommit(rs))
-                        .list());
+        return GitIndexReader.findFileHistory(jdbi, classId, limit, offset);
     }
 
     public static List<GitCommitRecord> findFileHistoryByPath(
@@ -1460,111 +1412,37 @@ public final class IndexReader {
 
     public static List<GitCommitRecord> findFileHistoryByPath(
             Jdbi jdbi, String filePath, int limit, int offset) {
-        return jdbi.withHandle(h -> h.createQuery("""
-                        SELECT DISTINCT gc.* FROM git_commits gc
-                        JOIN git_commit_files gcf ON gc.id = gcf.commit_id
-                        WHERE gcf.file_path = :filePath
-                        ORDER BY gc.committed_at DESC
-                        LIMIT :limit OFFSET :offset""")
-                .bind("filePath", filePath.replace('\\', '/'))
-                .bind("limit", limit)
-                .bind("offset", offset)
-                .map((rs, ctx) -> mapGitCommit(rs))
-                .list());
+        return GitIndexReader.findFileHistoryByPath(jdbi, filePath, limit, offset);
     }
 
     public static List<CoChangeRecord> findCoChanges(Jdbi jdbi, int classId, int limit) {
-        return jdbi.withHandle(h ->
-                h.createQuery("""
-                        SELECT gcf2.file_path, gcf2.class_id, COUNT(*) as co_count
-                        FROM git_commit_files gcf1
-                        JOIN git_commit_files gcf2 ON gcf1.commit_id = gcf2.commit_id
-                            AND gcf1.file_path != gcf2.file_path
-                        WHERE gcf1.class_id = :classId
-                        GROUP BY gcf2.file_path
-                        ORDER BY co_count DESC
-                        LIMIT :limit""")
-                        .bind("classId", classId)
-                        .bind("limit", limit)
-                        .map((rs, ctx) -> new CoChangeRecord(
-                                rs.getString("file_path"),
-                                rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
-                                rs.getInt("co_count"), 0.0))
-                        .list());
+        return GitIndexReader.findCoChanges(jdbi, classId, limit);
     }
 
     public static List<CoChangeRecord> findCoChangesByPath(
             Jdbi jdbi, String filePath, int limit) {
-        return jdbi.withHandle(h -> h.createQuery("""
-                        SELECT gcf2.file_path, gcf2.class_id, COUNT(*) as co_count
-                        FROM git_commit_files gcf1
-                        JOIN git_commit_files gcf2 ON gcf1.commit_id = gcf2.commit_id
-                            AND gcf1.file_path != gcf2.file_path
-                        WHERE gcf1.file_path = :filePath
-                        GROUP BY gcf2.file_path
-                        ORDER BY co_count DESC
-                        LIMIT :limit""")
-                .bind("filePath", filePath.replace('\\', '/'))
-                .bind("limit", limit)
-                .map((rs, ctx) -> new CoChangeRecord(rs.getString("file_path"),
-                        rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
-                        rs.getInt("co_count"), 0.0))
-                .list());
+        return GitIndexReader.findCoChangesByPath(jdbi, filePath, limit);
     }
 
     public static List<GitCommitRecord> findRecentCommits(Jdbi jdbi, int limit) {
-        return jdbi.withHandle(h ->
-                h.createQuery("SELECT * FROM git_commits ORDER BY committed_at DESC LIMIT :limit")
-                        .bind("limit", limit)
-                        .map((rs, ctx) -> mapGitCommit(rs))
-                        .list());
+        return GitIndexReader.findRecentCommits(jdbi, limit);
     }
 
     public static List<GitCommitFile> findCommitFiles(Jdbi jdbi, int commitId) {
-        return jdbi.withHandle(h ->
-                h.createQuery("SELECT * FROM git_commit_files WHERE commit_id = :commitId")
-                        .bind("commitId", commitId)
-                        .map((rs, ctx) -> new GitCommitFile(
-                                rs.getInt("commit_id"),
-                                rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
-                                rs.getString("file_path"), rs.getString("change_type")))
-                        .list());
+        return GitIndexReader.findCommitFiles(jdbi, commitId);
     }
 
     public static Map<Integer, List<GitCommitFile>> findCommitFiles(
             Jdbi jdbi, Collection<Integer> commitIds, int limit) {
-        if (commitIds == null || commitIds.isEmpty()) return Map.of();
-        return jdbi.withHandle(h -> {
-            Map<Integer, List<GitCommitFile>> result = new LinkedHashMap<>();
-            h.createQuery("SELECT gcf.* FROM git_commit_files gcf "
-                            + "JOIN git_commits gc ON gc.id = gcf.commit_id "
-                            + "WHERE gcf.commit_id IN (<ids>) "
-                            + "ORDER BY gc.committed_at DESC, gcf.file_path LIMIT :limit")
-                    .bindList("ids", new LinkedHashSet<>(commitIds))
-                    .bind("limit", limit)
-                    .map((rs, ctx) -> new GitCommitFile(
-                            rs.getInt("commit_id"),
-                            rs.getObject("class_id") != null ? rs.getInt("class_id") : null,
-                            rs.getString("file_path"), rs.getString("change_type")))
-                    .forEach(file -> result.computeIfAbsent(file.commitId(), ignored -> new ArrayList<>()).add(file));
-            return result;
-        });
+        return GitIndexReader.findCommitFiles(jdbi, commitIds, limit);
     }
 
     public static Optional<GitFileStats> findFileStatsByClassId(Jdbi jdbi, int classId) {
-        return jdbi.withHandle(h ->
-                h.createQuery("SELECT * FROM git_file_stats WHERE class_id = :classId")
-                        .bind("classId", classId)
-                        .map((rs, ctx) -> mapGitFileStats(rs))
-                        .findFirst());
+        return GitIndexReader.findFileStatsByClassId(jdbi, classId);
     }
 
     public static Optional<GitFileStats> findFileStatsByPath(Jdbi jdbi, String filePath) {
-        return jdbi.withHandle(h -> h.createQuery(
-                        "SELECT * FROM git_file_stats WHERE file_path = :filePath")
-                .bind("filePath", filePath.replace('\\', '/'))
-                .map((rs, ctx) -> mapGitFileStats(rs))
-                .findFirst());
+        return GitIndexReader.findFileStatsByPath(jdbi, filePath);
     }
 
     public static int countClasses(Jdbi jdbi) {
@@ -1810,7 +1688,7 @@ public final class IndexReader {
 
     public static boolean hasGitData(Jdbi jdbi) {
         try {
-            return countQuery(jdbi, "SELECT COUNT(*) FROM git_commits") > 0;
+            return GitIndexReader.hasGitData(jdbi);
         } catch (Exception e) {
             return false;
         }
@@ -1823,13 +1701,6 @@ public final class IndexReader {
                 rs.getInt("commit_count"), rs.getString("last_modified"),
                 rs.getString("last_author"), rs.getString("first_commit"),
                 rs.getInt("distinct_authors"));
-    }
-
-    private static GitCommitRecord mapGitCommit(java.sql.ResultSet rs) throws java.sql.SQLException {
-        return new GitCommitRecord(
-                rs.getInt("id"), rs.getString("hash"), rs.getString("short_hash"),
-                rs.getString("author"), rs.getString("author_email"),
-                rs.getString("committed_at"), rs.getString("message"));
     }
 
     static List<String> fromJson(String json) {

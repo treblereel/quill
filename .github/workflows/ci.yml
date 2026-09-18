@@ -62,9 +62,9 @@ jobs:
         with:
           gradle-version: '9.4.1'
       - if: runner.os != 'Windows'
-        run: ./mvnw -B clean verify -Pnative -DskipITs=false -Dnative.tests.required=true
+        run: ./mvnw -B clean verify -Pnative
       - if: runner.os == 'Windows'
-        run: .\mvnw.cmd -B clean verify -Pnative -DskipITs=false -Dnative.tests.required=true
+        run: .\mvnw.cmd -B clean verify -Pnative
       - if: runner.os != 'Windows'
         run: ./quill-app/target/quill --version
       - if: runner.os == 'Windows'

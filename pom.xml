@@ -44,6 +44,7 @@
         <jakarta.annotation.version>3.0.0</jakarta.annotation.version>
         <jakarta.interceptor.version>2.2.0</jakarta.interceptor.version>
         <jacocoArgLine></jacocoArgLine>
+        <native.tests.required>false</native.tests.required>
     </properties>
 
     <dependencyManagement>
@@ -128,6 +129,9 @@
                     <version>${surefire-plugin.version}</version>
                     <configuration>
                         <argLine>@{jacocoArgLine} --enable-native-access=ALL-UNNAMED</argLine>
+                        <systemPropertyVariables>
+                            <native.tests.required>${native.tests.required}</native.tests.required>
+                        </systemPropertyVariables>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -143,6 +147,9 @@
                     </executions>
                     <configuration>
                         <argLine>@{jacocoArgLine} --enable-native-access=ALL-UNNAMED</argLine>
+                        <systemPropertyVariables>
+                            <native.tests.required>${native.tests.required}</native.tests.required>
+                        </systemPropertyVariables>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -194,4 +201,14 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>native</id>
+            <properties>
+                <native.tests.required>true</native.tests.required>
+                <skipITs>false</skipITs>
+            </properties>
+        </profile>
+    </profiles>
 </project>

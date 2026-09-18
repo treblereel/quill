@@ -2160,6 +2160,9 @@ class QuillToolsTest {
                            "module":".","sourceSet":"main"},
                           {"key":"orders.timeout","kind":"yaml_property",
                            "file":"src/main/resources/application.yml","line":2,
+                           "module":".","sourceSet":"main"},
+                          {"key":"unrelated.enabled","kind":"property",
+                           "file":"src/main/resources/application.properties","line":3,
                            "module":".","sourceSet":"main"}],
                          "usages":[
                           {"key":"orders.region","kind":"config_key","classId":1,
@@ -2190,6 +2193,16 @@ class QuillToolsTest {
         assertEquals("src/main/resources/application.properties",
                 directUsage.path("definition_files").get(0).asText());
         assertFalse(result.toString().contains("us-west"));
+
+        JsonNode exact = JSON.readTree(new QuillToolQueries().findConfigurationReferences(
+                jdbi, "orders.timeout", null, "all", null, 20, 0));
+        assertTrue(exact.path("references").valueStream()
+                .anyMatch(value -> value.path("kind").asText().equals("config_prefix")));
+
+        JsonNode prefixes = JSON.readTree(new QuillToolQueries().findConfigurationReferences(
+                jdbi, null, null, "prefix", null, 20, 0));
+        assertEquals(3, prefixes.path("total").asInt());
+        assertFalse(prefixes.toString().contains("unrelated.enabled"));
     }
 
     @Test

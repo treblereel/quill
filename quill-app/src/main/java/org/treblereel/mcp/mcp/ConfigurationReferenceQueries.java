@@ -45,13 +45,14 @@ final class ConfigurationReferenceQueries {
                     .filter(value -> matchesDefinitionKind(value, normalizedKind))
                     .toList();
             List<JsonNode> usages = elements(indexed.path("usages")).stream()
-                    .filter(value -> matchesKey(value.path("key").asText(), keyPattern))
+                    .filter(value -> matchesUsageKey(value, key, keyPattern))
                     .filter(value -> matchesClass(value, className))
                     .filter(value -> matchesModule(value, module))
                     .filter(value -> matchesUsageKind(value, normalizedKind))
                     .toList();
 
-            if (className != null && !className.isBlank()) {
+            if ((className != null && !className.isBlank())
+                    || normalizedKind.equals("prefix")) {
                 Set<String> usedKeys = usages.stream().map(value -> value.path("key").asText())
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
                 definitions = definitions.stream()
@@ -160,6 +161,19 @@ final class ConfigurationReferenceQueries {
 
     private static boolean matchesKey(String candidate, Pattern pattern) {
         return pattern == null || pattern.matcher(candidate).matches();
+    }
+
+    private static boolean matchesUsageKey(JsonNode usage, String requested, Pattern pattern) {
+        String indexed = usage.path("key").asText();
+        if (matchesKey(indexed, pattern)) return true;
+        if (!usage.path("kind").asText().equals("config_prefix")
+                || requested == null || requested.isBlank()) {
+            return false;
+        }
+        int wildcard = requested.indexOf('*');
+        String literalPrefix = (wildcard < 0 ? requested : requested.substring(0, wildcard))
+                .strip();
+        return literalPrefix.equals(indexed) || literalPrefix.startsWith(indexed + ".");
     }
 
     private static Pattern wildcard(String value) {

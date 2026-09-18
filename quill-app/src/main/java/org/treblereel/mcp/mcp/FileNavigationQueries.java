@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.jdbi.v3.core.Jdbi;
 
 /** Compact file navigation over the indexed, worktree-aware file inventory. */
@@ -43,23 +44,101 @@ final class FileNavigationQueries {
     }
 
     String searchFiles(Jdbi jdbi, String pattern, String module, String kind,
-            boolean includeDeleted, int limit, int offset) {
-        String needle = pattern.strip().toLowerCase(Locale.ROOT).replace("*", "");
-        List<FileRow> matches = files(jdbi, ".", includeDeleted).stream()
-                .filter(file -> needle.isEmpty()
-                        || file.path().toLowerCase(Locale.ROOT).contains(needle))
+            String directory, String extension, boolean includeDeleted, int limit, int offset) {
+        String requested = pattern == null ? "" : pattern.strip().replace('\\', '/');
+        String needle = requested.toLowerCase(Locale.ROOT);
+        boolean glob = requested.indexOf('*') >= 0 || requested.indexOf('?') >= 0;
+        boolean basenameGlob = glob && !requested.contains("/");
+        Pattern matcher = glob ? Pattern.compile(globRegex(requested), Pattern.CASE_INSENSITIVE)
+                : null;
+        String base = normalizeBase(directory);
+        String requestedExtension = normalizeExtension(extension);
+        List<ScoredFile> matches = files(jdbi, base, includeDeleted).stream()
+                .filter(file -> matches(file.path(), matcher, needle, glob, basenameGlob))
                 .filter(file -> module == null || module.isBlank()
                         || normalizeBase(module).equals(normalizeBase(file.module())))
                 .filter(file -> kind == null || kind.isBlank()
                         || file.kind().equalsIgnoreCase(kind.strip()))
-                .sorted(Comparator.comparing(FileRow::path)).toList();
+                .filter(file -> requestedExtension == null
+                        || extension(file.path()).equalsIgnoreCase(requestedExtension))
+                .map(file -> score(file, requested, needle, glob))
+                .sorted(Comparator.comparingInt(ScoredFile::score)
+                        .thenComparing(value -> value.file().path())).toList();
         int from = Math.min(offset, matches.size());
         int to = Math.min(from + limit, matches.size());
         ObjectNode result = page(matches.size(), to - from, offset, to < matches.size());
         result.put("pattern", pattern);
+        result.put("match_mode", glob ? "glob" : "substring");
+        if (!base.equals(".")) result.put("directory", base);
+        if (requestedExtension != null) result.put("extension", requestedExtension);
         ArrayNode files = result.putArray("files");
-        matches.subList(from, to).forEach(file -> addFile(files, file));
+        matches.subList(from, to).forEach(match -> {
+            ObjectNode item = addFile(files, match.file());
+            item.put("rank", match.score());
+            item.put("match", match.reason());
+        });
         return result.toString();
+    }
+
+    private static boolean matches(String path, Pattern matcher, String needle,
+            boolean glob, boolean basenameGlob) {
+        if (needle.isEmpty()) return true;
+        if (!glob) return path.toLowerCase(Locale.ROOT).contains(needle);
+        String candidate = basenameGlob ? basename(path) : path;
+        return matcher.matcher(candidate).matches();
+    }
+
+    private static ScoredFile score(FileRow file, String requested, String needle, boolean glob) {
+        String path = file.path();
+        String lowerPath = path.toLowerCase(Locale.ROOT);
+        String basename = basename(path);
+        String lowerBasename = basename.toLowerCase(Locale.ROOT);
+        if (!glob && lowerPath.equals(needle)) return new ScoredFile(file, 0, "exact_path");
+        if (!glob && lowerBasename.equals(needle)) return new ScoredFile(file, 1, "exact_basename");
+        if (!glob && lowerPath.startsWith(needle)) return new ScoredFile(file, 2, "path_prefix");
+        if (!glob && lowerBasename.startsWith(needle)) {
+            return new ScoredFile(file, 3, "basename_prefix");
+        }
+        return new ScoredFile(file, glob ? 4 : 5, glob ? "glob" : "substring");
+    }
+
+    private static String globRegex(String glob) {
+        StringBuilder regex = new StringBuilder("^");
+        for (int index = 0; index < glob.length(); index++) {
+            char current = glob.charAt(index);
+            if (current == '*') {
+                if (index + 1 < glob.length() && glob.charAt(index + 1) == '*') {
+                    regex.append(".*");
+                    index++;
+                } else {
+                    regex.append("[^/]*");
+                }
+            } else if (current == '?') {
+                regex.append("[^/]");
+            } else {
+                if ("\\.[]{}()+-^$|".indexOf(current) >= 0) regex.append('\\');
+                regex.append(current);
+            }
+        }
+        return regex.append('$').toString();
+    }
+
+    private static String normalizeExtension(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.strip();
+        while (normalized.startsWith(".")) normalized = normalized.substring(1);
+        return normalized.isBlank() ? null : normalized;
+    }
+
+    private static String extension(String path) {
+        String name = basename(path);
+        int dot = name.lastIndexOf('.');
+        return dot < 0 ? "" : name.substring(dot + 1);
+    }
+
+    private static String basename(String path) {
+        int slash = path.lastIndexOf('/');
+        return slash < 0 ? path : path.substring(slash + 1);
     }
 
     private static List<FileRow> files(Jdbi jdbi, String base, boolean includeDeleted) {
@@ -110,10 +189,11 @@ final class FileNavigationQueries {
         return result;
     }
 
-    private static void addFile(ArrayNode files, FileRow file) {
+    private static ObjectNode addFile(ArrayNode files, FileRow file) {
         ObjectNode item = files.addObject();
         item.put("path", file.path());
         addFileContext(item, file);
+        return item;
     }
 
     private static void addFileContext(ObjectNode item, FileRow file) {
@@ -141,5 +221,6 @@ final class FileNavigationQueries {
 
     private record FileRow(String path, String kind, String origin, String lifecycle,
             String worktreeStatus, String module, String sourceSet) {}
+    private record ScoredFile(FileRow file, int score, String reason) {}
     private record TreeEntry(String path, String type, FileRow file) {}
 }

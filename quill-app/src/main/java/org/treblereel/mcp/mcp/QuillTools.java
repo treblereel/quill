@@ -319,15 +319,18 @@ public final class QuillTools {
     @Tool(structured = true,
             description = "Search indexed file paths with module, kind, lifecycle, and worktree context.")
     public String search_files(
-            @ToolArg(description = "Path substring or * wildcard pattern") String pattern,
+            @ToolArg(description = "Path substring or glob pattern supporting *, **, and ?") String pattern,
             @ToolArg(description = "Exact module path; omit for all") Optional<String> module,
             @ToolArg(description = "Exact indexed kind, e.g. java, kotlin, or resource") Optional<String> kind,
+            @ToolArg(description = "Repository-relative directory prefix; omit for the project root") Optional<String> directory,
+            @ToolArg(description = "File extension with or without a leading dot, e.g. java") Optional<String> extension,
             @ToolArg(description = "Include deleted or historical indexed paths; default false") Optional<Boolean> include_deleted,
             @ToolArg(description = "Results per page; default 50, max 200") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> fileNavigation.searchFiles(
                 p.jdbi(), pattern, module.orElse(null), kind.orElse(null),
+                directory.orElse(null), extension.orElse(null),
                 include_deleted.orElse(false), clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }

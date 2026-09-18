@@ -42,14 +42,34 @@ class FileNavigationQueriesTest {
 
         FileNavigationQueries queries = new FileNavigationQueries();
         var current = JSON.readTree(queries.searchFiles(
-                jdbi, "*Order*", "api", "java", false, 20, 0));
+                jdbi, "*Order*", "api", "java", null, null, false, 20, 0));
         var all = JSON.readTree(queries.searchFiles(
-                jdbi, "Order", "api", "java", true, 20, 0));
+                jdbi, "Order", "api", "java", null, null, true, 20, 0));
 
         assertEquals(1, current.path("total").asInt());
         assertEquals(2, all.path("total").asInt());
         assertEquals("modified", current.path("files").get(0)
                 .path("worktree_status").asText());
+    }
+
+    @Test
+    void appliesPathGlobsDirectoryAndExtensionAndRanksExactBasenameFirst() throws Exception {
+        Jdbi jdbi = database();
+        insert(jdbi, "api/src/main/java/com/acme/Order.java", "java", "current", null, "api");
+        insert(jdbi, "api/src/test/java/com/acme/OrderTest.java", "java", "current", null, "api");
+        insert(jdbi, "docs/Order.java.md", "resource", "current", null, ".");
+
+        FileNavigationQueries queries = new FileNavigationQueries();
+        var glob = JSON.readTree(queries.searchFiles(jdbi, "**/Order*.java", null, null,
+                "api/src", ".java", false, 20, 0));
+        var ranked = JSON.readTree(queries.searchFiles(jdbi, "Order.java", null, null,
+                null, null, false, 20, 0));
+
+        assertEquals(2, glob.path("total").asInt());
+        assertEquals("glob", glob.path("match_mode").asText());
+        assertEquals("api/src/main/java/com/acme/Order.java",
+                ranked.path("files").get(0).path("path").asText());
+        assertEquals("exact_basename", ranked.path("files").get(0).path("match").asText());
     }
 
     private Jdbi database() {

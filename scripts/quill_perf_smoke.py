@@ -11,7 +11,8 @@ import subprocess
 import tempfile
 import zipfile
 
-from quill_benchmark import benchmark_mcp, parse_phase_timings, run_measured
+from quill_benchmark import (benchmark_catalog, benchmark_mcp, parse_phase_timings,
+                             run_measured)
 
 
 def arguments() -> argparse.Namespace:
@@ -22,6 +23,9 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--max-index-seconds", type=float, default=15)
     parser.add_argument("--max-rss-mib", type=float, default=768)
     parser.add_argument("--max-burst-seconds", type=float, default=10)
+    parser.add_argument("--max-catalog-bytes", type=int, default=49152)
+    parser.add_argument("--max-router-catalog-bytes", type=int, default=4096)
+    parser.add_argument("--max-router-ratio", type=float, default=0.20)
     return parser.parse_args()
 
 
@@ -33,7 +37,7 @@ def generate_fixture(root: Path, class_count: int, dependency_count: int = 32) -
 
     dependency_sources = root / "target" / "dependency-sources" / "perf" / "dependency"
     dependency_classes = root / "target" / "dependency-classes"
-    dependency_jars = root / "target" / "dependency-jars"
+    dependency_jars = root / "target" / "dependency-repository"
     dependency_sources.mkdir(parents=True)
     dependency_classes.mkdir(parents=True)
     dependency_jars.mkdir(parents=True)
@@ -51,11 +55,18 @@ def generate_fixture(root: Path, class_count: int, dependency_count: int = 32) -
     jars = []
     for index in range(dependency_count):
         relative_class = Path("perf/dependency") / f"External{index:04d}.class"
-        jar = dependency_jars / f"dependency-{index:04d}.jar"
+        artifact = f"dependency-{index:04d}"
+        artifact_dir = dependency_jars / "perf" / "dependency" / artifact / "1"
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        jar = artifact_dir / f"{artifact}-1.jar"
         info = zipfile.ZipInfo(relative_class.as_posix(), (2020, 1, 1, 0, 0, 0))
         info.compress_type = zipfile.ZIP_DEFLATED
         with zipfile.ZipFile(jar, "w") as archive:
             archive.writestr(info, (dependency_classes / relative_class).read_bytes())
+        (artifact_dir / f"{artifact}-1.pom").write_text(
+            "<project><modelVersion>4.0.0</modelVersion>"
+            f"<groupId>perf.dependency</groupId><artifactId>{artifact}</artifactId>"
+            "<version>1</version></project>\n", encoding="utf-8")
         jars.append(jar)
 
     source_root = root / "src" / "main" / "java"
@@ -85,10 +96,16 @@ def generate_fixture(root: Path, class_count: int, dependency_count: int = 32) -
         )
         (package_root / f"Service{index:04d}.java").write_text(source, encoding="utf-8")
 
+    dependency_xml = "".join(
+        "<dependency><groupId>perf.dependency</groupId>"
+        f"<artifactId>dependency-{index:04d}</artifactId><version>1</version>"
+        "</dependency>" for index in range(dependency_count))
     (root / "pom.xml").write_text(
         "<project><modelVersion>4.0.0</modelVersion>"
         "<groupId>perf</groupId><artifactId>fixture</artifactId>"
-        "<version>1</version></project>\n",
+        f"<version>1</version><repositories><repository><id>fixture</id><url>"
+        f"{dependency_jars.as_uri()}</url></repository></repositories>"
+        f"<dependencies>{dependency_xml}</dependencies></project>\n",
         encoding="utf-8")
     (root / ".gitignore").write_text("target/\n.quill/\n", encoding="utf-8")
 
@@ -114,7 +131,9 @@ def generate_fixture(root: Path, class_count: int, dependency_count: int = 32) -
 
 
 def enforce_budgets(result: dict, max_index_seconds: float, max_rss_mib: float,
-                    max_burst_seconds: float) -> None:
+                    max_burst_seconds: float, max_catalog_bytes: int = 49152,
+                    max_router_catalog_bytes: int = 4096,
+                    max_router_ratio: float = 0.20) -> None:
     cold = result["cold_init"]
     if cold["exit_code"] != 0:
         raise RuntimeError("Quill fixture indexing failed:\n" + cold["stderr"])
@@ -158,6 +177,28 @@ def enforce_budgets(result: dict, max_index_seconds: float, max_rss_mib: float,
     if slowest > max_burst_seconds:
         raise RuntimeError(
             f"MCP burst took {slowest}s, exceeding {max_burst_seconds}s budget")
+    catalog_bytes = mcp.get("tool_catalog_bytes")
+    if not isinstance(catalog_bytes, int) or catalog_bytes <= 0:
+        raise RuntimeError("Full MCP catalog measurement is missing")
+    if catalog_bytes > max_catalog_bytes:
+        raise RuntimeError(
+            f"Full MCP catalog is {catalog_bytes} bytes, exceeding "
+            f"{max_catalog_bytes} byte budget")
+    router = result.get("router_catalog", {})
+    router_count = router.get("tool_catalog_count")
+    router_bytes = router.get("tool_catalog_bytes")
+    if router_count != 3:
+        raise RuntimeError(f"Router profile must expose exactly 3 tools, got {router_count}")
+    if not isinstance(router_bytes, int) or router_bytes <= 0:
+        raise RuntimeError("Router MCP catalog measurement is missing")
+    if router_bytes > max_router_catalog_bytes:
+        raise RuntimeError(
+            f"Router catalog is {router_bytes} bytes, exceeding "
+            f"{max_router_catalog_bytes} byte budget")
+    ratio = router_bytes / catalog_bytes
+    if ratio > max_router_ratio:
+        raise RuntimeError(
+            f"Router/full catalog ratio {ratio:.3f} exceeds {max_router_ratio:.3f}")
 
 
 def run_smoke(quill: Path, class_count: int, dependency_count: int) -> dict:
@@ -179,7 +220,10 @@ def run_smoke(quill: Path, class_count: int, dependency_count: int) -> dict:
         cache_hit["phase_timings_ms"] = parse_phase_timings(cache_hit["stderr"])
         mcp = benchmark_mcp([str(quill)], project, warmup=1,
                             samples_per_tool=2, concurrency=[32], timeout_seconds=30)
-        return {"cold_init": cold, "cache_hit": cache_hit, "mcp": mcp}
+        router_catalog = benchmark_catalog(
+            [str(quill), "--tools", "router"], project, timeout_seconds=30)
+        return {"cold_init": cold, "cache_hit": cache_hit, "mcp": mcp,
+                "router_catalog": router_catalog}
 
 
 def main() -> int:
@@ -187,14 +231,17 @@ def main() -> int:
     quill = args.quill.resolve()
     result = run_smoke(quill, args.classes, args.dependencies)
     enforce_budgets(result, args.max_index_seconds, args.max_rss_mib,
-                    args.max_burst_seconds)
+                    args.max_burst_seconds, args.max_catalog_bytes,
+                    args.max_router_catalog_bytes, args.max_router_ratio)
     cold = result["cold_init"]
     cache_hit = result["cache_hit"]
     burst = result["mcp"]["batches"][0]
     print(f"Performance smoke passed: {args.classes} classes, "
           f"index={cold['duration_seconds']}s, peak_rss={cold['peak_rss_mib']} MiB, "
           f"cache_hit={cache_hit['duration_seconds']}s, "
-          f"32-request burst={burst['elapsed_seconds']}s")
+          f"32-request burst={burst['elapsed_seconds']}s, "
+          f"catalog={result['mcp']['tool_catalog_bytes']} bytes, "
+          f"router={result['router_catalog']['tool_catalog_bytes']} bytes")
     return 0
 
 

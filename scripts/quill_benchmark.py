@@ -397,6 +397,29 @@ def benchmark_mcp(command: list[str], project: Path, warmup: int,
     return result
 
 
+def benchmark_catalog(command: list[str], project: Path,
+                      timeout_seconds: int = 30) -> dict[str, int]:
+    """Measure one MCP profile's catalog without invoking profile-specific tools."""
+    client = McpClient(command, project, timeout_seconds)
+    try:
+        client.send(1, "initialize", {
+            "protocolVersion": "2025-06-18", "capabilities": {},
+            "clientInfo": {"name": "quill-catalog-benchmark", "version": "1"},
+        })
+        client.flush()
+        initialized = client.receive({1}, timeout_seconds)[1]
+        if "result" not in initialized:
+            raise RuntimeError(f"MCP initialization failed: {initialized}")
+        assert client.process.stdin is not None
+        client.process.stdin.write(
+            '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n')
+        client.send(2, "tools/list", {})
+        client.flush()
+        return catalog_summary(client.receive({2}, timeout_seconds)[2])
+    finally:
+        client.close()
+
+
 def index_size(project: Path) -> tuple[int, int]:
     databases = list((project / ".quill").glob("*.db"))
     size = sum(path.stat().st_size for path in databases)

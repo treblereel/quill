@@ -15,7 +15,8 @@ class QuillPerfSmokeTest(unittest.TestCase):
             self.assertEqual(5, len(list(
                 (root / "src/main/java/perf/fixture").glob("Service*.java"))))
             self.assertEqual(7, len(list((root / "target/classes").rglob("*.class"))))
-            self.assertEqual(3, len(list((root / "target/dependency-jars").glob("*.jar"))))
+            self.assertEqual(3, len(list(
+                (root / "target/dependency-repository").rglob("*.jar"))))
             self.assertTrue((root / "target/quill-classpath.txt").is_file())
 
     def test_budgets_reject_errors_and_slow_runs(self):
@@ -36,8 +37,13 @@ class QuillPerfSmokeTest(unittest.TestCase):
                 "stderr": "[quill] Reusing dependency index for 3 JARs...",
             },
             "mcp": {
+                "tool_catalog_bytes": 20_000,
                 "tools": [{"errors": 0}],
                 "batches": [{"errors": 0, "elapsed_seconds": 1.0}],
+            },
+            "router_catalog": {
+                "tool_catalog_count": 3,
+                "tool_catalog_bytes": 2_000,
             },
         }
         enforce_budgets(base, 2.0, 200.0, 2.0)
@@ -45,6 +51,16 @@ class QuillPerfSmokeTest(unittest.TestCase):
         slow = {**base, "cold_init": {**base["cold_init"], "duration_seconds": 3.0}}
         with self.assertRaises(RuntimeError):
             enforce_budgets(slow, 2.0, 200.0, 2.0)
+
+        bloated_router = {**base, "router_catalog": {
+            "tool_catalog_count": 3, "tool_catalog_bytes": 5_000}}
+        with self.assertRaises(RuntimeError):
+            enforce_budgets(bloated_router, 2.0, 200.0, 2.0)
+
+        expanded_catalog = {**base, "mcp": {
+            **base["mcp"], "tool_catalog_bytes": 60_000}}
+        with self.assertRaises(RuntimeError):
+            enforce_budgets(expanded_catalog, 2.0, 200.0, 2.0)
 
 
 if __name__ == "__main__":

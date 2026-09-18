@@ -87,6 +87,8 @@ Windows. It verifies dependency-cache miss and hit behavior with intentionally b
 memory, and concurrent-request budgets to catch major regressions without depending on an
 external repository or noisy microbenchmark thresholds. Native integration tests also keep
 an MCP process serving reads while repeated immutable index generations are published.
+The same gate caps the full MCP catalog at 48 KiB and the three-tool router catalog at 4 KiB;
+the router must remain at most 20% of the full catalog, preventing silent context growth.
 
 ## Commands
 

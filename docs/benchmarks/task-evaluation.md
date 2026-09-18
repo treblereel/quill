@@ -40,6 +40,11 @@ python3 scripts/quill_agent_benchmark.py \
   --repetitions 10
 ```
 
+For the current post-quality-fixes Crysknife baseline, use
+`benchmarks/crysknife-current-effectiveness.json`. The older
+`crysknife-agent-effectiveness.json` remains pinned because its recorded captures are historical
+evidence and must not be rescored against a different revision.
+
 `gpt-5.6-terra` with medium reasoning is the benchmark default, so the final two options may be
 omitted. Always record overrides when comparing results produced by a different model or effort.
 

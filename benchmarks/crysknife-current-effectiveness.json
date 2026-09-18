@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "name": "Crysknife current Quill effectiveness",
+  "project_revision": "c1a1b734a01364abc65501b4edc916fd05b1907c",
+  "tasks": [
+    {
+      "id": "constructor-reference-coverage",
+      "quill_tools": ["get_dependencies", "get_symbol_at_position"],
+      "prompt": "Find every current source class that constructs BeanProcessorTask. Report its static fan-in, the number of constructor call sites, and whether ApplicationProcessor and AfterBurnFactoryProcessor each construct it.",
+      "expected": {
+        "fan_in": 2,
+        "constructor_call_site_count": 2,
+        "application_processor_constructs": true,
+        "after_burn_factory_processor_constructs": true
+      }
+    },
+    {
+      "id": "processor-service-order",
+      "quill_tools": ["search_files", "inspect_service_descriptors"],
+      "prompt": "Locate the current source annotation-processor service descriptor, return its repository-relative path and processors in declaration order, and state whether changing that order can affect this project's generation pipeline.",
+      "expected": {
+        "path": "processor/src/main/resources/META-INF/services/javax.annotation.processing.Processor",
+        "processors": [
+          "io.crysknife.ApplicationProcessor",
+          "io.crysknife.AfterBurnFactoryProcessor",
+          "io.crysknife.BeanManagerGeneratorProcessor"
+        ],
+        "processor_count": 3,
+        "order_can_affect_generation": true
+      }
+    },
+    {
+      "id": "deleted-generator-resolution",
+      "quill_tools": ["resolve_entities", "get_file_history", "search_files"],
+      "prompt": "Determine whether processor/src/main/java/io/crysknife/generator/ScopedBeanGenerator.java and any TemplatedGenerator.java are present in the current source tree, and whether each name exists in Git history.",
+      "expected": {
+        "scoped_bean_generator_current": false,
+        "templated_generator_current": false,
+        "scoped_bean_generator_historical": true,
+        "templated_generator_historical": true
+      }
+    },
+    {
+      "id": "processor-dependency-directness",
+      "quill_tools": ["get_project_dependencies"],
+      "prompt": "For the processor module, classify com.google.guava:guava and com.google.guava:failureaccess as direct or transitive resolved dependencies. Do not run Maven.",
+      "expected": {
+        "guava_directness": "direct",
+        "failureaccess_directness": "transitive",
+        "build_invoked": false
+      }
+    },
+    {
+      "id": "external-immutable-list-builders",
+      "quill_tools": ["search_external_symbols"],
+      "prompt": "Using resolved dependency bytecode, list methods declared directly on com.google.common.collect.ImmutableList whose names contain builder. Exclude methods declared on nested or similarly named classes.",
+      "expected": {
+        "declaring_class": "com.google.common.collect.ImmutableList",
+        "method_names": ["builder", "builderWithExpectedSize"],
+        "method_count": 2,
+        "nested_classes_included": false
+      }
+    }
+  ]
+}

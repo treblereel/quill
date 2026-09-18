@@ -123,6 +123,50 @@ class CodexConfigInstallerTest {
         assertTrue(content.contains("\r\n[mcp_servers.quill]\r\n"));
     }
 
+    @Test
+    void replacesLegacyQuillWithWorkspaceEntryAndRemovesIt() throws Exception {
+        Path config = createConfig("""
+                model = "gpt-test"
+
+                [mcp_servers.quill]
+                command = "old-quill"
+                args = ["--mcp", "--project", "/old"]
+
+                [mcp_servers.other]
+                command = "other-server"
+                """);
+        Path workspace = tempDir.resolve("workspace");
+
+        assertEquals(CodexConfigInstaller.Result.REPLACED,
+                CodexConfigInstaller.installWorkspaceIfPresent(
+                        tempDir, workspace, "/opt/quill"));
+        String installed = Files.readString(config);
+        assertFalse(installed.contains("old-quill"));
+        assertTrue(installed.contains("\"--workspace\""));
+        assertTrue(installed.contains(escaped(workspace.toAbsolutePath().toString())));
+        assertTrue(installed.contains("[mcp_servers.other]"));
+
+        assertEquals(CodexConfigInstaller.Result.REMOVED,
+                CodexConfigInstaller.uninstallWorkspaceIfPresent(tempDir, workspace));
+        String cleaned = Files.readString(config);
+        assertFalse(cleaned.contains("[mcp_servers.quill]"));
+        assertTrue(cleaned.contains("[mcp_servers.other]"));
+        assertTrue(cleaned.contains("model = \"gpt-test\""));
+    }
+
+    @Test
+    void doesNotRemoveWorkspaceEntryManagedForAnotherWorkspace() throws Exception {
+        createConfig("model = \"gpt-test\"\n");
+        Path first = tempDir.resolve("first");
+        CodexConfigInstaller.installWorkspaceIfPresent(tempDir, first, null);
+
+        assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,
+                CodexConfigInstaller.uninstallWorkspaceIfPresent(
+                        tempDir, tempDir.resolve("second")));
+        assertTrue(Files.readString(tempDir.resolve(".codex/config.toml"))
+                .contains("# Added by Quill for workspace "));
+    }
+
     private Path createConfig(String content) throws Exception {
         Path config = tempDir.resolve(".codex/config.toml");
         Files.createDirectories(config.getParent());

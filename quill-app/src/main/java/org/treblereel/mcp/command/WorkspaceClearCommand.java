@@ -9,6 +9,7 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.workspace.WorkspaceDiscovery;
 import org.treblereel.mcp.workspace.WorkspaceManifest;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
+import org.treblereel.mcp.workspace.WorkspaceRepositoryStateStore;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -33,11 +34,16 @@ public final class WorkspaceClearCommand implements Callable<Integer> {
                     + WorkspaceManifestStore.directory(root));
             return CommandLine.ExitCode.OK;
         }
-        WorkspaceManifest manifest = repositories ? WorkspaceManifestStore.read(root) : null;
+        WorkspaceManifest manifest = Files.isRegularFile(manifestPath)
+                ? WorkspaceManifestStore.read(root) : null;
         WorkspaceDiscovery.Result discovery = repositories
                 ? WorkspaceDiscovery.discover(manifest) : null;
+        var configuredRepositories = manifest == null
+                ? java.util.List.<WorkspaceRepositoryStateStore.Repository>of()
+                : WorkspaceRepositoryStateStore.read(root);
         ArrayList<String> cleaned = new ArrayList<>();
         WorkspaceManifestStore.ClearResult result = WorkspaceManifestStore.clear(root, () -> {
+            WorkspaceClientConfiguration.uninstall(root, configuredRepositories);
             if (discovery == null) return;
             for (WorkspaceDiscovery.Repository repository : discovery.repositories()) {
                 try {

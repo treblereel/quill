@@ -13,6 +13,8 @@ final class CodexConfigInstaller {
         SKIPPED,
         NOT_PRESENT,
         ADDED,
+        REPLACED,
+        REMOVED,
         ALREADY_CONFIGURED,
         UNSUPPORTED,
         FAILED
@@ -40,6 +42,45 @@ final class CodexConfigInstaller {
             writeAtomically(config, updated);
             System.err.println("[quill] Added the Quill MCP server to " + config + ".");
             return Result.ADDED;
+        } catch (IOException e) {
+            warn(config, e.getMessage());
+            return Result.FAILED;
+        }
+    }
+
+    static Result installWorkspaceIfPresent(
+            Path projectRoot, Path workspaceRoot, String binary) {
+        Path config = projectRoot.resolve(".codex/config.toml");
+        if (!Files.exists(config)) return Result.NOT_PRESENT;
+        if (!Files.isRegularFile(config) || Files.isSymbolicLink(config)) {
+            warn(config, "is not a regular file; leaving it unchanged");
+            return Result.UNSUPPORTED;
+        }
+        try {
+            String content = Files.readString(config, StandardCharsets.UTF_8);
+            if (definesInlineMcpServers(content)) {
+                warn(config, "uses an inline mcp_servers table; add the Quill entry manually");
+                return Result.UNSUPPORTED;
+            }
+            boolean replaced = definesQuillServer(content);
+            String cleaned = removeQuillServer(content);
+            String updated = appendWorkspaceBlock(cleaned, projectRoot, workspaceRoot, binary);
+            writeAtomically(config, updated);
+            return replaced ? Result.REPLACED : Result.ADDED;
+        } catch (IOException e) {
+            warn(config, e.getMessage());
+            return Result.FAILED;
+        }
+    }
+
+    static Result uninstallWorkspaceIfPresent(Path projectRoot, Path workspaceRoot) {
+        Path config = projectRoot.resolve(".codex/config.toml");
+        if (!Files.isRegularFile(config)) return Result.NOT_PRESENT;
+        try {
+            String content = Files.readString(config, StandardCharsets.UTF_8);
+            if (!targetsWorkspace(content, workspaceRoot)) return Result.ALREADY_CONFIGURED;
+            writeAtomically(config, removeQuillServer(content));
+            return Result.REMOVED;
         } catch (IOException e) {
             warn(config, e.getMessage());
             return Result.FAILED;
@@ -170,6 +211,74 @@ final class CodexConfigInstaller {
                 .append("cwd = ").append(tomlString(projectRoot.toAbsolutePath().normalize().toString()))
                 .append(newline);
         return content + block;
+    }
+
+    private static String appendWorkspaceBlock(String content, Path projectRoot,
+            Path workspaceRoot, String binary) {
+        String newline = content.contains("\r\n") ? "\r\n" : "\n";
+        String command = binary != null ? binary : "quill";
+        StringBuilder block = new StringBuilder();
+        if (!content.isEmpty() && !content.endsWith("\n") && !content.endsWith("\r")) {
+            block.append(newline);
+        }
+        if (!content.isBlank()) block.append(newline);
+        block.append(workspaceMarker(workspaceRoot)).append(newline)
+                .append("[mcp_servers.quill]").append(newline)
+                .append("command = ").append(tomlString(command)).append(newline)
+                .append("args = [\"--mcp\", \"--workspace\", ")
+                .append(tomlString(workspaceRoot.toAbsolutePath().normalize().toString()))
+                .append(']').append(newline)
+                .append("cwd = ")
+                .append(tomlString(projectRoot.toAbsolutePath().normalize().toString()))
+                .append(newline);
+        return content + block;
+    }
+
+    private static boolean targetsWorkspace(String content, Path workspaceRoot) {
+        String marker = workspaceMarker(workspaceRoot);
+        return content.lines().map(String::trim).anyMatch(marker::equals);
+    }
+
+    private static String workspaceMarker(Path workspaceRoot) {
+        String normalized = workspaceRoot.toAbsolutePath().normalize().toString();
+        String encoded = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                normalized.getBytes(StandardCharsets.UTF_8));
+        return "# Added by Quill for workspace " + encoded + ".";
+    }
+
+    private static String removeQuillServer(String content) {
+        String newline = content.contains("\r\n") ? "\r\n" : "\n";
+        String[] lines = content.split("\\R", -1);
+        StringBuilder result = new StringBuilder(content.length());
+        boolean skipTable = false;
+        boolean inRootMcpTable = false;
+        boolean beforeFirstTable = true;
+        for (String line : lines) {
+            if (line.trim().startsWith("# Added by Quill for workspace ")) continue;
+            String stripped = stripComment(line).trim();
+            if (stripped.startsWith("[")) {
+                beforeFirstTable = false;
+                String table = tableName(stripped);
+                skipTable = table != null && (table.equals("mcp_servers.quill")
+                        || table.startsWith("mcp_servers.quill."));
+                inRootMcpTable = "mcp_servers".equals(table);
+                if (skipTable) continue;
+            } else if (skipTable) {
+                continue;
+            }
+            String key = assignmentKey(stripped);
+            if (inRootMcpTable && "quill".equals(key)) continue;
+            if (beforeFirstTable && key != null
+                    && (key.equals("mcp_servers.quill")
+                    || key.startsWith("mcp_servers.quill."))) continue;
+            if (result.length() > 0) result.append(newline);
+            result.append(line);
+        }
+        String cleaned = result.toString();
+        while (cleaned.endsWith(newline + newline + newline)) {
+            cleaned = cleaned.substring(0, cleaned.length() - newline.length());
+        }
+        return cleaned;
     }
 
     private static String tomlString(String value) {

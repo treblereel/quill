@@ -146,6 +146,14 @@ Unsupported and uncompiled repositories are reported and skipped. Quill never st
 Gradle build while indexing them. `--index-only` creates indexes without installing build-result
 integration or modifying repository-local client configuration.
 
+Unless `--index-only` is used, workspace initialization creates or updates `.mcp.json` in the
+workspace root and every discovered Maven or Gradle repository. Existing `quill` entries are
+replaced with a workspace-aware command while unrelated MCP servers are preserved. Existing
+`.codex/config.toml` files are updated in the same way. `workspace refresh` reconciles these files
+for added and removed repositories, and `workspace clear` removes only entries managed for that
+workspace. Use `workspace clear --repositories` when indexes and build integration should also be
+removed.
+
 The MCP server reconciles added and removed repositories while it is running. A newly added
 repository becomes routable immediately; run `workspace refresh` after compiling it to create its
 missing index. Refresh reports `added`, `removed`, `indexed`, `skipped`, `unchanged`, and `failed`

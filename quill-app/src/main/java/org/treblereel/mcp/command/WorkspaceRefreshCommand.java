@@ -50,6 +50,12 @@ public final class WorkspaceRefreshCommand implements Callable<Integer> {
                     .size();
             result = WorkspaceRepositoryInitializer.initializeMissing(
                     discovery, indexOnly, System.out::println);
+            if (!indexOnly) {
+                WorkspaceClientConfiguration.uninstallRemoved(
+                        manifest.root(), previous, discovery.repositories());
+            }
+            WorkspaceClientConfiguration.install(
+                    manifest.root(), discovery.repositories(), indexOnly);
             WorkspaceRepositoryStateStore.write(manifest.root(), discovery.repositories());
         }
         System.out.println("Workspace: " + manifest.root());

@@ -57,8 +57,51 @@ class WorkspaceCommandTest {
             Path repository = workspace.resolve(name);
             assertTrue(ProjectIndexStore.findBestAvailableDb(repository) != null);
             assertTrue(Files.isRegularFile(repository.resolve(".mvn/extensions.xml")));
+            assertWorkspaceMcp(repository.resolve(".mcp.json"));
             assertFalse(Files.exists(repository.resolve("build-was-invoked")));
         }
+        assertWorkspaceMcp(workspace.resolve(".mcp.json"));
+    }
+
+    @Test
+    void initReplacesLegacyClientEntriesAndClearRemovesWorkspaceEntries() throws Exception {
+        createCompiledRepository("engine");
+        Path repository = workspace.resolve("engine");
+        Files.writeString(repository.resolve(".mcp.json"), """
+                {"mcpServers": {
+                  "quill": {"command": "old-quill", "args": ["--mcp", "--project", "/old"]},
+                  "other": {"command": "other-server"}
+                }}
+                """);
+        Path codex = repository.resolve(".codex/config.toml");
+        Files.createDirectories(codex.getParent());
+        Files.writeString(codex, """
+                model = "gpt-test"
+                [mcp_servers.quill]
+                command = "old-quill"
+                args = ["--mcp", "--project", "/old"]
+                """);
+
+        assertEquals(CommandLine.ExitCode.OK, execute("workspace", "init",
+                "--project", workspace.toString()).exitCode());
+        assertWorkspaceMcp(repository.resolve(".mcp.json"));
+        String installedCodex = Files.readString(codex);
+        assertFalse(installedCodex.contains("old-quill"));
+        assertTrue(installedCodex.contains("\"--workspace\""));
+        assertTrue(installedCodex.contains(workspace.toAbsolutePath().normalize().toString()));
+
+        Captured cleared = execute("workspace", "clear", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, cleared.exitCode(), cleared.stderr());
+        var mcp = JSON.readTree(repository.resolve(".mcp.json").toFile());
+        assertFalse(mcp.path("mcpServers").has("quill"));
+        assertEquals("other-server",
+                mcp.path("mcpServers").path("other").path("command").asText());
+        String cleanedCodex = Files.readString(codex);
+        assertFalse(cleanedCodex.contains("[mcp_servers.quill]"));
+        assertTrue(cleanedCodex.contains("model = \"gpt-test\""));
+        assertFalse(Files.exists(workspace.resolve(".mcp.json")));
+        assertTrue(Files.isDirectory(repository.resolve(".quill")));
     }
 
     @Test
@@ -232,6 +275,15 @@ class WorkspaceCommandTest {
         assertEquals(CommandLine.ExitCode.OK, removed.exitCode(), removed.stderr());
         assertTrue(removed.stdout().contains("added=0, removed=1"), removed.stdout());
         assertTrue(removed.stdout().contains("Repositories: 0"), removed.stdout());
+        assertFalse(Files.exists(workspace.resolve("engine/.mcp.json")));
+    }
+
+    private void assertWorkspaceMcp(Path file) throws Exception {
+        var quill = JSON.readTree(file.toFile()).path("mcpServers").path("quill");
+        assertEquals("--mcp", quill.path("args").get(0).asText());
+        assertEquals("--workspace", quill.path("args").get(1).asText());
+        assertEquals(workspace.toAbsolutePath().normalize().toString(),
+                quill.path("args").get(2).asText());
     }
 
     private void createCompiledRepository(String name) throws Exception {

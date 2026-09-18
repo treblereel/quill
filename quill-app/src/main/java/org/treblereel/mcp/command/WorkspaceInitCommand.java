@@ -42,6 +42,8 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
             WorkspaceDiscovery.Result discovery = WorkspaceDiscovery.discover(manifest);
             result = WorkspaceRepositoryInitializer.initializeAll(
                     discovery, indexOnly, System.out::println);
+            WorkspaceClientConfiguration.install(
+                    manifest.root(), discovery.repositories(), indexOnly);
             WorkspaceRepositoryStateStore.write(manifest.root(), discovery.repositories());
         }
         System.out.println("Workspace initialization complete: indexed=" + result.indexed()

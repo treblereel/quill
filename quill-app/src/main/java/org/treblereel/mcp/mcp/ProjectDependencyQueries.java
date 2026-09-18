@@ -118,6 +118,14 @@ final class ProjectDependencyQueries {
         }
     }
 
+    static List<Path> resolvedJars(Jdbi jdbi, Path root) {
+        LinkedHashSet<Path> jars = new LinkedHashSet<>();
+        for (ClasspathFile classpath : findClasspathFiles(jdbi, root)) {
+            jars.addAll(readClasspath(classpath.path()));
+        }
+        return List.copyOf(jars);
+    }
+
     private static String normalizeModule(String module) {
         String value = module.strip().replace('\\', '/');
         if (value.equals("./") || value.isEmpty()) return ".";

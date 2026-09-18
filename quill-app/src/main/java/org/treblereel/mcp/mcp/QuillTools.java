@@ -366,7 +366,7 @@ public final class QuillTools {
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> externalSymbols.search(
-                p.jdbi(), pattern, kind.orElse(null), library.orElse(null),
+                p.jdbi(), p.root(), pattern, kind.orElse(null), library.orElse(null),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -379,7 +379,7 @@ public final class QuillTools {
             @ToolArg(description = "Member page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> externalSymbols.details(
-                p.jdbi(), class_name, clamp(limit.orElse(100), 1, 200),
+                p.jdbi(), p.root(), class_name, clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 

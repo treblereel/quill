@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.StandardOpenOption;
+import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.QuillTopCommand;
@@ -40,6 +41,38 @@ class WorkspaceCommandTest {
         assertEquals(firstManifest, Files.readString(WorkspaceManifestStore.manifest(workspace)));
         assertTrue(Files.isRegularFile(repositoryIndex.resolve("keep.db")));
         assertFalse(Files.exists(workspace.resolve("engine/target")));
+    }
+
+    @Test
+    void initIndexesEverySuitableRepositoryWithoutRunningBuilds() throws Exception {
+        createCompiledRepository("engine");
+        createCompiledRepository("platform");
+
+        Captured result = execute("workspace", "init", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, result.exitCode(),
+                result.stdout() + System.lineSeparator() + result.stderr());
+        assertTrue(result.stdout().contains("indexed=2, skipped=0, failed=0"), result.stdout());
+        for (String name : java.util.List.of("engine", "platform")) {
+            Path repository = workspace.resolve(name);
+            assertTrue(ProjectIndexStore.findBestAvailableDb(repository) != null);
+            assertTrue(Files.isRegularFile(repository.resolve(".mvn/extensions.xml")));
+            assertFalse(Files.exists(repository.resolve("build-was-invoked")));
+        }
+    }
+
+    @Test
+    void initSkipsUnsupportedAndUncompiledRepositories() throws Exception {
+        Files.createDirectories(workspace.resolve("docs/.git"));
+        Path uncompiled = Files.createDirectories(workspace.resolve("uncompiled"));
+        Files.createDirectories(uncompiled.resolve(".git"));
+        Files.writeString(uncompiled.resolve("pom.xml"), "<project/>");
+
+        Captured result = execute("workspace", "init", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
+        assertTrue(result.stdout().contains("indexed=0, skipped=2, failed=0"), result.stdout());
+        assertFalse(Files.exists(uncompiled.resolve(".quill/refs.json")));
     }
 
     @Test
@@ -146,6 +179,26 @@ class WorkspaceCommandTest {
         assertTrue(result.stdout().contains("Repositories: 1"));
         assertTrue(result.stdout().contains("engine ->"));
         assertFalse(Files.exists(repository.resolve("target")));
+    }
+
+    private void createCompiledRepository(String name) throws Exception {
+        Path repository = Files.createDirectories(workspace.resolve(name));
+        Files.createDirectories(repository.resolve(".git"));
+        Files.writeString(repository.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>%s</artifactId><version>1</version>
+                </project>
+                """.formatted(name));
+        Files.writeString(repository.resolve("mvnw"),
+                "#!/bin/sh\ntouch build-was-invoked\nexit 99\n");
+        Files.writeString(repository.resolve(".gitignore"), "target/\n");
+        Path source = repository.resolve("src/main/java/org/acme/App.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; public final class App {}\n");
+        Path classes = Files.createDirectories(repository.resolve("target/classes"));
+        int compilation = ToolProvider.getSystemJavaCompiler().run(
+                null, null, null, "-d", classes.toString(), source.toString());
+        assertEquals(0, compilation);
     }
 
     private Captured execute(String... arguments) {

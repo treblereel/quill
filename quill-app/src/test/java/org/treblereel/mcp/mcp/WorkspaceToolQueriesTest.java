@@ -31,6 +31,19 @@ class WorkspaceToolQueriesTest {
                   <artifactId>engine-api</artifactId><version>1.0</version>
                 </dependency></dependencies>
                 """);
+        var platform = QuillDatabase.create(
+                workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes(class_name, kind, source_file, is_bean, origin, module, source_set)
+                    VALUES ('io.casehub.engine.EngineService', 'CLASS', NULL, 0,
+                            'dependency', '.', 'main')
+                    """);
+            handle.execute("""
+                    INSERT INTO dependencies(from_class_id, to_class_id, kind, evidence_lines)
+                    VALUES (1, 2, 'CONSTRUCTS', '[21]')
+                    """);
+        });
         tools = new QuillTools(new ProjectRegistry(new WorkspaceProjectScope(workspace)));
     }
 
@@ -81,6 +94,24 @@ class WorkspaceToolQueriesTest {
 
         assertEquals("workspace_mode_required", result.path("error").asText());
         assertFalse(result.path("message").asText().isBlank());
+    }
+
+    @Test
+    void findsUsagesOnlyInRepositoriesDependingOnTheProvider() throws Exception {
+        JsonNode result = JSON.readTree(tools.find_workspace_usages(
+                "io.casehub.engine.EngineService", Optional.of("engine"), Optional.empty(),
+                Optional.empty(), Optional.empty()));
+
+        assertEquals("engine", result.path("provider").path("repository").asText());
+        assertEquals("io.casehub:engine-api",
+                result.path("provider").path("coordinate").asText());
+        assertEquals(1, result.path("candidate_consumer_count").asInt());
+        assertEquals(1, result.path("total").asInt());
+        JsonNode consumer = result.path("consumers").get(0);
+        assertEquals("platform", consumer.path("repository").asText());
+        assertEquals(1, consumer.path("usage").path("usage_group_count").asInt());
+        assertEquals("constructor_call", consumer.path("usage").path("usages")
+                .get(0).path("usage_kind").asText());
     }
 
     private void createRepository(String name, String artifact, String className, String extra)

@@ -126,7 +126,7 @@ final class WorkspaceToolQueries {
         Map<String, Candidate> candidates = new LinkedHashMap<>();
         for (ProjectScope.Project project : scope.select(snapshot, target)) {
             candidates.put("repository:" + project.name(), new Candidate(
-                    "repository", project.name(), project.root().toString(), null, null));
+                    "repository", project.name(), project.root().toString(), null, null, null));
         }
 
         for (ProjectRegistry.ProjectEntry project : registry.resolve().projects()) {
@@ -136,9 +136,12 @@ final class WorkspaceToolQueries {
                     project.jdbi(), target));
             IndexReader.findClassByPath(project.jdbi(), target).ifPresent(classes::add);
             for (ClassRecord cls : classes) {
+                if ("dependency".equals(cls.origin()) || "orphan_output".equals(cls.origin())) {
+                    continue;
+                }
                 String key = project.name() + ":" + cls.className() + ":" + cls.sourceFile();
                 candidates.put(key, new Candidate("class", project.name(), project.root().toString(),
-                        cls.className(), cls.sourceFile()));
+                        cls.className(), cls.sourceFile(), cls.origin()));
             }
         }
 
@@ -149,6 +152,106 @@ final class WorkspaceToolQueries {
         ArrayNode values = root.putArray("candidates");
         candidates.values().forEach(candidate -> values.add(JSON.valueToTree(candidate)));
         return root.toString();
+    }
+
+    String findUsages(String target, String providerRepository, String usageKind,
+            int limit, int offset) {
+        WorkspaceProjectScope scope = registry.workspaceScope();
+        if (scope == null) return workspaceRequired();
+        List<ProviderClass> providers = findProviderClasses(target, providerRepository);
+        if (providers.isEmpty()) return error("Workspace class not found: " + target);
+        if (providers.size() > 1) {
+            ObjectNode ambiguous = JSON.createObjectNode();
+            ambiguous.put("error", "ambiguous_workspace_class");
+            ambiguous.put("target", target);
+            ambiguous.set("candidates", JSON.valueToTree(providers));
+            return ambiguous.toString();
+        }
+
+        ProviderClass provider = providers.getFirst();
+        WorkspaceCoordinateCatalog.Result catalog =
+                WorkspaceCoordinateCatalog.discover(scope.manifest());
+        WorkspaceCoordinateCatalog.Module providerModule = catalog.modules().stream()
+                .filter(module -> module.repository().equals(provider.repository())
+                        && module.module().equals(provider.module()))
+                .findFirst().orElse(null);
+        if (providerModule == null || providerModule.ga() == null) {
+            return error("No build coordinate for provider module " + provider.repository()
+                    + ":" + provider.module());
+        }
+
+        WorkspaceDependencyGraph.Result graph =
+                WorkspaceDependencyGraph.discover(scope.manifest());
+        List<WorkspaceDependencyGraph.Edge> consumers = graph.edges().stream()
+                .filter(WorkspaceDependencyGraph.Edge::crossRepository)
+                .filter(edge -> edge.providerRepository().equals(provider.repository())
+                        && edge.providerModule().equals(provider.module()))
+                .toList();
+        Map<String, WorkspaceDependencyGraph.Edge> consumerEdges = new LinkedHashMap<>();
+        consumers.forEach(edge -> consumerEdges.putIfAbsent(edge.consumerRepository(), edge));
+        List<ConsumerUsage> usages = new ArrayList<>();
+        List<String> diagnostics = new ArrayList<>(graph.diagnostics());
+        UsageToolQueries usageQueries = new UsageToolQueries();
+        for (var consumer : consumerEdges.entrySet()) {
+            ProjectRegistry.Resolution resolved = registry.resolve(consumer.getKey());
+            if (resolved.projects().isEmpty()) {
+                diagnostics.addAll(resolved.errors());
+                continue;
+            }
+            String json = usageQueries.findUsages(resolved.projects().getFirst().jdbi(),
+                    provider.className(), usageKind, null, 200, 0);
+            try {
+                var data = JSON.readTree(json);
+                if (!data.has("error") && data.path("usage_group_count").asInt() > 0) {
+                    usages.add(new ConsumerUsage(consumer.getKey(), consumer.getValue(), data));
+                }
+            } catch (Exception invalid) {
+                diagnostics.add("Repository '" + consumer.getKey()
+                        + "' returned invalid usage data: " + invalid.getMessage());
+            }
+        }
+
+        usages.sort(java.util.Comparator.comparing(ConsumerUsage::repository));
+        int total = usages.size();
+        int from = Math.min(offset, total);
+        int to = Math.min(from + limit, total);
+        ObjectNode root = JSON.createObjectNode();
+        root.put("target", provider.className());
+        ObjectNode providerNode = root.putObject("provider");
+        providerNode.put("repository", provider.repository());
+        providerNode.put("module", provider.module());
+        providerNode.put("coordinate", providerModule.ga());
+        providerNode.put("version", providerModule.version());
+        ArrayNode values = root.putArray("consumers");
+        for (ConsumerUsage usage : usages.subList(from, to)) {
+            ObjectNode node = values.addObject();
+            node.put("repository", usage.repository());
+            node.put("resolved_binary_version", usage.edge().resolvedBinaryVersion());
+            node.put("version_status", usage.edge().status());
+            node.set("usage", usage.data());
+        }
+        ToolResponseSupport.appendPage(root, to - from, total, limit, offset);
+        root.put("candidate_consumer_count", consumerEdges.size());
+        root.put("complete", graph.complete());
+        root.set("diagnostics", JSON.valueToTree(diagnostics));
+        root.putArray("limitations").add(
+                "Only repositories declaring the provider artifact are queried");
+        return root.toString();
+    }
+
+    private List<ProviderClass> findProviderClasses(String target, String repository) {
+        ProjectRegistry.Resolution projects = repository == null || repository.isBlank()
+                ? registry.resolve() : registry.resolve(repository);
+        Map<String, ProviderClass> candidates = new LinkedHashMap<>();
+        for (ProjectRegistry.ProjectEntry project : projects.projects()) {
+            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(project.jdbi(), target);
+            if (!lookup.found()) continue;
+            ClassRecord cls = lookup.cls();
+            String module = cls.module() == null || cls.module().isBlank() ? "." : cls.module();
+            candidates.put(project.name() + ":" + cls.className() + ":" + module,
+                    new ProviderClass(project.name(), module, cls.className(), cls.sourceFile()));
+        }
+        return List.copyOf(candidates.values());
     }
 
     private static boolean matchesDirection(WorkspaceDependencyGraph.Edge edge,
@@ -186,5 +289,11 @@ final class WorkspaceToolQueries {
     }
 
     private record Candidate(String kind, String repository, String repositoryRoot,
-            String className, String sourceFile) {}
+            String className, String sourceFile, String origin) {}
+
+    private record ProviderClass(String repository, String module, String className,
+            String sourceFile) {}
+
+    private record ConsumerUsage(String repository, WorkspaceDependencyGraph.Edge edge,
+            com.fasterxml.jackson.databind.JsonNode data) {}
 }

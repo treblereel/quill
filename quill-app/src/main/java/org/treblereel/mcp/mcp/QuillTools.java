@@ -46,33 +46,46 @@ public final class QuillTools {
         this.workspace = new WorkspaceToolQueries(registry);
     }
 
-    @Tool(structured = true, description = "List workspace repositories, freshness, and coordinates.")
+    @Tool(structured = true, description = "List workspace repos.")
     public String list_workspace_repositories(
-            @ToolArg(description = "Include modules; default false") Optional<Boolean> include_modules,
-            @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
-            @ToolArg(description = "Page offset") Optional<Integer> offset) {
+            @ToolArg(description = "Include modules") Optional<Boolean> include_modules,
+            @ToolArg(description = "Page size") Optional<Integer> limit,
+            @ToolArg(description = "Offset") Optional<Integer> offset) {
         return ResponseBudget.apply(workspace.listRepositories(include_modules.orElse(false),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Get cross-repository dependencies and version drift.")
+    @Tool(structured = true, description = "Workspace dependencies.")
     public String get_workspace_dependencies(
-            @ToolArg(description = "Repository; omit for all") Optional<String> repository,
-            @ToolArg(description = "consumers, providers, or both") Optional<String> direction,
-            @ToolArg(description = "Cross-repository only; default true") Optional<Boolean> cross_repository_only,
-            @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
-            @ToolArg(description = "Page offset") Optional<Integer> offset) {
+            @ToolArg(description = "Repository") Optional<String> repository,
+            @ToolArg(description = "Direction") Optional<String> direction,
+            @ToolArg(description = "Cross-repo") Optional<Boolean> cross_repository_only,
+            @ToolArg(description = "Page size") Optional<Integer> limit,
+            @ToolArg(description = "Offset") Optional<Integer> offset) {
         return ResponseBudget.apply(workspace.getDependencies(repository.orElse(null),
                 direction.orElse("both"), cross_repository_only.orElse(true),
                 clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Resolve a workspace repository, coordinate, path, or class.")
+    @Tool(structured = true, description = "Resolve workspace entity.")
     public String resolve_workspace_entity(
-            @ToolArg(description = "Repository, path, GA, or class") String target) {
+            @ToolArg(description = "Name, path, GA, or class") String target) {
         return ResponseBudget.apply(workspace.resolveEntity(target));
+    }
+
+    @Tool(structured = true, description = "Find workspace usages.")
+    public String find_workspace_usages(
+            @ToolArg(description = "Class or source path") String target,
+            @ToolArg(description = "Provider repository") Optional<String> provider_repository,
+            @ToolArg(description = "Usage kind") Optional<String> usage_kind,
+            @ToolArg(description = "Page size") Optional<Integer> limit,
+            @ToolArg(description = "Offset") Optional<Integer> offset) {
+        return ResponseBudget.apply(workspace.findUsages(target,
+                provider_repository.orElse(null), usage_kind.orElse(null),
+                clamp(limit.orElse(20), 1, 100),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
     @Tool(structured = true, description = "Find CDI/Spring beans, producers, interceptors, or decorators. Returns DI and source context.")

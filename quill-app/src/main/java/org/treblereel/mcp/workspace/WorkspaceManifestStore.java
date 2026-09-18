@@ -8,7 +8,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
 /** Reads and atomically publishes workspace configuration. */
 public final class WorkspaceManifestStore {
@@ -64,6 +66,31 @@ public final class WorkspaceManifestStore {
         return value;
     }
 
+    public static ClearResult clear(Path requestedRoot) throws IOException {
+        Path root = normalizeRoot(requestedRoot);
+        Path workspace = directory(root);
+        if (!Files.exists(workspace, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            return new ClearResult(root, false);
+        }
+        if (Files.isSymbolicLink(workspace)) {
+            throw new IllegalArgumentException("Refusing to clear symbolic link: " + workspace);
+        }
+        if (!Files.isDirectory(workspace, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalArgumentException("Workspace data is not a directory: " + workspace);
+        }
+
+        Path staged = root.resolve(DIRECTORY + ".clearing-" + UUID.randomUUID());
+        WorkspaceLock acquired = WorkspaceLock.tryAcquire(root);
+        if (acquired == null) {
+            throw new IllegalStateException("Workspace is in use: " + root);
+        }
+        try (WorkspaceLock lock = acquired) {
+            moveForRemoval(workspace, staged);
+            deleteTree(staged);
+        }
+        return new ClearResult(root, true);
+    }
+
     public static Path normalizeRoot(Path requestedRoot) {
         Path root = requestedRoot == null
                 ? Path.of(System.getProperty("user.dir")) : requestedRoot;
@@ -102,4 +129,22 @@ public final class WorkspaceManifestStore {
             Files.deleteIfExists(temporary);
         }
     }
+
+    private static void moveForRemoval(Path source, Path destination) throws IOException {
+        try {
+            Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException ignored) {
+            Files.move(source, destination);
+        }
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        try (var paths = Files.walk(root)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.delete(path);
+            }
+        }
+    }
+
+    public record ClearResult(Path root, boolean removed) {}
 }

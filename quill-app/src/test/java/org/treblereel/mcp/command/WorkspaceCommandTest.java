@@ -10,10 +10,14 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.file.StandardOpenOption;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.QuillTopCommand;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
+import org.treblereel.mcp.workspace.WorkspaceLock;
 import picocli.CommandLine;
 
 class WorkspaceCommandTest {
@@ -60,6 +64,63 @@ class WorkspaceCommandTest {
 
         assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
         assertFalse(Files.exists(WorkspaceManifestStore.manifest(workspace)));
+    }
+
+    @Test
+    void clearRemovesOnlyWorkspaceDataAndIsIdempotent() throws Exception {
+        Path repositoryIndex = Files.createDirectories(workspace.resolve("engine/.quill"));
+        Files.writeString(repositoryIndex.resolve("keep.db"), "keep");
+        execute("workspace", "init", "--project", workspace.toString());
+
+        Captured first = execute("workspace", "clear", "--project", workspace.toString());
+        Captured second = execute("workspace", "clear", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, first.exitCode());
+        assertEquals(CommandLine.ExitCode.OK, second.exitCode());
+        assertFalse(Files.exists(WorkspaceManifestStore.directory(workspace)));
+        assertTrue(Files.isRegularFile(repositoryIndex.resolve("keep.db")));
+        assertTrue(first.stdout().contains("Repository indexes were preserved"));
+        assertTrue(second.stdout().contains("No workspace data found"));
+    }
+
+    @Test
+    void clearRejectsSymbolicWorkspaceDirectory() throws Exception {
+        Path outside = Files.createDirectories(workspace.resolve("outside"));
+        Path workspaceData = WorkspaceManifestStore.directory(workspace);
+        try {
+            Files.createSymbolicLink(workspaceData, outside);
+        } catch (UnsupportedOperationException exception) {
+            return;
+        }
+
+        Captured result = execute("workspace", "clear", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+        assertTrue(Files.isDirectory(outside));
+    }
+
+    @Test
+    void clearRefusesAnActivelyLockedWorkspace() throws Exception {
+        execute("workspace", "init", "--project", workspace.toString());
+        Path lockPath = workspace.resolve(WorkspaceLock.FILE);
+        try (FileChannel channel = FileChannel.open(lockPath,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                FileLock ignored = channel.lock()) {
+            Captured result = execute("workspace", "clear", "--project", workspace.toString());
+            assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+            assertTrue(Files.isRegularFile(WorkspaceManifestStore.manifest(workspace)));
+        }
+    }
+
+    @Test
+    void workspaceCanBeInitializedAgainAfterClear() throws Exception {
+        execute("workspace", "init", "--project", workspace.toString());
+        execute("workspace", "clear", "--project", workspace.toString());
+
+        Captured result = execute("workspace", "init", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+        assertTrue(Files.isRegularFile(WorkspaceManifestStore.manifest(workspace)));
     }
 
     private Captured execute(String... arguments) {

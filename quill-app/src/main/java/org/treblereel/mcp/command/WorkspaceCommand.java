@@ -6,12 +6,13 @@ import picocli.CommandLine.Command;
 
 @Command(name = "workspace", mixinStandardHelpOptions = true,
         description = "Manage a federated workspace of independently indexed repositories",
-        subcommands = {WorkspaceInitCommand.class, WorkspaceStatusCommand.class})
+        subcommands = {WorkspaceInitCommand.class, WorkspaceStatusCommand.class,
+                WorkspaceClearCommand.class})
 public final class WorkspaceCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        System.err.println("Use a workspace subcommand: init or status.");
+        System.err.println("Use a workspace subcommand: init, status, or clear.");
         return CommandLine.ExitCode.USAGE;
     }
 }

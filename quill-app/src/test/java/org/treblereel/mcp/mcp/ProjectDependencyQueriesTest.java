@@ -6,8 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.treblereel.mcp.db.QuillDatabase;
 
 class ProjectDependencyQueriesTest {
 
@@ -25,14 +27,18 @@ class ProjectDependencyQueriesTest {
         Files.write(mavenJar, new byte[] {1});
         Files.write(gradleJar, new byte[] {1});
         Path first = temp.resolve("api/target/quill-classpath.txt");
-        Path second = temp.resolve("worker/build/quill-classpath.txt");
+        Path second = temp.resolve("worker/target/quill-classpath.txt");
         Files.createDirectories(first.getParent());
         Files.createDirectories(second.getParent());
         Files.writeString(first, mavenJar.toString());
         Files.writeString(second, gradleJar.toString());
+        Files.writeString(temp.resolve("pom.xml"), "<project/>");
+        Jdbi jdbi = database();
+        module(jdbi, "api");
+        module(jdbi, "worker");
 
         var result = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(temp, null, null, 100, 0));
+                .getProjectDependencies(jdbi, temp, null, null, 100, 0));
 
         assertEquals(2, result.path("total").asInt());
         assertFalse(result.path("discovery").path("build_invoked").asBoolean());
@@ -56,11 +62,28 @@ class ProjectDependencyQueriesTest {
         Path classpath = temp.resolve("target/quill-classpath.txt");
         Files.createDirectories(classpath.getParent());
         Files.writeString(classpath, alpha + java.io.File.pathSeparator + beta);
+        Files.writeString(temp.resolve("pom.xml"), "<project/>");
+        Jdbi jdbi = database();
+        module(jdbi, ".");
 
         var filtered = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(temp, ".", "beta", 1, 0));
+                .getProjectDependencies(jdbi, temp, ".", "beta", 1, 0));
 
         assertEquals(1, filtered.path("total").asInt());
         assertEquals("b:beta:2", filtered.path("dependencies").get(0).path("id").asText());
+    }
+
+    private Jdbi database() {
+        return QuillDatabase.create(temp.resolve("index-" + System.nanoTime() + ".db"));
+    }
+
+    private static void module(Jdbi jdbi, String module) {
+        String path = module.equals(".") ? "src/main/java/App.java"
+                : module + "/src/main/java/App.java";
+        jdbi.useHandle(handle -> handle.createUpdate("""
+                        INSERT INTO files(project_path, repository_path, kind, origin, lifecycle,
+                                          module, source_set)
+                        VALUES (:path, :path, 'java', 'source', 'current', :module, 'main')
+                        """).bind("path", path).bind("module", module).execute());
     }
 }

@@ -14,15 +14,17 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
+import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.core.BuildSystem;
 
 /** Reads the dependency artifacts captured by Quill's Maven or Gradle classpath discovery. */
 final class ProjectDependencyQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String getProjectDependencies(Path root, String module, String query, int limit, int offset) {
-        List<ClasspathFile> classpaths = findClasspathFiles(root);
+    String getProjectDependencies(Jdbi jdbi, Path root, String module, String query,
+            int limit, int offset) {
+        List<ClasspathFile> classpaths = findClasspathFiles(jdbi, root);
         Map<String, Artifact> artifacts = new LinkedHashMap<>();
         for (ClasspathFile classpath : classpaths) {
             if (module != null && !module.isBlank()
@@ -73,15 +75,32 @@ final class ProjectDependencyQueries {
         return result.toString();
     }
 
-    private static List<ClasspathFile> findClasspathFiles(Path root) {
-        try (Stream<Path> files = Files.find(root, 16,
-                (path, attributes) -> attributes.isRegularFile()
-                        && path.getFileName().toString().equals("quill-classpath.txt"))) {
-            return files.map(path -> new ClasspathFile(path, module(root, path)))
-                    .sorted(Comparator.comparing(entry -> entry.path().toString())).toList();
-        } catch (IOException error) {
+    private static List<ClasspathFile> findClasspathFiles(Jdbi jdbi, Path root) {
+        BuildSystem buildSystem;
+        try {
+            buildSystem = BuildSystem.detect(root);
+        } catch (IllegalArgumentException error) {
             return List.of();
         }
+        List<String> modules = jdbi.withHandle(handle -> handle.createQuery("""
+                        SELECT DISTINCT module FROM (
+                          SELECT module FROM files WHERE lifecycle = 'current'
+                          UNION ALL
+                          SELECT module FROM classes WHERE lifecycle = 'current'
+                        ) WHERE module IS NOT NULL AND module != ''
+                        ORDER BY module
+                        """).mapTo(String.class).list());
+        if (modules.isEmpty()) modules = List.of(".");
+        List<ClasspathFile> result = new ArrayList<>();
+        for (String module : modules) {
+            String normalized = normalizeModule(module);
+            Path moduleRoot = normalized.equals(".") ? root : root.resolve(normalized);
+            Path classpath = buildSystem.classpathFile(moduleRoot);
+            if (Files.isRegularFile(classpath)) {
+                result.add(new ClasspathFile(classpath, normalized));
+            }
+        }
+        return List.copyOf(result);
     }
 
     private static List<Path> readClasspath(Path file) {
@@ -96,17 +115,6 @@ final class ProjectDependencyQueries {
             return List.copyOf(jars);
         } catch (IOException | RuntimeException error) {
             return List.of();
-        }
-    }
-
-    private static String module(Path root, Path classpath) {
-        Path output = classpath.getParent();
-        Path module = output == null ? root : output.getParent();
-        if (module == null || module.equals(root)) return ".";
-        try {
-            return root.relativize(module).toString().replace(File.separatorChar, '/');
-        } catch (IllegalArgumentException error) {
-            return module.toString().replace(File.separatorChar, '/');
         }
     }
 

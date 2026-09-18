@@ -296,7 +296,7 @@ public final class QuillTools {
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p ->
-                projectDependencies.getProjectDependencies(p.root(), module.orElse(null),
+                projectDependencies.getProjectDependencies(p.jdbi(), p.root(), module.orElse(null),
                         query.orElse(null), clamp(limit.orElse(100), 1, 200),
                         clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }

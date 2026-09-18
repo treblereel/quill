@@ -35,6 +35,7 @@ class ConfigurationReferenceIntegrationTest {
         assertTrue(initial.path("references").valueStream()
                 .filter(value -> value.path("entry_type").asText().equals("usage"))
                 .allMatch(value -> value.path("resolved").asBoolean()));
+        assertProgrammaticReferences(project);
 
         Files.writeString(project.resolve("src/main/resources/application.properties"),
                 "orders.currency=CAD\n");
@@ -63,13 +64,22 @@ class ConfigurationReferenceIntegrationTest {
         assertEquals(1, result.path("usage_count").asInt());
         assertTrue(result.path("references").valueStream()
                 .anyMatch(value -> value.path("className").asText().endsWith("OrderController")));
+        assertProgrammaticReferences(project);
     }
 
     private static Path createProject(Path project, boolean gradle) throws Exception {
         Files.createDirectories(project.resolve("src/main/resources"));
+        Files.createDirectories(project.resolve("src/test/resources/fixtures"));
         Files.createDirectories(project.resolve("src/main/java"));
         Files.writeString(project.resolve("src/main/resources/application.properties"),
-                "orders.region=us-west\n");
+                "orders.region=us-west\nruntime.mode=prod\n");
+        Path packageResources = project.resolve(
+                "src/main/resources/org/treblereel/mcp/fixture/spring");
+        Files.createDirectories(packageResources);
+        Files.writeString(packageResources.resolve("local.txt"), "local\n");
+        Files.writeString(project.resolve("src/main/resources/messages_en_CA.properties"),
+                "greeting=hello\n");
+        Files.writeString(project.resolve("src/test/resources/fixtures/test.json"), "{}\n");
         copyTree(FIXTURE.resolve("src/main/java"), project.resolve("src/main/java"));
         if (gradle) {
             Files.writeString(project.resolve("settings.gradle"),
@@ -120,6 +130,51 @@ class ConfigurationReferenceIntegrationTest {
         String response = new QuillTools().findConfigurationReferences(
                 resolved.projects().getFirst().jdbi(), key, null, "all", null, 20, 0);
         return JSON.readTree(response);
+    }
+
+    private static JsonNode queryResource(Path project, String path) throws Exception {
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project);
+        var resolved = registry.resolve();
+        assertTrue(resolved.errors().isEmpty(), resolved.errors().toString());
+        String response = new QuillTools().findResourceReferences(
+                resolved.projects().getFirst().jdbi(), path, null, null, 20, 0);
+        return JSON.readTree(response);
+    }
+
+    private static void assertProgrammaticReferences(Path project) throws Exception {
+        JsonNode config = query(project, "runtime.mode");
+        assertEquals(1, config.path("definition_count").asInt(), config.toString());
+        assertEquals(1, config.path("usage_count").asInt(), config.toString());
+        assertTrue(config.path("references").valueStream()
+                .filter(value -> value.path("entry_type").asText().equals("usage"))
+                .allMatch(value -> value.path("resolution_status").asText().equals("resolved")));
+        JsonNode dynamic = query(project, "<dynamic>");
+        assertEquals(1, dynamic.path("usage_count").asInt(), dynamic.toString());
+        assertEquals("unknown", dynamic.path("references").get(0)
+                .path("resolution_status").asText());
+
+        JsonNode relative = queryResource(project,
+                "org/treblereel/mcp/fixture/spring/local.txt");
+        assertEquals(1, relative.path("definition_count").asInt(), relative.toString());
+        assertEquals(1, relative.path("usage_count").asInt(), relative.toString());
+
+        JsonNode testResource = queryResource(project, "fixtures/test.json");
+        assertEquals(1, testResource.path("definition_count").asInt(), testResource.toString());
+        assertEquals("test", testResource.path("references").get(0)
+                .path("sourceSet").asText());
+
+        JsonNode bundle = queryResource(project, "messages.properties");
+        JsonNode bundleUsage = bundle.path("references").valueStream()
+                .filter(value -> value.path("entry_type").asText().equals("usage"))
+                .findFirst().orElseThrow();
+        assertEquals("resolved", bundleUsage.path("resolution_status").asText());
+        assertEquals("resource_bundle_family",
+                bundleUsage.path("resolution_strategy").asText());
+
+        JsonNode external = queryResource(project, "file:/tmp/quill-external.txt");
+        assertEquals("unsupported_mechanism",
+                external.path("references").get(0).path("resolution_status").asText());
     }
 
     private static String metadata(Path project, String key) {

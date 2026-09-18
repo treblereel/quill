@@ -55,7 +55,9 @@ final class ResourceReferenceQueries {
                     SELECT entry_type, resource_path, file, class_id, class_name, member, api,
                            source, module, source_set, kind
                     FROM (
-                      SELECT 'definition' entry_type, f.project_path resource_path,
+                      SELECT 'definition' entry_type,
+                             substr(f.project_path,
+                                    instr(f.project_path, '/resources/') + 11) resource_path,
                              f.project_path file, NULL class_id, NULL class_name, NULL member,
                              NULL api, NULL source, f.module, f.source_set, f.kind, 0 rank
                       FROM files f WHERE %s

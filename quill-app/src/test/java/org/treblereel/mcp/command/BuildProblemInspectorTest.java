@@ -82,6 +82,30 @@ class BuildProblemInspectorTest {
         assertFalse(result.path("build_was_started").asBoolean());
     }
 
+    @Test
+    void reportsSeverityRangeCodeCategoryAndRawDiagnostic() throws Exception {
+        writeState(false, "maven", """
+                [WARNING] %s/module-a/src/main/java/acme/Legacy.java:[4,2]-[4,12] [compiler.warn.deprecation] old API
+                e: %s/module-b/src/main/kotlin/acme/Broken.kt: (8, 3): unresolved reference: Missing
+                """.formatted(tempDir, tempDir));
+
+        JsonNode warnings = JSON.readTree(BuildProblemInspector.inspect(
+                tempDir, "warning", null, 50, 0));
+        JsonNode errors = JSON.readTree(BuildProblemInspector.inspect(
+                tempDir, "error", null, 50, 0));
+
+        assertEquals(1, warnings.path("total").asInt());
+        JsonNode warning = warnings.path("problems").get(0);
+        assertEquals(4, warning.path("end_line").asInt());
+        assertEquals(12, warning.path("end_column").asInt());
+        assertEquals("compiler.warn.deprecation", warning.path("code").asText());
+        assertTrue(warning.path("raw").asText().contains("Legacy.java"));
+        assertEquals(1, errors.path("total").asInt());
+        assertEquals("symbol_not_found",
+                errors.path("problems").get(0).path("category").asText());
+        assertEquals(8, errors.path("problems").get(0).path("line").asInt());
+    }
+
     private void writeState(boolean successful, String buildTool, String message)
             throws Exception {
         Path quill = Files.createDirectories(tempDir.resolve(".quill"));

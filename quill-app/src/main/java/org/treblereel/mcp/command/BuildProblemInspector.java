@@ -21,9 +21,15 @@ public final class BuildProblemInspector {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Pattern MAVEN_LOCATION = Pattern.compile(
-            "^(?:\\[ERROR]\\s*)?(.+?\\.(?:java|kt|groovy)):\\[(\\d+),(\\d+)]\\s*(.*)$");
+            "^(?:\\[(?:ERROR|WARNING)]\\s*)?(.+?\\.(?:java|kt|groovy)):\\[(\\d+),(\\d+)]\\s*(.*)$");
+    private static final Pattern RANGE_LOCATION = Pattern.compile(
+            "^(?:\\[(?:ERROR|WARNING)]\\s*)?(.+?\\.(?:java|kt|groovy)):\\[(\\d+),(\\d+)]-\\[(\\d+),(\\d+)]\\s*(.*)$");
     private static final Pattern COMPILER_LOCATION = Pattern.compile(
-            "^(?:\\[ERROR]\\s*|[ew]:\\s*)?(.+?\\.(?:java|kt|groovy)):(\\d+)(?::(\\d+))?:\\s*(.*)$");
+            "^(?:\\[(?:ERROR|WARNING)]\\s*|[ewEW]:\\s*)?(.+?\\.(?:java|kt|groovy)):(\\d+)(?::(\\d+))?:\\s*(.*)$");
+    private static final Pattern KOTLIN_LOCATION = Pattern.compile(
+            "^(?:[ewEW]:\\s*)?(.+?\\.kt):\\s*\\((\\d+),\\s*(\\d+)\\):\\s*(.*)$");
+    private static final Pattern DIAGNOSTIC_CODE = Pattern.compile(
+            "^\\[([a-zA-Z0-9_.-]+)]\\s*(.*)$", Pattern.DOTALL);
     private static final Pattern EXCEPTION_PREFIX = Pattern.compile(
             "^([a-zA-Z_$][a-zA-Z0-9_$.]*(?:Exception|Error|Failure))(?::\\s*(.*))?$",
             Pattern.DOTALL);
@@ -41,9 +47,10 @@ public final class BuildProblemInspector {
         Path root = projectRoot.toAbsolutePath().normalize();
         String normalizedSeverity = severity == null
                 ? "all" : severity.strip().toLowerCase(Locale.ROOT);
-        if (!normalizedSeverity.equals("all") && !normalizedSeverity.equals("error")) {
+        if (!normalizedSeverity.equals("all") && !normalizedSeverity.equals("error")
+                && !normalizedSeverity.equals("warning")) {
             ObjectNode error = JSON.createObjectNode();
-            error.put("error", "Invalid severity: expected all or error");
+            error.put("error", "Invalid severity: expected all, error, or warning");
             return error.toString();
         }
 
@@ -66,6 +73,10 @@ public final class BuildProblemInspector {
                     buildTool, finishedAt > 0 ? Instant.ofEpochMilli(finishedAt) : null);
             List<Problem> problems = successful ? List.of()
                     : parseProblems(root, state.path("failureMessages"));
+            if (!normalizedSeverity.equals("all")) {
+                problems = problems.stream()
+                        .filter(problem -> problem.severity().equals(normalizedSeverity)).toList();
+            }
             if (module != null && !module.isBlank()) {
                 problems = problems.stream()
                         .filter(problem -> module.equals(problem.module())).toList();
@@ -89,13 +100,18 @@ public final class BuildProblemInspector {
             ArrayNode values = result.putArray("problems");
             for (Problem problem : problems.subList(from, to)) {
                 ObjectNode node = values.addObject();
-                node.put("severity", "error");
+                node.put("severity", problem.severity());
                 node.put("message", problem.message());
                 if (problem.source() != null) node.put("source", problem.source());
                 if (problem.line() != null) node.put("line", problem.line());
                 if (problem.column() != null) node.put("column", problem.column());
+                if (problem.endLine() != null) node.put("end_line", problem.endLine());
+                if (problem.endColumn() != null) node.put("end_column", problem.endColumn());
                 if (problem.module() != null) node.put("module", problem.module());
                 if (problem.exception() != null) node.put("exception", problem.exception());
+                if (problem.code() != null) node.put("code", problem.code());
+                node.put("category", problem.category());
+                node.put("raw", problem.raw());
             }
             page(result, to - from, problems.size(), limit, offset);
             result.put("located_problem_count", problems.stream()
@@ -137,8 +153,9 @@ public final class BuildProblemInspector {
             }
         }
         if (unique.isEmpty()) {
-            Problem fallback = new Problem("Build failed without diagnostic messages",
-                    null, null, null, null, null);
+            Problem fallback = new Problem("error", "Build failed without diagnostic messages",
+                    null, null, null, null, null, null, null, null,
+                    "build_failure", "Build failed without diagnostic messages");
             unique.put(fallback.key(), fallback);
         }
         return new ArrayList<>(unique.values());
@@ -149,15 +166,16 @@ public final class BuildProblemInspector {
         String exception = exceptionName(raw);
         boolean located = false;
         for (String line : raw.lines().toList()) {
-            Matcher matcher = MAVEN_LOCATION.matcher(line.strip());
-            if (!matcher.matches()) matcher = COMPILER_LOCATION.matcher(line.strip());
-            if (!matcher.matches()) continue;
-            String source = normalizeSource(root, matcher.group(1));
-            Integer sourceLine = integer(matcher.group(2));
-            Integer column = integer(matcher.group(3));
-            String message = cleanMessage(matcher.group(4));
-            Problem problem = new Problem(message.isBlank() ? "Compilation failed" : message,
-                    source, sourceLine, column, module(source), exception);
+            String stripped = line.strip();
+            Location location = parseLocation(stripped);
+            if (location == null) continue;
+            String source = normalizeSource(root, location.source());
+            String severity = severity(stripped, location.message());
+            CodedMessage coded = codedMessage(cleanMessage(location.message()));
+            String message = coded.message().isBlank() ? "Compilation failed" : coded.message();
+            Problem problem = new Problem(severity, message, source, location.line(),
+                    location.column(), location.endLine(), location.endColumn(), module(source),
+                    exception, coded.code(), category(message, coded.code()), stripped);
             target.putIfAbsent(problem.key(), problem);
             located = true;
         }
@@ -166,8 +184,55 @@ public final class BuildProblemInspector {
         String message = prefix.matches() && prefix.group(2) != null
                 ? prefix.group(2).strip() : raw.strip();
         if (message.length() > 4_000) message = message.substring(0, 4_000);
-        Problem problem = new Problem(message, null, null, null, null, exception);
+        Problem problem = new Problem("error", message, null, null, null, null, null,
+                null, exception, null, category(message, null), truncated(raw.strip()));
         target.putIfAbsent(problem.key(), problem);
+    }
+
+    private static Location parseLocation(String line) {
+        Matcher range = RANGE_LOCATION.matcher(line);
+        if (range.matches()) {
+            return new Location(range.group(1), integer(range.group(2)), integer(range.group(3)),
+                    integer(range.group(4)), integer(range.group(5)), range.group(6));
+        }
+        for (Pattern pattern : List.of(MAVEN_LOCATION, COMPILER_LOCATION, KOTLIN_LOCATION)) {
+            Matcher matcher = pattern.matcher(line);
+            if (matcher.matches()) {
+                return new Location(matcher.group(1), integer(matcher.group(2)),
+                        integer(matcher.group(3)), null, null, matcher.group(4));
+            }
+        }
+        return null;
+    }
+
+    private static String severity(String raw, String message) {
+        String value = (raw + " " + message).toLowerCase(Locale.ROOT);
+        return value.startsWith("w:") || value.startsWith("[warning]")
+                || value.contains(" warning:") ? "warning" : "error";
+    }
+
+    private static CodedMessage codedMessage(String message) {
+        Matcher matcher = DIAGNOSTIC_CODE.matcher(message);
+        return matcher.matches() ? new CodedMessage(matcher.group(1), matcher.group(2).strip())
+                : new CodedMessage(null, message);
+    }
+
+    private static String category(String message, String code) {
+        String value = ((code == null ? "" : code) + " " + message).toLowerCase(Locale.ROOT);
+        if (value.contains("cannot find symbol") || value.contains("unresolved reference")
+                || value.contains("cant.resolve")) return "symbol_not_found";
+        if (value.contains("incompatible type") || value.contains("type mismatch")) {
+            return "type_mismatch";
+        }
+        if (value.contains("duplicate")) return "duplicate_declaration";
+        if (value.contains("not public") || value.contains("private access")
+                || value.contains("not accessible")) return "access_violation";
+        if (value.contains("expected") || value.contains("illegal start")) return "syntax";
+        return "build_failure";
+    }
+
+    private static String truncated(String value) {
+        return value.length() <= 4_000 ? value : value.substring(0, 4_000);
     }
 
     private static String normalizeSource(Path root, String value) {
@@ -232,10 +297,14 @@ public final class BuildProblemInspector {
     }
 
     private record Problem(
-            String message, String source, Integer line, Integer column,
-            String module, String exception) {
+            String severity, String message, String source, Integer line, Integer column,
+            Integer endLine, Integer endColumn, String module, String exception, String code,
+            String category, String raw) {
         String key() {
-            return source + ":" + line + ":" + column + ":" + message;
+            return severity + ":" + source + ":" + line + ":" + column + ":" + message;
         }
     }
+    private record Location(String source, Integer line, Integer column,
+            Integer endLine, Integer endColumn, String message) {}
+    private record CodedMessage(String code, String message) {}
 }

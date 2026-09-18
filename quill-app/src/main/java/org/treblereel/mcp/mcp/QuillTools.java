@@ -457,7 +457,7 @@ public final class QuillTools {
 
     @Tool(structured = true, description = "Read errors captured by the last Maven or Gradle build.")
     public String get_build_problems(
-            @ToolArg(description = "Severity: all or error") Optional<String> severity,
+            @ToolArg(description = "Severity: all, error, or warning") Optional<String> severity,
             @ToolArg(description = "Exact module filter") Optional<String> module,
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
@@ -472,7 +472,7 @@ public final class QuillTools {
             description = "Read last-build diagnostics for one or more repository-relative source files without running a build.")
     public String get_file_problems(
             @ToolArg(description = "Repository-relative source paths") List<String> paths,
-            @ToolArg(description = "Severity: all or error") Optional<String> severity,
+            @ToolArg(description = "Severity: all, error, or warning") Optional<String> severity,
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {

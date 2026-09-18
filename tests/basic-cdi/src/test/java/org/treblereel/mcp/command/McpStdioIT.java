@@ -368,6 +368,53 @@ class McpStdioIT {
         }
     }
 
+    @Test
+    void nativeWorkspaceToolsSerializeStructuredResults() throws Exception {
+        Path nativeImage = resolveNativeImage();
+        Assumptions.assumeTrue(Files.isExecutable(nativeImage));
+        Path workspace = Files.createDirectories(tempDir.resolve("native-workspace"));
+        WorkspaceManifestStore.initialize(workspace, 1);
+        createWorkspaceRepository(workspace, "engine", "EngineService");
+        createWorkspaceRepository(workspace, "platform", "PlatformService", """
+                <dependencies><dependency><groupId>org.acme</groupId>
+                  <artifactId>engine</artifactId><version>1</version>
+                </dependency></dependencies>
+                """);
+
+        Process process = new ProcessBuilder(nativeImage.toString(),
+                "--mcp", "--workspace", workspace.toString())
+                .directory(workspace.toFile())
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        try (BufferedWriter input = new BufferedWriter(
+                        new OutputStreamWriter(process.getOutputStream()));
+                BufferedReader output = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+            sendRequest(input, 1, "initialize", """
+                    {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"native-workspace-test","version":"1"}}""");
+            assertNotNull(readResponse(output, 1).get("result"));
+            sendNotification(input, "notifications/initialized", "{}");
+
+            sendRequest(input, 2, "tools/call", """
+                    {"name":"get_workspace_dependencies","arguments":{"repository":"engine","limit":5}}""");
+            JsonNode dependencies = readResponse(output, 2).path("result");
+            assertFalse(dependencies.path("isError").asBoolean(), dependencies.toString());
+            assertEquals(1, dependencies.path("structuredContent").path("total").asInt());
+            assertEquals("engine", dependencies.path("structuredContent")
+                    .path("dependencies").get(0).path("providerRepository").asText());
+
+            sendRequest(input, 3, "tools/call", """
+                    {"name":"resolve_workspace_entity","arguments":{"target":"org.acme:engine"}}""");
+            JsonNode resolution = readResponse(output, 3).path("result");
+            assertFalse(resolution.path("isError").asBoolean(), resolution.toString());
+            assertEquals("engine", resolution.path("structuredContent")
+                    .path("candidates").get(0).path("repository").asText());
+        } finally {
+            process.getOutputStream().close();
+            if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
+        }
+    }
+
     private void assertWorkspaceRepositoryCount(BufferedWriter input, BufferedReader output,
             int firstRequestId, int expected) throws Exception {
         long deadline = System.currentTimeMillis() + 5_000;
@@ -386,13 +433,19 @@ class McpStdioIT {
 
     private Path createWorkspaceRepository(Path workspace, String name, String className)
             throws Exception {
+        return createWorkspaceRepository(workspace, name, className, "");
+    }
+
+    private Path createWorkspaceRepository(Path workspace, String name, String className,
+            String extraPom) throws Exception {
         Path project = Files.createDirectories(workspace.resolve(name));
         Files.createDirectories(project.resolve(".git"));
         Files.writeString(project.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>%s</artifactId><version>1</version>
+                  %s
                 </project>
-                """.formatted(name));
+                """.formatted(name, extraPom));
         Path quill = Files.createDirectories(project.resolve(".quill"));
         String indexId = name + "-index";
         var jdbi = QuillDatabase.create(quill.resolve(indexId + ".db"));

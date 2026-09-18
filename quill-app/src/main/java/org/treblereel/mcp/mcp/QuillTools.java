@@ -929,6 +929,9 @@ public final class QuillTools {
         List<ProjectRegistry.ProjectEntry> projects = resolution.projects();
         List<String> errors = resolution.errors();
         if (filtered && projects.isEmpty()) {
+            if (!errors.isEmpty()) {
+                return errorResponse(String.join("; ", errors));
+            }
             String filter = projectFilter.strip();
             List<String> available = registry.configuredProjectNames();
             return errorResponse("Project '" + filter + "' not found. Available: " + available);

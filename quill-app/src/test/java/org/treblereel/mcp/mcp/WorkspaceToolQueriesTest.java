@@ -97,6 +97,27 @@ class WorkspaceToolQueriesTest {
     }
 
     @Test
+    void selectedRepositoryReportsItsIndexProblemInsteadOfNotFound() throws Exception {
+        Path isolated = Files.createDirectories(workspace.resolve("missing-index-workspace"));
+        WorkspaceManifestStore.initialize(isolated, 1);
+        Path repository = Files.createDirectories(isolated.resolve("broken"));
+        Files.createDirectories(repository.resolve(".git"));
+        Files.writeString(repository.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>broken</artifactId><version>1</version>
+                </project>
+                """);
+        QuillTools isolatedTools = new QuillTools(
+                new ProjectRegistry(new WorkspaceProjectScope(isolated)));
+
+        JsonNode result = JSON.readTree(isolatedTools.get_overview(
+                Optional.of(false), Optional.of("broken")));
+
+        assertTrue(result.path("error").asText().contains("is not indexed"), result.toString());
+        assertFalse(result.path("error").asText().contains("not found"), result.toString());
+    }
+
+    @Test
     void findsUsagesOnlyInRepositoriesDependingOnTheProvider() throws Exception {
         JsonNode result = JSON.readTree(tools.find_workspace_usages(
                 "io.casehub.engine.EngineService", Optional.of("engine"), Optional.empty(),
@@ -106,6 +127,8 @@ class WorkspaceToolQueriesTest {
         assertEquals("io.casehub:engine-api",
                 result.path("provider").path("coordinate").asText());
         assertEquals(1, result.path("candidate_consumer_count").asInt());
+        assertEquals(1, result.path("queried_consumer_count").asInt());
+        assertEquals(0, result.path("unavailable_consumer_count").asInt());
         assertEquals(1, result.path("total").asInt());
         JsonNode consumer = result.path("consumers").get(0);
         assertEquals("platform", consumer.path("repository").asText());

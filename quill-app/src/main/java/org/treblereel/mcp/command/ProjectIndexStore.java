@@ -119,7 +119,8 @@ public final class ProjectIndexStore {
             }
         }
 
-        refs.entrySet().removeIf(entry -> !keptHashes.contains(entry.getValue()));
+        refs.entrySet().removeIf(entry -> !keptHashes.contains(entry.getValue())
+                || referencedDatabase(root, entry.getValue(), null) == null);
         writeRefs(root.resolve(".quill/refs.json"), refs);
     }
 

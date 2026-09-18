@@ -90,7 +90,15 @@ class ProjectIndexLifecycleTest {
         Map<String, String> refs = new LinkedHashMap<>();
         for (int i = 0; i < 7; i++) {
             String hash = "commit" + i;
-            Path db = Files.writeString(quillDir.resolve(hash + ".db"), hash);
+            Path db = quillDir.resolve(hash + ".db");
+            QuillDatabase.create(db).useHandle(handle -> {
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "index_id", hash);
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "last_commit", hash);
+                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
+                        "project_root", tempDir.toString());
+            });
             Files.setLastModifiedTime(db, FileTime.fromMillis(1_000L + i));
             refs.put("branch" + i, hash);
         }

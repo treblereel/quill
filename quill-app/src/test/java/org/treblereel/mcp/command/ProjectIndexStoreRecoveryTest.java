@@ -81,6 +81,23 @@ class ProjectIndexStoreRecoveryTest {
         assertTrue(failure.getMessage().contains("integrity validation failed"));
     }
 
+    @Test
+    void publishingPrunesRefsToOutdatedSchemaGenerations() throws Exception {
+        Path outdated = createDatabase("outdated", "old-commit");
+        ProjectIndexStore.updateRefs(tempDir, "old-commit", "outdated");
+        QuillDatabase.openWritable(outdated).useHandle(
+                handle -> handle.execute("PRAGMA user_version = 7"));
+        Path current = createDatabase("current", "new-commit");
+
+        ProjectIndexStore.updateRefs(tempDir, "new-commit", "current");
+
+        var refs = ProjectIndexStore.readRefs(tempDir.resolve(".quill/refs.json"));
+        assertEquals("current", refs.get("@head:new-commit"));
+        assertTrue(refs.values().stream().noneMatch("outdated"::equals));
+        assertEquals(current.toAbsolutePath(), ProjectIndexStore.findBestAvailableDb(tempDir));
+        assertTrue(ProjectIndexStore.readRecovery(tempDir).isEmpty());
+    }
+
     private Path createDatabase(String indexId, String commit) {
         Path database = tempDir.resolve(".quill/" + indexId + ".db");
         var jdbi = QuillDatabase.create(database);

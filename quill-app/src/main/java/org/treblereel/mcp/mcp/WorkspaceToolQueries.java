@@ -111,7 +111,7 @@ final class WorkspaceToolQueries {
         root.put("cross_repository_only", crossRepositoryOnly);
         ArrayNode edges = root.putArray("dependencies");
         for (WorkspaceDependencyGraph.Edge edge : selected.subList(from, to)) {
-            edges.add(JSON.valueToTree(edge));
+            edges.add(edgeJson(edge));
         }
         ToolResponseSupport.appendPage(root, to - from, total, limit, offset);
         root.put("complete", graph.complete());
@@ -150,7 +150,7 @@ final class WorkspaceToolQueries {
         root.put("resolution", candidates.isEmpty() ? "not_found"
                 : candidates.size() == 1 ? "resolved" : "ambiguous");
         ArrayNode values = root.putArray("candidates");
-        candidates.values().forEach(candidate -> values.add(JSON.valueToTree(candidate)));
+        candidates.values().forEach(candidate -> values.add(candidateJson(candidate)));
         return root.toString();
     }
 
@@ -164,7 +164,8 @@ final class WorkspaceToolQueries {
             ObjectNode ambiguous = JSON.createObjectNode();
             ambiguous.put("error", "ambiguous_workspace_class");
             ambiguous.put("target", target);
-            ambiguous.set("candidates", JSON.valueToTree(providers));
+            ArrayNode values = ambiguous.putArray("candidates");
+            providers.forEach(provider -> values.add(providerJson(provider)));
             return ambiguous.toString();
         }
 
@@ -190,14 +191,18 @@ final class WorkspaceToolQueries {
         Map<String, WorkspaceDependencyGraph.Edge> consumerEdges = new LinkedHashMap<>();
         consumers.forEach(edge -> consumerEdges.putIfAbsent(edge.consumerRepository(), edge));
         List<ConsumerUsage> usages = new ArrayList<>();
-        List<String> diagnostics = new ArrayList<>(graph.diagnostics());
+        List<String> diagnostics = new ArrayList<>();
+        int queriedConsumers = 0;
+        int unavailableConsumers = 0;
         UsageToolQueries usageQueries = new UsageToolQueries();
         for (var consumer : consumerEdges.entrySet()) {
             ProjectRegistry.Resolution resolved = registry.resolve(consumer.getKey());
             if (resolved.projects().isEmpty()) {
+                unavailableConsumers++;
                 diagnostics.addAll(resolved.errors());
                 continue;
             }
+            queriedConsumers++;
             String json = usageQueries.findUsages(resolved.projects().getFirst().jdbi(),
                     provider.className(), usageKind, null, 200, 0);
             try {
@@ -210,6 +215,7 @@ final class WorkspaceToolQueries {
                         + "' returned invalid usage data: " + invalid.getMessage());
             }
         }
+        diagnostics.addAll(graph.diagnostics());
 
         usages.sort(java.util.Comparator.comparing(ConsumerUsage::repository));
         int total = usages.size();
@@ -232,6 +238,8 @@ final class WorkspaceToolQueries {
         }
         ToolResponseSupport.appendPage(root, to - from, total, limit, offset);
         root.put("candidate_consumer_count", consumerEdges.size());
+        root.put("queried_consumer_count", queriedConsumers);
+        root.put("unavailable_consumer_count", unavailableConsumers);
         root.put("complete", graph.complete());
         appendDiagnostics(root, diagnostics);
         root.putArray("limitations").add(
@@ -247,7 +255,8 @@ final class WorkspaceToolQueries {
         if (providers.size() > 1) {
             ObjectNode root = JSON.createObjectNode();
             root.put("error", "ambiguous_workspace_class");
-            root.set("candidates", JSON.valueToTree(providers));
+            ArrayNode values = root.putArray("candidates");
+            providers.forEach(provider -> values.add(providerJson(provider)));
             return root.toString();
         }
         ProviderClass provider = providers.getFirst();
@@ -315,7 +324,8 @@ final class WorkspaceToolQueries {
         root.put("direct_consumer_count", direct);
         root.put("transitive_consumer_count", transitive);
         root.put("version_drift_count", drifted);
-        root.set("downstream", JSON.valueToTree(downstream));
+        ArrayNode downstreamValues = root.putArray("downstream");
+        downstream.forEach(value -> downstreamValues.add(downstreamJson(value)));
         root.put("complete", graph.complete());
         appendDiagnostics(root, graph.diagnostics());
         root.putArray("limitations")
@@ -398,6 +408,55 @@ final class WorkspaceToolQueries {
         root.put("diagnostic_count", diagnostics.size());
         root.set("diagnostics", JSON.valueToTree(diagnostics.subList(0, limit)));
         root.put("diagnostics_truncated", limit < diagnostics.size());
+    }
+
+    private static ObjectNode edgeJson(WorkspaceDependencyGraph.Edge edge) {
+        ObjectNode node = JSON.createObjectNode();
+        node.put("consumerRepository", edge.consumerRepository());
+        node.put("consumerModule", edge.consumerModule());
+        node.put("providerRepository", edge.providerRepository());
+        node.put("providerModule", edge.providerModule());
+        node.put("coordinate", edge.coordinate());
+        ArrayNode scopes = node.putArray("scopes");
+        edge.scopes().forEach(scopes::add);
+        node.put("checkoutVersion", edge.checkoutVersion());
+        node.put("resolvedBinaryVersion", edge.resolvedBinaryVersion());
+        node.put("status", edge.status());
+        node.put("crossRepository", edge.crossRepository());
+        node.put("ambiguousProvider", edge.ambiguousProvider());
+        return node;
+    }
+
+    private static ObjectNode candidateJson(Candidate candidate) {
+        ObjectNode node = JSON.createObjectNode();
+        node.put("kind", candidate.kind());
+        node.put("repository", candidate.repository());
+        node.put("repositoryRoot", candidate.repositoryRoot());
+        node.put("className", candidate.className());
+        node.put("sourceFile", candidate.sourceFile());
+        node.put("origin", candidate.origin());
+        return node;
+    }
+
+    private static ObjectNode providerJson(ProviderClass provider) {
+        ObjectNode node = JSON.createObjectNode();
+        node.put("repository", provider.repository());
+        node.put("module", provider.module());
+        node.put("className", provider.className());
+        node.put("sourceFile", provider.sourceFile());
+        return node;
+    }
+
+    private static ObjectNode downstreamJson(DownstreamRisk risk) {
+        ObjectNode node = JSON.createObjectNode();
+        node.put("repository", risk.repository());
+        node.put("depth", risk.depth());
+        node.put("coordinate", risk.coordinate());
+        node.put("versionStatus", risk.versionStatus());
+        node.put("usageGroups", risk.usageGroups());
+        node.put("impactedTests", risk.impactedTests());
+        node.put("confidence", risk.confidence());
+        return node;
     }
 
     private static String nullToUnknown(String value) {

@@ -83,7 +83,14 @@ public final class QuillToolQueries {
 
     String getCallHierarchy(Jdbi jdbi, String target, String method,
             String direction, int limit, int offset) {
-        return callHierarchy.getCallHierarchy(jdbi, target, method, direction, limit, offset);
+        return callHierarchy.getCallHierarchy(
+                jdbi, target, method, direction, false, 1, limit, offset);
+    }
+
+    String getCallHierarchy(Jdbi jdbi, String target, String method,
+            String direction, boolean transitive, int maxDepth, int limit, int offset) {
+        return callHierarchy.getCallHierarchy(jdbi, target, method, direction,
+                transitive, maxDepth, limit, offset);
     }
 
     String findMethodOverrides(Jdbi jdbi, String target, String method,

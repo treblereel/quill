@@ -511,6 +511,54 @@ public final class IndexReader {
         });
     }
 
+    public static List<MethodCallView> findAdjacentMethodCalls(Jdbi jdbi, int classId,
+            String method, String descriptor, String direction) {
+        String endpoint = "inbound".equals(direction) ? "to" : "from";
+        StringBuilder predicate = new StringBuilder("mc.")
+                .append(endpoint).append("_class_id = :classId");
+        if (method != null) predicate.append(" AND mc.").append(endpoint)
+                .append("_method = :method");
+        if (descriptor != null) predicate.append(" AND mc.").append(endpoint)
+                .append("_descriptor = :descriptor");
+        String sql = """
+                SELECT mc.*, source.class_name AS from_class,
+                       source.source_file AS from_source,
+                       source.source_line AS from_source_line,
+                       source.origin AS from_origin, source.module AS from_module,
+                       source.source_tokens AS from_source_tokens,
+                       target.class_name AS to_class,
+                       target.source_file AS to_source,
+                       target.source_line AS to_source_line,
+                       target.origin AS to_origin, target.module AS to_module,
+                       target.source_tokens AS to_source_tokens
+                FROM method_calls mc
+                JOIN classes source ON source.id = mc.from_class_id
+                JOIN classes target ON target.id = mc.to_class_id
+                WHERE source.lifecycle = 'current' AND source.origin != 'orphan_output'
+                  AND target.lifecycle = 'current' AND target.origin != 'orphan_output'
+                  AND
+                """ + predicate + " ORDER BY from_class, from_method, from_descriptor, "
+                + "to_class, to_method, to_descriptor";
+        return jdbi.withHandle(handle -> {
+            var query = handle.createQuery(sql).bind("classId", classId);
+            if (method != null) query.bind("method", method);
+            if (descriptor != null) query.bind("descriptor", descriptor);
+            return query.map((rs, ctx) -> new MethodCallView(
+                    rs.getInt("from_class_id"), rs.getString("from_class"),
+                    rs.getString("from_source"), rs.getInt("from_source_line"),
+                    rs.getString("from_origin"), rs.getString("from_module"),
+                    rs.getInt("from_source_tokens"),
+                    rs.getString("from_method"), rs.getString("from_descriptor"),
+                    rs.getInt("to_class_id"), rs.getString("to_class"),
+                    rs.getString("to_source"), rs.getInt("to_source_line"),
+                    rs.getString("to_origin"), rs.getString("to_module"),
+                    rs.getInt("to_source_tokens"),
+                    rs.getString("to_method"), rs.getString("to_descriptor"),
+                    rs.getString("invocation_kind"), rs.getInt("occurrence_count"),
+                    parseIntList(rs.getString("evidence_lines")))).list();
+        });
+    }
+
     private static String methodCallPredicate(String direction, boolean filterMethod) {
         String inbound = "mc.to_class_id = :classId"
                 + (filterMethod ? " AND mc.to_method = :method" : "");

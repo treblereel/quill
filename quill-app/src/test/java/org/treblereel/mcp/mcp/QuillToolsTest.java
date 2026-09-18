@@ -506,7 +506,9 @@ class QuillToolsTest {
                     VALUES (1, 'createOrder', '(Ljava/lang/String;)Lorg/acme/Order;',
                             4, 'audit', '(Lorg/acme/Order;)V', 'virtual', 2, '[21,24]'),
                            (3, 'charge', '()V', 1, 'createOrder',
-                            '(Ljava/lang/String;)Lorg/acme/Order;', 'virtual', 1, '[42]')""");
+                            '(Ljava/lang/String;)Lorg/acme/Order;', 'virtual', 1, '[42]'),
+                           (4, 'audit', '(Lorg/acme/Order;)V', 2, 'notify',
+                            '()V', 'interface', 1, '[17]')""");
         });
 
         QuillTools tools = new QuillTools();
@@ -514,6 +516,8 @@ class QuillToolsTest {
                 jdbi, "OrderService", "createOrder", "both", 10, 0));
         JsonNode invalid = JSON.readTree(tools.getCallHierarchy(
                 jdbi, "OrderService", null, "sideways", 10, 0));
+        JsonNode transitive = JSON.readTree(tools.getCallHierarchy(
+                jdbi, "OrderService", "createOrder", "outbound", true, 2, 10, 0));
 
         assertEquals(2, result.path("total").asInt());
         assertTrue(result.path("declared_method_found").asBoolean());
@@ -530,6 +534,15 @@ class QuillToolsTest {
         assertEquals("org.acme.Order", outbound.path("callee").path("parameters")
                 .get(0).asText());
         assertTrue(invalid.path("error").asText().contains("Invalid direction"));
+        assertEquals(2, transitive.path("total").asInt());
+        assertFalse(transitive.path("direct_only").asBoolean());
+        assertEquals(2, transitive.path("max_depth").asInt());
+        JsonNode indirect = transitive.path("calls").valueStream()
+                .filter(call -> call.path("callee").path("method").asText().equals("notify"))
+                .findFirst().orElseThrow();
+        assertEquals(2, indirect.path("depth").asInt());
+        assertEquals("outbound", indirect.path("traversal_direction").asText());
+        assertEquals(3, indirect.path("path").size());
     }
 
     @Test

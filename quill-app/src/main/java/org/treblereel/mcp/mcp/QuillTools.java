@@ -153,16 +153,19 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Inspect direct method callers and callees from bytecode evidence.")
+    @Tool(structured = true, description = "Inspect method callers and callees from bytecode evidence.")
     public String get_call_hierarchy(
             @ToolArg(description = "Current class or source path") String target,
             @ToolArg(description = "Optional method name; use <init> for constructors") Optional<String> method,
             @ToolArg(description = "inbound, outbound, or both; default both") Optional<String> direction,
+            @ToolArg(description = "Traverse calls; default false") Optional<Boolean> transitive,
+            @ToolArg(description = "Traversal depth; default 3") Optional<Integer> max_depth,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getCallHierarchy(
                 p.jdbi(), target, method.orElse(null), direction.orElse("both"),
+                transitive.orElse(false), clamp(max_depth.orElse(3), 1, 8),
                 clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -465,6 +468,12 @@ public final class QuillTools {
     String getCallHierarchy(Jdbi jdbi, String target, String method,
             String direction, int limit, int offset) {
         return queries.getCallHierarchy(jdbi, target, method, direction, limit, offset);
+    }
+
+    String getCallHierarchy(Jdbi jdbi, String target, String method,
+            String direction, boolean transitive, int maxDepth, int limit, int offset) {
+        return queries.getCallHierarchy(jdbi, target, method, direction,
+                transitive, maxDepth, limit, offset);
     }
 
     String findMethodOverrides(Jdbi jdbi, String target, String method,

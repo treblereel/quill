@@ -27,6 +27,7 @@ public final class QuillTools {
     private final ProjectDependencyQueries projectDependencies;
     private final FileNavigationQueries fileNavigation;
     private final WorktreeStatusQueries worktreeStatus;
+    private final PositionSymbolQueries positionSymbols;
 
     public QuillTools() {
         this(new ProjectRegistry());
@@ -38,6 +39,7 @@ public final class QuillTools {
         this.projectDependencies = new ProjectDependencyQueries();
         this.fileNavigation = new FileNavigationQueries();
         this.worktreeStatus = new WorktreeStatusQueries();
+        this.positionSymbols = new PositionSymbolQueries();
     }
 
     @Tool(structured = true, description = "Find CDI/Spring beans, producers, interceptors, or decorators. Returns DI and source context.")
@@ -339,6 +341,17 @@ public final class QuillTools {
                 p.jdbi(), p.root(), status.orElse(null),
                 clamp(limit.orElse(100), 1, 500),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
+    @Tool(structured = true,
+            description = "Resolve the Java or Kotlin identifier at a live source position to indexed declarations.")
+    public String get_symbol_at_position(
+            @ToolArg(description = "Repository-relative Java or Kotlin source path") String path,
+            @ToolArg(description = "One-based source line") Integer line,
+            @ToolArg(description = "One-based source column") Integer column,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> positionSymbols.getSymbolAtPosition(
+                p.jdbi(), p.root(), path, line, column));
     }
 
     @Tool(structured = true, description = "Inspect package dependency coupling.")

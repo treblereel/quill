@@ -10,7 +10,7 @@ public final class McpToolProfile {
 
     private static final Set<String> CORE = Set.of(
             "get_overview", "search_classes", "resolve_entities", "get_symbol_details",
-            "search_symbols", "find_usages", "find_symbol_usages", "get_dependencies",
+            "search_symbols", "get_symbol_at_position", "find_usages", "find_symbol_usages", "get_dependencies",
             "find_impacted_tests", "assess_change_risk", "get_build_status",
             "get_build_problems", "get_file_problems", "get_project_dependencies", "list_project_tree",
             "search_files", "get_worktree_status");

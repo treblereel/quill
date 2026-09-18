@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import org.jdbi.v3.core.Jdbi;
 
@@ -32,29 +33,43 @@ final class PositionSymbolQueries {
         if (column < 1 || column > sourceLine.length() + 1) {
             return error("Column is outside the source line");
         }
-        String identifier = identifierAt(sourceLine, column - 1);
-        if (identifier == null) return error("No Java/Kotlin identifier at the requested position");
+        Identifier located = identifierAt(sourceLine, column - 1);
+        if (located == null) return error("No Java/Kotlin identifier at the requested position");
+        String identifier = located.value();
 
         List<Candidate> candidates = declarations(jdbi, identifier, normalized);
         List<EnclosingClass> enclosing = enclosingClasses(jdbi, normalized, line);
+        SourceContext sourceContext = sourceContext(sourceLine, located);
+        String enclosingClass = enclosing.isEmpty() ? null : enclosing.getFirst().className();
+        List<RankedCandidate> ranked = candidates.stream()
+                .map(candidate -> rank(candidate, sourceContext, enclosingClass))
+                .sorted(Comparator.comparingInt(RankedCandidate::score).reversed()
+                        .thenComparing(value -> value.candidate().className())
+                        .thenComparing(value -> value.candidate().kind()))
+                .toList();
+        RankedCandidate selected = ranked.isEmpty() ? null : ranked.getFirst();
+        boolean decisive = selected != null
+                && (ranked.size() == 1 || selected.score() > ranked.get(1).score());
         ObjectNode result = JSON.createObjectNode();
         result.put("path", normalized);
         result.put("line", line);
         result.put("column", column);
         result.put("identifier", identifier);
-        result.put("resolution", candidates.size() == 1 ? "resolved"
+        result.put("context", sourceContext.kind().name().toLowerCase());
+        if (sourceContext.argumentCount() == null) result.putNull("argument_count");
+        else result.put("argument_count", sourceContext.argumentCount());
+        result.put("resolution", decisive ? "resolved"
                 : candidates.isEmpty() ? "enclosing_class_fallback" : "ambiguous");
-        result.put("confidence", candidates.size() == 1 ? "high"
-                : candidates.isEmpty() && !enclosing.isEmpty() ? "low" : "medium");
+        result.put("confidence", decisive && selected.score() >= 100 ? "high"
+                : decisive ? "medium" : candidates.isEmpty() && !enclosing.isEmpty() ? "low" : "medium");
+        if (decisive) {
+            ObjectNode selectedNode = result.putObject("selected");
+            addCandidate(selectedNode, selected);
+        }
         ArrayNode matches = result.putArray("candidates");
-        candidates.stream().limit(50).forEach(candidate -> {
+        ranked.stream().limit(50).forEach(candidate -> {
             ObjectNode item = matches.addObject();
-            item.put("class_name", candidate.className());
-            item.put("kind", candidate.kind());
-            if (candidate.memberName() != null) item.put("member_name", candidate.memberName());
-            if (candidate.signature() != null) item.put("signature", candidate.signature());
-            if (candidate.sourceFile() != null) item.put("source_file", candidate.sourceFile());
-            item.put("same_file", candidate.sameFile());
+            addCandidate(item, candidate);
         });
         if (!enclosing.isEmpty()) {
             EnclosingClass value = enclosing.getFirst();
@@ -65,14 +80,14 @@ final class PositionSymbolQueries {
         result.put("candidate_count", candidates.size());
         result.putArray("limitations")
                 .add("Resolution uses the live identifier text and indexed declarations; local variables are not indexed")
-                .add("Overloads and same-name members may require get_symbol_details or find_symbol_usages");
+                .add("Argument-count ranking does not perform full Java or Kotlin overload type inference");
         return result.toString();
     }
 
     private static List<Candidate> declarations(Jdbi jdbi, String identifier, String path) {
         return jdbi.withHandle(handle -> handle.createQuery("""
                         SELECT c.class_name, 'CLASS' AS kind, NULL AS member_name,
-                               NULL AS signature, c.source_file,
+                               NULL AS signature, NULL AS parameter_types, c.source_file,
                                CASE WHEN c.source_file = :path OR f.project_path = :path
                                           OR f.repository_path = :path THEN 1 ELSE 0 END AS same_file
                         FROM classes c LEFT JOIN files f ON f.id = c.file_id
@@ -81,7 +96,7 @@ final class PositionSymbolQueries {
                                OR c.class_name LIKE '%.' || :identifier
                                OR c.class_name LIKE '%$' || :identifier)
                         UNION ALL
-                        SELECT c.class_name, m.kind, m.name, m.signature, c.source_file,
+                        SELECT c.class_name, m.kind, m.name, m.signature, m.parameter_types, c.source_file,
                                CASE WHEN c.source_file = :path OR f.project_path = :path
                                           OR f.repository_path = :path THEN 1 ELSE 0 END AS same_file
                         FROM class_members m JOIN classes c ON c.id = m.class_id
@@ -94,6 +109,7 @@ final class PositionSymbolQueries {
                 .map((row, context) -> new Candidate(
                         row.getString("class_name"), row.getString("kind"),
                         row.getString("member_name"), row.getString("signature"),
+                        parameterCount(row.getString("parameter_types")),
                         row.getString("source_file"), row.getInt("same_file") == 1))
                 .list());
     }
@@ -113,7 +129,7 @@ final class PositionSymbolQueries {
                 .list());
     }
 
-    private static String identifierAt(String line, int cursor) {
+    private static Identifier identifierAt(String line, int cursor) {
         if (line.isEmpty()) return null;
         int position = Math.min(cursor, line.length() - 1);
         if (!Character.isJavaIdentifierPart(line.charAt(position)) && position > 0
@@ -124,14 +140,132 @@ final class PositionSymbolQueries {
         while (start > 0 && Character.isJavaIdentifierPart(line.charAt(start - 1))) start--;
         while (end < line.length() && Character.isJavaIdentifierPart(line.charAt(end))) end++;
         String value = line.substring(start, end);
-        return Character.isJavaIdentifierStart(value.charAt(0)) ? value : null;
+        return Character.isJavaIdentifierStart(value.charAt(0))
+                ? new Identifier(value, start, end) : null;
+    }
+
+    private static SourceContext sourceContext(String line, Identifier identifier) {
+        String before = line.substring(0, identifier.start()).stripTrailing();
+        String after = line.substring(identifier.end()).stripLeading();
+        boolean call = after.startsWith("(");
+        Integer arguments = call ? argumentCount(after) : null;
+        if (before.matches("(?s).*\\bnew\\s*$")) {
+            return new SourceContext(ContextKind.CONSTRUCTOR_CALL, arguments);
+        }
+        if (call) return new SourceContext(ContextKind.METHOD_CALL, arguments);
+        if (before.endsWith(".")) return new SourceContext(ContextKind.MEMBER_ACCESS, null);
+        return new SourceContext(ContextKind.IDENTIFIER, null);
+    }
+
+    private static Integer argumentCount(String after) {
+        if (!after.startsWith("(")) return null;
+        int depth = 0;
+        int commas = 0;
+        boolean content = false;
+        boolean quoted = false;
+        char quote = 0;
+        for (int index = 0; index < after.length(); index++) {
+            char value = after.charAt(index);
+            if (quoted) {
+                if (value == quote && (index == 0 || after.charAt(index - 1) != '\\')) quoted = false;
+                continue;
+            }
+            if (value == '\'' || value == '"') {
+                quoted = true;
+                quote = value;
+                content = true;
+            } else if (value == '(') {
+                depth++;
+                if (depth > 1) content = true;
+            } else if (value == ')') {
+                depth--;
+                if (depth == 0) return content ? commas + 1 : 0;
+            } else if (value == ',' && depth == 1) {
+                commas++;
+            } else if (depth == 1 && !Character.isWhitespace(value)) {
+                content = true;
+            }
+        }
+        return null;
+    }
+
+    private static RankedCandidate rank(
+            Candidate candidate, SourceContext context, String enclosingClass) {
+        int score = candidate.sameFile() ? 20 : 0;
+        List<String> reasons = new ArrayList<>();
+        if (candidate.sameFile()) reasons.add("same_file");
+        if (enclosingClass != null && enclosingClass.equals(candidate.className())) {
+            score += 25;
+            reasons.add("enclosing_class");
+        }
+        switch (context.kind()) {
+            case CONSTRUCTOR_CALL -> {
+                if (candidate.kind().equals("CONSTRUCTOR")) {
+                    score += 100;
+                    reasons.add("new_expression_constructor");
+                } else if (candidate.kind().equals("CLASS")) {
+                    score += 40;
+                    reasons.add("new_expression_type");
+                } else score -= 50;
+            }
+            case METHOD_CALL -> {
+                if (candidate.kind().equals("METHOD")) {
+                    score += 80;
+                    reasons.add("call_expression_method");
+                } else score -= 30;
+            }
+            case MEMBER_ACCESS -> {
+                if (candidate.kind().equals("FIELD")) {
+                    score += 70;
+                    reasons.add("member_access_field");
+                }
+            }
+            case IDENTIFIER -> { }
+        }
+        if (context.argumentCount() != null && candidate.parameterCount() != null) {
+            if (context.argumentCount().equals(candidate.parameterCount())) {
+                score += 30;
+                reasons.add("argument_count_match");
+            } else {
+                score -= 20;
+                reasons.add("argument_count_mismatch");
+            }
+        }
+        return new RankedCandidate(candidate, score, List.copyOf(reasons));
+    }
+
+    private static Integer parameterCount(String json) {
+        if (json == null) return null;
+        try {
+            var parsed = JSON.readTree(json);
+            return parsed.isArray() ? parsed.size() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static void addCandidate(ObjectNode item, RankedCandidate ranked) {
+        Candidate candidate = ranked.candidate();
+        item.put("class_name", candidate.className());
+        item.put("kind", candidate.kind());
+        if (candidate.memberName() != null) item.put("member_name", candidate.memberName());
+        if (candidate.signature() != null) item.put("signature", candidate.signature());
+        if (candidate.parameterCount() != null) item.put("parameter_count", candidate.parameterCount());
+        if (candidate.sourceFile() != null) item.put("source_file", candidate.sourceFile());
+        item.put("same_file", candidate.sameFile());
+        item.put("score", ranked.score());
+        item.set("ranking_reasons", JSON.valueToTree(ranked.reasons()));
     }
 
     private static String error(String message) {
         return JSON.createObjectNode().put("error", message).toString();
     }
 
+    private record Identifier(String value, int start, int end) {}
+    private enum ContextKind { CONSTRUCTOR_CALL, METHOD_CALL, MEMBER_ACCESS, IDENTIFIER }
+    private record SourceContext(ContextKind kind, Integer argumentCount) {}
     private record Candidate(String className, String kind, String memberName,
-            String signature, String sourceFile, boolean sameFile) {}
+            String signature, Integer parameterCount, String sourceFile, boolean sameFile) {}
+    private record RankedCandidate(Candidate candidate, int score, List<String> reasons) {}
     private record EnclosingClass(String className, int sourceLine) {}
 }

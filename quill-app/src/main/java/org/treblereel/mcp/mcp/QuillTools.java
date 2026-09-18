@@ -294,6 +294,23 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
+    @Tool(structured = true, description = "Find package or module dependency violations.")
+    public String find_architecture_violations(
+            @ToolArg(description = "package (default) or module") Optional<String> scope,
+            @ToolArg(description = "Source glob; '..' includes subpackages") String from,
+            @ToolArg(description = "Forbidden target globs") List<String> forbidden,
+            @ToolArg(description = "Comma-separated dependency kinds") Optional<String> kinds,
+            @ToolArg(description = "Page size") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findArchitectureViolations(
+                p.jdbi(), scope.orElse("package"), from, forbidden,
+                kinds.map(value -> java.util.Arrays.stream(value.split(","))
+                                .map(String::strip).filter(item -> !item.isEmpty()).toList())
+                        .orElse(List.of()), false, false, clamp(limit.orElse(100), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Find class or module dependency cycles.")
     public String find_cycles(
             @ToolArg(description = "class (default) or module") Optional<String> scope,

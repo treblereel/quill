@@ -24,6 +24,8 @@ public final class QuillToolQueries {
     private final EntryPointQueries entryPoints = new EntryPointQueries();
     private final ModuleGraphQueries moduleGraph = new ModuleGraphQueries();
     private final PackageGraphQueries packageGraph = new PackageGraphQueries();
+    private final ArchitectureViolationQueries architectureViolations =
+            new ArchitectureViolationQueries();
     private final CycleQueries cycles = new CycleQueries();
     private final IndexComparisonQueries indexComparison = new IndexComparisonQueries();
     private final GitToolQueries git = new GitToolQueries();
@@ -154,6 +156,13 @@ public final class QuillToolQueries {
             int limit, int offset) {
         return packageGraph.getPackageGraph(jdbi, packageName, direction, module,
                 includeGenerated, includeTests, limit, offset);
+    }
+
+    String findArchitectureViolations(Jdbi jdbi, String scope, String from,
+            List<String> forbidden, List<String> dependencyKinds,
+            boolean includeGenerated, boolean includeTests, int limit, int offset) {
+        return architectureViolations.findArchitectureViolations(jdbi, scope, from,
+                forbidden, dependencyKinds, includeGenerated, includeTests, limit, offset);
     }
 
     String findCycles(Jdbi jdbi, String scope, String module,

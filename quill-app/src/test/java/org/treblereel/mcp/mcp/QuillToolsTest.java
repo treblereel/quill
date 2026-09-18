@@ -1136,6 +1136,73 @@ class QuillToolsTest {
     }
 
     @Test
+    void findArchitectureViolationsEvaluatesPackageAndModuleRules() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    UPDATE classes
+                    SET class_name = 'org.persistence.AuditRepository',
+                        source_file = 'src/main/java/org/persistence/AuditRepository.java',
+                        module = 'persistence', source_set = 'main'
+                    WHERE id = 4""");
+            handle.execute("UPDATE classes SET module = 'web', source_set = 'main' WHERE id = 1");
+            handle.execute("""
+                    INSERT INTO dependencies
+                      (from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    VALUES (1, 4, 'CALLS', 3, '[21,27]')""");
+        });
+
+        QuillToolQueries queries = new QuillToolQueries();
+        JsonNode packages = JSON.readTree(queries.findArchitectureViolations(
+                jdbi, "package", "org.acme..", List.of("org.persistence.."),
+                List.of("CALLS"), false, false, 10, 0));
+        assertFalse(packages.path("compliant").asBoolean());
+        assertEquals(1, packages.path("total").asInt());
+        assertEquals(3, packages.path("occurrence_count").asInt());
+        assertEquals(3, packages.path("occurrences_by_kind").path("CALLS").asInt());
+        assertEquals("org.acme.OrderService",
+                packages.path("violations").get(0).path("from_class").asText());
+        assertEquals("org.persistence.AuditRepository",
+                packages.path("violations").get(0).path("to_class").asText());
+        assertEquals(List.of(21, 27), packages.path("violations").get(0)
+                .path("evidence_lines").valueStream().map(JsonNode::asInt).toList());
+        assertTrue(packages.path("_meta").isObject());
+
+        JsonNode modules = JSON.readTree(queries.findArchitectureViolations(
+                jdbi, "module", "web", List.of("persistence"),
+                List.of(), false, false, 10, 0));
+        assertEquals(1, modules.path("total").asInt());
+        assertEquals("web", modules.path("violations").get(0)
+                .path("from_boundary").asText());
+
+        JsonNode missingSource = JSON.readTree(queries.findArchitectureViolations(
+                jdbi, "package", "org.missing..", List.of("org.persistence.."),
+                List.of(), false, false, 10, 0));
+        assertEquals("Source boundary pattern matched no indexed classes",
+                missingSource.path("error").asText());
+        assertTrue(missingSource.path("available_boundaries").isArray());
+
+        JsonNode compliant = JSON.readTree(queries.findArchitectureViolations(
+                jdbi, "package", "org.acme..", List.of("org.absent.."),
+                List.of(), false, false, 10, 0));
+        assertTrue(compliant.path("compliant").asBoolean());
+        assertEquals(0, compliant.path("matched_forbidden_classes").asInt());
+        assertEquals(0, compliant.path("total").asInt());
+    }
+
+    @Test
+    void findArchitectureViolationsValidatesRules() throws Exception {
+        QuillToolQueries queries = new QuillToolQueries();
+        assertEquals("Invalid scope: expected package or module", JSON.readTree(
+                queries.findArchitectureViolations(jdbi, "class", "org.acme",
+                        List.of("org.persistence"), List.of(), false, false, 10, 0))
+                .path("error").asText());
+        assertEquals("At least one forbidden pattern is required", JSON.readTree(
+                queries.findArchitectureViolations(jdbi, "package", "org.acme",
+                        List.of(), List.of(), false, false, 10, 0))
+                .path("error").asText());
+    }
+
+    @Test
     void findCyclesReturnsClassComponentsAndRepresentativePath() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

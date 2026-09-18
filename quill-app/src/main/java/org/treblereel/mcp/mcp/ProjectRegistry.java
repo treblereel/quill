@@ -81,7 +81,9 @@ public class ProjectRegistry {
         List<RegisteredProject> snapshot = List.copyOf(projects);
         executor.execute(() -> {
             try {
-                resolve();
+                Resolution resolution = resolve();
+                resolution.projects().forEach(entry ->
+                        ProjectDependencyQueries.prewarm(entry.jdbi(), entry.root()));
             } catch (RuntimeException ignored) {
                 // A normal request will report the same project-specific error.
             }

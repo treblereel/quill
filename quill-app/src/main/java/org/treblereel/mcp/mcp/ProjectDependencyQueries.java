@@ -14,6 +14,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.DeclaredDependencyDiscovery;
@@ -22,23 +23,22 @@ import org.treblereel.mcp.core.DeclaredDependencyDiscovery;
 final class ProjectDependencyQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final int MAX_PROJECT_CACHES = 8;
+    private static final ConcurrentHashMap<Path, CachedMetadata> METADATA =
+            new ConcurrentHashMap<>();
 
     String getProjectDependencies(Jdbi jdbi, Path root, String module, String query,
             int limit, int offset) {
-        List<ClasspathFile> classpaths = findClasspathFiles(jdbi, root);
-        BuildSystem buildSystem = detectBuildSystem(root);
-        Set<String> discoveredModules = new LinkedHashSet<>();
-        classpaths.forEach(classpath -> discoveredModules.add(classpath.module()));
-        DeclaredDependencyDiscovery.Result declared = buildSystem == null
-                ? new DeclaredDependencyDiscovery.Result(
-                        Map.of(), Set.of(), "unavailable", false)
-                : DeclaredDependencyDiscovery.discover(root, buildSystem, discoveredModules);
+        DependencyMetadata metadata = metadata(jdbi, root);
+        List<ClasspathFile> classpaths = metadata.classpaths();
+        DeclaredDependencyDiscovery.Result declared = metadata.declared();
         Map<String, Artifact> artifacts = new LinkedHashMap<>();
-        for (ClasspathFile classpath : classpaths) {
+        for (ParsedClasspath classpath : metadata.parsedClasspaths()) {
             if (module != null && !module.isBlank()
                     && !classpath.module().equals(normalizeModule(module))) continue;
-            for (Path jar : readClasspath(classpath.path())) {
-                Coordinates coordinates = coordinates(jar);
+            for (JarReference reference : classpath.jars()) {
+                Path jar = reference.jar();
+                Coordinates coordinates = reference.coordinates();
                 String searchable = (coordinates.id() + " " + jar.getFileName())
                         .toLowerCase();
                 if (query != null && !query.isBlank()
@@ -108,6 +108,7 @@ final class ProjectDependencyQueries {
         discovery.put("build_invoked", false);
         discovery.put("declaration_source", declared.source());
         discovery.put("declarations_complete", declared.complete());
+        discovery.put("metadata_cache", metadata.cacheHit() ? "hit" : "miss");
         if (!declared.complete()) {
             discovery.put("limitation", "Missing or unresolved dependency declarations are "
                     + "reported as transitive until the next Gradle discovery snapshot");
@@ -168,10 +169,64 @@ final class ProjectDependencyQueries {
 
     static List<Path> resolvedJars(Jdbi jdbi, Path root) {
         LinkedHashSet<Path> jars = new LinkedHashSet<>();
-        for (ClasspathFile classpath : findClasspathFiles(jdbi, root)) {
-            jars.addAll(readClasspath(classpath.path()));
+        for (ParsedClasspath classpath : metadata(jdbi, root).parsedClasspaths()) {
+            classpath.jars().forEach(reference -> jars.add(reference.jar()));
         }
         return List.copyOf(jars);
+    }
+
+    static void prewarm(Jdbi jdbi, Path root) {
+        metadata(jdbi, root);
+    }
+
+    private static DependencyMetadata metadata(Jdbi jdbi, Path root) {
+        Path key = root.toAbsolutePath().normalize();
+        List<ClasspathFile> classpaths = findClasspathFiles(jdbi, key);
+        String fingerprint = metadataFingerprint(key, classpaths);
+        CachedMetadata cached = METADATA.get(key);
+        if (cached != null && cached.fingerprint().equals(fingerprint)) {
+            return cached.metadata().withCacheHit(true);
+        }
+        List<ParsedClasspath> parsed = new ArrayList<>();
+        Set<String> modules = new LinkedHashSet<>();
+        for (ClasspathFile classpath : classpaths) {
+            modules.add(classpath.module());
+            List<JarReference> jars = readClasspath(classpath.path()).stream()
+                    .map(jar -> new JarReference(jar, coordinates(jar))).toList();
+            parsed.add(new ParsedClasspath(classpath.module(), jars));
+        }
+        BuildSystem buildSystem = detectBuildSystem(key);
+        DeclaredDependencyDiscovery.Result declared = buildSystem == null
+                ? new DeclaredDependencyDiscovery.Result(
+                        Map.of(), Set.of(), "unavailable", false)
+                : DeclaredDependencyDiscovery.discover(key, buildSystem, modules);
+        DependencyMetadata created = new DependencyMetadata(
+                List.copyOf(classpaths), List.copyOf(parsed), declared, false);
+        if (METADATA.size() >= MAX_PROJECT_CACHES) METADATA.clear();
+        METADATA.put(key, new CachedMetadata(fingerprint, created));
+        return created;
+    }
+
+    private static String metadataFingerprint(Path root, List<ClasspathFile> classpaths) {
+        StringBuilder value = new StringBuilder();
+        for (ClasspathFile classpath : classpaths) {
+            appendFingerprint(value, classpath.path());
+            Path moduleRoot = classpath.module().equals(".")
+                    ? root : root.resolve(classpath.module());
+            appendFingerprint(value, moduleRoot.resolve("pom.xml"));
+            appendFingerprint(value, moduleRoot.resolve("build/quill-direct-dependencies.tsv"));
+        }
+        return value.toString();
+    }
+
+    private static void appendFingerprint(StringBuilder target, Path path) {
+        target.append('|').append(path);
+        try {
+            target.append(':').append(Files.getLastModifiedTime(path).toMillis())
+                    .append(':').append(Files.size(path));
+        } catch (IOException error) {
+            target.append(":missing");
+        }
     }
 
     private static String normalizeModule(String module) {
@@ -233,5 +288,15 @@ final class ProjectDependencyQueries {
     }
 
     private record ClasspathFile(Path path, String module) {}
+    private record JarReference(Path jar, Coordinates coordinates) {}
+    private record ParsedClasspath(String module, List<JarReference> jars) {}
+    private record DependencyMetadata(List<ClasspathFile> classpaths,
+            List<ParsedClasspath> parsedClasspaths,
+            DeclaredDependencyDiscovery.Result declared, boolean cacheHit) {
+        DependencyMetadata withCacheHit(boolean value) {
+            return new DependencyMetadata(classpaths, parsedClasspaths, declared, value);
+        }
+    }
+    private record CachedMetadata(String fingerprint, DependencyMetadata metadata) {}
     private record Artifact(Coordinates coordinates, Path jar, Set<String> modules) {}
 }

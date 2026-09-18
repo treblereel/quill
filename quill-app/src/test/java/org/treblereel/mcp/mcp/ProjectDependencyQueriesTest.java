@@ -97,6 +97,34 @@ class ProjectDependencyQueriesTest {
         assertEquals("b:beta:2", filtered.path("dependencies").get(0).path("id").asText());
     }
 
+    @Test
+    void prewarmsAndInvalidatesMetadataWhenClasspathChanges() throws Exception {
+        Path repository = temp.resolve(".m2/repository");
+        Path alpha = repository.resolve("a/alpha/1/alpha-1.jar");
+        Path beta = repository.resolve("b/beta/2/beta-2.jar");
+        Files.createDirectories(alpha.getParent());
+        Files.createDirectories(beta.getParent());
+        Files.write(alpha, new byte[] {1});
+        Files.write(beta, new byte[] {1});
+        Path classpath = temp.resolve("target/quill-classpath.txt");
+        Files.createDirectories(classpath.getParent());
+        Files.writeString(classpath, alpha.toString());
+        Files.writeString(temp.resolve("pom.xml"), "<project/>");
+        Jdbi jdbi = database();
+        module(jdbi, ".");
+
+        ProjectDependencyQueries.prewarm(jdbi, temp);
+        var warm = JSON.readTree(new ProjectDependencyQueries()
+                .getProjectDependencies(jdbi, temp, null, null, 100, 0));
+        assertEquals("hit", warm.path("discovery").path("metadata_cache").asText());
+
+        Files.writeString(classpath, alpha + java.io.File.pathSeparator + beta);
+        var refreshed = JSON.readTree(new ProjectDependencyQueries()
+                .getProjectDependencies(jdbi, temp, null, null, 100, 0));
+        assertEquals("miss", refreshed.path("discovery").path("metadata_cache").asText());
+        assertEquals(2, refreshed.path("total").asInt());
+    }
+
     private Jdbi database() {
         return QuillDatabase.create(temp.resolve("index-" + System.nanoTime() + ".db"));
     }

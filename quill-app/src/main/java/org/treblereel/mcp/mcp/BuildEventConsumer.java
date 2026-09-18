@@ -31,6 +31,16 @@ final class BuildEventConsumer {
 
     private final ConcurrentHashMap<Path, Object> projectLocks = new ConcurrentHashMap<>();
 
+    static boolean hasPendingEvents(Path root) {
+        Path directory = root.toAbsolutePath().normalize().resolve(".quill/build-events");
+        if (!Files.isDirectory(directory)) return false;
+        try (var files = Files.list(directory)) {
+            return files.anyMatch(Files::isRegularFile);
+        } catch (IOException ignored) {
+            return true;
+        }
+    }
+
     String consume(Path root) {
         Path normalized = root.toAbsolutePath().normalize();
         Object lock = projectLocks.computeIfAbsent(normalized, ignored -> new Object());

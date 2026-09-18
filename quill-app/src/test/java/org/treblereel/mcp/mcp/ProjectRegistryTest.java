@@ -39,6 +39,7 @@ class ProjectRegistryTest {
         assertEquals("maven", issue.buildSystem());
         assertFalse(issue.buildWasStarted());
         assertTrue(issue.recommendedAction().contains("Decide whether"));
+        assertEquals(1, registry.cachedReadinessCount());
     }
 
     @Test

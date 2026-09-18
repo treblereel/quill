@@ -29,7 +29,9 @@ class BuildEventProtocolTest {
             Files.writeString(events.resolve("event-" + i + ".json"), invalidEvents.get(i));
         }
 
+        assertTrue(BuildEventConsumer.hasPendingEvents(tempDir));
         assertNull(new BuildEventConsumer().consume(tempDir));
+        assertFalse(BuildEventConsumer.hasPendingEvents(tempDir));
         assertFalse(Files.exists(events));
     }
 

@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -61,7 +62,10 @@ public class ProjectRegistry {
     private final ConcurrentHashMap<Path, AtomicLong> projectRoots = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, Object> schemaRepairLocks = new ConcurrentHashMap<>();
     private final AtomicLong resolutionSequence = new AtomicLong();
+    private final AtomicLong readinessScopeRevision = new AtomicLong(Long.MIN_VALUE);
     private final BuildEventConsumer buildEvents = new BuildEventConsumer();
+    private final ProjectReadinessCache readiness =
+            new ProjectReadinessCache(Duration.ofSeconds(5));
 
     public ProjectRegistry() {
         this(new SingleProjectScope());
@@ -98,6 +102,10 @@ public class ProjectRegistry {
         Set<Path> configuredRoots = snapshot.projects().stream()
                 .map(project -> project.root().toAbsolutePath().normalize())
                 .collect(java.util.stream.Collectors.toSet());
+        long previousReadinessRevision = readinessScopeRevision.getAndAccumulate(
+                snapshot.revision(), Math::max);
+        if (snapshot.revision() > previousReadinessRevision) readiness.clear();
+        readiness.retain(configuredRoots);
         Set<Path> selectedRoots = ConcurrentHashMap.newKeySet();
         for (Path projectRoot : configuredRoots) {
             projectRoots.compute(projectRoot, (ignored, seen) -> {
@@ -109,6 +117,9 @@ public class ProjectRegistry {
         for (ProjectScope.Project p : scope.select(snapshot, selector)) {
             Path projectRoot = p.root().toAbsolutePath().normalize();
             selectedRoots.add(projectRoot);
+            if (BuildEventConsumer.hasPendingEvents(projectRoot)) {
+                readiness.invalidate(projectRoot);
+            }
             String buildEventError = buildEvents.consume(p.root());
             if (buildEventError != null) {
                 errors.add("Project '" + p.name() + "': " + buildEventError);
@@ -151,7 +162,7 @@ public class ProjectRegistry {
         return new Resolution(result, errors, issues);
     }
 
-    private static ProjectIssue unavailableProjectIssue(ProjectScope.Project project) {
+    private ProjectIssue unavailableProjectIssue(ProjectScope.Project project) {
         Path root = project.root().toAbsolutePath().normalize();
         BuildSystem buildSystem;
         try {
@@ -169,7 +180,7 @@ public class ProjectRegistry {
                 "Run quill init for this project, then retry the MCP request", false);
     }
 
-    private static ProjectIssue buildRequiredIssue(ProjectScope.Project project) {
+    private ProjectIssue buildRequiredIssue(ProjectScope.Project project) {
         try {
             return buildRequiredIssue(project, BuildSystem.detect(project.root()));
         } catch (IllegalArgumentException unsupported) {
@@ -177,7 +188,13 @@ public class ProjectRegistry {
         }
     }
 
-    private static ProjectIssue buildRequiredIssue(
+    private ProjectIssue buildRequiredIssue(
+            ProjectScope.Project project, BuildSystem buildSystem) {
+        return readiness.get(project.root(), () ->
+                buildRequiredIssueUncached(project, buildSystem));
+    }
+
+    private static ProjectIssue buildRequiredIssueUncached(
             ProjectScope.Project project, BuildSystem buildSystem) {
         Path root = project.root().toAbsolutePath().normalize();
         if (!ProjectInitializer.findClassesDirs(root).isEmpty()) return null;
@@ -216,6 +233,7 @@ public class ProjectRegistry {
                     || entry.getValue().get() >= resolutionId) return false;
             WorktreeSnapshotCache.shared().invalidate(entry.getKey());
             schemaRepairLocks.remove(entry.getKey());
+            readiness.invalidate(entry.getKey());
             return true;
         });
     }
@@ -293,5 +311,9 @@ public class ProjectRegistry {
 
     int cachedDatabaseCount() {
         return databases.size();
+    }
+
+    int cachedReadinessCount() {
+        return readiness.size();
     }
 }

@@ -145,6 +145,8 @@ tool-schema context. Tool responses and the underlying index are identical acros
 - **search_classes** — find classes by wildcard pattern; supports `limit`/`offset`
 - **get_project_dependencies** — list resolved Maven/Gradle artifacts and consuming modules
   from Quill's cached runtime classpaths without invoking the build
+- **list_project_tree** / **search_files** — navigate the indexed project inventory with
+  module, source-set, lifecycle, and dirty-worktree context
 - **search_symbols** — search class, method, field, and constructor declarations by name or
   signature, with kind filtering and pagination
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with

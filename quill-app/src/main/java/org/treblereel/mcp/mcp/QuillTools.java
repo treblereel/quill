@@ -25,6 +25,7 @@ public final class QuillTools {
     private final ProjectRegistry registry;
     private final QuillToolQueries queries;
     private final ProjectDependencyQueries projectDependencies;
+    private final FileNavigationQueries fileNavigation;
 
     public QuillTools() {
         this(new ProjectRegistry());
@@ -34,6 +35,7 @@ public final class QuillTools {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.queries = new QuillToolQueries();
         this.projectDependencies = new ProjectDependencyQueries();
+        this.fileNavigation = new FileNavigationQueries();
     }
 
     @Tool(structured = true, description = "Find CDI/Spring beans, producers, interceptors, or decorators. Returns DI and source context.")
@@ -291,6 +293,37 @@ public final class QuillTools {
                 projectDependencies.getProjectDependencies(p.root(), module.orElse(null),
                         query.orElse(null), clamp(limit.orElse(100), 1, 200),
                         clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
+    @Tool(structured = true,
+            description = "List the indexed project tree with module, source-set, lifecycle, and worktree context.")
+    public String list_project_tree(
+            @ToolArg(description = "Repository-relative directory; default project root") Optional<String> path,
+            @ToolArg(description = "Tree depth; default 2, max 10") Optional<Integer> depth,
+            @ToolArg(description = "Include deleted or historical indexed paths; default false") Optional<Boolean> include_deleted,
+            @ToolArg(description = "Entries per page; default 100, max 500") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> fileNavigation.listProjectTree(
+                p.jdbi(), path.orElse("."), clamp(depth.orElse(2), 1, 10),
+                include_deleted.orElse(false), clamp(limit.orElse(100), 1, 500),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
+    @Tool(structured = true,
+            description = "Search indexed file paths with module, kind, lifecycle, and worktree context.")
+    public String search_files(
+            @ToolArg(description = "Path substring or * wildcard pattern") String pattern,
+            @ToolArg(description = "Exact module path; omit for all") Optional<String> module,
+            @ToolArg(description = "Exact indexed kind, e.g. java, kotlin, or resource") Optional<String> kind,
+            @ToolArg(description = "Include deleted or historical indexed paths; default false") Optional<Boolean> include_deleted,
+            @ToolArg(description = "Results per page; default 50, max 200") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> fileNavigation.searchFiles(
+                p.jdbi(), pattern, module.orElse(null), kind.orElse(null),
+                include_deleted.orElse(false), clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
     @Tool(structured = true, description = "Inspect package dependency coupling.")

@@ -31,6 +31,7 @@ public final class McpStdioServer {
 
     public static void start(ProjectRegistry registry, InputStream input, OutputStream output,
             McpToolProfile profile) {
+        registry.prepareRequestPath();
         registry.prewarm();
         start(new QuillTools(registry), QuillTools.class, input, output,
                 positiveEnvironmentDuration(

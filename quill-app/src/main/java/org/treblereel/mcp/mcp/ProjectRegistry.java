@@ -77,13 +77,23 @@ public class ProjectRegistry {
         prewarm(PREWARM_EXECUTOR);
     }
 
+    void prepareRequestPath() {
+        try {
+            resolve().projects().forEach(entry -> PositionSymbolQueries.prewarm(entry.jdbi()));
+        } catch (RuntimeException ignored) {
+            // A normal request reports the same project-specific failure in structured form.
+        }
+    }
+
     void prewarm(Executor executor) {
         List<RegisteredProject> snapshot = List.copyOf(projects);
         executor.execute(() -> {
             try {
                 Resolution resolution = resolve();
-                resolution.projects().forEach(entry ->
-                        ProjectDependencyQueries.prewarm(entry.jdbi(), entry.root()));
+                resolution.projects().forEach(entry -> {
+                    PositionSymbolQueries.prewarm(entry.jdbi());
+                    ProjectDependencyQueries.prewarm(entry.jdbi(), entry.root());
+                });
             } catch (RuntimeException ignored) {
                 // A normal request will report the same project-specific error.
             }

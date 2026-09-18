@@ -202,6 +202,10 @@ class IndexWriterReaderTest {
         assertEquals("example.Caller", inbound.getFirst().fromClass());
         assertEquals(List.of(12, 18), inbound.getFirst().evidenceLines());
         assertEquals(1, IndexReader.countMethodCalls(database, 1, "run", "outbound"));
+        assertEquals(1, IndexReader.findMethodCalls(database, 2, "execute",
+                "(Ljava/lang/String;)Z", "inbound", 10, 0).size());
+        assertEquals(0, IndexReader.countMethodCalls(
+                database, 2, "execute", "()Z", "inbound"));
         var inboundUsages = IndexReader.findMethodInboundUsages(database);
         assertEquals(1, inboundUsages.size());
         assertEquals("(Ljava/lang/String;)Z", inboundUsages.getFirst().descriptor());

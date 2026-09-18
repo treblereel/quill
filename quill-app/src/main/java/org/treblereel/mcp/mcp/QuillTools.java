@@ -173,6 +173,7 @@ public final class QuillTools {
     public String get_call_hierarchy(
             @ToolArg(description = "Current class or source path") String target,
             @ToolArg(description = "Optional method name; use <init> for constructors") Optional<String> method,
+            @ToolArg(description = "Exact indexed signature or JVM descriptor for overload selection") Optional<String> signature,
             @ToolArg(description = "inbound, outbound, or both; default both") Optional<String> direction,
             @ToolArg(description = "Traverse calls; default false") Optional<Boolean> transitive,
             @ToolArg(description = "Traversal depth; default 3") Optional<Integer> max_depth,
@@ -180,7 +181,8 @@ public final class QuillTools {
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getCallHierarchy(
-                p.jdbi(), target, method.orElse(null), direction.orElse("both"),
+                p.jdbi(), target, method.orElse(null), signature.orElse(null),
+                direction.orElse("both"),
                 transitive.orElse(false), clamp(max_depth.orElse(3), 1, 8),
                 clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));

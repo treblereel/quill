@@ -31,7 +31,7 @@ final class CallHierarchyQueries {
     private static final Set<String> DIRECTIONS = Set.of("inbound", "outbound", "both");
     private static final int TRAVERSAL_EDGE_CAP = 5_000;
 
-    String getCallHierarchy(Jdbi jdbi, String target, String method,
+    String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
             String direction, boolean transitive, int maxDepth, int limit, int offset) {
         String normalizedDirection = direction == null
                 ? "both" : direction.trim().toLowerCase(Locale.ROOT);
@@ -39,11 +39,16 @@ final class CallHierarchyQueries {
             return errorResponse("Invalid direction: expected inbound, outbound, or both");
         }
         String normalizedMethod = method == null || method.isBlank() ? null : method.trim();
+        String normalizedSignature = signature == null || signature.isBlank()
+                ? null : signature.trim();
+        if (normalizedMethod == null && normalizedSignature != null) {
+            return errorResponse("A method name is required when signature is provided");
+        }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
 
-        List<ClassMemberRecord> matchingMembers = normalizedMethod == null ? List.of()
+        List<ClassMemberRecord> candidates = normalizedMethod == null ? List.of()
                 : IndexReader.findClassMembers(jdbi, cls.id()).stream()
                         .filter(member -> member.kind().equals("METHOD")
                                 || member.kind().equals("CONSTRUCTOR"))
@@ -51,10 +56,38 @@ final class CallHierarchyQueries {
                                 || (normalizedMethod.equals("<init>")
                                         && member.kind().equals("CONSTRUCTOR")))
                         .toList();
+        List<ClassMemberRecord> matchingMembers = normalizedSignature == null
+                ? candidates
+                : candidates.stream().filter(member -> normalizedSignature.equals(member.signature())
+                        || normalizedSignature.equals(JvmDescriptors.methodDescriptor(member)))
+                        .toList();
+        ClassMemberRecord selected = null;
+        String descriptor = null;
+        String bytecodeMethod = normalizedMethod;
+        if (normalizedMethod != null) {
+            if (matchingMembers.size() != 1) {
+                return symbolSelectionError(jdbi, cls, normalizedMethod,
+                        normalizedSignature, matchingMembers.isEmpty() ? candidates : matchingMembers,
+                        matchingMembers.size() > 1
+                                || (normalizedSignature == null && candidates.size() > 1));
+            }
+            selected = matchingMembers.getFirst();
+            descriptor = JvmDescriptors.methodDescriptor(selected);
+            if (descriptor == null) {
+                ObjectNode error = JSON.createObjectNode();
+                error.put("error", "Method descriptor is unavailable; rebuild the Quill index");
+                appendCandidate(error.putArray("candidates"), selected);
+                appendMeta(error, jdbi, 0);
+                return error.toString();
+            }
+            if ("CONSTRUCTOR".equals(selected.kind())) bytecodeMethod = "<init>";
+        }
 
         TraversalResult result = transitive
-                ? traverse(jdbi, cls.id(), normalizedMethod, normalizedDirection, maxDepth)
-                : direct(jdbi, cls.id(), normalizedMethod, normalizedDirection, limit, offset);
+                ? traverse(jdbi, cls.id(), bytecodeMethod, descriptor,
+                        normalizedDirection, maxDepth)
+                : direct(jdbi, cls.id(), bytecodeMethod, descriptor,
+                        normalizedDirection, limit, offset);
         List<TraversalEdge> page = transitive
                 ? page(result.edges(), offset, limit) : result.edges();
 
@@ -62,6 +95,11 @@ final class CallHierarchyQueries {
         root.put("target", cls.className());
         if (normalizedMethod == null) root.putNull("method");
         else root.put("method", normalizedMethod);
+        if (selected != null) {
+            root.put("signature", selected.signature());
+            root.put("descriptor", descriptor);
+            root.put("member_kind", selected.kind().toLowerCase(Locale.ROOT));
+        }
         root.put("direction", normalizedDirection);
         root.put("direct_only", !transitive);
         root.put("transitive", transitive);
@@ -69,10 +107,8 @@ final class CallHierarchyQueries {
         root.put("traversal_edge_cap", TRAVERSAL_EDGE_CAP);
         root.put("traversal_truncated", result.truncated());
         if (normalizedMethod != null) {
-            root.put("declared_method_match_count", matchingMembers.size());
-            root.put("declared_method_found", !matchingMembers.isEmpty());
-            root.set("declared_signatures", JSON.valueToTree(
-                    matchingMembers.stream().map(ClassMemberRecord::signature).toList()));
+            root.put("declared_method_match_count", selected == null ? 0 : 1);
+            root.put("declared_method_found", selected != null);
         }
         ArrayNode limitations = root.putArray("limitations");
         limitations.add(transitive
@@ -111,23 +147,24 @@ final class CallHierarchyQueries {
     }
 
     private static TraversalResult direct(Jdbi jdbi, int classId, String method,
-            String direction, int limit, int offset) {
+            String descriptor, String direction, int limit, int offset) {
         List<TraversalEdge> edges = IndexReader.findMethodCalls(
-                jdbi, classId, method, direction, limit, offset).stream()
+                jdbi, classId, method, descriptor, direction, limit, offset).stream()
                 .map(call -> new TraversalEdge(call, 1, direction, List.of()))
                 .toList();
-        int total = IndexReader.countMethodCalls(jdbi, classId, method, direction);
+        int total = IndexReader.countMethodCalls(
+                jdbi, classId, method, descriptor, direction);
         return new TraversalResult(edges, total, false);
     }
 
     private static TraversalResult traverse(Jdbi jdbi, int classId, String method,
-            String direction, int maxDepth) {
+            String descriptor, String direction, int maxDepth) {
         List<String> directions = direction.equals("both")
                 ? List.of("inbound", "outbound") : List.of(direction);
         LinkedHashSet<MethodNode> roots = new LinkedHashSet<>();
         for (String traversalDirection : directions) {
             for (MethodCallView call : IndexReader.findAdjacentMethodCalls(
-                    jdbi, classId, method, null, traversalDirection)) {
+                    jdbi, classId, method, descriptor, traversalDirection)) {
                 roots.add(endpoint(call, traversalDirection));
             }
         }
@@ -219,6 +256,31 @@ final class CallHierarchyQueries {
         node.put("origin", origin);
         if (module == null) node.putNull("module");
         else node.put("module", module);
+    }
+
+    private static String symbolSelectionError(Jdbi jdbi, ClassRecord cls,
+            String method, String signature, List<ClassMemberRecord> candidates,
+            boolean ambiguous) {
+        ObjectNode error = JSON.createObjectNode();
+        error.put("error", ambiguous
+                ? "Ambiguous method; provide signature or JVM descriptor"
+                : "Method not found");
+        error.put("target", cls.className());
+        error.put("method", method);
+        if (signature != null) error.put("signature", signature);
+        ArrayNode values = error.putArray("candidates");
+        candidates.forEach(candidate -> appendCandidate(values, candidate));
+        appendMeta(error, jdbi, 0);
+        return error.toString();
+    }
+
+    private static void appendCandidate(ArrayNode target, ClassMemberRecord candidate) {
+        ObjectNode node = target.addObject();
+        node.put("kind", candidate.kind().toLowerCase(Locale.ROOT));
+        node.put("name", candidate.name());
+        node.put("signature", candidate.signature());
+        String descriptor = JvmDescriptors.methodDescriptor(candidate);
+        if (descriptor != null) node.put("descriptor", descriptor);
     }
 
     private record MethodNode(int classId, String className, String method, String descriptor) {

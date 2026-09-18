@@ -128,7 +128,8 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
 - **search_symbols** — search class, method, field, and constructor declarations by name or
   signature, with kind filtering and pagination
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with
-  JVM descriptors, invocation kinds, source-line evidence, traversal depth, and call paths
+  exact overload selection by signature/JVM descriptor, invocation kinds, source-line evidence,
+  traversal depth, and call paths
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected
   method or overload, with hierarchy paths and Java modifier checks
 - **find_unused_classes** — find conservative dead-code candidates while excluding indexed

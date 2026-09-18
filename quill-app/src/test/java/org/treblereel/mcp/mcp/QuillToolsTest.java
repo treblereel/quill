@@ -546,6 +546,52 @@ class QuillToolsTest {
     }
 
     @Test
+    void getCallHierarchyRequiresExactOverloadSelection() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'process', 'process(int):void', '(I)V', 'void',
+                            '["int"]', 'public', '[]'),
+                           (1, 'METHOD', 'process', 'process(java.lang.String):void',
+                            '(Ljava/lang/String;)V', 'void', '["java.lang.String"]',
+                            'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor,
+                       to_class_id, to_method, to_descriptor, invocation_kind,
+                       occurrence_count, evidence_lines)
+                    VALUES (3, 'first', '()V', 1, 'process', '(I)V',
+                            'virtual', 1, '[31]'),
+                           (3, 'second', '()V', 1, 'process',
+                            '(Ljava/lang/String;)V', 'virtual', 1, '[37]')""");
+        });
+
+        QuillToolQueries queries = new QuillToolQueries();
+        JsonNode ambiguous = JSON.readTree(queries.getCallHierarchy(
+                jdbi, "OrderService", "process", null,
+                "inbound", false, 1, 10, 0));
+        assertTrue(ambiguous.path("error").asText().startsWith("Ambiguous method"));
+        assertEquals(2, ambiguous.path("candidates").size());
+
+        JsonNode exact = JSON.readTree(queries.getCallHierarchy(
+                jdbi, "OrderService", "process", "(I)V",
+                "inbound", false, 1, 10, 0));
+        assertEquals("(I)V", exact.path("descriptor").asText());
+        assertEquals("process(int):void", exact.path("signature").asText());
+        assertEquals(1, exact.path("total").asInt());
+        assertEquals(List.of(31), exact.path("calls").get(0).path("evidence_lines")
+                .valueStream().map(JsonNode::asInt).toList());
+
+        JsonNode missing = JSON.readTree(queries.getCallHierarchy(
+                jdbi, "OrderService", "process", "(J)V",
+                "inbound", false, 1, 10, 0));
+        assertEquals("Method not found", missing.path("error").asText());
+        assertEquals(2, missing.path("candidates").size());
+    }
+
+    @Test
     void findSymbolUsagesResolvesOverloadsConstructorsAndFieldAccess() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

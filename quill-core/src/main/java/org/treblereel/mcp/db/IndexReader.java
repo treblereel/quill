@@ -597,7 +597,13 @@ public final class IndexReader {
 
     public static List<MethodCallView> findMethodCalls(Jdbi jdbi, int classId,
             String method, String direction, int limit, int offset) {
-        String predicate = methodCallPredicate(direction, method != null);
+        return findMethodCalls(jdbi, classId, method, null, direction, limit, offset);
+    }
+
+    public static List<MethodCallView> findMethodCalls(Jdbi jdbi, int classId,
+            String method, String descriptor, String direction, int limit, int offset) {
+        String predicate = methodCallPredicate(
+                direction, method != null, descriptor != null);
         String sql = """
                 SELECT mc.*, source.class_name AS from_class,
                        source.source_file AS from_source,
@@ -621,6 +627,7 @@ public final class IndexReader {
                     .bind("limit", limit)
                     .bind("offset", offset);
             if (method != null) query.bind("method", method);
+            if (descriptor != null) query.bind("descriptor", descriptor);
             return query.map((rs, ctx) -> new MethodCallView(
                     rs.getInt("from_class_id"), rs.getString("from_class"),
                     rs.getString("from_source"), rs.getInt("from_source_line"),
@@ -746,11 +753,17 @@ public final class IndexReader {
 
     public static int countMethodCalls(
             Jdbi jdbi, int classId, String method, String direction) {
+        return countMethodCalls(jdbi, classId, method, null, direction);
+    }
+
+    public static int countMethodCalls(Jdbi jdbi, int classId, String method,
+            String descriptor, String direction) {
         String sql = "SELECT count(*) FROM method_calls mc WHERE "
-                + methodCallPredicate(direction, method != null);
+                + methodCallPredicate(direction, method != null, descriptor != null);
         return jdbi.withHandle(handle -> {
             var query = handle.createQuery(sql).bind("classId", classId);
             if (method != null) query.bind("method", method);
+            if (descriptor != null) query.bind("descriptor", descriptor);
             return query.mapTo(Integer.class).one();
         });
     }
@@ -803,11 +816,14 @@ public final class IndexReader {
         });
     }
 
-    private static String methodCallPredicate(String direction, boolean filterMethod) {
+    private static String methodCallPredicate(
+            String direction, boolean filterMethod, boolean filterDescriptor) {
         String inbound = "mc.to_class_id = :classId"
-                + (filterMethod ? " AND mc.to_method = :method" : "");
+                + (filterMethod ? " AND mc.to_method = :method" : "")
+                + (filterDescriptor ? " AND mc.to_descriptor = :descriptor" : "");
         String outbound = "mc.from_class_id = :classId"
-                + (filterMethod ? " AND mc.from_method = :method" : "");
+                + (filterMethod ? " AND mc.from_method = :method" : "")
+                + (filterDescriptor ? " AND mc.from_descriptor = :descriptor" : "");
         return switch (direction) {
             case "inbound" -> inbound;
             case "outbound" -> outbound;

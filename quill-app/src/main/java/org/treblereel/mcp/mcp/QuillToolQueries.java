@@ -98,12 +98,18 @@ public final class QuillToolQueries {
     String getCallHierarchy(Jdbi jdbi, String target, String method,
             String direction, int limit, int offset) {
         return callHierarchy.getCallHierarchy(
-                jdbi, target, method, direction, false, 1, limit, offset);
+                jdbi, target, method, null, direction, false, 1, limit, offset);
     }
 
     String getCallHierarchy(Jdbi jdbi, String target, String method,
             String direction, boolean transitive, int maxDepth, int limit, int offset) {
-        return callHierarchy.getCallHierarchy(jdbi, target, method, direction,
+        return getCallHierarchy(jdbi, target, method, null, direction,
+                transitive, maxDepth, limit, offset);
+    }
+
+    String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
+            String direction, boolean transitive, int maxDepth, int limit, int offset) {
+        return callHierarchy.getCallHierarchy(jdbi, target, method, signature, direction,
                 transitive, maxDepth, limit, offset);
     }
 

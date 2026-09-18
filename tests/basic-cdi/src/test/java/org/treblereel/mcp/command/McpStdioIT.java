@@ -22,6 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
+import org.treblereel.mcp.workspace.WorkspaceRepositoryStateStore;
 
 @Tag("e2e")
 class McpStdioIT {
@@ -413,6 +414,28 @@ class McpStdioIT {
             process.getOutputStream().close();
             if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
         }
+    }
+
+    @Test
+    void nativeWorkspaceInitSerializesRepositoryState() throws Exception {
+        Path nativeImage = resolveNativeImage();
+        Assumptions.assumeTrue(Files.isExecutable(nativeImage));
+        Path workspace = Files.createDirectories(tempDir.resolve("native-workspace-init"));
+        createWorkspaceRepository(workspace, "engine", "EngineService");
+
+        Process process = new ProcessBuilder(nativeImage.toString(), "workspace", "init",
+                "--project", workspace.toString(), "--index-only")
+                .redirectErrorStream(true)
+                .start();
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        process.getInputStream().transferTo(output);
+
+        assertTrue(process.waitFor(30, TimeUnit.SECONDS));
+        assertEquals(0, process.exitValue(), output.toString());
+        Path state = WorkspaceRepositoryStateStore.path(workspace);
+        assertTrue(Files.isRegularFile(state));
+        assertEquals("engine", JSON.readTree(state.toFile())
+                .path("repositories").get(0).path("name").asText());
     }
 
     private void assertWorkspaceRepositoryCount(BufferedWriter input, BufferedReader output,

@@ -17,6 +17,11 @@
     "methods": [{"name": "values", "parameterTypes": []}]
   },
   {
+    "name": "org.treblereel.mcp.workspace.WorkspaceRepositoryStateStore$Repository",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
     "name": "[Lorg.jboss.jandex.ClassInfo;"
   },
   {

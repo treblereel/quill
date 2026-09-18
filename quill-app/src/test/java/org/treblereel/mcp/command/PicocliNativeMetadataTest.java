@@ -73,6 +73,20 @@ class PicocliNativeMetadataTest {
         }
     }
 
+    @Test
+    void workspaceStateRecordIsAvailableToJacksonInNativeImages() throws Exception {
+        String manualConfig =
+                "META-INF/native-image/org.treblereel.mcp/quill-app/reflect-config.json";
+        try (InputStream input = getClass().getClassLoader().getResourceAsStream(manualConfig)) {
+            assertNotNull(input);
+            JsonNode entries = JSON.readTree(input);
+            JsonNode state = findCommand(entries,
+                    "org.treblereel.mcp.workspace.WorkspaceRepositoryStateStore$Repository");
+            assertTrue(state.path("allDeclaredConstructors").asBoolean());
+            assertTrue(state.path("allPublicMethods").asBoolean());
+        }
+    }
+
     private static JsonNode findCommand(JsonNode commands, String name) {
         for (JsonNode command : commands) {
             if (name.equals(command.path("name").asText())) return command;

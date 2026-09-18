@@ -13,6 +13,19 @@ The paired benchmark measures fact accuracy, completed tasks, elapsed time, actu
 input/output tokens, model requests, tool calls, and manual verification steps. It does not use
 an estimated compression factor as agent savings.
 
+Before spending model tokens, run the deterministic Crysknife contract gate:
+
+```bash
+python3 scripts/quill_crysknife_quality.py \
+  --quill quill-app/target/quill \
+  --project /path/to/crysknife \
+  --reindex \
+  --output target/benchmarks/crysknife-quality-gate.json
+```
+
+It preserves the existing index and fails on the known constructor, service-descriptor,
+historical-path, dependency-directness, or external-member regressions.
+
 ## Automated paired run
 
 The runner starts a clean model context for every task and mode. Both modes receive the same

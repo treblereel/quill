@@ -1,6 +1,7 @@
 package org.treblereel.mcp.fixture.spring;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,6 +11,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 public class OrderController {
 
     private final UserService userService;
+
+    @Value("${orders.region:global}")
+    private String region;
 
     @Autowired
     public OrderController(UserService userService) {

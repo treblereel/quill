@@ -422,6 +422,21 @@ public final class QuillTools {
                 p -> queries.inspectServiceDescriptors(p.jdbi(), service.orElse(null)));
     }
 
+    @Tool(structured = true, description = "Find configuration definitions and annotated consumers without exposing values.")
+    public String find_configuration_references(
+            @ToolArg(description = "Exact key or * wildcard; omit for all") Optional<String> key,
+            @ToolArg(description = "Consumer class FQCN or short name") Optional<String> class_name,
+            @ToolArg(description = "Kind: all, property, prefix, or persistence") Optional<String> kind,
+            @ToolArg(description = "Exact module filter") Optional<String> module,
+            @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
+            @ToolArg(description = "Offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> queries.findConfigurationReferences(
+                p.jdbi(), key.orElse(null), class_name.orElse(null), kind.orElse("all"),
+                module.orElse(null), clamp(limit.orElse(50), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
     @Tool(structured = true, description = "Summarize frameworks, beans/classes, architecture hubs, DI problems, libraries, Git activity, and freshness.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings (default: false)") Optional<Boolean> details,
@@ -655,6 +670,12 @@ public final class QuillTools {
 
     String inspectServiceDescriptors(Jdbi jdbi, String service) {
         return queries.inspectServiceDescriptors(jdbi, service);
+    }
+
+    String findConfigurationReferences(Jdbi jdbi, String key, String className,
+            String kind, String module, int limit, int offset) {
+        return queries.findConfigurationReferences(
+                jdbi, key, className, kind, module, limit, offset);
     }
 
     String getCoChanges(Jdbi jdbi, String target, int limit) {

@@ -32,6 +32,7 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.BytecodeDependencyScanner;
 import org.treblereel.mcp.core.ClassFileSnapshot;
 import org.treblereel.mcp.core.ClassOccurrenceScanner;
+import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.core.FileInventory;
 import org.treblereel.mcp.core.GitAnalyzer;
@@ -506,6 +507,8 @@ public class ProjectInitializer {
         FileInventory.Result inventory = FileInventory.build(root, moduleDirectories, sourceRoots,
                 classes, gitResult.fileStats(), initialWorktree);
         classes = inventory.classes();
+        ConfigurationScanner.Result configuration = ConfigurationScanner.scan(
+                root, moduleDirectories, scanResult.index(), classNameToSqliteId, classes);
         List<InjectionPointRecord> contextualInjectionPoints = ApplicationContextResolver.refine(
                 persisted.injectionPoints(), remappedBeans, classes, classOccurrences,
                 moduleClasspath);
@@ -570,6 +573,10 @@ public class ProjectInitializer {
         metadata.put("method_calls", Integer.toString(methodCalls.size()));
         metadata.put("field_accesses", Integer.toString(fieldAccesses.size()));
         metadata.put("framework_endpoints", Integer.toString(frameworkEndpoints.size()));
+        metadata.put("configuration_definitions",
+                Integer.toString(configuration.definitions().size()));
+        metadata.put("configuration_usages", Integer.toString(configuration.usages().size()));
+        metadata.put("configuration_references_detail", configurationJson(configuration));
         metadata.put("framework_endpoints_detail", frameworkEndpointsJson(frameworkEndpoints));
         metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
         metadata.put("framework", isSpring && isCdi ? "Mixed"
@@ -728,6 +735,37 @@ public class ProjectInitializer {
             return row;
         }).toList();
         return toJson(rows);
+    }
+
+    static String configurationJson(ConfigurationScanner.Result configuration) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("definitions", configuration.definitions().stream().map(definition -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("key", definition.key());
+            row.put("kind", definition.kind());
+            row.put("file", definition.file());
+            row.put("line", definition.line());
+            row.put("module", definition.module());
+            row.put("sourceSet", definition.sourceSet());
+            return row;
+        }).toList());
+        result.put("usages", configuration.usages().stream().map(usage -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("key", usage.key());
+            row.put("kind", usage.kind());
+            row.put("classId", usage.classId());
+            row.put("className", usage.className());
+            if (usage.member() != null) row.put("member", usage.member());
+            if (usage.parameterIndex() != null) {
+                row.put("parameterIndex", usage.parameterIndex());
+            }
+            row.put("annotation", usage.annotation());
+            if (usage.source() != null) row.put("source", usage.source());
+            if (usage.module() != null) row.put("module", usage.module());
+            if (usage.sourceSet() != null) row.put("sourceSet", usage.sourceSet());
+            return row;
+        }).toList());
+        return toJson(result);
     }
 
     static CodexConfigInstaller.Result ensureCodexConfig(Path root, boolean indexOnly) {

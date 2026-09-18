@@ -161,6 +161,9 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
   by short annotation name or FQCN, preserving parameter position, name, and type
 - **find_framework_endpoints** — find Spring MVC and JAX-RS routes with HTTP methods, constant
   class/method paths, module/source context, and bounded direct project-call evidence
+- **find_configuration_references** — find `.properties`, YAML, and persistence-unit definitions
+  together with annotation-based Spring, MicroProfile, SmallRye, and JPA consumers; configuration
+  values are deliberately not indexed
 - **find_implementations** — find direct/transitive subclasses and implementors, including
   generated occurrences grouped by module and evidence about reactor-discovery completeness
 - **find_usages** — find bytecode calls, constructor calls, field access, type references,

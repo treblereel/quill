@@ -55,6 +55,10 @@ final class ProjectOverviewQueries {
                 Integer.parseInt(meta.getOrDefault("service_descriptors", "0")));
         project.put("service_registrations",
                 Integer.parseInt(meta.getOrDefault("service_registrations", "0")));
+        project.put("configuration_definitions",
+                Integer.parseInt(meta.getOrDefault("configuration_definitions", "0")));
+        project.put("configuration_usages",
+                Integer.parseInt(meta.getOrDefault("configuration_usages", "0")));
 
         ObjectNode scopeNode = root.putObject("beans_by_scope");
         IndexReader.countBeansByScope(jdbi).forEach(scopeNode::put);

@@ -1685,6 +1685,8 @@ class QuillToolsTest {
         assertEquals(3, project.get("beans").asInt());
         assertEquals("degraded", project.get("dependency_index").asText());
         assertEquals("1/2 modules resolved", project.get("dependency_index_detail").asText());
+        assertEquals(0, project.get("configuration_definitions").asInt());
+        assertEquals(0, project.get("configuration_usages").asInt());
 
         JsonNode byScope = root.get("beans_by_scope");
         assertNotNull(byScope);
@@ -2143,6 +2145,51 @@ class QuillToolsTest {
                 .path("parameter").path("index").asInt());
         assertEquals("id", parameters.path("symbols").get(0)
                 .path("parameter").path("name").asText());
+    }
+
+    @Test
+    void findConfigurationReferencesLinksDefinitionsWithoutExposingValues() throws Exception {
+        jdbi.useHandle(handle -> handle.createUpdate("""
+                        INSERT INTO metadata(key, value)
+                        VALUES ('configuration_references_detail', :value)
+                        ON CONFLICT(key) DO UPDATE SET value = excluded.value""")
+                .bind("value", """
+                        {"definitions":[
+                          {"key":"orders.region","kind":"property",
+                           "file":"src/main/resources/application.properties","line":1,
+                           "module":".","sourceSet":"main"},
+                          {"key":"orders.timeout","kind":"yaml_property",
+                           "file":"src/main/resources/application.yml","line":2,
+                           "module":".","sourceSet":"main"}],
+                         "usages":[
+                          {"key":"orders.region","kind":"config_key","classId":1,
+                           "className":"org.acme.OrderService","member":"region",
+                           "annotation":"org.springframework.beans.factory.annotation.Value",
+                           "source":"src/main/java/org/acme/OrderService.java",
+                           "module":".","sourceSet":"main"},
+                          {"key":"orders","kind":"config_prefix","classId":1,
+                           "className":"org.acme.OrderService",
+                           "annotation":"org.springframework.boot.context.properties.ConfigurationProperties",
+                           "source":"src/main/java/org/acme/OrderService.java",
+                           "module":".","sourceSet":"main"}]}
+                        """).execute());
+
+        JsonNode result = JSON.readTree(new QuillToolQueries().findConfigurationReferences(
+                jdbi, "orders*", "OrderService", "all", null, 20, 0));
+
+        assertEquals(4, result.path("total").asInt());
+        assertEquals(2, result.path("definition_count").asInt());
+        assertEquals(2, result.path("usage_count").asInt());
+        assertFalse(result.path("values_indexed").asBoolean());
+        JsonNode directUsage = result.path("references").valueStream()
+                .filter(value -> value.path("entry_type").asText().equals("usage"))
+                .filter(value -> value.path("key").asText().equals("orders.region"))
+                .findFirst().orElseThrow();
+        assertTrue(directUsage.path("resolved").asBoolean());
+        assertEquals(1, directUsage.path("definition_count").asInt());
+        assertEquals("src/main/resources/application.properties",
+                directUsage.path("definition_files").get(0).asText());
+        assertFalse(result.toString().contains("us-west"));
     }
 
     @Test

@@ -5,16 +5,20 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.jboss.jandex.Index;
 import org.jboss.jandex.IndexView;
 import org.jboss.jandex.Indexer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.fixture.spring.*;
 import org.treblereel.mcp.model.*;
 
 class SpringResolverTest {
 
+    @TempDir Path tempDir;
     Index index;
 
     @BeforeEach
@@ -85,6 +89,42 @@ class SpringResolverTest {
         assertEquals(List.of("/{userId}"), endpoint.methodPaths());
         assertEquals("handleOrder", endpoint.methodName());
         assertFalse(endpoint.descriptor().isBlank());
+    }
+
+    @Test
+    void indexesConfigurationDefinitionsAndAnnotatedConsumers() throws Exception {
+        Path resources = tempDir.resolve("src/main/resources");
+        Files.createDirectories(resources.resolve("META-INF"));
+        Files.writeString(resources.resolve("application.properties"),
+                "orders.region=us-west\norders.currency USD\n");
+        Files.writeString(resources.resolve("application.yml"),
+                "orders:\n  timeout: 30s\n");
+        Files.writeString(resources.resolve("META-INF/persistence.xml"),
+                "<persistence><persistence-unit name=\"orders\"/></persistence>\n");
+        var classes = List.of(new ClassRecord(0, OrderController.class.getName(), "CLASS",
+                "java.lang.Object", List.of(),
+                "src/main/java/org/treblereel/mcp/fixture/spring/OrderController.java",
+                1, true, 10, null, "source", "current", ".", "main"));
+
+        var result = ConfigurationScanner.scan(tempDir, List.of(tempDir), index,
+                Map.of(OrderController.class.getName(), 1), classes);
+
+        assertTrue(result.definitions().stream()
+                .anyMatch(value -> value.key().equals("orders.region")
+                        && value.kind().equals("property") && value.line() == 1));
+        assertTrue(result.definitions().stream()
+                .anyMatch(value -> value.key().equals("orders.currency")
+                        && value.kind().equals("property") && value.line() == 2));
+        assertTrue(result.definitions().stream()
+                .anyMatch(value -> value.key().equals("orders.timeout")
+                        && value.kind().equals("yaml_property")));
+        assertTrue(result.definitions().stream()
+                .anyMatch(value -> value.key().equals("orders")
+                        && value.kind().equals("persistence_unit")));
+        assertTrue(result.usages().stream()
+                .anyMatch(value -> value.key().equals("orders.region")
+                        && value.member().equals("region")
+                        && value.kind().equals("config_key")));
     }
 
     @Test

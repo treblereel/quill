@@ -56,6 +56,14 @@ final class McpToolCatalog {
     static List<AsyncToolSpecification> create(
             Object tools, Class<?> toolType, Scheduler toolScheduler,
             Scheduler responseScheduler, Duration requestTimeout, McpToolProfile profile) {
+        if (profile.router()) {
+            if (!(tools instanceof QuillTools quillTools) || toolType != QuillTools.class) {
+                throw new IllegalArgumentException("Router profile requires QuillTools");
+            }
+            RouterTools router = new RouterTools(quillTools);
+            return create(router, RouterTools.class, toolScheduler, responseScheduler,
+                    requestTimeout, McpToolProfile.full());
+        }
         return java.util.Arrays.stream(toolType.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(Tool.class))
                 .filter(method -> profile.includes(method.getName()))
@@ -96,7 +104,7 @@ final class McpToolCatalog {
                 .build();
     }
 
-    private static Map<String, Object> inputSchema(Method method) {
+    static Map<String, Object> inputSchema(Method method) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
         for (Parameter parameter : method.getParameters()) {
@@ -104,6 +112,8 @@ final class McpToolCatalog {
             property.put("type", jsonType(parameter.getParameterizedType()));
             if ("array".equals(property.get("type"))) {
                 property.put("items", Map.of("type", "string"));
+            } else if ("object".equals(property.get("type"))) {
+                property.put("additionalProperties", true);
             }
             ToolArg arg = parameter.getAnnotation(ToolArg.class);
             if (arg != null && !SELF_DESCRIBING_ARGUMENTS.contains(parameter.getName())) {
@@ -124,6 +134,16 @@ final class McpToolCatalog {
     private static McpSchema.CallToolResult invoke(
             Object tools, Method method, Map<String, Object> arguments) {
         boolean structured = method.getAnnotation(Tool.class).structured();
+        try {
+            Invocation invocation = invokeMethod(tools, method, arguments);
+            return result(invocation.text(), invocation.error(), structured);
+        } catch (RuntimeException e) {
+            return result("Tool failed: " + ProjectRegistry.safeMessage(e), true, structured);
+        }
+    }
+
+    static Invocation invokeMethod(
+            Object tools, Method method, Map<String, Object> arguments) {
         Map<String, Object> args = arguments == null ? Map.of() : arguments;
         try {
             Object[] values = new Object[method.getParameterCount()];
@@ -133,7 +153,7 @@ final class McpToolCatalog {
             Optional<String> unknown = args.keySet().stream()
                     .filter(name -> !acceptedArguments.contains(name)).findFirst();
             if (unknown.isPresent()) {
-                return result("Unknown argument: " + unknown.get(), true, structured);
+                return new Invocation("Unknown argument: " + unknown.get(), true);
             }
             for (int i = 0; i < parameters.length; i++) {
                 Parameter parameter = parameters[i];
@@ -143,21 +163,24 @@ final class McpToolCatalog {
                             value, optionalArgument(parameter.getParameterizedType())));
                 } else {
                     if (value == null) {
-                        return result("Missing required argument: " + parameter.getName(), true,
-                                structured);
+                        return new Invocation(
+                                "Missing required argument: " + parameter.getName(), true);
                     }
                     values[i] = convert(value, parameter.getType());
                 }
             }
             String text = (String) method.invoke(tools, values);
-            return result(text, isToolError(text), structured);
+            return new Invocation(text, isToolError(text));
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
-            return result("Tool failed: " + ProjectRegistry.safeMessage(cause), true, structured);
+            return new Invocation(
+                    "Tool failed: " + ProjectRegistry.safeMessage(cause), true);
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
-            return result("Tool failed: " + ProjectRegistry.safeMessage(e), true, structured);
+            return new Invocation("Tool failed: " + ProjectRegistry.safeMessage(e), true);
         }
     }
+
+    record Invocation(String text, boolean error) {}
 
     private static McpSchema.CallToolResult result(
             String text, boolean error, boolean structured) {
@@ -210,6 +233,13 @@ final class McpToolCatalog {
                     && list.stream().allMatch(String.class::isInstance)) return List.copyOf(list);
             throw new IllegalArgumentException("Expected string array");
         }
+        if (targetType == Map.class) {
+            if (value instanceof Map<?, ?> map
+                    && map.keySet().stream().allMatch(String.class::isInstance)) {
+                return Map.copyOf(map);
+            }
+            throw new IllegalArgumentException("Expected object");
+        }
         return value;
     }
 
@@ -224,12 +254,15 @@ final class McpToolCatalog {
     }
 
     private static String jsonType(Type type) {
-        if (type instanceof ParameterizedType parameterized
-                && parameterized.getRawType() == List.class) return "array";
+        if (type instanceof ParameterizedType parameterized) {
+            if (parameterized.getRawType() == List.class) return "array";
+            if (parameterized.getRawType() == Map.class) return "object";
+        }
         Class<?> raw = type instanceof ParameterizedType parameterized
                 ? optionalArgument(parameterized) : (Class<?>) type;
         if (raw == Integer.class || raw == int.class) return "integer";
         if (raw == Boolean.class || raw == boolean.class) return "boolean";
+        if (raw == Map.class) return "object";
         return "string";
     }
 

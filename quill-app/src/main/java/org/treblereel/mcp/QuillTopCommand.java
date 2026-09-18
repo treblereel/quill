@@ -31,7 +31,7 @@ public class QuillTopCommand implements Callable<Integer> {
     @Option(names = "--project", description = "Project path(s) to serve via MCP (repeatable)")
     List<Path> projects;
 
-    @Option(names = "--tools", description = "MCP tool profiles: full, core, code, di, git; "
+    @Option(names = "--tools", description = "MCP tool profiles: full, router, core, code, di, git; "
             + "comma-separated unions are allowed (default: full)")
     String toolProfiles = "full";
 

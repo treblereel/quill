@@ -31,28 +31,40 @@ public final class McpToolProfile {
             "get_overview", "resolve_entities", "find_git_hotspots", "get_file_history",
             "find_co_changed_files", "get_recent_changes", "assess_change_risk",
             "compare_index", "get_build_status");
-    private static final Set<String> NAMES = Set.of("full", "core", "code", "di", "git");
+    private static final Set<String> NAMES = Set.of("full", "router", "core", "code", "di", "git");
 
     private final boolean full;
+    private final boolean router;
     private final Set<String> tools;
 
-    private McpToolProfile(boolean full, Set<String> tools) {
+    private McpToolProfile(boolean full, boolean router, Set<String> tools) {
         this.full = full;
+        this.router = router;
         this.tools = Set.copyOf(tools);
     }
 
     public static McpToolProfile full() {
-        return new McpToolProfile(true, Set.of());
+        return new McpToolProfile(true, false, Set.of());
     }
 
     public static McpToolProfile parse(String value) {
         if (value == null || value.isBlank()) return full();
+        Set<String> names = Arrays.stream(value.split(","))
+                .map(String::strip)
+                .map(name -> name.toLowerCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (names.contains("router")) {
+            if (names.size() != 1) {
+                throw new IllegalArgumentException(
+                        "MCP tool profile 'router' cannot be combined with other profiles");
+            }
+            return new McpToolProfile(false, true, Set.of());
+        }
         Set<String> selected = new LinkedHashSet<>();
-        for (String part : value.split(",")) {
-            String name = part.strip().toLowerCase(Locale.ROOT);
+        for (String name : names) {
             if (!NAMES.contains(name)) {
                 throw new IllegalArgumentException("Unknown MCP tool profile '" + name
-                        + "'; expected full, core, code, di, git, or a comma-separated union");
+                        + "'; expected full, router, core, code, di, git, or a comma-separated union");
             }
             if (name.equals("full")) return full();
             selected.addAll(switch (name) {
@@ -63,11 +75,15 @@ public final class McpToolProfile {
                 default -> throw new IllegalStateException(name);
             });
         }
-        return new McpToolProfile(false, selected);
+        return new McpToolProfile(false, false, selected);
     }
 
     boolean includes(String toolName) {
         return full || tools.contains(toolName);
+    }
+
+    boolean router() {
+        return router;
     }
 
     Set<String> tools() {

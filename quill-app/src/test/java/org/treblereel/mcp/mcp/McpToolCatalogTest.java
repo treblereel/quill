@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -238,6 +239,62 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void routerProfileExposesThreeToolsAndDiscoversHiddenSchemas() {
+        QuillTools quill = new QuillTools(new ProjectRegistry());
+        var router = McpToolCatalog.create(
+                quill, workers, responses, Duration.ofSeconds(1),
+                McpToolProfile.parse("router"));
+
+        assertEquals(Set.of("get_overview", "search_tools", "execute_tool"),
+                router.stream().map(tool -> tool.tool().name())
+                        .collect(java.util.stream.Collectors.toSet()));
+        AsyncToolSpecification search = router.stream()
+                .filter(tool -> tool.tool().name().equals("search_tools"))
+                .findFirst().orElseThrow();
+        McpSchema.CallToolResult result = search.callHandler()
+                .apply(null, new McpSchema.CallToolRequest(
+                        "search_tools", Map.of("query", "implementations"), Map.of()))
+                .block(Duration.ofSeconds(2));
+        JsonNode structured = (JsonNode) result.structuredContent();
+        assertEquals("find_implementations",
+                structured.path("tools").get(0).path("name").asText());
+        assertEquals("object",
+                structured.path("tools").get(0).path("input_schema").path("type").asText());
+    }
+
+    @Test
+    void routerValidatesDynamicToolArgumentsAndKeepsCatalogSmall() {
+        QuillTools quill = new QuillTools(new ProjectRegistry());
+        var full = McpToolCatalog.create(
+                quill, workers, responses, Duration.ofSeconds(1));
+        var router = McpToolCatalog.create(
+                quill, workers, responses, Duration.ofSeconds(1),
+                McpToolProfile.parse("router"));
+        int fullCharacters = catalogCharacters(full);
+        int routerCharacters = catalogCharacters(router);
+        assertTrue(routerCharacters < fullCharacters / 5,
+                () -> "router=" + routerCharacters + ", full=" + fullCharacters);
+
+        AsyncToolSpecification execute = router.stream()
+                .filter(tool -> tool.tool().name().equals("execute_tool"))
+                .findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) execute.tool()
+                .inputSchema().get("properties");
+        assertEquals("object", ((Map<?, ?>) properties.get("arguments")).get("type"));
+
+        McpSchema.CallToolResult result = execute.callHandler()
+                .apply(null, new McpSchema.CallToolRequest("execute_tool", Map.of(
+                        "name", "search_classes", "arguments", Map.of()), Map.of()))
+                .block(Duration.ofSeconds(2));
+        assertTrue(Boolean.TRUE.equals(result.isError()));
+        assertEquals("Missing required argument: pattern",
+                ((JsonNode) result.structuredContent()).path("error").asText());
+        assertThrows(IllegalArgumentException.class,
+                () -> McpToolProfile.parse("router,git"));
+    }
+
+    @Test
     void omitsRepeatedDescriptionsForSelfDescribingArguments() {
         AsyncToolSpecification configuration = McpToolCatalog.create(
                         new QuillTools(new ProjectRegistry()), workers, responses,
@@ -356,6 +413,13 @@ class McpToolCatalogTest {
 
     private static String text(McpSchema.CallToolResult result) {
         return ((McpSchema.TextContent) result.content().getFirst()).text();
+    }
+
+    private static int catalogCharacters(java.util.List<AsyncToolSpecification> tools) {
+        return tools.stream()
+                .mapToInt(specification -> specification.tool().description().length()
+                        + specification.tool().inputSchema().toString().length())
+                .sum();
     }
 
     static final class BlockingTools {

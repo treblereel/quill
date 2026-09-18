@@ -128,16 +128,19 @@ Every tool result includes native MCP `structuredContent` and an advertised obje
 `outputSchema`. Quill does not duplicate the JSON payload as text content.
 
 The default `--tools full` profile exposes the complete catalog. To reduce the initial
-`tools/list` context for smaller local models, select `core`, `code`, `di`, or `git`:
+`tools/list` context for smaller local models, select `router`, `core`, `code`, `di`, or `git`:
 
 ```bash
 quill --mcp --project /path/to/project --tools core
 quill --mcp --project /path/to/project --tools core,git
+quill --mcp --project /path/to/project --tools router
 ```
 
 Comma-separated profiles form a union. `core` contains the general navigation, dependency,
 impact, risk, and build-status tools; the specialized profiles add their respective analysis
-surface. Tool responses and the underlying index are identical across profiles.
+surface. `router` is standalone and exposes only `get_overview`, `search_tools`, and
+`execute_tool`; it discovers the full catalog on demand and substantially reduces the initial
+tool-schema context. Tool responses and the underlying index are identical across profiles.
 
 - **search_classes** — find classes by wildcard pattern; supports `limit`/`offset`
 - **search_symbols** — search class, method, field, and constructor declarations by name or

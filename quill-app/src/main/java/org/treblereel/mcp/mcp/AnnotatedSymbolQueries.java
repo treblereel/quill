@@ -19,13 +19,14 @@ final class AnnotatedSymbolQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> KINDS =
-            Set.of("ALL", "TYPE", "METHOD", "FIELD", "CONSTRUCTOR");
+            Set.of("ALL", "TYPE", "METHOD", "FIELD", "CONSTRUCTOR", "PARAMETER");
 
     String findAnnotatedSymbols(Jdbi jdbi, String annotation, String kind,
             boolean includeMetaAnnotations, int limit, int offset) {
         String normalizedKind = kind == null ? "ALL" : kind.strip().toUpperCase(Locale.ROOT);
         if (!KINDS.contains(normalizedKind)) {
-            return errorResponse("Invalid kind: expected all, type, method, field, or constructor");
+            return errorResponse(
+                    "Invalid kind: expected all, type, method, field, constructor, or parameter");
         }
         String requested = annotation.startsWith("@") ? annotation.substring(1) : annotation;
         List<String> names = IndexReader.findSymbolAnnotationNames(jdbi, requested);
@@ -55,7 +56,7 @@ final class AnnotatedSymbolQueries {
         for (AnnotatedSymbolResult symbol : symbols) {
             ObjectNode node = values.addObject();
             node.put("kind", typeKind(symbol.symbolKind()) ? "TYPE" : symbol.symbolKind());
-            node.put("declared_kind", symbol.symbolKind());
+            node.put("declared_kind", symbol.declarationKind());
             node.put("class", symbol.className());
             node.put("name", symbol.symbolName());
             if (symbol.signature() != null) node.put("signature", symbol.signature());
@@ -68,6 +69,17 @@ final class AnnotatedSymbolQueries {
                 node.put("modifiers", symbol.modifiers());
             }
             node.put("match", symbol.match());
+            node.put("annotation_target", symbol.annotationTarget());
+            if (symbol.parameterIndex() != null) {
+                ObjectNode parameter = node.putObject("parameter");
+                parameter.put("index", symbol.parameterIndex());
+                if (symbol.parameterName() != null) {
+                    parameter.put("name", symbol.parameterName());
+                }
+                if (symbol.parameterType() != null) {
+                    parameter.put("type", symbol.parameterType());
+                }
+            }
             if (symbol.viaAnnotation() != null) {
                 node.put("via_annotation", symbol.viaAnnotation());
             }
@@ -83,7 +95,6 @@ final class AnnotatedSymbolQueries {
         }
         root.putArray("limitations")
                 .add("Meta-annotation expansion is indexed for type declarations only")
-                .add("Method parameter annotations are reported on their owning method because parameter positions are not stored")
                 .add("Only annotations preserved in compiled bytecode can be discovered");
         appendPage(root, symbols.size(), total, limit, offset);
         appendMeta(root, jdbi, naiveTokens);
@@ -91,7 +102,9 @@ final class AnnotatedSymbolQueries {
     }
 
     private static boolean typeKind(String kind) {
-        return !"METHOD".equals(kind) && !"FIELD".equals(kind)
-                && !"CONSTRUCTOR".equals(kind);
+        return switch (kind) {
+            case "CLASS", "INTERFACE", "ENUM", "ANNOTATION", "RECORD" -> true;
+            default -> false;
+        };
     }
 }

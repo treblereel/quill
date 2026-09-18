@@ -97,6 +97,17 @@ final class SymbolToolQueries {
             node.set("parameters", JSON.valueToTree(member.parameterTypes()));
             node.put("modifiers", member.modifiers());
             node.set("annotations", JSON.valueToTree(member.annotations()));
+            ArrayNode details = node.putArray("annotation_details");
+            member.annotationDetails().forEach(annotation -> {
+                ObjectNode detail = details.addObject();
+                detail.put("annotation", annotation.annotationName());
+                detail.put("target", annotation.targetKind());
+                if (annotation.parameterIndex() != null) {
+                    detail.put("parameter_index", annotation.parameterIndex());
+                    detail.put("parameter_name", annotation.parameterName());
+                    detail.put("parameter_type", annotation.parameterType());
+                }
+            });
         }
         appendPage(root, page.size(), members.size(), memberLimit, memberOffset);
         appendMeta(root, jdbi, cls.sourceTokens());

@@ -448,7 +448,7 @@ public final class QuillTools {
     @Tool(structured = true, description = "Find annotated type, method, field, and constructor declarations.")
     public String find_annotated_symbols(
             @ToolArg(description = "Annotation short name or FQCN, with optional @ prefix") String annotation,
-            @ToolArg(description = "Symbol kind: all, type, method, field, or constructor (default: all)") Optional<String> kind,
+            @ToolArg(description = "Kind: all, type, method, field, constructor, or parameter") Optional<String> kind,
             @ToolArg(description = "Include type meta-annotation matches (default: true)") Optional<Boolean> include_meta_annotations,
             @ToolArg(description = "Max results (default: 50, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,

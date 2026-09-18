@@ -157,7 +157,7 @@ class JandexScannerTest {
     }
 
     @Test
-    void retainsMethodParameterAnnotationsForFrameworkEntryPointDiscovery() throws Exception {
+    void retainsExactMethodParameterAnnotationLocation() throws Exception {
         Indexer indexer = new Indexer();
         indexer.indexClass(ObserverParam.class);
         indexer.indexClass(ObserverFixture.class);
@@ -170,6 +170,14 @@ class JandexScannerTest {
                 .findFirst().orElseThrow();
 
         assertTrue(observe.annotations().contains(ObserverParam.class.getName()));
+        var annotation = observe.annotationDetails().stream()
+                .filter(value -> value.annotationName().equals(ObserverParam.class.getName()))
+                .findFirst().orElseThrow();
+        assertEquals("METHOD_PARAMETER", annotation.targetKind());
+        assertEquals(0, annotation.parameterIndex());
+        assertEquals("java.lang.String", annotation.parameterType());
+        assertTrue(annotation.parameterName().equals("event")
+                || annotation.parameterName().equals("arg0"));
     }
 
     @Test

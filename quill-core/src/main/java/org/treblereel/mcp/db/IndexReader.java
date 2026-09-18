@@ -46,6 +46,7 @@ public final class IndexReader {
             int classId,
             String className,
             String symbolKind,
+            String declarationKind,
             String symbolName,
             String signature,
             String descriptor,
@@ -54,6 +55,10 @@ public final class IndexReader {
             String modifiers,
             String match,
             String viaAnnotation,
+            String annotationTarget,
+            Integer parameterIndex,
+            String parameterName,
+            String parameterType,
             String sourceFile,
             int sourceLine,
             String origin,
@@ -274,6 +279,13 @@ public final class IndexReader {
                             JOIN classes c ON c.id = m.class_id
                             JOIN json_each(m.annotations) annotation
                             WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                              AND json_array_length(m.annotation_details) = 0
+                            UNION
+                            SELECT json_extract(detail.value, '$.annotationName')
+                            FROM class_members m
+                            JOIN classes c ON c.id = m.class_id
+                            JOIN json_each(m.annotation_details) detail
+                            WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
                         )
                         SELECT DISTINCT name FROM annotation_names
                         WHERE name = :name OR name LIKE :suffix
@@ -303,12 +315,16 @@ public final class IndexReader {
                 .bind("offset", offset)
                 .map((rs, ctx) -> new AnnotatedSymbolResult(
                         rs.getInt("class_id"), rs.getString("class_name"),
-                        rs.getString("symbol_kind"), rs.getString("symbol_name"),
+                        rs.getString("symbol_kind"), rs.getString("declaration_kind"),
+                        rs.getString("symbol_name"),
                         rs.getString("signature"), rs.getString("descriptor"),
                         rs.getString("type_name"),
                         fromJson(rs.getString("parameter_types")),
                         rs.getString("modifiers"), rs.getString("match"),
-                        rs.getString("via_annotation"), rs.getString("source_file"),
+                        rs.getString("via_annotation"), rs.getString("annotation_target"),
+                        nullableInteger(rs, "parameter_index"),
+                        rs.getString("parameter_name"), rs.getString("parameter_type"),
+                        rs.getString("source_file"),
                         rs.getInt("source_line"), rs.getString("origin"),
                         rs.getString("module"), rs.getString("source_set"),
                         rs.getInt("source_tokens")))
@@ -327,14 +343,36 @@ public final class IndexReader {
 
     private static String annotatedSymbolsCte() {
         return """
-                WITH symbols AS (
+                WITH member_annotation_matches AS (
+                    SELECT m.class_id, m.kind AS declaration_kind, m.name, m.signature,
+                           m.descriptor, m.type_name, m.parameter_types, m.modifiers,
+                           json_extract(detail.value, '$.annotationName') AS annotation_name,
+                           json_extract(detail.value, '$.targetKind') AS annotation_target,
+                           CASE WHEN json_extract(detail.value, '$.parameterIndex') >= 0
+                                THEN json_extract(detail.value, '$.parameterIndex') END
+                                AS parameter_index,
+                           NULLIF(json_extract(detail.value, '$.parameterName'), '')
+                                AS parameter_name,
+                           NULLIF(json_extract(detail.value, '$.parameterType'), '')
+                                AS parameter_type
+                    FROM class_members m JOIN json_each(m.annotation_details) detail
+                    UNION ALL
+                    SELECT m.class_id, m.kind, m.name, m.signature, m.descriptor,
+                           m.type_name, m.parameter_types, m.modifiers,
+                           CAST(annotation.value AS TEXT), m.kind, NULL, NULL, NULL
+                    FROM class_members m JOIN json_each(m.annotations) annotation
+                    WHERE json_array_length(m.annotation_details) = 0
+                ), symbols AS (
                     SELECT c.id AS class_id, c.class_name, c.kind AS symbol_kind,
-                           c.class_name AS symbol_name, NULL AS signature,
+                           c.kind AS declaration_kind, c.class_name AS symbol_name,
+                           NULL AS signature,
                            NULL AS descriptor, c.class_name AS type_name,
                            '[]' AS parameter_types,
                            '' AS modifiers,
                            CASE WHEN MAX(a.direct) = 1 THEN 'direct' ELSE 'meta' END AS match,
                            MIN(CASE WHEN a.direct = 0 THEN a.via_annotation END) AS via_annotation,
+                           'TYPE' AS annotation_target, NULL AS parameter_index,
+                           NULL AS parameter_name, NULL AS parameter_type,
                            c.source_file, c.source_line, c.origin, c.module, c.source_set,
                            c.source_tokens
                     FROM classes c JOIN class_annotations a ON a.class_id = c.id
@@ -344,17 +382,26 @@ public final class IndexReader {
                       AND (:kind = 'ALL' OR :kind = 'TYPE')
                     GROUP BY c.id
                     UNION ALL
-                    SELECT c.id, c.class_name, m.kind, m.name, m.signature,
+                    SELECT c.id, c.class_name,
+                           CASE WHEN m.annotation_target = 'METHOD_PARAMETER'
+                                THEN 'PARAMETER' ELSE m.declaration_kind END,
+                           m.declaration_kind, m.name, m.signature,
                            m.descriptor, m.type_name, m.parameter_types, m.modifiers,
                            'direct', NULL,
+                           m.annotation_target, m.parameter_index,
+                           m.parameter_name, m.parameter_type,
                            c.source_file, c.source_line, c.origin, c.module, c.source_set,
                            c.source_tokens
-                    FROM class_members m
+                    FROM member_annotation_matches m
                     JOIN classes c ON c.id = m.class_id
-                    JOIN json_each(m.annotations) annotation
                     WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
-                      AND CAST(annotation.value AS TEXT) = :annotation
-                      AND (:kind = 'ALL' OR m.kind = :kind)
+                      AND m.annotation_name = :annotation
+                      AND (:kind = 'ALL'
+                           OR (:kind = 'PARAMETER'
+                               AND m.annotation_target = 'METHOD_PARAMETER')
+                           OR (:kind != 'PARAMETER'
+                               AND m.annotation_target != 'METHOD_PARAMETER'
+                               AND m.declaration_kind = :kind))
                 )
                 """;
     }
@@ -483,7 +530,7 @@ public final class IndexReader {
     public static List<ClassMemberRecord> findClassMembers(Jdbi jdbi, int classId) {
         return jdbi.withHandle(h -> h.createQuery("""
                         SELECT class_id, kind, name, signature, descriptor, type_name, parameter_types,
-                               modifiers, annotations
+                               modifiers, annotations, annotation_details
                         FROM class_members WHERE class_id = :classId
                         ORDER BY CASE kind WHEN 'FIELD' THEN 0 WHEN 'CONSTRUCTOR' THEN 1 ELSE 2 END,
                                  name, signature""")
@@ -502,7 +549,7 @@ public final class IndexReader {
                 List<Integer> batch = ids.subList(from, Math.min(from + 500, ids.size()));
                 handle.createQuery("""
                                 SELECT class_id, kind, name, signature, descriptor, type_name, parameter_types,
-                                       modifiers, annotations
+                                       modifiers, annotations, annotation_details
                                 FROM class_members WHERE class_id IN (<classIds>)
                                 ORDER BY class_id,
                                          CASE kind WHEN 'FIELD' THEN 0
@@ -1273,7 +1320,14 @@ public final class IndexReader {
                 rs.getString("signature"), rs.getString("descriptor"),
                 rs.getString("type_name"),
                 fromJson(rs.getString("parameter_types")), rs.getString("modifiers"),
-                fromJson(rs.getString("annotations")));
+                fromJson(rs.getString("annotations")),
+                annotationDetailsFromJson(rs.getString("annotation_details")));
+    }
+
+    private static Integer nullableInteger(java.sql.ResultSet rs, String column)
+            throws java.sql.SQLException {
+        int value = rs.getInt(column);
+        return rs.wasNull() ? null : value;
     }
 
     private static MethodCallView mapMethodCall(java.sql.ResultSet rs)
@@ -1785,6 +1839,30 @@ public final class IndexReader {
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private static List<MemberAnnotationRecord> annotationDetailsFromJson(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            List<Map<String, Object>> values = JSON.readValue(json, new TypeReference<>() {});
+            return values.stream().map(value -> {
+                Number index = (Number) value.get("parameterIndex");
+                Integer parameterIndex = index == null || index.intValue() < 0
+                        ? null : index.intValue();
+                return new MemberAnnotationRecord(
+                        Objects.toString(value.get("annotationName"), ""),
+                        Objects.toString(value.get("targetKind"), ""),
+                        parameterIndex,
+                        emptyToNull(Objects.toString(value.get("parameterName"), "")),
+                        emptyToNull(Objects.toString(value.get("parameterType"), "")));
+            }).toList();
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static String emptyToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private static List<ResolutionCandidate> candidatesFromJson(String json) {

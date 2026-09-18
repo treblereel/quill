@@ -2090,9 +2090,18 @@ class QuillToolsTest {
             handle.execute("""
                     INSERT INTO class_members
                       (class_id, kind, name, signature, type_name, parameter_types,
-                       modifiers, annotations)
+                       modifiers, annotations, annotation_details)
                     VALUES (1, 'METHOD', 'submit', 'submit():void', 'void', '[]',
-                            'public', '["org.acme.Tracked"]')""");
+                            'public', '["org.acme.Tracked"]',
+                            '[{"annotationName":"org.acme.Tracked","targetKind":"METHOD","parameterIndex":-1,"parameterName":"","parameterType":""}]')""");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations, annotation_details)
+                    VALUES (1, 'METHOD', 'lookup', 'lookup(java.lang.String):void',
+                            'void', '["java.lang.String"]', 'public',
+                            '["org.acme.Tracked"]',
+                            '[{"annotationName":"org.acme.Tracked","targetKind":"METHOD_PARAMETER","parameterIndex":0,"parameterName":"id","parameterType":"java.lang.String"}]')""");
             handle.execute("""
                     INSERT INTO class_members
                       (class_id, kind, name, signature, type_name, parameter_types,
@@ -2105,7 +2114,7 @@ class QuillToolsTest {
         JsonNode all = JSON.readTree(queries.findAnnotatedSymbols(
                 jdbi, "@Tracked", "all", true, 2, 0));
         assertEquals("org.acme.Tracked", all.path("annotation").asText());
-        assertEquals(3, all.path("total").asInt());
+        assertEquals(4, all.path("total").asInt());
         assertEquals(2, all.path("showing").asInt());
         assertTrue(all.path("has_more").asBoolean());
         assertEquals("TYPE", all.path("symbols").get(0).path("kind").asText());
@@ -2121,6 +2130,19 @@ class QuillToolsTest {
         assertEquals("type_declarations_only",
                 fields.path("meta_annotation_scope").asText());
         assertTrue(fields.path("_meta").isObject());
+
+        JsonNode parameters = JSON.readTree(queries.findAnnotatedSymbols(
+                jdbi, "Tracked", "parameter", false, 10, 0));
+        assertEquals(1, parameters.path("total").asInt());
+        assertEquals("PARAMETER", parameters.path("symbols").get(0).path("kind").asText());
+        assertEquals("METHOD", parameters.path("symbols").get(0)
+                .path("declared_kind").asText());
+        assertEquals("METHOD_PARAMETER", parameters.path("symbols").get(0)
+                .path("annotation_target").asText());
+        assertEquals(0, parameters.path("symbols").get(0)
+                .path("parameter").path("index").asInt());
+        assertEquals("id", parameters.path("symbols").get(0)
+                .path("parameter").path("name").asText());
     }
 
     @Test

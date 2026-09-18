@@ -56,7 +56,7 @@ public final class IndexWriter {
             "class_id", "annotation_name", "direct", "via_annotation");
     private static final TableSpec CLASS_MEMBERS = new TableSpec("class_members",
             "class_id", "kind", "name", "signature", "descriptor", "type_name",
-            "parameter_types", "modifiers", "annotations");
+            "parameter_types", "modifiers", "annotations", "annotation_details");
     private static final TableSpec METHOD_CALLS = new TableSpec("method_calls",
             "from_class_id", "from_method", "from_descriptor", "to_class_id",
             "to_method", "to_descriptor", "invocation_kind", "occurrence_count",
@@ -470,7 +470,7 @@ public final class IndexWriter {
     private static void insertDesiredClassMembers(
             Handle h, List<ClassMemberRecord> members) {
         executeBatch(h,
-                "INSERT INTO desired_class_members (class_id, kind, name, signature, descriptor, type_name, parameter_types, modifiers, annotations) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO desired_class_members (class_id, kind, name, signature, descriptor, type_name, parameter_types, modifiers, annotations, annotation_details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 members, (statement, member) -> {
                     statement.setInt(1, member.classId());
                     statement.setString(2, member.kind());
@@ -483,6 +483,7 @@ public final class IndexWriter {
                     statement.setString(8, member.modifiers());
                     statement.setString(9, member.annotations().isEmpty()
                             ? "[]" : toJson(member.annotations()));
+                    statement.setString(10, annotationDetailsJson(member));
                 });
     }
 
@@ -842,7 +843,7 @@ public final class IndexWriter {
 
     private static void insertClassMembers(Handle h, List<ClassMemberRecord> members) {
         executeBatch(h,
-                "INSERT INTO class_members (class_id, kind, name, signature, descriptor, type_name, parameter_types, modifiers, annotations) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO class_members (class_id, kind, name, signature, descriptor, type_name, parameter_types, modifiers, annotations, annotation_details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 members, (statement, member) -> {
                     statement.setInt(1, member.classId());
                     statement.setString(2, member.kind());
@@ -855,7 +856,21 @@ public final class IndexWriter {
                     statement.setString(8, member.modifiers());
                     statement.setString(9, member.annotations().isEmpty()
                             ? "[]" : toJson(member.annotations()));
+                    statement.setString(10, annotationDetailsJson(member));
                 });
+    }
+
+    private static String annotationDetailsJson(ClassMemberRecord member) {
+        if (member.annotationDetails().isEmpty()) return "[]";
+        return toJson(member.annotationDetails().stream().map(annotation -> Map.of(
+                "annotationName", annotation.annotationName(),
+                "targetKind", annotation.targetKind(),
+                "parameterIndex", annotation.parameterIndex() == null
+                        ? -1 : annotation.parameterIndex(),
+                "parameterName", annotation.parameterName() == null
+                        ? "" : annotation.parameterName(),
+                "parameterType", annotation.parameterType() == null
+                        ? "" : annotation.parameterType())).toList());
     }
 
     private static void insertMethodCalls(Handle h, List<MethodCallRecord> methodCalls) {

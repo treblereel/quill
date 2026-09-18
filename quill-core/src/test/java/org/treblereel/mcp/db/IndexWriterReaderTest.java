@@ -84,8 +84,10 @@ class IndexWriterReaderTest {
                 0, "example.Service", "CLASS", "java.lang.Object", List.of(),
                 "src/main/java/example/Service.java", 1, false, 10));
         List<ClassMemberRecord> initial = List.of(new ClassMemberRecord(
-                1, "METHOD", "run", "run(java.lang.String):void", "void",
-                List.of("java.lang.String"), "public", List.of("example.Tracked")));
+                1, "METHOD", "run", "run(java.lang.String):void", "", "void",
+                List.of("java.lang.String"), "public", List.of("example.Tracked"),
+                List.of(new MemberAnnotationRecord("example.Tracked", "METHOD_PARAMETER",
+                        0, "input", "java.lang.String"))));
         IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(new ClassAnnotationRecord(
@@ -101,8 +103,13 @@ class IndexWriterReaderTest {
                 database, "example.Tracked", "ALL", true));
         var annotatedMethods = IndexReader.findAnnotatedSymbols(
                 database, "example.Tracked", "METHOD", true, 10, 0);
-        assertEquals(1, annotatedMethods.size());
-        assertEquals("run", annotatedMethods.getFirst().symbolName());
+        assertEquals(0, annotatedMethods.size());
+        var annotatedParameters = IndexReader.findAnnotatedSymbols(
+                database, "example.Tracked", "PARAMETER", true, 10, 0);
+        assertEquals(1, annotatedParameters.size());
+        assertEquals(0, annotatedParameters.getFirst().parameterIndex());
+        assertEquals("input", annotatedParameters.getFirst().parameterName());
+        assertEquals("java.lang.String", annotatedParameters.getFirst().parameterType());
 
         List<ClassMemberRecord> updated = List.of(new ClassMemberRecord(
                 1, "METHOD", "execute", "execute():boolean", "boolean",

@@ -8,6 +8,7 @@ import java.util.stream.Stream;
 import org.jboss.jandex.*;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassMemberRecord;
+import org.treblereel.mcp.model.MemberAnnotationRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.FrameworkEndpointRecord;
@@ -240,7 +241,8 @@ public final class JandexScanner {
                                 identifier, List.of(), classInfo.typeParameters())),
                         type, List.of(),
                         java.lang.reflect.Modifier.toString(field.flags()),
-                        memberAnnotations(field.annotations(), AnnotationTarget.Kind.FIELD)));
+                        memberAnnotations(field.annotations(), AnnotationTarget.Kind.FIELD),
+                        annotationDetails(field.annotations())));
             }
             for (MethodInfo method : classInfo.methods().stream()
                     .filter(value -> !"<clinit>".equals(value.name()))
@@ -265,7 +267,8 @@ public final class JandexScanner {
                         method.descriptor(identifier -> resolveTypeVariable(
                                 identifier, method.typeParameters(), classInfo.typeParameters())),
                         type, parameters, java.lang.reflect.Modifier.toString(method.flags()),
-                        methodAnnotations(method.annotations())));
+                        methodAnnotations(method.annotations()),
+                        annotationDetails(method.annotations())));
             }
         }
         return result;
@@ -416,6 +419,32 @@ public final class JandexScanner {
                                         == AnnotationTarget.Kind.METHOD_PARAMETER))
                 .map(annotation -> annotation.name().toString())
                 .distinct().sorted().toList();
+    }
+
+    private static List<MemberAnnotationRecord> annotationDetails(
+            Collection<AnnotationInstance> annotations) {
+        return annotations.stream()
+                .filter(annotation -> annotation.target() != null)
+                .filter(annotation -> annotation.target().kind() == AnnotationTarget.Kind.FIELD
+                        || annotation.target().kind() == AnnotationTarget.Kind.METHOD
+                        || annotation.target().kind()
+                                == AnnotationTarget.Kind.METHOD_PARAMETER)
+                .map(annotation -> {
+                    if (annotation.target().kind()
+                            == AnnotationTarget.Kind.METHOD_PARAMETER) {
+                        var parameter = annotation.target().asMethodParameter();
+                        return new MemberAnnotationRecord(annotation.name().toString(),
+                                "METHOD_PARAMETER", (int) parameter.position(),
+                                parameter.nameOrDefault(), parameter.type().toString());
+                    }
+                    return new MemberAnnotationRecord(annotation.name().toString(),
+                            annotation.target().kind().name(), null, null, null);
+                })
+                .sorted(Comparator.comparing(MemberAnnotationRecord::annotationName)
+                        .thenComparing(MemberAnnotationRecord::targetKind)
+                        .thenComparing(value -> value.parameterIndex() == null
+                                ? -1 : value.parameterIndex()))
+                .toList();
     }
 
     public static List<ExternalDepRecord> extractExternalDeps(

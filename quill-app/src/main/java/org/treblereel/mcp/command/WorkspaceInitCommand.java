@@ -5,6 +5,8 @@ import java.util.concurrent.Callable;
 import org.treblereel.mcp.workspace.WorkspaceManifest;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 import org.treblereel.mcp.workspace.WorkspaceLock;
+import org.treblereel.mcp.workspace.WorkspaceDiscovery;
+import org.treblereel.mcp.workspace.WorkspaceRepositoryStateStore;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -37,11 +39,14 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
         }
         WorkspaceRepositoryInitializer.Result result;
         try (lock) {
-            result = WorkspaceRepositoryInitializer.initialize(
-                    manifest, indexOnly, System.out::println);
+            WorkspaceDiscovery.Result discovery = WorkspaceDiscovery.discover(manifest);
+            result = WorkspaceRepositoryInitializer.initializeAll(
+                    discovery, indexOnly, System.out::println);
+            WorkspaceRepositoryStateStore.write(manifest.root(), discovery.repositories());
         }
         System.out.println("Workspace initialization complete: indexed=" + result.indexed()
-                + ", skipped=" + result.skipped() + ", failed=" + result.failed());
+                + ", skipped=" + result.skipped() + ", failed=" + result.failed()
+                + ", unchanged=" + result.unchanged());
         return result.successful() ? CommandLine.ExitCode.OK : CommandLine.ExitCode.SOFTWARE;
     }
 }

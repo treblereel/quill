@@ -181,6 +181,28 @@ class WorkspaceCommandTest {
         assertFalse(Files.exists(repository.resolve("target")));
     }
 
+    @Test
+    void refreshIndexesNewCompiledRepositoriesAndReconcilesRemovals() throws Exception {
+        assertEquals(CommandLine.ExitCode.OK, execute("workspace", "init",
+                "--project", workspace.toString()).exitCode());
+        createCompiledRepository("engine");
+
+        Captured added = execute("workspace", "refresh", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, added.exitCode(),
+                added.stdout() + System.lineSeparator() + added.stderr());
+        assertTrue(added.stdout().contains("added=1, removed=0, indexed=1"), added.stdout());
+        assertTrue(ProjectIndexStore.findBestAvailableDb(workspace.resolve("engine")) != null);
+        assertFalse(Files.exists(workspace.resolve("engine/build-was-invoked")));
+
+        Files.delete(workspace.resolve("engine/.git"));
+        Captured removed = execute("workspace", "refresh", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, removed.exitCode(), removed.stderr());
+        assertTrue(removed.stdout().contains("added=0, removed=1"), removed.stdout());
+        assertTrue(removed.stdout().contains("Repositories: 0"), removed.stdout());
+    }
+
     private void createCompiledRepository(String name) throws Exception {
         Path repository = Files.createDirectories(workspace.resolve(name));
         Files.createDirectories(repository.resolve(".git"));

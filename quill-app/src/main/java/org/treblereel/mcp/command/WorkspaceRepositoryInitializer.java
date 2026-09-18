@@ -6,14 +6,19 @@ import java.util.List;
 import java.util.function.Consumer;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.workspace.WorkspaceDiscovery;
-import org.treblereel.mcp.workspace.WorkspaceManifest;
 
 /** Initializes every discovered Java repository that already has compiled main classes. */
 final class WorkspaceRepositoryInitializer {
 
+    enum Mode {
+        ALL,
+        MISSING
+    }
+
     record RepositoryResult(String name, Path root, String status, String diagnostic) {}
 
-    record Result(List<RepositoryResult> repositories, int indexed, int skipped, int failed) {
+    record Result(List<RepositoryResult> repositories, int indexed, int skipped,
+            int unchanged, int failed) {
         Result {
             repositories = List.copyOf(repositories);
         }
@@ -25,15 +30,31 @@ final class WorkspaceRepositoryInitializer {
 
     private WorkspaceRepositoryInitializer() {}
 
-    static Result initialize(WorkspaceManifest manifest, boolean indexOnly,
+    static Result initializeAll(WorkspaceDiscovery.Result discovery, boolean indexOnly,
             Consumer<String> output) {
-        WorkspaceDiscovery.Result discovery = WorkspaceDiscovery.discover(manifest);
+        return initialize(discovery, indexOnly, Mode.ALL, output);
+    }
+
+    static Result initializeMissing(WorkspaceDiscovery.Result discovery, boolean indexOnly,
+            Consumer<String> output) {
+        return initialize(discovery, indexOnly, Mode.MISSING, output);
+    }
+
+    private static Result initialize(WorkspaceDiscovery.Result discovery, boolean indexOnly,
+            Mode mode, Consumer<String> output) {
         List<RepositoryResult> results = new ArrayList<>();
         int indexed = 0;
         int skipped = 0;
+        int unchanged = 0;
         int failed = 0;
         for (WorkspaceDiscovery.Repository repository : discovery.repositories()) {
             Path root = repository.root();
+            if (mode == Mode.MISSING && ProjectIndexStore.findBestAvailableDb(root) != null) {
+                results.add(new RepositoryResult(repository.name(), root,
+                        "unchanged", null));
+                unchanged++;
+                continue;
+            }
             try {
                 BuildSystem.detect(root);
             } catch (IllegalArgumentException unsupported) {
@@ -70,6 +91,6 @@ final class WorkspaceRepositoryInitializer {
             }
         }
         discovery.diagnostics().forEach(value -> output.accept("Discovery warning: " + value));
-        return new Result(results, indexed, skipped, failed);
+        return new Result(results, indexed, skipped, unchanged, failed);
     }
 }

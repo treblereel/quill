@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import org.treblereel.mcp.mcp.WorkspaceProjectScope;
+import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
 import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
 
 /** Resolves dependency boundaries onto local workspace providers without executing builds. */
@@ -38,11 +39,10 @@ public final class WorkspaceQueryRouter {
                 .filter(edge -> edge.coordinate().equals(ga))
                 .filter(edge -> version == null || version.equals(edge.checkoutVersion()))
                 .sorted(Comparator.comparing(WorkspaceDependencyGraph.Edge::providerRepository)
-                        .thenComparing(WorkspaceDependencyGraph.Edge::providerModule))
+                .thenComparing(WorkspaceDependencyGraph.Edge::providerModule))
                 .toList();
         if (matches.isEmpty()) {
-            return new WorkspaceRoute("not_found", List.of(), graph.complete(),
-                    graph.diagnostics());
+            return catalogFallback(repository, module, coordinate, ga, version, graph);
         }
         List<WorkspaceHop> candidates = new ArrayList<>();
         for (WorkspaceDependencyGraph.Edge edge : matches) {
@@ -56,6 +56,43 @@ public final class WorkspaceQueryRouter {
                 || matches.stream().anyMatch(WorkspaceDependencyGraph.Edge::ambiguousProvider);
         return new WorkspaceRoute(ambiguous ? "ambiguous" : "resolved", candidates,
                 graph.complete() && !ambiguous, graph.diagnostics());
+    }
+
+    private WorkspaceRoute catalogFallback(String repository, String module, String coordinate,
+            String ga, String version, WorkspaceDependencyGraph.Result graph) {
+        WorkspaceCoordinateCatalog.Result catalog =
+                WorkspaceCoordinateCatalog.discover(scope.manifest());
+        List<WorkspaceCoordinateCatalog.Module> providers = version == null
+                ? catalog.modulesByGa().getOrDefault(ga, List.of())
+                : catalog.modulesByGav().getOrDefault(ga + ':' + version, List.of());
+        if (providers.isEmpty()) {
+            return new WorkspaceRoute("not_found", List.of(),
+                    graph.complete() && catalog.complete(), mergeDiagnostics(
+                            graph.diagnostics(), catalog.diagnostics()));
+        }
+        List<WorkspaceHop> candidates = providers.stream()
+                .sorted(Comparator.comparing(WorkspaceCoordinateCatalog.Module::repository)
+                        .thenComparing(WorkspaceCoordinateCatalog.Module::module))
+                .map(provider -> new WorkspaceHop(repository, module, provider.repository(),
+                        provider.module(), ga, java.util.Set.of(), "unknown",
+                        "workspace_coordinate_catalog", "workspace_coordinates",
+                        providers.size() == 1 ? "medium" : "low",
+                        version == null || provider.version() == null
+                                ? "binary_version_unknown"
+                                : version.equals(provider.version())
+                                        ? "version_match" : "binary_behind_checkout",
+                        !repository.equals(provider.repository())))
+                .toList();
+        boolean ambiguous = candidates.size() > 1;
+        return new WorkspaceRoute(ambiguous ? "ambiguous" : "resolved", candidates,
+                graph.complete() && catalog.complete() && !ambiguous,
+                mergeDiagnostics(graph.diagnostics(), catalog.diagnostics()));
+    }
+
+    private static List<String> mergeDiagnostics(List<String> first, List<String> second) {
+        java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>(first);
+        merged.addAll(second);
+        return List.copyOf(merged);
     }
 
     private static String normalizeModule(String module) {

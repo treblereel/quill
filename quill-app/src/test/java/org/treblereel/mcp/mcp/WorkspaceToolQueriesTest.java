@@ -24,6 +24,7 @@ class WorkspaceToolQueriesTest {
 
     @TempDir Path workspace;
     private QuillTools tools;
+    private ProjectRegistry registry;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -47,7 +48,8 @@ class WorkspaceToolQueriesTest {
                     VALUES (1, 2, 'CONSTRUCTS', '[21]')
                     """);
         });
-        tools = new QuillTools(new ProjectRegistry(new WorkspaceProjectScope(workspace)));
+        registry = new ProjectRegistry(new WorkspaceProjectScope(workspace));
+        tools = new QuillTools(registry);
     }
 
     @Test
@@ -115,6 +117,28 @@ class WorkspaceToolQueriesTest {
                 .path("additional_workspace_lookup_required").asBoolean(true));
         assertEquals("engine", result.path("workspace_provider_resolution")
                 .path("providers").get(0).path("repository").asText());
+    }
+
+    @Test
+    void enrichesProjectArtifactsWithWorkspaceProviderAndReadiness() throws Exception {
+        String response = """
+                {"dependencies":[{"id":"io.casehub:engine-api:1.0",
+                  "used_by_modules":["."]}]}
+                """;
+
+        JsonNode result = JSON.readTree(new WorkspaceToolQueries(registry)
+                .enrichProjectDependencies(response, "platform"));
+
+        JsonNode resolution = result.path("dependencies").get(0)
+                .path("workspace_resolution");
+        assertEquals("resolved", resolution.path("status").asText());
+        assertEquals("engine", resolution.path("provider_repository").asText());
+        assertEquals(".", resolution.path("provider_module").asText());
+        assertEquals("build_required", resolution.path("provider_index_status").asText());
+        assertEquals("declared_dependency",
+                resolution.path("candidates").get(0).path("evidence").asText());
+        assertEquals(1, result.path("workspace_provider_resolution")
+                .path("mapped_dependency_count").asInt());
     }
 
     @Test

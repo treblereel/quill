@@ -68,6 +68,21 @@ class WorkspaceQueryRouterTest {
         assertFalse(route.resolved());
     }
 
+    @Test
+    void resolvesTransitiveArtifactThroughCoordinateCatalog() throws Exception {
+        WorkspaceManifestStore.initialize(workspace, 1);
+        repository("provider", "provider-api", "");
+        repository("consumer", "consumer", "");
+
+        WorkspaceRoute route = new WorkspaceQueryRouter(new WorkspaceProjectScope(workspace))
+                .resolveDependency("consumer", ".", "org.acme:provider-api:1");
+
+        assertEquals("resolved", route.status());
+        assertEquals("workspace_coordinate_catalog",
+                route.candidates().getFirst().evidence());
+        assertEquals("medium", route.candidates().getFirst().confidence());
+    }
+
     private void repository(String name, String artifact, String extra) throws Exception {
         Path root = Files.createDirectories(workspace.resolve(name));
         Files.createDirectories(root.resolve(".git"));

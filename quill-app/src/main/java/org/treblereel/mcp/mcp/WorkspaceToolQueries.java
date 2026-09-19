@@ -16,6 +16,9 @@ import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
 import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
+import org.treblereel.mcp.workspace.query.WorkspaceHop;
+import org.treblereel.mcp.workspace.query.WorkspaceQueryRouter;
+import org.treblereel.mcp.workspace.query.WorkspaceRoute;
 
 /** Structured workspace catalog, dependency, and entity-resolution responses. */
 final class WorkspaceToolQueries {
@@ -26,6 +29,87 @@ final class WorkspaceToolQueries {
 
     WorkspaceToolQueries(ProjectRegistry registry) {
         this.registry = registry;
+    }
+
+    String enrichProjectDependencies(String response, String consumerRepository) {
+        WorkspaceProjectScope scope = registry.workspaceScope();
+        if (scope == null) return response;
+        try {
+            JsonNode parsed = JSON.readTree(response);
+            if (!(parsed instanceof ObjectNode root) || !root.path("dependencies").isArray()) {
+                return response;
+            }
+            WorkspaceQueryRouter router = new WorkspaceQueryRouter(scope);
+            Map<String, ProjectRegistry.Resolution> availability = new LinkedHashMap<>();
+            int mapped = 0;
+            int ambiguous = 0;
+            int unresolved = 0;
+            for (JsonNode value : root.path("dependencies")) {
+                if (!(value instanceof ObjectNode dependency)) continue;
+                String coordinate = dependency.path("id").asText(null);
+                if (coordinate == null) continue;
+                Map<String, WorkspaceHop> candidates = new java.util.TreeMap<>();
+                List<String> statuses = new ArrayList<>();
+                boolean complete = true;
+                JsonNode modules = dependency.path("used_by_modules");
+                if (!modules.isArray() || modules.isEmpty()) continue;
+                for (JsonNode module : modules) {
+                    WorkspaceRoute route = router.resolveDependency(consumerRepository,
+                            module.asText("."), coordinate);
+                    statuses.add(route.status());
+                    complete &= route.complete();
+                    for (WorkspaceHop candidate : route.candidates()) {
+                        candidates.putIfAbsent(candidate.toRepository() + ':'
+                                + candidate.toModule(), candidate);
+                    }
+                }
+                String status = candidates.isEmpty() ? "not_found"
+                        : candidates.size() == 1 && statuses.stream().noneMatch(
+                                "ambiguous"::equals) ? "resolved" : "ambiguous";
+                if (status.equals("resolved")) mapped++;
+                else if (status.equals("ambiguous")) ambiguous++;
+                else unresolved++;
+                ObjectNode resolution = dependency.putObject("workspace_resolution");
+                resolution.put("status", status);
+                resolution.put("complete", complete && !status.equals("ambiguous"));
+                ArrayNode values = resolution.putArray("candidates");
+                for (WorkspaceHop candidate : candidates.values()) {
+                    ObjectNode provider = values.addObject();
+                    provider.put("repository", candidate.toRepository());
+                    provider.put("module", candidate.toModule());
+                    provider.put("coordinate", candidate.coordinate());
+                    provider.put("source_set", candidate.sourceSet());
+                    provider.put("evidence", candidate.evidence());
+                    provider.put("confidence", candidate.confidence());
+                    provider.put("version_status", candidate.versionStatus());
+                    ProjectRegistry.Resolution available = availability.computeIfAbsent(
+                            candidate.toRepository(), registry::resolve);
+                    ProjectRegistry.ProjectIssue issue = available.issues().stream()
+                            .filter(item -> item.project().equals(candidate.toRepository()))
+                            .findFirst().orElse(null);
+                    String providerStatus = issue == null && !available.projects().isEmpty()
+                            ? "ready" : issue == null ? "unavailable" : issue.code();
+                    provider.put("index_status", providerStatus);
+                    if (issue != null) provider.set("availability",
+                            ProjectAvailabilityResponses.details(issue));
+                }
+                if (candidates.size() == 1) {
+                    JsonNode provider = values.get(0);
+                    resolution.put("provider_repository", provider.path("repository").asText());
+                    resolution.put("provider_module", provider.path("module").asText());
+                    resolution.put("provider_index_status",
+                            provider.path("index_status").asText());
+                }
+            }
+            ObjectNode summary = root.putObject("workspace_provider_resolution");
+            summary.put("mapped_dependency_count", mapped);
+            summary.put("ambiguous_dependency_count", ambiguous);
+            summary.put("unresolved_dependency_count", unresolved);
+            summary.put("complete", ambiguous == 0 && unresolved == 0);
+            return root.toString();
+        } catch (Exception ignored) {
+            return response;
+        }
     }
 
     String enrichDependencyBeans(String response) {

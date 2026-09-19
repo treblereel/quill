@@ -359,12 +359,13 @@ public final class QuillTools {
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p ->
-                projectDependencies.getProjectDependencies(p.jdbi(), p.root(), module.orElse(null),
+                workspace.enrichProjectDependencies(projectDependencies.getProjectDependencies(
+                        p.jdbi(), p.root(), module.orElse(null),
                         source_set.orElse(null),
                         query.orElse(null), directness.orElse(null), group.orElse(null),
                         artifact.orElse(null), scope.orElse(null),
                         clamp(limit.orElse(100), 1, 200),
-                        clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+                        clamp(offset.orElse(0), 0, Integer.MAX_VALUE)), p.name()));
     }
 
     @Tool(structured = true,

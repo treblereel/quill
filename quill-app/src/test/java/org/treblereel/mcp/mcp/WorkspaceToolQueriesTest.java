@@ -299,6 +299,9 @@ class WorkspaceToolQueriesTest {
                 .path("usage_kind").asText());
         assertEquals("io.casehub:engine-api:1.0", usage.path("usages").get(0)
                 .path("artifact").asText());
+        assertFalse(usage.has("_meta"));
+        assertFalse(usage.path("index_snapshot")
+                .path("live_freshness_evaluated").asBoolean(true));
     }
 
     @Test

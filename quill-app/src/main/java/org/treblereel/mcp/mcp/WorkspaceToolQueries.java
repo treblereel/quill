@@ -641,7 +641,8 @@ final class WorkspaceToolQueries {
 
     private static String consumerUsages(UsageToolQueries usageQueries, Jdbi jdbi,
             String target, String usageKind, int limit) {
-        String response = usageQueries.findUsages(jdbi, target, usageKind, null, limit, 0);
+        String response = usageQueries.findUsages(
+                jdbi, target, usageKind, null, limit, 0, false);
         try {
             JsonNode parsed = JSON.readTree(response);
             if (!parsed.path("error").asText("").startsWith("Class not found")) {
@@ -689,7 +690,12 @@ final class WorkspaceToolQueries {
             });
             ToolResponseSupport.appendPage(root, Math.min(limit, matches.size()),
                     matches.size(), limit, 0);
-            ToolResponseSupport.appendMeta(root, jdbi, 0);
+            Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+            ObjectNode snapshot = root.putObject("index_snapshot");
+            snapshot.put("index_id", metadata.getOrDefault("index_id", "unknown"));
+            snapshot.put("indexed_at", metadata.getOrDefault("indexed_at", "unknown"));
+            snapshot.put("indexed_commit", metadata.getOrDefault("last_commit", "unknown"));
+            snapshot.put("live_freshness_evaluated", false);
             return root.toString();
         } catch (Exception invalid) {
             return response;

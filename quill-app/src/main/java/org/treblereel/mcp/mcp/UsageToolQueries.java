@@ -33,13 +33,21 @@ final class UsageToolQueries {
 
     String findUsages(Jdbi jdbi, String target, String usageKind,
             String module, int limit, int offset) {
+        return findUsages(jdbi, target, usageKind, module, limit, offset, true);
+    }
+
+    String findUsages(Jdbi jdbi, String target, String usageKind,
+            String module, int limit, int offset, boolean includeLiveMeta) {
         String normalizedKind = normalizeKind(usageKind);
         if (normalizedKind != null && !USAGE_KINDS.contains(normalizedKind)) {
             return errorResponse("Invalid usage_kind: expected one of "
                     + USAGE_KINDS.stream().sorted().toList());
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+        if (lookup.error() != null) {
+            return includeLiveMeta ? classLookupError(jdbi, lookup, target)
+                    : ClassTargetResolver.errorResponse(JSON, lookup, target).toString();
+        }
         ClassRecord targetClass = lookup.cls();
 
         List<Usage> usages = collectUsages(jdbi, targetClass);
@@ -93,7 +101,7 @@ final class UsageToolQueries {
             naiveTokens += usage.caller().sourceTokens();
         }
         appendPage(root, page.size(), usages.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        if (includeLiveMeta) appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }
 

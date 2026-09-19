@@ -17,6 +17,8 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ProjectCodeExpectation;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
+import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
 
 public class ProjectRegistry {
 
@@ -254,6 +256,13 @@ public class ProjectRegistry {
     }
 
     public void prewarm() {
+        if (scope instanceof WorkspaceProjectScope workspace) {
+            WorkspaceCoordinateCatalog.discover(workspace.manifest());
+            WorkspaceDependencyGraph.discover(workspace.manifest());
+            // Opening and validating the available SQLite generations is part of MCP startup.
+            // Otherwise the first routed request pays this cost once per consumer repository.
+            resolve();
+        }
         prewarm(PREWARM_EXECUTOR);
     }
 

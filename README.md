@@ -51,6 +51,8 @@ concurrently. JSON-RPC responses may arrive out of order and are correlated by `
 response writes remain serialized so stdout always contains complete JSON messages.
 `QUILL_MCP_MAX_CONCURRENCY` and `QUILL_MCP_MAX_QUEUED_PER_WORKER` can override the
 defaults for constrained or unusually large local environments.
+Workspace fan-out queries use up to four shared read workers; set
+`QUILL_WORKSPACE_QUERY_WORKERS` to a positive value (capped at 32) to override it.
 `QUILL_MCP_REQUEST_TIMEOUT` sets the per-tool timeout in seconds (default: `30`).
 Successful JSON responses are capped at 256 KiB; set `QUILL_MCP_MAX_RESPONSE_BYTES`
 to override the cap. Truncated responses report omitted fields and filtering guidance.

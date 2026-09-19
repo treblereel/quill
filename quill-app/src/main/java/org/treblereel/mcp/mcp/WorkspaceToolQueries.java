@@ -542,9 +542,9 @@ final class WorkspaceToolQueries {
         consumers.forEach(edge -> consumerEdges.putIfAbsent(edge.consumerRepository(), edge));
         List<ConsumerUsage> usages = new ArrayList<>();
         List<String> diagnostics = new ArrayList<>();
-        int queriedConsumers = 0;
         int unavailableConsumers = 0;
         UsageToolQueries usageQueries = new UsageToolQueries();
+        List<ProjectRegistry.ProjectEntry> consumerProjects = new ArrayList<>();
         for (var consumer : consumerEdges.entrySet()) {
             ProjectRegistry.Resolution resolved = registry.resolve(consumer.getKey());
             if (resolved.projects().isEmpty()) {
@@ -552,16 +552,26 @@ final class WorkspaceToolQueries {
                 diagnostics.addAll(resolved.errors());
                 continue;
             }
-            queriedConsumers++;
-            String json = usageQueries.findUsages(resolved.projects().getFirst().jdbi(),
-                    provider.className(), usageKind, null, 200, 0);
+            consumerProjects.add(resolved.projects().getFirst());
+        }
+        List<ProjectQueryExecutor.QueryResult> queryResults =
+                new ProjectQueryExecutor(registry).executeProjects(consumerProjects,
+                        consumer -> usageQueries.findUsages(consumer.jdbi(),
+                                provider.className(), usageKind, null, 200, 0));
+        for (ProjectQueryExecutor.QueryResult result : queryResults) {
+            if (!result.successful()) {
+                diagnostics.add("Repository '" + result.project()
+                        + "' query failed: " + result.error());
+                continue;
+            }
             try {
-                var data = JSON.readTree(json);
+                var data = JSON.readTree(result.json());
                 if (!data.has("error") && data.path("usage_group_count").asInt() > 0) {
-                    usages.add(new ConsumerUsage(consumer.getKey(), consumer.getValue(), data));
+                    usages.add(new ConsumerUsage(result.project(),
+                            consumerEdges.get(result.project()), data));
                 }
             } catch (Exception invalid) {
-                diagnostics.add("Repository '" + consumer.getKey()
+                diagnostics.add("Repository '" + result.project()
                         + "' returned invalid usage data: " + invalid.getMessage());
             }
         }
@@ -588,7 +598,7 @@ final class WorkspaceToolQueries {
         }
         ToolResponseSupport.appendPage(root, to - from, total, limit, offset);
         root.put("candidate_consumer_count", consumerEdges.size());
-        root.put("queried_consumer_count", queriedConsumers);
+        root.put("queried_consumer_count", consumerProjects.size());
         root.put("unavailable_consumer_count", unavailableConsumers);
         root.put("complete", graph.complete());
         appendDiagnostics(root, diagnostics);

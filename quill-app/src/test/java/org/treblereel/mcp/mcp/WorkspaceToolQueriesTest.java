@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.db.IndexWriter;
+import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.model.ExternalBeanRecord;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 
@@ -248,14 +249,18 @@ class WorkspaceToolQueriesTest {
         JsonNode traversal = result.path("workspace_traversal");
         assertTrue(traversal.path("enabled").asBoolean());
         assertEquals("resolved", traversal.path("status").asText());
-        assertTrue(traversal.path("complete").asBoolean());
+        assertFalse(traversal.path("complete").asBoolean(true));
         assertEquals("engine", traversal.path("provider").path("repository").asText());
+        assertEquals("stale", traversal.path("provider")
+                .path("index_freshness").path("status").asText());
         assertEquals("source",
                 traversal.path("provider").path("data").path("origin").asText());
         assertEquals("platform", traversal.path("routes").get(0)
                 .path("from_repository").asText());
         assertEquals("engine", traversal.path("routes").get(0)
                 .path("to_repository").asText());
+        assertEquals("stale", traversal.path("routes").get(0)
+                .path("index_freshness").path("status").asText());
     }
 
     @Test
@@ -382,7 +387,41 @@ class WorkspaceToolQueriesTest {
         assertEquals("resolved", result.path("workspace_result").path("status").asText());
         assertEquals("engine", result.path("workspace_result")
                 .path("provider").path("repository").asText());
-        assertTrue(result.path("answer_complete").asBoolean());
+        assertEquals("stale", result.path("workspace_result")
+                .path("provider").path("index_freshness").path("status").asText());
+        assertFalse(result.path("workspace_result")
+                .path("provider").path("index_freshness").path("complete").asBoolean(true));
+        assertFalse(result.path("answer_complete").asBoolean(true));
+    }
+
+    @Test
+    void tracesWorkspaceRoutingDecisionInDebugMode() throws Exception {
+        removePlatformDependencyClass();
+        DebugTrace.configure(true, workspace);
+        try {
+            tools.get_type_hierarchy("io.casehub.engine.EngineService", Optional.of("both"),
+                    Optional.of(5), Optional.of(20), Optional.empty(),
+                    Optional.of("platform"));
+        } finally {
+            DebugTrace.configure(false, workspace);
+        }
+
+        List<JsonNode> events = Files.readAllLines(
+                workspace.resolve(".quill/debug/quill-debug.jsonl")).stream()
+                .map(line -> {
+                    try {
+                        return JSON.readTree(line);
+                    } catch (Exception invalid) {
+                        throw new IllegalStateException(invalid);
+                    }
+                }).toList();
+        JsonNode selected = events.stream()
+                .filter(event -> "route_selected".equals(event.path("event").asText()))
+                .findFirst().orElseThrow();
+        assertEquals("get_type_hierarchy", selected.path("operation").asText());
+        assertEquals("platform", selected.path("consumer_repository").asText());
+        assertEquals("engine", selected.path("provider_repository").asText());
+        assertEquals("resolved", selected.path("status").asText());
     }
 
     private void createRepository(String name, String artifact, String className, String extra)

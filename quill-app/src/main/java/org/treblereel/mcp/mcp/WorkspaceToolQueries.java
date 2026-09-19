@@ -15,7 +15,9 @@ import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.MetaEnvelope;
 import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
 import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
 import org.treblereel.mcp.workspace.query.WorkspaceHop;
@@ -119,17 +121,27 @@ final class WorkspaceToolQueries {
             String cursor) {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null) return response;
+        DebugTrace.Trace trace = DebugTrace.start("workspace_dependency_route");
         try {
             JsonNode parsed = JSON.readTree(response);
             if (!(parsed instanceof ObjectNode root)) {
+                trace.event("route_skipped", Map.of("reason", "non_object_response"));
                 return response;
             }
             boolean localMissing = root.path("error").asText("")
                     .startsWith("Class not found");
             boolean dependencyClass = "dependency".equals(root.path("origin").asText());
-            if (!localMissing && !dependencyClass) return response;
+            if (!localMissing && !dependencyClass) {
+                trace.event("route_skipped", Map.of("reason", "local_source_class"));
+                return response;
+            }
             String resolvedTarget = root.path("target").asText(target);
             List<ProviderClass> providers = findProviderClasses(resolvedTarget, null);
+            trace.event("provider_candidates_resolved", Map.of(
+                    "operation", "get_dependencies",
+                    "consumer_repository", consumerRepository,
+                    "target", resolvedTarget,
+                    "candidate_count", providers.size()));
             if (localMissing && !providers.isEmpty()) {
                 ObjectNode localResolution = root.putObject("local_resolution");
                 localResolution.put("status", "not_found");
@@ -148,6 +160,8 @@ final class WorkspaceToolQueries {
                 traversal.put("status", "provider_not_found");
                 traversal.put("complete", false);
                 traversal.putArray("repositories_queried").add(consumerRepository);
+                trace.event("route_rejected", Map.of("operation", "get_dependencies",
+                        "reason", "provider_not_found"));
                 return root.toString();
             }
             if (providers.size() > 1) {
@@ -155,6 +169,9 @@ final class WorkspaceToolQueries {
                 traversal.put("complete", false);
                 ArrayNode candidates = traversal.putArray("provider_candidates");
                 providers.forEach(provider -> candidates.add(providerJson(provider)));
+                trace.event("route_rejected", Map.of("operation", "get_dependencies",
+                        "reason", "ambiguous_provider",
+                        "candidate_count", providers.size()));
                 return root.toString();
             }
             ProviderClass provider = providers.getFirst();
@@ -190,10 +207,14 @@ final class WorkspaceToolQueries {
 
             ProjectRegistry.Resolution providerResolution = registry.resolve(
                     provider.repository());
+            boolean providerFresh = appendFreshness(providerNode, providerResolution);
             if (providerResolution.projects().isEmpty()) {
                 traversal.put("status", "provider_unavailable");
                 traversal.put("complete", false);
                 ProjectAvailabilityResponses.append(traversal, providerResolution.issues());
+                trace.event("route_rejected", Map.of("operation", "get_dependencies",
+                        "reason", "provider_unavailable",
+                        "provider_repository", provider.repository()));
                 return root.toString();
             }
             String providerResponse = new QuillToolQueries().getDependencies(
@@ -210,11 +231,24 @@ final class WorkspaceToolQueries {
                 traversal.put("complete", false);
             } else {
                 traversal.put("status", route.status());
-                traversal.put("complete", route.resolved());
+                traversal.put("complete", route.resolved() && providerFresh
+                        && providerResolution.issues().isEmpty());
             }
+            trace.event("route_selected", Map.of(
+                    "operation", "get_dependencies",
+                    "consumer_repository", consumerRepository,
+                    "provider_repository", provider.repository(),
+                    "provider_module", provider.module(),
+                    "status", traversal.path("status").asText(),
+                    "complete", traversal.path("complete").asBoolean()));
             return root.toString();
-        } catch (Exception ignored) {
+        } catch (Exception failure) {
+            trace.event("route_failed", Map.of("operation", "get_dependencies",
+                    "error_type", failure.getClass().getSimpleName(),
+                    "message", ProjectRegistry.safeMessage(failure)));
             return response;
+        } finally {
+            trace.close();
         }
     }
 
@@ -598,13 +632,25 @@ final class WorkspaceToolQueries {
     String routeMissingClassQuery(String response, String consumerRepository, String target,
             String operation, Function<Jdbi, String> providerQuery) {
         if (registry.workspaceScope() == null) return response;
+        DebugTrace.Trace trace = DebugTrace.start("workspace_route");
         try {
             JsonNode local = JSON.readTree(response);
             if (!local.path("error").asText("").startsWith("Class not found")) {
+                trace.event("route_skipped", Map.of("operation", operation,
+                        "reason", "local_result_available"));
                 return response;
             }
             List<ProviderClass> providers = findProviderClasses(target, null);
-            if (providers.isEmpty()) return response;
+            trace.event("provider_candidates_resolved", Map.of(
+                    "operation", operation,
+                    "consumer_repository", consumerRepository,
+                    "target", target,
+                    "candidate_count", providers.size()));
+            if (providers.isEmpty()) {
+                trace.event("route_skipped", Map.of("operation", operation,
+                        "reason", "provider_not_found"));
+                return response;
+            }
 
             ObjectNode root = JSON.createObjectNode();
             root.put("target", target);
@@ -621,18 +667,26 @@ final class WorkspaceToolQueries {
                 ArrayNode candidates = workspaceResult.putArray("candidates");
                 providers.forEach(provider -> candidates.add(providerJson(provider)));
                 root.put("answer_complete", false);
+                trace.event("route_rejected", Map.of("operation", operation,
+                        "reason", "ambiguous_provider",
+                        "candidate_count", providers.size()));
                 return root.toString();
             }
 
             ProviderClass provider = providers.getFirst();
-            workspaceResult.set("provider", providerJson(provider));
+            ObjectNode providerNode = providerJson(provider);
+            workspaceResult.set("provider", providerNode);
             ProjectRegistry.Resolution availability = registry.resolve(provider.repository());
+            boolean providerFresh = appendFreshness(providerNode, availability);
             if (availability.projects().isEmpty()) {
                 workspaceResult.put("status", "provider_unavailable");
                 workspaceResult.put("complete", false);
                 ProjectAvailabilityResponses.append(workspaceResult, "project_warnings",
                         availability.issues());
                 root.put("answer_complete", false);
+                trace.event("route_rejected", Map.of("operation", operation,
+                        "reason", "provider_unavailable",
+                        "provider_repository", provider.repository()));
                 return root.toString();
             }
 
@@ -642,14 +696,28 @@ final class WorkspaceToolQueries {
                     .startsWith("Class not found");
             workspaceResult.put("status", absentFromIndex
                     ? "provider_index_incomplete" : "resolved");
-            workspaceResult.put("complete", !absentFromIndex);
+            boolean complete = !absentFromIndex && providerFresh
+                    && availability.issues().isEmpty();
+            workspaceResult.put("complete", complete);
             workspaceResult.set("data", providerData);
             ProjectAvailabilityResponses.append(workspaceResult, "project_warnings",
                     availability.issues());
-            root.put("answer_complete", !absentFromIndex);
+            root.put("answer_complete", complete);
+            trace.event("route_selected", Map.of(
+                    "operation", operation,
+                    "consumer_repository", consumerRepository,
+                    "provider_repository", provider.repository(),
+                    "provider_module", provider.module(),
+                    "status", workspaceResult.path("status").asText(),
+                    "complete", complete));
             return root.toString();
-        } catch (Exception ignored) {
+        } catch (Exception failure) {
+            trace.event("route_failed", Map.of("operation", operation,
+                    "error_type", failure.getClass().getSimpleName(),
+                    "message", ProjectRegistry.safeMessage(failure)));
             return response;
+        } finally {
+            trace.close();
         }
     }
 
@@ -893,7 +961,7 @@ final class WorkspaceToolQueries {
         return node;
     }
 
-    private static ObjectNode hopJson(WorkspaceHop hop) {
+    private ObjectNode hopJson(WorkspaceHop hop) {
         ObjectNode node = JSON.createObjectNode();
         node.put("from_repository", hop.fromRepository());
         node.put("from_module", hop.fromModule());
@@ -906,7 +974,30 @@ final class WorkspaceToolQueries {
         node.put("resolution", hop.resolution());
         node.put("confidence", hop.confidence());
         node.put("version_status", hop.versionStatus());
+        appendFreshness(node, registry.resolve(hop.toRepository()));
         return node;
+    }
+
+    private static boolean appendFreshness(ObjectNode parent,
+            ProjectRegistry.Resolution resolution) {
+        ObjectNode freshness = parent.putObject("index_freshness");
+        if (resolution.projects().isEmpty()) {
+            freshness.put("status", "unavailable");
+            freshness.put("complete", false);
+            return false;
+        }
+        MetaEnvelope meta = MetaEnvelope.from(
+                resolution.projects().getFirst().jdbi(), 0, 0);
+        freshness.put("status", meta.structureStale() ? "stale" : "current");
+        freshness.put("complete", !meta.structureStale());
+        freshness.put("indexed_at", meta.indexedAt());
+        freshness.put("indexed_commit", meta.lastCommit());
+        if (meta.currentCommit() == null) freshness.putNull("current_commit");
+        else freshness.put("current_commit", meta.currentCommit());
+        freshness.put("worktree_dirty", meta.worktreeDirty());
+        freshness.put("structure_stale", meta.structureStale());
+        freshness.set("stale_reasons", JSON.valueToTree(meta.staleReasons()));
+        return !meta.structureStale();
     }
 
     private static ObjectNode downstreamJson(DownstreamRisk risk) {

@@ -96,6 +96,20 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void mavenClasspathFailureNamesUnresolvedReactorModules() {
+        List<Path> unresolved = java.util.stream.IntStream.range(0, 12)
+                .mapToObj(index -> tempDir.resolve("module-" + index))
+                .toList();
+
+        String summary = MavenClasspathResolver.moduleSummary(tempDir, unresolved);
+
+        assertTrue(summary.startsWith("module-0, module-1"), summary);
+        assertTrue(summary.contains("module-9"), summary);
+        assertFalse(summary.contains("module-10,"), summary);
+        assertTrue(summary.endsWith("(and 2 more)"), summary);
+    }
+
+    @Test
     void parseClasspathFileReturnsJarPaths() throws Exception {
         Path cpFile = tempDir.resolve("classpath.txt");
         String jar1 = tempDir.resolve("a.jar").toString();

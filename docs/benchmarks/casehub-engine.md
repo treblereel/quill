@@ -79,14 +79,13 @@ generation: 752 requests completed with zero tool, transport, timeout, or SQLite
 and the client observed the new `index_id` after publication. All five dirty worktree
 paths remained visible through the live overlay.
 
-The refresh also exposed an environment-sensitive degradation: the reactor-wide Maven
+The refresh also exposed an environment-sensitive degradation: the former reactor-wide Maven
 `dependency:build-classpath` invocation stopped when `casehub-engine-common` attempted to
 resolve the reactor SNAPSHOT `casehub-engine-common-core` from a GitHub Packages repository
-that returned HTTP 401. Quill retained the usable cached dependency index and reported
-`50/56 modules resolved`, but the active generation is marked `dependency_index=degraded`.
-The next Quill improvement should preserve the graceful fallback while reporting the
-failed module and Maven root cause directly, and should avoid requiring installed reactor
-artifacts when collecting external dependencies for a multi-module project.
+that returned HTTP 401. The resolver now builds a synthetic external-dependency reactor and
+removes exact reactor GAVs, so internal modules do not need to be installed or downloaded.
+Partial failures preserve usable classpaths and report the unresolved module paths together
+with Maven's root diagnostic instead of only a count such as `50/56 modules resolved`.
 
 ## Baseline — 2026-09-12
 

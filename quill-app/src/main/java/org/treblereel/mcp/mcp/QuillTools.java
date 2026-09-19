@@ -24,6 +24,7 @@ public final class QuillTools {
             "{\"error\":\"Not a bean:");
 
     private final ProjectRegistry registry;
+    private final ProjectQueryExecutor executor;
     private final QuillToolQueries queries;
     private final ProjectDependencyQueries projectDependencies;
     private final FileNavigationQueries fileNavigation;
@@ -38,6 +39,7 @@ public final class QuillTools {
 
     public QuillTools(ProjectRegistry registry) {
         this.registry = Objects.requireNonNull(registry, "registry");
+        this.executor = new ProjectQueryExecutor(registry);
         this.queries = new QuillToolQueries();
         this.projectDependencies = new ProjectDependencyQueries();
         this.fileNavigation = new FileNavigationQueries();
@@ -929,8 +931,8 @@ public final class QuillTools {
     private String forAllProjects(String projectFilter,
             Function<ProjectRegistry.ProjectEntry, String> perProject) {
         boolean filtered = projectFilter != null && !projectFilter.isBlank();
-        ProjectRegistry.Resolution resolution = filtered
-                ? registry.resolve(projectFilter) : registry.resolve();
+        ProjectQueryExecutor.Batch batch = executor.execute(projectFilter, perProject);
+        ProjectRegistry.Resolution resolution = batch.resolution();
         List<ProjectRegistry.ProjectEntry> projects = resolution.projects();
         List<String> errors = resolution.errors();
         if (filtered && projects.isEmpty()) {
@@ -954,22 +956,18 @@ public final class QuillTools {
             errors = List.of();
         }
         if (projects.size() == 1 && errors.isEmpty()) {
-            ProjectResult result = runForProject(projects.get(0), perProject);
+            ProjectQueryExecutor.QueryResult result = batch.results().getFirst();
             return result.error() == null
                     ? ResponseBudget.apply(appendProjectWarnings(
                             result.json(), resolution.issues()))
-                    : errorResponse("Project '" + result.name() + "': " + result.error());
+                    : errorResponse("Project '" + result.project() + "': " + result.error());
         }
 
-        List<ProjectResult> projectResults = new ArrayList<>();
-        for (ProjectRegistry.ProjectEntry project : projects) {
-            projectResults.add(runForProject(project, perProject));
-        }
-        projectResults.sort(Comparator.comparing(ProjectResult::name));
+        List<ProjectQueryExecutor.QueryResult> projectResults = batch.results();
 
-        List<ProjectResult> hits = new ArrayList<>();
-        List<ProjectResult> misses = new ArrayList<>();
-        for (ProjectResult result : projectResults) {
+        List<ProjectQueryExecutor.QueryResult> hits = new ArrayList<>();
+        List<ProjectQueryExecutor.QueryResult> misses = new ArrayList<>();
+        for (ProjectQueryExecutor.QueryResult result : projectResults) {
             if (result.error() != null || isNotFoundError(result.json())) misses.add(result);
             else hits.add(result);
         }
@@ -977,8 +975,8 @@ public final class QuillTools {
 
         ObjectNode root = JSON.createObjectNode();
         ArrayNode results = root.putArray("projects");
-        for (ProjectResult result : hits) {
-            ObjectNode wrapper = results.addObject().put("project", result.name());
+        for (ProjectQueryExecutor.QueryResult result : hits) {
+            ObjectNode wrapper = results.addObject().put("project", result.project());
             try {
                 if (result.error() != null) wrapper.put("error", result.error());
                 else wrapper.set("data", JSON.readTree(result.json()));
@@ -1024,16 +1022,6 @@ public final class QuillTools {
         }
     }
 
-    private ProjectResult runForProject(ProjectRegistry.ProjectEntry project,
-            Function<ProjectRegistry.ProjectEntry, String> query) {
-        try {
-            String json = project.jdbi().inTransaction(handle -> query.apply(project));
-            return new ProjectResult(project.name(), json, null);
-        } catch (Exception error) {
-            return new ProjectResult(project.name(), null, ProjectRegistry.safeMessage(error));
-        }
-    }
-
     private static boolean isNotFoundError(String json) {
         if (json == null) return false;
         return NOT_FOUND_PREFIXES.stream().anyMatch(json::startsWith);
@@ -1047,5 +1035,4 @@ public final class QuillTools {
         return Math.max(min, Math.min(max, value));
     }
 
-    private record ProjectResult(String name, String json, String error) {}
 }

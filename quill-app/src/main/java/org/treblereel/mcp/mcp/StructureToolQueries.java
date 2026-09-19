@@ -28,6 +28,7 @@ import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
+import org.treblereel.mcp.model.ExternalBeanRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
 import org.treblereel.mcp.model.ResolutionCandidate;
 import org.treblereel.mcp.model.ResolutionStatus;
@@ -154,10 +155,16 @@ final class StructureToolQueries {
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier, String module, String sourceSet,
             int limit, int offset) {
-        if (className != null && !className.contains("*")) {
-            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, className);
-            if (lookup.error() != null) return classLookupError(jdbi, lookup, className);
-            className = lookup.cls().className();
+        return getBeans(jdbi, className, scope, kind, profile, qualifier, module, sourceSet,
+                "all", limit, offset);
+    }
+
+    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+            String profile, String qualifier, String module, String sourceSet,
+            String origin, int limit, int offset) {
+        String requestedOrigin = origin == null ? "all" : origin.toLowerCase();
+        if (!Set.of("all", "application", "dependency").contains(requestedOrigin)) {
+            return errorResponse("Invalid origin: expected all, application, or dependency");
         }
         Map<String, String> filter = new HashMap<>();
         if (className != null) filter.put("class_name", className);
@@ -168,21 +175,77 @@ final class StructureToolQueries {
         if (module != null) filter.put("module", module);
         if (sourceSet != null) filter.put("source_set", sourceSet);
 
-        List<BeanRecord> beans = IndexReader.findBeans(jdbi, filter.isEmpty() ? null : filter);
-        int total = beans.size();
-        int from = Math.min(offset, beans.size());
-        int to = (int) Math.min((long) from + limit, beans.size());
-        List<BeanRecord> limited = beans.subList(from, to);
+        List<BeanRecord> beans = List.of();
+        ClassTargetResolver.Lookup lookup = null;
+        if (!"dependency".equals(requestedOrigin)) {
+            Map<String, String> applicationFilter = new HashMap<>(filter);
+            if (className != null && !className.contains("*")) {
+                lookup = ClassTargetResolver.resolve(jdbi, className);
+                if (lookup.error() == null) {
+                    applicationFilter.put("class_name", lookup.cls().className());
+                } else {
+                    applicationFilter.put("class_name", "__quill_no_application_match__");
+                }
+            }
+            beans = IndexReader.findBeans(jdbi,
+                    applicationFilter.isEmpty() ? null : applicationFilter);
+        }
+        List<ExternalBeanRecord> externalBeans = "application".equals(requestedOrigin)
+                ? List.of()
+                : IndexReader.findExternalBeans(jdbi, filter.isEmpty() ? null : filter);
+        if (beans.isEmpty() && externalBeans.isEmpty() && lookup != null
+                && lookup.error() != null) {
+            return classLookupError(jdbi, lookup, className);
+        }
+
+        Map<Integer, ClassRecord> applicationClasses = IndexReader.findClassesByIds(
+                jdbi, beans.stream().map(BeanRecord::classId).toList());
+        List<BeanView> views = new ArrayList<>(beans.size() + externalBeans.size());
+        beans.forEach(bean -> views.add(new BeanView(bean, null,
+                applicationClasses.containsKey(bean.classId())
+                        ? applicationClasses.get(bean.classId()).className()
+                        : Integer.toString(bean.classId()))));
+        externalBeans.forEach(bean -> views.add(new BeanView(null, bean, bean.className())));
+        views.sort(Comparator.comparing(BeanView::className)
+                .thenComparing(BeanView::origin)
+                .thenComparing(BeanView::kind));
+        int total = views.size();
+        int from = Math.min(offset, total);
+        int to = (int) Math.min((long) from + limit, total);
+        List<BeanView> limited = views.subList(from, to);
         Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(
-                jdbi, limited.stream().map(BeanRecord::classId).toList());
+                jdbi, limited.stream().filter(value -> value.application() != null)
+                        .map(value -> value.application().classId()).toList());
         Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
                 IndexReader.findClassOccurrencesByClassIds(
-                        jdbi, limited.stream().map(BeanRecord::classId).toList());
+                        jdbi, limited.stream().filter(value -> value.application() != null)
+                                .map(value -> value.application().classId()).toList());
         ObjectNode root = JSON.createObjectNode();
         ArrayNode arr = root.putArray("beans");
         int naiveTokens = 0;
-        for (BeanRecord bean : limited) {
+        for (BeanView view : limited) {
             ObjectNode node = arr.addObject();
+            if (view.external() != null) {
+                ExternalBeanRecord bean = view.external();
+                node.put("class", bean.className());
+                if (bean.memberName() != null) node.put("member", bean.memberName());
+                if (isProducer(bean.kind()) && !bean.beanTypes().isEmpty()) {
+                    node.put("produced_type", bean.beanTypes().getFirst());
+                }
+                node.put("kind", bean.kind());
+                node.put("scope", bean.scope());
+                node.put("origin", "dependency");
+                node.put("framework", bean.framework());
+                if (bean.artifact() != null) node.put("artifact", bean.artifact());
+                if (bean.jarPath() != null) node.put("jar", bean.jarPath());
+                if (bean.defaultBean()) node.put("default_bean", true);
+                node.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+                node.set("bean_types", JSON.valueToTree(bean.beanTypes()));
+                node.set("profiles", JSON.valueToTree(bean.profiles()));
+                node.set("injection_points", JSON.valueToTree(bean.injectionPoints()));
+                continue;
+            }
+            BeanRecord bean = view.application();
             ClassRecord beanClass = classesById.get(bean.classId());
             node.put("class", beanClass != null ? beanClass.className() : "unknown");
             if (bean.memberName() != null) node.put("member", bean.memberName());
@@ -192,6 +255,7 @@ final class StructureToolQueries {
             }
             node.put("kind", bean.kind());
             node.put("scope", bean.scope());
+            node.put("origin", "application");
             if (bean.isDefault()) node.put("default_bean", true);
             node.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
             node.set("bean_types", JSON.valueToTree(bean.beanTypes()));
@@ -203,9 +267,30 @@ final class StructureToolQueries {
                 naiveTokens += beanClass.sourceTokens();
             }
         }
+        ObjectNode originBreakdown = root.putObject("origin_breakdown");
+        originBreakdown.put("application", beans.size());
+        originBreakdown.put("dependency", externalBeans.size());
+        if (total == 0 && !"application".equals(requestedOrigin)) {
+            Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+            ObjectNode hint = root.putObject("hint");
+            hint.put("dependency_index", metadata.getOrDefault("dependency_index", "unknown"));
+            hint.put("detail", metadata.getOrDefault("dependency_index_detail",
+                    "No dependency bean matched. Re-run quill update after the project classpath is available."));
+        }
         appendPage(root, limited.size(), total, limit, offset);
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
+    }
+
+    private record BeanView(
+            BeanRecord application, ExternalBeanRecord external, String className) {
+        String origin() {
+            return external != null ? "dependency" : "application";
+        }
+
+        String kind() {
+            return external != null ? external.kind() : application.kind();
+        }
     }
 
     String getDependencies(Jdbi jdbi, String target, String direction, int depth) {

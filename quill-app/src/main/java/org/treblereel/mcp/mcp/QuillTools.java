@@ -98,7 +98,7 @@ public final class QuillTools {
                 provider_repository.orElse(null), clamp(max_depth.orElse(3), 1, 10)));
     }
 
-    @Tool(structured = true, description = "Find CDI/Spring beans, producers, interceptors, or decorators. Returns DI and source context.")
+    @Tool(structured = true, description = "Find CDI/Spring beans in project outputs and dependency JARs. Returns DI, configuration injection, source, and artifact context.")
     public String list_beans(
             @ToolArg(description = "Short class name, FQCN, source path, or * wildcard filter") Optional<String> class_name,
             @ToolArg(description = "Scope filter, e.g. @ApplicationScoped or @Singleton") Optional<String> scope,
@@ -107,14 +107,16 @@ public final class QuillTools {
             @ToolArg(description = "Qualifier filter, e.g. @Premium or @Qualifier(\"stripe\")") Optional<String> qualifier,
             @ToolArg(description = "Module path filter relative to the project root, or '.' for the root module") Optional<String> module,
             @ToolArg(description = "Source set filter, e.g. main or test") Optional<String> source_set,
+            @ToolArg(description = "Bean origin: all (default), application, or dependency") Optional<String> origin,
             @ToolArg(description = "Max results to return (default: 50)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getBeans(p.jdbi(),
-                class_name.orElse(null), scope.orElse(null), kind.orElse(null),
-                profile.orElse(null), qualifier.orElse(null), module.orElse(null),
-                source_set.orElse(null), clamp(limit.orElse(50), 1, 100),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+        return forAllProjects(project.orElse(null), p -> workspace.enrichDependencyBeans(
+                queries.getBeans(p.jdbi(), class_name.orElse(null), scope.orElse(null),
+                        kind.orElse(null), profile.orElse(null), qualifier.orElse(null),
+                        module.orElse(null), source_set.orElse(null), origin.orElse("all"),
+                        clamp(limit.orElse(50), 1, 100),
+                        clamp(offset.orElse(0), 0, Integer.MAX_VALUE))));
     }
 
     @Tool(structured = true, description = "Get complete dependency metrics and an optionally paged class graph with call-site evidence.")

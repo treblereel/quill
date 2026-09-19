@@ -87,6 +87,22 @@ class PicocliNativeMetadataTest {
         }
     }
 
+    @Test
+    void externalBeanRecordsAreAvailableToJacksonInNativeImages() throws Exception {
+        String manualConfig =
+                "META-INF/native-image/org.treblereel.mcp/quill-app/reflect-config.json";
+        try (InputStream input = getClass().getClassLoader().getResourceAsStream(manualConfig)) {
+            JsonNode entries = JSON.readTree(input);
+            for (String type : Set.of(
+                    "org.treblereel.mcp.model.ExternalBeanRecord",
+                    "org.treblereel.mcp.model.ExternalInjectionPointRecord")) {
+                JsonNode record = findCommand(entries, type);
+                assertTrue(record.path("allDeclaredConstructors").asBoolean());
+                assertTrue(record.path("allPublicMethods").asBoolean());
+            }
+        }
+    }
+
     private static JsonNode findCommand(JsonNode commands, String name) {
         for (JsonNode command : commands) {
             if (name.equals(command.path("name").asText())) return command;

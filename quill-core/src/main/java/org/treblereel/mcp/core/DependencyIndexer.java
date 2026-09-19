@@ -55,13 +55,15 @@ public final class DependencyIndexer {
     public enum Status { COMPLETE, DEGRADED, UNAVAILABLE }
 
     public record DependencyIndexResult(
-            IndexView index, Status status, String detail, Map<String, Long> timings) {
+            IndexView index, Status status, String detail, Map<String, Long> timings,
+            List<Path> jars) {
         public DependencyIndexResult(IndexView index, Status status, String detail) {
-            this(index, status, detail, Map.of());
+            this(index, status, detail, Map.of(), List.of());
         }
 
         public DependencyIndexResult {
             timings = Collections.unmodifiableMap(new LinkedHashMap<>(timings));
+            jars = List.copyOf(jars);
         }
     }
 
@@ -172,7 +174,8 @@ public final class DependencyIndexer {
             String detail = generationIssue != null
                     ? generationIssue
                     : "no classpath files found";
-            return new DependencyIndexResult(null, Status.UNAVAILABLE, detail, timings);
+            return new DependencyIndexResult(
+                    null, Status.UNAVAILABLE, detail, timings, List.of());
         }
 
         if (jars.isEmpty()) {
@@ -183,7 +186,7 @@ public final class DependencyIndexer {
                     degraded
                             ? dependencyDetail(generationIssue, modulesResolved,
                                     moduleDirs.size(), missingJars)
-                            : "no dependency JARs in classpath", timings);
+                            : "no dependency JARs in classpath", timings, List.of());
         }
 
         long cacheReadStartedAt = System.nanoTime();
@@ -206,12 +209,12 @@ public final class DependencyIndexer {
         if (generationIssue != null || modulesResolved < moduleDirs.size() || missingJars > 0) {
             return new DependencyIndexResult(index.view(), Status.DEGRADED,
                     dependencyDetail(generationIssue, modulesResolved,
-                            moduleDirs.size(), missingJars), timings);
+                            moduleDirs.size(), missingJars), timings, List.copyOf(jars));
         }
 
         return new DependencyIndexResult(index.view(), Status.COMPLETE,
                 jars.size() + (cacheHit ? " JARs loaded from cache" : " JARs indexed"),
-                timings);
+                timings, List.copyOf(jars));
     }
 
     private static long elapsedMillis(long startedAtNanos) {

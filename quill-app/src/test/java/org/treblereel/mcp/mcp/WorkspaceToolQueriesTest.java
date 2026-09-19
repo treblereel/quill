@@ -9,10 +9,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.db.IndexWriter;
+import org.treblereel.mcp.model.ExternalBeanRecord;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 
 class WorkspaceToolQueriesTest {
@@ -85,6 +88,28 @@ class WorkspaceToolQueriesTest {
         assertEquals("class", className.path("candidates").get(0).path("kind").asText());
         assertEquals("engine", className.path("candidates").get(0)
                 .path("repository").asText());
+    }
+
+    @Test
+    void enrichesDependencyBeansWithWorkspaceProvider() throws Exception {
+        var platform = QuillDatabase.openWritable(
+                workspace.resolve("platform/.quill/platform-index.db"));
+        IndexWriter.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
+                1, "io.casehub.engine.RemoteEngineBean", "CLASS", "@ApplicationScoped",
+                List.of("@Default"), List.of(), false, false, null, List.of(), null,
+                List.of("io.casehub.engine.RemoteEngineBean"), "cdi",
+                "io.casehub:engine-api:1.0", "/tmp/engine-api-1.0.jar", List.of())));
+
+        JsonNode result = JSON.readTree(tools.list_beans(
+                Optional.of("RemoteEngineBean"), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                Optional.of("dependency"), Optional.empty(), Optional.empty(),
+                Optional.of("platform")));
+
+        JsonNode bean = result.path("beans").get(0);
+        assertEquals("engine", bean.path("provider_repository").asText());
+        assertEquals("build_required", bean.path("provider_status").asText());
+        assertEquals(".", bean.path("provider_module").asText());
     }
 
     @Test

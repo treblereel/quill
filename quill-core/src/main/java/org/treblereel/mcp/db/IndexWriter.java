@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.ConfigurationScanner;
+import org.treblereel.mcp.core.ExternalBeanScanner;
 import org.treblereel.mcp.model.*;
 
 public final class IndexWriter {
@@ -19,7 +20,7 @@ public final class IndexWriter {
             new ConfigurationScanner.Result(List.of(), List.of());
     private static final String[] ALL_TABLES = {
             "git_commit_files", "git_commits", "git_file_stats",
-            "class_external_deps", "cdi_problems",
+            "class_external_deps", "external_beans", "cdi_problems",
             "resource_usages", "configuration_usages", "configuration_definitions",
             "dependencies", "field_accesses", "method_calls", "injection_points", "beans", "class_members",
             "class_annotations",
@@ -975,6 +976,36 @@ public final class IndexWriter {
         });
     }
 
+    public static void writeExternalBeans(Jdbi jdbi, List<ExternalBeanRecord> beans) {
+        jdbi.useTransaction(h -> {
+            h.execute("DELETE FROM external_beans");
+            executeBatch(h,
+                    "INSERT INTO external_beans (id, class_name, kind, scope, qualifiers, "
+                            + "stereotypes, is_alternative, is_default, priority, profiles, "
+                            + "member_name, bean_types, framework, artifact, jar_path, "
+                            + "injection_points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    beans, (statement, bean) -> {
+                        statement.setInt(1, bean.id());
+                        statement.setString(2, bean.className());
+                        statement.setString(3, bean.kind());
+                        statement.setString(4, bean.scope());
+                        statement.setString(5, jsonArray(bean.qualifiers()));
+                        statement.setString(6, jsonArray(bean.stereotypes()));
+                        statement.setInt(7, bean.alternative() ? 1 : 0);
+                        statement.setInt(8, bean.defaultBean() ? 1 : 0);
+                        statement.setObject(9, bean.priority());
+                        statement.setString(10, jsonArray(bean.profiles()));
+                        statement.setString(11, bean.memberName());
+                        statement.setString(12, jsonArray(bean.beanTypes()));
+                        statement.setString(13, bean.framework());
+                        statement.setString(14, bean.artifact());
+                        statement.setString(15, bean.jarPath());
+                        statement.setString(16,
+                                ExternalBeanScanner.injectionsJson(bean.injectionPoints()));
+                    });
+        });
+    }
+
     private static void insertClasses(Handle h, List<ClassRecord> classes) {
         executeBatch(h,
                 "INSERT INTO classes (class_name, kind, superclass, interfaces, source_file, source_line, is_bean, source_tokens, file_id, origin, lifecycle, module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1258,5 +1289,9 @@ public final class IndexWriter {
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private static String jsonArray(Collection<?> value) {
+        return value == null || value.isEmpty() ? "[]" : toJson(value);
     }
 }

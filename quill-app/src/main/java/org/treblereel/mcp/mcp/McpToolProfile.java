@@ -30,7 +30,8 @@ public final class McpToolProfile {
             "list_injection_points", "get_dependencies", "find_usages",
             "get_annotated_classes", "find_annotated_symbols", "find_framework_endpoints",
             "find_configuration_references", "find_resource_references",
-            "inspect_service_descriptors");
+            "inspect_service_descriptors", "get_project_dependencies",
+            "search_external_symbols", "get_external_symbol_details");
     private static final Set<String> GIT = Set.of(
             "get_overview", "resolve_entities", "find_git_hotspots", "get_file_history",
             "find_co_changed_files", "get_recent_changes", "assess_change_risk",

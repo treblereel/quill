@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 17;
+    static final int SCHEMA_VERSION = 18;
 
     private QuillDatabase() {}
 
@@ -224,6 +224,26 @@ public final class QuillDatabase {
                     usage_kind TEXT NOT NULL
                 )""");
             h.execute("""
+                CREATE TABLE IF NOT EXISTS external_beans (
+                    id INTEGER PRIMARY KEY,
+                    class_name TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    scope TEXT,
+                    qualifiers TEXT NOT NULL,
+                    stereotypes TEXT NOT NULL,
+                    is_alternative INTEGER NOT NULL DEFAULT 0,
+                    is_default INTEGER NOT NULL DEFAULT 0,
+                    priority INTEGER,
+                    profiles TEXT NOT NULL,
+                    member_name TEXT,
+                    bean_types TEXT NOT NULL,
+                    framework TEXT NOT NULL,
+                    artifact TEXT,
+                    jar_path TEXT,
+                    injection_points TEXT NOT NULL,
+                    UNIQUE(framework, class_name, kind, member_name)
+                )""");
+            h.execute("""
                 CREATE TABLE IF NOT EXISTS cdi_problems (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     class_id INTEGER REFERENCES classes(id),
@@ -306,6 +326,9 @@ public final class QuillDatabase {
         h.execute("CREATE INDEX IF NOT EXISTS idx_gc_date ON git_commits(committed_at DESC)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_ced_class ON class_external_deps(class_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_ced_type ON class_external_deps(external_type)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_external_beans_name ON external_beans(class_name)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_external_beans_artifact ON external_beans(artifact)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_external_beans_scope ON external_beans(scope)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_cdip_class ON cdi_problems(class_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_config_def_key ON configuration_definitions(key)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_config_def_module ON configuration_definitions(module, source_set)");

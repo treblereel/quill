@@ -220,6 +220,13 @@ public final class QuillToolQueries {
                 module, sourceSet, limit, offset);
     }
 
+    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+            String profile, String qualifier, String module, String sourceSet,
+            String origin, int limit, int offset) {
+        return structure.getBeans(jdbi, className, scope, kind, profile, qualifier,
+                module, sourceSet, origin, limit, offset);
+    }
+
     String getDependencies(Jdbi jdbi, String target, String direction, int depth) {
         return structure.getDependencies(jdbi, target, direction, depth);
     }

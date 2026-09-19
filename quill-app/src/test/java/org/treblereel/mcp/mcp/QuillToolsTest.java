@@ -148,6 +148,35 @@ class QuillToolsTest {
     }
 
     @Test
+    void getBeansReturnsDependencyBeanWithConfigurationContext() throws Exception {
+        IndexWriter.writeExternalBeans(jdbi, List.of(new ExternalBeanRecord(
+                1, "io.casehub.connectors.twilio.TwilioSmsConnector", "CLASS",
+                "@ApplicationScoped", List.of("@Default", "@Any"), List.of(),
+                false, false, null, List.of(), null,
+                List.of("io.casehub.connectors.twilio.TwilioSmsConnector"), "cdi",
+                "io.casehub:casehub-connectors-core:0.2-SNAPSHOT",
+                "/tmp/casehub-connectors-core.jar",
+                List.of(new ExternalInjectionPointRecord("FIELD", "java.lang.String",
+                        List.of("@ConfigProperty"), "accountSid",
+                        List.of("org.eclipse.microprofile.config.inject.ConfigProperty"),
+                        "casehub.connectors.twilio.account-sid", null, true)))));
+
+        JsonNode result = JSON.readTree(new QuillToolQueries().getBeans(jdbi,
+                "TwilioSmsConnector", null, null, null, null,
+                null, null, "dependency", 50, 0));
+
+        assertEquals(1, result.path("total").asInt());
+        JsonNode bean = result.path("beans").get(0);
+        assertEquals("dependency", bean.path("origin").asText());
+        assertEquals("io.casehub:casehub-connectors-core:0.2-SNAPSHOT",
+                bean.path("artifact").asText());
+        assertEquals("casehub.connectors.twilio.account-sid",
+                bean.path("injection_points").get(0).path("configurationKey").asText());
+        assertTrue(bean.path("injection_points").get(0)
+                .path("configurationRequired").asBoolean());
+    }
+
+    @Test
     void getBeansReturnsCandidatesForUnknownClassName() throws Exception {
         JsonNode result = JSON.readTree(new QuillTools().getBeans(
                 jdbi, "PaymentServ", null, null, null, null));
@@ -175,7 +204,7 @@ class QuillToolsTest {
         String result = new QuillTools(registry).list_beans(
                 Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
                 Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty());
+                Optional.empty(), Optional.empty(), Optional.empty());
 
         JsonNode root = JSON.readTree(result);
         assertTrue(root.get("error").asText().contains("broken-project"));

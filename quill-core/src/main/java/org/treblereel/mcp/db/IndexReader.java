@@ -927,6 +927,48 @@ public final class IndexReader {
         });
     }
 
+    public static List<ExternalBeanRecord> findExternalBeans(
+            Jdbi jdbi, Map<String, String> filter) {
+        return jdbi.withHandle(h -> {
+            StringBuilder sql = new StringBuilder("SELECT * FROM external_beans WHERE 1=1");
+            if (filter != null) {
+                if (filter.containsKey("class_name")) sql.append(" AND class_name LIKE :className");
+                if (filter.containsKey("scope")) sql.append(" AND scope = :scope");
+                if (filter.containsKey("kind")) sql.append(" AND kind = :kind");
+                if (filter.containsKey("profile")) sql.append(" AND profiles LIKE :profile");
+                if (filter.containsKey("qualifier")) sql.append(" AND qualifiers LIKE :qualifier");
+            }
+            sql.append(" ORDER BY class_name, framework, kind, member_name");
+            var query = h.createQuery(sql.toString());
+            if (filter != null) {
+                if (filter.containsKey("class_name")) {
+                    String value = filter.get("class_name");
+                    String pattern = value.replace('*', '%');
+                    if (!value.contains("*") && !value.contains(".")) pattern = "%" + value;
+                    query.bind("className", pattern);
+                }
+                if (filter.containsKey("scope")) query.bind("scope", filter.get("scope"));
+                if (filter.containsKey("kind")) query.bind("kind", filter.get("kind"));
+                if (filter.containsKey("profile")) {
+                    query.bind("profile", "%\"" + filter.get("profile") + "\"%");
+                }
+                if (filter.containsKey("qualifier")) {
+                    query.bind("qualifier", "%" + filter.get("qualifier") + "%");
+                }
+            }
+            return query.map((rs, ctx) -> new ExternalBeanRecord(
+                    rs.getInt("id"), rs.getString("class_name"), rs.getString("kind"),
+                    rs.getString("scope"), fromJson(rs.getString("qualifiers")),
+                    fromJson(rs.getString("stereotypes")),
+                    rs.getInt("is_alternative") != 0, rs.getInt("is_default") != 0,
+                    rs.getObject("priority") == null ? null : rs.getInt("priority"),
+                    fromJson(rs.getString("profiles")), rs.getString("member_name"),
+                    fromJson(rs.getString("bean_types")), rs.getString("framework"),
+                    rs.getString("artifact"), rs.getString("jar_path"),
+                    externalInjectionsFromJson(rs.getString("injection_points")))).list();
+        });
+    }
+
     static boolean matchesProfile(List<String> beanProfiles, String requestedProfile) {
         if (beanProfiles == null || beanProfiles.isEmpty()) return false;
         for (String p : beanProfiles) {
@@ -1713,6 +1755,15 @@ public final class IndexReader {
     }
 
     static List<String> fromJson(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return JSON.readValue(json, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static List<ExternalInjectionPointRecord> externalInjectionsFromJson(String json) {
         if (json == null || json.isBlank()) return List.of();
         try {
             return JSON.readValue(json, new TypeReference<>() {});

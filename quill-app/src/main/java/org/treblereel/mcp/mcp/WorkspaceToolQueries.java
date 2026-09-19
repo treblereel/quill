@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
@@ -25,6 +26,63 @@ final class WorkspaceToolQueries {
 
     WorkspaceToolQueries(ProjectRegistry registry) {
         this.registry = registry;
+    }
+
+    String enrichDependencyBeans(String response) {
+        WorkspaceProjectScope scope = registry.workspaceScope();
+        if (scope == null) return response;
+        try {
+            JsonNode parsed = JSON.readTree(response);
+            if (!(parsed instanceof ObjectNode root) || !root.path("beans").isArray()) {
+                return response;
+            }
+            WorkspaceCoordinateCatalog.Result catalog =
+                    WorkspaceCoordinateCatalog.discover(scope.manifest());
+            Map<String, ProjectRegistry.Resolution> availability = new LinkedHashMap<>();
+            for (JsonNode value : root.path("beans")) {
+                if (!(value instanceof ObjectNode bean)
+                        || !"dependency".equals(bean.path("origin").asText())) continue;
+                String ga = ga(bean.path("artifact").asText(null));
+                if (ga == null) continue;
+                List<WorkspaceCoordinateCatalog.Module> providers =
+                        catalog.modulesByGa().getOrDefault(ga, List.of());
+                if (providers.isEmpty()) continue;
+                ArrayNode candidates = bean.putArray("workspace_providers");
+                for (WorkspaceCoordinateCatalog.Module provider : providers) {
+                    ObjectNode candidate = candidates.addObject();
+                    candidate.put("repository", provider.repository());
+                    candidate.put("module", provider.module());
+                    candidate.put("coordinate", provider.ga());
+                    candidate.put("version", provider.version());
+                    ProjectRegistry.Resolution resolved = availability.computeIfAbsent(
+                            provider.repository(), registry::resolve);
+                    ProjectRegistry.ProjectIssue issue = resolved.issues().stream()
+                            .filter(item -> item.project().equals(provider.repository()))
+                            .findFirst().orElse(null);
+                    candidate.put("status", issue == null && !resolved.projects().isEmpty()
+                            ? "ready" : issue == null ? "unavailable" : issue.code());
+                    if (issue != null) {
+                        candidate.set("availability", ProjectAvailabilityResponses.details(issue));
+                    }
+                }
+                if (providers.size() == 1) {
+                    WorkspaceCoordinateCatalog.Module provider = providers.getFirst();
+                    bean.put("provider_repository", provider.repository());
+                    bean.put("provider_module", provider.module());
+                    bean.put("provider_status",
+                            candidates.get(0).path("status").asText("unavailable"));
+                }
+            }
+            return root.toString();
+        } catch (Exception ignored) {
+            return response;
+        }
+    }
+
+    private static String ga(String coordinate) {
+        if (coordinate == null || coordinate.isBlank()) return null;
+        String[] parts = coordinate.split(":");
+        return parts.length >= 2 ? parts[0] + ':' + parts[1] : null;
     }
 
     String listRepositories(boolean includeModules, int limit, int offset) {

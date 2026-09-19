@@ -138,8 +138,8 @@ class WorkspaceCommandTest {
         assertTrue(repository.path("supported").asBoolean());
         assertTrue(repository.path("compiled").asBoolean());
         assertTrue(repository.path("indexed").asBoolean());
-        assertEquals(17, repository.path("indexSchema").asInt());
-        assertEquals(17, repository.path("currentSchema").asInt());
+        assertEquals(18, repository.path("indexSchema").asInt());
+        assertEquals(18, repository.path("currentSchema").asInt());
         assertEquals("installed", repository.path("buildIntegration").asText());
         assertTrue(repository.path("queryReady").asBoolean());
     }

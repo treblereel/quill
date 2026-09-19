@@ -17,6 +17,16 @@
     "methods": [{"name": "values", "parameterTypes": []}]
   },
   {
+    "name": "org.treblereel.mcp.model.ExternalBeanRecord",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.treblereel.mcp.model.ExternalInjectionPointRecord",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
     "name": "org.treblereel.mcp.workspace.WorkspaceRepositoryStateStore$Repository",
     "allDeclaredConstructors": true,
     "allPublicMethods": true

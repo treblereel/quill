@@ -35,6 +35,7 @@ import org.treblereel.mcp.core.ClassOccurrenceScanner;
 import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.core.FileInventory;
+import org.treblereel.mcp.core.ExternalBeanScanner;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.JandexScanner;
 import org.treblereel.mcp.core.ModuleClasspathResolver;
@@ -52,6 +53,7 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
+import org.treblereel.mcp.model.ExternalBeanRecord;
 import org.treblereel.mcp.model.FieldAccessRecord;
 import org.treblereel.mcp.model.FrameworkEndpointRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
@@ -410,6 +412,8 @@ public class ProjectInitializer {
         PersistedResolution persisted = mergePersistedResolutions(
                 persistedParts, isSpring && isCdi);
         List<BeanRecord> remappedBeans = persisted.beans();
+        List<ExternalBeanRecord> externalBeans = ExternalBeanScanner.scan(
+                depResult.index(), depResult.jars());
 
         Set<Integer> beanClassIds = new HashSet<>();
         for (BeanRecord b : remappedBeans) {
@@ -597,6 +601,7 @@ public class ProjectInitializer {
                 : isSpring ? "Spring" : isCdi ? "CDI" : "Plain");
         metadata.put("dependency_index", depResult.status().name().toLowerCase());
         metadata.put("dependency_index_detail", depResult.detail());
+        metadata.put("external_beans", Integer.toString(externalBeans.size()));
         metadata.put("database_write_mode", incrementalBase == null ? "fresh" : "incremental");
         metadata.put("state_fingerprint",
                 ProjectLayout.computeStateFingerprint(root, classesDirs, classFiles.fingerprint()));
@@ -635,6 +640,7 @@ public class ProjectInitializer {
                         + writeTimings.rowsUnchanged() + " unchanged.");
             }
             Jdbi stagedIndex = QuillDatabase.openWritable(stagedDb);
+            IndexWriter.writeExternalBeans(stagedIndex, externalBeans);
             IndexWriter.writeModuleClasspath(stagedIndex, moduleClasspath);
             long validationStartedAt = System.nanoTime();
             ProjectIndexStore.validateForPublication(stagedDb);

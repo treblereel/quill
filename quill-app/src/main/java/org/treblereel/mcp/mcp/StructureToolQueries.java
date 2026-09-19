@@ -29,6 +29,7 @@ import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ExternalBeanRecord;
+import org.treblereel.mcp.model.ExternalInjectionPointRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
 import org.treblereel.mcp.model.ResolutionCandidate;
 import org.treblereel.mcp.model.ResolutionStatus;
@@ -270,6 +271,7 @@ final class StructureToolQueries {
         ObjectNode originBreakdown = root.putObject("origin_breakdown");
         originBreakdown.put("application", beans.size());
         originBreakdown.put("dependency", externalBeans.size());
+        appendDependencyBeanSummary(root, externalBeans);
         if (total == 0 && !"application".equals(requestedOrigin)) {
             Map<String, String> metadata = IndexReader.getMetadata(jdbi);
             ObjectNode hint = root.putObject("hint");
@@ -281,6 +283,52 @@ final class StructureToolQueries {
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }
+
+    private static void appendDependencyBeanSummary(
+            ObjectNode root, List<ExternalBeanRecord> beans) {
+        ObjectNode summary = root.putObject("dependency_summary");
+        summary.put("bean_count", beans.size());
+        Map<String, Integer> artifactCounts = new java.util.TreeMap<>();
+        for (ExternalBeanRecord bean : beans) {
+            if (bean.artifact() != null) artifactCounts.merge(bean.artifact(), 1, Integer::sum);
+        }
+        ArrayNode artifacts = summary.putArray("artifacts");
+        artifactCounts.forEach((artifact, count) -> artifacts.addObject()
+                .put("artifact", artifact).put("bean_count", count));
+
+        List<RequiredConfiguration> required = new ArrayList<>();
+        int defaultedCount = 0;
+        Set<String> configuredBeans = new TreeSet<>();
+        for (ExternalBeanRecord bean : beans) {
+            for (ExternalInjectionPointRecord injection : bean.injectionPoints()) {
+                if (injection.configurationKey() == null) continue;
+                configuredBeans.add(bean.className());
+                if (injection.configurationRequired()) {
+                    required.add(new RequiredConfiguration(bean.className(),
+                            injection.member(), injection.configurationKey()));
+                } else {
+                    defaultedCount++;
+                }
+            }
+        }
+        required.sort(Comparator.comparing(RequiredConfiguration::key)
+                .thenComparing(RequiredConfiguration::bean));
+        ObjectNode configuration = root.putObject("configuration_summary");
+        configuration.put("beans_with_configuration", configuredBeans.size());
+        configuration.put("required_count", required.size());
+        configuration.put("defaulted_count", defaultedCount);
+        ArrayNode properties = configuration.putArray("required_properties");
+        for (RequiredConfiguration value : required) {
+            properties.addObject().put("key", value.key()).put("bean", value.bean())
+                    .put("member", value.member()).put("required", true);
+        }
+        ObjectNode coverage = root.putObject("answer_coverage");
+        coverage.put("dependency_beans", true);
+        coverage.put("configuration_requirements", true);
+        coverage.put("artifact_coordinates", true);
+    }
+
+    private record RequiredConfiguration(String bean, String member, String key) {}
 
     private record BeanView(
             BeanRecord application, ExternalBeanRecord external, String className) {

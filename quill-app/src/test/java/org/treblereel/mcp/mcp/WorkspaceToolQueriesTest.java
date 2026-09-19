@@ -110,6 +110,11 @@ class WorkspaceToolQueriesTest {
         assertEquals("engine", bean.path("provider_repository").asText());
         assertEquals("build_required", bean.path("provider_status").asText());
         assertEquals(".", bean.path("provider_module").asText());
+        assertTrue(result.path("workspace_provider_resolution").path("complete").asBoolean());
+        assertFalse(result.path("workspace_provider_resolution")
+                .path("additional_workspace_lookup_required").asBoolean(true));
+        assertEquals("engine", result.path("workspace_provider_resolution")
+                .path("providers").get(0).path("repository").asText());
     }
 
     @Test

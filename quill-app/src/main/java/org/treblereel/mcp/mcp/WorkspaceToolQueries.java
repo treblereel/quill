@@ -39,14 +39,19 @@ final class WorkspaceToolQueries {
             WorkspaceCoordinateCatalog.Result catalog =
                     WorkspaceCoordinateCatalog.discover(scope.manifest());
             Map<String, ProjectRegistry.Resolution> availability = new LinkedHashMap<>();
+            Map<String, ProviderSummary> providerSummaries = new java.util.TreeMap<>();
+            int dependencyBeans = 0;
+            int mappedBeans = 0;
             for (JsonNode value : root.path("beans")) {
                 if (!(value instanceof ObjectNode bean)
                         || !"dependency".equals(bean.path("origin").asText())) continue;
+                dependencyBeans++;
                 String ga = ga(bean.path("artifact").asText(null));
                 if (ga == null) continue;
                 List<WorkspaceCoordinateCatalog.Module> providers =
                         catalog.modulesByGa().getOrDefault(ga, List.of());
                 if (providers.isEmpty()) continue;
+                mappedBeans++;
                 ArrayNode candidates = bean.putArray("workspace_providers");
                 for (WorkspaceCoordinateCatalog.Module provider : providers) {
                     ObjectNode candidate = candidates.addObject();
@@ -61,6 +66,14 @@ final class WorkspaceToolQueries {
                             .findFirst().orElse(null);
                     candidate.put("status", issue == null && !resolved.projects().isEmpty()
                             ? "ready" : issue == null ? "unavailable" : issue.code());
+                    String status = candidate.path("status").asText("unavailable");
+                    String summaryKey = provider.repository() + '|' + provider.module()
+                            + '|' + status;
+                    ProviderSummary existing = providerSummaries.get(summaryKey);
+                    providerSummaries.put(summaryKey, existing == null
+                            ? new ProviderSummary(provider.repository(), provider.module(),
+                                    status, 1, new java.util.TreeSet<>(Set.of(ga)))
+                            : existing.add(ga));
                     if (issue != null) {
                         candidate.set("availability", ProjectAvailabilityResponses.details(issue));
                     }
@@ -73,6 +86,25 @@ final class WorkspaceToolQueries {
                             candidates.get(0).path("status").asText("unavailable"));
                 }
             }
+            ObjectNode resolution = root.putObject("workspace_provider_resolution");
+            resolution.put("dependency_bean_count", dependencyBeans);
+            resolution.put("mapped_bean_count", mappedBeans);
+            resolution.put("complete", dependencyBeans == mappedBeans);
+            resolution.put("additional_workspace_lookup_required",
+                    dependencyBeans != mappedBeans);
+            ArrayNode summaries = resolution.putArray("providers");
+            providerSummaries.values().forEach(provider -> {
+                ObjectNode value = summaries.addObject();
+                value.put("repository", provider.repository());
+                value.put("module", provider.module());
+                value.put("status", provider.status());
+                value.put("bean_count", provider.beanCount());
+                value.set("coordinates", JSON.valueToTree(provider.coordinates()));
+            });
+            if (root.path("answer_coverage").isObject()) {
+                ((ObjectNode) root.path("answer_coverage"))
+                        .put("workspace_provider_status", dependencyBeans == mappedBeans);
+            }
             return root.toString();
         } catch (Exception ignored) {
             return response;
@@ -83,6 +115,15 @@ final class WorkspaceToolQueries {
         if (coordinate == null || coordinate.isBlank()) return null;
         String[] parts = coordinate.split(":");
         return parts.length >= 2 ? parts[0] + ':' + parts[1] : null;
+    }
+
+    private record ProviderSummary(String repository, String module, String status,
+            int beanCount, java.util.SortedSet<String> coordinates) {
+        ProviderSummary add(String coordinate) {
+            java.util.SortedSet<String> updated = new java.util.TreeSet<>(coordinates);
+            updated.add(coordinate);
+            return new ProviderSummary(repository, module, status, beanCount + 1, updated);
+        }
     }
 
     String listRepositories(boolean includeModules, int limit, int offset) {

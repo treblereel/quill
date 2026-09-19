@@ -174,6 +174,13 @@ class QuillToolsTest {
                 bean.path("injection_points").get(0).path("configurationKey").asText());
         assertTrue(bean.path("injection_points").get(0)
                 .path("configurationRequired").asBoolean());
+        assertEquals(1, result.path("configuration_summary")
+                .path("required_count").asInt());
+        assertEquals("casehub.connectors.twilio.account-sid",
+                result.path("configuration_summary").path("required_properties")
+                        .get(0).path("key").asText());
+        assertTrue(result.path("answer_coverage")
+                .path("configuration_requirements").asBoolean());
     }
 
     @Test

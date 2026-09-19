@@ -98,7 +98,7 @@ public final class QuillTools {
                 provider_repository.orElse(null), clamp(max_depth.orElse(3), 1, 10)));
     }
 
-    @Tool(structured = true, description = "Find CDI/Spring beans in project outputs and dependency JARs. Returns DI, configuration injection, source, and artifact context.")
+    @Tool(structured = true, description = "Find CDI/Spring beans in project outputs and dependency JARs. Returns exact configuration requirements, artifacts, and in workspace mode the local provider and build status; use these summaries before calling additional workspace tools.")
     public String list_beans(
             @ToolArg(description = "Short class name, FQCN, source path, or * wildcard filter") Optional<String> class_name,
             @ToolArg(description = "Scope filter, e.g. @ApplicationScoped or @Singleton") Optional<String> scope,

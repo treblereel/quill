@@ -206,7 +206,7 @@ class WorkspaceToolQueriesTest {
     void findsUsagesOnlyInRepositoriesDependingOnTheProvider() throws Exception {
         JsonNode result = JSON.readTree(tools.find_workspace_usages(
                 "io.casehub.engine.EngineService", Optional.of("engine"), Optional.empty(),
-                Optional.empty(), Optional.empty()));
+                Optional.empty(), Optional.empty(), Optional.empty()));
 
         assertEquals("engine", result.path("provider").path("repository").asText());
         assertEquals("io.casehub:engine-api",
@@ -220,6 +220,40 @@ class WorkspaceToolQueriesTest {
         assertEquals(1, consumer.path("usage").path("usage_group_count").asInt());
         assertEquals("constructor_call", consumer.path("usage").path("usages")
                 .get(0).path("usage_kind").asText());
+    }
+
+    @Test
+    void boundsUsageDetailsPerConsumerAndReportsTruncation() throws Exception {
+        var platform = QuillDatabase.openWritable(
+                workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes(class_name, kind, source_file, is_bean, module, source_set)
+                    VALUES ('io.casehub.platform.FirstCaller', 'CLASS',
+                            'src/main/java/io/casehub/platform/FirstCaller.java', 0, '.', 'main'),
+                           ('io.casehub.platform.SecondCaller', 'CLASS',
+                            'src/main/java/io/casehub/platform/SecondCaller.java', 0, '.', 'main')
+                    """);
+            handle.execute("""
+                    INSERT INTO dependencies(from_class_id, to_class_id, kind, evidence_lines)
+                    SELECT id, 2, 'CALLS', '[33]' FROM classes
+                    WHERE class_name IN ('io.casehub.platform.FirstCaller',
+                                         'io.casehub.platform.SecondCaller')
+                    """);
+        });
+
+        JsonNode result = JSON.readTree(tools.find_workspace_usages(
+                "io.casehub.engine.EngineService", Optional.of("engine"), Optional.empty(),
+                Optional.of(20), Optional.of(2), Optional.empty()));
+
+        assertEquals(2, result.path("consumer_usage_limit").asInt());
+        assertEquals(1, result.path("truncated_consumer_count").asInt());
+        assertFalse(result.path("complete").asBoolean(true));
+        JsonNode usage = result.path("consumers").get(0).path("usage");
+        assertEquals(2, usage.path("showing").asInt());
+        assertEquals(3, usage.path("total").asInt());
+        assertTrue(usage.path("has_more").asBoolean());
+        assertEquals(2, usage.path("next_offset").asInt());
     }
 
     @Test

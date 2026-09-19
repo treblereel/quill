@@ -83,11 +83,13 @@ public final class QuillTools {
             @ToolArg(description = "Class or source path") String target,
             @ToolArg(description = "Provider repository") Optional<String> provider_repository,
             @ToolArg(description = "Usage kind") Optional<String> usage_kind,
-            @ToolArg(description = "Page size") Optional<Integer> limit,
+            @ToolArg(description = "Consumer repository page size") Optional<Integer> limit,
+            @ToolArg(description = "Usage groups returned per consumer (default: 20, max: 100)") Optional<Integer> consumer_limit,
             @ToolArg(description = "Offset") Optional<Integer> offset) {
         return ResponseBudget.apply(workspace.findUsages(target,
                 provider_repository.orElse(null), usage_kind.orElse(null),
                 clamp(limit.orElse(20), 1, 100),
+                clamp(consumer_limit.orElse(20), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 

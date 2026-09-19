@@ -495,7 +495,7 @@ final class WorkspaceToolQueries {
     }
 
     String findUsages(String target, String providerRepository, String usageKind,
-            int limit, int offset) {
+            int limit, int consumerLimit, int offset) {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null) return workspaceRequired();
         ProjectRegistry.Resolution providerAvailability = null;
@@ -557,9 +557,12 @@ final class WorkspaceToolQueries {
         List<ProjectQueryExecutor.QueryResult> queryResults =
                 new ProjectQueryExecutor(registry).executeProjects(consumerProjects,
                         consumer -> usageQueries.findUsages(consumer.jdbi(),
-                                provider.className(), usageKind, null, 200, 0));
+                                provider.className(), usageKind, null, consumerLimit, 0));
+        int failedConsumers = 0;
+        int truncatedConsumers = 0;
         for (ProjectQueryExecutor.QueryResult result : queryResults) {
             if (!result.successful()) {
+                failedConsumers++;
                 diagnostics.add("Repository '" + result.project()
                         + "' query failed: " + result.error());
                 continue;
@@ -567,10 +570,12 @@ final class WorkspaceToolQueries {
             try {
                 var data = JSON.readTree(result.json());
                 if (!data.has("error") && data.path("usage_group_count").asInt() > 0) {
+                    if (data.path("truncated").asBoolean()) truncatedConsumers++;
                     usages.add(new ConsumerUsage(result.project(),
                             consumerEdges.get(result.project()), data));
                 }
             } catch (Exception invalid) {
+                failedConsumers++;
                 diagnostics.add("Repository '" + result.project()
                         + "' returned invalid usage data: " + invalid.getMessage());
             }
@@ -600,7 +605,11 @@ final class WorkspaceToolQueries {
         root.put("candidate_consumer_count", consumerEdges.size());
         root.put("queried_consumer_count", consumerProjects.size());
         root.put("unavailable_consumer_count", unavailableConsumers);
-        root.put("complete", graph.complete());
+        root.put("failed_consumer_count", failedConsumers);
+        root.put("truncated_consumer_count", truncatedConsumers);
+        root.put("consumer_usage_limit", consumerLimit);
+        root.put("complete", graph.complete() && unavailableConsumers == 0
+                && failedConsumers == 0 && truncatedConsumers == 0);
         appendDiagnostics(root, diagnostics);
         if (providerAvailability != null && !providerAvailability.issues().isEmpty()) {
             ProjectAvailabilityResponses.append(root, "provider_warnings",
@@ -623,7 +632,7 @@ final class WorkspaceToolQueries {
             if (providers.size() != 1) return response;
             ProviderClass provider = providers.getFirst();
             JsonNode workspaceResult = JSON.readTree(findUsages(target,
-                    provider.repository(), usageKind, limit, offset));
+                    provider.repository(), usageKind, limit, Math.min(limit, 20), offset));
             ObjectNode root = JSON.createObjectNode();
             root.put("target", target);
             root.put("origin", "workspace_provider");

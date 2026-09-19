@@ -211,8 +211,10 @@ The router profile returns the same policy in `search_tools.guidance`, including
 `recommended_channel` hint.
 
 - **search_classes** — find classes by wildcard pattern; supports `limit`/`offset`
-- **get_project_dependencies** — list resolved Maven/Gradle artifacts and consuming modules
-  from Quill's cached runtime classpaths without invoking the build
+- **get_project_dependencies** — list resolved Maven/Gradle artifacts visible to main or test
+  code without invoking the build. Maven/Gradle integration captures separate runtime and test
+  classpaths after normal user builds; until then Quill identifies transitive test visibility
+  through the reactor graph and labels it as inferred
 - **list_project_tree** / **search_files** — navigate the indexed project inventory with
   module, source-set, lifecycle, and dirty-worktree context
 - **get_file_problems** — filter captured Maven/Gradle build diagnostics by one or more source
@@ -313,6 +315,14 @@ Initialize the project once before connecting an MCP client:
 Quill is a local stdio MCP server. The client starts it on demand and communicates
 with it over stdin/stdout; you do not need to run a daemon. Absolute paths are
 recommended because an MCP client's process working directory is not guaranteed.
+
+For structured troubleshooting, add `--debug` to the MCP command. Quill keeps stdout
+reserved for JSON-RPC, writes JSON-line events to stderr, and persists the same events in
+`.quill/debug/quill-debug.jsonl` under the served project or workspace. Each instrumented
+response includes a `debug.trace_id` for correlation. Set `QUILL_DEBUG=1` instead when it is
+more convenient to enable diagnostics without editing MCP arguments, or use
+`--debug-directory /path` to choose where the `.quill/debug` directory is created. Debug logs
+contain local paths and dependency coordinates and should not be committed.
 
 For workspace mode, configure the client command as:
 

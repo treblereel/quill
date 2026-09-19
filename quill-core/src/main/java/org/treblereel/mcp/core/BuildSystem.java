@@ -54,6 +54,11 @@ public enum BuildSystem {
                 .resolve("quill-classpath.sha256");
     }
 
+    public Path testClasspathFile(Path moduleDir) {
+        return moduleDir.resolve(this == MAVEN ? "target" : "build")
+                .resolve("quill-test-classpath.txt");
+    }
+
     /** Builds a platform-specific invocation of this project's wrapper or installed build tool. */
     public List<String> command(Path root, String... arguments) {
         return command(root, isWindows(), arguments);

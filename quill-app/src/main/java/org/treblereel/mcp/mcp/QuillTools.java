@@ -344,9 +344,10 @@ public final class QuillTools {
     }
 
     @Tool(structured = true,
-            description = "List resolved Maven or Gradle dependency artifacts and the modules that use them without invoking a build.")
+            description = "List artifacts visible to main or test code from captured classpaths and reactor inference without invoking a build; reports evidence and completeness.")
     public String get_project_dependencies(
             @ToolArg(description = "Module path relative to the project root; omit for all") Optional<String> module,
+            @ToolArg(description = "Classpath source set: main or test; omit for both") Optional<String> source_set,
             @ToolArg(description = "Substring of group, artifact, version, or JAR name") Optional<String> query,
             @ToolArg(description = "Directness filter: direct, transitive, mixed, or unknown") Optional<String> directness,
             @ToolArg(description = "Group-id substring") Optional<String> group,
@@ -357,6 +358,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p ->
                 projectDependencies.getProjectDependencies(p.jdbi(), p.root(), module.orElse(null),
+                        source_set.orElse(null),
                         query.orElse(null), directness.orElse(null), group.orElse(null),
                         artifact.orElse(null), scope.orElse(null),
                         clamp(limit.orElse(100), 1, 200),

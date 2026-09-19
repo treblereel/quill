@@ -12,6 +12,7 @@ import org.treblereel.mcp.command.InitCommand;
 import org.treblereel.mcp.command.StatusCommand;
 import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.command.WorkspaceCommand;
+import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.mcp.ProjectRegistry;
 import org.treblereel.mcp.mcp.WorkspaceProjectScope;
 import org.treblereel.mcp.mcp.McpStdioServer;
@@ -40,6 +41,12 @@ public class QuillTopCommand implements Callable<Integer> {
     @Option(names = "--tools", description = "MCP tool profiles: full, router, core, code, di, git; "
             + "comma-separated unions are allowed (default: full)")
     String toolProfiles = "full";
+
+    @Option(names = "--debug", description = "Write structured MCP diagnostics to stderr and .quill/debug")
+    boolean debug;
+
+    @Option(names = "--debug-directory", description = "Root directory for .quill/debug (defaults to the served workspace or project)")
+    Path debugDirectory;
 
     public static void main(String[] args) {
         CommandLine commandLine = new CommandLine(new QuillTopCommand());
@@ -88,6 +95,7 @@ public class QuillTopCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         if (mcp) {
+            DebugTrace.configure(debug || debugEnvironmentEnabled(), diagnosticRoot());
             ProjectRegistry registry;
             WorkspaceLock workspaceLock = null;
             if (workspace != null) {
@@ -120,5 +128,18 @@ public class QuillTopCommand implements Callable<Integer> {
                 + " or --mcp to start the MCP server.");
         System.err.println("Run 'quill --help' for more information.");
         return CommandLine.ExitCode.USAGE;
+    }
+
+    private Path diagnosticRoot() {
+        if (debugDirectory != null) return debugDirectory;
+        if (workspace != null) return workspace;
+        if (projects != null && projects.size() == 1) return projects.getFirst();
+        return Path.of("");
+    }
+
+    private static boolean debugEnvironmentEnabled() {
+        String value = System.getenv("QUILL_DEBUG");
+        return value != null && (value.equals("1") || value.equalsIgnoreCase("true")
+                || value.equalsIgnoreCase("yes"));
     }
 }

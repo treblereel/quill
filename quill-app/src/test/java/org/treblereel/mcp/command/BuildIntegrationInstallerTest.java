@@ -68,7 +68,9 @@ class BuildIntegrationInstallerTest {
                 BuildIntegrationInstaller.install(tempDir));
         assertEquals(BuildIntegrationInstaller.Result.UNCHANGED,
                 BuildIntegrationInstaller.install(tempDir));
-        assertTrue(Files.readString(settings).contains("gradle.buildFinished"));
+        String installed = Files.readString(settings);
+        assertTrue(installed.contains("gradle.buildFinished"));
+        assertTrue(installed.contains("quill-test-classpath.txt"));
         assertEquals(BuildIntegrationInstaller.State.INSTALLED,
                 BuildIntegrationInstaller.inspect(tempDir).state());
 
@@ -97,7 +99,12 @@ class BuildIntegrationInstallerTest {
 
     @Test
     void uninstallDeletesSettingsFileCreatedByQuill() throws Exception {
-        Files.writeString(tempDir.resolve("build.gradle"), "plugins { id 'java' }\n");
+        Files.writeString(tempDir.resolve("build.gradle"), """
+                plugins { id 'java' }
+                repositories { mavenCentral() }
+                dependencies { testImplementation 'org.junit.jupiter:junit-jupiter:5.12.2' }
+                test { useJUnitPlatform() }
+                """);
 
         assertEquals(BuildIntegrationInstaller.Result.INSTALLED,
                 BuildIntegrationInstaller.install(tempDir));
@@ -156,13 +163,25 @@ class BuildIntegrationInstallerTest {
     }
 
     private void runSuccessfulGradleBuild() throws Exception {
+        Files.writeString(tempDir.resolve("build.gradle"), """
+                plugins { id 'java' }
+
+                tasks.register('resolveQuillTestClasspath') {
+                    doLast { configurations.testRuntimeClasspath.files }
+                }
+                """);
         assertEquals(BuildIntegrationInstaller.Result.INSTALLED,
                 BuildIntegrationInstaller.install(tempDir));
+        assertTrue(Files.readString(Files.isRegularFile(tempDir.resolve("settings.gradle.kts"))
+                ? tempDir.resolve("settings.gradle.kts") : tempDir.resolve("settings.gradle"))
+                .contains("quill-test-classpath.txt"));
 
-        Process build = new ProcessBuilder("gradle", "help", "--quiet", "--no-daemon")
+        Process build = new ProcessBuilder(
+                "gradle", "resolveQuillTestClasspath", "--quiet", "--no-daemon")
                 .directory(tempDir.toFile()).redirectErrorStream(true).start();
         String output = new String(build.getInputStream().readAllBytes());
         assertEquals(0, build.waitFor(), output);
+        assertTrue(Files.isRegularFile(tempDir.resolve("build/quill-test-classpath.txt")));
         try (var events = Files.list(tempDir.resolve(".quill/build-events"))) {
             Path event = events.filter(path -> path.getFileName().toString()
                             .startsWith("gradle-"))

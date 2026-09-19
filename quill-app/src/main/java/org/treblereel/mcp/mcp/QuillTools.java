@@ -151,10 +151,15 @@ public final class QuillTools {
             @ToolArg(description = "Logical implementation classes per page (default: 50, max: 100)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findImplementations(
-                p.jdbi(), target, transitive.orElse(true), null, null,
-                clamp(limit.orElse(50), 1, 100),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+        boolean requestedTransitive = transitive.orElse(true);
+        int requestedLimit = clamp(limit.orElse(50), 1, 100);
+        int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
+        return forAllProjects(project.orElse(null), p -> workspace.routeMissingClassQuery(
+                queries.findImplementations(p.jdbi(), target, requestedTransitive, null, null,
+                        requestedLimit, requestedOffset),
+                p.name(), target, "find_implementations",
+                provider -> queries.findImplementations(provider, target, requestedTransitive,
+                        null, null, requestedLimit, requestedOffset)));
     }
 
     @Tool(structured = true, description = "Find class usages from bytecode, DI, inheritance, annotations, and ServiceLoader evidence.")
@@ -227,11 +232,16 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getTypeHierarchy(
-                p.jdbi(), target, direction.orElse("both"),
-                clamp(max_depth.orElse(5), 1, 20),
-                clamp(limit.orElse(100), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+        String requestedDirection = direction.orElse("both");
+        int requestedDepth = clamp(max_depth.orElse(5), 1, 20);
+        int requestedLimit = clamp(limit.orElse(100), 1, 200);
+        int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
+        return forAllProjects(project.orElse(null), p -> workspace.routeMissingClassQuery(
+                queries.getTypeHierarchy(p.jdbi(), target, requestedDirection,
+                        requestedDepth, requestedLimit, requestedOffset),
+                p.name(), target, "get_type_hierarchy",
+                provider -> queries.getTypeHierarchy(provider, target, requestedDirection,
+                        requestedDepth, requestedLimit, requestedOffset)));
     }
 
     @Tool(structured = true, description = "Search indexed type, method, field, and constructor declarations.")
@@ -275,10 +285,17 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findMethodOverrides(
-                p.jdbi(), target, method, signature.orElse(null), transitive.orElse(true),
-                clamp(limit.orElse(50), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+        String requestedSignature = signature.orElse(null);
+        boolean requestedTransitive = transitive.orElse(true);
+        int requestedLimit = clamp(limit.orElse(50), 1, 200);
+        int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
+        return forAllProjects(project.orElse(null), p -> workspace.routeMissingClassQuery(
+                queries.findMethodOverrides(p.jdbi(), target, method, requestedSignature,
+                        requestedTransitive, requestedLimit, requestedOffset),
+                p.name(), target, "find_method_overrides",
+                provider -> queries.findMethodOverrides(provider, target, method,
+                        requestedSignature, requestedTransitive, requestedLimit,
+                        requestedOffset)));
     }
 
     @Tool(structured = true, description = "Find conservative candidates for unused indexed classes; results are not proof of dead code.")

@@ -10,6 +10,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.IndexReader;
@@ -587,6 +589,64 @@ final class WorkspaceToolQueries {
                     .put("message", parsed.path("error").asText());
             root.set("workspace_usage", workspaceResult);
             root.put("answer_complete", workspaceResult.path("complete").asBoolean(false));
+            return root.toString();
+        } catch (Exception ignored) {
+            return response;
+        }
+    }
+
+    String routeMissingClassQuery(String response, String consumerRepository, String target,
+            String operation, Function<Jdbi, String> providerQuery) {
+        if (registry.workspaceScope() == null) return response;
+        try {
+            JsonNode local = JSON.readTree(response);
+            if (!local.path("error").asText("").startsWith("Class not found")) {
+                return response;
+            }
+            List<ProviderClass> providers = findProviderClasses(target, null);
+            if (providers.isEmpty()) return response;
+
+            ObjectNode root = JSON.createObjectNode();
+            root.put("target", target);
+            root.put("origin", "workspace_provider");
+            root.putObject("local_resolution")
+                    .put("status", "not_found")
+                    .put("repository", consumerRepository)
+                    .put("message", local.path("error").asText());
+            ObjectNode workspaceResult = root.putObject("workspace_result");
+            workspaceResult.put("operation", operation);
+            if (providers.size() > 1) {
+                workspaceResult.put("status", "ambiguous_workspace_class");
+                workspaceResult.put("complete", false);
+                ArrayNode candidates = workspaceResult.putArray("candidates");
+                providers.forEach(provider -> candidates.add(providerJson(provider)));
+                root.put("answer_complete", false);
+                return root.toString();
+            }
+
+            ProviderClass provider = providers.getFirst();
+            workspaceResult.set("provider", providerJson(provider));
+            ProjectRegistry.Resolution availability = registry.resolve(provider.repository());
+            if (availability.projects().isEmpty()) {
+                workspaceResult.put("status", "provider_unavailable");
+                workspaceResult.put("complete", false);
+                ProjectAvailabilityResponses.append(workspaceResult, "project_warnings",
+                        availability.issues());
+                root.put("answer_complete", false);
+                return root.toString();
+            }
+
+            JsonNode providerData = JSON.readTree(providerQuery.apply(
+                    availability.projects().getFirst().jdbi()));
+            boolean absentFromIndex = providerData.path("error").asText("")
+                    .startsWith("Class not found");
+            workspaceResult.put("status", absentFromIndex
+                    ? "provider_index_incomplete" : "resolved");
+            workspaceResult.put("complete", !absentFromIndex);
+            workspaceResult.set("data", providerData);
+            ProjectAvailabilityResponses.append(workspaceResult, "project_warnings",
+                    availability.issues());
+            root.put("answer_complete", !absentFromIndex);
             return root.toString();
         } catch (Exception ignored) {
             return response;

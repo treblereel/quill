@@ -287,6 +287,40 @@ class WorkspaceToolQueriesTest {
     }
 
     @Test
+    void routesStructuralClassQueriesToWorkspaceProvider() throws Exception {
+        var engine = QuillDatabase.openWritable(
+                workspace.resolve("engine/.quill/engine-index.db"));
+        engine.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members
+                  (class_id, kind, name, signature, type_name, parameter_types,
+                   modifiers, annotations)
+                SELECT id, 'METHOD', 'execute', 'execute():void', 'void', '[]',
+                       'public', '[]'
+                FROM classes WHERE class_name = 'io.casehub.engine.EngineService'
+                """));
+        removePlatformDependencyClass();
+
+        JsonNode implementations = JSON.readTree(tools.find_implementations(
+                "io.casehub.engine.EngineService", Optional.of(true), Optional.of(20),
+                Optional.empty(), Optional.of("platform")));
+        JsonNode hierarchy = JSON.readTree(tools.get_type_hierarchy(
+                "io.casehub.engine.EngineService", Optional.of("both"), Optional.of(5),
+                Optional.of(20), Optional.empty(), Optional.of("platform")));
+        JsonNode overrides = JSON.readTree(tools.find_method_overrides(
+                "io.casehub.engine.EngineService", "execute", Optional.empty(),
+                Optional.of(true), Optional.of(20), Optional.empty(),
+                Optional.of("platform")));
+
+        assertWorkspaceStructuralRoute(implementations, "find_implementations");
+        assertWorkspaceStructuralRoute(hierarchy, "get_type_hierarchy");
+        assertWorkspaceStructuralRoute(overrides, "find_method_overrides");
+        assertEquals("io.casehub.engine.EngineService", hierarchy.path("workspace_result")
+                .path("data").path("target").asText());
+        assertEquals(0, overrides.path("workspace_result")
+                .path("data").path("override_count").asInt());
+    }
+
+    @Test
     void locatesUnindexedProviderSourceAndReportsBuildRequired() throws Exception {
         Path source = workspace.resolve(
                 "engine/src/main/java/io/casehub/engine/UnbuiltService.java");
@@ -324,6 +358,31 @@ class WorkspaceToolQueriesTest {
                 .path("provider").path("repository").asText());
         assertEquals("build_required", result.path("workspace_usage")
                 .path("provider_warnings").get(0).path("status").asText());
+    }
+
+    private void removePlatformDependencyClass() {
+        var platform = QuillDatabase.openWritable(
+                workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> {
+            handle.execute("DELETE FROM dependencies WHERE to_class_id IN "
+                    + "(SELECT id FROM classes WHERE "
+                    + "class_name = 'io.casehub.engine.EngineService' "
+                    + "AND origin = 'dependency')");
+            handle.execute("DELETE FROM classes WHERE "
+                    + "class_name = 'io.casehub.engine.EngineService' "
+                    + "AND origin = 'dependency'");
+        });
+    }
+
+    private static void assertWorkspaceStructuralRoute(JsonNode result, String operation) {
+        assertFalse(result.has("error"), result.toString());
+        assertEquals("workspace_provider", result.path("origin").asText());
+        assertEquals("not_found", result.path("local_resolution").path("status").asText());
+        assertEquals(operation, result.path("workspace_result").path("operation").asText());
+        assertEquals("resolved", result.path("workspace_result").path("status").asText());
+        assertEquals("engine", result.path("workspace_result")
+                .path("provider").path("repository").asText());
+        assertTrue(result.path("answer_complete").asBoolean());
     }
 
     private void createRepository(String name, String artifact, String className, String extra)

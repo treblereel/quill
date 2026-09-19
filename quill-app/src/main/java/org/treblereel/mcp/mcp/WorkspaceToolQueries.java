@@ -560,6 +560,8 @@ final class WorkspaceToolQueries {
                                 provider.className(), usageKind, null, consumerLimit, 0));
         int failedConsumers = 0;
         int truncatedConsumers = 0;
+        int resolvedConsumers = 0;
+        List<ConsumerResolutionFailure> unresolvedConsumers = new ArrayList<>();
         for (ProjectQueryExecutor.QueryResult result : queryResults) {
             if (!result.successful()) {
                 failedConsumers++;
@@ -569,7 +571,13 @@ final class WorkspaceToolQueries {
             }
             try {
                 var data = JSON.readTree(result.json());
-                if (!data.has("error") && data.path("usage_group_count").asInt() > 0) {
+                if (data.has("error")) {
+                    unresolvedConsumers.add(new ConsumerResolutionFailure(
+                            result.project(), data.path("error").asText("unknown_error")));
+                    continue;
+                }
+                resolvedConsumers++;
+                if (data.path("usage_group_count").asInt() > 0) {
                     if (data.path("truncated").asBoolean()) truncatedConsumers++;
                     usages.add(new ConsumerUsage(result.project(),
                             consumerEdges.get(result.project()), data));
@@ -604,12 +612,23 @@ final class WorkspaceToolQueries {
         ToolResponseSupport.appendPage(root, to - from, total, limit, offset);
         root.put("candidate_consumer_count", consumerEdges.size());
         root.put("queried_consumer_count", consumerProjects.size());
+        root.put("resolved_consumer_count", resolvedConsumers);
+        root.put("unresolved_consumer_count", unresolvedConsumers.size());
         root.put("unavailable_consumer_count", unavailableConsumers);
         root.put("failed_consumer_count", failedConsumers);
         root.put("truncated_consumer_count", truncatedConsumers);
         root.put("consumer_usage_limit", consumerLimit);
         root.put("complete", graph.complete() && unavailableConsumers == 0
-                && failedConsumers == 0 && truncatedConsumers == 0);
+                && failedConsumers == 0 && unresolvedConsumers.isEmpty()
+                && truncatedConsumers == 0);
+        ArrayNode unresolved = root.putArray("unresolved_consumers");
+        unresolvedConsumers.stream().limit(20).forEach(value -> {
+            ObjectNode node = unresolved.addObject();
+            node.put("repository", value.repository());
+            node.put("status", "target_not_resolved");
+            node.put("message", value.message());
+        });
+        root.put("unresolved_consumers_truncated", unresolvedConsumers.size() > 20);
         appendDiagnostics(root, diagnostics);
         if (providerAvailability != null && !providerAvailability.issues().isEmpty()) {
             ProjectAvailabilityResponses.append(root, "provider_warnings",
@@ -1056,6 +1075,8 @@ final class WorkspaceToolQueries {
 
     private record ConsumerUsage(String repository, WorkspaceDependencyGraph.Edge edge,
             com.fasterxml.jackson.databind.JsonNode data) {}
+
+    private record ConsumerResolutionFailure(String repository, String message) {}
 
     private record DownstreamRisk(String repository, int depth, String coordinate,
             String versionStatus, int usageGroups, int impactedTests, String confidence) {}

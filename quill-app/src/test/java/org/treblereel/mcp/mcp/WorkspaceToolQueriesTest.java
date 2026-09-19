@@ -257,6 +257,26 @@ class WorkspaceToolQueriesTest {
     }
 
     @Test
+    void reportsConsumersThatCannotResolveWorkspaceTarget() throws Exception {
+        removePlatformDependencyClass();
+
+        JsonNode result = JSON.readTree(tools.find_workspace_usages(
+                "io.casehub.engine.EngineService", Optional.of("engine"), Optional.empty(),
+                Optional.of(20), Optional.of(5), Optional.empty()));
+
+        assertEquals(1, result.path("queried_consumer_count").asInt());
+        assertEquals(0, result.path("resolved_consumer_count").asInt());
+        assertEquals(1, result.path("unresolved_consumer_count").asInt());
+        assertFalse(result.path("complete").asBoolean(true));
+        assertEquals("platform", result.path("unresolved_consumers").get(0)
+                .path("repository").asText());
+        assertEquals("target_not_resolved", result.path("unresolved_consumers").get(0)
+                .path("status").asText());
+        assertEquals("Class not found", result.path("unresolved_consumers").get(0)
+                .path("message").asText());
+    }
+
+    @Test
     void assessesProviderAndDownstreamRisk() throws Exception {
         JsonNode result = JSON.readTree(tools.assess_workspace_change_risk(
                 "io.casehub.engine.EngineService", Optional.of("engine"), Optional.of(3)));

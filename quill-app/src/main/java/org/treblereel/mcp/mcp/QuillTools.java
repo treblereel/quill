@@ -165,10 +165,13 @@ public final class QuillTools {
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findUsages(
-                p.jdbi(), target, usage_kind.orElse(null), module.orElse(null),
-                clamp(limit.orElse(50), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+        String requestedKind = usage_kind.orElse(null);
+        int requestedLimit = clamp(limit.orElse(50), 1, 200);
+        int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
+        return forAllProjects(project.orElse(null), p -> workspace.routeMissingUsages(
+                queries.findUsages(p.jdbi(), target, requestedKind, module.orElse(null),
+                        requestedLimit, requestedOffset),
+                p.name(), target, requestedKind, requestedLimit, requestedOffset));
     }
 
     @Tool(structured = true, description = "Find exact bytecode usages of a method, constructor, or field declaration.")

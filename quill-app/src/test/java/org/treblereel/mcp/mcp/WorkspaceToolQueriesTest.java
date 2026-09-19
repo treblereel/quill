@@ -308,6 +308,24 @@ class WorkspaceToolQueriesTest {
                 .path("status").asText());
     }
 
+    @Test
+    void routesOrdinaryFindUsagesWhenClassIsAbsentLocally() throws Exception {
+        Path source = workspace.resolve(
+                "engine/src/main/java/io/casehub/engine/SourceOnlyService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package io.casehub.engine; class SourceOnlyService {}");
+        JsonNode result = JSON.readTree(tools.find_usages(
+                "io.casehub.engine.SourceOnlyService", Optional.empty(), Optional.empty(),
+                Optional.of(20), Optional.empty(), Optional.of("platform")));
+
+        assertFalse(result.has("error"), result.toString());
+        assertEquals("workspace_provider", result.path("origin").asText());
+        assertEquals("engine", result.path("workspace_usage")
+                .path("provider").path("repository").asText());
+        assertEquals("build_required", result.path("workspace_usage")
+                .path("provider_warnings").get(0).path("status").asText());
+    }
+
     private void createRepository(String name, String artifact, String className, String extra)
             throws Exception {
         Path root = Files.createDirectories(workspace.resolve(name));

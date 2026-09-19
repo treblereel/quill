@@ -462,14 +462,18 @@ final class WorkspaceToolQueries {
             int limit, int offset) {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null) return workspaceRequired();
+        ProjectRegistry.Resolution providerAvailability = null;
         if (providerRepository != null && !providerRepository.isBlank()) {
-            ProjectRegistry.Resolution availability = registry.resolve(providerRepository);
-            if (availability.projects().isEmpty() && !availability.issues().isEmpty()) {
-                return ProjectAvailabilityResponses.error(availability.issues());
-            }
+            providerAvailability = registry.resolve(providerRepository);
         }
         List<ProviderClass> providers = findProviderClasses(target, providerRepository);
-        if (providers.isEmpty()) return error("Workspace class not found: " + target);
+        if (providers.isEmpty()) {
+            if (providerAvailability != null && providerAvailability.projects().isEmpty()
+                    && !providerAvailability.issues().isEmpty()) {
+                return ProjectAvailabilityResponses.error(providerAvailability.issues());
+            }
+            return error("Workspace class not found: " + target);
+        }
         if (providers.size() > 1) {
             ObjectNode ambiguous = JSON.createObjectNode();
             ambiguous.put("error", "ambiguous_workspace_class");
@@ -552,9 +556,41 @@ final class WorkspaceToolQueries {
         root.put("unavailable_consumer_count", unavailableConsumers);
         root.put("complete", graph.complete());
         appendDiagnostics(root, diagnostics);
+        if (providerAvailability != null && !providerAvailability.issues().isEmpty()) {
+            ProjectAvailabilityResponses.append(root, "provider_warnings",
+                    providerAvailability.issues());
+        }
         root.putArray("limitations").add(
                 "Only repositories declaring the provider artifact are queried");
         return root.toString();
+    }
+
+    String routeMissingUsages(String response, String consumerRepository, String target,
+            String usageKind, int limit, int offset) {
+        if (registry.workspaceScope() == null) return response;
+        try {
+            JsonNode parsed = JSON.readTree(response);
+            if (!parsed.path("error").asText("").startsWith("Class not found")) {
+                return response;
+            }
+            List<ProviderClass> providers = findProviderClasses(target, null);
+            if (providers.size() != 1) return response;
+            ProviderClass provider = providers.getFirst();
+            JsonNode workspaceResult = JSON.readTree(findUsages(target,
+                    provider.repository(), usageKind, limit, offset));
+            ObjectNode root = JSON.createObjectNode();
+            root.put("target", target);
+            root.put("origin", "workspace_provider");
+            root.putObject("local_resolution")
+                    .put("status", "not_found")
+                    .put("repository", consumerRepository)
+                    .put("message", parsed.path("error").asText());
+            root.set("workspace_usage", workspaceResult);
+            root.put("answer_complete", workspaceResult.path("complete").asBoolean(false));
+            return root.toString();
+        } catch (Exception ignored) {
+            return response;
+        }
     }
 
     String assessRisk(String target, String providerRepository, int maxDepth) {

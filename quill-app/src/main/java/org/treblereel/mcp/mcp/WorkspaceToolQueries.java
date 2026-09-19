@@ -547,6 +547,8 @@ final class WorkspaceToolQueries {
         node.put("coordinate", edge.coordinate());
         ArrayNode scopes = node.putArray("scopes");
         edge.scopes().forEach(scopes::add);
+        node.put("sourceSet", edge.sourceSet());
+        node.put("evidence", edge.evidence());
         node.put("checkoutVersion", edge.checkoutVersion());
         node.put("resolvedBinaryVersion", edge.resolvedBinaryVersion());
         node.put("status", edge.status());

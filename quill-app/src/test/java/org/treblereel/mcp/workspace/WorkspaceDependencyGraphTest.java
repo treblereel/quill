@@ -42,6 +42,8 @@ class WorkspaceDependencyGraphTest {
         assertEquals("binary_behind_checkout", edge.status());
         assertTrue(edge.crossRepository());
         assertEquals(java.util.Set.of("compile"), edge.scopes());
+        assertEquals("main", edge.sourceSet());
+        assertEquals("captured_runtime_classpath", edge.evidence());
 
         WorkspaceDependencyGraph.Result cached = WorkspaceDependencyGraph.discover(manifest);
         assertSame(graph, cached);
@@ -57,6 +59,37 @@ class WorkspaceDependencyGraphTest {
         WorkspaceDependencyGraph.Result changed = WorkspaceDependencyGraph.discover(manifest);
         assertNotSame(graph, changed);
         assertEquals("version_match", changed.edges().getFirst().status());
+    }
+
+    @Test
+    void usesAndFingerprintsCapturedTestClasspath() throws Exception {
+        WorkspaceManifest manifest = WorkspaceManifestStore.initialize(workspace, 1);
+        mavenRepository("provider", "io.casehub", "test-helper", "1.0", "");
+        Path consumer = mavenRepository("consumer", "io.casehub", "consumer", "1.0", """
+                <dependencies><dependency><groupId>io.casehub</groupId>
+                  <artifactId>test-helper</artifactId><version>1.0</version>
+                  <scope>test</scope></dependency></dependencies>
+                """);
+        Path jar = workspace.resolve("m2/io/casehub/test-helper/1.0/test-helper-1.0.jar");
+        Files.createDirectories(jar.getParent());
+        Files.createFile(jar);
+        Path snapshot = Files.createDirectories(consumer.resolve("target"))
+                .resolve("quill-test-classpath.txt");
+        Files.writeString(snapshot, jar.toString());
+
+        WorkspaceDependencyGraph.Result first = WorkspaceDependencyGraph.discover(manifest);
+        WorkspaceDependencyGraph.Edge edge = first.edges().getFirst();
+        assertEquals("test", edge.sourceSet());
+        assertEquals("captured_test_runtime_classpath", edge.evidence());
+        assertEquals("1.0", edge.resolvedBinaryVersion());
+
+        Files.writeString(snapshot, "");
+        Files.setLastModifiedTime(snapshot, java.nio.file.attribute.FileTime.fromMillis(
+                System.currentTimeMillis() + 2_000));
+        WorkspaceDependencyGraph.Result changed = WorkspaceDependencyGraph.discover(manifest);
+
+        assertNotSame(first, changed);
+        assertEquals("declared_dependency", changed.edges().getFirst().evidence());
     }
 
     @Test

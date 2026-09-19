@@ -28,6 +28,8 @@ public final class WorkspaceDependencyGraph {
             String providerModule,
             String coordinate,
             Set<String> scopes,
+            String sourceSet,
+            String evidence,
             String checkoutVersion,
             String resolvedBinaryVersion,
             String status,
@@ -96,20 +98,35 @@ public final class WorkspaceDependencyGraph {
             for (var module : declarations.dependenciesByModule().entrySet()) {
                 Path moduleRoot = module.getKey().equals(".")
                         ? root : root.resolve(module.getKey());
-                List<Path> classpath = DependencyIndexer.parseClasspathFile(
+                List<Path> mainClasspath = DependencyIndexer.parseClasspathFile(
                         buildSystem.classpathFile(moduleRoot));
+                List<Path> testClasspath = DependencyIndexer.parseClasspathFile(
+                        buildSystem.testClasspathFile(moduleRoot));
                 for (String dependency : module.getValue()) {
                     List<WorkspaceCoordinateCatalog.Module> providers =
                             catalog.modulesByGa().getOrDefault(dependency, List.of());
                     if (providers.isEmpty()) continue;
-                    String binaryVersion = resolvedVersion(classpath, dependency);
+                    String mainVersion = resolvedVersion(mainClasspath, dependency);
+                    String testVersion = resolvedVersion(testClasspath, dependency);
+                    String binaryVersion = mainVersion != null ? mainVersion : testVersion;
+                    if (binaryVersion != null) {
+                        List<WorkspaceCoordinateCatalog.Module> versionMatches = providers.stream()
+                                .filter(provider -> binaryVersion.equals(provider.version()))
+                                .toList();
+                        if (!versionMatches.isEmpty()) providers = versionMatches;
+                    }
                     Set<String> scopes = declarations.scopesByModule()
                             .getOrDefault(module.getKey(), Map.of())
                             .getOrDefault(dependency, Set.of());
+                    String sourceSet = sourceSet(scopes, mainVersion, testVersion);
+                    String evidence = mainVersion != null ? "captured_runtime_classpath"
+                            : testVersion != null ? "captured_test_runtime_classpath"
+                            : "declared_dependency";
                     boolean ambiguous = providers.size() > 1;
                     for (WorkspaceCoordinateCatalog.Module provider : providers) {
                         edges.add(new Edge(repository.getKey(), module.getKey(),
                                 provider.repository(), provider.module(), dependency, scopes,
+                                sourceSet, evidence,
                                 provider.version(), binaryVersion,
                                 status(provider.version(), binaryVersion, ambiguous),
                                 !repository.getKey().equals(provider.repository()), ambiguous));
@@ -122,6 +139,16 @@ public final class WorkspaceDependencyGraph {
                 .thenComparing(Edge::coordinate)
                 .thenComparing(Edge::providerRepository));
         return new Result(edges, complete, diagnostics);
+    }
+
+    private static String sourceSet(
+            Set<String> scopes, String mainVersion, String testVersion) {
+        if (mainVersion != null) return "main";
+        if (testVersion != null) return "test";
+        boolean mainScope = scopes.stream().map(value -> value.toLowerCase(
+                        java.util.Locale.ROOT))
+                .anyMatch(value -> !value.equals("test"));
+        return mainScope ? "main" : "test";
     }
 
     static String resolvedVersion(List<Path> jars, String ga) {

@@ -29,12 +29,14 @@ public final class WorkspaceQueryRouter {
         String repository = consumerRepository.strip();
         String module = normalizeModule(consumerModule);
         String ga = ga(coordinate);
+        String version = version(coordinate);
         WorkspaceDependencyGraph.Result graph =
                 WorkspaceDependencyGraph.discover(scope.manifest());
         List<WorkspaceDependencyGraph.Edge> matches = graph.edges().stream()
                 .filter(edge -> edge.consumerRepository().equals(repository))
                 .filter(edge -> edge.consumerModule().equals(module))
                 .filter(edge -> edge.coordinate().equals(ga))
+                .filter(edge -> version == null || version.equals(edge.checkoutVersion()))
                 .sorted(Comparator.comparing(WorkspaceDependencyGraph.Edge::providerRepository)
                         .thenComparing(WorkspaceDependencyGraph.Edge::providerModule))
                 .toList();
@@ -46,7 +48,7 @@ public final class WorkspaceQueryRouter {
         for (WorkspaceDependencyGraph.Edge edge : matches) {
             candidates.add(new WorkspaceHop(edge.consumerRepository(), edge.consumerModule(),
                     edge.providerRepository(), edge.providerModule(), edge.coordinate(),
-                    edge.scopes(), "workspace_coordinates",
+                    edge.scopes(), edge.sourceSet(), edge.evidence(), "workspace_coordinates",
                     edge.ambiguousProvider() ? "low" : "high", edge.status(),
                     edge.crossRepository()));
         }
@@ -66,5 +68,10 @@ public final class WorkspaceQueryRouter {
     private static String ga(String coordinate) {
         String[] parts = coordinate.strip().split(":");
         return parts.length >= 2 ? parts[0] + ':' + parts[1] : coordinate.strip();
+    }
+
+    private static String version(String coordinate) {
+        String[] parts = coordinate.strip().split(":");
+        return parts.length >= 3 && !parts[2].isBlank() ? parts[2] : null;
     }
 }

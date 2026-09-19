@@ -35,6 +35,8 @@ class WorkspaceQueryRouterTest {
         assertEquals("provider", hop.toRepository());
         assertEquals("org.acme:provider-api", hop.coordinate());
         assertEquals(java.util.Set.of("test"), hop.scopes());
+        assertEquals("test", hop.sourceSet());
+        assertEquals("declared_dependency", hop.evidence());
         assertEquals("workspace_coordinates", hop.resolution());
     }
 

@@ -35,6 +35,7 @@ class WorkspaceQueryContextTest {
 
     private static WorkspaceHop hop(String from, String to) {
         return new WorkspaceHop(from, ".", to, ".", "org.acme:api", Set.of("compile"),
-                "workspace_coordinates", "high", "version_match", true);
+                "main", "declared_dependency", "workspace_coordinates", "high",
+                "version_match", true);
     }
 }

@@ -25,6 +25,10 @@ class WorkspaceCoordinateCatalogTest {
 
         assertEquals(2, catalog.modules().size());
         assertEquals(2, catalog.modulesByGa().get("io.casehub:shared-api").size());
+        assertEquals("engine", catalog.modulesByGav().get("io.casehub:shared-api:1.0")
+                .getFirst().repository());
+        assertEquals("platform", catalog.modulesByGav().get("io.casehub:shared-api:2.0")
+                .getFirst().repository());
         assertTrue(catalog.diagnostics().stream().anyMatch(value ->
                 value.contains("provided by 2 workspace modules: engine:.@1.0, "
                         + "platform:.@2.0")));

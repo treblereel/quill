@@ -10,6 +10,8 @@ public record WorkspaceHop(
         String toModule,
         String coordinate,
         Set<String> scopes,
+        String sourceSet,
+        String evidence,
         String resolution,
         String confidence,
         String versionStatus,

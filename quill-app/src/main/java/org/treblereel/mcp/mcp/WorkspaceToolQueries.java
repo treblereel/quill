@@ -556,8 +556,8 @@ final class WorkspaceToolQueries {
         }
         List<ProjectQueryExecutor.QueryResult> queryResults =
                 new ProjectQueryExecutor(registry).executeProjects(consumerProjects,
-                        consumer -> usageQueries.findUsages(consumer.jdbi(),
-                                provider.className(), usageKind, null, consumerLimit, 0));
+                        consumer -> consumerUsages(usageQueries, consumer.jdbi(),
+                                provider.className(), usageKind, consumerLimit));
         int failedConsumers = 0;
         int truncatedConsumers = 0;
         int resolvedConsumers = 0;
@@ -637,6 +637,63 @@ final class WorkspaceToolQueries {
         root.putArray("limitations").add(
                 "Only repositories declaring the provider artifact are queried");
         return root.toString();
+    }
+
+    private static String consumerUsages(UsageToolQueries usageQueries, Jdbi jdbi,
+            String target, String usageKind, int limit) {
+        String response = usageQueries.findUsages(jdbi, target, usageKind, null, limit, 0);
+        try {
+            JsonNode parsed = JSON.readTree(response);
+            if (!parsed.path("error").asText("").startsWith("Class not found")) {
+                return response;
+            }
+            List<org.treblereel.mcp.model.ExternalBeanRecord> beans =
+                    IndexReader.findExternalBeans(jdbi, Map.of("class_name", target));
+            if (beans.isEmpty()) return response;
+            boolean includeDiscovery = usageKind == null || usageKind.isBlank()
+                    || "all".equalsIgnoreCase(usageKind)
+                    || "bean_discovery".equalsIgnoreCase(usageKind);
+            List<org.treblereel.mcp.model.ExternalBeanRecord> matches = includeDiscovery
+                    ? beans : List.of();
+            ObjectNode root = JSON.createObjectNode();
+            root.put("target", target);
+            root.put("granularity", "dependency_bean");
+            root.put("target_resolution", "external_bean_index");
+            if (usageKind == null || usageKind.isBlank()) root.putNull("usage_kind");
+            else root.put("usage_kind", usageKind);
+            root.put("usage_group_count", matches.size());
+            root.put("usage_occurrence_count", matches.size());
+            ArrayNode usages = root.putArray("usages");
+            matches.stream().limit(limit).forEach(bean -> {
+                ObjectNode node = usages.addObject();
+                node.put("class", bean.className());
+                node.put("usage_kind", "bean_discovery");
+                node.put("indexed_kind", "EXTERNAL_BEAN");
+                node.put("occurrences", 1);
+                node.put("origin", "dependency");
+                node.put("framework", bean.framework());
+                node.put("bean_kind", bean.kind());
+                if (bean.scope() == null) node.putNull("scope");
+                else node.put("scope", bean.scope());
+                if (bean.artifact() == null) node.putNull("artifact");
+                else node.put("artifact", bean.artifact());
+                node.put("reason", "Framework bean discovery exposes this dependency bean "
+                        + "without a direct application class reference");
+                ArrayNode configuration = node.putArray("required_configuration");
+                bean.injectionPoints().stream()
+                        .filter(injection -> injection.configurationKey() != null
+                                && injection.configurationRequired())
+                        .forEach(injection -> configuration.addObject()
+                                .put("key", injection.configurationKey())
+                                .put("member", injection.member()));
+            });
+            ToolResponseSupport.appendPage(root, Math.min(limit, matches.size()),
+                    matches.size(), limit, 0);
+            ToolResponseSupport.appendMeta(root, jdbi, 0);
+            return root.toString();
+        } catch (Exception invalid) {
+            return response;
+        }
     }
 
     String routeMissingUsages(String response, String consumerRepository, String target,

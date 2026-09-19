@@ -277,6 +277,31 @@ class WorkspaceToolQueriesTest {
     }
 
     @Test
+    void treatsExternalFrameworkBeanDiscoveryAsWorkspaceUsage() throws Exception {
+        var platform = QuillDatabase.openWritable(
+                workspace.resolve("platform/.quill/platform-index.db"));
+        IndexWriter.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
+                1, "io.casehub.engine.EngineService", "CLASS", "@ApplicationScoped",
+                List.of("@Default"), List.of(), false, false, null, List.of(), null,
+                List.of("io.casehub.engine.EngineService"), "cdi",
+                "io.casehub:engine-api:1.0", "/tmp/engine-api-1.0.jar", List.of())));
+        removePlatformDependencyClass();
+
+        JsonNode result = JSON.readTree(tools.find_workspace_usages(
+                "io.casehub.engine.EngineService", Optional.of("engine"), Optional.empty(),
+                Optional.of(20), Optional.of(5), Optional.empty()));
+
+        assertEquals(1, result.path("resolved_consumer_count").asInt());
+        assertEquals(0, result.path("unresolved_consumer_count").asInt());
+        JsonNode usage = result.path("consumers").get(0).path("usage");
+        assertEquals("external_bean_index", usage.path("target_resolution").asText());
+        assertEquals("bean_discovery", usage.path("usages").get(0)
+                .path("usage_kind").asText());
+        assertEquals("io.casehub:engine-api:1.0", usage.path("usages").get(0)
+                .path("artifact").asText());
+    }
+
+    @Test
     void assessesProviderAndDownstreamRisk() throws Exception {
         JsonNode result = JSON.readTree(tools.assess_workspace_change_risk(
                 "io.casehub.engine.EngineService", Optional.of("engine"), Optional.of(3)));

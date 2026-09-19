@@ -119,12 +119,24 @@ final class WorkspaceToolQueries {
         if (scope == null) return response;
         try {
             JsonNode parsed = JSON.readTree(response);
-            if (!(parsed instanceof ObjectNode root) || root.has("error")
-                    || !"dependency".equals(root.path("origin").asText())) {
+            if (!(parsed instanceof ObjectNode root)) {
                 return response;
             }
+            boolean localMissing = root.path("error").asText("")
+                    .startsWith("Class not found");
+            boolean dependencyClass = "dependency".equals(root.path("origin").asText());
+            if (!localMissing && !dependencyClass) return response;
             String resolvedTarget = root.path("target").asText(target);
             List<ProviderClass> providers = findProviderClasses(resolvedTarget, null);
+            if (localMissing && !providers.isEmpty()) {
+                ObjectNode localResolution = root.putObject("local_resolution");
+                localResolution.put("status", "not_found");
+                localResolution.put("repository", consumerRepository);
+                localResolution.put("message", root.path("error").asText());
+                root.remove("error");
+                root.put("target", resolvedTarget);
+                root.put("origin", "workspace_provider");
+            }
             ObjectNode traversal = root.putObject("workspace_traversal");
             traversal.put("enabled", true);
             traversal.put("start_repository", consumerRepository);
@@ -165,6 +177,15 @@ final class WorkspaceToolQueries {
                             && candidate.toModule().equals(provider.module()))
                     .forEach(candidate -> routes.add(hopJson(candidate)));
 
+            ObjectNode providerNode = traversal.putObject("provider");
+            providerNode.put("repository", provider.repository());
+            providerNode.put("module", provider.module());
+            providerNode.put("class_name", provider.className());
+            if (provider.sourceFile() != null) {
+                providerNode.put("source_file", provider.sourceFile());
+            }
+            if (providerModule != null) providerNode.put("coordinate", providerModule.ga());
+
             ProjectRegistry.Resolution providerResolution = registry.resolve(
                     provider.repository());
             if (providerResolution.projects().isEmpty()) {
@@ -177,12 +198,18 @@ final class WorkspaceToolQueries {
                     providerResolution.projects().getFirst().jdbi(), provider.className(),
                     direction, depth, includeNodes, limit, offset, cursor);
             JsonNode providerData = JSON.readTree(providerResponse);
-            ObjectNode providerNode = traversal.putObject("provider");
-            providerNode.put("repository", provider.repository());
-            providerNode.put("module", provider.module());
-            if (providerModule != null) providerNode.put("coordinate", providerModule.ga());
             providerNode.set("data", providerData);
-            traversal.put("complete", route.resolved() && !providerData.has("error"));
+            if (!providerResolution.issues().isEmpty()) {
+                ProjectAvailabilityResponses.append(traversal, "project_warnings",
+                        providerResolution.issues());
+            }
+            if (providerData.has("error")) {
+                traversal.put("status", "provider_index_incomplete");
+                traversal.put("complete", false);
+            } else {
+                traversal.put("status", route.status());
+                traversal.put("complete", route.resolved());
+            }
             return root.toString();
         } catch (Exception ignored) {
             return response;
@@ -675,7 +702,36 @@ final class WorkspaceToolQueries {
             candidates.put(project.name() + ":" + cls.className() + ":" + module,
                     new ProviderClass(project.name(), module, cls.className(), cls.sourceFile()));
         }
+        if (candidates.isEmpty()) findProviderSources(target, repository, candidates);
         return List.copyOf(candidates.values());
+    }
+
+    private void findProviderSources(
+            String target, String repository, Map<String, ProviderClass> candidates) {
+        WorkspaceProjectScope scope = registry.workspaceScope();
+        if (scope == null || target == null || !target.contains(".")
+                || target.contains("/") || target.contains("\\")) return;
+        String relativeClass = target.replace('.', '/') + ".java";
+        WorkspaceCoordinateCatalog.Result catalog =
+                WorkspaceCoordinateCatalog.discover(scope.manifest());
+        for (WorkspaceCoordinateCatalog.Module module : catalog.modules()) {
+            if (repository != null && !repository.isBlank()
+                    && !module.repository().equalsIgnoreCase(repository.strip())) continue;
+            java.nio.file.Path repositoryRoot = scope.root().resolve(
+                    module.repositoryRelativePath()).normalize();
+            java.nio.file.Path moduleRoot = ".".equals(module.module())
+                    ? repositoryRoot : repositoryRoot.resolve(module.module());
+            for (String sourceSet : List.of("main", "test")) {
+                java.nio.file.Path source = moduleRoot.resolve(
+                        "src/" + sourceSet + "/java").resolve(relativeClass);
+                if (!java.nio.file.Files.isRegularFile(source)) continue;
+                String sourceFile = repositoryRoot.relativize(source).toString()
+                        .replace('\\', '/');
+                String key = module.repository() + ':' + target + ':' + module.module();
+                candidates.putIfAbsent(key, new ProviderClass(module.repository(),
+                        module.module(), target, sourceFile));
+            }
+        }
     }
 
     private static boolean matchesDirection(WorkspaceDependencyGraph.Edge edge,

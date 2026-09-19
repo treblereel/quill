@@ -258,6 +258,56 @@ class WorkspaceToolQueriesTest {
                 .path("to_repository").asText());
     }
 
+    @Test
+    void routesLocalClassNotFoundToWorkspaceProvider() throws Exception {
+        var platform = QuillDatabase.openWritable(
+                workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> {
+            handle.execute("DELETE FROM dependencies WHERE to_class_id IN "
+                    + "(SELECT id FROM classes WHERE "
+                    + "class_name = 'io.casehub.engine.EngineService' "
+                    + "AND origin = 'dependency')");
+            handle.execute("DELETE FROM classes WHERE "
+                    + "class_name = 'io.casehub.engine.EngineService' "
+                    + "AND origin = 'dependency'");
+        });
+
+        JsonNode result = JSON.readTree(tools.get_dependencies(
+                "io.casehub.engine.EngineService", Optional.of("outbound"), Optional.of(1),
+                Optional.of(true), Optional.of(20), Optional.empty(), Optional.empty(),
+                Optional.of("platform")));
+
+        assertFalse(result.has("error"), result.toString());
+        assertEquals("workspace_provider", result.path("origin").asText());
+        assertEquals("not_found", result.path("local_resolution").path("status").asText());
+        assertEquals("engine", result.path("workspace_traversal")
+                .path("provider").path("repository").asText());
+        assertEquals("source", result.path("workspace_traversal")
+                .path("provider").path("data").path("origin").asText());
+    }
+
+    @Test
+    void locatesUnindexedProviderSourceAndReportsBuildRequired() throws Exception {
+        Path source = workspace.resolve(
+                "engine/src/main/java/io/casehub/engine/UnbuiltService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package io.casehub.engine; class UnbuiltService {}");
+
+        JsonNode result = JSON.readTree(tools.get_dependencies(
+                "io.casehub.engine.UnbuiltService", Optional.of("outbound"), Optional.of(1),
+                Optional.of(true), Optional.of(20), Optional.empty(), Optional.empty(),
+                Optional.of("platform")));
+
+        JsonNode traversal = result.path("workspace_traversal");
+        assertEquals("provider_index_incomplete", traversal.path("status").asText());
+        assertFalse(traversal.path("complete").asBoolean(true));
+        assertEquals("engine", traversal.path("provider").path("repository").asText());
+        assertEquals("src/main/java/io/casehub/engine/UnbuiltService.java",
+                traversal.path("provider").path("source_file").asText());
+        assertEquals("build_required", traversal.path("project_warnings").get(0)
+                .path("status").asText());
+    }
+
     private void createRepository(String name, String artifact, String className, String extra)
             throws Exception {
         Path root = Files.createDirectories(workspace.resolve(name));

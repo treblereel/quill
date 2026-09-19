@@ -13,6 +13,21 @@ Maven, Gradle, or dependency caches. Existing index data is restored afterwards.
 results from similar hosts and cache conditions; use several runs before treating a change
 as a regression.
 
+## Native regression — 2026-09-18
+
+- Quill commit: `3cb4e7d`
+- GraalVM: CE 25.0.1, macOS arm64
+- Native binary: 41.48 MB
+- Native-image peak RSS: 2.43 GB
+- Full `mvn install -Pnative`: all 16 reactor modules passed in 2 min 7 s
+- Native integration suite: 20 tests passed, including MCP stdio, concurrent index
+  publication, Maven and Gradle multi-module projects, Spring, CDI, and annotation processing
+
+A direct native MCP smoke test against the Casehub workspace returned structured content
+without tool errors. Workspace initialization took 1.01 s and the first
+`list_workspace_repositories` call took 223 ms. The binary is about 1.8 MB larger than the
+September 14 baseline; distribution-size optimization remains separate from correctness work.
+
 ## Current baseline — 2026-09-14
 
 - Quill commit: `8a64629`

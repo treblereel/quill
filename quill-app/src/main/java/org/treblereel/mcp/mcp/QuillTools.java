@@ -131,10 +131,17 @@ public final class QuillTools {
             @ToolArg(description = "Result offset for depth=1 (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Opaque continuation cursor for depth>1") Optional<String> cursor,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getDependencies(
-                p.jdbi(), target, direction.orElse("both"), clamp(depth.orElse(1), 1, 5),
-                include_nodes.orElse(true), clamp(limit.orElse(50), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE), cursor.orElse(null)));
+        String requestedDirection = direction.orElse("both");
+        int requestedDepth = clamp(depth.orElse(1), 1, 5);
+        boolean requestedNodes = include_nodes.orElse(true);
+        int requestedLimit = clamp(limit.orElse(50), 1, 200);
+        int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
+        String requestedCursor = cursor.orElse(null);
+        return forAllProjects(project.orElse(null), p -> workspace.enrichClassDependencies(
+                queries.getDependencies(p.jdbi(), target, requestedDirection, requestedDepth,
+                        requestedNodes, requestedLimit, requestedOffset, requestedCursor),
+                p.name(), target, requestedDirection, requestedDepth, requestedNodes,
+                requestedLimit, requestedOffset, requestedCursor));
     }
 
     @Tool(structured = true, description = "Find implementations across indexed reactor outputs, with generated FQCN occurrences and explicit discovery scope.")

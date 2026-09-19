@@ -237,6 +237,27 @@ class WorkspaceToolQueriesTest {
         assertEquals(1, downstream.path("usageGroups").asInt());
     }
 
+    @Test
+    void continuesDependencyClassQueryInProviderRepository() throws Exception {
+        JsonNode result = JSON.readTree(tools.get_dependencies(
+                "io.casehub.engine.EngineService", Optional.of("outbound"), Optional.of(1),
+                Optional.of(true), Optional.of(20), Optional.empty(), Optional.empty(),
+                Optional.of("platform")));
+
+        assertEquals("dependency", result.path("origin").asText());
+        JsonNode traversal = result.path("workspace_traversal");
+        assertTrue(traversal.path("enabled").asBoolean());
+        assertEquals("resolved", traversal.path("status").asText());
+        assertTrue(traversal.path("complete").asBoolean());
+        assertEquals("engine", traversal.path("provider").path("repository").asText());
+        assertEquals("source",
+                traversal.path("provider").path("data").path("origin").asText());
+        assertEquals("platform", traversal.path("routes").get(0)
+                .path("from_repository").asText());
+        assertEquals("engine", traversal.path("routes").get(0)
+                .path("to_repository").asText());
+    }
+
     private void createRepository(String name, String artifact, String className, String extra)
             throws Exception {
         Path root = Files.createDirectories(workspace.resolve(name));

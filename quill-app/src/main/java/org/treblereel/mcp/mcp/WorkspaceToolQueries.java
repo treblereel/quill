@@ -112,6 +112,83 @@ final class WorkspaceToolQueries {
         }
     }
 
+    String enrichClassDependencies(String response, String consumerRepository, String target,
+            String direction, int depth, boolean includeNodes, int limit, int offset,
+            String cursor) {
+        WorkspaceProjectScope scope = registry.workspaceScope();
+        if (scope == null) return response;
+        try {
+            JsonNode parsed = JSON.readTree(response);
+            if (!(parsed instanceof ObjectNode root) || root.has("error")
+                    || !"dependency".equals(root.path("origin").asText())) {
+                return response;
+            }
+            String resolvedTarget = root.path("target").asText(target);
+            List<ProviderClass> providers = findProviderClasses(resolvedTarget, null);
+            ObjectNode traversal = root.putObject("workspace_traversal");
+            traversal.put("enabled", true);
+            traversal.put("start_repository", consumerRepository);
+            traversal.put("target", resolvedTarget);
+            traversal.put("max_depth", depth);
+            if (providers.isEmpty()) {
+                traversal.put("status", "provider_not_found");
+                traversal.put("complete", false);
+                traversal.putArray("repositories_queried").add(consumerRepository);
+                return root.toString();
+            }
+            if (providers.size() > 1) {
+                traversal.put("status", "ambiguous_provider");
+                traversal.put("complete", false);
+                ArrayNode candidates = traversal.putArray("provider_candidates");
+                providers.forEach(provider -> candidates.add(providerJson(provider)));
+                return root.toString();
+            }
+            ProviderClass provider = providers.getFirst();
+            WorkspaceCoordinateCatalog.Result catalog =
+                    WorkspaceCoordinateCatalog.discover(scope.manifest());
+            WorkspaceCoordinateCatalog.Module providerModule = catalog.modules().stream()
+                    .filter(module -> module.repository().equals(provider.repository()))
+                    .filter(module -> module.module().equals(provider.module()))
+                    .findFirst().orElse(null);
+            WorkspaceRoute route = providerModule == null || providerModule.ga() == null
+                    ? new WorkspaceRoute("not_found", List.of(), false,
+                            List.of("Provider module has no build coordinate"))
+                    : new WorkspaceQueryRouter(scope).resolveDependency(consumerRepository,
+                            root.path("module").asText("."), providerModule.gav());
+            traversal.put("status", route.status());
+            traversal.put("complete", route.resolved());
+            traversal.putArray("repositories_queried")
+                    .add(consumerRepository).add(provider.repository());
+            ArrayNode routes = traversal.putArray("routes");
+            route.candidates().stream()
+                    .filter(candidate -> candidate.toRepository().equals(provider.repository())
+                            && candidate.toModule().equals(provider.module()))
+                    .forEach(candidate -> routes.add(hopJson(candidate)));
+
+            ProjectRegistry.Resolution providerResolution = registry.resolve(
+                    provider.repository());
+            if (providerResolution.projects().isEmpty()) {
+                traversal.put("status", "provider_unavailable");
+                traversal.put("complete", false);
+                ProjectAvailabilityResponses.append(traversal, providerResolution.issues());
+                return root.toString();
+            }
+            String providerResponse = new QuillToolQueries().getDependencies(
+                    providerResolution.projects().getFirst().jdbi(), provider.className(),
+                    direction, depth, includeNodes, limit, offset, cursor);
+            JsonNode providerData = JSON.readTree(providerResponse);
+            ObjectNode providerNode = traversal.putObject("provider");
+            providerNode.put("repository", provider.repository());
+            providerNode.put("module", provider.module());
+            if (providerModule != null) providerNode.put("coordinate", providerModule.ga());
+            providerNode.set("data", providerData);
+            traversal.put("complete", route.resolved() && !providerData.has("error"));
+            return root.toString();
+        } catch (Exception ignored) {
+            return response;
+        }
+    }
+
     String enrichDependencyBeans(String response) {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null) return response;
@@ -591,6 +668,9 @@ final class WorkspaceToolQueries {
             ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(project.jdbi(), target);
             if (!lookup.found()) continue;
             ClassRecord cls = lookup.cls();
+            if ("dependency".equals(cls.origin()) || "orphan_output".equals(cls.origin())) {
+                continue;
+            }
             String module = cls.module() == null || cls.module().isBlank() ? "." : cls.module();
             candidates.put(project.name() + ":" + cls.className() + ":" + module,
                     new ProviderClass(project.name(), module, cls.className(), cls.sourceFile()));
@@ -658,6 +738,22 @@ final class WorkspaceToolQueries {
         node.put("module", provider.module());
         node.put("className", provider.className());
         node.put("sourceFile", provider.sourceFile());
+        return node;
+    }
+
+    private static ObjectNode hopJson(WorkspaceHop hop) {
+        ObjectNode node = JSON.createObjectNode();
+        node.put("from_repository", hop.fromRepository());
+        node.put("from_module", hop.fromModule());
+        node.put("to_repository", hop.toRepository());
+        node.put("to_module", hop.toModule());
+        node.put("coordinate", hop.coordinate());
+        node.set("scopes", JSON.valueToTree(hop.scopes()));
+        node.put("source_set", hop.sourceSet());
+        node.put("evidence", hop.evidence());
+        node.put("resolution", hop.resolution());
+        node.put("confidence", hop.confidence());
+        node.put("version_status", hop.versionStatus());
         return node;
     }
 

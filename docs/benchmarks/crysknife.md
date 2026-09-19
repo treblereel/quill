@@ -69,9 +69,8 @@ The original Crysknife quality regressions now behave as intended:
 - `BeanManager` fan-in is explained as 497 classes: 482 generated and 15 source, with
   edge counts reported separately.
 
-One update-state edge case remains: after a non-compiling forced update on a structurally
-dirty worktree, a subsequent `quill update --compile` may compile successfully but return
-"Index is up to date" without clearing the stale metadata because the bytecode fingerprint
-already matches. `--compile --force` restores the correct current state. This should be
-fixed so an explicitly successful compile refreshes freshness metadata even when no class
-content changed.
+The update-state edge case found during this run is now covered by the external-build
+refresh contract: after a successful Maven or Gradle build, Quill refreshes a structurally
+stale compiled snapshot even when the bytecode fingerprint is unchanged. Quill itself does
+not start the build. A regression test protects the early-return path that previously left
+the snapshot stale.

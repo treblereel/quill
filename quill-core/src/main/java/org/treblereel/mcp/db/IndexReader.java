@@ -1687,6 +1687,22 @@ public final class IndexReader {
                         .list());
     }
 
+    public static List<ExternalDepRecord> findExternalTypeUsages(
+            Jdbi jdbi, String externalType) {
+        return jdbi.withHandle(h ->
+                h.createQuery("""
+                        SELECT class_id, external_type, usage_kind
+                        FROM class_external_deps
+                        WHERE external_type = :externalType
+                        ORDER BY class_id, usage_kind
+                        """)
+                        .bind("externalType", externalType)
+                        .map((rs, ctx) -> new ExternalDepRecord(
+                                rs.getInt("class_id"), rs.getString("external_type"),
+                                rs.getString("usage_kind")))
+                        .list());
+    }
+
     public static List<Map.Entry<String, Integer>> findExternalDepsByLibrary(Jdbi jdbi, int limit) {
         return jdbi.withHandle(h ->
                 h.createQuery("""

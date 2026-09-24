@@ -557,7 +557,8 @@ final class WorkspaceToolQueries {
         List<ProjectQueryExecutor.QueryResult> queryResults =
                 new ProjectQueryExecutor(registry).executeProjects(consumerProjects,
                         consumer -> consumerUsages(usageQueries, consumer.jdbi(),
-                                provider.className(), usageKind, consumerLimit));
+                                provider.className(), usageKind, consumerLimit,
+                                consumerEdges.get(consumer.name())));
         int failedConsumers = 0;
         int truncatedConsumers = 0;
         int resolvedConsumers = 0;
@@ -573,7 +574,7 @@ final class WorkspaceToolQueries {
                 var data = JSON.readTree(result.json());
                 if (data.has("error")) {
                     unresolvedConsumers.add(new ConsumerResolutionFailure(
-                            result.project(), data.path("error").asText("unknown_error")));
+                            result.project(), data));
                     continue;
                 }
                 resolvedConsumers++;
@@ -625,8 +626,13 @@ final class WorkspaceToolQueries {
         unresolvedConsumers.stream().limit(20).forEach(value -> {
             ObjectNode node = unresolved.addObject();
             node.put("repository", value.repository());
-            node.put("status", "target_not_resolved");
-            node.put("message", value.message());
+            node.put("status", value.data().path("error").asText("unknown_error"));
+            node.put("message", value.data().path("message")
+                    .asText(value.data().path("error").asText("unknown_error")));
+            copyIfPresent(value.data(), node, "target_resolution");
+            copyIfPresent(value.data(), node, "resolution_strategies_checked");
+            copyIfPresent(value.data(), node, "dependency_evidence");
+            copyIfPresent(value.data(), node, "limitations");
         });
         root.put("unresolved_consumers_truncated", unresolvedConsumers.size() > 20);
         appendDiagnostics(root, diagnostics);
@@ -640,7 +646,7 @@ final class WorkspaceToolQueries {
     }
 
     private static String consumerUsages(UsageToolQueries usageQueries, Jdbi jdbi,
-            String target, String usageKind, int limit) {
+            String target, String usageKind, int limit, WorkspaceDependencyGraph.Edge edge) {
         String response = usageQueries.findUsages(
                 jdbi, target, usageKind, null, limit, 0, false);
         try {
@@ -650,22 +656,39 @@ final class WorkspaceToolQueries {
             }
             List<org.treblereel.mcp.model.ExternalBeanRecord> beans =
                     IndexReader.findExternalBeans(jdbi, Map.of("class_name", target));
-            if (beans.isEmpty()) return response;
             boolean includeDiscovery = usageKind == null || usageKind.isBlank()
                     || "all".equalsIgnoreCase(usageKind)
                     || "bean_discovery".equalsIgnoreCase(usageKind);
             List<org.treblereel.mcp.model.ExternalBeanRecord> matches = includeDiscovery
                     ? beans : List.of();
+            List<org.treblereel.mcp.model.ExternalDepRecord> allReferences =
+                    IndexReader.findExternalTypeUsages(jdbi, target);
+            List<org.treblereel.mcp.model.ExternalDepRecord> references = allReferences.stream()
+                            .filter(reference -> matchesExternalUsageKind(
+                                    usageKind, reference.usageKind()))
+                            .toList();
+            if (beans.isEmpty() && allReferences.isEmpty()) {
+                return unresolvedArtifactDependency(target, edge).toString();
+            }
+            Map<Integer, ClassRecord> callers = IndexReader.findClassesByIds(jdbi,
+                    references.stream().map(org.treblereel.mcp.model.ExternalDepRecord::classId)
+                            .distinct().toList());
             ObjectNode root = JSON.createObjectNode();
             root.put("target", target);
-            root.put("granularity", "dependency_bean");
-            root.put("target_resolution", "external_bean_index");
+            root.put("granularity", beans.isEmpty() ? "dependency_type"
+                    : allReferences.isEmpty() ? "dependency_bean" : "dependency_evidence");
+            root.put("target_resolution", beans.isEmpty() ? "external_type_index"
+                    : allReferences.isEmpty() ? "external_bean_index"
+                    : "external_type_and_bean_index");
+            appendResolutionStrategies(root);
             if (usageKind == null || usageKind.isBlank()) root.putNull("usage_kind");
             else root.put("usage_kind", usageKind);
-            root.put("usage_group_count", matches.size());
-            root.put("usage_occurrence_count", matches.size());
+            int total = matches.size() + references.size();
+            root.put("usage_group_count", total);
+            root.put("usage_occurrence_count", total);
             ArrayNode usages = root.putArray("usages");
-            matches.stream().limit(limit).forEach(bean -> {
+            int[] remaining = {limit};
+            matches.stream().limit(remaining[0]).forEach(bean -> {
                 ObjectNode node = usages.addObject();
                 node.put("class", bean.className());
                 node.put("usage_kind", "bean_discovery");
@@ -687,9 +710,27 @@ final class WorkspaceToolQueries {
                         .forEach(injection -> configuration.addObject()
                                 .put("key", injection.configurationKey())
                                 .put("member", injection.member()));
+                remaining[0]--;
             });
-            ToolResponseSupport.appendPage(root, Math.min(limit, matches.size()),
-                    matches.size(), limit, 0);
+            references.stream().limit(remaining[0]).forEach(reference -> {
+                ClassRecord caller = callers.get(reference.classId());
+                if (caller == null) return;
+                ObjectNode node = usages.addObject();
+                node.put("class", caller.className());
+                node.put("usage_kind", externalUsageKind(reference.usageKind()));
+                node.put("indexed_kind", "EXTERNAL_" + reference.usageKind());
+                node.put("occurrences", 1);
+                node.put("origin", caller.origin());
+                if (caller.sourceFile() == null) node.putNull("source");
+                else node.put("source", caller.sourceFile() + ":" + caller.sourceLine());
+                if (caller.module() == null) node.putNull("module");
+                else node.put("module", caller.module());
+                if (caller.sourceSet() == null) node.putNull("source_set");
+                else node.put("source_set", caller.sourceSet());
+                node.put("reason", "The consumer bytecode signature references the workspace "
+                        + "provider type");
+            });
+            ToolResponseSupport.appendPage(root, usages.size(), total, limit, 0);
             Map<String, String> metadata = IndexReader.getMetadata(jdbi);
             ObjectNode snapshot = root.putObject("index_snapshot");
             snapshot.put("index_id", metadata.getOrDefault("index_id", "unknown"));
@@ -700,6 +741,65 @@ final class WorkspaceToolQueries {
         } catch (Exception invalid) {
             return response;
         }
+    }
+
+    private static ObjectNode unresolvedArtifactDependency(
+            String target, WorkspaceDependencyGraph.Edge edge) {
+        ObjectNode root = JSON.createObjectNode();
+        root.put("error", "artifact_dependency_without_class_evidence");
+        root.put("message", "The repository declares the provider artifact, but its index has "
+                + "no application class, external bean, or bytecode signature evidence for "
+                + target + ". Artifact dependency alone does not prove use of this class.");
+        root.put("target", target);
+        root.put("target_resolution", "artifact_dependency_only");
+        appendResolutionStrategies(root);
+        ObjectNode evidence = root.putObject("dependency_evidence");
+        if (edge == null) {
+            evidence.put("available", false);
+        } else {
+            evidence.put("available", true);
+            evidence.put("coordinate", edge.coordinate());
+            evidence.put("consumer_module", edge.consumerModule());
+            evidence.set("scopes", JSON.valueToTree(edge.scopes()));
+            evidence.put("source_set", edge.sourceSet());
+            evidence.put("evidence", edge.evidence());
+            if (edge.resolvedBinaryVersion() == null) {
+                evidence.putNull("resolved_binary_version");
+            } else {
+                evidence.put("resolved_binary_version", edge.resolvedBinaryVersion());
+            }
+            evidence.put("version_status", edge.status());
+        }
+        root.putArray("limitations")
+                .add("Declared artifact dependency identifies candidate repositories, not "
+                        + "concrete class usage")
+                .add("Reflective, configuration-only, generated-after-index, and dynamically "
+                        + "loaded references may not leave class-level bytecode evidence");
+        return root;
+    }
+
+    private static void appendResolutionStrategies(ObjectNode root) {
+        root.putArray("resolution_strategies_checked")
+                .add("local_class_index")
+                .add("external_bean_index")
+                .add("external_type_index");
+    }
+
+    private static void copyIfPresent(JsonNode source, ObjectNode target, String field) {
+        if (source.has(field)) target.set(field, source.get(field));
+    }
+
+    private static boolean matchesExternalUsageKind(String requested, String indexed) {
+        return requested == null || requested.isBlank() || "all".equalsIgnoreCase(requested)
+                || requested.equalsIgnoreCase(externalUsageKind(indexed));
+    }
+
+    private static String externalUsageKind(String indexed) {
+        return switch (indexed) {
+            case "ANNOTATION" -> "annotation";
+            case "EXTENDS", "IMPLEMENTS" -> "inheritance";
+            default -> "type_reference";
+        };
     }
 
     String routeMissingUsages(String response, String consumerRepository, String target,
@@ -1139,7 +1239,7 @@ final class WorkspaceToolQueries {
     private record ConsumerUsage(String repository, WorkspaceDependencyGraph.Edge edge,
             com.fasterxml.jackson.databind.JsonNode data) {}
 
-    private record ConsumerResolutionFailure(String repository, String message) {}
+    private record ConsumerResolutionFailure(String repository, JsonNode data) {}
 
     private record DownstreamRisk(String repository, int depth, String coordinate,
             String versionStatus, int usageGroups, int impactedTests, String confidence) {}

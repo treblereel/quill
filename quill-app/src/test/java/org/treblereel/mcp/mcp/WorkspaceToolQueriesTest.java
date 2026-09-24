@@ -270,10 +270,23 @@ class WorkspaceToolQueriesTest {
         assertFalse(result.path("complete").asBoolean(true));
         assertEquals("platform", result.path("unresolved_consumers").get(0)
                 .path("repository").asText());
-        assertEquals("target_not_resolved", result.path("unresolved_consumers").get(0)
+        JsonNode unresolved = result.path("unresolved_consumers").get(0);
+        assertEquals("artifact_dependency_without_class_evidence", unresolved
                 .path("status").asText());
-        assertEquals("Class not found", result.path("unresolved_consumers").get(0)
-                .path("message").asText());
+        assertEquals("artifact_dependency_only", unresolved
+                .path("target_resolution").asText());
+        assertTrue(unresolved.path("message").asText()
+                .contains("Artifact dependency alone does not prove use"));
+        assertEquals(List.of("local_class_index", "external_bean_index",
+                        "external_type_index"),
+                JSON.convertValue(unresolved.path("resolution_strategies_checked"), List.class));
+        assertEquals("io.casehub:engine-api", unresolved
+                .path("dependency_evidence").path("coordinate").asText());
+        assertEquals(".", unresolved.path("dependency_evidence")
+                .path("consumer_module").asText());
+        assertEquals("declared_dependency", unresolved.path("dependency_evidence")
+                .path("evidence").asText());
+        assertTrue(unresolved.path("limitations").isArray());
     }
 
     @Test
@@ -302,6 +315,65 @@ class WorkspaceToolQueriesTest {
         assertFalse(usage.has("_meta"));
         assertFalse(usage.path("index_snapshot")
                 .path("live_freshness_evaluated").asBoolean(true));
+    }
+
+    @Test
+    void doesNotReportUnresolvedWhenUsageKindFiltersOutBeanDiscovery() throws Exception {
+        var platform = QuillDatabase.openWritable(
+                workspace.resolve("platform/.quill/platform-index.db"));
+        IndexWriter.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
+                1, "io.casehub.engine.EngineService", "CLASS", "@ApplicationScoped",
+                List.of("@Default"), List.of(), false, false, null, List.of(), null,
+                List.of("io.casehub.engine.EngineService"), "cdi",
+                "io.casehub:engine-api:1.0", "/tmp/engine-api-1.0.jar", List.of())));
+        removePlatformDependencyClass();
+
+        JsonNode result = JSON.readTree(tools.find_workspace_usages(
+                "io.casehub.engine.EngineService", Optional.of("engine"),
+                Optional.of("type_reference"), Optional.of(20), Optional.of(5),
+                Optional.empty()));
+
+        assertEquals(1, result.path("resolved_consumer_count").asInt());
+        assertEquals(0, result.path("unresolved_consumer_count").asInt());
+        assertEquals(0, result.path("total").asInt());
+        assertEquals(0, result.path("consumers").size());
+    }
+
+    @Test
+    void resolvesWorkspaceUsageFromExternalTypeSignatures() throws Exception {
+        var platform = QuillDatabase.openWritable(
+                workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes(class_name, kind, source_file, is_bean, origin,
+                                        module, source_set)
+                    VALUES ('io.casehub.platform.EngineAdapter', 'CLASS',
+                            'src/main/java/io/casehub/platform/EngineAdapter.java', 0,
+                            'source', '.', 'main')
+                    """);
+            handle.execute("""
+                    INSERT INTO class_external_deps(class_id, external_type, usage_kind)
+                    SELECT id, 'io.casehub.engine.EngineService', 'FIELD'
+                    FROM classes WHERE class_name = 'io.casehub.platform.EngineAdapter'
+                    """);
+        });
+        removePlatformDependencyClass();
+
+        JsonNode result = JSON.readTree(tools.find_workspace_usages(
+                "io.casehub.engine.EngineService", Optional.of("engine"),
+                Optional.of("type_reference"), Optional.of(20), Optional.of(5),
+                Optional.empty()));
+
+        assertEquals(1, result.path("resolved_consumer_count").asInt());
+        assertEquals(0, result.path("unresolved_consumer_count").asInt());
+        JsonNode usage = result.path("consumers").get(0).path("usage");
+        assertEquals("external_type_index", usage.path("target_resolution").asText());
+        assertEquals("io.casehub.platform.EngineAdapter",
+                usage.path("usages").get(0).path("class").asText());
+        assertEquals("type_reference",
+                usage.path("usages").get(0).path("usage_kind").asText());
+        assertEquals("EXTERNAL_FIELD",
+                usage.path("usages").get(0).path("indexed_kind").asText());
     }
 
     @Test

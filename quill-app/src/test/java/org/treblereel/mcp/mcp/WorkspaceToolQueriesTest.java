@@ -469,10 +469,34 @@ class WorkspaceToolQueriesTest {
                 "io.casehub.engine.EngineService", "execute", Optional.empty(),
                 Optional.of(true), Optional.of(20), Optional.empty(),
                 Optional.of("platform")));
+        JsonNode details = JSON.readTree(tools.get_symbol_details(
+                "io.casehub.engine.EngineService", Optional.of(true), Optional.empty(),
+                Optional.of(20), Optional.empty(), Optional.of("platform")));
+        JsonNode symbolUsages = JSON.readTree(tools.find_symbol_usages(
+                "io.casehub.engine.EngineService", Optional.of("execute"), "method",
+                Optional.empty(), Optional.empty(), Optional.of(20), Optional.empty(),
+                Optional.of("platform")));
+        JsonNode calls = JSON.readTree(tools.get_call_hierarchy(
+                "io.casehub.engine.EngineService", Optional.of("execute"), Optional.empty(),
+                Optional.of("both"), Optional.of(false), Optional.of(3), Optional.of(20),
+                Optional.empty(), Optional.of("platform")));
+        JsonNode injections = JSON.readTree(tools.list_injection_points(
+                "io.casehub.engine.EngineService", Optional.of("platform")));
+        JsonNode risk = JSON.readTree(tools.assess_change_risk(
+                "io.casehub.engine.EngineService", Optional.of("platform")));
+        JsonNode external = JSON.readTree(tools.list_external_dependencies(
+                Optional.of("io.casehub.engine.EngineService"), Optional.empty(),
+                Optional.of(20), Optional.of("platform")));
 
         assertWorkspaceStructuralRoute(implementations, "find_implementations");
         assertWorkspaceStructuralRoute(hierarchy, "get_type_hierarchy");
         assertWorkspaceStructuralRoute(overrides, "find_method_overrides");
+        assertWorkspaceStructuralRoute(details, "get_symbol_details");
+        assertWorkspaceStructuralRoute(symbolUsages, "find_symbol_usages");
+        assertWorkspaceStructuralRoute(calls, "get_call_hierarchy");
+        assertWorkspaceStructuralRoute(injections, "list_injection_points");
+        assertWorkspaceStructuralRoute(risk, "assess_change_risk");
+        assertWorkspaceStructuralRoute(external, "list_external_dependencies");
         assertEquals("io.casehub.engine.EngineService", hierarchy.path("workspace_result")
                 .path("data").path("target").asText());
         assertEquals(0, overrides.path("workspace_result")

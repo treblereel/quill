@@ -836,7 +836,8 @@ final class WorkspaceToolQueries {
         DebugTrace.Trace trace = DebugTrace.start("workspace_route");
         try {
             JsonNode local = JSON.readTree(response);
-            if (!local.path("error").asText("").startsWith("Class not found")) {
+            String localError = local.path("error").asText("");
+            if (!isRoutableClassMiss(localError)) {
                 trace.event("route_skipped", Map.of("operation", operation,
                         "reason", "local_result_available"));
                 return response;
@@ -857,9 +858,10 @@ final class WorkspaceToolQueries {
             root.put("target", target);
             root.put("origin", "workspace_provider");
             root.putObject("local_resolution")
-                    .put("status", "not_found")
+                    .put("status", localError.startsWith("Class not found")
+                            ? "not_found" : "not_resolved_locally")
                     .put("repository", consumerRepository)
-                    .put("message", local.path("error").asText());
+                    .put("message", localError);
             ObjectNode workspaceResult = root.putObject("workspace_result");
             workspaceResult.put("operation", operation);
             if (providers.size() > 1) {
@@ -920,6 +922,10 @@ final class WorkspaceToolQueries {
         } finally {
             trace.close();
         }
+    }
+
+    private static boolean isRoutableClassMiss(String error) {
+        return error.startsWith("Class not found") || error.startsWith("Not a bean:");
     }
 
     String assessRisk(String target, String providerRepository, int maxDepth) {

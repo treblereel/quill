@@ -22,6 +22,21 @@ final class CodexConfigInstaller {
 
     private CodexConfigInstaller() {}
 
+    static Result install(Path projectRoot, String binary) {
+        Path config = projectRoot.resolve(".codex/config.toml");
+        if (Files.exists(config)) return installIfPresent(projectRoot, binary);
+
+        try {
+            String updated = appendBlock("", projectRoot, binary);
+            writeAtomically(config, updated);
+            System.err.println("[quill] Created " + config + " with the Quill MCP server.");
+            return Result.ADDED;
+        } catch (IOException e) {
+            warn(config, e.getMessage());
+            return Result.FAILED;
+        }
+    }
+
     static Result installIfPresent(Path projectRoot, String binary) {
         Path config = projectRoot.resolve(".codex/config.toml");
         if (!Files.exists(config)) return Result.NOT_PRESENT;
@@ -80,6 +95,33 @@ final class CodexConfigInstaller {
             String content = Files.readString(config, StandardCharsets.UTF_8);
             if (!targetsWorkspace(content, workspaceRoot)) return Result.ALREADY_CONFIGURED;
             writeAtomically(config, removeQuillServer(content));
+            return Result.REMOVED;
+        } catch (IOException e) {
+            warn(config, e.getMessage());
+            return Result.FAILED;
+        }
+    }
+
+    static Result uninstall(Path projectRoot) {
+        Path config = projectRoot.resolve(".codex/config.toml");
+        if (!Files.exists(config)) return Result.NOT_PRESENT;
+        if (!Files.isRegularFile(config) || Files.isSymbolicLink(config)) {
+            warn(config, "is not a regular file; leaving it unchanged");
+            return Result.UNSUPPORTED;
+        }
+        try {
+            String content = Files.readString(config, StandardCharsets.UTF_8);
+            if (!definesQuillServer(content)) return Result.ALREADY_CONFIGURED;
+            String cleaned = removeQuillServer(content);
+            if (cleaned.isBlank()) {
+                Files.delete(config);
+                Path directory = config.getParent();
+                try (var entries = Files.list(directory)) {
+                    if (entries.findAny().isEmpty()) Files.delete(directory);
+                }
+            } else {
+                writeAtomically(config, cleaned);
+            }
             return Result.REMOVED;
         } catch (IOException e) {
             warn(config, e.getMessage());
@@ -254,7 +296,9 @@ final class CodexConfigInstaller {
         boolean inRootMcpTable = false;
         boolean beforeFirstTable = true;
         for (String line : lines) {
-            if (line.trim().startsWith("# Added by Quill for workspace ")) continue;
+            String trimmed = line.trim();
+            if (trimmed.equals("# Added by Quill.")
+                    || trimmed.startsWith("# Added by Quill for workspace ")) continue;
             String stripped = stripComment(line).trim();
             if (stripped.startsWith("[")) {
                 beforeFirstTable = false;
@@ -306,10 +350,13 @@ final class CodexConfigInstaller {
     }
 
     private static void writeAtomically(Path config, String content) throws IOException {
+        Files.createDirectories(config.getParent());
         Path temp = Files.createTempFile(config.getParent(), ".config.toml.", ".tmp");
         try {
-            Files.copy(config, temp, StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.COPY_ATTRIBUTES);
+            if (Files.isRegularFile(config)) {
+                Files.copy(config, temp, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.COPY_ATTRIBUTES);
+            }
             Files.writeString(temp, content, StandardCharsets.UTF_8);
             try {
                 Files.move(temp, config, StandardCopyOption.ATOMIC_MOVE,

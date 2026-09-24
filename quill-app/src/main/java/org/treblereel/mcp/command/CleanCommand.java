@@ -11,7 +11,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 @Command(name = "clean", mixinStandardHelpOptions = true,
-        description = "Remove .quill and Quill build integration")
+        description = "Remove .quill, Quill build integration, and MCP client configuration")
 public class CleanCommand implements Callable<Integer> {
 
     @Option(names = "--project", description = "Path to project root")
@@ -24,6 +24,7 @@ public class CleanCommand implements Callable<Integer> {
             CleanResult result = cleanProject(root);
             printResult(root, result);
             return result.integration() == BuildIntegrationInstaller.Result.FAILED
+                    || result.codexConfiguration() == CodexConfigInstaller.Result.FAILED
                     ? picocli.CommandLine.ExitCode.SOFTWARE
                     : picocli.CommandLine.ExitCode.OK;
         } catch (IOException e) {
@@ -36,10 +37,15 @@ public class CleanCommand implements Callable<Integer> {
         Path normalized = root.toAbsolutePath().normalize();
         BuildIntegrationInstaller.Result integration =
                 BuildIntegrationInstaller.uninstall(normalized);
+        CodexConfigInstaller.Result codexConfiguration =
+                CodexConfigInstaller.uninstall(normalized);
+        McpJsonInstaller.Result mcpConfiguration =
+                McpJsonInstaller.uninstallProject(normalized);
         boolean existed = Files.exists(normalized.resolve(".quill"));
         boolean removed = ProjectIndexLock.withLockAndDeleteDirectory(
                 normalized, () -> cleanIndexData(normalized));
-        return new CleanResult(removed || existed, integration);
+        return new CleanResult(removed || existed, integration,
+                codexConfiguration, mcpConfiguration);
     }
 
     static void printResult(Path root, CleanResult result) {
@@ -50,6 +56,12 @@ public class CleanCommand implements Callable<Integer> {
         }
         if (result.integration() == BuildIntegrationInstaller.Result.REMOVED) {
             System.out.println("Build integration removed.");
+        }
+        if (result.codexConfiguration() == CodexConfigInstaller.Result.REMOVED) {
+            System.out.println("Codex MCP configuration removed.");
+        }
+        if (result.mcpConfiguration() == McpJsonInstaller.Result.REMOVED) {
+            System.out.println("Claude Code MCP configuration removed.");
         }
     }
 
@@ -69,5 +81,8 @@ public class CleanCommand implements Callable<Integer> {
         return removed[0];
     }
 
-    record CleanResult(boolean indexRemoved, BuildIntegrationInstaller.Result integration) {}
+    record CleanResult(boolean indexRemoved,
+                       BuildIntegrationInstaller.Result integration,
+                       CodexConfigInstaller.Result codexConfiguration,
+                       McpJsonInstaller.Result mcpConfiguration) {}
 }

@@ -23,6 +23,40 @@ class CodexConfigInstallerTest {
     }
 
     @Test
+    void projectInitializationCreatesMissingCodexConfig() throws Exception {
+        var result = ProjectInitializer.ensureCodexConfig(tempDir, false);
+
+        assertEquals(CodexConfigInstaller.Result.ADDED, result);
+        Path config = tempDir.resolve(".codex/config.toml");
+        assertTrue(Files.isRegularFile(config));
+        String content = Files.readString(config);
+        assertTrue(content.contains("[mcp_servers.quill]"));
+        assertTrue(content.contains("args = [\"--mcp\"]"));
+        assertTrue(content.contains(
+                "cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
+    }
+
+    @Test
+    void projectUninstallDeletesConfigCreatedByQuill() throws Exception {
+        CodexConfigInstaller.install(tempDir, null);
+
+        assertEquals(CodexConfigInstaller.Result.REMOVED,
+                CodexConfigInstaller.uninstall(tempDir));
+        assertFalse(Files.exists(tempDir.resolve(".codex/config.toml")));
+        assertFalse(Files.exists(tempDir.resolve(".codex")));
+    }
+
+    @Test
+    void projectUninstallPreservesUserSettings() throws Exception {
+        Path config = createConfig("model = \"gpt-test\"\n");
+        CodexConfigInstaller.install(tempDir, null);
+
+        assertEquals(CodexConfigInstaller.Result.REMOVED,
+                CodexConfigInstaller.uninstall(tempDir));
+        assertEquals("model = \"gpt-test\"\n", Files.readString(config));
+    }
+
+    @Test
     void indexOnlyInitializationLeavesExistingConfigUntouched() throws Exception {
         Path config = createConfig("model = \"gpt-test\"\n");
         String original = Files.readString(config);

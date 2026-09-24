@@ -48,13 +48,36 @@ final class ProjectConfiguration {
     }
 
     static void finishInitialization(Path root, boolean indexOnly) {
-        if (!indexOnly) ensureClaudeMd(root);
+        if (!indexOnly) {
+            ensureClaudeMd(root);
+            ensureMcpJson(root);
+        }
         ensureCodexConfig(root, indexOnly);
+    }
+
+    static McpJsonInstaller.Result ensureMcpJson(Path root) {
+        try {
+            McpJsonInstaller.Result result =
+                    McpJsonInstaller.installProject(root, QuillLauncher.detect());
+            if (result == McpJsonInstaller.Result.ADDED
+                    || result == McpJsonInstaller.Result.REPLACED) {
+                System.err.println("[quill] Updated " + root.resolve(".mcp.json")
+                        + " with the Quill MCP server.");
+            } else if (result == McpJsonInstaller.Result.UNSUPPORTED) {
+                System.err.println("[quill] Warning: could not update "
+                        + root.resolve(".mcp.json") + ": unsupported structure");
+            }
+            return result;
+        } catch (IOException error) {
+            System.err.println("[quill] Warning: could not update "
+                    + root.resolve(".mcp.json") + ": " + error.getMessage());
+            return McpJsonInstaller.Result.UNSUPPORTED;
+        }
     }
 
     static CodexConfigInstaller.Result ensureCodexConfig(Path root, boolean indexOnly) {
         if (indexOnly) return CodexConfigInstaller.Result.SKIPPED;
-        return CodexConfigInstaller.installIfPresent(root, QuillLauncher.detect());
+        return CodexConfigInstaller.install(root, QuillLauncher.detect());
     }
 
     private static void ensureClaudeMd(Path root) {

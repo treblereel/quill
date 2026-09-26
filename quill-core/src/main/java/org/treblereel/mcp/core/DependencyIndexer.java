@@ -104,11 +104,23 @@ public final class DependencyIndexer {
     }
 
     public static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs) {
-        return buildDependencyIndex(projectRoot, classesDirs,
+        return buildDependencyIndex(projectRoot, classesDirs, Map.of(),
+                DependencyIndexer::generateClasspathFilesDetailed, System.currentTimeMillis());
+    }
+
+    public static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs,
+            Map<Path, String> classDirectorySourceSets) {
+        return buildDependencyIndex(projectRoot, classesDirs, classDirectorySourceSets,
                 DependencyIndexer::generateClasspathFilesDetailed, System.currentTimeMillis());
     }
 
     static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs,
+            ClasspathGenerator generator, long nowMillis) {
+        return buildDependencyIndex(projectRoot, classesDirs, Map.of(), generator, nowMillis);
+    }
+
+    private static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs,
+            Map<Path, String> classDirectorySourceSets,
             ClasspathGenerator generator, long nowMillis) {
         Map<String, Long> timings = new LinkedHashMap<>();
         timings.put("dependency_classpath", 0L);
@@ -120,6 +132,11 @@ public final class DependencyIndexer {
         Map<Path, Path> classDirectoryOwners =
                 mapClassDirectoriesToModules(projectRoot, buildSystem, classesDirs);
         Set<Path> moduleDirs = new LinkedHashSet<>(classDirectoryOwners.values());
+        Set<Path> testOutputModules = classDirectoryOwners.entrySet().stream()
+                .filter(entry -> "test".equals(classDirectorySourceSets.get(entry.getKey()))
+                        || isTestClassesDirectory(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         BuildInputSnapshot buildInputs = buildInputSnapshot(
                 projectRoot, buildSystem, moduleDirs);
         String buildFingerprint = buildInputs.fingerprint();
@@ -165,6 +182,14 @@ public final class DependencyIndexer {
                 if (classpath.readable()) modulesResolved++;
                 if (generationIssue == null && classpath.readable()) {
                     writeFingerprint(moduleDir, buildSystem, buildFingerprint);
+                }
+            }
+            if (testOutputModules.contains(moduleDir)) {
+                Path testClasspathFile = buildSystem.testClasspathFile(moduleDir);
+                if (Files.exists(testClasspathFile)) {
+                    ClasspathRead testClasspath = readClasspathFile(testClasspathFile);
+                    jars.addAll(testClasspath.jars());
+                    missingJars += testClasspath.missingJars();
                 }
             }
         }
@@ -215,6 +240,13 @@ public final class DependencyIndexer {
         return new DependencyIndexResult(index.view(), Status.COMPLETE,
                 jars.size() + (cacheHit ? " JARs loaded from cache" : " JARs indexed"),
                 timings, List.copyOf(jars));
+    }
+
+    private static boolean isTestClassesDirectory(Path directory) {
+        String normalized = directory.toAbsolutePath().normalize().toString()
+                .replace('\\', '/');
+        return normalized.endsWith("/target/test-classes")
+                || normalized.matches(".*/build/classes/[^/]+/test");
     }
 
     private static long elapsedMillis(long startedAtNanos) {

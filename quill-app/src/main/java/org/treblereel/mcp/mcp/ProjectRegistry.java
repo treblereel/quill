@@ -199,7 +199,7 @@ public class ProjectRegistry {
     private static ProjectIssue buildRequiredIssueUncached(
             ProjectScope.Project project, BuildSystem buildSystem) {
         Path root = project.root().toAbsolutePath().normalize();
-        if (!ProjectInitializer.findClassesDirs(root).isEmpty()) return null;
+        if (!ProjectInitializer.findMainClassesDirs(root).isEmpty()) return null;
         if (ProjectCodeExpectation.inspect(root, buildSystem)
                 == ProjectCodeExpectation.State.METADATA_ONLY) {
             return new ProjectIssue(project.name(), root, "metadata_only",

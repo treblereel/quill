@@ -235,6 +235,31 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void dependencyIndexIncludesCapturedTestRuntimeClasspath() throws Exception {
+        Path projectDir = Files.createDirectories(tempDir.resolve("test-classpath"));
+        Path mainClasses = Files.createDirectories(projectDir.resolve("target/classes"));
+        Path testClasses = Files.createDirectories(projectDir.resolve("target/test-classes"));
+        Files.writeString(projectDir.resolve("pom.xml"), "<project/>");
+        Path mainJar = writeJar(projectDir.resolve("main.jar"), Map.of(
+                "sample/MainDependency.class",
+                classBytes("sample/MainDependency", "java/lang/Object")), false);
+        Path testJar = writeJar(projectDir.resolve("test.jar"), Map.of(
+                "sample/TestOnlyDependency.class",
+                classBytes("sample/TestOnlyDependency", "java/lang/Object")), false);
+        Files.writeString(projectDir.resolve("target/quill-classpath.txt"), mainJar.toString());
+        Files.writeString(projectDir.resolve("target/quill-test-classpath.txt"),
+                testJar.toString());
+        Files.writeString(projectDir.resolve("target/quill-classpath.sha256"),
+                DependencyIndexer.buildFingerprint(projectDir));
+
+        var indexed = DependencyIndexer.buildDependencyIndex(
+                projectDir, List.of(mainClasses, testClasses));
+
+        assertNotNull(indexed.index().getClassByName("sample.MainDependency"));
+        assertNotNull(indexed.index().getClassByName("sample.TestOnlyDependency"));
+    }
+
+    @Test
     void isStaleReturnsTrueWhenClasspathFileMissing() throws Exception {
         Path moduleDir = tempDir.resolve("mod");
         Files.createDirectories(moduleDir.resolve("target"));

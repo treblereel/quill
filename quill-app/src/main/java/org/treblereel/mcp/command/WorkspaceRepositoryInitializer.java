@@ -65,7 +65,7 @@ final class WorkspaceRepositoryInitializer {
                 skipped++;
                 continue;
             }
-            if (ProjectInitializer.findClassesDirs(root).isEmpty()) {
+            if (ProjectInitializer.findMainClassesDirs(root).isEmpty()) {
                 String diagnostic = "no compiled main classes; build the repository first";
                 output.accept("Skipped " + repository.name() + ": " + diagnostic);
                 results.add(new RepositoryResult(repository.name(), root,

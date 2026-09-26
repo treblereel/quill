@@ -11,7 +11,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ClassFileSnapshot;
@@ -23,10 +22,27 @@ import org.treblereel.mcp.core.MavenProjectDiscovery;
 /** Discovers compiled project layout and fingerprints the build inputs it represents. */
 final class ProjectLayout {
 
+    record CompiledOutput(Path directory, Path moduleDirectory, String sourceSet) {
+        CompiledOutput {
+            directory = directory.toAbsolutePath().normalize();
+            moduleDirectory = moduleDirectory.toAbsolutePath().normalize();
+            if (!sourceSet.equals("main") && !sourceSet.equals("test")) {
+                throw new IllegalArgumentException("Unsupported source set: " + sourceSet);
+            }
+        }
+    }
+
     record ClassesDiscovery(
-            List<Path> classesDirectories, String moduleScope, boolean complete) {
+            List<CompiledOutput> outputs, List<Path> moduleDirectories,
+            String moduleScope, boolean complete) {
         ClassesDiscovery {
-            classesDirectories = List.copyOf(classesDirectories);
+            outputs = List.copyOf(outputs);
+            moduleDirectories = moduleDirectories.stream()
+                    .map(path -> path.toAbsolutePath().normalize()).distinct().toList();
+        }
+
+        List<Path> classesDirectories() {
+            return outputs.stream().map(CompiledOutput::directory).toList();
         }
     }
 
@@ -40,29 +56,41 @@ final class ProjectLayout {
         BuildSystem buildSystem = BuildSystem.detect(root);
         if (buildSystem == BuildSystem.MAVEN) {
             MavenProjectDiscovery.Discovery discovery = MavenProjectDiscovery.discover(root);
-            LinkedHashSet<Path> result = new LinkedHashSet<>();
-            discovery.moduleDirectories().stream()
-                    .map(module -> module.resolve("target/classes"))
-                    .filter(ProjectLayout::containsClassFiles)
-                    .forEach(result::add);
+            Map<Path, CompiledOutput> result = new java.util.LinkedHashMap<>();
+            for (Path module : discovery.moduleDirectories()) {
+                addOutput(result, module.resolve("target/classes"), module, "main");
+                addOutput(result, module.resolve("target/test-classes"), module, "test");
+            }
             if (!discovery.complete()) {
-                result.addAll(scanClassesDirs(root, path -> path.endsWith("target/classes")));
+                for (Path path : scanClassesDirs(root, ProjectLayout::isMavenClassesDir)) {
+                    Path module = path.getParent().getParent();
+                    addOutput(result, path, module,
+                            path.endsWith("target/test-classes") ? "test" : "main");
+                }
             }
             return new ClassesDiscovery(
-                    List.copyOf(result), "maven_reactor", discovery.complete());
+                    List.copyOf(result.values()), discovery.moduleDirectories(),
+                    "maven_reactor", discovery.complete());
         }
 
         GradleProjectDiscovery.Discovery discovery = refreshGradleClasspath
                 ? GradleProjectDiscovery.discoverAndWriteClasspath(root)
                 : GradleProjectDiscovery.discover(root);
-        LinkedHashSet<Path> result = discovery.classesDirectories().stream()
-                .filter(ProjectLayout::containsClassFiles)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<Path, CompiledOutput> result = new java.util.LinkedHashMap<>();
+        for (Path path : discovery.classesDirectories()) {
+            Path module = discovery.classDirectoryOwners().get(path);
+            String sourceSet = discovery.classDirectorySourceSets().get(path);
+            if (module != null && sourceSet != null) addOutput(result, path, module, sourceSet);
+        }
         if (!discovery.complete()) {
-            result.addAll(scanClassesDirs(root, ProjectLayout::isGradleMainClassesDir));
+            for (Path path : scanClassesDirs(root, ProjectLayout::isGradleClassesDir)) {
+                Path module = org.treblereel.mcp.core.BuildSystem.GRADLE.moduleDir(path);
+                addOutput(result, path, module, gradleSourceSet(path));
+            }
         }
         return new ClassesDiscovery(
-                List.copyOf(result), "gradle_multiproject", discovery.complete());
+                List.copyOf(result.values()), discovery.moduleDirectories(),
+                "gradle_multiproject", discovery.complete());
     }
 
     static List<Path> findSourceRoots(List<Path> moduleDirectories) {
@@ -71,9 +99,14 @@ final class ProjectLayout {
             for (Path candidate : List.of(
                     module.resolve("src/main/java"),
                     module.resolve("src/main/kotlin"),
+                    module.resolve("src/test/java"),
+                    module.resolve("src/test/kotlin"),
                     module.resolve("target/generated-sources/annotations"),
+                    module.resolve("target/generated-test-sources/test-annotations"),
                     module.resolve("build/generated/sources/annotationProcessor/java/main"),
-                    module.resolve("build/generated/ksp/main/kotlin"))) {
+                    module.resolve("build/generated/sources/annotationProcessor/java/test"),
+                    module.resolve("build/generated/ksp/main/kotlin"),
+                    module.resolve("build/generated/ksp/test/kotlin"))) {
                 if (Files.isDirectory(candidate)) roots.add(candidate.toAbsolutePath().normalize());
             }
         }
@@ -83,6 +116,23 @@ final class ProjectLayout {
     static String computeStateFingerprint(Path root, List<Path> classesDirs) {
         return computeStateFingerprint(
                 root, classesDirs, ClassFileSnapshot.capture(classesDirs).fingerprint());
+    }
+
+    static List<Path> staleTestOutputModules(List<CompiledOutput> outputs) {
+        List<Path> stale = new java.util.ArrayList<>();
+        Map<Path, List<CompiledOutput>> byModule = outputs.stream()
+                .filter(output -> output.sourceSet().equals("test"))
+                .collect(java.util.stream.Collectors.groupingBy(
+                        CompiledOutput::moduleDirectory, java.util.LinkedHashMap::new,
+                        java.util.stream.Collectors.toList()));
+        for (var entry : byModule.entrySet()) {
+            long newestSource = Math.max(latestModified(entry.getKey().resolve("src/test/java")),
+                    latestModified(entry.getKey().resolve("src/test/kotlin")));
+            long newestClass = entry.getValue().stream()
+                    .mapToLong(output -> latestModified(output.directory())).max().orElse(0);
+            if (newestSource > newestClass) stale.add(entry.getKey());
+        }
+        return List.copyOf(stale);
     }
 
     static String computeStateFingerprint(
@@ -97,22 +147,24 @@ final class ProjectLayout {
                     DependencyIndexer.buildFingerprint(root, buildSystem, owners.values()));
             updateDigest(digest, "classFiles", classContentFingerprint);
 
-            for (Path classesDir : classesDirs.stream()
-                    .map(path -> path.toAbsolutePath().normalize()).sorted().toList()) {
-                Path moduleDir = owners.get(classesDir);
-                if (moduleDir == null) {
-                    updateDigest(digest, "classpathMissing", classesDir.toString());
-                    continue;
-                }
+            Map<Path, List<Path>> outputsByModule = classesDirs.stream()
+                    .map(path -> path.toAbsolutePath().normalize())
+                    .filter(owners::containsKey)
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            owners::get, java.util.LinkedHashMap::new,
+                            java.util.stream.Collectors.toList()));
+            for (Path classesDir : classesDirs.stream().map(path -> path.toAbsolutePath().normalize())
+                    .filter(path -> !owners.containsKey(path)).sorted().toList()) {
+                updateDigest(digest, "classpathMissing", classesDir.toString());
+            }
+            for (var entry : outputsByModule.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey()).toList()) {
+                Path moduleDir = entry.getKey();
                 Path classpathFile = buildSystem.classpathFile(moduleDir);
-                if (Files.isRegularFile(classpathFile)) {
-                    updateFileIdentity(digest, root, classpathFile);
-                    for (Path jar : DependencyIndexer.parseClasspathFile(classpathFile).stream()
-                            .map(path -> path.toAbsolutePath().normalize()).sorted().toList()) {
-                        updateFileIdentity(digest, root, jar);
-                    }
-                } else {
-                    updateDigest(digest, "classpathMissing", moduleDir.toString());
+                updateClasspathIdentity(digest, root, classpathFile, "classpathMissing", moduleDir);
+                if (entry.getValue().stream().anyMatch(ProjectLayout::isTestOutputDirectory)) {
+                    updateClasspathIdentity(digest, root, buildSystem.testClasspathFile(moduleDir),
+                            "testClasspathMissing", moduleDir);
                 }
             }
             return HexFormat.of().formatHex(digest.digest());
@@ -143,6 +195,21 @@ final class ProjectLayout {
         }
     }
 
+    private static long latestModified(Path directory) {
+        if (!Files.isDirectory(directory)) return 0;
+        try (Stream<Path> files = Files.walk(directory)) {
+            return files.filter(Files::isRegularFile).mapToLong(file -> {
+                try {
+                    return Files.getLastModifiedTime(file).toMillis();
+                } catch (IOException ignored) {
+                    return 0;
+                }
+            }).max().orElse(0);
+        } catch (IOException ignored) {
+            return 0;
+        }
+    }
+
     private static boolean hasPathSegment(Path path, String segment) {
         for (Path part : path) {
             if (part.toString().equals(segment)) return true;
@@ -150,7 +217,18 @@ final class ProjectLayout {
         return false;
     }
 
-    private static boolean isGradleMainClassesDir(Path path) {
+    private static void addOutput(Map<Path, CompiledOutput> outputs, Path directory,
+            Path module, String sourceSet) {
+        if (!containsClassFiles(directory)) return;
+        CompiledOutput output = new CompiledOutput(directory, module, sourceSet);
+        outputs.putIfAbsent(output.directory(), output);
+    }
+
+    private static boolean isMavenClassesDir(Path path) {
+        return path.endsWith("target/classes") || path.endsWith("target/test-classes");
+    }
+
+    private static boolean isGradleClassesDir(Path path) {
         Path relative;
         try {
             relative = path.toAbsolutePath().normalize();
@@ -160,11 +238,35 @@ final class ProjectLayout {
         for (int i = 0; i + 3 < relative.getNameCount(); i++) {
             if (relative.getName(i).toString().equals("build")
                     && relative.getName(i + 1).toString().equals("classes")
-                    && relative.getName(i + 3).toString().equals("main")) {
+                    && (relative.getName(i + 3).toString().equals("main")
+                        || relative.getName(i + 3).toString().equals("test"))) {
                 return i + 4 == relative.getNameCount();
             }
         }
         return false;
+    }
+
+    private static String gradleSourceSet(Path path) {
+        return path.getFileName().toString().equals("test") ? "test" : "main";
+    }
+
+    private static boolean isTestOutputDirectory(Path path) {
+        return path.endsWith("target/test-classes")
+                || path.getFileName() != null && path.getFileName().toString().equals("test")
+                        && path.toString().contains("build" + java.io.File.separator + "classes");
+    }
+
+    private static void updateClasspathIdentity(MessageDigest digest, Path root, Path classpathFile,
+            String missingKey, Path moduleDir) {
+        if (!Files.isRegularFile(classpathFile)) {
+            updateDigest(digest, missingKey, moduleDir.toString());
+            return;
+        }
+        updateFileIdentity(digest, root, classpathFile);
+        for (Path jar : DependencyIndexer.parseClasspathFile(classpathFile).stream()
+                .map(path -> path.toAbsolutePath().normalize()).sorted().toList()) {
+            updateFileIdentity(digest, root, jar);
+        }
     }
 
     private static void updateFileIdentity(MessageDigest digest, Path base, Path file) {

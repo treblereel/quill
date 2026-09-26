@@ -1,6 +1,7 @@
 package org.treblereel.mcp.command;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ProjectRootFinder;
@@ -52,7 +54,7 @@ public class DoctorCommand implements Callable<Integer> {
         checks.add(Check.pass("project", "Detected "
                 + buildSystem.name().toLowerCase(Locale.ROOT) + " project at " + normalized));
 
-        List<Path> classesDirectories = ProjectInitializer.findClassesDirs(normalized);
+        List<Path> classesDirectories = ProjectInitializer.findMainClassesDirs(normalized);
         if (classesDirectories.isEmpty()) {
             checks.add(Check.error("compiled_outputs", "No compiled main classes were found",
                     buildSystem == BuildSystem.MAVEN
@@ -104,6 +106,7 @@ public class DoctorCommand implements Callable<Integer> {
                                 .getOrDefault("dependency_index_detail", "no detail"),
                         "Check build-tool dependency resolution and run `quill update --force`"));
             }
+            addTestIndexCheck(checks, diagnostics.metadata(), buildSystem);
         }
 
         BuildIntegrationInstaller.Inspection integration =
@@ -144,6 +147,48 @@ public class DoctorCommand implements Callable<Integer> {
                     "Project-local MCP configuration detected for " + String.join(" and ", clients)));
         }
         return new Report(normalized, List.copyOf(checks));
+    }
+
+    private static void addTestIndexCheck(List<Check> checks, Map<String, String> metadata,
+            BuildSystem buildSystem) {
+        List<String> indexed = metadataList(metadata, "compiled_test_modules");
+        List<String> missing = metadataList(metadata, "missing_test_output_modules");
+        List<String> missingClasspath = metadataList(metadata, "missing_test_classpath_modules");
+        List<String> stale = metadataList(metadata, "stale_test_output_modules");
+        if (missing.isEmpty() && missingClasspath.isEmpty() && stale.isEmpty()) {
+            checks.add(Check.pass("test_index", indexed.isEmpty()
+                    ? "No compiled test outputs were discovered"
+                    : "Indexed compiled tests from " + indexed.size() + " module"
+                            + (indexed.size() == 1 ? "" : "s")));
+            return;
+        }
+        List<String> problems = new ArrayList<>();
+        if (!missing.isEmpty()) problems.add("missing outputs: " + String.join(", ", missing));
+        if (!missingClasspath.isEmpty()) {
+            problems.add("missing runtime classpaths: " + String.join(", ", missingClasspath));
+        }
+        if (!stale.isEmpty()) problems.add("stale outputs: " + String.join(", ", stale));
+        checks.add(Check.warning("test_index", "Test index coverage is partial ("
+                        + String.join("; ", problems) + ")",
+                buildSystem == BuildSystem.MAVEN
+                        ? "Run the project's Maven test-compile command, then `quill update`"
+                        : "Run the project's Gradle testClasses task, then `quill update`"));
+    }
+
+    private static List<String> metadataList(Map<String, String> metadata, String key) {
+        String value = metadata.get(key);
+        if (value == null || value.isBlank()) return List.of();
+        try {
+            JsonNode parsed = JSON.readTree(value);
+            if (!parsed.isArray()) return List.of();
+            List<String> result = new ArrayList<>();
+            parsed.forEach(item -> {
+                if (item.isTextual()) result.add(item.asText());
+            });
+            return List.copyOf(result);
+        } catch (IOException ignored) {
+            return List.of();
+        }
     }
 
     private static long countPendingEvents(Path root) {

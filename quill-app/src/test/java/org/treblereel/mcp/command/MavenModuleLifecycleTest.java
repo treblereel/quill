@@ -1,15 +1,22 @@
 package org.treblereel.mcp.command;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Optional;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.mcp.ProjectRegistry;
+import org.treblereel.mcp.mcp.QuillTools;
+import org.treblereel.mcp.mcp.SingleProjectScope;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 class MavenModuleLifecycleTest {
 
@@ -43,6 +50,50 @@ class MavenModuleLifecycleTest {
         assertIndexed("example.base.BaseType", true);
         assertIndexed("example.dynamic.DynamicType", false);
         assertMetadata("module_contexts", "1");
+    }
+
+    @Test
+    void indexesCompiledTestsAndTheirDependenciesWithoutStartingABuild() throws Exception {
+        writeModule("base", "example.base", "BaseType");
+        writeTestClass("base", "example.base", "BaseTypeTest", "BaseType");
+        writeReactor("base");
+
+        assertTrue(ProjectInitializer.initializeDetailed(project, true).successful());
+
+        Path database = ProjectIndexStore.findBestAvailableDb(project);
+        var jdbi = QuillDatabase.open(database);
+        var main = IndexReader.findClassByName(jdbi, "example.base.BaseType").orElseThrow();
+        var test = IndexReader.findClassByName(jdbi, "example.base.BaseTypeTest").orElseThrow();
+        assertEquals("main", main.sourceSet());
+        assertEquals("test", test.sourceSet());
+        assertTrue(IndexReader.findDependencies(jdbi, test.id(), "outbound").stream()
+                .anyMatch(dependency -> dependency.toClassId() == main.id()));
+        assertMetadata("compiled_main_output_count", "1");
+        assertMetadata("compiled_test_output_count", "1");
+        assertMetadata("compiled_test_module_count", "1");
+        assertEquals("[\"base\"]", IndexReader.getMetadata(jdbi)
+                .get("compiled_test_modules"));
+        assertEquals("[]", IndexReader.getMetadata(jdbi)
+                .get("missing_test_output_modules"));
+
+        SingleProjectScope scope = new SingleProjectScope();
+        scope.register(project);
+        var impact = new ObjectMapper().readTree(new QuillTools(new ProjectRegistry(scope))
+                .find_impacted_tests(List.of("example.base.BaseType"), Optional.of(true),
+                        Optional.of(3), Optional.of(20), Optional.empty(), Optional.empty()));
+        assertEquals(1, impact.path("total").asInt(), impact.toString());
+        assertEquals("example.base.BaseTypeTest",
+                impact.path("tests").get(0).path("class").asText());
+        assertEquals("static_direct",
+                impact.path("tests").get(0).path("evidence").get(0).asText());
+        assertEquals("partial", impact.path("test_index_coverage").path("status").asText());
+        assertFalse(impact.path("test_index_coverage").path("complete").asBoolean(),
+                "A missing captured test classpath must keep the answer incomplete");
+        assertFalse(impact.path("answer_complete").asBoolean());
+        DoctorCommand.Check testIndex = DoctorCommand.inspect(project).checks().stream()
+                .filter(check -> check.id().equals("test_index")).findFirst().orElseThrow();
+        assertEquals(DoctorCommand.Status.WARNING, testIndex.status());
+        assertTrue(testIndex.action().contains("test-compile"));
     }
 
     private void update() {
@@ -102,5 +153,21 @@ class MavenModuleLifecycleTest {
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(
                 null, null, null, "-d", classes.toString(), source.toString()));
         Files.writeString(directory.resolve("target/quill-classpath.txt"), "");
+    }
+
+    private void writeTestClass(String module, String packageName, String className,
+            String referencedClass) throws Exception {
+        Path directory = project.resolve(module);
+        Path source = directory.resolve("src/test/java")
+                .resolve(packageName.replace('.', '/')).resolve(className + ".java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package " + packageName + "; public final class "
+                + className + " { Object value = new " + referencedClass + "(); }\n");
+        Path classes = Files.createDirectories(directory.resolve("target/test-classes"));
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null,
+                "-classpath", directory.resolve("target/classes").toString(),
+                "-d", classes.toString(), source.toString()));
+        assertFalse(Files.exists(directory.resolve("target/surefire-reports")),
+                "Quill must not run the test lifecycle");
     }
 }

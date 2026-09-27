@@ -607,6 +607,7 @@ public class ProjectInitializer {
         metadata.put("compiled_test_modules", toJson(testModules.stream()
                 .map(module -> relativeModule(root, module)).sorted().toList()));
         metadata.put("missing_test_output_modules", toJson(mainModules.stream()
+                .filter(ProjectLayout::hasTestSources)
                 .filter(module -> !testModules.contains(module.toAbsolutePath().normalize()))
                 .map(module -> relativeModule(root, module)).sorted().toList()));
         Set<Path> testClasspathModules = testModules.stream()

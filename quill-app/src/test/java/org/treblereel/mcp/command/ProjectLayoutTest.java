@@ -2,6 +2,8 @@ package org.treblereel.mcp.command;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,6 +64,15 @@ class ProjectLayoutTest {
 
         assertNotEquals(before,
                 ProjectLayout.computeStateFingerprint(project, List.of(main, test)));
+    }
+
+    @Test
+    void expectsTestOutputOnlyWhenTestSourcesExist(@TempDir Path module) throws Exception {
+        assertFalse(ProjectLayout.hasTestSources(module));
+        Path source = module.resolve("src/test/kotlin/example/FeatureTest.kt");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "class FeatureTest");
+        assertTrue(ProjectLayout.hasTestSources(module));
     }
 
     private static Path classOutput(Path directory, String className) throws Exception {

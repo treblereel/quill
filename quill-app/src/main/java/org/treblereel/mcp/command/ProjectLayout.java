@@ -135,6 +135,18 @@ final class ProjectLayout {
         return List.copyOf(stale);
     }
 
+    static boolean hasTestSources(Path module) {
+        for (Path directory : List.of(
+                module.resolve("src/test/java"),
+                module.resolve("src/test/kotlin"),
+                module.resolve("target/generated-test-sources"),
+                module.resolve("build/generated/sources/annotationProcessor/java/test"),
+                module.resolve("build/generated/ksp/test/kotlin"))) {
+            if (containsSourceFiles(directory)) return true;
+        }
+        return false;
+    }
+
     static String computeStateFingerprint(
             Path root, List<Path> classesDirs, String classContentFingerprint) {
         try {
@@ -207,6 +219,18 @@ final class ProjectLayout {
             }).max().orElse(0);
         } catch (IOException ignored) {
             return 0;
+        }
+    }
+
+    private static boolean containsSourceFiles(Path directory) {
+        if (!Files.isDirectory(directory)) return false;
+        try (Stream<Path> files = Files.walk(directory)) {
+            return files.filter(Files::isRegularFile).anyMatch(file -> {
+                String name = file.getFileName().toString();
+                return name.endsWith(".java") || name.endsWith(".kt");
+            });
+        } catch (IOException ignored) {
+            return false;
         }
     }
 

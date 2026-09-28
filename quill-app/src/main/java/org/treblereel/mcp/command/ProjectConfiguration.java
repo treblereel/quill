@@ -8,6 +8,8 @@ import org.treblereel.mcp.QuillLauncher;
 /** Owns the reversible project configuration installed around an index generation. */
 final class ProjectConfiguration {
 
+    enum ClaudeInstructionsState { CURRENT, MISSING, INVALID }
+
     private static final String CLAUDE_BLOCK_START = "<!-- quill:managed:start -->";
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
     private static final String QUILL_CLAUDE_MD = """
@@ -102,6 +104,21 @@ final class ProjectConfiguration {
         if (updated.isBlank()) Files.delete(claudeMd);
         else Files.writeString(claudeMd, updated + "\n");
         return true;
+    }
+
+    static ClaudeInstructionsState inspectClaudeMd(Path root) {
+        Path claudeMd = root.resolve("CLAUDE.md");
+        if (!Files.isRegularFile(claudeMd)) return ClaudeInstructionsState.MISSING;
+        try {
+            String content = Files.readString(claudeMd);
+            boolean start = content.contains(CLAUDE_BLOCK_START);
+            boolean end = content.contains(CLAUDE_BLOCK_END);
+            if (!start && !end) return ClaudeInstructionsState.MISSING;
+            return start && end ? ClaudeInstructionsState.CURRENT
+                    : ClaudeInstructionsState.INVALID;
+        } catch (IOException error) {
+            return ClaudeInstructionsState.INVALID;
+        }
     }
 
     private static void ensureGitignore(Path root) {

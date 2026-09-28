@@ -146,6 +146,21 @@ public class DoctorCommand implements Callable<Integer> {
             checks.add(Check.pass("mcp_configuration",
                     "Project-local MCP configuration detected for " + String.join(" and ", clients)));
         }
+        switch (ProjectConfiguration.inspectClaudeMd(normalized)) {
+            case CURRENT -> checks.add(Check.pass("claude_instructions",
+                    "CLAUDE.md contains the current managed Quill guidance"));
+            case MISSING -> checks.add(Check.warning("claude_instructions",
+                    "CLAUDE.md does not contain managed Quill guidance",
+                    "Run `quill init --project " + normalized + "`"));
+            case INVALID -> checks.add(Check.warning("claude_instructions",
+                    "CLAUDE.md contains an incomplete managed Quill block",
+                    "Run `quill init --project " + normalized + "` to replace it"));
+        }
+        String toolProfile = claudeToolProfile(normalized);
+        if (toolProfile != null) {
+            checks.add(Check.pass("claude_tool_profile", "Claude Code MCP uses the `"
+                    + toolProfile + "` Quill tool profile"));
+        }
         return new Report(normalized, List.copyOf(checks));
     }
 
@@ -237,6 +252,22 @@ public class DoctorCommand implements Callable<Integer> {
             }
         }
         return List.copyOf(clients);
+    }
+
+    private static String claudeToolProfile(Path root) {
+        Path config = root.resolve(".mcp.json");
+        if (!Files.isRegularFile(config)) return null;
+        try {
+            JsonNode args = JSON.readTree(config.toFile())
+                    .path("mcpServers").path("quill").path("args");
+            if (!args.isArray()) return null;
+            for (int i = 0; i + 1 < args.size(); i++) {
+                if ("--tools".equals(args.get(i).asText())) return args.get(i + 1).asText();
+            }
+            return "full";
+        } catch (IOException error) {
+            return null;
+        }
     }
 
     static String toJson(Report report) {

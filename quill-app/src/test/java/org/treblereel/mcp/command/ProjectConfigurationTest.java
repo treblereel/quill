@@ -20,6 +20,8 @@ class ProjectConfigurationTest {
 
         ProjectConfiguration.ensureClaudeMd(root);
         String installed = Files.readString(claude);
+        assertEquals(ProjectConfiguration.ClaudeInstructionsState.CURRENT,
+                ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(installed.contains("use ToolSearch to load the relevant Quill tools"));
         assertEquals(1, occurrences(installed, "<!-- quill:managed:start -->"));
 
@@ -47,6 +49,8 @@ class ProjectConfigurationTest {
         ProjectConfiguration.ensureClaudeMd(root);
         assertTrue(ProjectConfiguration.removeClaudeMd(root));
         assertFalse(Files.exists(claude));
+        assertEquals(ProjectConfiguration.ClaudeInstructionsState.MISSING,
+                ProjectConfiguration.inspectClaudeMd(root));
     }
 
     private static int occurrences(String value, String token) {

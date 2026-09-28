@@ -6,12 +6,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
 import org.eclipse.jgit.api.Git;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.io.CleanupMode;
 import org.treblereel.mcp.command.ProjectInitializer;
 import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.db.IndexReader;
@@ -21,7 +25,27 @@ class ConfigurationReferenceIntegrationTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Path FIXTURE = Path.of(System.getProperty("user.dir"));
 
-    @TempDir Path tempDir;
+    @TempDir(cleanup = CleanupMode.NEVER) Path tempDir;
+
+    @AfterEach
+    void cleanupTempDirectory() throws Exception {
+        IOException failure = null;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            try {
+                if (!Files.exists(tempDir)) return;
+                try (var paths = Files.walk(tempDir)) {
+                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                        Files.deleteIfExists(path);
+                    }
+                }
+                return;
+            } catch (IOException error) {
+                failure = error;
+                Thread.sleep(200);
+            }
+        }
+        throw failure;
+    }
 
     @Test
     void mavenIndexPublishesAndIncrementallyRefreshesConfigurationGraph() throws Exception {

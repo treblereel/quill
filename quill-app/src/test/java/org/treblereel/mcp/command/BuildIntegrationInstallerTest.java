@@ -90,6 +90,7 @@ class BuildIntegrationInstallerTest {
         Files.writeString(tempDir.resolve(".quill/build-events/event.json"), "{}");
         CodexConfigInstaller.install(tempDir, null);
         McpJsonInstaller.installProject(tempDir, null);
+        ProjectConfiguration.ensureClaudeMd(tempDir);
 
         CleanCommand clean = new CleanCommand();
         clean.projectPath = tempDir;
@@ -99,6 +100,7 @@ class BuildIntegrationInstallerTest {
         assertFalse(Files.exists(tempDir.resolve(".mvn/extensions.xml")));
         assertFalse(Files.exists(tempDir.resolve(".codex/config.toml")));
         assertFalse(Files.exists(tempDir.resolve(".mcp.json")));
+        assertFalse(Files.exists(tempDir.resolve("CLAUDE.md")));
     }
 
     @Test

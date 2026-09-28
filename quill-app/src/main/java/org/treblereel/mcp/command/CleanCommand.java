@@ -41,11 +41,12 @@ public class CleanCommand implements Callable<Integer> {
                 CodexConfigInstaller.uninstall(normalized);
         McpJsonInstaller.Result mcpConfiguration =
                 McpJsonInstaller.uninstallProject(normalized);
+        boolean claudeInstructions = ProjectConfiguration.removeClaudeMd(normalized);
         boolean existed = Files.exists(normalized.resolve(".quill"));
         boolean removed = ProjectIndexLock.withLockAndDeleteDirectory(
                 normalized, () -> cleanIndexData(normalized));
         return new CleanResult(removed || existed, integration,
-                codexConfiguration, mcpConfiguration);
+                codexConfiguration, mcpConfiguration, claudeInstructions);
     }
 
     static void printResult(Path root, CleanResult result) {
@@ -62,6 +63,9 @@ public class CleanCommand implements Callable<Integer> {
         }
         if (result.mcpConfiguration() == McpJsonInstaller.Result.REMOVED) {
             System.out.println("Claude Code MCP configuration removed.");
+        }
+        if (result.claudeInstructions()) {
+            System.out.println("Claude Code Quill instructions removed.");
         }
     }
 
@@ -84,5 +88,6 @@ public class CleanCommand implements Callable<Integer> {
     record CleanResult(boolean indexRemoved,
                        BuildIntegrationInstaller.Result integration,
                        CodexConfigInstaller.Result codexConfiguration,
-                       McpJsonInstaller.Result mcpConfiguration) {}
+                       McpJsonInstaller.Result mcpConfiguration,
+                       boolean claudeInstructions) {}
 }

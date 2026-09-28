@@ -95,7 +95,12 @@ class MultiModuleCommandsTest {
         Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         Jdbi jdbi = QuillDatabase.open(dbPath);
         var classes = IndexReader.findAllClasses(jdbi);
-        assertEquals(5, classes.size(), "Re-index should not duplicate classes");
+        assertEquals(5, classes.stream().filter(c -> "main".equals(c.sourceSet())).count(),
+                "Re-index should preserve all main classes");
+        assertEquals(classes.size(), classes.stream()
+                        .map(c -> c.className() + '|' + c.module() + '|' + c.sourceSet())
+                        .distinct().count(),
+                "Re-index should not duplicate main or test classes");
 
         var classIds = classes.stream().map(c -> c.id()).collect(java.util.stream.Collectors.toSet());
         for (var bean : IndexReader.findBeans(jdbi, null)) {

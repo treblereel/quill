@@ -39,7 +39,8 @@ class InitCommandTest {
 
         Jdbi jdbi = QuillDatabase.open(dbPath);
         var classes = IndexReader.findAllClasses(jdbi);
-        assertEquals(8, classes.size(), "Should index all 8 fixture classes");
+        assertEquals(8, classes.stream().filter(cls -> "main".equals(cls.sourceSet())).count(),
+                "Should index all 8 main fixture classes");
 
         var beans = IndexReader.findBeans(jdbi, null);
         assertTrue(beans.size() >= 3, "Should find at least 3 CDI beans (Stripe, Mock, Order), plus non-bean classes");
@@ -168,17 +169,30 @@ class InitCommandTest {
         cmd.projectPath = PROJECT_ROOT;
         cmd.indexOnly = true;
         cmd.call();
+        Path firstDb = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
+        assertNotNull(firstDb);
+        var firstClasses = IndexReader.findAllClasses(QuillDatabase.open(firstDb)).stream()
+                .map(InitCommandTest::classIdentity).collect(Collectors.toSet());
         cmd.call();
 
         Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         Jdbi jdbi = QuillDatabase.open(dbPath);
         var classes = IndexReader.findAllClasses(jdbi);
-        assertEquals(8, classes.size(), "Re-index should not duplicate classes");
+        var reindexedClasses = classes.stream()
+                .map(InitCommandTest::classIdentity).collect(Collectors.toSet());
+        assertEquals(classes.size(), reindexedClasses.size(),
+                "Re-index should not duplicate class identities");
+        assertEquals(firstClasses, reindexedClasses,
+                "Re-index should preserve every main and test class exactly once");
 
         var classIds = classes.stream().map(c -> c.id()).collect(Collectors.toSet());
         for (var bean : IndexReader.findBeans(jdbi, null)) {
             assertTrue(classIds.contains(bean.classId()),
                     "After re-index, bean classId " + bean.classId() + " must be valid");
         }
+    }
+
+    private static String classIdentity(org.treblereel.mcp.model.ClassRecord cls) {
+        return cls.className() + '|' + cls.module() + '|' + cls.sourceSet() + '|' + cls.origin();
     }
 }

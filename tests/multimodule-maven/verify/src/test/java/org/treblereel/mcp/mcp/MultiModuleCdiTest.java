@@ -112,8 +112,8 @@ class MultiModuleCdiTest {
         JsonNode root = JSON.readTree(result);
 
         JsonNode project = root.get("project");
-        assertEquals(5, project.get("classes").asInt(),
-                "Should have 5 classes across common + service modules");
+        assertEquals(8, project.get("classes").asInt(),
+                "Should include 5 main classes and 3 compiled test classes");
         assertEquals(3, project.get("beans").asInt(),
                 "Should have 3 CDI beans");
 

@@ -35,6 +35,8 @@ class ConfigurationReferenceIntegrationTest {
                 if (!Files.exists(tempDir)) return;
                 try (var paths = Files.walk(tempDir)) {
                     for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                        // JGit may create read-only object files on Windows.
+                        path.toFile().setWritable(true);
                         Files.deleteIfExists(path);
                     }
                 }

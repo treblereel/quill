@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.treblereel.mcp.diagnostics.DebugTrace;
 import reactor.core.Disposable;
 import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
@@ -41,6 +42,7 @@ class McpToolCatalogTest {
     void disposeSchedulers() {
         workers.dispose();
         responses.dispose();
+        DebugTrace.configure(false, tempDir);
     }
 
     @Test
@@ -319,6 +321,23 @@ class McpToolCatalogTest {
         assertRouterChoice(router, "affected tests", "find_impacted_tests", "quill");
         assertRouterChoice(router, "implementations", "find_implementations", "quill");
         assertRouterChoice(router, "build problems", "get_build_problems", "build");
+    }
+
+    @Test
+    void routerWritesLocalDiscoveryTraceOnlyInDebugMode() throws Exception {
+        DebugTrace.configure(true, tempDir);
+        RouterTools router = new RouterTools(new QuillTools(new ProjectRegistry()));
+
+        router.search_tools("implementations", Optional.of(5));
+        router.execute_tool("search_classes", Map.of());
+
+        String events = Files.readString(
+                tempDir.resolve(".quill/debug/quill-debug.jsonl"));
+        assertTrue(events.contains("\"operation\":\"router_search\""));
+        assertTrue(events.contains("\"event\":\"catalog_searched\""));
+        assertTrue(events.contains("\"recommended_tool\":\"find_implementations\""));
+        assertTrue(events.contains("\"operation\":\"router_execute\""));
+        assertTrue(events.contains("\"tool\":\"search_classes\""));
     }
 
     private static void assertRouterChoice(RouterTools router, String query,

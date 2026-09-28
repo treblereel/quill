@@ -289,6 +289,9 @@ class McpToolCatalogTest {
                 structured.path("tools").get(0).path("input_schema").path("type").asText());
         assertEquals("quill", structured.path("guidance")
                 .path("recommended_channel").asText());
+        assertEquals("find_implementations", structured.path("guidance")
+                .path("recommended_tool").asText());
+        assertTrue(structured.path("tools").get(0).path("required_arguments").isArray());
     }
 
     @Test
@@ -305,6 +308,26 @@ class McpToolCatalogTest {
 
         assertEquals("source_search",
                 result.path("guidance").path("recommended_channel").asText());
+    }
+
+    @Test
+    void routerRanksCommonCodebaseTasksAndBuildEvidence() throws Exception {
+        RouterTools router = new RouterTools(new QuillTools(new ProjectRegistry()));
+
+        assertRouterChoice(router, "annotated symbols", "find_annotated_symbols", "quill");
+        assertRouterChoice(router, "framework endpoints", "find_framework_endpoints", "quill");
+        assertRouterChoice(router, "affected tests", "find_impacted_tests", "quill");
+        assertRouterChoice(router, "implementations", "find_implementations", "quill");
+        assertRouterChoice(router, "build problems", "get_build_problems", "build");
+    }
+
+    private static void assertRouterChoice(RouterTools router, String query,
+            String tool, String channel) throws Exception {
+        JsonNode result = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                router.search_tools(query, java.util.Optional.of(5)));
+        assertEquals(tool, result.path("guidance").path("recommended_tool").asText(),
+                result::toString);
+        assertEquals(channel, result.path("guidance").path("recommended_channel").asText());
     }
 
     @Test

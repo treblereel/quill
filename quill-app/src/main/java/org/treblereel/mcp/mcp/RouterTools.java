@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -37,10 +38,12 @@ final class RouterTools {
         String[] terms = Arrays.stream(query.strip().toLowerCase().split("\\s+"))
                 .filter(term -> !term.isBlank()).toArray(String[]::new);
         int pageSize = Math.max(1, Math.min(30, limit.orElse(10)));
-        var matches = Arrays.stream(QuillTools.class.getDeclaredMethods())
+        List<Candidate> matches = Arrays.stream(QuillTools.class.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(Tool.class))
-                .filter(method -> matches(method, terms))
-                .sorted(Comparator.comparing(Method::getName))
+                .map(method -> new Candidate(method, score(method, terms)))
+                .filter(candidate -> candidate.score() > 0)
+                .sorted(Comparator.comparingInt(Candidate::score).reversed()
+                        .thenComparing(candidate -> candidate.method().getName()))
                 .toList();
         ObjectNode result = JSON.createObjectNode();
         result.put("query", query);
@@ -48,16 +51,28 @@ final class RouterTools {
         result.put("showing", Math.min(pageSize, matches.size()));
         ObjectNode guidance = result.putObject("guidance");
         guidance.put("recommended_channel", recommendedChannel(terms));
+        if (!matches.isEmpty()) {
+            guidance.put("recommended_tool", matches.getFirst().method().getName());
+            guidance.put("selection_reason", "highest keyword match in Quill's tool catalog");
+        }
         guidance.put("use_source_search_for",
                 "exact literals, known paths, and confirming one concrete source occurrence");
         guidance.put("use_quill_for",
                 "semantic symbols, dependency/call graphs, DI, generated code, history, and risk");
+        guidance.put("fallback_when",
+                "use source or build evidence when Quill reports stale, partial, unknown, or unsupported results");
+        guidance.put("response_budget",
+                "prefer the smallest useful limit and continue with offset only when needed");
         ArrayNode listed = result.putArray("tools");
-        matches.stream().limit(pageSize).forEach(method -> {
+        matches.stream().limit(pageSize).forEach(candidate -> {
+            Method method = candidate.method();
             ObjectNode item = listed.addObject();
             item.put("name", method.getName());
             item.put("description", method.getAnnotation(Tool.class).description());
-            item.set("input_schema", JSON.valueToTree(McpToolCatalog.inputSchema(method)));
+            Map<String, Object> schema = McpToolCatalog.inputSchema(method);
+            item.set("input_schema", JSON.valueToTree(schema));
+            item.set("required_arguments", JSON.valueToTree(schema.get("required")));
+            item.put("match_score", candidate.score());
         });
         return result.toString();
     }
@@ -86,18 +101,44 @@ final class RouterTools {
         return error(invocation.text());
     }
 
-    private static boolean matches(Method method, String[] terms) {
+    private static int score(Method method, String[] terms) {
         String searchable = (method.getName() + " "
                 + method.getAnnotation(Tool.class).description() + " "
                 + McpToolCatalog.inputSchema(method)).toLowerCase();
-        return Arrays.stream(terms).allMatch(searchable::contains);
+        String name = method.getName().toLowerCase();
+        int score = 0;
+        for (String term : terms) {
+            String normalized = normalizeTerm(term);
+            if (normalized.length() < 3) continue;
+            if (name.contains(normalized)) score += 3;
+            else if (searchable.contains(normalized)) score++;
+        }
+        return score;
+    }
+
+    private static String normalizeTerm(String term) {
+        return switch (term) {
+            case "annotated", "annotations" -> "annotation";
+            case "endpoints" -> "endpoint";
+            case "implementations", "implementors" -> "implementation";
+            case "affected", "impacted" -> "impact";
+            case "errors" -> "error";
+            case "problems" -> "problem";
+            case "modules" -> "module";
+            default -> term;
+        };
     }
 
     private static String recommendedChannel(String[] terms) {
+        if (Arrays.stream(terms).map(RouterTools::normalizeTerm)
+                .anyMatch(SetLikeTerms.BUILD::contains)) {
+            return "build";
+        }
         if (Arrays.stream(terms).anyMatch(SetLikeTerms.SOURCE::contains)) {
             return "source_search";
         }
-        if (Arrays.stream(terms).anyMatch(SetLikeTerms.QUILL::contains)) {
+        if (Arrays.stream(terms).map(RouterTools::normalizeTerm)
+                .anyMatch(SetLikeTerms.QUILL::contains)) {
             return "quill";
         }
         return "quill_if_semantic";
@@ -109,10 +150,15 @@ final class RouterTools {
         private static final java.util.Set<String> QUILL = java.util.Set.of(
                 "dependency", "dependencies", "graph", "call", "injection", "bean",
                 "history", "risk", "generated", "override", "implementation",
-                "implementations");
+                "annotation", "endpoint", "impact", "symbol", "module");
+        private static final java.util.Set<String> BUILD = java.util.Set.of(
+                "build", "compile", "compiler", "maven", "gradle", "failure", "error",
+                "problem");
 
         private SetLikeTerms() {}
     }
+
+    private record Candidate(Method method, int score) {}
 
     private static String error(String message) {
         return JSON.createObjectNode().put("error", message).toString();

@@ -330,7 +330,7 @@ final class ProjectDependencyQueries {
                 main.jars().forEach(reference -> jars.putIfAbsent(reference.jar(), reference));
             }
             if (!jars.isEmpty()) {
-                result.add(new ParsedClasspath(Path.of("<reactor-model>"), application,
+                result.add(new ParsedClasspath(Path.of("reactor-model"), application,
                         "test", "reactor_model_inference", true,
                         List.copyOf(jars.values())));
             }

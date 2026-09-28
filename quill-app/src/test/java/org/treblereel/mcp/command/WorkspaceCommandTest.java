@@ -88,7 +88,9 @@ class WorkspaceCommandTest {
         String installedCodex = Files.readString(codex);
         assertFalse(installedCodex.contains("old-quill"));
         assertTrue(installedCodex.contains("\"--workspace\""));
-        assertTrue(installedCodex.contains(workspace.toAbsolutePath().normalize().toString()));
+        String tomlWorkspacePath = workspace.toAbsolutePath().normalize().toString()
+                .replace("\\", "\\\\");
+        assertTrue(installedCodex.contains(tomlWorkspacePath));
 
         Captured cleared = execute("workspace", "clear", "--project", workspace.toString());
 

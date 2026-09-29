@@ -804,8 +804,24 @@ class McpStdioIT {
      * directory locked while JUnit attempts to remove {@code @TempDir}.
      */
     private static void stopMcpProcess(Process process) throws Exception {
-        // Capture children before closing stdin. On Windows the root JVM can exit
-        // promptly while a build/indexing child remains alive and is re-parented,
+        if (System.getProperty("os.name", "").toLowerCase().contains("windows")) {
+            Process taskkill = new ProcessBuilder(
+                    "taskkill", "/PID", Long.toString(process.pid()), "/T", "/F")
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            assertTrue(taskkill.waitFor(10, TimeUnit.SECONDS),
+                    "taskkill did not finish for MCP process " + process.pid());
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS),
+                    "MCP process did not terminate after taskkill: pid=" + process.pid());
+            return;
+        }
+
+        // Capture children before closing stdin. The root JVM can exit promptly
+        // while a build/indexing child remains alive and is re-parented,
         // at which point process.descendants() can no longer discover it.
         List<ProcessHandle> descendants = new ArrayList<>(process.descendants().toList());
         try {

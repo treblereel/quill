@@ -22,8 +22,8 @@ class QuillBuildEventSpyTest {
         try (var files = Files.list(directory)) {
             var events = files.toList();
             assertEquals(1, events.size());
-            assertTrue(events.getFirst().getFileName().toString().startsWith("maven-"));
-            String json = Files.readString(events.getFirst());
+            assertTrue(events.get(0).getFileName().toString().startsWith("maven-"));
+            String json = Files.readString(events.get(0));
             assertTrue(json.contains("\"version\":3"));
             assertTrue(json.contains("\"buildTool\":\"maven\""));
             assertTrue(json.contains("\"successful\":true"));
@@ -58,7 +58,7 @@ class QuillBuildEventSpyTest {
                 """));
 
         assertEquals(1, diagnostics.size());
-        assertTrue(diagnostics.getFirst().contains("Broken.java:[7,3]"));
+        assertTrue(diagnostics.get(0).contains("Broken.java:[7,3]"));
     }
 
     @Test

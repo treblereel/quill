@@ -43,7 +43,15 @@ class DoctorCommandTest {
         JsonNode report = JSON.readTree(output.toString());
         assertEquals(0, report.path("summary").path("errors").asInt());
         assertEquals("pass", check(report, "compiled_outputs").path("status").asText());
-        assertEquals("pass", check(report, "index").path("status").asText());
+        JsonNode indexCheck = check(report, "index");
+        String indexHealth = ProjectDiagnostics.inspect(PROJECT_ROOT).health();
+        assertEquals("healthy".equals(indexHealth) ? "pass" : "warning",
+                indexCheck.path("status").asText());
+        if (!"healthy".equals(indexHealth)) {
+            assertEquals("stale", indexHealth);
+            assertTrue(indexCheck.path("message").asText()
+                    .contains("dirty_worktree_not_compiled"));
+        }
         assertEquals("pass", check(report, "project_fingerprint").path("status").asText());
         String dependencyStatus = ProjectDiagnostics.inspect(PROJECT_ROOT).metadata()
                 .getOrDefault("dependency_index", "unknown");

@@ -5,6 +5,38 @@ complete JVM and native test suites, builds each supported platform on its nativ
 GitHub-hosted runner, publishes SHA-256 checksums and an SPDX JSON SBOM, and records
 GitHub build-provenance and SBOM attestations for every archive.
 
+## Prepare a release from GitHub Actions
+
+Add a repository secret named `RELEASE_TOKEN`. Use a fine-grained personal access token or
+GitHub App token that can write repository contents and whose pushes are allowed to trigger
+workflows. If the default branch is protected, allow that identity to push the Maven release
+commits and tag.
+
+Then open **Actions → Prepare Release → Run workflow**, select the default branch, and enter:
+
+- the release version without a `v` prefix, for example `0.1.0`;
+- the next development version ending in `-SNAPSHOT`, for example `0.2.0-SNAPSHOT`.
+
+The preparation workflow runs the complete JVM verification through Maven Release Plugin,
+commits the release versions, creates and pushes `v<version>`, and commits the next development
+versions. The pushed tag starts the existing Release workflow. A dedicated `RELEASE_TOKEN` is
+required because tags pushed with the workflow's default `GITHUB_TOKEN` do not start another
+workflow run.
+
+The Maven release workflow does not run `release:perform` and does not deploy Maven artifacts.
+The GitHub release contains only platform-specific Quill native archives, their SHA-256 checksum
+files, and the SPDX SBOM. The shaded JAR is used inside CI only as input for SBOM generation.
+
+For emergency or local preparation, the equivalent command is:
+
+```bash
+./mvnw release:clean release:prepare \
+  -DreleaseVersion=0.1.0 \
+  -DdevelopmentVersion=0.2.0-SNAPSHOT \
+  -Dtag=v0.1.0 \
+  -Darguments="-DskipITs=false"
+```
+
 ## Supported native archives
 
 - Linux x86-64 and AArch64

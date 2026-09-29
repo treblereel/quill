@@ -698,6 +698,19 @@ class QuillToolsTest {
     }
 
     @Test
+    void compareDesignImpactRanksExistingHostsAndPreservesSemanticCaveat() throws Exception {
+        JsonNode result = JSON.readTree(new QuillToolQueries().compareDesignImpact(
+                jdbi, List.of("OrderService", "AuditService"), 3));
+
+        assertEquals(2, result.path("candidates").size());
+        assertEquals(1, result.path("candidates").get(0).path("rank").asInt());
+        assertTrue(result.path("candidates").get(0).has("comparison_score"));
+        assertTrue(result.path("recommendation").asText().contains("lifecycle"));
+        assertTrue(result.path("limitations").valueStream().anyMatch(value ->
+                value.asText().contains("semantic cohesion")));
+    }
+
+    @Test
     void findSymbolUsagesResolvesOverloadsConstructorsAndFieldAccess() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

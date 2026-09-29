@@ -102,7 +102,7 @@ public final class QuillTools {
                 provider_repository.orElse(null), clamp(max_depth.orElse(3), 1, 10)));
     }
 
-    @Tool(structured = true, description = "Find CDI/Spring beans in project outputs and dependency JARs. Returns exact configuration requirements, artifacts, and in workspace mode the local provider and build status; use these summaries before calling additional workspace tools.")
+    @Tool(structured = true, description = "Find CDI/Spring beans in project and dependency bytecode.")
     public String list_beans(
             @ToolArg(description = "Short class name, FQCN, source path, or * wildcard filter") Optional<String> class_name,
             @ToolArg(description = "Scope filter, e.g. @ApplicationScoped or @Singleton") Optional<String> scope,
@@ -146,7 +146,7 @@ public final class QuillTools {
                 requestedLimit, requestedOffset, requestedCursor));
     }
 
-    @Tool(structured = true, description = "Find implementations across indexed reactor outputs, with generated FQCN occurrences and explicit discovery scope.")
+    @Tool(structured = true, description = "Find indexed implementations and their origins.")
     public String find_implementations(
             @ToolArg(description = "Current class or interface name (short or FQCN), or its source path") String target,
             @ToolArg(description = "Include indirect implementations through intermediate types (default: true)") Optional<Boolean> transitive,
@@ -300,6 +300,16 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "trace_state_lifecycle",
                 jdbi -> queries.traceStateLifecycle(jdbi, target, requestedLimit)));
+    }
+
+    @Tool(structured = true, description = "Compare design-host change surfaces.")
+    public String compare_design_impact(
+            @ToolArg(description = "Candidate classes") List<String> candidates,
+            @ToolArg(description = "Test depth") Optional<Integer> test_depth,
+            @ToolArg(description = "Repo") Optional<String> project) {
+        int requestedDepth = clamp(test_depth.orElse(3), 1, 5);
+        return forAllProjects(project.orElse(null), p ->
+                queries.compareDesignImpact(p.jdbi(), candidates, requestedDepth));
     }
 
     @Tool(structured = true, description = "Find declared method overrides in indexed subclasses and implementors.")
@@ -604,7 +614,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Inspect bean injections with resolution status, reason, confidence, limitations, and candidate trace.")
+    @Tool(structured = true, description = "Inspect bean injection resolution and candidates.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {

@@ -477,7 +477,8 @@ public class ProjectInitializer {
                     methodCalls.add(new MethodCallRecord(from, call.fromMethod(),
                             call.fromDescriptor(), to, call.toMethod(), call.toDescriptor(),
                             call.invocationKind(), call.occurrences(), call.evidenceLines(),
-                            call.instructionOrdinals()));
+                            call.instructionOrdinals(), call.callerBranchCount(),
+                            call.callerExceptionHandlerCount()));
                 }
             }
             for (BytecodeDependencyScanner.StaticFieldAccess access : bytecode.fieldAccesses()) {

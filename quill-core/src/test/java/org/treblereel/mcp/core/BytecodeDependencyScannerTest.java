@@ -59,6 +59,14 @@ class BytecodeDependencyScannerTest {
                 .filter(call -> !call.evidenceLines().isEmpty())
                 .filter(call -> !call.instructionOrdinals().isEmpty())
                 .count());
+
+        assertEquals(1, result.methodCalls().stream()
+                .filter(call -> call.fromClass().equals(Consumer.class.getName()))
+                .filter(call -> call.fromMethod().equals("conditionalCreate"))
+                .filter(call -> call.toClass().equals(BranchConstructed.class.getName()))
+                .filter(call -> call.toMethod().equals("<init>"))
+                .filter(call -> call.callerBranchCount() > 0)
+                .count());
     }
 
     @Test
@@ -188,6 +196,10 @@ class BytecodeDependencyScannerTest {
             return new Constructed();
         }
 
+        Object conditionalCreate(boolean enabled) {
+            return enabled ? new BranchConstructed() : null;
+        }
+
         void setValue(int value) {
             this.value = value;
         }
@@ -198,6 +210,8 @@ class BytecodeDependencyScannerTest {
     }
 
     static final class Constructed {}
+
+    static final class BranchConstructed {}
 
     interface ServiceContract {}
 

@@ -262,7 +262,7 @@ class IndexWriterReaderTest {
                         "src/main/java/example/Target.java", 1, false, 20));
         List<MethodCallRecord> calls = List.of(new MethodCallRecord(
                 1, "run", "()V", 2, "execute", "(Ljava/lang/String;)Z",
-                "virtual", 2, List.of(12, 18)));
+                "virtual", 2, List.of(12, 18), List.of(4, 9), 2, 1));
         IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), calls);
@@ -271,6 +271,9 @@ class IndexWriterReaderTest {
         assertEquals(1, inbound.size());
         assertEquals("example.Caller", inbound.getFirst().fromClass());
         assertEquals(List.of(12, 18), inbound.getFirst().evidenceLines());
+        assertEquals(List.of(4, 9), inbound.getFirst().instructionOrdinals());
+        assertEquals(2, inbound.getFirst().callerBranchCount());
+        assertEquals(1, inbound.getFirst().callerExceptionHandlerCount());
         assertEquals(1, IndexReader.countMethodCalls(database, 1, "run", "outbound"));
         assertEquals(1, IndexReader.findMethodCalls(database, 2, "execute",
                 "(Ljava/lang/String;)Z", "inbound", 10, 0).size());

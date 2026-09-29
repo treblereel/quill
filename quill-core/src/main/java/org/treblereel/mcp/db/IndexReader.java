@@ -88,7 +88,9 @@ public final class IndexReader {
             String invocationKind,
             int occurrenceCount,
             List<Integer> evidenceLines,
-            List<Integer> instructionOrdinals) {}
+            List<Integer> instructionOrdinals,
+            int callerBranchCount,
+            int callerExceptionHandlerCount) {}
 
     public record MethodInboundUsage(
             int classId,
@@ -690,7 +692,9 @@ public final class IndexReader {
                     rs.getString("to_method"), rs.getString("to_descriptor"),
                     rs.getString("invocation_kind"), rs.getInt("occurrence_count"),
                     parseIntList(rs.getString("evidence_lines")),
-                    parseIntList(rs.getString("instruction_ordinals")))).list();
+                    parseIntList(rs.getString("instruction_ordinals")),
+                    rs.getInt("caller_branch_count"),
+                    rs.getInt("caller_exception_handler_count"))).list();
         });
     }
 
@@ -864,7 +868,9 @@ public final class IndexReader {
                     rs.getString("to_method"), rs.getString("to_descriptor"),
                     rs.getString("invocation_kind"), rs.getInt("occurrence_count"),
                     parseIntList(rs.getString("evidence_lines")),
-                    parseIntList(rs.getString("instruction_ordinals")))).list();
+                    parseIntList(rs.getString("instruction_ordinals")),
+                    rs.getInt("caller_branch_count"),
+                    rs.getInt("caller_exception_handler_count"))).list();
         });
     }
 
@@ -1392,7 +1398,9 @@ public final class IndexReader {
                 rs.getString("to_method"), rs.getString("to_descriptor"),
                 rs.getString("invocation_kind"), rs.getInt("occurrence_count"),
                 parseIntList(rs.getString("evidence_lines")),
-                parseIntList(rs.getString("instruction_ordinals")));
+                parseIntList(rs.getString("instruction_ordinals")),
+                rs.getInt("caller_branch_count"),
+                rs.getInt("caller_exception_handler_count"));
     }
 
     private static ClassOccurrenceRecord mapClassOccurrence(java.sql.ResultSet rs)

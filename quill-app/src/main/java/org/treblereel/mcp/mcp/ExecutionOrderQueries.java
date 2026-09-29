@@ -61,6 +61,11 @@ final class ExecutionOrderQueries {
         boolean allPersistenceBeforeDispatch = comparable
                 && persistence.stream().mapToInt(Event::ordinal).max().orElseThrow()
                 < dispatch.stream().mapToInt(Event::ordinal).min().orElseThrow();
+        int branchCount = calls.stream().mapToInt(MethodCallView::callerBranchCount)
+                .max().orElse(0);
+        int exceptionHandlerCount = calls.stream()
+                .mapToInt(MethodCallView::callerExceptionHandlerCount).max().orElse(0);
+        boolean straightLine = branchCount == 0 && exceptionHandlerCount == 0;
 
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
@@ -73,12 +78,18 @@ final class ExecutionOrderQueries {
         ObjectNode relation = root.putObject("persist_before_dispatch");
         relation.put("instruction_order_status", comparable
                 ? (allPersistenceBeforeDispatch ? "proven" : "disproven") : "unknown");
-        relation.put("runtime_order_status", comparable ? "likely" : "unknown");
+        relation.put("runtime_order_status", !comparable ? "unknown"
+                : allPersistenceBeforeDispatch && straightLine
+                        ? "proven_on_normal_completion" : "likely");
         relation.put("persistence_event_count", persistence.size());
         relation.put("dispatch_event_count", dispatch.size());
         relation.put("all_persistence_instructions_before_dispatch", allPersistenceBeforeDispatch);
+        ObjectNode controlFlow = root.putObject("control_flow");
+        controlFlow.put("branch_count", branchCount);
+        controlFlow.put("exception_handler_count", exceptionHandlerCount);
+        controlFlow.put("straight_line", straightLine);
         root.putArray("limitations")
-                .add("Instruction order is exact for emitted calls in this method, not a control-flow path proof")
+                .add("Straight-line runtime proof applies only to normal completion; an earlier call may throw or terminate")
                 .add("Branches, loops, exceptions, asynchronous completion, reflection, and external internals can change runtime order")
                 .add("Persistence and dispatch labels are name-based classifications; inspect the listed calls");
         appendMeta(root, jdbi, cls.sourceTokens(), cls.sourceFile(), cls.module());

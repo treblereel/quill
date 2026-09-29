@@ -726,8 +726,9 @@ class QuillToolsTest {
                 .path("instruction_ordinal").asInt());
         assertEquals("proven", result.path("persist_before_dispatch")
                 .path("instruction_order_status").asText());
-        assertEquals("likely", result.path("persist_before_dispatch")
+        assertEquals("proven_on_normal_completion", result.path("persist_before_dispatch")
                 .path("runtime_order_status").asText());
+        assertTrue(result.path("control_flow").path("straight_line").asBoolean());
     }
 
     @Test

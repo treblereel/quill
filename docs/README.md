@@ -14,10 +14,6 @@ Current supporting documents:
   [Crysknife benchmark](benchmarks/crysknife.md) — dated measurement records. These describe the
   named commits and environments; they are evidence, not current performance guarantees.
 
-The files under `superpowers/specs/` and `superpowers/plans/` are historical design and
-implementation records. They intentionally preserve names, architecture decisions, schemas, and
-tool counts from the date they were written. Do not use them as the current product reference.
-
 When behavior changes, update the root README in the same change. In particular, keep its command
 table aligned with picocli command definitions and its MCP list aligned with the `@Tool` methods in
 `QuillTools`.

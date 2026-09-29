@@ -39,6 +39,7 @@ nb-configuration.xml
 # Local environment
 .env
 .quill/
+/docs/superpowers/
 
 # Python benchmark tooling
 __pycache__/

@@ -122,7 +122,7 @@ class CodexConfigInstallerTest {
                 CodexConfigInstaller.installIfPresent(tempDir, replacement.toString()));
 
         String updated = Files.readString(config);
-        assertTrue(updated.contains("command = \"" + replacement + "\""));
+        assertTrue(updated.contains("command = \"" + escaped(replacement.toString()) + "\""));
         assertTrue(updated.contains("cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
     }
 

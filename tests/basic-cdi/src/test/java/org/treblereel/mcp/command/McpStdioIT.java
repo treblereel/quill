@@ -3,8 +3,11 @@ package org.treblereel.mcp.command;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.*;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -145,13 +148,14 @@ class McpStdioIT {
 
         Process process = new ProcessBuilder("java", "-jar", appJar.toString(),
                 "--mcp", "--project", project.toString())
-                .directory(project.toFile())
+                .directory(PROJECT_ROOT.toFile())
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start();
-        try (BufferedWriter input = new BufferedWriter(
-                        new OutputStreamWriter(process.getOutputStream()));
-                BufferedReader output = new BufferedReader(
-                        new InputStreamReader(process.getInputStream()))) {
+        BufferedWriter input = new BufferedWriter(
+                new OutputStreamWriter(process.getOutputStream()));
+        BufferedReader output = new BufferedReader(
+                new InputStreamReader(process.getInputStream()));
+        try {
             sendRequest(input, 1, "initialize", """
                     {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"stale-test","version":"1"}}""");
             assertNotNull(readResponse(output, 1).get("result"));
@@ -165,8 +169,10 @@ class McpStdioIT {
             assertTrue(overview.path("_meta").path("stale_reasons").toString()
                     .contains("commit_changed_after_index"));
         } finally {
-            process.destroyForcibly();
-            process.waitFor(5, TimeUnit.SECONDS);
+            stopMcpProcess(process);
+            input.close();
+            output.close();
+            deleteTreeWithRetry(project);
         }
     }
 
@@ -305,8 +311,7 @@ class McpStdioIT {
                         "Every published ref must resolve to an existing database");
             }
         } finally {
-            process.destroyForcibly();
-            process.waitFor(5, TimeUnit.SECONDS);
+            stopMcpProcess(process);
         }
     }
 
@@ -363,8 +368,7 @@ class McpStdioIT {
                     "workspace clear must refuse a workspace held by a live MCP server");
             assertTrue(Files.isRegularFile(WorkspaceManifestStore.manifest(workspace)));
         } finally {
-            process.getOutputStream().close();
-            if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
+            stopMcpProcess(process);
         }
     }
 
@@ -410,8 +414,7 @@ class McpStdioIT {
             assertEquals("engine", resolution.path("structuredContent")
                     .path("candidates").get(0).path("repository").asText());
         } finally {
-            process.getOutputStream().close();
-            if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
+            stopMcpProcess(process);
         }
     }
 
@@ -598,8 +601,7 @@ class McpStdioIT {
                         configuration.path("references").get(0).path("file").asText());
             }
         } finally {
-            proc.destroyForcibly();
-            proc.waitFor(5, TimeUnit.SECONDS);
+            stopMcpProcess(proc);
             stderrReader.join(TimeUnit.SECONDS.toMillis(5));
         }
 
@@ -629,8 +631,7 @@ class McpStdioIT {
             assertTrue(tools.isArray(), "tools/list should return a tools array");
             return tools.deepCopy();
         } finally {
-            process.destroyForcibly();
-            process.waitFor(5, TimeUnit.SECONDS);
+            stopMcpProcess(process);
         }
     }
 
@@ -718,8 +719,7 @@ class McpStdioIT {
                 assertTrue(busy, "A saturated bounded queue must return an explicit busy error");
             }
         } finally {
-            proc.destroyForcibly();
-            proc.waitFor(5, TimeUnit.SECONDS);
+            stopMcpProcess(proc);
             stderrReader.join(TimeUnit.SECONDS.toMillis(5));
         }
         assertFalse(stderr.toString().contains("restricted method"), stderr.toString());
@@ -793,8 +793,116 @@ class McpStdioIT {
             assertFalse(structured.path("build_was_started").asBoolean(true), structured::toString);
             assertNoTextPayload(toolResponse.path("result"));
         } finally {
-            proc.getOutputStream().close();
-            if (!proc.waitFor(5, TimeUnit.SECONDS)) proc.destroyForcibly();
+            stopMcpProcess(proc);
+        }
+    }
+
+    /**
+     * Stops an MCP subprocess and waits until Windows has observed the whole
+     * process tree exiting. {@link Process#destroyForcibly()} is asynchronous;
+     * returning immediately after calling it can leave the subprocess working
+     * directory locked while JUnit attempts to remove {@code @TempDir}.
+     */
+    private static void stopMcpProcess(Process process) throws Exception {
+        if (System.getProperty("os.name", "").toLowerCase().contains("windows")) {
+            Process taskkill = new ProcessBuilder(
+                    "taskkill", "/PID", Long.toString(process.pid()), "/T", "/F")
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            assertTrue(taskkill.waitFor(10, TimeUnit.SECONDS),
+                    "taskkill did not finish for MCP process " + process.pid());
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS),
+                    "MCP process did not terminate after taskkill: pid=" + process.pid());
+            return;
+        }
+
+        // Capture children before closing stdin. The root JVM can exit promptly
+        // while a build/indexing child remains alive and is re-parented,
+        // at which point process.descendants() can no longer discover it.
+        List<ProcessHandle> descendants = new ArrayList<>(process.descendants().toList());
+        try {
+            process.getOutputStream().close();
+        } catch (IOException ignored) {
+            // The try-with-resources block may already have closed stdin.
+        }
+
+        if (awaitTermination(process, descendants, 5, TimeUnit.SECONDS)) {
+            return;
+        }
+
+        process.descendants().forEach(candidate -> {
+            if (descendants.stream().noneMatch(
+                    existing -> existing.pid() == candidate.pid())) {
+                descendants.add(candidate);
+            }
+        });
+        descendants.forEach(ProcessHandle::destroy);
+        process.destroy();
+        if (awaitTermination(process, descendants, 2, TimeUnit.SECONDS)) {
+            return;
+        }
+
+        descendants.stream()
+                .filter(ProcessHandle::isAlive)
+                .forEach(ProcessHandle::destroyForcibly);
+        process.destroyForcibly();
+        assertTrue(awaitTermination(process, descendants, 10, TimeUnit.SECONDS),
+                "MCP process tree did not terminate: pid=" + process.pid());
+    }
+
+    private static boolean awaitTermination(
+            Process process,
+            List<ProcessHandle> descendants,
+            long timeout,
+            TimeUnit unit) throws InterruptedException {
+        long deadline = System.nanoTime() + unit.toNanos(timeout);
+        while (process.isAlive()
+                || descendants.stream().anyMatch(ProcessHandle::isAlive)) {
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) {
+                return false;
+            }
+            TimeUnit.NANOSECONDS.sleep(Math.min(
+                    remaining, TimeUnit.MILLISECONDS.toNanos(25)));
+        }
+        return true;
+    }
+
+    private static void deleteTreeWithRetry(Path root) throws Exception {
+        IOException failure = null;
+        for (int attempt = 1; attempt <= 20 && Files.exists(root); attempt++) {
+            try {
+                Files.walkFileTree(root, new SimpleFileVisitor<>() {
+                    @Override
+                    public FileVisitResult visitFile(
+                            Path file, BasicFileAttributes attributes) throws IOException {
+                        Files.deleteIfExists(file);
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult postVisitDirectory(
+                            Path directory, IOException exception) throws IOException {
+                        if (exception != null) {
+                            throw exception;
+                        }
+                        Files.deleteIfExists(directory);
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+                return;
+            } catch (IOException e) {
+                failure = e;
+                Thread.sleep(50L * attempt);
+            }
+        }
+        if (Files.exists(root)) {
+            throw failure != null ? failure
+                    : new IOException("Failed to delete temporary tree " + root);
         }
     }
 

@@ -1,0 +1,81 @@
+name: Publish Maven Extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      extension_version:
+        description: Maven extension release version (for example, 0.1.0)
+        required: true
+        type: string
+
+concurrency:
+  group: publish-maven-extension
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish extension to Maven Central
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release version and secrets
+        env:
+          EXTENSION_VERSION: ${{ inputs.extension_version }}
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          if [[ ! "${EXTENSION_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?([.-][0-9A-Za-z.-]+)?$ || "${EXTENSION_VERSION}" == *-SNAPSHOT ]]; then
+            echo "Invalid Maven extension release version: ${EXTENSION_VERSION}" >&2
+            exit 1
+          fi
+          for name in MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_TOKEN MAVEN_GPG_KEY MAVEN_GPG_PASSPHRASE; do
+            if [[ -z "${!name}" ]]; then
+              echo "Repository secret ${name} is required" >&2
+              exit 1
+            fi
+          done
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_TOKEN
+          gpg-private-key: ${{ secrets.MAVEN_GPG_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Set extension release version
+        env:
+          EXTENSION_VERSION: ${{ inputs.extension_version }}
+        run: |
+          ./mvnw -B -f quill-maven-extension/pom.xml \
+            org.codehaus.mojo:versions-maven-plugin:2.19.1:set \
+            -DnewVersion="${EXTENSION_VERSION}" -DgenerateBackupPoms=false
+
+      - name: Publish only quill-maven-extension
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_TOKEN: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: ./mvnw -B -f quill-maven-extension/pom.xml -Pcentral clean deploy
+
+      - name: Summarize publication
+        env:
+          EXTENSION_VERSION: ${{ inputs.extension_version }}
+        run: |
+          {
+            echo "## Maven Central publication complete"
+            echo
+            echo "Published \`org.treblereel.mcp:quill-maven-extension:${EXTENSION_VERSION}\`."
+            echo "Use this exact version when running the Prepare Release workflow."
+          } >> "${GITHUB_STEP_SUMMARY}"

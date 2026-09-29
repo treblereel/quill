@@ -74,22 +74,23 @@ public class QuillTopCommand implements Callable<Integer> {
             return new String[] {"quill " + version()};
         }
 
-        private static String versionFromResource() {
-            try (InputStream in = QuillTopCommand.class.getResourceAsStream("/quill.properties")) {
-                if (in == null) return null;
-                Properties properties = new Properties();
-                properties.load(in);
-                return properties.getProperty("version");
-            } catch (IOException ignored) {
-                return null;
-            }
-        }
     }
 
     public static String version() {
         String version = QuillTopCommand.class.getPackage().getImplementationVersion();
-        if (version == null) version = VersionProvider.versionFromResource();
+        if (version == null) version = property("version");
         return version == null ? "dev" : version;
+    }
+
+    public static String property(String name) {
+        try (InputStream in = QuillTopCommand.class.getResourceAsStream("/quill.properties")) {
+            if (in == null) return null;
+            Properties properties = new Properties();
+            properties.load(in);
+            return properties.getProperty(name);
+        } catch (IOException ignored) {
+            return null;
+        }
     }
 
     @Override

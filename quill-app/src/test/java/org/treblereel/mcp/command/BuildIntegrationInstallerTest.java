@@ -42,7 +42,7 @@ class BuildIntegrationInstallerTest {
                 BuildIntegrationInstaller.inspect(tempDir).state());
 
         Files.writeString(extensions, installed.replace(
-                "<version>" + org.treblereel.mcp.QuillTopCommand.version() + "</version>",
+                "<version>" + BuildIntegrationInstaller.mavenExtensionVersion() + "</version>",
                 "<version>0.0.0-outdated</version>"));
         assertEquals(BuildIntegrationInstaller.State.OUTDATED,
                 BuildIntegrationInstaller.inspect(tempDir).state());

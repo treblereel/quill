@@ -553,6 +553,9 @@ The build produces a thin library JAR and a runnable shaded `-all.jar` for devel
 and diagnostics. Keeping them separate makes repeated Maven builds reproducible and
 avoids shading an already shaded artifact. Quill releases are distributed as native
 executables, so end-user MCP configuration should point to `quill` or `quill.exe`.
+The independently versioned Maven build extension is verified with
+`./mvnw -f quill-maven-extension/pom.xml verify`; it is intentionally outside the
+Quill reactor so only that artifact can be published to Maven Central.
 
 ### Native executable
 
@@ -577,3 +580,7 @@ build-provenance and SBOM attestations cover every archive. The release version 
 derived from the tag and is reported consistently by both the CLI and MCP server.
 See [the release guide](docs/releasing.md) for platform signing, notarization, and
 download verification.
+
+## License
+
+Quill is licensed under the [Apache License 2.0](LICENSE).

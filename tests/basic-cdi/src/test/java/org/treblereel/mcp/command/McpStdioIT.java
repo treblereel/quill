@@ -575,7 +575,18 @@ class McpStdioIT {
             assertEquals("Unknown argument: unexpected",
                     invalidCall.path("structuredContent").path("error").asText());
 
-            if (projectRoot.getFileName().toString().equals("gradle-basic")) {
+            if (projectRoot.getFileName().toString().equals("basic-cdi")) {
+                sendRequest(stdin, 5, "tools/call",
+                        "{\"name\":\"analyze_execution_order\",\"arguments\":{"
+                                + "\"target\":\"CaseFlowEngine\",\"method\":\"execute\"}}");
+                JsonNode execution = readResponse(stdout, 5)
+                        .path("result").path("structuredContent");
+                assertEquals("invocation_order_proven_completion_unknown",
+                        execution.path("ordering_analysis")
+                                .path("runtime_order_status").asText());
+                assertTrue(execution.path("bytecode_sequence").valueStream()
+                        .allMatch(event -> event.hasNonNull("source")));
+            } else if (projectRoot.getFileName().toString().equals("gradle-basic")) {
                 sendRequest(stdin, 5, "tools/call",
                         "{\"name\":\"find_configuration_references\",\"arguments\":{"
                                 + "\"key\":\"greeting.prefix\"}}");

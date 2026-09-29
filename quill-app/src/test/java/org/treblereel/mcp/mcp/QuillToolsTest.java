@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -729,6 +730,15 @@ class QuillToolsTest {
         assertEquals("proven_on_normal_completion", result.path("persist_before_dispatch")
                 .path("runtime_order_status").asText());
         assertTrue(result.path("control_flow").path("straight_line").asBoolean());
+
+        JsonNode custom = JSON.readTree(new QuillToolQueries().analyzeExecutionOrder(
+                jdbi, "OrderService", "run", null,
+                Set.of("persistplan"), Set.of("dispatchbatch")));
+        assertEquals("proven", custom.path("ordering_analysis")
+                .path("instruction_order_status").asText());
+        assertEquals(List.of("persistplan"), custom.path("ordering_analysis")
+                .path("before_terms").valueStream().map(JsonNode::asText).toList());
+        assertFalse(custom.has("persist_before_dispatch"));
     }
 
     @Test

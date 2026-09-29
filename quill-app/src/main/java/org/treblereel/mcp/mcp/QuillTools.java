@@ -307,11 +307,19 @@ public final class QuillTools {
             @ToolArg(description = "Class or source path") String target,
             @ToolArg(description = "Method name; use <init> for constructors") String method,
             @ToolArg(description = "Signature or JVM descriptor for overloads") Optional<String> signature,
+            @ToolArg(description = "Before terms") Optional<String> before_terms,
+            @ToolArg(description = "After terms") Optional<String> after_terms,
             @ToolArg(description = "Repo") Optional<String> project) {
+        Set<String> before = semanticTerms(before_terms.orElse(null),
+                Set.of("persist", "save", "store", "repository", "persistence",
+                        "entitymanager", "dao"));
+        Set<String> after = semanticTerms(after_terms.orElse(null),
+                Set.of("dispatch", "submit", "publish", "send", "enqueue", "worker",
+                        "invoke", "execute"));
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "analyze_execution_order",
                 jdbi -> queries.analyzeExecutionOrder(jdbi, target, method,
-                        signature.orElse(null))));
+                        signature.orElse(null), before, after)));
     }
 
     @Tool(structured = true, description = "Compare design-host change surfaces.")
@@ -1122,6 +1130,16 @@ public final class QuillTools {
 
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static Set<String> semanticTerms(String value, Set<String> defaults) {
+        if (value == null || value.isBlank()) return defaults;
+        Set<String> terms = java.util.Arrays.stream(value.split(","))
+                .map(String::strip)
+                .map(term -> term.toLowerCase(java.util.Locale.ROOT))
+                .filter(term -> !term.isBlank())
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        return terms.isEmpty() ? defaults : Set.copyOf(terms);
     }
 
 }

@@ -27,6 +27,11 @@ final class ExecutionOrderQueries {
             "dispatch", "submit", "publish", "send", "enqueue", "worker", "invoke", "execute");
 
     String analyze(Jdbi jdbi, String target, String method, String signature) {
+        return analyze(jdbi, target, method, signature, PERSISTENCE, DISPATCH);
+    }
+
+    String analyze(Jdbi jdbi, String target, String method, String signature,
+            Set<String> beforeTerms, Set<String> afterTerms) {
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
@@ -46,21 +51,21 @@ final class ExecutionOrderQueries {
                 selected.descriptor(), "outbound", 10_000, 0);
         List<Event> events = new ArrayList<>();
         for (MethodCallView call : calls) {
-            String category = category(call);
+            String category = category(call, beforeTerms, afterTerms);
             for (int ordinal : call.instructionOrdinals()) {
                 events.add(new Event(ordinal, call, category));
             }
         }
         events.sort(Comparator.comparingInt(Event::ordinal));
 
-        List<Event> persistence = events.stream()
-                .filter(event -> event.category().equals("persistence")).toList();
-        List<Event> dispatch = events.stream()
-                .filter(event -> event.category().equals("dispatch")).toList();
-        boolean comparable = !persistence.isEmpty() && !dispatch.isEmpty();
-        boolean allPersistenceBeforeDispatch = comparable
-                && persistence.stream().mapToInt(Event::ordinal).max().orElseThrow()
-                < dispatch.stream().mapToInt(Event::ordinal).min().orElseThrow();
+        List<Event> before = events.stream()
+                .filter(event -> event.category().equals("before")).toList();
+        List<Event> after = events.stream()
+                .filter(event -> event.category().equals("after")).toList();
+        boolean comparable = !before.isEmpty() && !after.isEmpty();
+        boolean allBeforeAfter = comparable
+                && before.stream().mapToInt(Event::ordinal).max().orElseThrow()
+                < after.stream().mapToInt(Event::ordinal).min().orElseThrow();
         int branchCount = calls.stream().mapToInt(MethodCallView::callerBranchCount)
                 .max().orElse(0);
         int exceptionHandlerCount = calls.stream()
@@ -75,15 +80,20 @@ final class ExecutionOrderQueries {
         root.put("event_count", events.size());
         ArrayNode sequence = root.putArray("bytecode_sequence");
         for (Event event : events) appendEvent(sequence, event);
-        ObjectNode relation = root.putObject("persist_before_dispatch");
+        ObjectNode relation = root.putObject("ordering_analysis");
+        relation.set("before_terms", JSON.valueToTree(beforeTerms));
+        relation.set("after_terms", JSON.valueToTree(afterTerms));
         relation.put("instruction_order_status", comparable
-                ? (allPersistenceBeforeDispatch ? "proven" : "disproven") : "unknown");
+                ? (allBeforeAfter ? "proven" : "disproven") : "unknown");
         relation.put("runtime_order_status", !comparable ? "unknown"
-                : allPersistenceBeforeDispatch && straightLine
+                : allBeforeAfter && straightLine
                         ? "proven_on_normal_completion" : "likely");
-        relation.put("persistence_event_count", persistence.size());
-        relation.put("dispatch_event_count", dispatch.size());
-        relation.put("all_persistence_instructions_before_dispatch", allPersistenceBeforeDispatch);
+        relation.put("before_event_count", before.size());
+        relation.put("after_event_count", after.size());
+        relation.put("all_before_instructions_before_after", allBeforeAfter);
+        if (beforeTerms.equals(PERSISTENCE) && afterTerms.equals(DISPATCH)) {
+            root.set("persist_before_dispatch", relation.deepCopy());
+        }
         ObjectNode controlFlow = root.putObject("control_flow");
         controlFlow.put("branch_count", branchCount);
         controlFlow.put("exception_handler_count", exceptionHandlerCount);
@@ -100,10 +110,11 @@ final class ExecutionOrderQueries {
         return member.kind().equals("CONSTRUCTOR") ? "<init>" : member.name();
     }
 
-    private static String category(MethodCallView call) {
+    private static String category(MethodCallView call, Set<String> beforeTerms,
+            Set<String> afterTerms) {
         String searchable = (call.toClass() + " " + call.toMethod()).toLowerCase(Locale.ROOT);
-        if (PERSISTENCE.stream().anyMatch(searchable::contains)) return "persistence";
-        if (DISPATCH.stream().anyMatch(searchable::contains)) return "dispatch";
+        if (beforeTerms.stream().anyMatch(searchable::contains)) return "before";
+        if (afterTerms.stream().anyMatch(searchable::contains)) return "after";
         return "call";
     }
 

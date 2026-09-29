@@ -2,6 +2,7 @@ package org.treblereel.mcp.mcp;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.command.BuildProblemInspector;
 import org.treblereel.mcp.command.BuildStatusInspector;
@@ -137,6 +138,11 @@ public final class QuillToolQueries {
 
     String analyzeExecutionOrder(Jdbi jdbi, String target, String method, String signature) {
         return executionOrder.analyze(jdbi, target, method, signature);
+    }
+
+    String analyzeExecutionOrder(Jdbi jdbi, String target, String method, String signature,
+            Set<String> beforeTerms, Set<String> afterTerms) {
+        return executionOrder.analyze(jdbi, target, method, signature, beforeTerms, afterTerms);
     }
 
     String compareDesignImpact(Jdbi jdbi, List<String> candidates, int testDepth) {

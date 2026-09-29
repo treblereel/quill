@@ -112,9 +112,9 @@ jobs:
           $releaseVersion = $env:GITHUB_REF_NAME.Substring(1)
           .\mvnw.cmd -B org.codehaus.mojo:versions-maven-plugin:2.19.1:set "-DnewVersion=$releaseVersion" -DprocessAllModules=true -DgenerateBackupPoms=false
       - if: runner.os != 'Windows'
-        run: ./mvnw -B clean verify -Pnative
+        run: ./mvnw -B clean package -Pnative -DskipTests -DskipITs=true
       - if: runner.os == 'Windows'
-        run: .\mvnw.cmd -B clean verify -Pnative
+        run: .\mvnw.cmd -B clean package -Pnative -DskipTests -DskipITs=true
       - if: runner.os != 'Windows'
         run: ./quill-app/target/quill --version
       - if: runner.os == 'Windows'

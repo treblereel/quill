@@ -86,6 +86,12 @@ class BytecodeDependencyScannerTest {
                 .filter(call -> call.callerExternalCalls().stream()
                         .anyMatch(event -> event.contains("java.util.concurrent.Executor|execute")))
                 .count());
+        assertEquals(1, result.methodCalls().stream()
+                .filter(call -> call.fromClass().equals(Consumer.class.getName()))
+                .filter(call -> call.fromMethod().equals("nestedFinallyCreate"))
+                .filter(call -> call.toClass().equals(NestedConstructed.class.getName()))
+                .filter(call -> call.callerExceptionHandlerCount() >= 2)
+                .count());
     }
 
     @Test
@@ -232,6 +238,18 @@ class BytecodeDependencyScannerTest {
             return new AsyncConstructed();
         }
 
+        Object nestedFinallyCreate() {
+            try {
+                try {
+                    return new NestedConstructed();
+                } finally {
+                    value++;
+                }
+            } finally {
+                value++;
+            }
+        }
+
         void setValue(int value) {
             this.value = value;
         }
@@ -248,6 +266,8 @@ class BytecodeDependencyScannerTest {
     static final class GuardedConstructed {}
 
     static final class AsyncConstructed {}
+
+    static final class NestedConstructed {}
 
     interface ServiceContract {}
 

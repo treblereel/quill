@@ -838,6 +838,38 @@ class QuillToolsTest {
     }
 
     @Test
+    void analyzeExecutionOrderHandlesLoopsMultipleDispatchesAndEarlyExit() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'loopRun', 'loopRun():void', '()V',
+                            'void', '[]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor, to_class_id, to_method,
+                       to_descriptor, invocation_kind, occurrence_count, evidence_lines,
+                       instruction_ordinals, caller_branch_count,
+                       caller_exception_handler_count, caller_control_flow_edges)
+                    VALUES (1, 'loopRun', '()V', 3, 'persistPlan', '()V', 'virtual',
+                            1, '[40]', '[2]', 2, 0,
+                            '["1>2","1>9","2>3","3>4","4>5","5>3","5>6","6>7","7>8"]'),
+                           (1, 'loopRun', '()V', 4, 'dispatchBatch', '()V', 'virtual',
+                            2, '[42,46]', '[4,7]', 2, 0,
+                            '["1>2","1>9","2>3","3>4","4>5","5>3","5>6","6>7","7>8"]')""");
+        });
+
+        JsonNode result = JSON.readTree(new QuillToolQueries()
+                .analyzeExecutionOrder(jdbi, "OrderService", "loopRun", null));
+
+        assertEquals("proven_on_all_cfg_paths", result.path("ordering_analysis")
+                .path("runtime_order_status").asText());
+        assertEquals(2, result.path("ordering_analysis").path("after_event_count").asInt());
+        assertTrue(result.path("control_flow").path("dominance_proven").asBoolean());
+    }
+
+    @Test
     void compareDesignImpactRanksExistingHostsAndPreservesSemanticCaveat() throws Exception {
         JsonNode result = JSON.readTree(new QuillToolQueries().compareDesignImpact(
                 jdbi, List.of("OrderService", "AuditService"), 3));

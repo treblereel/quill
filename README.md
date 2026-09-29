@@ -24,7 +24,7 @@ cd /path/to/your/project
 ## How It Works
 
 Quill scans Maven `target/classes` and Gradle `build/classes/*/main` directories for
-compiled `.class` files, builds a [Jandex](https://smallrye.io/jandex/) index, and
+compiled `.class` files, builds a [Jandex](https://smallrye.io/jandex/jandex/main/index.html) index, and
 resolves CDI or Spring dependency injection directly from bytecode metadata. Quill
 itself does not use or start Quarkus; the target framework is detected automatically.
 It also recognizes project-local `META-INF/services` registrations, JPMS
@@ -96,15 +96,23 @@ the router must remain at most 20% of the full catalog, preventing silent contex
 
 | Command | Description |
 |---------|-------------|
-| `quill init` | Index already-compiled Maven or Gradle bytecode and install build integration |
+| `quill init` | Index compiled bytecode and install build integration and supported MCP client configuration |
+| `quill init --index-only` | Build only the index; do not modify build or MCP client configuration |
 | `quill init --timings` | Index and report per-phase elapsed times for diagnostics |
 | `quill update` | Re-index if the project fingerprint changed |
+| `quill update --force` | Rebuild the index even when the fingerprint is unchanged |
 | `quill status` | Show current index status |
+| `quill status --json` | Emit the status as machine-readable JSON |
 | `quill doctor` | Diagnose compiled outputs, index freshness, build integration, and client setup |
-| `quill clean` | Remove `.quill` and build integration |
+| `quill doctor --json` | Emit the diagnostic report as machine-readable JSON |
+| `quill clean` | Remove `.quill`, Quill-managed build integration, and MCP client configuration |
 | `quill workspace init` | Discover and initialize all suitable repositories in a workspace |
+| `quill workspace init --depth N` | Discover repositories up to the requested directory depth |
+| `quill workspace init --index-only` | Initialize workspace indexes without installing integration or MCP configuration |
 | `quill workspace refresh` | Reconcile added/removed repositories and index missing repositories |
+| `quill workspace refresh --index-only` | Refresh indexes without installing integration or MCP configuration |
 | `quill workspace status` | Show workspace configuration and per-repository readiness |
+| `quill workspace status --json` | Emit workspace status as machine-readable JSON |
 | `quill workspace clear` | Remove workspace metadata while preserving repository indexes |
 | `quill workspace clear --repositories` | Also remove repository indexes and build integration |
 
@@ -213,6 +221,8 @@ The router profile returns the same policy in `search_tools.guidance`, including
 `recommended_channel` hint.
 
 - **search_classes** — find classes by wildcard pattern; supports `limit`/`offset`
+- **resolve_entities** — resolve up to 20 class names, file names, or repository paths in one
+  request across the current tree and Git history, including deleted paths
 - **get_project_dependencies** — list resolved Maven/Gradle artifacts visible to main or test
   code without invoking the build. Maven/Gradle integration captures separate runtime and test
   classpaths after normal user builds; until then Quill identifies transitive test visibility
@@ -293,6 +303,10 @@ does not imply that an executor, reactive stream, or message publication has com
 - **find_configuration_references** — find `.properties`, YAML, and persistence-unit definitions
   together with annotation-based Spring, MicroProfile, SmallRye, and JPA consumers; configuration
   values are deliberately not indexed
+- **find_resource_references** — find indexed classpath resources and their programmatic consumers
+  without reading or returning resource contents
+- **inspect_service_descriptors** — inspect ordered `META-INF/services` providers with source-line
+  evidence and warnings when provider order may affect behavior
 - **find_implementations** — find direct/transitive subclasses and implementors, including
   generated occurrences grouped by module and evidence about reactor-discovery completeness
 - **find_usages** — find bytecode calls, constructor calls, field access, type references,
@@ -322,6 +336,7 @@ does not imply that an executor, reactive stream, or message publication has com
   explicit returned-window identity counts (without guessing human identities), and
   indexed-history coverage
 - **find_co_changed_files** — files that change together (hidden coupling)
+- **get_recent_changes** — return recent commits and their paged changed-file/class details
 - **list_external_dependencies** — third-party library usage
 - **list_workspace_repositories** — list dynamically discovered repositories and index readiness
 - **get_workspace_dependencies** — resolve declared dependencies onto providers in other local
@@ -438,7 +453,7 @@ omitted because Quill uses its current directory by default.
 If tools do not appear, run `quill status --project /absolute/path/to/project`, use
 an absolute executable path, and restart the client session after changing its MCP
 configuration. See the official [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp)
-and [Codex MCP documentation](https://developers.openai.com/codex/mcp)
+and [Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
 for client-specific scopes and configuration options.
 
 ## Immutable Index Generations
@@ -516,7 +531,8 @@ Quill falls back to `gradle` or `mvn` from `PATH`.
 
 ## Building Quill
 
-Building Quill requires JDK 21 or newer.
+Building Quill requires JDK 21 through 25. The Maven build rejects newer feature releases until
+they are explicitly validated; released native executables do not require a local JDK to run.
 
 ```bash
 ./mvnw clean package

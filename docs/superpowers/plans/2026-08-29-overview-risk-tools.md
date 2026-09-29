@@ -1,5 +1,8 @@
 # get_overview + get_risk MCP Tools Implementation Plan
 
+> Historical implementation plan from 2026-08-29. It preserves the intended work at that date;
+> see the repository README for the current Quill commands and MCP tools.
+
 **Goal:** Two new MCP tools — `get_overview` (project-wide summary for agent orientation) and `get_risk` (change risk assessment per class combining CDI graph + git signals).
 
 **Architecture:** Pure read-side — no new tables, no new indexing. Both tools aggregate data already in `index.db` via new `IndexReader` queries. Risk scoring uses a weighted formula over quantifiable signals.

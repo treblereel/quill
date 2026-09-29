@@ -1,5 +1,8 @@
 # Git Intelligence Implementation Plan
 
+> Historical implementation plan from 2026-08-29. It preserves the intended work at that date;
+> see the repository README for the current Quill commands and MCP tools.
+
 **Goal:** Add git history analysis (hotspots, co-changes, file ownership, recent changes) to joker, stored in SQLite for fast MCP queries, with git hooks for automatic index updates.
 
 **Architecture:** JGit reads git history during `joker init`/`update`, persists aggregated stats to new tables in `index.db`. Four new MCP tools expose git intelligence. Git hooks (`post-commit`, `post-merge`) trigger background `joker update`.

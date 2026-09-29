@@ -1,5 +1,8 @@
 # Joker: CDI-Aware Codebase Intelligence MCP Server
 
+> Historical design record from 2026-08-26. Names, architecture, schemas, and tool counts below
+> describe the proposal at that date; see the repository README for current Quill behavior.
+
 **Author:** treblereel
 **Status:** Draft
 **Created:** 2026-08-26

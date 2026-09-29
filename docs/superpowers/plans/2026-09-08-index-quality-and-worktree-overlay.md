@@ -1,5 +1,8 @@
 # Quill Index Quality and Worktree Overlay Plan
 
+> Historical implementation plan from 2026-09-08. It preserves the intended work at that date;
+> see the repository README for the current Quill behavior and data contracts.
+
 **Goal:** сделать ответы Quill правдивыми относительно текущего checkout, дополнить статический граф ссылками из тел методов и стабилизировать разрешение `path <-> FQCN` для текущих, generated и исторических сущностей.
 
 **Источник:** quality report после использования Quill на `crysknife`. Репозиторий `crysknife` не является целью изменений; регрессии должны воспроизводиться на автономном fixture внутри Joker/Quill.

@@ -151,10 +151,11 @@ class McpStdioIT {
                 .directory(PROJECT_ROOT.toFile())
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start();
-        try (BufferedWriter input = new BufferedWriter(
-                        new OutputStreamWriter(process.getOutputStream()));
-                BufferedReader output = new BufferedReader(
-                        new InputStreamReader(process.getInputStream()))) {
+        BufferedWriter input = new BufferedWriter(
+                new OutputStreamWriter(process.getOutputStream()));
+        BufferedReader output = new BufferedReader(
+                new InputStreamReader(process.getInputStream()));
+        try {
             sendRequest(input, 1, "initialize", """
                     {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"stale-test","version":"1"}}""");
             assertNotNull(readResponse(output, 1).get("result"));
@@ -169,6 +170,8 @@ class McpStdioIT {
                     .contains("commit_changed_after_index"));
         } finally {
             stopMcpProcess(process);
+            input.close();
+            output.close();
             deleteTreeWithRetry(project);
         }
     }

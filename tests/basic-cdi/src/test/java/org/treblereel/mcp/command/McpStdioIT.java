@@ -148,7 +148,7 @@ class McpStdioIT {
 
         Process process = new ProcessBuilder("java", "-jar", appJar.toString(),
                 "--mcp", "--project", project.toString())
-                .directory(project.toFile())
+                .directory(PROJECT_ROOT.toFile())
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start();
         try (BufferedWriter input = new BufferedWriter(
@@ -801,17 +801,26 @@ class McpStdioIT {
      * directory locked while JUnit attempts to remove {@code @TempDir}.
      */
     private static void stopMcpProcess(Process process) throws Exception {
+        // Capture children before closing stdin. On Windows the root JVM can exit
+        // promptly while a build/indexing child remains alive and is re-parented,
+        // at which point process.descendants() can no longer discover it.
+        List<ProcessHandle> descendants = new ArrayList<>(process.descendants().toList());
         try {
             process.getOutputStream().close();
         } catch (IOException ignored) {
             // The try-with-resources block may already have closed stdin.
         }
 
-        if (process.waitFor(5, TimeUnit.SECONDS)) {
+        if (awaitTermination(process, descendants, 5, TimeUnit.SECONDS)) {
             return;
         }
 
-        List<ProcessHandle> descendants = process.descendants().toList();
+        process.descendants().forEach(candidate -> {
+            if (descendants.stream().noneMatch(
+                    existing -> existing.pid() == candidate.pid())) {
+                descendants.add(candidate);
+            }
+        });
         descendants.forEach(ProcessHandle::destroy);
         process.destroy();
         if (awaitTermination(process, descendants, 2, TimeUnit.SECONDS)) {

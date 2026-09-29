@@ -96,7 +96,7 @@ final class StateLifecycleQueries {
         root.put("ordered_lifecycle_proven", false);
         root.putArray("limitations")
                 .add("Semantic boundary labels are name-based classifications of exact bytecode evidence")
-                .add("The index does not preserve control-flow order or prove that persistence occurs before dispatch")
+                .add("Lifecycle evidence can span caller methods and does not prove that persistence occurs before dispatch; use analyze_execution_order on a concrete orchestrator method")
                 .add("Reflection, external-library internals, runtime-generated access, and source-only changes are absent")
                 .add("Use evidence locations for targeted source verification before architectural decisions");
         int naiveTokens = cls.sourceTokens() + combined.stream()
@@ -131,24 +131,26 @@ final class StateLifecycleQueries {
             if (item.accessKind() != null) node.put("access_kind", item.accessKind());
             if (item.source() != null) node.put("source", item.source());
             node.set("evidence_lines", JSON.valueToTree(item.lines()));
+            node.set("instruction_ordinals", JSON.valueToTree(item.instructionOrdinals()));
             node.put("occurrence_count", item.occurrences());
         }
     }
 
     private record Evidence(String kind, String className, String method, String member,
-            String accessKind, String source, List<Integer> lines, int occurrences,
-            int sourceTokens) {
+            String accessKind, String source, List<Integer> lines,
+            List<Integer> instructionOrdinals, int occurrences, int sourceTokens) {
         static Evidence call(String kind, MethodCallView call, String member) {
             return new Evidence(kind, call.fromClass(), call.fromMethod(), member, null,
-                    call.fromSource(), call.evidenceLines(), call.occurrenceCount(),
-                    call.fromSourceTokens());
+                    call.fromSource(), call.evidenceLines(), call.instructionOrdinals(),
+                    call.occurrenceCount(), call.fromSourceTokens());
         }
 
         static Evidence field(FieldAccessView access, String member) {
             String kind = access.accessKind().startsWith("read_") ? "field_read" : "field_write";
             return new Evidence(kind, access.fromClass(), access.fromMethod(), member,
                     access.accessKind(), access.fromSource(), access.evidenceLines(),
-                    access.occurrenceCount(), access.fromSourceTokens());
+                    access.instructionOrdinals(), access.occurrenceCount(),
+                    access.fromSourceTokens());
         }
     }
 }

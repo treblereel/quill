@@ -39,6 +39,7 @@ public final class QuillToolQueries {
     private final ConfigurationReferenceQueries configurationReferences =
             new ConfigurationReferenceQueries();
     private final StateLifecycleQueries stateLifecycle = new StateLifecycleQueries();
+    private final ExecutionOrderQueries executionOrder = new ExecutionOrderQueries();
     private final DesignImpactQueries designImpact = new DesignImpactQueries();
     private final ResourceReferenceQueries resourceReferences = new ResourceReferenceQueries();
 
@@ -132,6 +133,10 @@ public final class QuillToolQueries {
 
     String traceStateLifecycle(Jdbi jdbi, String target, int evidenceLimit) {
         return stateLifecycle.trace(jdbi, target, evidenceLimit);
+    }
+
+    String analyzeExecutionOrder(Jdbi jdbi, String target, String method, String signature) {
+        return executionOrder.analyze(jdbi, target, method, signature);
     }
 
     String compareDesignImpact(Jdbi jdbi, List<String> candidates, int testDepth) {

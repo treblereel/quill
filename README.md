@@ -236,6 +236,8 @@ The router profile returns the same policy in `search_tools.guidance`, including
 - **trace_state_lifecycle** — correlate exact constructor and field-access evidence with
   persistence, dispatch, serialization, and recovery boundaries; reports candidate roles and
   explicitly does not claim control-flow ordering
+- **analyze_execution_order** — reconstruct emitted call order inside one exact method and
+  distinguish proven bytecode order from only likely runtime order across control flow
 - **compare_design_impact** — rank existing classes as candidate hosts using risk, dependent
   classes, and impacted tests while keeping lifecycle/semantic fit as an explicit limitation
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected

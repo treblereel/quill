@@ -102,19 +102,19 @@ public final class QuillTools {
                 provider_repository.orElse(null), clamp(max_depth.orElse(3), 1, 10)));
     }
 
-    @Tool(structured = true, description = "Find CDI/Spring beans in project and dependency bytecode.")
+    @Tool(structured = true, description = "Find CDI/Spring beans.")
     public String list_beans(
-            @ToolArg(description = "Short class name, FQCN, source path, or * wildcard filter") Optional<String> class_name,
-            @ToolArg(description = "Scope filter, e.g. @ApplicationScoped or @Singleton") Optional<String> scope,
-            @ToolArg(description = "Bean kind: CLASS, PRODUCER_METHOD, PRODUCER_FIELD, INTERCEPTOR, DECORATOR") Optional<String> kind,
-            @ToolArg(description = "Build profile filter, e.g. dev") Optional<String> profile,
-            @ToolArg(description = "Qualifier filter, e.g. @Premium or @Qualifier(\"stripe\")") Optional<String> qualifier,
-            @ToolArg(description = "Module path filter relative to the project root, or '.' for the root module") Optional<String> module,
-            @ToolArg(description = "Source set filter, e.g. main or test") Optional<String> source_set,
-            @ToolArg(description = "Bean origin: all (default), application, or dependency") Optional<String> origin,
-            @ToolArg(description = "Max results to return (default: 50)") Optional<Integer> limit,
-            @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Class, path, or wildcard") Optional<String> class_name,
+            @ToolArg(description = "Scope") Optional<String> scope,
+            @ToolArg(description = "Bean kind") Optional<String> kind,
+            @ToolArg(description = "Build profile") Optional<String> profile,
+            @ToolArg(description = "Qualifier") Optional<String> qualifier,
+            @ToolArg(description = "Module") Optional<String> module,
+            @ToolArg(description = "Source set") Optional<String> source_set,
+            @ToolArg(description = "all, application, or dependency") Optional<String> origin,
+            @ToolArg(description = "Page size") Optional<Integer> limit,
+            @ToolArg(description = "Offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> workspace.enrichDependencyBeans(
                 queries.getBeans(p.jdbi(), class_name.orElse(null), scope.orElse(null),
                         kind.orElse(null), profile.orElse(null), qualifier.orElse(null),
@@ -123,16 +123,16 @@ public final class QuillTools {
                         clamp(offset.orElse(0), 0, Integer.MAX_VALUE))));
     }
 
-    @Tool(structured = true, description = "Get complete dependency metrics and an optionally paged class graph with call-site evidence.")
+    @Tool(structured = true, description = "Get class dependency metrics and graph.")
     public String get_dependencies(
-            @ToolArg(description = "Current class name (short or FQCN) or its project/repository source path") String target,
-            @ToolArg(description = "Direction: inbound, outbound, or both (default: both)") Optional<String> direction,
-            @ToolArg(description = "Graph traversal depth (default: 1)") Optional<Integer> depth,
-            @ToolArg(description = "Include dependency relations; false returns compact metrics only (default: true)") Optional<Boolean> include_nodes,
-            @ToolArg(description = "Relations per page (default: 50, max: 200)") Optional<Integer> limit,
-            @ToolArg(description = "Result offset for depth=1 (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Opaque continuation cursor for depth>1") Optional<String> cursor,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Class or source path") String target,
+            @ToolArg(description = "inbound, outbound, or both") Optional<String> direction,
+            @ToolArg(description = "Traversal depth") Optional<Integer> depth,
+            @ToolArg(description = "Include graph nodes") Optional<Boolean> include_nodes,
+            @ToolArg(description = "Page size") Optional<Integer> limit,
+            @ToolArg(description = "Offset for depth 1") Optional<Integer> offset,
+            @ToolArg(description = "Cursor for depth >1") Optional<String> cursor,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
         String requestedDirection = direction.orElse("both");
         int requestedDepth = clamp(depth.orElse(1), 1, 5);
         boolean requestedNodes = include_nodes.orElse(true);
@@ -300,6 +300,18 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "trace_state_lifecycle",
                 jdbi -> queries.traceStateLifecycle(jdbi, target, requestedLimit)));
+    }
+
+    @Tool(structured = true, description = "Analyze call instruction order in one method.")
+    public String analyze_execution_order(
+            @ToolArg(description = "Class or source path") String target,
+            @ToolArg(description = "Method name; use <init> for constructors") String method,
+            @ToolArg(description = "Signature or JVM descriptor for overloads") Optional<String> signature,
+            @ToolArg(description = "Repo") Optional<String> project) {
+        return forAllProjects(project.orElse(null), p -> routeClassQuery(
+                p, target, "analyze_execution_order",
+                jdbi -> queries.analyzeExecutionOrder(jdbi, target, method,
+                        signature.orElse(null))));
     }
 
     @Tool(structured = true, description = "Compare design-host change surfaces.")

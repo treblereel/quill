@@ -698,6 +698,39 @@ class QuillToolsTest {
     }
 
     @Test
+    void analyzeExecutionOrderProvesInstructionOrderWithoutClaimingRuntimeProof()
+            throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'run', 'run():void', '()V', 'void',
+                            '[]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor,
+                       to_class_id, to_method, to_descriptor, invocation_kind,
+                       occurrence_count, evidence_lines, instruction_ordinals)
+                    VALUES (1, 'run', '()V', 3, 'persistPlan', '()V', 'virtual', 1,
+                            '[20]', '[4]'),
+                           (1, 'run', '()V', 4, 'dispatchBatch', '()V', 'virtual', 1,
+                            '[21]', '[9]')""");
+        });
+
+        JsonNode result = JSON.readTree(new QuillToolQueries()
+                .analyzeExecutionOrder(jdbi, "OrderService", "run", null));
+
+        assertEquals(2, result.path("event_count").asInt());
+        assertEquals(4, result.path("bytecode_sequence").get(0)
+                .path("instruction_ordinal").asInt());
+        assertEquals("proven", result.path("persist_before_dispatch")
+                .path("instruction_order_status").asText());
+        assertEquals("likely", result.path("persist_before_dispatch")
+                .path("runtime_order_status").asText());
+    }
+
+    @Test
     void compareDesignImpactRanksExistingHostsAndPreservesSemanticCaveat() throws Exception {
         JsonNode result = JSON.readTree(new QuillToolQueries().compareDesignImpact(
                 jdbi, List.of("OrderService", "AuditService"), 3));

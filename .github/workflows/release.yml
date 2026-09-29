@@ -202,14 +202,22 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist
-          tar -czf "dist/quill-${{ matrix.artifact }}.tar.gz" -C quill-app/target quill
+          stage="${RUNNER_TEMP}/quill-release"
+          mkdir -p "${stage}"
+          cp quill-app/target/quill "${stage}/quill"
+          cp LICENSE README.md "${stage}/"
+          tar -czf "dist/quill-${{ matrix.artifact }}.tar.gz" -C "${stage}" .
           shasum -a 256 "dist/quill-${{ matrix.artifact }}.tar.gz" > "dist/quill-${{ matrix.artifact }}.tar.gz.sha256"
       - name: Prepare Windows native archive
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path .\quill-app\target\quill.exe -DestinationPath "dist\quill-${{ matrix.artifact }}.zip"
+          $stage = Join-Path $env:RUNNER_TEMP "quill-release"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item .\quill-app\target\quill.exe (Join-Path $stage "quill.exe")
+          Copy-Item .\LICENSE, .\README.md $stage
+          Compress-Archive -Path "$stage\*" -DestinationPath "dist\quill-${{ matrix.artifact }}.zip"
           $hash = (Get-FileHash "dist\quill-${{ matrix.artifact }}.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  quill-${{ matrix.artifact }}.zip" | Set-Content -Encoding ascii "dist\quill-${{ matrix.artifact }}.zip.sha256"
       - uses: actions/upload-artifact@v4

@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 23;
+    static final int SCHEMA_VERSION = 24;
 
     private QuillDatabase() {}
 
@@ -280,8 +280,8 @@ public final class QuillDatabase {
                     parameter_index INTEGER,
                     annotation TEXT NOT NULL,
                     source TEXT,
-                    module TEXT NOT NULL,
-                    source_set TEXT NOT NULL,
+                    module TEXT,
+                    source_set TEXT,
                     UNIQUE(key, kind, class_id, member, parameter_index, annotation)
                 )""");
             h.execute("""
@@ -294,8 +294,8 @@ public final class QuillDatabase {
                     member TEXT NOT NULL,
                     api TEXT NOT NULL,
                     source TEXT,
-                    module TEXT NOT NULL,
-                    source_set TEXT NOT NULL,
+                    module TEXT,
+                    source_set TEXT,
                     UNIQUE(resource_path, kind, class_id, member, api)
                 )""");
             if (createIndexes) createIndexes(h);

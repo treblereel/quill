@@ -435,8 +435,7 @@ public class ProjectInitializer {
             ClassRecord c = classes.get(i);
             boolean isBean = beanClassIds.contains(i + 1);
             if (isBean != c.isBean()) {
-                c = new ClassRecord(c.id(), c.className(), c.kind(), c.superclass(),
-                        c.interfaces(), c.sourceFile(), c.sourceLine(), isBean, c.sourceTokens());
+                c = c.withBean(isBean);
             }
             correctedClasses.add(c);
         }

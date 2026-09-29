@@ -36,4 +36,9 @@ public record ClassRecord(
         return new ClassRecord(newId, className, kind, superclass, interfaces, sourceFile,
                 sourceLine, isBean, sourceTokens, fileId, origin, lifecycle, module, sourceSet);
     }
+
+    public ClassRecord withBean(boolean bean) {
+        return new ClassRecord(id, className, kind, superclass, interfaces, sourceFile,
+                sourceLine, bean, sourceTokens, fileId, origin, lifecycle, module, sourceSet);
+    }
 }

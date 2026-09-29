@@ -80,6 +80,32 @@ class IndexWriterReaderTest {
     }
 
     @Test
+    void persistsReferencesWhoseCompiledClassHasNoSourceContext() {
+        Jdbi database = QuillDatabase.create(tempDir.resolve("orphan-references.db"));
+        List<ClassRecord> classes = List.of(new ClassRecord(
+                0, "example.GeneratedConsumer", "CLASS", "java.lang.Object", List.of(),
+                null, 0, false, 0, null, "orphan_output", "current", null, null));
+        ConfigurationScanner.Usage usage = new ConfigurationScanner.Usage(
+                "app.name", "config_key", 1, "example.GeneratedConsumer", "read", null,
+                "java.lang.System#getProperty", null, null, null);
+        ResourceUsageRecord resource = new ResourceUsageRecord(
+                "templates/order.html", "resource", 1, "example.GeneratedConsumer", "read",
+                "java.lang.Class#getResource", null, null, null);
+
+        IndexWriter.writeFreshWithConfiguration(database, classes, List.of(), List.of(),
+                List.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                new ConfigurationScanner.Result(List.of(), List.of(usage)), List.of(resource));
+
+        assertNull(database.withHandle(handle -> handle.createQuery(
+                        "SELECT module FROM configuration_usages")
+                .mapTo(String.class).findOne().orElse(null)));
+        assertNull(database.withHandle(handle -> handle.createQuery(
+                        "SELECT source_set FROM resource_usages")
+                .mapTo(String.class).findOne().orElse(null)));
+    }
+
+    @Test
     void persistsMultiplePhysicalOccurrencesForOneLogicalClass() {
         Jdbi database = QuillDatabase.create(tempDir.resolve("occurrences.db"));
         List<ClassRecord> classes = List.of(

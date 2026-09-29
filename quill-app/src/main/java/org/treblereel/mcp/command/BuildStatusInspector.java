@@ -28,7 +28,9 @@ public final class BuildStatusInspector {
         BuildSystem buildSystem = BuildSystem.detect(root);
         Map<String, String> metadata = IndexReader.getMetadata(jdbi);
         MetaEnvelope freshness = MetaEnvelope.from(jdbi, 0, 0);
-        List<Path> outputs = ProjectInitializer.findClassesDirs(root);
+        ProjectLayout.ClassesDiscovery outputDiscovery =
+                ProjectLayout.discoverClassesDirs(root, false);
+        List<Path> outputs = outputDiscovery.classesDirectories();
         BuildIntegrationInstaller.Inspection integration =
                 BuildIntegrationInstaller.inspect(root);
         long pendingEvents = pendingEvents(root);
@@ -49,6 +51,10 @@ public final class BuildStatusInspector {
 
         ObjectNode compiled = result.putObject("compiled_outputs");
         compiled.put("count", outputs.size());
+        compiled.put("main_count", outputDiscovery.outputs().stream()
+                .filter(output -> output.sourceSet().equals("main")).count());
+        compiled.put("test_count", outputDiscovery.outputs().stream()
+                .filter(output -> output.sourceSet().equals("test")).count());
         ArrayNode directories = compiled.putArray("directories");
         outputs.stream().map(path -> relative(root, path)).sorted()
                 .limit(100).forEach(directories::add);

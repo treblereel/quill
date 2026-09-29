@@ -1,6 +1,7 @@
 package org.treblereel.mcp.command;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ProjectRootFinder;
@@ -52,7 +54,7 @@ public class DoctorCommand implements Callable<Integer> {
         checks.add(Check.pass("project", "Detected "
                 + buildSystem.name().toLowerCase(Locale.ROOT) + " project at " + normalized));
 
-        List<Path> classesDirectories = ProjectInitializer.findClassesDirs(normalized);
+        List<Path> classesDirectories = ProjectInitializer.findMainClassesDirs(normalized);
         if (classesDirectories.isEmpty()) {
             checks.add(Check.error("compiled_outputs", "No compiled main classes were found",
                     buildSystem == BuildSystem.MAVEN
@@ -104,6 +106,7 @@ public class DoctorCommand implements Callable<Integer> {
                                 .getOrDefault("dependency_index_detail", "no detail"),
                         "Check build-tool dependency resolution and run `quill update --force`"));
             }
+            addTestIndexCheck(checks, diagnostics.metadata(), buildSystem);
         }
 
         BuildIntegrationInstaller.Inspection integration =
@@ -143,7 +146,73 @@ public class DoctorCommand implements Callable<Integer> {
             checks.add(Check.pass("mcp_configuration",
                     "Project-local MCP configuration detected for " + String.join(" and ", clients)));
         }
+        List<String> brokenLaunchers = brokenClientLaunchers(normalized);
+        if (!brokenLaunchers.isEmpty()) {
+            checks.add(Check.error("mcp_launcher",
+                    "Configured Quill launcher does not exist or is not executable: "
+                            + String.join(", ", brokenLaunchers),
+                    "Repair the project-local MCP configuration or run `quill init` with a working native launcher"));
+        } else if (!clients.isEmpty()) {
+            checks.add(Check.pass("mcp_launcher", "Configured Quill launcher paths are usable"));
+        }
+        switch (ProjectConfiguration.inspectClaudeMd(normalized)) {
+            case CURRENT -> checks.add(Check.pass("claude_instructions",
+                    "CLAUDE.md contains the current managed Quill guidance"));
+            case MISSING -> checks.add(Check.warning("claude_instructions",
+                    "CLAUDE.md does not contain managed Quill guidance",
+                    "Run `quill init --project " + normalized + "`"));
+            case INVALID -> checks.add(Check.warning("claude_instructions",
+                    "CLAUDE.md contains an incomplete managed Quill block",
+                    "Run `quill init --project " + normalized + "` to replace it"));
+        }
+        String toolProfile = claudeToolProfile(normalized);
+        if (toolProfile != null) {
+            checks.add(Check.pass("claude_tool_profile", "Claude Code MCP uses the `"
+                    + toolProfile + "` Quill tool profile"));
+        }
         return new Report(normalized, List.copyOf(checks));
+    }
+
+    private static void addTestIndexCheck(List<Check> checks, Map<String, String> metadata,
+            BuildSystem buildSystem) {
+        List<String> indexed = metadataList(metadata, "compiled_test_modules");
+        List<String> missing = metadataList(metadata, "missing_test_output_modules");
+        List<String> missingClasspath = metadataList(metadata, "missing_test_classpath_modules");
+        List<String> stale = metadataList(metadata, "stale_test_output_modules");
+        if (missing.isEmpty() && missingClasspath.isEmpty() && stale.isEmpty()) {
+            checks.add(Check.pass("test_index", indexed.isEmpty()
+                    ? "No compiled test outputs were discovered"
+                    : "Indexed compiled tests from " + indexed.size() + " module"
+                            + (indexed.size() == 1 ? "" : "s")));
+            return;
+        }
+        List<String> problems = new ArrayList<>();
+        if (!missing.isEmpty()) problems.add("missing outputs: " + String.join(", ", missing));
+        if (!missingClasspath.isEmpty()) {
+            problems.add("missing runtime classpaths: " + String.join(", ", missingClasspath));
+        }
+        if (!stale.isEmpty()) problems.add("stale outputs: " + String.join(", ", stale));
+        checks.add(Check.warning("test_index", "Test index coverage is partial ("
+                        + String.join("; ", problems) + ")",
+                buildSystem == BuildSystem.MAVEN
+                        ? "Run the project's Maven test-compile command, then `quill update`"
+                        : "Run the project's Gradle testClasses task, then `quill update`"));
+    }
+
+    private static List<String> metadataList(Map<String, String> metadata, String key) {
+        String value = metadata.get(key);
+        if (value == null || value.isBlank()) return List.of();
+        try {
+            JsonNode parsed = JSON.readTree(value);
+            if (!parsed.isArray()) return List.of();
+            List<String> result = new ArrayList<>();
+            parsed.forEach(item -> {
+                if (item.isTextual()) result.add(item.asText());
+            });
+            return List.copyOf(result);
+        } catch (IOException ignored) {
+            return List.of();
+        }
     }
 
     private static long countPendingEvents(Path root) {
@@ -192,6 +261,68 @@ public class DoctorCommand implements Callable<Integer> {
             }
         }
         return List.copyOf(clients);
+    }
+
+    private static List<String> brokenClientLaunchers(Path root) {
+        List<String> broken = new ArrayList<>();
+        Path claude = root.resolve(".mcp.json");
+        if (Files.isRegularFile(claude)) {
+            try {
+                JsonNode quill = JSON.readTree(claude.toFile()).path("mcpServers").path("quill");
+                if (!quill.isMissingNode()) {
+                    addBrokenLauncher(broken, "Claude Code", quill.path("command").asText(null));
+                }
+            } catch (IOException ignored) {
+                // Malformed optional configuration is handled as absent by configuredClients.
+            }
+        }
+        Path codex = root.resolve(".codex/config.toml");
+        if (Files.isRegularFile(codex)) {
+            try {
+                String content = Files.readString(codex);
+                if (CodexConfigInstaller.definesQuillServer(content)) {
+                    addBrokenLauncher(broken, "Codex",
+                            CodexConfigInstaller.quillCommand(content).orElse(null));
+                }
+            } catch (IOException ignored) {
+                // Malformed optional configuration is handled as absent by configuredClients.
+            }
+        }
+        return List.copyOf(broken);
+    }
+
+    private static void addBrokenLauncher(List<String> broken, String client, String command) {
+        if (command == null || command.isBlank()) {
+            broken.add(client + " (missing command)");
+            return;
+        }
+        Path candidate;
+        try {
+            candidate = Path.of(command);
+        } catch (RuntimeException ignored) {
+            broken.add(client + " (invalid path: " + command + ")");
+            return;
+        }
+        if (!candidate.isAbsolute()) return;
+        if (!Files.isRegularFile(candidate) || !Files.isExecutable(candidate)) {
+            broken.add(client + " (" + command + ")");
+        }
+    }
+
+    private static String claudeToolProfile(Path root) {
+        Path config = root.resolve(".mcp.json");
+        if (!Files.isRegularFile(config)) return null;
+        try {
+            JsonNode args = JSON.readTree(config.toFile())
+                    .path("mcpServers").path("quill").path("args");
+            if (!args.isArray()) return null;
+            for (int i = 0; i + 1 < args.size(); i++) {
+                if ("--tools".equals(args.get(i).asText())) return args.get(i + 1).asText();
+            }
+            return "full";
+        } catch (IOException error) {
+            return null;
+        }
     }
 
     static String toJson(Report report) {

@@ -22,6 +22,8 @@ class DoctorCommandTest {
     @Test
     void jsonReportHasStableSchemaAndActionableFailures(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), "<project/>");
+        ProjectConfiguration.ensureClaudeMd(project);
+        McpJsonInstaller.installProject(project, null);
         StringWriter output = new StringWriter();
         CommandLine cli = new CommandLine(new DoctorCommand());
         cli.setOut(new PrintWriter(output));
@@ -42,6 +44,9 @@ class DoctorCommandTest {
         assertEquals("error", checks.get("index").path("status").asText());
         assertEquals("warning", checks.get("build_integration").path("status").asText());
         assertEquals("warning", checks.get("gitignore").path("status").asText());
+        assertEquals("pass", checks.get("claude_instructions").path("status").asText());
+        assertTrue(checks.get("claude_tool_profile").path("message").asText()
+                .contains("`full`"));
     }
 
     @Test
@@ -57,6 +62,28 @@ class DoctorCommandTest {
         assertTrue(output.toString().contains("[ERROR] compiled_outputs:"));
         assertTrue(output.toString().contains("Action:"));
         assertTrue(output.toString().contains("Overall: ERROR"));
+    }
+
+    @Test
+    void reportsMissingAbsoluteClientLauncher(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        Path codex = Files.createDirectories(project.resolve(".codex")).resolve("config.toml");
+        String missing = project.resolve("missing/quill").toAbsolutePath().toString()
+                .replace('\\', '/');
+        Files.writeString(codex, """
+                [mcp_servers.quill]
+                command = "%s"
+                args = ["--mcp"]
+                """.formatted(missing));
+
+        DoctorCommand.Report report = DoctorCommand.inspect(project);
+        DoctorCommand.Check launcher = report.checks().stream()
+                .filter(check -> check.id().equals("mcp_launcher"))
+                .findFirst().orElseThrow();
+
+        assertEquals(DoctorCommand.Status.ERROR, launcher.status());
+        assertTrue(launcher.message().contains(missing));
+        assertTrue(launcher.action().contains("Repair"));
     }
 
     private static Map<String, JsonNode> checksById(JsonNode report) {

@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
+import org.treblereel.mcp.diagnostics.DebugTrace;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
 
@@ -134,11 +135,21 @@ final class McpToolCatalog {
     private static McpSchema.CallToolResult invoke(
             Object tools, Method method, Map<String, Object> arguments) {
         boolean structured = method.getAnnotation(Tool.class).structured();
+        DebugTrace.Trace trace = DebugTrace.start("mcp_tool_call");
         try {
+            trace.event("tool_invoked", Map.of(
+                    "tool", method.getName(),
+                    "argument_names", arguments == null
+                            ? List.of() : arguments.keySet().stream().sorted().toList()));
             Invocation invocation = invokeMethod(tools, method, arguments);
+            trace.event("tool_result", Map.of(
+                    "tool", method.getName(), "is_error", invocation.error()));
             return result(invocation.text(), invocation.error(), structured);
         } catch (RuntimeException e) {
+            trace.failure(e);
             return result("Tool failed: " + ProjectRegistry.safeMessage(e), true, structured);
+        } finally {
+            trace.close();
         }
     }
 

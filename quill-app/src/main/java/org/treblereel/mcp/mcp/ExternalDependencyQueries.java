@@ -22,16 +22,20 @@ final class ExternalDependencyQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {
+        ClassRecord targetClass = null;
+        if (target != null) {
+            var lookup = ClassTargetResolver.resolve(jdbi, target);
+            if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+            targetClass = lookup.cls();
+        }
         if (!IndexReader.hasExternalDeps(jdbi)) {
             return errorResponse("No external dependency data. Re-run 'quill init' to index external dependencies.");
         }
 
         ObjectNode root = JSON.createObjectNode();
 
-        if (target != null) {
-            var lookup = ClassTargetResolver.resolve(jdbi, target);
-            if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
-            ClassRecord cls = lookup.cls();
+        if (targetClass != null) {
+            ClassRecord cls = targetClass;
 
             root.put("target", cls.className());
             var deps = IndexReader.findExternalDeps(jdbi, cls.id());

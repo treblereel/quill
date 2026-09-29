@@ -6,6 +6,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Optional;
 
 final class CodexConfigInstaller {
 
@@ -22,6 +23,21 @@ final class CodexConfigInstaller {
 
     private CodexConfigInstaller() {}
 
+    static Result install(Path projectRoot, String binary) {
+        Path config = projectRoot.resolve(".codex/config.toml");
+        if (Files.exists(config)) return installIfPresent(projectRoot, binary);
+
+        try {
+            String updated = appendBlock("", projectRoot, binary);
+            writeAtomically(config, updated);
+            System.err.println("[quill] Created " + config + " with the Quill MCP server.");
+            return Result.ADDED;
+        } catch (IOException e) {
+            warn(config, e.getMessage());
+            return Result.FAILED;
+        }
+    }
+
     static Result installIfPresent(Path projectRoot, String binary) {
         Path config = projectRoot.resolve(".codex/config.toml");
         if (!Files.exists(config)) return Result.NOT_PRESENT;
@@ -32,7 +48,15 @@ final class CodexConfigInstaller {
 
         try {
             String content = Files.readString(config, StandardCharsets.UTF_8);
-            if (definesQuillServer(content)) return Result.ALREADY_CONFIGURED;
+            if (definesQuillServer(content)) {
+                if (!shouldRepairManagedLauncher(content, binary)) {
+                    return Result.ALREADY_CONFIGURED;
+                }
+                String updated = appendBlock(removeQuillServer(content), projectRoot, binary);
+                writeAtomically(config, updated);
+                System.err.println("[quill] Repaired the Quill launcher in " + config + ".");
+                return Result.REPLACED;
+            }
             if (definesInlineMcpServers(content)) {
                 warn(config, "uses an inline mcp_servers table; add the Quill entry manually");
                 return Result.UNSUPPORTED;
@@ -87,6 +111,33 @@ final class CodexConfigInstaller {
         }
     }
 
+    static Result uninstall(Path projectRoot) {
+        Path config = projectRoot.resolve(".codex/config.toml");
+        if (!Files.exists(config)) return Result.NOT_PRESENT;
+        if (!Files.isRegularFile(config) || Files.isSymbolicLink(config)) {
+            warn(config, "is not a regular file; leaving it unchanged");
+            return Result.UNSUPPORTED;
+        }
+        try {
+            String content = Files.readString(config, StandardCharsets.UTF_8);
+            if (!definesQuillServer(content)) return Result.ALREADY_CONFIGURED;
+            String cleaned = removeQuillServer(content);
+            if (cleaned.isBlank()) {
+                Files.delete(config);
+                Path directory = config.getParent();
+                try (var entries = Files.list(directory)) {
+                    if (entries.findAny().isEmpty()) Files.delete(directory);
+                }
+            } else {
+                writeAtomically(config, cleaned);
+            }
+            return Result.REMOVED;
+        } catch (IOException e) {
+            warn(config, e.getMessage());
+            return Result.FAILED;
+        }
+    }
+
     static boolean definesQuillServer(String content) {
         boolean inRootMcpTable = false;
         boolean beforeFirstTable = true;
@@ -118,6 +169,48 @@ final class CodexConfigInstaller {
             }
         }
         return false;
+    }
+
+    static Optional<String> quillCommand(String content) {
+        boolean inQuillTable = false;
+        for (String line : content.split("\\R", -1)) {
+            String withoutComment = stripComment(line).trim();
+            if (withoutComment.isEmpty()) continue;
+            if (withoutComment.startsWith("[")) {
+                String table = tableName(withoutComment);
+                inQuillTable = "mcp_servers.quill".equals(table);
+                continue;
+            }
+            if (!inQuillTable || !"command".equals(assignmentKey(withoutComment))) continue;
+            int equals = indexOfUnquoted(withoutComment, '=');
+            if (equals < 0) return Optional.empty();
+            String value = withoutComment.substring(equals + 1).trim();
+            if (value.length() >= 2 && ((value.startsWith("\"") && value.endsWith("\""))
+                    || (value.startsWith("'") && value.endsWith("'")))) {
+                return Optional.of(value.substring(1, value.length() - 1)
+                        .replace("\\\\", "\\").replace("\\\"", "\""));
+            }
+            return Optional.empty();
+        }
+        return Optional.empty();
+    }
+
+    private static boolean shouldRepairManagedLauncher(String content, String binary) {
+        if (binary == null || binary.isBlank()) return false;
+        boolean managedProjectEntry = content.lines().map(String::trim)
+                .anyMatch("# Added by Quill."::equals);
+        if (!managedProjectEntry) return false;
+        Optional<String> configured = quillCommand(content);
+        if (configured.isEmpty() || configured.get().equals(binary)) return false;
+        try {
+            Path current = Path.of(configured.get());
+            Path replacement = Path.of(binary);
+            return current.isAbsolute() && !Files.isRegularFile(current)
+                    && replacement.isAbsolute() && Files.isRegularFile(replacement)
+                    && Files.isExecutable(replacement);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     private static boolean definesInlineMcpServers(String content) {
@@ -254,7 +347,9 @@ final class CodexConfigInstaller {
         boolean inRootMcpTable = false;
         boolean beforeFirstTable = true;
         for (String line : lines) {
-            if (line.trim().startsWith("# Added by Quill for workspace ")) continue;
+            String trimmed = line.trim();
+            if (trimmed.equals("# Added by Quill.")
+                    || trimmed.startsWith("# Added by Quill for workspace ")) continue;
             String stripped = stripComment(line).trim();
             if (stripped.startsWith("[")) {
                 beforeFirstTable = false;
@@ -306,10 +401,13 @@ final class CodexConfigInstaller {
     }
 
     private static void writeAtomically(Path config, String content) throws IOException {
+        Files.createDirectories(config.getParent());
         Path temp = Files.createTempFile(config.getParent(), ".config.toml.", ".tmp");
         try {
-            Files.copy(config, temp, StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.COPY_ATTRIBUTES);
+            if (Files.isRegularFile(config)) {
+                Files.copy(config, temp, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.COPY_ATTRIBUTES);
+            }
             Files.writeString(temp, content, StandardCharsets.UTF_8);
             try {
                 Files.move(temp, config, StandardCopyOption.ATOMIC_MOVE,

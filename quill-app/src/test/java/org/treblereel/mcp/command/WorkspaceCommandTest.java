@@ -88,7 +88,9 @@ class WorkspaceCommandTest {
         String installedCodex = Files.readString(codex);
         assertFalse(installedCodex.contains("old-quill"));
         assertTrue(installedCodex.contains("\"--workspace\""));
-        assertTrue(installedCodex.contains(workspace.toAbsolutePath().normalize().toString()));
+        String tomlWorkspacePath = workspace.toAbsolutePath().normalize().toString()
+                .replace("\\", "\\\\");
+        assertTrue(installedCodex.contains(tomlWorkspacePath));
 
         Captured cleared = execute("workspace", "clear", "--project", workspace.toString());
 
@@ -138,8 +140,8 @@ class WorkspaceCommandTest {
         assertTrue(repository.path("supported").asBoolean());
         assertTrue(repository.path("compiled").asBoolean());
         assertTrue(repository.path("indexed").asBoolean());
-        assertEquals(18, repository.path("indexSchema").asInt());
-        assertEquals(18, repository.path("currentSchema").asInt());
+        assertEquals(24, repository.path("indexSchema").asInt());
+        assertEquals(24, repository.path("currentSchema").asInt());
         assertEquals("installed", repository.path("buildIntegration").asText());
         assertTrue(repository.path("queryReady").asBoolean());
     }

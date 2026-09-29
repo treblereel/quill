@@ -22,20 +22,26 @@ class GradleProjectDiscoveryTest {
         Path module = tempDir.resolve("module with spaces");
         Path javaClasses = module.resolve("build/classes/java/main");
         Path kotlinClasses = module.resolve("build/classes/kotlin/main");
+        Path testClasses = module.resolve("build/classes/java/test");
         Path manifest = Files.writeString(tempDir.resolve("projects.tsv"),
-                encode(module) + "\t" + encode(javaClasses) + "\t" + encode(kotlinClasses)
+                encode(module) + "\tmain\t" + encode(javaClasses) + "\t" + encode(kotlinClasses)
                         + System.lineSeparator()
-                        + encode(module) + "\t" + encode(javaClasses));
+                        + encode(module) + "\ttest\t" + encode(testClasses));
 
         GradleProjectDiscovery.Discovery discovery =
                 GradleProjectDiscovery.readManifest(manifest);
 
         assertTrue(discovery.complete());
         assertEquals(Set.of(module.toAbsolutePath()), Set.copyOf(discovery.moduleDirectories()));
-        assertEquals(Set.of(javaClasses.toAbsolutePath(), kotlinClasses.toAbsolutePath()),
+        assertEquals(Set.of(javaClasses.toAbsolutePath(), kotlinClasses.toAbsolutePath(),
+                        testClasses.toAbsolutePath()),
                 Set.copyOf(discovery.classesDirectories()));
         assertEquals(module.toAbsolutePath(),
                 discovery.classDirectoryOwners().get(javaClasses.toAbsolutePath()));
+        assertEquals("main",
+                discovery.classDirectorySourceSets().get(javaClasses.toAbsolutePath()));
+        assertEquals("test",
+                discovery.classDirectorySourceSets().get(testClasses.toAbsolutePath()));
     }
 
     @Test

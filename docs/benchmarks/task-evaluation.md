@@ -72,6 +72,29 @@ and repository module paths without exposing those alternatives to the model. A 
 declare a `quill_tools` allowlist selected before the model runs. This models client-side tool
 search/routing without forcing a Quill call or loading the full catalog on every turn.
 
+Catalog discovery experiments must keep server exposure separate from client-side selection. The
+default `--tool-selection suite` applies each task's `quill_tools` allowlist. Use `all` to expose
+the entire selected server profile. For example, compare the normal catalog and Quill's router in
+separate output directories:
+
+```bash
+python3 scripts/quill_agent_benchmark.py \
+  --suite benchmarks/crysknife-current-effectiveness.json \
+  --project /path/to/crysknife --quill quill-app/target/quill \
+  --quill-profile default --tool-selection all \
+  --output-dir target/benchmarks/full-catalog --repetitions 10
+
+python3 scripts/quill_agent_benchmark.py \
+  --suite benchmarks/crysknife-current-effectiveness.json \
+  --project /path/to/crysknife --quill quill-app/target/quill \
+  --quill-profile router --tool-selection all \
+  --output-dir target/benchmarks/router-catalog --repetitions 10
+```
+
+Both fields are stored in every capture. Do not compare `router/all` with the default
+`default/suite` and attribute the difference solely to the router: that would change server
+exposure and client-side selection at the same time.
+
 The generated `*-with-quill.json` and `*-without-quill.json` files contain the usage returned by
 every Responses API call:
 

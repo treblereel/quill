@@ -159,6 +159,24 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown Quill tools"):
             selected_quill_tools({"id": "bad", "quill_tools": ["missing"]}, quill)
 
+    def test_can_expose_the_entire_selected_server_profile(self):
+        definitions = [
+            {"name": "quill_get_overview"},
+            {"name": "quill_search_tools"},
+            {"name": "quill_execute_tool"},
+        ]
+        quill = type("FakeQuill", (), {"definitions": definitions})()
+
+        selected = selected_quill_tools(
+            {"id": "one", "quill_tools": ["get_dependencies"]}, quill, "all")
+
+        self.assertEqual(definitions, selected)
+
+    def test_rejects_unknown_tool_selection_mode(self):
+        quill = type("FakeQuill", (), {"definitions": []})()
+        with self.assertRaisesRegex(ValueError, "Unknown Quill tool selection"):
+            selected_quill_tools({"id": "one"}, quill, "invalid")
+
     def test_reports_source_calls_after_quill_with_response_limitations(self):
         flags = quill_outcome_flags({
             "isError": False,

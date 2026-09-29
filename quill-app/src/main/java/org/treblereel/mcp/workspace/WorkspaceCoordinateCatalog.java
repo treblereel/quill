@@ -30,11 +30,17 @@ public final class WorkspaceCoordinateCatalog {
         public String ga() {
             return group == null || artifact == null ? null : group + ":" + artifact;
         }
+
+        public String gav() {
+            String ga = ga();
+            return ga == null || version == null ? null : ga + ":" + version;
+        }
     }
 
     public record Result(
             List<Module> modules,
             Map<String, List<Module>> modulesByGa,
+            Map<String, List<Module>> modulesByGav,
             boolean complete,
             List<String> diagnostics) {
         public Result {
@@ -43,6 +49,10 @@ public final class WorkspaceCoordinateCatalog {
             modulesByGa.forEach((coordinate, values) ->
                     copy.put(coordinate, List.copyOf(values)));
             modulesByGa = Map.copyOf(copy);
+            Map<String, List<Module>> gavCopy = new LinkedHashMap<>();
+            modulesByGav.forEach((coordinate, values) ->
+                    gavCopy.put(coordinate, List.copyOf(values)));
+            modulesByGav = Map.copyOf(gavCopy);
             diagnostics = List.copyOf(diagnostics);
         }
     }
@@ -101,9 +111,13 @@ public final class WorkspaceCoordinateCatalog {
         }
         modules.sort(Comparator.comparing(Module::repository).thenComparing(Module::module));
         Map<String, List<Module>> byGa = new LinkedHashMap<>();
+        Map<String, List<Module>> byGav = new LinkedHashMap<>();
         for (Module module : modules) {
             if (module.ga() != null) {
                 byGa.computeIfAbsent(module.ga(), ignored -> new ArrayList<>()).add(module);
+            }
+            if (module.gav() != null) {
+                byGav.computeIfAbsent(module.gav(), ignored -> new ArrayList<>()).add(module);
             }
         }
         byGa.forEach((ga, candidates) -> {
@@ -114,7 +128,7 @@ public final class WorkspaceCoordinateCatalog {
                                 .collect(Collectors.joining(", ")));
             }
         });
-        return new Result(modules, byGa, complete, diagnostics);
+        return new Result(modules, byGa, byGav, complete, diagnostics);
     }
 
     private static String candidate(Module module) {

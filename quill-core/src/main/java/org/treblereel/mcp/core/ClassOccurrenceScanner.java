@@ -16,11 +16,21 @@ public final class ClassOccurrenceScanner {
     public static List<ClassOccurrenceRecord> scan(
             Path projectRoot, ClassFileSnapshot snapshot, Map<Path, Path> directoryOwners,
             Map<String, Integer> logicalClassIds) {
+        return scan(projectRoot, snapshot, directoryOwners, Map.of(), logicalClassIds);
+    }
+
+    public static List<ClassOccurrenceRecord> scan(
+            Path projectRoot, ClassFileSnapshot snapshot, Map<Path, Path> directoryOwners,
+            Map<Path, String> directorySourceSets, Map<String, Integer> logicalClassIds) {
         Path root = projectRoot.toAbsolutePath().normalize();
         Map<Path, Path> normalizedOwners = directoryOwners.entrySet().stream()
                 .collect(java.util.stream.Collectors.toMap(
                         entry -> entry.getKey().toAbsolutePath().normalize(),
                         entry -> entry.getValue().toAbsolutePath().normalize()));
+        Map<Path, String> normalizedSourceSets = directorySourceSets.entrySet().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        entry -> entry.getKey().toAbsolutePath().normalize(),
+                        Map.Entry::getValue));
         List<ClassOccurrenceRecord> result = new ArrayList<>();
         for (ClassFileSnapshot.Entry entry : snapshot.entries()) {
             Path output = entry.classesDirectory().toAbsolutePath().normalize();
@@ -29,7 +39,7 @@ public final class ClassOccurrenceScanner {
             Integer classId = logicalClassIds.get(className);
             if (classId == null) continue;
             Path owner = normalizedOwners.getOrDefault(output, root);
-            String sourceSet = sourceSet(output, owner);
+            String sourceSet = normalizedSourceSets.getOrDefault(output, sourceSet(output, owner));
             Path source = findSource(owner, sourceSet, className);
             result.add(new ClassOccurrenceRecord(
                     0, classId, className, relative(root, owner), sourceSet,

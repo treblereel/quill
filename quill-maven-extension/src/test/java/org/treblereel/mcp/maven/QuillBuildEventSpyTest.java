@@ -88,4 +88,26 @@ class QuillBuildEventSpyTest {
             assertEquals(16, files.filter(Files::isRegularFile).count());
         }
     }
+
+    @Test
+    void writesSeparateRuntimeAndTestClasspathSnapshots() throws Exception {
+        Path runtimeJar = tempDir.resolve("repo/runtime.jar");
+        Path testJar = tempDir.resolve("repo/test.jar");
+        Files.createDirectories(runtimeJar.getParent());
+        Files.write(runtimeJar, new byte[] {1});
+        Files.write(testJar, new byte[] {1});
+        Path target = tempDir.resolve("module/target");
+
+        QuillBuildEventSpy.writeClasspath(target.resolve("quill-classpath.txt"),
+                java.util.List.of(tempDir.resolve("module/target/classes").toString(),
+                        runtimeJar.toString()));
+        QuillBuildEventSpy.writeClasspath(target.resolve("quill-test-classpath.txt"),
+                java.util.List.of(runtimeJar.toString(), testJar.toString()));
+
+        assertEquals(runtimeJar.toAbsolutePath().toString(),
+                Files.readString(target.resolve("quill-classpath.txt")));
+        assertEquals(runtimeJar.toAbsolutePath() + java.io.File.pathSeparator
+                        + testJar.toAbsolutePath(),
+                Files.readString(target.resolve("quill-test-classpath.txt")));
+    }
 }

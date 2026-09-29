@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.ServiceLoader;
+import java.util.concurrent.Executor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -57,6 +58,39 @@ class BytecodeDependencyScannerTest {
                 .filter(call -> call.toMethod().equals("<init>"))
                 .filter(call -> call.invocationKind().equals("special"))
                 .filter(call -> !call.evidenceLines().isEmpty())
+                .filter(call -> !call.instructionOrdinals().isEmpty())
+                .count());
+
+        assertEquals(1, result.methodCalls().stream()
+                .filter(call -> call.fromClass().equals(Consumer.class.getName()))
+                .filter(call -> call.fromMethod().equals("conditionalCreate"))
+                .filter(call -> call.toClass().equals(BranchConstructed.class.getName()))
+                .filter(call -> call.toMethod().equals("<init>"))
+                .filter(call -> call.callerBranchCount() > 0)
+                .filter(call -> !call.callerControlFlowEdges().isEmpty())
+                .count());
+        assertEquals(1, result.methodCalls().stream()
+                .filter(call -> call.fromClass().equals(Consumer.class.getName()))
+                .filter(call -> call.fromMethod().equals("guardedCreate"))
+                .filter(call -> call.toClass().equals(GuardedConstructed.class.getName()))
+                .filter(call -> call.callerExceptionHandlerCount() == 1)
+                .filter(call -> call.callerControlFlowEdges().stream()
+                        .anyMatch(edge -> edge.endsWith(">5")))
+                .count());
+        assertEquals(1, result.methodCalls().stream()
+                .filter(call -> call.fromClass().equals(Consumer.class.getName()))
+                .filter(call -> call.fromMethod().equals("asyncCreate"))
+                .filter(call -> call.toClass().equals(AsyncConstructed.class.getName()))
+                .filter(call -> call.callerAsyncBoundaries().stream()
+                        .anyMatch(boundary -> boundary.endsWith("Executor.execute")))
+                .filter(call -> call.callerExternalCalls().stream()
+                        .anyMatch(event -> event.contains("java.util.concurrent.Executor|execute")))
+                .count());
+        assertEquals(1, result.methodCalls().stream()
+                .filter(call -> call.fromClass().equals(Consumer.class.getName()))
+                .filter(call -> call.fromMethod().equals("nestedFinallyCreate"))
+                .filter(call -> call.toClass().equals(NestedConstructed.class.getName()))
+                .filter(call -> call.callerExceptionHandlerCount() >= 2)
                 .count());
     }
 
@@ -76,12 +110,14 @@ class BytecodeDependencyScannerTest {
                 .filter(access -> access.fieldDescriptor().equals("I"))
                 .filter(access -> access.accessKind().equals("write_instance"))
                 .filter(access -> !access.evidenceLines().isEmpty())
+                .filter(access -> !access.instructionOrdinals().isEmpty())
                 .count());
         assertEquals(1, result.fieldAccesses().stream()
                 .filter(access -> access.fromClass().equals(Consumer.class.getName()))
                 .filter(access -> access.fromMethod().equals("getValue"))
                 .filter(access -> access.fieldName().equals("value"))
                 .filter(access -> access.accessKind().equals("read_instance"))
+                .filter(access -> !access.instructionOrdinals().isEmpty())
                 .count());
     }
 
@@ -185,6 +221,35 @@ class BytecodeDependencyScannerTest {
             return new Constructed();
         }
 
+        Object conditionalCreate(boolean enabled) {
+            return enabled ? new BranchConstructed() : null;
+        }
+
+        Object guardedCreate() {
+            try {
+                return new GuardedConstructed();
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+        }
+
+        Object asyncCreate(Executor executor) {
+            executor.execute(() -> {});
+            return new AsyncConstructed();
+        }
+
+        Object nestedFinallyCreate() {
+            try {
+                try {
+                    return new NestedConstructed();
+                } finally {
+                    value++;
+                }
+            } finally {
+                value++;
+            }
+        }
+
         void setValue(int value) {
             this.value = value;
         }
@@ -195,6 +260,14 @@ class BytecodeDependencyScannerTest {
     }
 
     static final class Constructed {}
+
+    static final class BranchConstructed {}
+
+    static final class GuardedConstructed {}
+
+    static final class AsyncConstructed {}
+
+    static final class NestedConstructed {}
 
     interface ServiceContract {}
 

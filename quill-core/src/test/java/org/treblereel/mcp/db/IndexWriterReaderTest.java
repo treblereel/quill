@@ -80,6 +80,32 @@ class IndexWriterReaderTest {
     }
 
     @Test
+    void persistsReferencesWhoseCompiledClassHasNoSourceContext() {
+        Jdbi database = QuillDatabase.create(tempDir.resolve("orphan-references.db"));
+        List<ClassRecord> classes = List.of(new ClassRecord(
+                0, "example.GeneratedConsumer", "CLASS", "java.lang.Object", List.of(),
+                null, 0, false, 0, null, "orphan_output", "current", null, null));
+        ConfigurationScanner.Usage usage = new ConfigurationScanner.Usage(
+                "app.name", "config_key", 1, "example.GeneratedConsumer", "read", null,
+                "java.lang.System#getProperty", null, null, null);
+        ResourceUsageRecord resource = new ResourceUsageRecord(
+                "templates/order.html", "resource", 1, "example.GeneratedConsumer", "read",
+                "java.lang.Class#getResource", null, null, null);
+
+        IndexWriter.writeFreshWithConfiguration(database, classes, List.of(), List.of(),
+                List.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                new ConfigurationScanner.Result(List.of(), List.of(usage)), List.of(resource));
+
+        assertNull(database.withHandle(handle -> handle.createQuery(
+                        "SELECT module FROM configuration_usages")
+                .mapTo(String.class).findOne().orElse(null)));
+        assertNull(database.withHandle(handle -> handle.createQuery(
+                        "SELECT source_set FROM resource_usages")
+                .mapTo(String.class).findOne().orElse(null)));
+    }
+
+    @Test
     void persistsMultiplePhysicalOccurrencesForOneLogicalClass() {
         Jdbi database = QuillDatabase.create(tempDir.resolve("occurrences.db"));
         List<ClassRecord> classes = List.of(
@@ -262,7 +288,10 @@ class IndexWriterReaderTest {
                         "src/main/java/example/Target.java", 1, false, 20));
         List<MethodCallRecord> calls = List.of(new MethodCallRecord(
                 1, "run", "()V", 2, "execute", "(Ljava/lang/String;)Z",
-                "virtual", 2, List.of(12, 18)));
+                "virtual", 2, List.of(12, 18), List.of(4, 9), 2, 1,
+                List.of("1>2", "2>4", "2>3", "3>4"),
+                List.of("java.util.concurrent.Executor.execute"),
+                List.of("6|14|java.util.concurrent.Executor|execute|(Ljava/lang/Runnable;)V|scheduling")));
         IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), calls);
@@ -271,6 +300,14 @@ class IndexWriterReaderTest {
         assertEquals(1, inbound.size());
         assertEquals("example.Caller", inbound.getFirst().fromClass());
         assertEquals(List.of(12, 18), inbound.getFirst().evidenceLines());
+        assertEquals(List.of(4, 9), inbound.getFirst().instructionOrdinals());
+        assertEquals(2, inbound.getFirst().callerBranchCount());
+        assertEquals(1, inbound.getFirst().callerExceptionHandlerCount());
+        assertEquals(List.of("1>2", "2>4", "2>3", "3>4"),
+                inbound.getFirst().callerControlFlowEdges());
+        assertEquals(List.of("java.util.concurrent.Executor.execute"),
+                inbound.getFirst().callerAsyncBoundaries());
+        assertEquals(1, inbound.getFirst().callerExternalCalls().size());
         assertEquals(1, IndexReader.countMethodCalls(database, 1, "run", "outbound"));
         assertEquals(1, IndexReader.findMethodCalls(database, 2, "execute",
                 "(Ljava/lang/String;)Z", "inbound", 10, 0).size());

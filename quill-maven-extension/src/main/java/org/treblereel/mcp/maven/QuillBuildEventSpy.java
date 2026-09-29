@@ -15,9 +15,11 @@ import java.util.Properties;
 import java.util.UUID;
 import javax.inject.Named;
 import javax.inject.Singleton;
+import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.eventspy.AbstractEventSpy;
 import org.apache.maven.execution.ExecutionEvent;
 import org.apache.maven.execution.MavenSession;
+import org.apache.maven.project.MavenProject;
 
 /** Records the result of a Maven session for lazy consumption by Quill. */
 @Named
@@ -44,6 +46,7 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
         Path root = eventRoot(reactorRoot, topLevelRoot);
         if (root == null) return;
         try {
+            captureClasspaths(session.getProjects());
             boolean successful = !session.getResult().hasExceptions();
             List<String> messages = failureMessages(session.getResult().getExceptions());
             writeEvent(root.toAbsolutePath().normalize(), successful, messages,
@@ -52,6 +55,48 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
             // A notification must never turn a successful user build into a failed build.
             System.err.println("[quill] Could not record Maven build completion: "
                     + e.getMessage());
+        }
+    }
+
+    static void captureClasspaths(List<MavenProject> projects) {
+        if (projects == null) return;
+        for (MavenProject project : projects) {
+            if (project == null || project.getBasedir() == null) continue;
+            Path output = project.getBasedir().toPath().resolve("target");
+            try {
+                writeClasspath(output.resolve("quill-classpath.txt"),
+                        project.getRuntimeClasspathElements());
+                writeClasspath(output.resolve("quill-test-classpath.txt"),
+                        project.getTestClasspathElements());
+            } catch (DependencyResolutionRequiredException | IOException error) {
+                System.err.println("[quill] Could not capture Maven classpath for "
+                        + project.getArtifactId() + ": " + error.getMessage());
+            }
+        }
+    }
+
+    static void writeClasspath(Path destination, List<String> elements) throws IOException {
+        LinkedHashSet<String> jars = new LinkedHashSet<>();
+        if (elements != null) {
+            for (String element : elements) {
+                if (element == null || !element.endsWith(".jar")) continue;
+                Path path = Path.of(element).toAbsolutePath().normalize();
+                if (Files.isRegularFile(path)) jars.add(path.toString());
+            }
+        }
+        Files.createDirectories(destination.getParent());
+        Path temporary = Files.createTempFile(destination.getParent(), ".classpath-", ".tmp");
+        try {
+            Files.writeString(temporary, String.join(java.io.File.pathSeparator, jars),
+                    StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
+            try {
+                Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 

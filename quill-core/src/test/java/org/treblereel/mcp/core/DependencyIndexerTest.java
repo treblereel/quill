@@ -96,6 +96,20 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void mavenClasspathFailureNamesUnresolvedReactorModules() {
+        List<Path> unresolved = java.util.stream.IntStream.range(0, 12)
+                .mapToObj(index -> tempDir.resolve("module-" + index))
+                .toList();
+
+        String summary = MavenClasspathResolver.moduleSummary(tempDir, unresolved);
+
+        assertTrue(summary.startsWith("module-0, module-1"), summary);
+        assertTrue(summary.contains("module-9"), summary);
+        assertFalse(summary.contains("module-10,"), summary);
+        assertTrue(summary.endsWith("(and 2 more)"), summary);
+    }
+
+    @Test
     void parseClasspathFileReturnsJarPaths() throws Exception {
         Path cpFile = tempDir.resolve("classpath.txt");
         String jar1 = tempDir.resolve("a.jar").toString();
@@ -218,6 +232,31 @@ class DependencyIndexerTest {
 
         assertTrue(cached.detail().contains("loaded from cache"));
         assertEquals(classNames, cachedClassNames);
+    }
+
+    @Test
+    void dependencyIndexIncludesCapturedTestRuntimeClasspath() throws Exception {
+        Path projectDir = Files.createDirectories(tempDir.resolve("test-classpath"));
+        Path mainClasses = Files.createDirectories(projectDir.resolve("target/classes"));
+        Path testClasses = Files.createDirectories(projectDir.resolve("target/test-classes"));
+        Files.writeString(projectDir.resolve("pom.xml"), "<project/>");
+        Path mainJar = writeJar(projectDir.resolve("main.jar"), Map.of(
+                "sample/MainDependency.class",
+                classBytes("sample/MainDependency", "java/lang/Object")), false);
+        Path testJar = writeJar(projectDir.resolve("test.jar"), Map.of(
+                "sample/TestOnlyDependency.class",
+                classBytes("sample/TestOnlyDependency", "java/lang/Object")), false);
+        Files.writeString(projectDir.resolve("target/quill-classpath.txt"), mainJar.toString());
+        Files.writeString(projectDir.resolve("target/quill-test-classpath.txt"),
+                testJar.toString());
+        Files.writeString(projectDir.resolve("target/quill-classpath.sha256"),
+                DependencyIndexer.buildFingerprint(projectDir));
+
+        var indexed = DependencyIndexer.buildDependencyIndex(
+                projectDir, List.of(mainClasses, testClasses));
+
+        assertNotNull(indexed.index().getClassByName("sample.MainDependency"));
+        assertNotNull(indexed.index().getClassByName("sample.TestOnlyDependency"));
     }
 
     @Test

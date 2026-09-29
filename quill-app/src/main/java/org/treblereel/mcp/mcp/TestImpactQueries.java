@@ -50,6 +50,18 @@ final class TestImpactQueries {
         allClasses.forEach(value -> classesById.put(value.id(), value));
         int indexedTestClasses = (int) allClasses.stream()
                 .filter(TestImpactQueries::isTestClass).count();
+        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        List<String> indexedTestModules = metadataList(metadata, "compiled_test_modules");
+        if (indexedTestModules.isEmpty() && indexedTestClasses > 0) {
+            indexedTestModules = allClasses.stream().filter(TestImpactQueries::isTestClass)
+                    .map(cls -> cls.module() == null ? "." : cls.module())
+                    .distinct().sorted().toList();
+        }
+        List<String> missingTestModules = metadataList(metadata, "missing_test_output_modules");
+        List<String> missingTestClasspathModules =
+                metadataList(metadata, "missing_test_classpath_modules");
+        List<String> staleTestOutputModules =
+                metadataList(metadata, "stale_test_output_modules");
         Map<String, Candidate> candidates = new LinkedHashMap<>();
         boolean[] truncatedTraversal = {false};
         int effectiveDepth = transitive ? maxDepth : 1;
@@ -76,12 +88,40 @@ final class TestImpactQueries {
         root.put("compiled_test_outputs_indexed", indexedTestClasses > 0);
         root.put("git_history_available", IndexReader.hasGitData(jdbi));
         root.put("traversal_truncated", truncatedTraversal[0]);
+        ObjectNode coverage = root.putObject("test_index_coverage");
+        boolean incompleteCoverage = !missingTestModules.isEmpty()
+                || !missingTestClasspathModules.isEmpty() || !staleTestOutputModules.isEmpty();
+        String coverageStatus = indexedTestModules.isEmpty() ? "none"
+                : incompleteCoverage ? "partial" : "complete";
+        coverage.put("status", coverageStatus);
+        coverage.set("indexed_modules", JSON.valueToTree(indexedTestModules));
+        coverage.set("missing_modules", JSON.valueToTree(missingTestModules));
+        coverage.set("missing_classpath_modules",
+                JSON.valueToTree(missingTestClasspathModules));
+        coverage.set("stale_modules", JSON.valueToTree(staleTestOutputModules));
+        coverage.put("indexed_test_classes", indexedTestClasses);
+        coverage.put("complete", coverageStatus.equals("complete"));
+        root.put("static_evidence_available", indexedTestClasses > 0);
+        root.put("historical_evidence_available", IndexReader.hasGitData(jdbi));
+        root.put("answer_complete", coverageStatus.equals("complete") && !truncatedTraversal[0]);
         ArrayNode limitations = root.putArray("limitations");
         if (indexedTestClasses == 0) {
             limitations.add("No compiled test classes are indexed; static impact may be incomplete");
         }
         if (!IndexReader.hasGitData(jdbi)) {
             limitations.add("Git co-change evidence is unavailable");
+        }
+        if (!missingTestModules.isEmpty()) {
+            limitations.add("Compiled test outputs are missing for modules: "
+                    + String.join(", ", missingTestModules));
+        }
+        if (!missingTestClasspathModules.isEmpty()) {
+            limitations.add("Captured test runtime classpaths are missing for modules: "
+                    + String.join(", ", missingTestClasspathModules));
+        }
+        if (!staleTestOutputModules.isEmpty()) {
+            limitations.add("Compiled test outputs are older than test sources for modules: "
+                    + String.join(", ", staleTestOutputModules));
         }
         if (truncatedTraversal[0]) {
             limitations.add("Static traversal stopped at " + MAX_EXPANDED_CLASSES + " classes");
@@ -97,6 +137,12 @@ final class TestImpactQueries {
             node.put("score", candidate.score());
             node.put("confidence", confidence(candidate));
             node.put("static", candidate.staticDepth() != null);
+            ArrayNode evidence = node.putArray("evidence");
+            if (candidate.staticDepth() != null) {
+                evidence.add(candidate.staticDepth() == 1
+                        ? "static_direct" : "static_transitive");
+            }
+            if (candidate.coChangeCount() > 0) evidence.add("historical_co_change");
             if (candidate.staticDepth() != null) {
                 node.put("dependency_depth", candidate.staticDepth());
                 node.set("dependency_path", JSON.valueToTree(candidate.dependencyPath()));
@@ -225,6 +271,16 @@ final class TestImpactQueries {
         if (candidate.staticDepth() != null && candidate.staticDepth() <= 1) return "high";
         if (candidate.staticDepth() != null || candidate.coChangeCount() >= 2) return "medium";
         return "low";
+    }
+
+    private static List<String> metadataList(Map<String, String> metadata, String key) {
+        String value = metadata.get(key);
+        if (value == null || value.isBlank()) return List.of();
+        try {
+            return JSON.readTree(value).valueStream().map(node -> node.asText()).toList();
+        } catch (Exception ignored) {
+            return List.of();
+        }
     }
 
     private record PathNode(

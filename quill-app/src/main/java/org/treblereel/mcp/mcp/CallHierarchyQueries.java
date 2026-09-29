@@ -29,14 +29,26 @@ final class CallHierarchyQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> DIRECTIONS = Set.of("inbound", "outbound", "both");
+    private static final Set<String> SCOPES = Set.of("all", "cross_class", "cross_package");
     private static final int TRAVERSAL_EDGE_CAP = 5_000;
 
     String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
             String direction, boolean transitive, int maxDepth, int limit, int offset) {
+        return getCallHierarchy(jdbi, target, method, signature, direction, transitive,
+                maxDepth, "all", limit, offset);
+    }
+
+    String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
+            String direction, boolean transitive, int maxDepth, String scope,
+            int limit, int offset) {
         String normalizedDirection = direction == null
                 ? "both" : direction.trim().toLowerCase(Locale.ROOT);
         if (!DIRECTIONS.contains(normalizedDirection)) {
             return errorResponse("Invalid direction: expected inbound, outbound, or both");
+        }
+        String normalizedScope = scope == null ? "all" : scope.trim().toLowerCase(Locale.ROOT);
+        if (!SCOPES.contains(normalizedScope)) {
+            return errorResponse("Invalid scope: expected all, cross_class, or cross_package");
         }
         String normalizedMethod = method == null || method.isBlank() ? null : method.trim();
         String normalizedSignature = signature == null || signature.isBlank()
@@ -83,13 +95,14 @@ final class CallHierarchyQueries {
             if ("CONSTRUCTOR".equals(selected.kind())) bytecodeMethod = "<init>";
         }
 
-        TraversalResult result = transitive
+        TraversalResult unfiltered = transitive
                 ? traverse(jdbi, cls.id(), bytecodeMethod, descriptor,
                         normalizedDirection, maxDepth)
                 : direct(jdbi, cls.id(), bytecodeMethod, descriptor,
-                        normalizedDirection, limit, offset);
-        List<TraversalEdge> page = transitive
-                ? page(result.edges(), offset, limit) : result.edges();
+                        normalizedDirection, TRAVERSAL_EDGE_CAP, 0);
+        List<TraversalEdge> filtered = unfiltered.edges().stream()
+                .filter(edge -> inScope(edge.call(), normalizedScope)).toList();
+        List<TraversalEdge> page = page(filtered, offset, limit);
 
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
@@ -104,8 +117,10 @@ final class CallHierarchyQueries {
         root.put("direct_only", !transitive);
         root.put("transitive", transitive);
         root.put("max_depth", transitive ? maxDepth : 1);
+        root.put("scope", normalizedScope);
+        root.put("suppressed_call_count", unfiltered.edges().size() - filtered.size());
         root.put("traversal_edge_cap", TRAVERSAL_EDGE_CAP);
-        root.put("traversal_truncated", result.truncated());
+        root.put("traversal_truncated", unfiltered.truncated());
         if (normalizedMethod != null) {
             root.put("declared_method_match_count", selected == null ? 0 : 1);
             root.put("declared_method_found", selected != null);
@@ -141,9 +156,23 @@ final class CallHierarchyQueries {
             if (countedClasses.add(call.fromClassId())) naiveTokens += call.fromSourceTokens();
             if (countedClasses.add(call.toClassId())) naiveTokens += call.toSourceTokens();
         }
-        appendPage(root, page.size(), result.total(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendPage(root, page.size(), filtered.size(), limit, offset);
+        appendMeta(root, jdbi, naiveTokens, cls.sourceFile(), cls.module());
         return root.toString();
+    }
+
+    private static boolean inScope(MethodCallView call, String scope) {
+        if ("all".equals(scope)) return true;
+        if (call.fromClass().equals(call.toClass())) return false;
+        return !"cross_package".equals(scope)
+                || !packageName(call.fromClass()).equals(packageName(call.toClass()));
+    }
+
+    private static String packageName(String className) {
+        int nested = className.indexOf('$');
+        String owner = nested < 0 ? className : className.substring(0, nested);
+        int separator = owner.lastIndexOf('.');
+        return separator < 0 ? "" : owner.substring(0, separator);
     }
 
     private static TraversalResult direct(Jdbi jdbi, int classId, String method,
@@ -154,7 +183,7 @@ final class CallHierarchyQueries {
                 .toList();
         int total = IndexReader.countMethodCalls(
                 jdbi, classId, method, descriptor, direction);
-        return new TraversalResult(edges, total, false);
+        return new TraversalResult(edges, total, total > edges.size());
     }
 
     private static TraversalResult traverse(Jdbi jdbi, int classId, String method,

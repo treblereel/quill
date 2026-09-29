@@ -17,6 +17,43 @@ class McpJsonInstallerTest {
     @TempDir Path project;
 
     @Test
+    void createsProjectEntryAndRemovesItsOwnEmptyFile() throws Exception {
+        assertEquals(McpJsonInstaller.Result.ADDED,
+                McpJsonInstaller.installProject(project, "/opt/quill"));
+        var quill = JSON.readTree(project.resolve(".mcp.json").toFile())
+                .path("mcpServers").path("quill");
+        assertEquals("stdio", quill.path("type").asText());
+        assertEquals("/opt/quill", quill.path("command").asText());
+        assertEquals("--mcp", quill.path("args").get(0).asText());
+        assertEquals(project.toAbsolutePath().normalize().toString(),
+                quill.path("cwd").asText());
+
+        assertEquals(McpJsonInstaller.Result.UNCHANGED,
+                McpJsonInstaller.installProject(project, "/opt/quill"));
+        assertEquals(McpJsonInstaller.Result.REMOVED,
+                McpJsonInstaller.uninstallProject(project));
+        assertFalse(Files.exists(project.resolve(".mcp.json")));
+    }
+
+    @Test
+    void projectUninstallPreservesOtherServersAndSettings() throws Exception {
+        Files.writeString(project.resolve(".mcp.json"), """
+                {"mcpServers": {
+                  "quill": {"command": "quill", "args": ["--mcp"]},
+                  "other": {"command": "other-server"}
+                }, "projectSetting": true}
+                """);
+
+        assertEquals(McpJsonInstaller.Result.REMOVED,
+                McpJsonInstaller.uninstallProject(project));
+        var root = JSON.readTree(project.resolve(".mcp.json").toFile());
+        assertTrue(root.path("projectSetting").asBoolean());
+        assertEquals("other-server",
+                root.path("mcpServers").path("other").path("command").asText());
+        assertFalse(root.path("mcpServers").has("quill"));
+    }
+
+    @Test
     void createsWorkspaceEntryAndRemovesItsOwnEmptyFile() throws Exception {
         Path workspace = project.resolve("workspace");
 

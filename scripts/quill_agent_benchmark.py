@@ -125,6 +125,12 @@ def arguments() -> argparse.Namespace:
                         choices=("none", "low", "medium", "high", "xhigh", "max"),
                         default="medium")
     parser.add_argument("--quill", default=os.environ.get("QUILL_BIN", "quill"))
+    parser.add_argument("--quill-profile", choices=("default", "router"),
+                        default="default",
+                        help="MCP catalog exposed by Quill (default: the normal full catalog)")
+    parser.add_argument("--tool-selection", choices=("suite", "all"), default="suite",
+                        help="Expose each task's quill_tools allowlist or every tool in the "
+                             "selected Quill profile (default: suite)")
     parser.add_argument("--output-dir", type=Path, default=Path("target/benchmarks"))
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--api-base", default="https://api.openai.com/v1")
@@ -508,9 +514,14 @@ def json_type(value: Any) -> str:
     return "null"
 
 
-def selected_quill_tools(task: dict[str, Any], quill: QuillTools | None) -> list[dict[str, Any]]:
+def selected_quill_tools(task: dict[str, Any], quill: QuillTools | None,
+                         selection: str = "suite") -> list[dict[str, Any]]:
     if quill is None:
         return []
+    if selection == "all":
+        return quill.definitions
+    if selection != "suite":
+        raise ValueError(f"Unknown Quill tool selection: {selection}")
     requested = task.get("quill_tools")
     if requested is None:
         return quill.definitions
@@ -527,12 +538,12 @@ def selected_quill_tools(task: dict[str, Any], quill: QuillTools | None) -> list
 
 def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: str,
               reasoning_effort: str, source: SourceTools,
-              quill: QuillTools | None) -> dict[str, Any]:
+              quill: QuillTools | None, tool_selection: str = "suite") -> dict[str, Any]:
     expected = task.get("expected")
     if not isinstance(expected, dict) or not expected:
         raise ValueError(f"Task {task.get('id')} has no expected object")
     expected_shape = {key: json_type(value) for key, value in expected.items()}
-    quill_tools = selected_quill_tools(task, quill)
+    quill_tools = selected_quill_tools(task, quill, tool_selection)
     tools = [*SOURCE_TOOLS, *quill_tools]
     tool_catalog_bytes = len(json.dumps(tools, ensure_ascii=False).encode())
     instructions = (
@@ -679,6 +690,9 @@ def main() -> int:
     quill_command = args.quill
     if os.sep in quill_command or (os.altsep and os.altsep in quill_command):
         quill_command = str(Path(quill_command).resolve())
+    quill_launch_command = [quill_command]
+    if args.quill_profile == "router":
+        quill_launch_command.extend(["--tools", "router"])
     captures: dict[str, list[dict[str, Any]]] = {
         "with_quill": [], "without_quill": []}
     for repetition in range(args.repetitions):
@@ -687,6 +701,8 @@ def main() -> int:
                 "mode": mode,
                 "run_index": repetition + 1,
                 "project_revision": revision,
+                "quill_profile": args.quill_profile,
+                "tool_selection": args.tool_selection,
                 "order_schedule": [],
                 "tasks": [],
             }
@@ -705,10 +721,11 @@ def main() -> int:
                       f"[{mode}] {task.get('id')}...", file=sys.stderr)
                 source = SourceTools(project, args.tool_output_limit)
                 if mode == "with_quill":
-                    with QuillTools([quill_command], project, args.timeout,
+                    with QuillTools(quill_launch_command, project, args.timeout,
                                     args.tool_output_limit) as quill:
                         result = run_agent(client, task, mode, args.model,
-                                           args.reasoning_effort, source, quill)
+                                           args.reasoning_effort, source, quill,
+                                           args.tool_selection)
                 else:
                     result = run_agent(client, task, mode, args.model,
                                        args.reasoning_effort, source, None)
@@ -724,6 +741,8 @@ def main() -> int:
             "schema_version": 2,
             "mode": mode,
             "project_revision": revision,
+            "quill_profile": args.quill_profile,
+            "tool_selection": args.tool_selection,
             "repetitions": len(runs),
             "runs": runs,
         }

@@ -65,11 +65,13 @@ public final class IndexWriter {
     private static final TableSpec METHOD_CALLS = new TableSpec("method_calls",
             "from_class_id", "from_method", "from_descriptor", "to_class_id",
             "to_method", "to_descriptor", "invocation_kind", "occurrence_count",
-            "evidence_lines");
+            "evidence_lines", "instruction_ordinals", "caller_branch_count",
+            "caller_exception_handler_count", "caller_control_flow_edges",
+            "caller_async_boundaries", "caller_external_calls");
     private static final TableSpec FIELD_ACCESSES = new TableSpec("field_accesses",
             "from_class_id", "from_method", "from_descriptor", "to_class_id",
             "field_name", "field_descriptor", "access_kind", "occurrence_count",
-            "evidence_lines");
+            "evidence_lines", "instruction_ordinals");
     private static final TableSpec BEANS = new TableSpec("beans",
             "id", "class_id", "kind", "scope", "qualifiers", "stereotypes",
             "is_alternative", "is_default", "priority", "profiles", "declaring_class_id",
@@ -548,7 +550,7 @@ public final class IndexWriter {
     private static void insertDesiredMethodCalls(
             Handle h, List<MethodCallRecord> methodCalls) {
         executeBatch(h,
-                "INSERT INTO desired_method_calls (from_class_id, from_method, from_descriptor, to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO desired_method_calls (from_class_id, from_method, from_descriptor, to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines, instruction_ordinals, caller_branch_count, caller_exception_handler_count, caller_control_flow_edges, caller_async_boundaries, caller_external_calls) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 methodCalls, (statement, call) -> {
                     statement.setInt(1, call.fromClassId());
                     statement.setString(2, call.fromMethod());
@@ -560,13 +562,23 @@ public final class IndexWriter {
                     statement.setInt(8, call.occurrenceCount());
                     statement.setString(9, call.evidenceLines().isEmpty()
                             ? "[]" : toJson(call.evidenceLines()));
+                    statement.setString(10, call.instructionOrdinals().isEmpty()
+                            ? "[]" : toJson(call.instructionOrdinals()));
+                    statement.setInt(11, call.callerBranchCount());
+                    statement.setInt(12, call.callerExceptionHandlerCount());
+                    statement.setString(13, call.callerControlFlowEdges().isEmpty()
+                            ? "[]" : toJson(call.callerControlFlowEdges()));
+                    statement.setString(14, call.callerAsyncBoundaries().isEmpty()
+                            ? "[]" : toJson(call.callerAsyncBoundaries()));
+                    statement.setString(15, call.callerExternalCalls().isEmpty()
+                            ? "[]" : toJson(call.callerExternalCalls()));
                 });
     }
 
     private static void insertDesiredFieldAccesses(
             Handle h, List<FieldAccessRecord> fieldAccesses) {
         executeBatch(h,
-                "INSERT INTO desired_field_accesses (from_class_id, from_method, from_descriptor, to_class_id, field_name, field_descriptor, access_kind, occurrence_count, evidence_lines) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO desired_field_accesses (from_class_id, from_method, from_descriptor, to_class_id, field_name, field_descriptor, access_kind, occurrence_count, evidence_lines, instruction_ordinals) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 fieldAccesses, (statement, access) -> {
                     statement.setInt(1, access.fromClassId());
                     statement.setString(2, access.fromMethod());
@@ -578,6 +590,8 @@ public final class IndexWriter {
                     statement.setInt(8, access.occurrenceCount());
                     statement.setString(9, access.evidenceLines().isEmpty()
                             ? "[]" : toJson(access.evidenceLines()));
+                    statement.setString(10, access.instructionOrdinals().isEmpty()
+                            ? "[]" : toJson(access.instructionOrdinals()));
                 });
     }
 
@@ -1089,7 +1103,7 @@ public final class IndexWriter {
 
     private static void insertMethodCalls(Handle h, List<MethodCallRecord> methodCalls) {
         executeBatch(h,
-                "INSERT INTO method_calls (from_class_id, from_method, from_descriptor, to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO method_calls (from_class_id, from_method, from_descriptor, to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines, instruction_ordinals, caller_branch_count, caller_exception_handler_count, caller_control_flow_edges, caller_async_boundaries, caller_external_calls) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 methodCalls, (statement, call) -> {
                     statement.setInt(1, call.fromClassId());
                     statement.setString(2, call.fromMethod());
@@ -1101,12 +1115,22 @@ public final class IndexWriter {
                     statement.setInt(8, call.occurrenceCount());
                     statement.setString(9, call.evidenceLines().isEmpty()
                             ? "[]" : toJson(call.evidenceLines()));
+                    statement.setString(10, call.instructionOrdinals().isEmpty()
+                            ? "[]" : toJson(call.instructionOrdinals()));
+                    statement.setInt(11, call.callerBranchCount());
+                    statement.setInt(12, call.callerExceptionHandlerCount());
+                    statement.setString(13, call.callerControlFlowEdges().isEmpty()
+                            ? "[]" : toJson(call.callerControlFlowEdges()));
+                    statement.setString(14, call.callerAsyncBoundaries().isEmpty()
+                            ? "[]" : toJson(call.callerAsyncBoundaries()));
+                    statement.setString(15, call.callerExternalCalls().isEmpty()
+                            ? "[]" : toJson(call.callerExternalCalls()));
                 });
     }
 
     private static void insertFieldAccesses(Handle h, List<FieldAccessRecord> fieldAccesses) {
         executeBatch(h,
-                "INSERT INTO field_accesses (from_class_id, from_method, from_descriptor, to_class_id, field_name, field_descriptor, access_kind, occurrence_count, evidence_lines) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO field_accesses (from_class_id, from_method, from_descriptor, to_class_id, field_name, field_descriptor, access_kind, occurrence_count, evidence_lines, instruction_ordinals) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 fieldAccesses, (statement, access) -> {
                     statement.setInt(1, access.fromClassId());
                     statement.setString(2, access.fromMethod());
@@ -1118,6 +1142,8 @@ public final class IndexWriter {
                     statement.setInt(8, access.occurrenceCount());
                     statement.setString(9, access.evidenceLines().isEmpty()
                             ? "[]" : toJson(access.evidenceLines()));
+                    statement.setString(10, access.instructionOrdinals().isEmpty()
+                            ? "[]" : toJson(access.instructionOrdinals()));
                 });
     }
 

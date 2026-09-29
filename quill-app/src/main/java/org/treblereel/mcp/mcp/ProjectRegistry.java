@@ -6,10 +6,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.command.ProjectIndexStore;
 import org.treblereel.mcp.command.ProjectInitializer;
@@ -17,6 +18,7 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ProjectCodeExpectation;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
 
 public class ProjectRegistry {
 
@@ -197,7 +199,7 @@ public class ProjectRegistry {
     private static ProjectIssue buildRequiredIssueUncached(
             ProjectScope.Project project, BuildSystem buildSystem) {
         Path root = project.root().toAbsolutePath().normalize();
-        if (!ProjectInitializer.findClassesDirs(root).isEmpty()) return null;
+        if (!ProjectInitializer.findMainClassesDirs(root).isEmpty()) return null;
         if (ProjectCodeExpectation.inspect(root, buildSystem)
                 == ProjectCodeExpectation.State.METADATA_ONLY) {
             return new ProjectIssue(project.name(), root, "metadata_only",
@@ -254,6 +256,17 @@ public class ProjectRegistry {
     }
 
     public void prewarm() {
+        if (scope instanceof WorkspaceProjectScope workspace) {
+            // The dependency graph (which also builds the coordinate catalog) and the SQLite
+            // registry are independent. Keep both on the startup critical path so the first MCP
+            // request stays fast, but prepare them concurrently.
+            CompletableFuture<Void> graph = CompletableFuture.runAsync(
+                    () -> WorkspaceDependencyGraph.discover(workspace.manifest()),
+                    PREWARM_EXECUTOR);
+            CompletableFuture<Resolution> indexes = CompletableFuture.supplyAsync(
+                    this::resolve, PREWARM_EXECUTOR);
+            CompletableFuture.allOf(graph, indexes).join();
+        }
         prewarm(PREWARM_EXECUTOR);
     }
 

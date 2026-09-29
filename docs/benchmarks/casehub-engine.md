@@ -13,6 +13,21 @@ Maven, Gradle, or dependency caches. Existing index data is restored afterwards.
 results from similar hosts and cache conditions; use several runs before treating a change
 as a regression.
 
+## Native regression — 2026-09-18
+
+- Quill commit: `3cb4e7d`
+- GraalVM: CE 25.0.1, macOS arm64
+- Native binary: 41.48 MB
+- Native-image peak RSS: 2.43 GB
+- Full `mvn install -Pnative`: all 16 reactor modules passed in 2 min 7 s
+- Native integration suite: 20 tests passed, including MCP stdio, concurrent index
+  publication, Maven and Gradle multi-module projects, Spring, CDI, and annotation processing
+
+A direct native MCP smoke test against the Casehub workspace returned structured content
+without tool errors. Workspace initialization took 1.01 s and the first
+`list_workspace_repositories` call took 223 ms. The binary is about 1.8 MB larger than the
+September 14 baseline; distribution-size optimization remains separate from correctness work.
+
 ## Current baseline — 2026-09-14
 
 - Quill commit: `8a64629`
@@ -79,14 +94,13 @@ generation: 752 requests completed with zero tool, transport, timeout, or SQLite
 and the client observed the new `index_id` after publication. All five dirty worktree
 paths remained visible through the live overlay.
 
-The refresh also exposed an environment-sensitive degradation: the reactor-wide Maven
+The refresh also exposed an environment-sensitive degradation: the former reactor-wide Maven
 `dependency:build-classpath` invocation stopped when `casehub-engine-common` attempted to
 resolve the reactor SNAPSHOT `casehub-engine-common-core` from a GitHub Packages repository
-that returned HTTP 401. Quill retained the usable cached dependency index and reported
-`50/56 modules resolved`, but the active generation is marked `dependency_index=degraded`.
-The next Quill improvement should preserve the graceful fallback while reporting the
-failed module and Maven root cause directly, and should avoid requiring installed reactor
-artifacts when collecting external dependencies for a multi-module project.
+that returned HTTP 401. The resolver now builds a synthetic external-dependency reactor and
+removes exact reactor GAVs, so internal modules do not need to be installed or downloaded.
+Partial failures preserve usable classpaths and report the unresolved module paths together
+with Maven's root diagnostic instead of only a count such as `50/56 modules resolved`.
 
 ## Baseline — 2026-09-12
 

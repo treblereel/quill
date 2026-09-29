@@ -36,6 +36,17 @@ class CliCommandTest {
     }
 
     @Test
+    void rootHelpDocumentsStructuredDebugMode() {
+        StringWriter output = new StringWriter();
+        CommandLine cli = new CommandLine(new QuillTopCommand());
+        cli.setOut(new PrintWriter(output));
+
+        assertEquals(CommandLine.ExitCode.OK, cli.execute("--help"));
+        assertTrue(output.toString().contains("--debug"));
+        assertTrue(output.toString().contains("--debug-directory"));
+    }
+
+    @Test
     void expectedCommandFailureReturnsSoftwareExitCode(@TempDir Path project) throws Exception {
         Files.createFile(project.resolve("pom.xml"));
 

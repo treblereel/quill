@@ -71,15 +71,19 @@ final class MavenClasspathResolver {
                     "dependency:build-classpath", "-DincludeScope=runtime",
                     "-Dmdep.outputFile=target/quill-classpath.txt", "-q"), temporary);
 
-            int copied = publishClasspaths(syntheticRoot, modules);
+            ClasspathPublication publication = publishClasspaths(syntheticRoot, modules);
             if (resolved.exitCode() != 0) {
                 return failure("Maven external dependency classpath generation ("
-                        + copied + "/" + modules.size() + " modules resolved)", resolved);
+                        + publication.copied() + "/" + modules.size() + " modules resolved; "
+                        + "unresolved: " + moduleSummary(projectRoot, publication.unresolved())
+                        + ")", resolved);
             }
-            if (copied != modules.size()) {
+            if (publication.copied() != modules.size()) {
                 return DependencyIndexer.ClasspathGenerationResult.failure(
-                        "Maven external dependency classpath generation produced " + copied + "/"
-                                + modules.size() + " module classpaths");
+                        "Maven external dependency classpath generation produced "
+                                + publication.copied() + "/" + modules.size()
+                                + " module classpaths; unresolved: "
+                                + moduleSummary(projectRoot, publication.unresolved()));
             }
             return DependencyIndexer.ClasspathGenerationResult.success();
         } catch (IOException | XmlPullParserException | RuntimeException e) {
@@ -129,19 +133,37 @@ final class MavenClasspathResolver {
         return DependencyIndexer.ClasspathGenerationResult.failure(detail);
     }
 
-    private static int publishClasspaths(Path syntheticRoot, List<SyntheticModule> modules)
+    private static ClasspathPublication publishClasspaths(
+            Path syntheticRoot, List<SyntheticModule> modules)
             throws IOException {
         int copied = 0;
+        List<Path> unresolved = new ArrayList<>();
         for (int i = 0; i < modules.size(); i++) {
             Path generated = syntheticRoot.resolve("module-" + i)
                     .resolve("target/quill-classpath.txt");
-            if (!Files.isRegularFile(generated)) continue;
+            if (!Files.isRegularFile(generated)) {
+                unresolved.add(modules.get(i).moduleDirectory());
+                continue;
+            }
             Path destination = BuildSystem.MAVEN.classpathFile(modules.get(i).moduleDirectory());
             Files.createDirectories(destination.getParent());
             Files.copy(generated, destination, StandardCopyOption.REPLACE_EXISTING);
             copied++;
         }
-        return copied;
+        return new ClasspathPublication(copied, List.copyOf(unresolved));
+    }
+
+    static String moduleSummary(Path projectRoot, List<Path> modules) {
+        int limit = Math.min(modules.size(), 10);
+        List<String> names = modules.stream().limit(limit).map(module -> {
+            Path normalized = module.toAbsolutePath().normalize();
+            Path root = projectRoot.toAbsolutePath().normalize();
+            return normalized.startsWith(root) ? root.relativize(normalized).toString()
+                    : normalized.toString();
+        }).toList();
+        String summary = String.join(", ", names);
+        if (modules.size() > limit) summary += " (and " + (modules.size() - limit) + " more)";
+        return summary.isBlank() ? "none" : summary;
     }
 
     private static void writeSyntheticReactor(Path root, List<SyntheticModule> modules,
@@ -405,6 +427,8 @@ final class MavenClasspathResolver {
     }
 
     private record ProcessResult(int exitCode, String diagnostic) {}
+
+    private record ClasspathPublication(int copied, List<Path> unresolved) {}
 
     private record Coordinate(String groupId, String artifactId) {}
 

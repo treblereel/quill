@@ -283,9 +283,10 @@ public class ProjectInitializer {
         ProjectLayout.ClassesDiscovery classesDiscovery =
                 ProjectLayout.discoverClassesDirs(root, true);
         List<Path> classesDirs = classesDiscovery.classesDirectories();
+        List<ProjectLayout.CompiledOutput> compiledOutputs = classesDiscovery.outputs();
         timings.finish("class_discovery");
 
-        if (classesDirs.isEmpty()) {
+        if (compiledOutputs.stream().noneMatch(output -> output.sourceSet().equals("main"))) {
             return InitializationResult.failure(FailureReason.NO_COMPILED_CLASSES,
                     "No main .class files were found under " + root
                             + ". Build the project with Maven or Gradle, then run `quill init` again.",
@@ -314,8 +315,16 @@ public class ProjectInitializer {
 
         System.err.println("[quill] Indexing " + root.getFileName() + " (" + classesDirs.size() + " class dirs)...");
         BuildSystem buildSystem = BuildSystem.detect(root);
-        Map<Path, Path> classDirectoryOwners =
-                DependencyIndexer.mapClassDirectoriesToModules(root, buildSystem, classesDirs);
+        Map<Path, Path> classDirectoryOwners = compiledOutputs.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ProjectLayout.CompiledOutput::directory,
+                        ProjectLayout.CompiledOutput::moduleDirectory,
+                        (left, right) -> left, LinkedHashMap::new));
+        Map<Path, String> classDirectorySourceSets = compiledOutputs.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ProjectLayout.CompiledOutput::directory,
+                        ProjectLayout.CompiledOutput::sourceSet,
+                        (left, right) -> left, LinkedHashMap::new));
         List<Path> moduleDirectories = classDirectoryOwners.values().stream().distinct().toList();
         List<ModuleClasspathRecord> moduleClasspath = ModuleClasspathResolver.resolve(
                 root, buildSystem, moduleDirectories);
@@ -329,7 +338,8 @@ public class ProjectInitializer {
         DependencyIndexer.DependencyIndexResult depResult;
         try (BackgroundTask<DependencyIndexer.DependencyIndexResult> dependencyTask =
                 BackgroundTask.start("quill-dependency-index",
-                        () -> DependencyIndexer.buildDependencyIndex(root, indexingClassDirs))) {
+                        () -> DependencyIndexer.buildDependencyIndex(
+                                root, indexingClassDirs, classDirectorySourceSets))) {
             classFiles = ClassFileSnapshot.capture(indexingClassDirs);
             scanResult = sourceRoots.isEmpty()
                     ? JandexScanner.scan(classFiles, List.of(),
@@ -375,7 +385,8 @@ public class ProjectInitializer {
                 JandexScanner.extractFrameworkEndpoints(
                         scanResult.index(), classNameToSqliteId);
         List<ClassOccurrenceRecord> classOccurrences = ClassOccurrenceScanner.scan(
-                root, classFiles, classDirectoryOwners, classNameToSqliteId);
+                root, classFiles, classDirectoryOwners, classDirectorySourceSets,
+                classNameToSqliteId);
 
         Map<String, Integer> sourceFileToClassId = new HashMap<>();
         for (int i = 0; i < classes.size(); i++) {
@@ -424,8 +435,7 @@ public class ProjectInitializer {
             ClassRecord c = classes.get(i);
             boolean isBean = beanClassIds.contains(i + 1);
             if (isBean != c.isBean()) {
-                c = new ClassRecord(c.id(), c.className(), c.kind(), c.superclass(),
-                        c.interfaces(), c.sourceFile(), c.sourceLine(), isBean, c.sourceTokens());
+                c = c.withBean(isBean);
             }
             correctedClasses.add(c);
         }
@@ -465,7 +475,10 @@ public class ProjectInitializer {
                 if (from != null && to != null) {
                     methodCalls.add(new MethodCallRecord(from, call.fromMethod(),
                             call.fromDescriptor(), to, call.toMethod(), call.toDescriptor(),
-                            call.invocationKind(), call.occurrences(), call.evidenceLines()));
+                            call.invocationKind(), call.occurrences(), call.evidenceLines(),
+                            call.instructionOrdinals(), call.callerBranchCount(),
+                            call.callerExceptionHandlerCount(), call.callerControlFlowEdges(),
+                            call.callerAsyncBoundaries(), call.callerExternalCalls()));
                 }
             }
             for (BytecodeDependencyScanner.StaticFieldAccess access : bytecode.fieldAccesses()) {
@@ -475,7 +488,7 @@ public class ProjectInitializer {
                     fieldAccesses.add(new FieldAccessRecord(from, access.fromMethod(),
                             access.fromDescriptor(), to, access.fieldName(),
                             access.fieldDescriptor(), access.accessKind(), access.occurrences(),
-                            access.evidenceLines()));
+                            access.evidenceLines(), access.instructionOrdinals()));
                 }
             }
             timings.finish("bytecode_analysis");
@@ -578,12 +591,46 @@ public class ProjectInitializer {
         metadata.put("module_discovery_scope", classesDiscovery.moduleScope());
         metadata.put("module_discovery_complete",
                 Boolean.toString(classesDiscovery.complete()));
+        metadata.put("compiled_main_output_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("main")).count()));
+        metadata.put("compiled_test_output_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("test")).count()));
+        metadata.put("compiled_test_module_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("test"))
+                .map(ProjectLayout.CompiledOutput::moduleDirectory).distinct().count()));
+        Set<Path> testModules = compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("test"))
+                .map(ProjectLayout.CompiledOutput::moduleDirectory)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<Path> mainModules = compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("main"))
+                .map(ProjectLayout.CompiledOutput::moduleDirectory)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        metadata.put("compiled_test_modules", toJson(testModules.stream()
+                .map(module -> relativeModule(root, module)).sorted().toList()));
+        metadata.put("missing_test_output_modules", toJson(mainModules.stream()
+                .filter(ProjectLayout::hasTestSources)
+                .filter(module -> !testModules.contains(module.toAbsolutePath().normalize()))
+                .map(module -> relativeModule(root, module)).sorted().toList()));
+        Set<Path> testClasspathModules = testModules.stream()
+                .filter(module -> Files.isRegularFile(buildSystem.testClasspathFile(module)))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        metadata.put("test_classpath_module_count",
+                Integer.toString(testClasspathModules.size()));
+        metadata.put("missing_test_classpath_modules", toJson(testModules.stream()
+                .filter(module -> !testClasspathModules.contains(module))
+                .map(module -> relativeModule(root, module)).sorted().toList()));
+        metadata.put("stale_test_output_modules", toJson(
+                ProjectLayout.staleTestOutputModules(compiledOutputs).stream()
+                        .map(module -> relativeModule(root, module)).sorted().toList()));
         metadata.put("application_index_cache_hits",
                 Integer.toString(scanResult.cacheHits()));
         metadata.put("application_index_cache_shards",
                 Integer.toString(scanResult.cacheShards()));
         metadata.put("class_occurrences", Integer.toString(classOccurrences.size()));
         metadata.put("module_contexts", Integer.toString(moduleDirectories.size()));
+        metadata.put("discovered_module_count",
+                Integer.toString(classesDiscovery.moduleDirectories().size()));
         metadata.put("module_classpath_entries", Integer.toString(moduleClasspath.size()));
         metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
@@ -721,6 +768,15 @@ public class ProjectInitializer {
         }
     }
 
+    private static String relativeModule(Path root, Path module) {
+        Path normalizedRoot = root.toAbsolutePath().normalize();
+        Path normalizedModule = module.toAbsolutePath().normalize();
+        if (normalizedModule.equals(normalizedRoot)) return ".";
+        return normalizedModule.startsWith(normalizedRoot)
+                ? normalizedRoot.relativize(normalizedModule).toString().replace('\\', '/')
+                : normalizedModule.toString().replace('\\', '/');
+    }
+
     static String serviceRegistrationsJson(
             List<ServiceProviderScanner.Registration> registrations) {
         List<Map<String, Object>> rows = registrations.stream()
@@ -770,6 +826,12 @@ public class ProjectInitializer {
 
     public static List<Path> findClassesDirs(Path root) {
         return ProjectLayout.findClassesDirs(root, false);
+    }
+
+    public static List<Path> findMainClassesDirs(Path root) {
+        return ProjectLayout.discoverClassesDirs(root, false).outputs().stream()
+                .filter(output -> output.sourceSet().equals("main"))
+                .map(ProjectLayout.CompiledOutput::directory).toList();
     }
 
     static String computeStateFingerprint(Path root, List<Path> classesDirs) {

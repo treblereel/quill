@@ -2,6 +2,7 @@ package org.treblereel.mcp.mcp;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.command.BuildProblemInspector;
 import org.treblereel.mcp.command.BuildStatusInspector;
@@ -38,6 +39,9 @@ public final class QuillToolQueries {
     private final ServiceDescriptorQueries serviceDescriptors = new ServiceDescriptorQueries();
     private final ConfigurationReferenceQueries configurationReferences =
             new ConfigurationReferenceQueries();
+    private final StateLifecycleQueries stateLifecycle = new StateLifecycleQueries();
+    private final ExecutionOrderQueries executionOrder = new ExecutionOrderQueries();
+    private final DesignImpactQueries designImpact = new DesignImpactQueries();
     private final ResourceReferenceQueries resourceReferences = new ResourceReferenceQueries();
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
@@ -126,6 +130,30 @@ public final class QuillToolQueries {
             String direction, boolean transitive, int maxDepth, int limit, int offset) {
         return callHierarchy.getCallHierarchy(jdbi, target, method, signature, direction,
                 transitive, maxDepth, limit, offset);
+    }
+
+    String traceStateLifecycle(Jdbi jdbi, String target, int evidenceLimit) {
+        return stateLifecycle.trace(jdbi, target, evidenceLimit);
+    }
+
+    String analyzeExecutionOrder(Jdbi jdbi, String target, String method, String signature) {
+        return executionOrder.analyze(jdbi, target, method, signature);
+    }
+
+    String analyzeExecutionOrder(Jdbi jdbi, String target, String method, String signature,
+            Set<String> beforeTerms, Set<String> afterTerms) {
+        return executionOrder.analyze(jdbi, target, method, signature, beforeTerms, afterTerms);
+    }
+
+    String compareDesignImpact(Jdbi jdbi, List<String> candidates, int testDepth) {
+        return designImpact.compare(jdbi, candidates, testDepth);
+    }
+
+    String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
+            String direction, boolean transitive, int maxDepth, String scope,
+            int limit, int offset) {
+        return callHierarchy.getCallHierarchy(jdbi, target, method, signature, direction,
+                transitive, maxDepth, scope, limit, offset);
     }
 
     String findMethodOverrides(Jdbi jdbi, String target, String method,

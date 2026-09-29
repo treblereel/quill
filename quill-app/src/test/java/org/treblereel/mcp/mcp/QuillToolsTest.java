@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -628,6 +629,258 @@ class QuillToolsTest {
                 "inbound", false, 1, 10, 0));
         assertEquals("Method not found", missing.path("error").asText());
         assertEquals(2, missing.path("candidates").size());
+    }
+
+    @Test
+    void getCallHierarchyCanSuppressIntraClassNoiseBeforePaging() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO method_calls
+                  (from_class_id, from_method, from_descriptor,
+                   to_class_id, to_method, to_descriptor, invocation_kind,
+                   occurrence_count, evidence_lines)
+                VALUES (1, 'execute', '()V', 1, 'helper', '()V', 'special', 1, '[10]'),
+                       (1, 'execute', '()V', 4, 'audit', '()V', 'virtual', 1, '[11]')"""));
+
+        JsonNode result = JSON.readTree(new QuillToolQueries().getCallHierarchy(
+                jdbi, "OrderService", null, null, "outbound", false, 1,
+                "cross_class", 1, 0));
+
+        assertEquals("cross_class", result.path("scope").asText());
+        assertEquals(1, result.path("total").asInt());
+        assertEquals(1, result.path("showing").asInt());
+        assertEquals(1, result.path("suppressed_call_count").asInt());
+        assertEquals("org.acme.AuditService",
+                result.path("calls").get(0).path("callee").path("class").asText());
+    }
+
+    @Test
+    void traceStateLifecycleCorrelatesDurabilityAndDispatchEvidenceWithoutClaimingOrder()
+            throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("UPDATE classes SET class_name = 'org.acme.CasePersistenceSession' WHERE id = 3");
+            handle.execute("UPDATE classes SET class_name = 'org.acme.WorkerBatchDispatcher' WHERE id = 4");
+            handle.execute("UPDATE classes SET class_name = 'org.acme.CaseRecoveryTimer' WHERE id = 2");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'CONSTRUCTOR', 'OrderService', 'OrderService()', '()V',
+                            'org.acme.OrderService', '[]', 'public', '[]'),
+                           (1, 'FIELD', 'plan', 'plan:java.lang.String',
+                            'Ljava/lang/String;', 'java.lang.String', '[]', 'private', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor,
+                       to_class_id, to_method, to_descriptor, invocation_kind,
+                       occurrence_count, evidence_lines)
+                    VALUES (3, 'persistPlan', '()V', 1, '<init>', '()V', 'special', 1, '[12]')""");
+            handle.execute("""
+                    INSERT INTO field_accesses
+                      (from_class_id, from_method, from_descriptor, to_class_id,
+                       field_name, field_descriptor, access_kind, occurrence_count, evidence_lines)
+                    VALUES (3, 'savePlan', '()V', 1, 'plan', 'Ljava/lang/String;',
+                            'write_instance', 1, '[20]'),
+                           (4, 'dispatchBatch', '()V', 1, 'plan', 'Ljava/lang/String;',
+                            'read_instance', 1, '[31]'),
+                           (2, 'recoverTimer', '()V', 1, 'plan', 'Ljava/lang/String;',
+                            'read_instance', 1, '[42]')""");
+        });
+
+        JsonNode result = JSON.readTree(
+                new QuillToolQueries().traceStateLifecycle(jdbi, "OrderService", 20));
+
+        assertTrue(result.path("inferred_roles").valueStream().anyMatch(role ->
+                role.asText().equals("durable_execution_state_candidate")));
+        assertTrue(result.path("inferred_roles").valueStream().anyMatch(role ->
+                role.asText().equals("recovery_state_candidate")));
+        assertFalse(result.path("ordered_lifecycle_proven").asBoolean());
+        assertEquals(1, result.path("semantic_boundaries").path("dispatch").size());
+        assertEquals("high", result.path("inference_confidence").asText());
+    }
+
+    @Test
+    void analyzeExecutionOrderProvesInstructionOrderWithoutClaimingRuntimeProof()
+            throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'run', 'run():void', '()V', 'void',
+                            '[]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor,
+                       to_class_id, to_method, to_descriptor, invocation_kind,
+                       occurrence_count, evidence_lines, instruction_ordinals)
+                    VALUES (1, 'run', '()V', 3, 'persistPlan', '()V', 'virtual', 1,
+                            '[20]', '[4]'),
+                           (1, 'run', '()V', 4, 'dispatchBatch', '()V', 'virtual', 1,
+                            '[21]', '[9]')""");
+        });
+
+        JsonNode result = JSON.readTree(new QuillToolQueries()
+                .analyzeExecutionOrder(jdbi, "OrderService", "run", null));
+
+        assertEquals(2, result.path("event_count").asInt());
+        assertEquals(4, result.path("bytecode_sequence").get(0)
+                .path("instruction_ordinal").asInt());
+        assertEquals("proven", result.path("persist_before_dispatch")
+                .path("instruction_order_status").asText());
+        assertEquals("proven_on_normal_completion", result.path("persist_before_dispatch")
+                .path("runtime_order_status").asText());
+        assertTrue(result.path("control_flow").path("straight_line").asBoolean());
+
+        JsonNode custom = JSON.readTree(new QuillToolQueries().analyzeExecutionOrder(
+                jdbi, "OrderService", "run", null,
+                Set.of("persistplan"), Set.of("dispatchbatch")));
+        assertEquals("proven", custom.path("ordering_analysis")
+                .path("instruction_order_status").asText());
+        assertEquals(List.of("persistplan"), custom.path("ordering_analysis")
+                .path("before_terms").valueStream().map(JsonNode::asText).toList());
+        assertFalse(custom.has("persist_before_dispatch"));
+    }
+
+    @Test
+    void analyzeExecutionOrderUsesCfgDominanceAcrossBranches() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'branchingRun', 'branchingRun():void', '()V',
+                            'void', '[]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor, to_class_id, to_method,
+                       to_descriptor, invocation_kind, occurrence_count, evidence_lines,
+                       instruction_ordinals, caller_branch_count,
+                       caller_exception_handler_count, caller_control_flow_edges)
+                    VALUES (1, 'branchingRun', '()V', 3, 'persistPlan', '()V', 'virtual',
+                            1, '[20]', '[2]', 1, 0,
+                            '["1>2","2>3","3>4","3>6","4>5","5>7","6>7"]'),
+                           (1, 'branchingRun', '()V', 4, 'dispatchBatch', '()V', 'virtual',
+                            1, '[24]', '[7]', 1, 0,
+                            '["1>2","2>3","3>4","3>6","4>5","5>7","6>7"]')""");
+        });
+
+        JsonNode result = JSON.readTree(new QuillToolQueries()
+                .analyzeExecutionOrder(jdbi, "OrderService", "branchingRun", null));
+
+        assertEquals("proven_on_all_cfg_paths", result.path("ordering_analysis")
+                .path("runtime_order_status").asText());
+        assertTrue(result.path("control_flow").path("dominance_proven").asBoolean());
+        assertEquals(7, result.path("control_flow").path("edge_count").asInt());
+    }
+
+    @Test
+    void analyzeExecutionOrderRejectsBypassAndIncludesExceptionalPaths() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'bypassRun', 'bypassRun():void', '()V',
+                            'void', '[]', 'public', '[]'),
+                           (1, 'METHOD', 'guardedRun', 'guardedRun():void', '()V',
+                            'void', '[]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor, to_class_id, to_method,
+                       to_descriptor, invocation_kind, occurrence_count, evidence_lines,
+                       instruction_ordinals, caller_branch_count,
+                       caller_exception_handler_count, caller_control_flow_edges)
+                    VALUES (1, 'bypassRun', '()V', 3, 'persistPlan', '()V', 'virtual',
+                            1, '[20]', '[2]', 1, 0,
+                            '["1>2","1>4","2>3","3>5","4>5"]'),
+                           (1, 'bypassRun', '()V', 4, 'dispatchBatch', '()V', 'virtual',
+                            1, '[24]', '[5]', 1, 0,
+                            '["1>2","1>4","2>3","3>5","4>5"]'),
+                           (1, 'guardedRun', '()V', 3, 'persistPlan', '()V', 'virtual',
+                            1, '[30]', '[2]', 0, 1,
+                            '["1>2","2>3","3>4","3>5","4>7","5>6","6>7"]'),
+                           (1, 'guardedRun', '()V', 4, 'dispatchBatch', '()V', 'virtual',
+                            1, '[36]', '[7]', 0, 1,
+                            '["1>2","2>3","3>4","3>5","4>7","5>6","6>7"]')""");
+        });
+
+        QuillToolQueries queries = new QuillToolQueries();
+        JsonNode bypass = JSON.readTree(queries.analyzeExecutionOrder(
+                jdbi, "OrderService", "bypassRun", null));
+        assertEquals("likely", bypass.path("ordering_analysis")
+                .path("runtime_order_status").asText());
+        assertFalse(bypass.path("control_flow").path("dominance_proven").asBoolean());
+
+        JsonNode guarded = JSON.readTree(queries.analyzeExecutionOrder(
+                jdbi, "OrderService", "guardedRun", null));
+        assertEquals("proven_on_all_cfg_paths", guarded.path("ordering_analysis")
+                .path("runtime_order_status").asText());
+        assertTrue(guarded.path("control_flow").path("exceptional_edges_included").asBoolean());
+
+        jdbi.useHandle(handle -> handle.execute("""
+                UPDATE method_calls
+                SET caller_async_boundaries =
+                    '["java.util.concurrent.Executor.execute"]',
+                    caller_external_calls =
+                    '["4|33|java.util.concurrent.Executor|execute|(Ljava/lang/Runnable;)V|scheduling"]'
+                WHERE from_class_id = 1 AND from_method = 'guardedRun'"""));
+        JsonNode async = JSON.readTree(queries.analyzeExecutionOrder(
+                jdbi, "OrderService", "guardedRun", null));
+        assertEquals("invocation_order_proven_completion_unknown",
+                async.path("ordering_analysis").path("runtime_order_status").asText());
+        assertTrue(async.path("async_semantics")
+                .path("completion_order_unknown").asBoolean());
+        assertEquals(1, async.path("async_semantics").path("phases")
+                .path("scheduling").asInt());
+        assertTrue(async.path("bytecode_sequence").valueStream()
+                .anyMatch(event -> event.path("external").asBoolean()
+                        && event.path("source_line").asInt() == 33
+                        && event.path("source").asText().endsWith("OrderService.java")));
+    }
+
+    @Test
+    void analyzeExecutionOrderHandlesLoopsMultipleDispatchesAndEarlyExit() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'loopRun', 'loopRun():void', '()V',
+                            'void', '[]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor, to_class_id, to_method,
+                       to_descriptor, invocation_kind, occurrence_count, evidence_lines,
+                       instruction_ordinals, caller_branch_count,
+                       caller_exception_handler_count, caller_control_flow_edges)
+                    VALUES (1, 'loopRun', '()V', 3, 'persistPlan', '()V', 'virtual',
+                            1, '[40]', '[2]', 2, 0,
+                            '["1>2","1>9","2>3","3>4","4>5","5>3","5>6","6>7","7>8"]'),
+                           (1, 'loopRun', '()V', 4, 'dispatchBatch', '()V', 'virtual',
+                            2, '[42,46]', '[4,7]', 2, 0,
+                            '["1>2","1>9","2>3","3>4","4>5","5>3","5>6","6>7","7>8"]')""");
+        });
+
+        JsonNode result = JSON.readTree(new QuillToolQueries()
+                .analyzeExecutionOrder(jdbi, "OrderService", "loopRun", null));
+
+        assertEquals("proven_on_all_cfg_paths", result.path("ordering_analysis")
+                .path("runtime_order_status").asText());
+        assertEquals(2, result.path("ordering_analysis").path("after_event_count").asInt());
+        assertTrue(result.path("control_flow").path("dominance_proven").asBoolean());
+    }
+
+    @Test
+    void compareDesignImpactRanksExistingHostsAndPreservesSemanticCaveat() throws Exception {
+        JsonNode result = JSON.readTree(new QuillToolQueries().compareDesignImpact(
+                jdbi, List.of("OrderService", "AuditService"), 3));
+
+        assertEquals(2, result.path("candidates").size());
+        assertEquals(1, result.path("candidates").get(0).path("rank").asInt());
+        assertTrue(result.path("candidates").get(0).has("comparison_score"));
+        assertTrue(result.path("recommendation").asText().contains("lifecycle"));
+        assertTrue(result.path("limitations").valueStream().anyMatch(value ->
+                value.asText().contains("semantic cohesion")));
     }
 
     @Test

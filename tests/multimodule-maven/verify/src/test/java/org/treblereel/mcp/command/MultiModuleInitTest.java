@@ -40,8 +40,11 @@ class MultiModuleInitTest {
         var classes = IndexReader.findAllClasses(jdbi);
         // common: NotificationService (interface) + UserDTO (record) = 2
         // service: EmailNotificationService + SmsNotificationService + UserService = 3
-        // Total: 5
-        assertEquals(5, classes.size(), "Should index classes from both common and service modules");
+        // Total: 5 main classes; compiled verify-module tests are indexed separately.
+        assertEquals(5, classes.stream().filter(c -> "main".equals(c.sourceSet())).count(),
+                "Should index main classes from both common and service modules");
+        assertEquals(3, classes.stream().filter(c -> "test".equals(c.sourceSet())).count(),
+                "Should index compiled tests from the verify module");
 
         // Verify cross-module classes
         assertTrue(classes.stream().anyMatch(c -> c.className().contains("NotificationService")));

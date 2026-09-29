@@ -294,7 +294,7 @@ class ProjectRegistryTest {
         assertNotNull(current);
         assertEquals(QuillDatabase.currentSchemaVersion(),
                 QuillDatabase.inspectSchemaVersion(current));
-        assertFalse(Files.exists(old));
+        assertFalse(current.equals(old), "The outdated generation must not remain active");
         assertFalse(Files.exists(project.resolve(".mvn/extensions.xml")));
         assertFalse(Files.exists(project.resolve("CLAUDE.md")));
     }

@@ -8,35 +8,23 @@ import org.treblereel.mcp.QuillLauncher;
 /** Owns the reversible project configuration installed around an index generation. */
 final class ProjectConfiguration {
 
-    private static final String QUILL_SECTION_MARKER = "## Quill — Codebase Intelligence (MCP)";
-    private static final String QUILL_CLAUDE_MD = """
+    enum ClaudeInstructionsState { CURRENT, MISSING, INVALID }
 
+    private static final String CLAUDE_BLOCK_START = "<!-- quill:managed:start -->";
+    private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
+    private static final String QUILL_CLAUDE_MD = """
+            <!-- quill:managed:start -->
             ## Quill — Codebase Intelligence (MCP)
 
-            This project is indexed by Quill. Choose the cheapest sufficient evidence:
+            Before broad code search, dependency or impact analysis, or running a large test suite,
+            use ToolSearch to load the relevant Quill tools. Prefer Quill for project-wide semantic
+            questions: implementations, annotations, endpoints, DI, dependency graphs, affected tests,
+            build problems, generated code, Git history, and change risk.
 
-            - Use `rg`/source read for an exact literal, a known path, or one concrete occurrence.
-            - Use Quill for project-wide aggregation, generated outputs, dependency graphs, DI resolution, history, and change risk.
-            - Trust a fresh Quill result when its evidence directly proves the fact; verify stale, unknown, or unsupported claims in source.
-            - Do not call both by default: start with the cheaper sufficient channel, then cross-check only when evidence is incomplete or consequential.
-
-            Quill tools:
-
-            - **Searching classes:** `search_classes` — faster than grep, supports wildcard patterns (`*Service`, `*Strategy*`)
-            - **Dependency analysis:** `get_dependencies` — what a class depends on and what depends on it
-            - **Implementations:** `find_implementations` — subclasses/implementors, including generated copies by module
-            - **Risk assessment:** `assess_change_risk` — class blast radius or file risk from criticality, churn, bus factor, and coupling
-            - **Project overview:** `get_overview` — call first to orient (class/bean counts, architecture hubs, problems)
-            - **Git hotspots:** `find_git_hotspots` — most frequently changed files/classes
-            - **Current/history lookup:** `resolve_entities` — current, deleted, and historical paths
-            - **Co-change analysis:** `find_co_changed_files` — files that change together (hidden coupling)
-            - **Service descriptors:** `inspect_service_descriptors` — ordered ServiceLoader/processor providers
-            - **Beans:** `list_beans` — list/filter beans by scope, kind, qualifier (CDI and Spring)
-            - **Injection points:** `list_injection_points` — injection resolution status for a bean
-            - **Build errors:** `get_build_problems` — diagnostics captured from the last Maven/Gradle build
-            - **External deps:** `list_external_dependencies` — third-party library usage
-
-            If the client supports tool search, load only the relevant Quill tools for the current task.
+            Use `rg` and direct source reads for an exact literal, a known file, or one concrete
+            occurrence. Do not query both by default. Verify Quill results in source when the index
+            reports stale, partial, unknown, or unsupported evidence.
+            <!-- quill:managed:end -->
             """;
 
     private ProjectConfiguration() {}
@@ -48,29 +36,88 @@ final class ProjectConfiguration {
     }
 
     static void finishInitialization(Path root, boolean indexOnly) {
-        if (!indexOnly) ensureClaudeMd(root);
+        if (!indexOnly) {
+            ensureClaudeMd(root);
+            ensureMcpJson(root);
+        }
         ensureCodexConfig(root, indexOnly);
+    }
+
+    static McpJsonInstaller.Result ensureMcpJson(Path root) {
+        try {
+            McpJsonInstaller.Result result =
+                    McpJsonInstaller.installProject(root, QuillLauncher.detect());
+            if (result == McpJsonInstaller.Result.ADDED
+                    || result == McpJsonInstaller.Result.REPLACED) {
+                System.err.println("[quill] Updated " + root.resolve(".mcp.json")
+                        + " with the Quill MCP server.");
+            } else if (result == McpJsonInstaller.Result.UNSUPPORTED) {
+                System.err.println("[quill] Warning: could not update "
+                        + root.resolve(".mcp.json") + ": unsupported structure");
+            }
+            return result;
+        } catch (IOException error) {
+            System.err.println("[quill] Warning: could not update "
+                    + root.resolve(".mcp.json") + ": " + error.getMessage());
+            return McpJsonInstaller.Result.UNSUPPORTED;
+        }
     }
 
     static CodexConfigInstaller.Result ensureCodexConfig(Path root, boolean indexOnly) {
         if (indexOnly) return CodexConfigInstaller.Result.SKIPPED;
-        return CodexConfigInstaller.installIfPresent(root, QuillLauncher.detect());
+        return CodexConfigInstaller.install(root, QuillLauncher.detect());
     }
 
-    private static void ensureClaudeMd(Path root) {
+    static void ensureClaudeMd(Path root) {
         Path claudeMd = root.resolve("CLAUDE.md");
         try {
-            if (Files.exists(claudeMd)) {
-                String content = Files.readString(claudeMd);
-                if (content.contains(QUILL_SECTION_MARKER)) return;
-                String separator = content.endsWith("\n") ? "" : "\n";
-                Files.writeString(claudeMd, content + separator + QUILL_CLAUDE_MD);
+            String content = Files.exists(claudeMd) ? Files.readString(claudeMd) : "";
+            int start = content.indexOf(CLAUDE_BLOCK_START);
+            int end = start < 0 ? -1 : content.indexOf(CLAUDE_BLOCK_END, start);
+            String updated;
+            if (start >= 0) {
+                int after = end < 0 ? content.length() : end + CLAUDE_BLOCK_END.length();
+                updated = content.substring(0, start) + QUILL_CLAUDE_MD.strip()
+                        + content.substring(after);
             } else {
-                Files.writeString(claudeMd, QUILL_CLAUDE_MD.stripLeading());
+                String separator = content.isEmpty() || content.endsWith("\n") ? "" : "\n";
+                String gap = content.isEmpty() ? "" : "\n";
+                updated = content + separator + gap + QUILL_CLAUDE_MD.strip() + "\n";
             }
+            Files.writeString(claudeMd, updated);
             System.err.println("[quill] Updated CLAUDE.md with Quill tool instructions.");
         } catch (IOException error) {
             System.err.println("[quill] Warning: could not update CLAUDE.md: " + error.getMessage());
+        }
+    }
+
+    static boolean removeClaudeMd(Path root) throws IOException {
+        Path claudeMd = root.resolve("CLAUDE.md");
+        if (!Files.isRegularFile(claudeMd)) return false;
+        String content = Files.readString(claudeMd);
+        int start = content.indexOf(CLAUDE_BLOCK_START);
+        if (start < 0) return false;
+        int end = content.indexOf(CLAUDE_BLOCK_END, start);
+        int after = end < 0 ? content.length() : end + CLAUDE_BLOCK_END.length();
+        String updated = (content.substring(0, start) + content.substring(after))
+                .replaceFirst("\\s+$", "");
+        if (updated.isBlank()) Files.delete(claudeMd);
+        else Files.writeString(claudeMd, updated + "\n");
+        return true;
+    }
+
+    static ClaudeInstructionsState inspectClaudeMd(Path root) {
+        Path claudeMd = root.resolve("CLAUDE.md");
+        if (!Files.isRegularFile(claudeMd)) return ClaudeInstructionsState.MISSING;
+        try {
+            String content = Files.readString(claudeMd);
+            boolean start = content.contains(CLAUDE_BLOCK_START);
+            boolean end = content.contains(CLAUDE_BLOCK_END);
+            if (!start && !end) return ClaudeInstructionsState.MISSING;
+            return start && end ? ClaudeInstructionsState.CURRENT
+                    : ClaudeInstructionsState.INVALID;
+        } catch (IOException error) {
+            return ClaudeInstructionsState.INVALID;
         }
     }
 

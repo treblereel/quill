@@ -53,6 +53,8 @@ final class WorkspaceMetadataFingerprint {
                             updateIdentity(digest, repositoryRoot,
                                     buildSystem.classpathFile(moduleRoot));
                             updateIdentity(digest, repositoryRoot,
+                                    buildSystem.testClasspathFile(moduleRoot));
+                            updateIdentity(digest, repositoryRoot,
                                     buildSystem.classpathFingerprintFile(moduleRoot));
                         }
                     });

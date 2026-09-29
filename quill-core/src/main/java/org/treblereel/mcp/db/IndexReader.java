@@ -87,7 +87,13 @@ public final class IndexReader {
             String toDescriptor,
             String invocationKind,
             int occurrenceCount,
-            List<Integer> evidenceLines) {}
+            List<Integer> evidenceLines,
+            List<Integer> instructionOrdinals,
+            int callerBranchCount,
+            int callerExceptionHandlerCount,
+            List<String> callerControlFlowEdges,
+            List<String> callerAsyncBoundaries,
+            List<String> callerExternalCalls) {}
 
     public record MethodInboundUsage(
             int classId,
@@ -119,7 +125,8 @@ public final class IndexReader {
             String fieldDescriptor,
             String accessKind,
             int occurrenceCount,
-            List<Integer> evidenceLines) {}
+            List<Integer> evidenceLines,
+            List<Integer> instructionOrdinals) {}
 
     public static List<ClassRecord> findAllClasses(Jdbi jdbi) {
         return jdbi.withHandle(h ->
@@ -687,7 +694,13 @@ public final class IndexReader {
                     rs.getInt("to_source_tokens"),
                     rs.getString("to_method"), rs.getString("to_descriptor"),
                     rs.getString("invocation_kind"), rs.getInt("occurrence_count"),
-                    parseIntList(rs.getString("evidence_lines")))).list();
+                    parseIntList(rs.getString("evidence_lines")),
+                    parseIntList(rs.getString("instruction_ordinals")),
+                    rs.getInt("caller_branch_count"),
+                    rs.getInt("caller_exception_handler_count"),
+                    fromJson(rs.getString("caller_control_flow_edges")),
+                    fromJson(rs.getString("caller_async_boundaries")),
+                    fromJson(rs.getString("caller_external_calls")))).list();
         });
     }
 
@@ -773,7 +786,8 @@ public final class IndexReader {
                     rs.getString("from_descriptor"), rs.getString("field_name"),
                     rs.getString("field_descriptor"), rs.getString("access_kind"),
                     rs.getInt("occurrence_count"),
-                    parseIntList(rs.getString("evidence_lines")))).list();
+                    parseIntList(rs.getString("evidence_lines")),
+                    parseIntList(rs.getString("instruction_ordinals")))).list();
         });
     }
 
@@ -859,7 +873,13 @@ public final class IndexReader {
                     rs.getInt("to_source_tokens"),
                     rs.getString("to_method"), rs.getString("to_descriptor"),
                     rs.getString("invocation_kind"), rs.getInt("occurrence_count"),
-                    parseIntList(rs.getString("evidence_lines")))).list();
+                    parseIntList(rs.getString("evidence_lines")),
+                    parseIntList(rs.getString("instruction_ordinals")),
+                    rs.getInt("caller_branch_count"),
+                    rs.getInt("caller_exception_handler_count"),
+                    fromJson(rs.getString("caller_control_flow_edges")),
+                    fromJson(rs.getString("caller_async_boundaries")),
+                    fromJson(rs.getString("caller_external_calls")))).list();
         });
     }
 
@@ -1386,7 +1406,13 @@ public final class IndexReader {
                 rs.getInt("to_source_tokens"),
                 rs.getString("to_method"), rs.getString("to_descriptor"),
                 rs.getString("invocation_kind"), rs.getInt("occurrence_count"),
-                parseIntList(rs.getString("evidence_lines")));
+                parseIntList(rs.getString("evidence_lines")),
+                parseIntList(rs.getString("instruction_ordinals")),
+                rs.getInt("caller_branch_count"),
+                rs.getInt("caller_exception_handler_count"),
+                fromJson(rs.getString("caller_control_flow_edges")),
+                fromJson(rs.getString("caller_async_boundaries")),
+                fromJson(rs.getString("caller_external_calls")));
     }
 
     private static ClassOccurrenceRecord mapClassOccurrence(java.sql.ResultSet rs)
@@ -1684,6 +1710,22 @@ public final class IndexReader {
                         .bind("classId", classId)
                         .map((rs, ctx) -> new ExternalDepRecord(
                                 rs.getInt("class_id"), rs.getString("external_type"), rs.getString("usage_kind")))
+                        .list());
+    }
+
+    public static List<ExternalDepRecord> findExternalTypeUsages(
+            Jdbi jdbi, String externalType) {
+        return jdbi.withHandle(h ->
+                h.createQuery("""
+                        SELECT class_id, external_type, usage_kind
+                        FROM class_external_deps
+                        WHERE external_type = :externalType
+                        ORDER BY class_id, usage_kind
+                        """)
+                        .bind("externalType", externalType)
+                        .map((rs, ctx) -> new ExternalDepRecord(
+                                rs.getInt("class_id"), rs.getString("external_type"),
+                                rs.getString("usage_kind")))
                         .list());
     }
 

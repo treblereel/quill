@@ -98,7 +98,7 @@ final class ChangeRiskQueries {
 
         root.put("recommendation", buildRecommendation(cls, fanIn, churn, authors, level, hasGit));
 
-        appendMeta(root, jdbi, cls.sourceTokens());
+        appendMeta(root, jdbi, cls.sourceTokens(), cls.sourceFile(), cls.module());
         return root.toString();
     }
 

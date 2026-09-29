@@ -24,7 +24,7 @@ cd /path/to/your/project
 ## How It Works
 
 Quill scans Maven `target/classes` and Gradle `build/classes/*/main` directories for
-compiled `.class` files, builds a [Jandex](https://smallrye.io/jandex/) index, and
+compiled `.class` files, builds a [Jandex](https://smallrye.io/jandex/jandex/main/index.html) index, and
 resolves CDI or Spring dependency injection directly from bytecode metadata. Quill
 itself does not use or start Quarkus; the target framework is detected automatically.
 It also recognizes project-local `META-INF/services` registrations, JPMS
@@ -51,6 +51,8 @@ concurrently. JSON-RPC responses may arrive out of order and are correlated by `
 response writes remain serialized so stdout always contains complete JSON messages.
 `QUILL_MCP_MAX_CONCURRENCY` and `QUILL_MCP_MAX_QUEUED_PER_WORKER` can override the
 defaults for constrained or unusually large local environments.
+Workspace fan-out queries use up to four shared read workers; set
+`QUILL_WORKSPACE_QUERY_WORKERS` to a positive value (capped at 32) to override it.
 `QUILL_MCP_REQUEST_TIMEOUT` sets the per-tool timeout in seconds (default: `30`).
 Successful JSON responses are capped at 256 KiB; set `QUILL_MCP_MAX_RESPONSE_BYTES`
 to override the cap. Truncated responses report omitted fields and filtering guidance.
@@ -94,15 +96,23 @@ the router must remain at most 20% of the full catalog, preventing silent contex
 
 | Command | Description |
 |---------|-------------|
-| `quill init` | Index already-compiled Maven or Gradle bytecode and install build integration |
+| `quill init` | Index compiled bytecode and install build integration and supported MCP client configuration |
+| `quill init --index-only` | Build only the index; do not modify build or MCP client configuration |
 | `quill init --timings` | Index and report per-phase elapsed times for diagnostics |
 | `quill update` | Re-index if the project fingerprint changed |
+| `quill update --force` | Rebuild the index even when the fingerprint is unchanged |
 | `quill status` | Show current index status |
+| `quill status --json` | Emit the status as machine-readable JSON |
 | `quill doctor` | Diagnose compiled outputs, index freshness, build integration, and client setup |
-| `quill clean` | Remove `.quill` and build integration |
+| `quill doctor --json` | Emit the diagnostic report as machine-readable JSON |
+| `quill clean` | Remove `.quill`, Quill-managed build integration, and MCP client configuration |
 | `quill workspace init` | Discover and initialize all suitable repositories in a workspace |
+| `quill workspace init --depth N` | Discover repositories up to the requested directory depth |
+| `quill workspace init --index-only` | Initialize workspace indexes without installing integration or MCP configuration |
 | `quill workspace refresh` | Reconcile added/removed repositories and index missing repositories |
+| `quill workspace refresh --index-only` | Refresh indexes without installing integration or MCP configuration |
 | `quill workspace status` | Show workspace configuration and per-repository readiness |
+| `quill workspace status --json` | Emit workspace status as machine-readable JSON |
 | `quill workspace clear` | Remove workspace metadata while preserving repository indexes |
 | `quill workspace clear --repositories` | Also remove repository indexes and build integration |
 
@@ -211,8 +221,12 @@ The router profile returns the same policy in `search_tools.guidance`, including
 `recommended_channel` hint.
 
 - **search_classes** — find classes by wildcard pattern; supports `limit`/`offset`
-- **get_project_dependencies** — list resolved Maven/Gradle artifacts and consuming modules
-  from Quill's cached runtime classpaths without invoking the build
+- **resolve_entities** — resolve up to 20 class names, file names, or repository paths in one
+  request across the current tree and Git history, including deleted paths
+- **get_project_dependencies** — list resolved Maven/Gradle artifacts visible to main or test
+  code without invoking the build. Maven/Gradle integration captures separate runtime and test
+  classpaths after normal user builds; until then Quill identifies transitive test visibility
+  through the reactor graph and labels it as inferred
 - **list_project_tree** / **search_files** — navigate the indexed project inventory with
   module, source-set, lifecycle, and dirty-worktree context
 - **get_file_problems** — filter captured Maven/Gradle build diagnostics by one or more source
@@ -227,7 +241,34 @@ The router profile returns the same policy in `search_tools.guidance`, including
   signature, with kind filtering and pagination
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with
   exact overload selection by signature/JVM descriptor, invocation kinds, source-line evidence,
-  traversal depth, and call paths
+  traversal depth, and call paths; use `scope=cross_class` or `scope=cross_package` to suppress
+  lower-level call noise before pagination
+- **trace_state_lifecycle** — correlate exact constructor and field-access evidence with
+  persistence, dispatch, serialization, and recovery boundaries; reports candidate roles and
+  explicitly does not claim control-flow ordering
+- **analyze_execution_order** — reconstruct emitted call order inside one exact method and
+  distinguish proven bytecode order from only likely runtime order across control flow; optional
+  `before_terms` and `after_terms` check custom semantic boundaries, while CFG dominance proves
+  when every indexed normal or exception-handler path to an after-call passes through a
+  before-call; detected executor, future, reactive, and messaging boundaries keep invocation
+  order separate from completion order
+
+Example:
+
+```text
+analyze_execution_order(
+  target="CaseFlowEngine",
+  method="execute",
+  before_terms="persist,save",
+  after_terms="dispatch,publish")
+```
+
+The result orders application and external calls by `instruction_ordinal`, includes `source` and
+`source_line`, and reports one of `proven_on_all_cfg_paths`, `proven_on_normal_completion`,
+`invocation_order_proven_completion_unknown`, `likely`, or `unknown`. A proven invocation order
+does not imply that an executor, reactive stream, or message publication has completed.
+- **compare_design_impact** — rank existing classes as candidate hosts using risk, dependent
+  classes, and impacted tests while keeping lifecycle/semantic fit as an explicit limitation
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected
   method or overload, with hierarchy paths and Java modifier checks
 - **find_unused_classes** — find conservative dead-code candidates while excluding indexed
@@ -262,6 +303,10 @@ The router profile returns the same policy in `search_tools.guidance`, including
 - **find_configuration_references** — find `.properties`, YAML, and persistence-unit definitions
   together with annotation-based Spring, MicroProfile, SmallRye, and JPA consumers; configuration
   values are deliberately not indexed
+- **find_resource_references** — find indexed classpath resources and their programmatic consumers
+  without reading or returning resource contents
+- **inspect_service_descriptors** — inspect ordered `META-INF/services` providers with source-line
+  evidence and warnings when provider order may affect behavior
 - **find_implementations** — find direct/transitive subclasses and implementors, including
   generated occurrences grouped by module and evidence about reactor-discovery completeness
 - **find_usages** — find bytecode calls, constructor calls, field access, type references,
@@ -291,6 +336,7 @@ The router profile returns the same policy in `search_tools.guidance`, including
   explicit returned-window identity counts (without guessing human identities), and
   indexed-history coverage
 - **find_co_changed_files** — files that change together (hidden coupling)
+- **get_recent_changes** — return recent commits and their paged changed-file/class details
 - **list_external_dependencies** — third-party library usage
 - **list_workspace_repositories** — list dynamically discovered repositories and index readiness
 - **get_workspace_dependencies** — resolve declared dependencies onto providers in other local
@@ -304,7 +350,14 @@ Paginated responses use the same `showing`, `total`, `limit`, `offset`, `has_mor
 
 ## Connect Quill to Claude Code or Codex
 
-Initialize the project once before connecting an MCP client:
+Initialize the project once before connecting an MCP client. From the project directory:
+
+```bash
+cd /absolute/path/to/project
+/absolute/path/to/quill init
+```
+
+Alternatively, specify the project explicitly when running Quill from another directory:
 
 ```bash
 /absolute/path/to/quill init --project /absolute/path/to/project
@@ -313,6 +366,14 @@ Initialize the project once before connecting an MCP client:
 Quill is a local stdio MCP server. The client starts it on demand and communicates
 with it over stdin/stdout; you do not need to run a daemon. Absolute paths are
 recommended because an MCP client's process working directory is not guaranteed.
+
+For structured troubleshooting, add `--debug` to the MCP command. Quill keeps stdout
+reserved for JSON-RPC, writes JSON-line events to stderr, and persists the same events in
+`.quill/debug/quill-debug.jsonl` under the served project or workspace. Each instrumented
+response includes a `debug.trace_id` for correlation. Set `QUILL_DEBUG=1` instead when it is
+more convenient to enable diagnostics without editing MCP arguments, or use
+`--debug-directory /path` to choose where the `.quill/debug` directory is created. Debug logs
+contain local paths and dependency coordinates and should not be committed.
 
 For workspace mode, configure the client command as:
 
@@ -374,8 +435,9 @@ When `.codex/config.toml` already exists, `quill init` adds this section
 automatically. A native launch records its executable path; development runs from a
 JAR fall back to `quill` from `PATH`, keeping the generated configuration binary-only.
 Other settings are preserved, repeated initialization is a no-op, and an existing
-`mcp_servers.quill` section is never overwritten. Quill does not create a Codex
-configuration file implicitly.
+user-owned `mcp_servers.quill` section is never overwritten. A Quill-managed project entry
+whose absolute launcher path no longer exists is repaired when initialization runs from a
+working native executable. Quill does not create a Codex configuration file implicitly.
 
 Here `cwd` lets Quill discover the project automatically, so `--project` is not
 needed. Project-scoped configuration is loaded only for trusted projects. Check the
@@ -398,7 +460,7 @@ omitted because Quill uses its current directory by default.
 If tools do not appear, run `quill status --project /absolute/path/to/project`, use
 an absolute executable path, and restart the client session after changing its MCP
 configuration. See the official [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp)
-and [Codex MCP documentation](https://developers.openai.com/codex/mcp)
+and [Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
 for client-specific scopes and configuration options.
 
 ## Immutable Index Generations
@@ -476,7 +538,8 @@ Quill falls back to `gradle` or `mvn` from `PATH`.
 
 ## Building Quill
 
-Building Quill requires JDK 21 or newer.
+Building Quill requires JDK 21 through 25. The Maven build rejects newer feature releases until
+they are explicitly validated; released native executables do not require a local JDK to run.
 
 ```bash
 ./mvnw clean package

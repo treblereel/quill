@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 18;
+    static final int SCHEMA_VERSION = 24;
 
     private QuillDatabase() {}
 
@@ -114,6 +114,12 @@ public final class QuillDatabase {
                     invocation_kind TEXT NOT NULL,
                     occurrence_count INTEGER NOT NULL DEFAULT 1,
                     evidence_lines TEXT NOT NULL DEFAULT '[]',
+                    instruction_ordinals TEXT NOT NULL DEFAULT '[]',
+                    caller_branch_count INTEGER NOT NULL DEFAULT 0,
+                    caller_exception_handler_count INTEGER NOT NULL DEFAULT 0,
+                    caller_control_flow_edges TEXT NOT NULL DEFAULT '[]',
+                    caller_async_boundaries TEXT NOT NULL DEFAULT '[]',
+                    caller_external_calls TEXT NOT NULL DEFAULT '[]',
                     UNIQUE(from_class_id, from_method, from_descriptor,
                            to_class_id, to_method, to_descriptor, invocation_kind)
                 )""");
@@ -128,6 +134,7 @@ public final class QuillDatabase {
                     access_kind TEXT NOT NULL,
                     occurrence_count INTEGER NOT NULL DEFAULT 1,
                     evidence_lines TEXT NOT NULL DEFAULT '[]',
+                    instruction_ordinals TEXT NOT NULL DEFAULT '[]',
                     UNIQUE(from_class_id, from_method, from_descriptor,
                            to_class_id, field_name, field_descriptor, access_kind)
                 )""");
@@ -273,8 +280,8 @@ public final class QuillDatabase {
                     parameter_index INTEGER,
                     annotation TEXT NOT NULL,
                     source TEXT,
-                    module TEXT NOT NULL,
-                    source_set TEXT NOT NULL,
+                    module TEXT,
+                    source_set TEXT,
                     UNIQUE(key, kind, class_id, member, parameter_index, annotation)
                 )""");
             h.execute("""
@@ -287,8 +294,8 @@ public final class QuillDatabase {
                     member TEXT NOT NULL,
                     api TEXT NOT NULL,
                     source TEXT,
-                    module TEXT NOT NULL,
-                    source_set TEXT NOT NULL,
+                    module TEXT,
+                    source_set TEXT,
                     UNIQUE(resource_path, kind, class_id, member, api)
                 )""");
             if (createIndexes) createIndexes(h);

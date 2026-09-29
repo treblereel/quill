@@ -2,6 +2,7 @@ package org.treblereel.mcp.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
@@ -10,6 +11,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.diagnostics.DebugTrace;
 
 class ProjectDependencyQueriesTest {
 
@@ -56,7 +58,7 @@ class ProjectDependencyQueriesTest {
         module(jdbi, "worker");
 
         var result = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null,
+                .getProjectDependencies(jdbi, temp, null, null, null,
                         null, null, null, null, 100, 0));
 
         assertEquals(2, result.path("total").asInt());
@@ -94,7 +96,7 @@ class ProjectDependencyQueriesTest {
         module(jdbi, ".");
 
         var filtered = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, ".", "beta",
+                .getProjectDependencies(jdbi, temp, ".", null, "beta",
                         null, null, null, null, 1, 0));
 
         assertEquals(1, filtered.path("total").asInt());
@@ -125,7 +127,7 @@ class ProjectDependencyQueriesTest {
         module(jdbi, ".");
 
         var result = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null,
+                .getProjectDependencies(jdbi, temp, null, null, null,
                         "direct", "acme", "widget", "runtime", 100, 0));
 
         assertEquals(1, result.path("total").asInt());
@@ -151,16 +153,161 @@ class ProjectDependencyQueriesTest {
 
         ProjectDependencyQueries.prewarm(jdbi, temp);
         var warm = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null,
+                .getProjectDependencies(jdbi, temp, null, null, null,
                         null, null, null, null, 100, 0));
         assertEquals("hit", warm.path("discovery").path("metadata_cache").asText());
 
         Files.writeString(classpath, alpha + java.io.File.pathSeparator + beta);
         var refreshed = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null,
+                .getProjectDependencies(jdbi, temp, null, null, null,
                         null, null, null, null, 100, 0));
         assertEquals("miss", refreshed.path("discovery").path("metadata_cache").asText());
         assertEquals(2, refreshed.path("total").asInt());
+    }
+
+    @Test
+    void reportsUncoveredTestScopeInsteadOfClaimingAnEmptyAnswerIsComplete() throws Exception {
+        Path connector = temp.resolve(
+                ".m2/repository/io/casehub/connectors-core/1/connectors-core-1.jar");
+        Files.createDirectories(connector.getParent());
+        Files.write(connector, new byte[] {1});
+        mavenModule("planning", "planning", """
+                <dependency><groupId>io.casehub</groupId>
+                  <artifactId>persistence-memory</artifactId><version>1</version>
+                  <scope>test</scope></dependency>
+                """);
+        mavenModule("persistence-memory", "persistence-memory", """
+                <dependency><groupId>io.casehub</groupId>
+                  <artifactId>support-core</artifactId><version>1</version></dependency>
+                """);
+        mavenModule("support-core", "support-core", """
+                <dependency><groupId>io.casehub</groupId>
+                  <artifactId>connectors-core</artifactId><version>1</version></dependency>
+                """);
+        Files.writeString(temp.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>io.casehub</groupId><artifactId>root</artifactId><version>1</version>
+                  <modules><module>planning</module><module>persistence-memory</module>
+                    <module>support-core</module></modules>
+                </project>
+                """);
+        writeClasspath("planning", "");
+        writeClasspath("persistence-memory", "");
+        writeClasspath("support-core", connector.toString());
+        Jdbi jdbi = database();
+        module(jdbi, "planning");
+        module(jdbi, "persistence-memory");
+        module(jdbi, "support-core");
+
+        var result = JSON.readTree(new ProjectDependencyQueries()
+                .getProjectDependencies(jdbi, temp, "planning", null, "connectors-core",
+                        null, null, null, null, 100, 0));
+
+        assertEquals(1, result.path("total").asInt());
+        assertFalse(result.path("answer_complete").asBoolean());
+        assertFalse(result.path("discovery").path("requested_source_set_covered").asBoolean());
+        assertEquals("main_and_test_runtime",
+                result.path("discovery").path("classpath_scope").asText());
+        assertEquals("planning", result.path("dependencies").get(0)
+                .path("test_runtime_in_modules").get(0).asText());
+        assertEquals("planning", result.path("dependencies").get(0)
+                .path("inferred_in_modules").get(0).asText());
+        assertTrue(result.path("discovery").path("limitations").toString()
+                .contains("reactor declarations"));
+        assertEquals("partial", result.path("directness").asText());
+    }
+
+    @Test
+    void usesCapturedTestClasspathForDirectAndTransitiveTestDependencies() throws Exception {
+        Path runtime = temp.resolve(".m2/repository/a/runtime/1/runtime-1.jar");
+        Path testOnly = temp.resolve(".m2/repository/a/test-helper/1/test-helper-1.jar");
+        Files.createDirectories(runtime.getParent());
+        Files.createDirectories(testOnly.getParent());
+        Files.write(runtime, new byte[] {1});
+        Files.write(testOnly, new byte[] {1});
+        Files.writeString(temp.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>root</artifactId><version>1</version>
+                  <dependencies><dependency><groupId>a</groupId>
+                    <artifactId>test-helper</artifactId><version>1</version>
+                    <scope>test</scope></dependency></dependencies>
+                </project>
+                """);
+        writeClasspath(".", runtime.toString());
+        writeTestClasspath(".", runtime + java.io.File.pathSeparator + testOnly);
+        Jdbi jdbi = database();
+        module(jdbi, ".");
+
+        var result = JSON.readTree(new ProjectDependencyQueries()
+                .getProjectDependencies(jdbi, temp, ".", "test", "test-helper",
+                        null, null, null, null, 100, 0));
+
+        assertEquals(1, result.path("total").asInt());
+        assertTrue(result.path("answer_complete").asBoolean());
+        assertTrue(result.path("discovery").path("requested_source_set_covered").asBoolean());
+        assertEquals(".", result.path("dependencies").get(0)
+                .path("test_runtime_in_modules").get(0).asText());
+        assertEquals(0, result.path("dependencies").get(0)
+                .path("main_runtime_in_modules").size());
+        assertEquals("test", result.path("dependencies").get(0)
+                .path("declared_scopes").get(0).asText());
+    }
+
+    @Test
+    void debugModeRecordsDependencyDecisionTraceWithoutUsingMcpStdout() throws Exception {
+        Path jar = temp.resolve(".m2/repository/a/alpha/1/alpha-1.jar");
+        Files.createDirectories(jar.getParent());
+        Files.write(jar, new byte[] {1});
+        writeClasspath(".", jar.toString());
+        Files.writeString(temp.resolve("pom.xml"), "<project/>");
+        Jdbi jdbi = database();
+        module(jdbi, ".");
+        DebugTrace.configure(true, temp);
+        DebugTrace.Trace parent = DebugTrace.start("mcp_tool_call");
+        try {
+            var result = JSON.readTree(new ProjectDependencyQueries()
+                    .getProjectDependencies(jdbi, temp, ".", "main", "alpha",
+                            null, null, null, "runtime", 100, 0));
+
+            String traceId = result.path("debug").path("trace_id").asText();
+            assertFalse(traceId.isBlank());
+            Path log = temp.resolve(".quill/debug/quill-debug.jsonl");
+            String events = Files.readString(log);
+            assertTrue(events.contains(traceId));
+            assertTrue(events.contains("\"parent_trace_id\":\"" + parent.id() + "\""));
+            assertTrue(events.contains("classpath_loaded"));
+            assertTrue(events.contains("filter_summary"));
+            assertTrue(events.contains("result_completeness"));
+        } finally {
+            parent.close();
+            DebugTrace.configure(false, temp);
+        }
+    }
+
+    private void mavenModule(String path, String artifact, String dependencies)
+            throws Exception {
+        Path directory = temp.resolve(path);
+        Files.createDirectories(directory);
+        Files.writeString(directory.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>io.casehub</groupId><artifactId>%s</artifactId><version>1</version>
+                  <dependencies>%s</dependencies>
+                </project>
+                """.formatted(artifact, dependencies));
+    }
+
+    private void writeClasspath(String module, String value) throws Exception {
+        Path directory = module.equals(".") ? temp : temp.resolve(module);
+        Path classpath = directory.resolve("target/quill-classpath.txt");
+        Files.createDirectories(classpath.getParent());
+        Files.writeString(classpath, value);
+    }
+
+    private void writeTestClasspath(String module, String value) throws Exception {
+        Path directory = module.equals(".") ? temp : temp.resolve(module);
+        Path classpath = directory.resolve("target/quill-test-classpath.txt");
+        Files.createDirectories(classpath.getParent());
+        Files.writeString(classpath, value);
     }
 
     private Jdbi database() {

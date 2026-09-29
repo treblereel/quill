@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
@@ -71,6 +74,10 @@ final class ExecutionOrderQueries {
         int exceptionHandlerCount = calls.stream()
                 .mapToInt(MethodCallView::callerExceptionHandlerCount).max().orElse(0);
         boolean straightLine = branchCount == 0 && exceptionHandlerCount == 0;
+        List<String> cfgEdges = calls.stream().map(MethodCallView::callerControlFlowEdges)
+                .filter(edges -> !edges.isEmpty()).findFirst().orElse(List.of());
+        boolean cfgDominanceProven = comparable && exceptionHandlerCount == 0
+                && dominatesEveryAfter(before, after, cfgEdges);
 
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
@@ -86,8 +93,9 @@ final class ExecutionOrderQueries {
         relation.put("instruction_order_status", comparable
                 ? (allBeforeAfter ? "proven" : "disproven") : "unknown");
         relation.put("runtime_order_status", !comparable ? "unknown"
-                : allBeforeAfter && straightLine
-                        ? "proven_on_normal_completion" : "likely");
+                : cfgDominanceProven && !straightLine ? "proven_on_all_cfg_paths"
+                        : allBeforeAfter && straightLine
+                                ? "proven_on_normal_completion" : "likely");
         relation.put("before_event_count", before.size());
         relation.put("after_event_count", after.size());
         relation.put("all_before_instructions_before_after", allBeforeAfter);
@@ -98,6 +106,8 @@ final class ExecutionOrderQueries {
         controlFlow.put("branch_count", branchCount);
         controlFlow.put("exception_handler_count", exceptionHandlerCount);
         controlFlow.put("straight_line", straightLine);
+        controlFlow.put("edge_count", cfgEdges.size());
+        controlFlow.put("dominance_proven", cfgDominanceProven);
         root.putArray("limitations")
                 .add("Straight-line runtime proof applies only to normal completion; an earlier call may throw or terminate")
                 .add("Branches, loops, exceptions, asynchronous completion, reflection, and external internals can change runtime order")
@@ -126,6 +136,58 @@ final class ExecutionOrderQueries {
         node.put("callee_method", event.call().toMethod());
         node.put("callee_descriptor", event.call().toDescriptor());
         node.set("evidence_lines", JSON.valueToTree(event.call().evidenceLines()));
+    }
+
+    private static boolean dominatesEveryAfter(List<Event> before, List<Event> after,
+            List<String> encodedEdges) {
+        if (encodedEdges.isEmpty()) return false;
+        Map<Integer, Set<Integer>> predecessors = new HashMap<>();
+        Set<Integer> nodes = new HashSet<>();
+        for (String encoded : encodedEdges) {
+            int separator = encoded.indexOf('>');
+            if (separator <= 0 || separator == encoded.length() - 1) continue;
+            try {
+                int from = Integer.parseInt(encoded.substring(0, separator));
+                int to = Integer.parseInt(encoded.substring(separator + 1));
+                nodes.add(from);
+                nodes.add(to);
+                predecessors.computeIfAbsent(to, ignored -> new HashSet<>()).add(from);
+            } catch (NumberFormatException ignored) {
+                // Invalid persisted evidence cannot establish dominance.
+            }
+        }
+        if (nodes.isEmpty()) return false;
+        int entry = nodes.stream().min(Integer::compareTo).orElseThrow();
+        Map<Integer, Set<Integer>> dominators = new HashMap<>();
+        for (int node : nodes) {
+            dominators.put(node, node == entry ? new HashSet<>(Set.of(entry))
+                    : new HashSet<>(nodes));
+        }
+        boolean changed;
+        do {
+            changed = false;
+            for (int node : nodes) {
+                if (node == entry) continue;
+                Set<Integer> incoming = predecessors.getOrDefault(node, Set.of());
+                Set<Integer> next = new HashSet<>();
+                if (!incoming.isEmpty()) {
+                    next.addAll(dominators.get(incoming.iterator().next()));
+                    for (int predecessor : incoming) {
+                        next.retainAll(dominators.get(predecessor));
+                    }
+                }
+                next.add(node);
+                if (!next.equals(dominators.get(node))) {
+                    dominators.put(node, next);
+                    changed = true;
+                }
+            }
+        } while (changed);
+        Set<Integer> beforeOrdinals = before.stream().map(Event::ordinal)
+                .collect(java.util.stream.Collectors.toSet());
+        return after.stream().allMatch(event -> dominators
+                .getOrDefault(event.ordinal(), Set.of()).stream()
+                .anyMatch(beforeOrdinals::contains));
     }
 
     private static String selectionError(Jdbi jdbi, ClassRecord cls, String method,

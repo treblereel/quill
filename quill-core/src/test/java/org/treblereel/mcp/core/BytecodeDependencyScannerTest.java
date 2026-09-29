@@ -66,6 +66,7 @@ class BytecodeDependencyScannerTest {
                 .filter(call -> call.toClass().equals(BranchConstructed.class.getName()))
                 .filter(call -> call.toMethod().equals("<init>"))
                 .filter(call -> call.callerBranchCount() > 0)
+                .filter(call -> !call.callerControlFlowEdges().isEmpty())
                 .count());
     }
 

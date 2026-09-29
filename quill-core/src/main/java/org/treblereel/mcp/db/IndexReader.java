@@ -90,7 +90,8 @@ public final class IndexReader {
             List<Integer> evidenceLines,
             List<Integer> instructionOrdinals,
             int callerBranchCount,
-            int callerExceptionHandlerCount) {}
+            int callerExceptionHandlerCount,
+            List<String> callerControlFlowEdges) {}
 
     public record MethodInboundUsage(
             int classId,
@@ -694,7 +695,8 @@ public final class IndexReader {
                     parseIntList(rs.getString("evidence_lines")),
                     parseIntList(rs.getString("instruction_ordinals")),
                     rs.getInt("caller_branch_count"),
-                    rs.getInt("caller_exception_handler_count"))).list();
+                    rs.getInt("caller_exception_handler_count"),
+                    fromJson(rs.getString("caller_control_flow_edges")))).list();
         });
     }
 
@@ -870,7 +872,8 @@ public final class IndexReader {
                     parseIntList(rs.getString("evidence_lines")),
                     parseIntList(rs.getString("instruction_ordinals")),
                     rs.getInt("caller_branch_count"),
-                    rs.getInt("caller_exception_handler_count"))).list();
+                    rs.getInt("caller_exception_handler_count"),
+                    fromJson(rs.getString("caller_control_flow_edges")))).list();
         });
     }
 
@@ -1400,7 +1403,8 @@ public final class IndexReader {
                 parseIntList(rs.getString("evidence_lines")),
                 parseIntList(rs.getString("instruction_ordinals")),
                 rs.getInt("caller_branch_count"),
-                rs.getInt("caller_exception_handler_count"));
+                rs.getInt("caller_exception_handler_count"),
+                fromJson(rs.getString("caller_control_flow_edges")));
     }
 
     private static ClassOccurrenceRecord mapClassOccurrence(java.sql.ResultSet rs)

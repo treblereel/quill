@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +40,8 @@ public final class BytecodeDependencyScanner {
             List<Integer> evidenceLines,
             List<Integer> instructionOrdinals,
             int callerBranchCount,
-            int callerExceptionHandlerCount) {}
+            int callerExceptionHandlerCount,
+            List<String> callerControlFlowEdges) {}
 
     public record StaticFieldAccess(
             String fromClass,
@@ -137,7 +139,10 @@ public final class BytecodeDependencyScanner {
                                 new ControlFlowEvidence()).branchCount,
                         controlFlow.getOrDefault(new MethodKey(entry.getKey().fromClass(),
                                 entry.getKey().fromMethod(), entry.getKey().fromDescriptor()),
-                                new ControlFlowEvidence()).exceptionHandlerCount))
+                                new ControlFlowEvidence()).exceptionHandlerCount,
+                        List.copyOf(controlFlow.getOrDefault(new MethodKey(
+                                entry.getKey().fromClass(), entry.getKey().fromMethod(),
+                                entry.getKey().fromDescriptor()), new ControlFlowEvidence()).edges)))
                 .sorted(Comparator.comparing(StaticMethodCall::fromClass)
                         .thenComparing(StaticMethodCall::fromMethod)
                         .thenComparing(StaticMethodCall::fromDescriptor)
@@ -201,10 +206,19 @@ public final class BytecodeDependencyScanner {
                 private Type directClassLiteral;
                 private int currentLine;
                 private int instructionOrdinal;
+                private final Map<org.objectweb.asm.Label, Integer> labelOrdinals =
+                        new IdentityHashMap<>();
+                private final List<PendingEdge> pendingEdges = new ArrayList<>();
+                private final Set<Integer> noFallthrough = new HashSet<>();
 
                 @Override
                 public void visitLineNumber(int line, org.objectweb.asm.Label start) {
                     currentLine = line;
+                }
+
+                @Override
+                public void visitLabel(org.objectweb.asm.Label label) {
+                    labelOrdinals.put(label, instructionOrdinal + 1);
                 }
 
                 @Override
@@ -280,6 +294,10 @@ public final class BytecodeDependencyScanner {
                 @Override
                 public void visitInsn(int opcode) {
                     nextInstruction();
+                    if ((opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN)
+                            || opcode == Opcodes.ATHROW) {
+                        noFallthrough.add(instructionOrdinal);
+                    }
                     directClassLiteral = null;
                 }
 
@@ -299,6 +317,10 @@ public final class BytecodeDependencyScanner {
                 public void visitJumpInsn(int opcode, org.objectweb.asm.Label label) {
                     nextInstruction();
                     methodControlFlow.branchCount++;
+                    pendingEdges.add(new PendingEdge(instructionOrdinal, label));
+                    if (opcode == Opcodes.GOTO || opcode == Opcodes.JSR) {
+                        noFallthrough.add(instructionOrdinal);
+                    }
                     directClassLiteral = null;
                 }
 
@@ -320,6 +342,11 @@ public final class BytecodeDependencyScanner {
                         org.objectweb.asm.Label dflt, org.objectweb.asm.Label... labels) {
                     nextInstruction();
                     methodControlFlow.branchCount++;
+                    noFallthrough.add(instructionOrdinal);
+                    pendingEdges.add(new PendingEdge(instructionOrdinal, dflt));
+                    for (org.objectweb.asm.Label label : labels) {
+                        pendingEdges.add(new PendingEdge(instructionOrdinal, label));
+                    }
                     directClassLiteral = null;
                 }
 
@@ -328,7 +355,27 @@ public final class BytecodeDependencyScanner {
                         org.objectweb.asm.Label[] labels) {
                     nextInstruction();
                     methodControlFlow.branchCount++;
+                    noFallthrough.add(instructionOrdinal);
+                    pendingEdges.add(new PendingEdge(instructionOrdinal, dflt));
+                    for (org.objectweb.asm.Label label : labels) {
+                        pendingEdges.add(new PendingEdge(instructionOrdinal, label));
+                    }
                     directClassLiteral = null;
+                }
+
+                @Override
+                public void visitEnd() {
+                    for (int ordinal = 1; ordinal < instructionOrdinal; ordinal++) {
+                        if (!noFallthrough.contains(ordinal)) {
+                            methodControlFlow.edges.add(ordinal + ">" + (ordinal + 1));
+                        }
+                    }
+                    for (PendingEdge edge : pendingEdges) {
+                        Integer target = labelOrdinals.get(edge.target());
+                        if (target != null && target >= 1 && target <= instructionOrdinal) {
+                            methodControlFlow.edges.add(edge.source() + ">" + target);
+                        }
+                    }
                 }
 
                 @Override
@@ -439,9 +486,12 @@ public final class BytecodeDependencyScanner {
 
     private record MethodKey(String owner, String method, String descriptor) {}
 
+    private record PendingEdge(int source, org.objectweb.asm.Label target) {}
+
     private static final class ControlFlowEvidence {
         private int branchCount;
         private int exceptionHandlerCount;
+        private final Set<String> edges = new TreeSet<>();
     }
 
     private static String className(String internalName) {

@@ -742,6 +742,38 @@ class QuillToolsTest {
     }
 
     @Test
+    void analyzeExecutionOrderUsesCfgDominanceAcrossBranches() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'branchingRun', 'branchingRun():void', '()V',
+                            'void', '[]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor, to_class_id, to_method,
+                       to_descriptor, invocation_kind, occurrence_count, evidence_lines,
+                       instruction_ordinals, caller_branch_count,
+                       caller_exception_handler_count, caller_control_flow_edges)
+                    VALUES (1, 'branchingRun', '()V', 3, 'persistPlan', '()V', 'virtual',
+                            1, '[20]', '[2]', 1, 0,
+                            '["1>2","2>3","3>4","3>6","4>5","5>7","6>7"]'),
+                           (1, 'branchingRun', '()V', 4, 'dispatchBatch', '()V', 'virtual',
+                            1, '[24]', '[7]', 1, 0,
+                            '["1>2","2>3","3>4","3>6","4>5","5>7","6>7"]')""");
+        });
+
+        JsonNode result = JSON.readTree(new QuillToolQueries()
+                .analyzeExecutionOrder(jdbi, "OrderService", "branchingRun", null));
+
+        assertEquals("proven_on_all_cfg_paths", result.path("ordering_analysis")
+                .path("runtime_order_status").asText());
+        assertTrue(result.path("control_flow").path("dominance_proven").asBoolean());
+        assertEquals(7, result.path("control_flow").path("edge_count").asInt());
+    }
+
+    @Test
     void compareDesignImpactRanksExistingHostsAndPreservesSemanticCaveat() throws Exception {
         JsonNode result = JSON.readTree(new QuillToolQueries().compareDesignImpact(
                 jdbi, List.of("OrderService", "AuditService"), 3));

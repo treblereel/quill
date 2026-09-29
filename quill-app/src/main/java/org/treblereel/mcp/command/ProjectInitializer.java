@@ -478,7 +478,7 @@ public class ProjectInitializer {
                             call.fromDescriptor(), to, call.toMethod(), call.toDescriptor(),
                             call.invocationKind(), call.occurrences(), call.evidenceLines(),
                             call.instructionOrdinals(), call.callerBranchCount(),
-                            call.callerExceptionHandlerCount()));
+                            call.callerExceptionHandlerCount(), call.callerControlFlowEdges()));
                 }
             }
             for (BytecodeDependencyScanner.StaticFieldAccess access : bytecode.fieldAccesses()) {

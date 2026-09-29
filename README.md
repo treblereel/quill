@@ -350,7 +350,14 @@ Paginated responses use the same `showing`, `total`, `limit`, `offset`, `has_mor
 
 ## Connect Quill to Claude Code or Codex
 
-Initialize the project once before connecting an MCP client:
+Initialize the project once before connecting an MCP client. From the project directory:
+
+```bash
+cd /absolute/path/to/project
+/absolute/path/to/quill init
+```
+
+Alternatively, specify the project explicitly when running Quill from another directory:
 
 ```bash
 /absolute/path/to/quill init --project /absolute/path/to/project

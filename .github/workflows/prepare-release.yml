@@ -11,6 +11,10 @@ on:
         description: Next development version (for example, 0.2.0-SNAPSHOT)
         required: true
         type: string
+      maven_extension_version:
+        description: Published quill-maven-extension version to embed (for example, 0.1.0)
+        required: true
+        type: string
 
 concurrency:
   group: prepare-release
@@ -44,6 +48,7 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           RELEASE_VERSION: ${{ inputs.release_version }}
           NEXT_VERSION: ${{ inputs.next_development_version }}
+          EXTENSION_VERSION: ${{ inputs.maven_extension_version }}
         run: |
           if [[ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]]; then
             echo "Run Prepare Release from the default branch (${DEFAULT_BRANCH})" >&2
@@ -55,6 +60,10 @@ jobs:
           fi
           if [[ ! "${NEXT_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?([.-][0-9A-Za-z.-]+)?-SNAPSHOT$ ]]; then
             echo "Next development version must end with -SNAPSHOT: ${NEXT_VERSION}" >&2
+            exit 1
+          fi
+          if [[ ! "${EXTENSION_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?([.-][0-9A-Za-z.-]+)?$ || "${EXTENSION_VERSION}" == *-SNAPSHOT ]]; then
+            echo "Maven extension version must be a release version: ${EXTENSION_VERSION}" >&2
             exit 1
           fi
           if git rev-parse --verify --quiet "refs/tags/v${RELEASE_VERSION}"; then
@@ -81,7 +90,15 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
           NEXT_VERSION: ${{ inputs.next_development_version }}
+          EXTENSION_VERSION: ${{ inputs.maven_extension_version }}
         run: |
+          ./mvnw -B org.codehaus.mojo:versions-maven-plugin:2.19.1:set-property \
+            -Dproperty=quill.maven.extension.version \
+            -DnewVersion="${EXTENSION_VERSION}" -DgenerateBackupPoms=false
+          if ! git diff --quiet -- pom.xml; then
+            git add pom.xml
+            git commit -m "Use Maven extension ${EXTENSION_VERSION}"
+          fi
           ./mvnw -B release:clean release:prepare \
             -DreleaseVersion="${RELEASE_VERSION}" \
             -DdevelopmentVersion="${NEXT_VERSION}" \
@@ -93,11 +110,13 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
           NEXT_VERSION: ${{ inputs.next_development_version }}
+          EXTENSION_VERSION: ${{ inputs.maven_extension_version }}
         run: |
           {
             echo "## Release prepared"
             echo
             echo "- Tag: \`v${RELEASE_VERSION}\`"
             echo "- Next development version: \`${NEXT_VERSION}\`"
-            echo "- The tag-triggered Release workflow will publish the native archives."
+            echo "- Maven extension: \`org.treblereel.mcp:quill-maven-extension:${EXTENSION_VERSION}\`"
+            echo "- The tag-triggered Release workflow will verify the extension in Maven Central and publish the native archives."
           } >> "${GITHUB_STEP_SUMMARY}"

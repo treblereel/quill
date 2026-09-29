@@ -9,7 +9,6 @@
 
     <modules>
         <module>quill-core</module>
-        <module>quill-maven-extension</module>
         <module>quill-app</module>
         <module>tests</module>
     </modules>
@@ -39,6 +38,7 @@
         <shade-plugin.version>3.6.1</shade-plugin.version>
         <resources-plugin.version>3.4.0</resources-plugin.version>
         <release-plugin.version>3.3.1</release-plugin.version>
+        <quill.maven.extension.version>0.1.0</quill.maven.extension.version>
         <slf4j.version>2.0.18</slf4j.version>
         <native.buildtools.version>1.1.12</native.buildtools.version>
         <jackson.version>2.22.2</jackson.version>
@@ -55,6 +55,17 @@
         <jacocoArgLine></jacocoArgLine>
         <native.tests.required>false</native.tests.required>
     </properties>
+
+    <name>Quill</name>
+    <description>Fast native MCP server for Java project intelligence</description>
+    <url>https://github.com/treblereel/quill</url>
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
 
     <dependencyManagement>
         <dependencies>

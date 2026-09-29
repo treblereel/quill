@@ -79,11 +79,11 @@ final class BuildIntegrationInstaller {
                 return new Inspection(State.MISSING, file,
                         "Maven extensions file does not configure Quill");
             }
-            String expected = "<version>" + QuillTopCommand.version() + "</version>";
+            String expected = "<version>" + mavenExtensionVersion() + "</version>";
             if (!content.contains(expected)) {
                 return new Inspection(State.OUTDATED, file,
-                        "Maven extension version differs from Quill "
-                                + QuillTopCommand.version());
+                        "Maven extension version differs from required version "
+                                + mavenExtensionVersion());
             }
             return new Inspection(State.INSTALLED, file,
                     start ? "Managed Maven extension is current"
@@ -132,7 +132,7 @@ final class BuildIntegrationInstaller {
 
     private static Result installMaven(Path root) throws IOException {
         Path file = root.resolve(".mvn/extensions.xml");
-        String version = QuillTopCommand.version();
+        String version = mavenExtensionVersion();
         String block = MAVEN_START + "\n"
                 + "    <extension>\n"
                 + "        <groupId>org.treblereel.mcp</groupId>\n"
@@ -152,6 +152,10 @@ final class BuildIntegrationInstaller {
                 + "<extensions>\n" + block + "\n</extensions>\n";
         atomicWrite(file, content);
         return Result.INSTALLED;
+    }
+
+    static String mavenExtensionVersion() {
+        return QuillTopCommand.property("maven-extension-version");
     }
 
     private static Result installGradle(Path root) throws IOException {

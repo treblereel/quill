@@ -30,6 +30,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - run: ./mvnw -B verify -DskipITs=false
+      - name: Verify standalone Maven extension
+        run: ./mvnw -B -f quill-maven-extension/pom.xml verify
 
   windows-jvm:
     runs-on: windows-latest
@@ -45,6 +47,8 @@ jobs:
         with:
           gradle-version: '9.4.1'
       - run: .\mvnw.cmd -B verify -DskipITs=false
+      - name: Verify standalone Maven extension
+        run: .\mvnw.cmd -B -f quill-maven-extension/pom.xml verify
 
   native:
     strategy:

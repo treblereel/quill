@@ -68,11 +68,13 @@ class DoctorCommandTest {
     void reportsMissingAbsoluteClientLauncher(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), "<project/>");
         Path codex = Files.createDirectories(project.resolve(".codex")).resolve("config.toml");
+        String missing = project.resolve("missing/quill").toAbsolutePath().toString()
+                .replace('\\', '/');
         Files.writeString(codex, """
                 [mcp_servers.quill]
-                command = "/definitely/missing/quill"
+                command = "%s"
                 args = ["--mcp"]
-                """);
+                """.formatted(missing));
 
         DoctorCommand.Report report = DoctorCommand.inspect(project);
         DoctorCommand.Check launcher = report.checks().stream()
@@ -80,7 +82,7 @@ class DoctorCommandTest {
                 .findFirst().orElseThrow();
 
         assertEquals(DoctorCommand.Status.ERROR, launcher.status());
-        assertTrue(launcher.message().contains("/definitely/missing/quill"));
+        assertTrue(launcher.message().contains(missing));
         assertTrue(launcher.action().contains("Repair"));
     }
 

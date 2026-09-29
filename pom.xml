@@ -16,6 +16,7 @@
 
     <properties>
         <compiler-plugin.version>3.15.0</compiler-plugin.version>
+        <clean-plugin.version>3.5.0</clean-plugin.version>
         <enforcer-plugin.version>3.6.3</enforcer-plugin.version>
         <jacoco-plugin.version>0.8.15</jacoco-plugin.version>
         <maven.compiler.release>21</maven.compiler.release>
@@ -173,6 +174,23 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>${clean-plugin.version}</version>
+                <inherited>false</inherited>
+                <configuration>
+                    <filesets>
+                        <fileset>
+                            <directory>${project.basedir}/tests</directory>
+                            <includes>
+                                <include>**/.quill/**</include>
+                            </includes>
+                            <followSymlinks>false</followSymlinks>
+                        </fileset>
+                    </filesets>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>

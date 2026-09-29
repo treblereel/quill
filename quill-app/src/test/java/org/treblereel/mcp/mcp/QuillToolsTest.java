@@ -834,7 +834,8 @@ class QuillToolsTest {
                 .path("scheduling").asInt());
         assertTrue(async.path("bytecode_sequence").valueStream()
                 .anyMatch(event -> event.path("external").asBoolean()
-                        && event.path("evidence_lines").get(0).asInt() == 33));
+                        && event.path("source_line").asInt() == 33
+                        && event.path("source").asText().endsWith("OrderService.java")));
     }
 
     @Test

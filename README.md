@@ -242,6 +242,21 @@ The router profile returns the same policy in `search_tools.guidance`, including
   when every indexed normal or exception-handler path to an after-call passes through a
   before-call; detected executor, future, reactive, and messaging boundaries keep invocation
   order separate from completion order
+
+Example:
+
+```text
+analyze_execution_order(
+  target="CaseFlowEngine",
+  method="execute",
+  before_terms="persist,save",
+  after_terms="dispatch,publish")
+```
+
+The result orders application and external calls by `instruction_ordinal`, includes `source` and
+`source_line`, and reports one of `proven_on_all_cfg_paths`, `proven_on_normal_completion`,
+`invocation_order_proven_completion_unknown`, `likely`, or `unknown`. A proven invocation order
+does not imply that an executor, reactive stream, or message publication has completed.
 - **compare_design_impact** — rank existing classes as candidate hosts using risk, dependent
   classes, and impacted tests while keeping lifecycle/semantic fit as an explicit limitation
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected

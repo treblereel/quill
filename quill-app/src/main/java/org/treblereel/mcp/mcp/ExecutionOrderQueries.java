@@ -93,12 +93,13 @@ final class ExecutionOrderQueries {
 
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
+        root.put("source", cls.sourceFile());
         root.put("method", indexedMethod);
         root.put("signature", selected.signature());
         root.put("descriptor", selected.descriptor());
         root.put("event_count", events.size());
         ArrayNode sequence = root.putArray("bytecode_sequence");
-        for (Event event : events) appendEvent(sequence, event);
+        for (Event event : events) appendEvent(sequence, event, cls.sourceFile());
         ObjectNode relation = root.putObject("ordering_analysis");
         relation.set("before_terms", JSON.valueToTree(beforeTerms));
         relation.set("after_terms", JSON.valueToTree(afterTerms));
@@ -155,7 +156,7 @@ final class ExecutionOrderQueries {
         return "call";
     }
 
-    private static void appendEvent(ArrayNode sequence, Event event) {
+    private static void appendEvent(ArrayNode sequence, Event event, String source) {
         ObjectNode node = sequence.addObject();
         node.put("instruction_ordinal", event.ordinal());
         node.put("category", event.category());
@@ -163,6 +164,10 @@ final class ExecutionOrderQueries {
         node.put("callee_method", event.calleeMethod());
         node.put("callee_descriptor", event.calleeDescriptor());
         node.put("external", event.external());
+        if (source != null) node.put("source", source);
+        if (event.evidenceLines().size() == 1) {
+            node.put("source_line", event.evidenceLines().getFirst());
+        }
         if (event.asyncPhase() != null) node.put("async_phase", event.asyncPhase());
         node.set("evidence_lines", JSON.valueToTree(event.evidenceLines()));
     }

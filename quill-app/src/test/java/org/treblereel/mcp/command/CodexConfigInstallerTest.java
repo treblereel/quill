@@ -106,6 +106,42 @@ class CodexConfigInstallerTest {
     }
 
     @Test
+    void repairsOnlyManagedEntryWithMissingAbsoluteLauncher() throws Exception {
+        Path replacement = Files.createFile(tempDir.resolve("quill-new"));
+        assertTrue(replacement.toFile().setExecutable(true));
+        Path config = createConfig("""
+                # Added by Quill.
+                [mcp_servers.quill]
+                command = "/definitely/missing/quill"
+                args = ["--mcp"]
+                cwd = "/old"
+                """);
+
+        assertEquals(CodexConfigInstaller.Result.REPLACED,
+                CodexConfigInstaller.installIfPresent(tempDir, replacement.toString()));
+
+        String updated = Files.readString(config);
+        assertTrue(updated.contains("command = \"" + replacement + "\""));
+        assertTrue(updated.contains("cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
+    }
+
+    @Test
+    void preservesUserOwnedEntryWithMissingLauncher() throws Exception {
+        Path replacement = Files.createFile(tempDir.resolve("quill-new"));
+        assertTrue(replacement.toFile().setExecutable(true));
+        Path config = createConfig("""
+                [mcp_servers.quill]
+                command = "/definitely/missing/quill"
+                args = ["--mcp"]
+                """);
+        String original = Files.readString(config);
+
+        assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,
+                CodexConfigInstaller.installIfPresent(tempDir, replacement.toString()));
+        assertEquals(original, Files.readString(config));
+    }
+
+    @Test
     void repeatedInstallationDoesNotModifyConfig() throws Exception {
         Path config = createConfig("approval_policy = \"never\"\n");
 

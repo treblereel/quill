@@ -48,7 +48,15 @@ final class CodexConfigInstaller {
 
         try {
             String content = Files.readString(config, StandardCharsets.UTF_8);
-            if (definesQuillServer(content)) return Result.ALREADY_CONFIGURED;
+            if (definesQuillServer(content)) {
+                if (!shouldRepairManagedLauncher(content, binary)) {
+                    return Result.ALREADY_CONFIGURED;
+                }
+                String updated = appendBlock(removeQuillServer(content), projectRoot, binary);
+                writeAtomically(config, updated);
+                System.err.println("[quill] Repaired the Quill launcher in " + config + ".");
+                return Result.REPLACED;
+            }
             if (definesInlineMcpServers(content)) {
                 warn(config, "uses an inline mcp_servers table; add the Quill entry manually");
                 return Result.UNSUPPORTED;
@@ -185,6 +193,24 @@ final class CodexConfigInstaller {
             return Optional.empty();
         }
         return Optional.empty();
+    }
+
+    private static boolean shouldRepairManagedLauncher(String content, String binary) {
+        if (binary == null || binary.isBlank()) return false;
+        boolean managedProjectEntry = content.lines().map(String::trim)
+                .anyMatch("# Added by Quill."::equals);
+        if (!managedProjectEntry) return false;
+        Optional<String> configured = quillCommand(content);
+        if (configured.isEmpty() || configured.get().equals(binary)) return false;
+        try {
+            Path current = Path.of(configured.get());
+            Path replacement = Path.of(binary);
+            return current.isAbsolute() && !Files.isRegularFile(current)
+                    && replacement.isAbsolute() && Files.isRegularFile(replacement)
+                    && Files.isExecutable(replacement);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     private static boolean definesInlineMcpServers(String content) {

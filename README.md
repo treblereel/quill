@@ -392,8 +392,9 @@ When `.codex/config.toml` already exists, `quill init` adds this section
 automatically. A native launch records its executable path; development runs from a
 JAR fall back to `quill` from `PATH`, keeping the generated configuration binary-only.
 Other settings are preserved, repeated initialization is a no-op, and an existing
-`mcp_servers.quill` section is never overwritten. Quill does not create a Codex
-configuration file implicitly.
+user-owned `mcp_servers.quill` section is never overwritten. A Quill-managed project entry
+whose absolute launcher path no longer exists is repaired when initialization runs from a
+working native executable. Quill does not create a Codex configuration file implicitly.
 
 Here `cwd` lets Quill discover the project automatically, so `--project` is not
 needed. Project-scoped configuration is loaded only for trusted projects. Check the

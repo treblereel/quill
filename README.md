@@ -240,7 +240,8 @@ The router profile returns the same policy in `search_tools.guidance`, including
   distinguish proven bytecode order from only likely runtime order across control flow; optional
   `before_terms` and `after_terms` check custom semantic boundaries, while CFG dominance proves
   when every indexed normal or exception-handler path to an after-call passes through a
-  before-call
+  before-call; detected executor, future, reactive, and messaging boundaries keep invocation
+  order separate from completion order
 - **compare_design_impact** — rank existing classes as candidate hosts using risk, dependent
   classes, and impacted tests while keeping lifecycle/semantic fit as an explicit limitation
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected

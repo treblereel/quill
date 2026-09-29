@@ -76,6 +76,10 @@ final class ExecutionOrderQueries {
         boolean straightLine = branchCount == 0 && exceptionHandlerCount == 0;
         List<String> cfgEdges = calls.stream().map(MethodCallView::callerControlFlowEdges)
                 .filter(edges -> !edges.isEmpty()).findFirst().orElse(List.of());
+        Set<String> asyncBoundaries = calls.stream()
+                .flatMap(call -> call.callerAsyncBoundaries().stream())
+                .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
+        boolean completionOrderUnknown = !asyncBoundaries.isEmpty();
         boolean cfgDominanceProven = comparable
                 && dominatesEveryAfter(before, after, cfgEdges);
 
@@ -93,9 +97,14 @@ final class ExecutionOrderQueries {
         relation.put("instruction_order_status", comparable
                 ? (allBeforeAfter ? "proven" : "disproven") : "unknown");
         relation.put("runtime_order_status", !comparable ? "unknown"
-                : cfgDominanceProven && !straightLine ? "proven_on_all_cfg_paths"
+                : cfgDominanceProven && completionOrderUnknown
+                        ? "invocation_order_proven_completion_unknown"
+                        : cfgDominanceProven && !straightLine ? "proven_on_all_cfg_paths"
                         : allBeforeAfter && straightLine
-                                ? "proven_on_normal_completion" : "likely");
+                                ? completionOrderUnknown
+                                        ? "invocation_order_proven_completion_unknown"
+                                        : "proven_on_normal_completion"
+                                : "likely");
         relation.put("before_event_count", before.size());
         relation.put("after_event_count", after.size());
         relation.put("all_before_instructions_before_after", allBeforeAfter);
@@ -109,6 +118,9 @@ final class ExecutionOrderQueries {
         controlFlow.put("straight_line", straightLine);
         controlFlow.put("edge_count", cfgEdges.size());
         controlFlow.put("dominance_proven", cfgDominanceProven);
+        ObjectNode async = root.putObject("async_semantics");
+        async.put("completion_order_unknown", completionOrderUnknown);
+        async.set("boundaries", JSON.valueToTree(asyncBoundaries));
         root.putArray("limitations")
                 .add("Straight-line runtime proof applies only to normal completion; an earlier call may throw or terminate")
                 .add("Exceptional CFG conservatively connects every protected instruction to its handler")

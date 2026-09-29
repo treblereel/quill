@@ -816,6 +816,18 @@ class QuillToolsTest {
         assertEquals("proven_on_all_cfg_paths", guarded.path("ordering_analysis")
                 .path("runtime_order_status").asText());
         assertTrue(guarded.path("control_flow").path("exceptional_edges_included").asBoolean());
+
+        jdbi.useHandle(handle -> handle.execute("""
+                UPDATE method_calls
+                SET caller_async_boundaries =
+                    '["java.util.concurrent.Executor.execute"]'
+                WHERE from_class_id = 1 AND from_method = 'guardedRun'"""));
+        JsonNode async = JSON.readTree(queries.analyzeExecutionOrder(
+                jdbi, "OrderService", "guardedRun", null));
+        assertEquals("invocation_order_proven_completion_unknown",
+                async.path("ordering_analysis").path("runtime_order_status").asText());
+        assertTrue(async.path("async_semantics")
+                .path("completion_order_unknown").asBoolean());
     }
 
     @Test

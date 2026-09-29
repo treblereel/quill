@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.ServiceLoader;
+import java.util.concurrent.Executor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -75,6 +76,13 @@ class BytecodeDependencyScannerTest {
                 .filter(call -> call.callerExceptionHandlerCount() == 1)
                 .filter(call -> call.callerControlFlowEdges().stream()
                         .anyMatch(edge -> edge.endsWith(">5")))
+                .count());
+        assertEquals(1, result.methodCalls().stream()
+                .filter(call -> call.fromClass().equals(Consumer.class.getName()))
+                .filter(call -> call.fromMethod().equals("asyncCreate"))
+                .filter(call -> call.toClass().equals(AsyncConstructed.class.getName()))
+                .filter(call -> call.callerAsyncBoundaries().stream()
+                        .anyMatch(boundary -> boundary.endsWith("Executor.execute")))
                 .count());
     }
 
@@ -217,6 +225,11 @@ class BytecodeDependencyScannerTest {
             }
         }
 
+        Object asyncCreate(Executor executor) {
+            executor.execute(() -> {});
+            return new AsyncConstructed();
+        }
+
         void setValue(int value) {
             this.value = value;
         }
@@ -231,6 +244,8 @@ class BytecodeDependencyScannerTest {
     static final class BranchConstructed {}
 
     static final class GuardedConstructed {}
+
+    static final class AsyncConstructed {}
 
     interface ServiceContract {}
 

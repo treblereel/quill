@@ -41,7 +41,8 @@ public final class BytecodeDependencyScanner {
             List<Integer> instructionOrdinals,
             int callerBranchCount,
             int callerExceptionHandlerCount,
-            List<String> callerControlFlowEdges) {}
+            List<String> callerControlFlowEdges,
+            List<String> callerAsyncBoundaries) {}
 
     public record StaticFieldAccess(
             String fromClass,
@@ -142,7 +143,11 @@ public final class BytecodeDependencyScanner {
                                 new ControlFlowEvidence()).exceptionHandlerCount,
                         List.copyOf(controlFlow.getOrDefault(new MethodKey(
                                 entry.getKey().fromClass(), entry.getKey().fromMethod(),
-                                entry.getKey().fromDescriptor()), new ControlFlowEvidence()).edges)))
+                                entry.getKey().fromDescriptor()), new ControlFlowEvidence()).edges),
+                        List.copyOf(controlFlow.getOrDefault(new MethodKey(
+                                entry.getKey().fromClass(), entry.getKey().fromMethod(),
+                                entry.getKey().fromDescriptor()),
+                                new ControlFlowEvidence()).asyncBoundaries)))
                 .sorted(Comparator.comparing(StaticMethodCall::fromClass)
                         .thenComparing(StaticMethodCall::fromMethod)
                         .thenComparing(StaticMethodCall::fromDescriptor)
@@ -244,6 +249,10 @@ public final class BytecodeDependencyScanner {
                 public void visitMethodInsn(int opcode, String methodOwner, String methodName,
                         String methodDescriptor, boolean isInterface) {
                     nextInstruction();
+                    if (isAsyncBoundary(methodOwner, methodName)) {
+                        methodControlFlow.asyncBoundaries.add(
+                                className(methodOwner) + "." + methodName);
+                    }
                     if (methodOwner.equals("java/util/ServiceLoader")
                             && (methodName.equals("load") || methodName.equals("loadInstalled"))
                             && directClassLiteral != null) {
@@ -507,6 +516,27 @@ public final class BytecodeDependencyScanner {
         private int branchCount;
         private int exceptionHandlerCount;
         private final Set<String> edges = new TreeSet<>();
+        private final Set<String> asyncBoundaries = new TreeSet<>();
+    }
+
+    private static boolean isAsyncBoundary(String owner, String method) {
+        String normalizedOwner = owner.toLowerCase(java.util.Locale.ROOT);
+        String normalizedMethod = method.toLowerCase(java.util.Locale.ROOT);
+        boolean asyncType = normalizedOwner.contains("java/util/concurrent")
+                || normalizedOwner.contains("reactor/core")
+                || normalizedOwner.contains("org/reactivestreams")
+                || normalizedOwner.contains("smallrye/mutiny")
+                || normalizedOwner.contains("eventbus")
+                || normalizedOwner.contains("kafka")
+                || normalizedOwner.contains("messaging");
+        return asyncType && (normalizedMethod.contains("async")
+                || normalizedMethod.equals("execute")
+                || normalizedMethod.equals("submit")
+                || normalizedMethod.equals("schedule")
+                || normalizedMethod.equals("enqueue")
+                || normalizedMethod.equals("publish")
+                || normalizedMethod.equals("send")
+                || normalizedMethod.equals("subscribe"));
     }
 
     private static String className(String internalName) {

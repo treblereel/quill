@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 21;
+    static final int SCHEMA_VERSION = 22;
 
     private QuillDatabase() {}
 
@@ -118,6 +118,7 @@ public final class QuillDatabase {
                     caller_branch_count INTEGER NOT NULL DEFAULT 0,
                     caller_exception_handler_count INTEGER NOT NULL DEFAULT 0,
                     caller_control_flow_edges TEXT NOT NULL DEFAULT '[]',
+                    caller_async_boundaries TEXT NOT NULL DEFAULT '[]',
                     UNIQUE(from_class_id, from_method, from_descriptor,
                            to_class_id, to_method, to_descriptor, invocation_kind)
                 )""");

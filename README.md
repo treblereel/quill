@@ -231,7 +231,8 @@ The router profile returns the same policy in `search_tools.guidance`, including
   signature, with kind filtering and pagination
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with
   exact overload selection by signature/JVM descriptor, invocation kinds, source-line evidence,
-  traversal depth, and call paths
+  traversal depth, and call paths; use `scope=cross_class` or `scope=cross_package` to suppress
+  lower-level call noise before pagination
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected
   method or overload, with hierarchy paths and Java modifier checks
 - **find_unused_classes** — find conservative dead-code candidates while excluding indexed

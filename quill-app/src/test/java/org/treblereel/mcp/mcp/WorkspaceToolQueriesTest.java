@@ -478,7 +478,7 @@ class WorkspaceToolQueriesTest {
                 Optional.of("platform")));
         JsonNode calls = JSON.readTree(tools.get_call_hierarchy(
                 "io.casehub.engine.EngineService", Optional.of("execute"), Optional.empty(),
-                Optional.of("both"), Optional.of(false), Optional.of(3), Optional.of(20),
+                Optional.of("both"), Optional.of(false), Optional.of(3), Optional.empty(), Optional.of(20),
                 Optional.empty(), Optional.of("platform")));
         JsonNode injections = JSON.readTree(tools.list_injection_points(
                 "io.casehub.engine.EngineService", Optional.of("platform")));

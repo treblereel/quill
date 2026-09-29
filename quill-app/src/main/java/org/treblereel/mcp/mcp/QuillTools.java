@@ -272,6 +272,7 @@ public final class QuillTools {
             @ToolArg(description = "inbound, outbound, or both; default both") Optional<String> direction,
             @ToolArg(description = "Traverse calls; default false") Optional<Boolean> transitive,
             @ToolArg(description = "Traversal depth; default 3") Optional<Integer> max_depth,
+            @ToolArg(description = "Noise scope: all, cross_class, or cross_package; default all") Optional<String> scope,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
@@ -286,7 +287,7 @@ public final class QuillTools {
                 p, target, "get_call_hierarchy",
                 jdbi -> queries.getCallHierarchy(jdbi, target, requestedMethod,
                         requestedSignature, requestedDirection, requestedTransitive,
-                        requestedDepth, requestedLimit, requestedOffset)));
+                        requestedDepth, scope.orElse("all"), requestedLimit, requestedOffset)));
     }
 
     @Tool(structured = true, description = "Find declared method overrides in indexed subclasses and implementors.")

@@ -631,6 +631,28 @@ class QuillToolsTest {
     }
 
     @Test
+    void getCallHierarchyCanSuppressIntraClassNoiseBeforePaging() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO method_calls
+                  (from_class_id, from_method, from_descriptor,
+                   to_class_id, to_method, to_descriptor, invocation_kind,
+                   occurrence_count, evidence_lines)
+                VALUES (1, 'execute', '()V', 1, 'helper', '()V', 'special', 1, '[10]'),
+                       (1, 'execute', '()V', 4, 'audit', '()V', 'virtual', 1, '[11]')"""));
+
+        JsonNode result = JSON.readTree(new QuillToolQueries().getCallHierarchy(
+                jdbi, "OrderService", null, null, "outbound", false, 1,
+                "cross_class", 1, 0));
+
+        assertEquals("cross_class", result.path("scope").asText());
+        assertEquals(1, result.path("total").asInt());
+        assertEquals(1, result.path("showing").asInt());
+        assertEquals(1, result.path("suppressed_call_count").asInt());
+        assertEquals("org.acme.AuditService",
+                result.path("calls").get(0).path("callee").path("class").asText());
+    }
+
+    @Test
     void findSymbolUsagesResolvesOverloadsConstructorsAndFieldAccess() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

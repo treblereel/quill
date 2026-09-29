@@ -94,6 +94,18 @@ class CodexConfigInstallerTest {
     }
 
     @Test
+    void readsConfiguredQuillCommandForDiagnostics() {
+        String content = """
+                [mcp_servers.quill]
+                command = "/tmp/quill launcher"
+                args = ["--mcp"]
+                """;
+
+        assertEquals("/tmp/quill launcher",
+                CodexConfigInstaller.quillCommand(content).orElseThrow());
+    }
+
+    @Test
     void repeatedInstallationDoesNotModifyConfig() throws Exception {
         Path config = createConfig("approval_policy = \"never\"\n");
 

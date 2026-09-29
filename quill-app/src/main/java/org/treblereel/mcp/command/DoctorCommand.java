@@ -146,6 +146,15 @@ public class DoctorCommand implements Callable<Integer> {
             checks.add(Check.pass("mcp_configuration",
                     "Project-local MCP configuration detected for " + String.join(" and ", clients)));
         }
+        List<String> brokenLaunchers = brokenClientLaunchers(normalized);
+        if (!brokenLaunchers.isEmpty()) {
+            checks.add(Check.error("mcp_launcher",
+                    "Configured Quill launcher does not exist or is not executable: "
+                            + String.join(", ", brokenLaunchers),
+                    "Repair the project-local MCP configuration or run `quill init` with a working native launcher"));
+        } else if (!clients.isEmpty()) {
+            checks.add(Check.pass("mcp_launcher", "Configured Quill launcher paths are usable"));
+        }
         switch (ProjectConfiguration.inspectClaudeMd(normalized)) {
             case CURRENT -> checks.add(Check.pass("claude_instructions",
                     "CLAUDE.md contains the current managed Quill guidance"));
@@ -252,6 +261,52 @@ public class DoctorCommand implements Callable<Integer> {
             }
         }
         return List.copyOf(clients);
+    }
+
+    private static List<String> brokenClientLaunchers(Path root) {
+        List<String> broken = new ArrayList<>();
+        Path claude = root.resolve(".mcp.json");
+        if (Files.isRegularFile(claude)) {
+            try {
+                JsonNode quill = JSON.readTree(claude.toFile()).path("mcpServers").path("quill");
+                if (!quill.isMissingNode()) {
+                    addBrokenLauncher(broken, "Claude Code", quill.path("command").asText(null));
+                }
+            } catch (IOException ignored) {
+                // Malformed optional configuration is handled as absent by configuredClients.
+            }
+        }
+        Path codex = root.resolve(".codex/config.toml");
+        if (Files.isRegularFile(codex)) {
+            try {
+                String content = Files.readString(codex);
+                if (CodexConfigInstaller.definesQuillServer(content)) {
+                    addBrokenLauncher(broken, "Codex",
+                            CodexConfigInstaller.quillCommand(content).orElse(null));
+                }
+            } catch (IOException ignored) {
+                // Malformed optional configuration is handled as absent by configuredClients.
+            }
+        }
+        return List.copyOf(broken);
+    }
+
+    private static void addBrokenLauncher(List<String> broken, String client, String command) {
+        if (command == null || command.isBlank()) {
+            broken.add(client + " (missing command)");
+            return;
+        }
+        Path candidate;
+        try {
+            candidate = Path.of(command);
+        } catch (RuntimeException ignored) {
+            broken.add(client + " (invalid path: " + command + ")");
+            return;
+        }
+        if (!candidate.isAbsolute()) return;
+        if (!Files.isRegularFile(candidate) || !Files.isExecutable(candidate)) {
+            broken.add(client + " (" + command + ")");
+        }
     }
 
     private static String claudeToolProfile(Path root) {

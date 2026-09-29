@@ -64,6 +64,26 @@ class DoctorCommandTest {
         assertTrue(output.toString().contains("Overall: ERROR"));
     }
 
+    @Test
+    void reportsMissingAbsoluteClientLauncher(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        Path codex = Files.createDirectories(project.resolve(".codex")).resolve("config.toml");
+        Files.writeString(codex, """
+                [mcp_servers.quill]
+                command = "/definitely/missing/quill"
+                args = ["--mcp"]
+                """);
+
+        DoctorCommand.Report report = DoctorCommand.inspect(project);
+        DoctorCommand.Check launcher = report.checks().stream()
+                .filter(check -> check.id().equals("mcp_launcher"))
+                .findFirst().orElseThrow();
+
+        assertEquals(DoctorCommand.Status.ERROR, launcher.status());
+        assertTrue(launcher.message().contains("/definitely/missing/quill"));
+        assertTrue(launcher.action().contains("Repair"));
+    }
+
     private static Map<String, JsonNode> checksById(JsonNode report) {
         Map<String, JsonNode> checks = new HashMap<>();
         report.path("checks").forEach(check -> checks.put(check.path("id").asText(), check));

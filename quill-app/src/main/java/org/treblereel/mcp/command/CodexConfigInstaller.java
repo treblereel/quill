@@ -6,6 +6,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Optional;
 
 final class CodexConfigInstaller {
 
@@ -160,6 +161,30 @@ final class CodexConfigInstaller {
             }
         }
         return false;
+    }
+
+    static Optional<String> quillCommand(String content) {
+        boolean inQuillTable = false;
+        for (String line : content.split("\\R", -1)) {
+            String withoutComment = stripComment(line).trim();
+            if (withoutComment.isEmpty()) continue;
+            if (withoutComment.startsWith("[")) {
+                String table = tableName(withoutComment);
+                inQuillTable = "mcp_servers.quill".equals(table);
+                continue;
+            }
+            if (!inQuillTable || !"command".equals(assignmentKey(withoutComment))) continue;
+            int equals = indexOfUnquoted(withoutComment, '=');
+            if (equals < 0) return Optional.empty();
+            String value = withoutComment.substring(equals + 1).trim();
+            if (value.length() >= 2 && ((value.startsWith("\"") && value.endsWith("\""))
+                    || (value.startsWith("'") && value.endsWith("'")))) {
+                return Optional.of(value.substring(1, value.length() - 1)
+                        .replace("\\\\", "\\").replace("\\\"", "\""));
+            }
+            return Optional.empty();
+        }
+        return Optional.empty();
     }
 
     private static boolean definesInlineMcpServers(String content) {

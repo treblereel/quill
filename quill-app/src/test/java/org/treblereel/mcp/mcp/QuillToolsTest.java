@@ -820,7 +820,9 @@ class QuillToolsTest {
         jdbi.useHandle(handle -> handle.execute("""
                 UPDATE method_calls
                 SET caller_async_boundaries =
-                    '["java.util.concurrent.Executor.execute"]'
+                    '["java.util.concurrent.Executor.execute"]',
+                    caller_external_calls =
+                    '["4|33|java.util.concurrent.Executor|execute|(Ljava/lang/Runnable;)V|scheduling"]'
                 WHERE from_class_id = 1 AND from_method = 'guardedRun'"""));
         JsonNode async = JSON.readTree(queries.analyzeExecutionOrder(
                 jdbi, "OrderService", "guardedRun", null));
@@ -828,6 +830,11 @@ class QuillToolsTest {
                 async.path("ordering_analysis").path("runtime_order_status").asText());
         assertTrue(async.path("async_semantics")
                 .path("completion_order_unknown").asBoolean());
+        assertEquals(1, async.path("async_semantics").path("phases")
+                .path("scheduling").asInt());
+        assertTrue(async.path("bytecode_sequence").valueStream()
+                .anyMatch(event -> event.path("external").asBoolean()
+                        && event.path("evidence_lines").get(0).asInt() == 33));
     }
 
     @Test

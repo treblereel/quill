@@ -42,7 +42,8 @@ public final class BytecodeDependencyScanner {
             int callerBranchCount,
             int callerExceptionHandlerCount,
             List<String> callerControlFlowEdges,
-            List<String> callerAsyncBoundaries) {}
+            List<String> callerAsyncBoundaries,
+            List<String> callerExternalCalls) {}
 
     public record StaticFieldAccess(
             String fromClass,
@@ -147,7 +148,11 @@ public final class BytecodeDependencyScanner {
                         List.copyOf(controlFlow.getOrDefault(new MethodKey(
                                 entry.getKey().fromClass(), entry.getKey().fromMethod(),
                                 entry.getKey().fromDescriptor()),
-                                new ControlFlowEvidence()).asyncBoundaries)))
+                                new ControlFlowEvidence()).asyncBoundaries),
+                        List.copyOf(controlFlow.getOrDefault(new MethodKey(
+                                entry.getKey().fromClass(), entry.getKey().fromMethod(),
+                                entry.getKey().fromDescriptor()),
+                                new ControlFlowEvidence()).externalCalls)))
                 .sorted(Comparator.comparing(StaticMethodCall::fromClass)
                         .thenComparing(StaticMethodCall::fromMethod)
                         .thenComparing(StaticMethodCall::fromDescriptor)
@@ -252,6 +257,13 @@ public final class BytecodeDependencyScanner {
                     if (isAsyncBoundary(methodOwner, methodName)) {
                         methodControlFlow.asyncBoundaries.add(
                                 className(methodOwner) + "." + methodName);
+                    }
+                    String methodTarget = className(methodOwner);
+                    if (!applicationClasses.contains(methodTarget)) {
+                        String phase = asyncPhase(methodOwner, methodName);
+                        methodControlFlow.externalCalls.add(instructionOrdinal + "|"
+                                + currentLine + "|" + methodTarget + "|" + methodName + "|"
+                                + methodDescriptor + "|" + (phase == null ? "" : phase));
                     }
                     if (methodOwner.equals("java/util/ServiceLoader")
                             && (methodName.equals("load") || methodName.equals("loadInstalled"))
@@ -517,9 +529,14 @@ public final class BytecodeDependencyScanner {
         private int exceptionHandlerCount;
         private final Set<String> edges = new TreeSet<>();
         private final Set<String> asyncBoundaries = new TreeSet<>();
+        private final List<String> externalCalls = new ArrayList<>();
     }
 
     private static boolean isAsyncBoundary(String owner, String method) {
+        return asyncPhase(owner, method) != null;
+    }
+
+    private static String asyncPhase(String owner, String method) {
         String normalizedOwner = owner.toLowerCase(java.util.Locale.ROOT);
         String normalizedMethod = method.toLowerCase(java.util.Locale.ROOT);
         boolean asyncType = normalizedOwner.contains("java/util/concurrent")
@@ -529,14 +546,19 @@ public final class BytecodeDependencyScanner {
                 || normalizedOwner.contains("eventbus")
                 || normalizedOwner.contains("kafka")
                 || normalizedOwner.contains("messaging");
-        return asyncType && (normalizedMethod.contains("async")
-                || normalizedMethod.equals("execute")
-                || normalizedMethod.equals("submit")
-                || normalizedMethod.equals("schedule")
-                || normalizedMethod.equals("enqueue")
-                || normalizedMethod.equals("publish")
-                || normalizedMethod.equals("send")
-                || normalizedMethod.equals("subscribe"));
+        if (!asyncType) return null;
+        if (normalizedMethod.contains("complete") || normalizedMethod.contains("whencomplete")
+                || normalizedMethod.contains("handle") || normalizedMethod.contains("then")) {
+            return "completion_callback";
+        }
+        if (normalizedMethod.equals("subscribe")) return "subscription";
+        if (normalizedMethod.equals("publish") || normalizedMethod.equals("send")
+                || normalizedMethod.equals("enqueue")) return "publication";
+        if (normalizedMethod.contains("async") || normalizedMethod.equals("execute")
+                || normalizedMethod.equals("submit") || normalizedMethod.equals("schedule")) {
+            return "scheduling";
+        }
+        return null;
     }
 
     private static String className(String internalName) {

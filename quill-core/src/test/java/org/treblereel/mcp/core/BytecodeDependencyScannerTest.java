@@ -83,6 +83,8 @@ class BytecodeDependencyScannerTest {
                 .filter(call -> call.toClass().equals(AsyncConstructed.class.getName()))
                 .filter(call -> call.callerAsyncBoundaries().stream()
                         .anyMatch(boundary -> boundary.endsWith("Executor.execute")))
+                .filter(call -> call.callerExternalCalls().stream()
+                        .anyMatch(event -> event.contains("java.util.concurrent.Executor|execute")))
                 .count());
     }
 

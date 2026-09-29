@@ -479,7 +479,7 @@ public class ProjectInitializer {
                             call.invocationKind(), call.occurrences(), call.evidenceLines(),
                             call.instructionOrdinals(), call.callerBranchCount(),
                             call.callerExceptionHandlerCount(), call.callerControlFlowEdges(),
-                            call.callerAsyncBoundaries()));
+                            call.callerAsyncBoundaries(), call.callerExternalCalls()));
                 }
             }
             for (BytecodeDependencyScanner.StaticFieldAccess access : bytecode.fieldAccesses()) {

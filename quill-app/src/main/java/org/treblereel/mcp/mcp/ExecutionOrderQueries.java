@@ -54,11 +54,19 @@ final class ExecutionOrderQueries {
                 selected.descriptor(), "outbound", 10_000, 0);
         List<Event> events = new ArrayList<>();
         for (MethodCallView call : calls) {
-            String category = category(call, beforeTerms, afterTerms);
+            String category = category(call.toClass(), call.toMethod(), beforeTerms, afterTerms);
             for (int ordinal : call.instructionOrdinals()) {
-                events.add(new Event(ordinal, call, category));
+                events.add(new Event(ordinal, category, call.toClass(), call.toMethod(),
+                        call.toDescriptor(), call.evidenceLines(), false, null));
             }
         }
+        calls.stream().map(MethodCallView::callerExternalCalls)
+                .filter(encoded -> !encoded.isEmpty()).findFirst().orElse(List.of()).stream()
+                .map(ExecutionOrderQueries::parseExternalEvent)
+                .filter(java.util.Objects::nonNull)
+                .map(event -> event.withCategory(category(event.calleeClass(),
+                        event.calleeMethod(), beforeTerms, afterTerms)))
+                .forEach(events::add);
         events.sort(Comparator.comparingInt(Event::ordinal));
 
         List<Event> before = events.stream()
@@ -121,6 +129,11 @@ final class ExecutionOrderQueries {
         ObjectNode async = root.putObject("async_semantics");
         async.put("completion_order_unknown", completionOrderUnknown);
         async.set("boundaries", JSON.valueToTree(asyncBoundaries));
+        ObjectNode phases = async.putObject("phases");
+        events.stream().filter(event -> event.asyncPhase() != null)
+                .collect(java.util.stream.Collectors.groupingBy(Event::asyncPhase,
+                        java.util.TreeMap::new, java.util.stream.Collectors.counting()))
+                .forEach(phases::put);
         root.putArray("limitations")
                 .add("Straight-line runtime proof applies only to normal completion; an earlier call may throw or terminate")
                 .add("Exceptional CFG conservatively connects every protected instruction to its handler")
@@ -134,9 +147,9 @@ final class ExecutionOrderQueries {
         return member.kind().equals("CONSTRUCTOR") ? "<init>" : member.name();
     }
 
-    private static String category(MethodCallView call, Set<String> beforeTerms,
-            Set<String> afterTerms) {
-        String searchable = (call.toClass() + " " + call.toMethod()).toLowerCase(Locale.ROOT);
+    private static String category(String calleeClass, String calleeMethod,
+            Set<String> beforeTerms, Set<String> afterTerms) {
+        String searchable = (calleeClass + " " + calleeMethod).toLowerCase(Locale.ROOT);
         if (beforeTerms.stream().anyMatch(searchable::contains)) return "before";
         if (afterTerms.stream().anyMatch(searchable::contains)) return "after";
         return "call";
@@ -146,10 +159,26 @@ final class ExecutionOrderQueries {
         ObjectNode node = sequence.addObject();
         node.put("instruction_ordinal", event.ordinal());
         node.put("category", event.category());
-        node.put("callee_class", event.call().toClass());
-        node.put("callee_method", event.call().toMethod());
-        node.put("callee_descriptor", event.call().toDescriptor());
-        node.set("evidence_lines", JSON.valueToTree(event.call().evidenceLines()));
+        node.put("callee_class", event.calleeClass());
+        node.put("callee_method", event.calleeMethod());
+        node.put("callee_descriptor", event.calleeDescriptor());
+        node.put("external", event.external());
+        if (event.asyncPhase() != null) node.put("async_phase", event.asyncPhase());
+        node.set("evidence_lines", JSON.valueToTree(event.evidenceLines()));
+    }
+
+    private static Event parseExternalEvent(String encoded) {
+        String[] parts = encoded.split("\\|", -1);
+        if (parts.length != 6) return null;
+        try {
+            int ordinal = Integer.parseInt(parts[0]);
+            int line = Integer.parseInt(parts[1]);
+            return new Event(ordinal, "call", parts[2], parts[3], parts[4],
+                    line > 0 ? List.of(line) : List.of(), true,
+                    parts[5].isBlank() ? null : parts[5]);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private static boolean dominatesEveryAfter(List<Event> before, List<Event> after,
@@ -221,5 +250,12 @@ final class ExecutionOrderQueries {
         return root.toString();
     }
 
-    private record Event(int ordinal, MethodCallView call, String category) {}
+    private record Event(int ordinal, String category, String calleeClass,
+            String calleeMethod, String calleeDescriptor, List<Integer> evidenceLines,
+            boolean external, String asyncPhase) {
+        Event withCategory(String value) {
+            return new Event(ordinal, value, calleeClass, calleeMethod, calleeDescriptor,
+                    evidenceLines, external, asyncPhase);
+        }
+    }
 }

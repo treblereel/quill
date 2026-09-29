@@ -209,6 +209,7 @@ public final class BytecodeDependencyScanner {
                 private final Map<org.objectweb.asm.Label, Integer> labelOrdinals =
                         new IdentityHashMap<>();
                 private final List<PendingEdge> pendingEdges = new ArrayList<>();
+                private final List<PendingExceptionRegion> exceptionRegions = new ArrayList<>();
                 private final Set<Integer> noFallthrough = new HashSet<>();
 
                 @Override
@@ -376,6 +377,16 @@ public final class BytecodeDependencyScanner {
                             methodControlFlow.edges.add(edge.source() + ">" + target);
                         }
                     }
+                    for (PendingExceptionRegion region : exceptionRegions) {
+                        Integer start = labelOrdinals.get(region.start());
+                        Integer end = labelOrdinals.get(region.end());
+                        Integer handler = labelOrdinals.get(region.handler());
+                        if (start == null || end == null || handler == null) continue;
+                        for (int ordinal = start; ordinal < end && ordinal <= instructionOrdinal;
+                                ordinal++) {
+                            methodControlFlow.edges.add(ordinal + ">" + handler);
+                        }
+                    }
                 }
 
                 @Override
@@ -388,6 +399,7 @@ public final class BytecodeDependencyScanner {
                 public void visitTryCatchBlock(org.objectweb.asm.Label start,
                         org.objectweb.asm.Label end, org.objectweb.asm.Label handler, String type) {
                     methodControlFlow.exceptionHandlerCount++;
+                    exceptionRegions.add(new PendingExceptionRegion(start, end, handler));
                     if (type != null) add(type, "TYPE_USE");
                 }
 
@@ -487,6 +499,9 @@ public final class BytecodeDependencyScanner {
     private record MethodKey(String owner, String method, String descriptor) {}
 
     private record PendingEdge(int source, org.objectweb.asm.Label target) {}
+
+    private record PendingExceptionRegion(org.objectweb.asm.Label start,
+            org.objectweb.asm.Label end, org.objectweb.asm.Label handler) {}
 
     private static final class ControlFlowEvidence {
         private int branchCount;

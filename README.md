@@ -239,7 +239,8 @@ The router profile returns the same policy in `search_tools.guidance`, including
 - **analyze_execution_order** — reconstruct emitted call order inside one exact method and
   distinguish proven bytecode order from only likely runtime order across control flow; optional
   `before_terms` and `after_terms` check custom semantic boundaries, while CFG dominance proves
-  when every indexed path to an after-call passes through a before-call
+  when every indexed normal or exception-handler path to an after-call passes through a
+  before-call
 - **compare_design_impact** — rank existing classes as candidate hosts using risk, dependent
   classes, and impacted tests while keeping lifecycle/semantic fit as an explicit limitation
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected

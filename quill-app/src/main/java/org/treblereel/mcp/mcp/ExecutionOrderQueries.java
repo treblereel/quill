@@ -76,7 +76,7 @@ final class ExecutionOrderQueries {
         boolean straightLine = branchCount == 0 && exceptionHandlerCount == 0;
         List<String> cfgEdges = calls.stream().map(MethodCallView::callerControlFlowEdges)
                 .filter(edges -> !edges.isEmpty()).findFirst().orElse(List.of());
-        boolean cfgDominanceProven = comparable && exceptionHandlerCount == 0
+        boolean cfgDominanceProven = comparable
                 && dominatesEveryAfter(before, after, cfgEdges);
 
         ObjectNode root = JSON.createObjectNode();
@@ -105,12 +105,14 @@ final class ExecutionOrderQueries {
         ObjectNode controlFlow = root.putObject("control_flow");
         controlFlow.put("branch_count", branchCount);
         controlFlow.put("exception_handler_count", exceptionHandlerCount);
+        controlFlow.put("exceptional_edges_included", exceptionHandlerCount > 0);
         controlFlow.put("straight_line", straightLine);
         controlFlow.put("edge_count", cfgEdges.size());
         controlFlow.put("dominance_proven", cfgDominanceProven);
         root.putArray("limitations")
                 .add("Straight-line runtime proof applies only to normal completion; an earlier call may throw or terminate")
-                .add("Branches, loops, exceptions, asynchronous completion, reflection, and external internals can change runtime order")
+                .add("Exceptional CFG conservatively connects every protected instruction to its handler")
+                .add("Asynchronous completion, reflection, and external-library internals are not ordered by this analysis")
                 .add("Persistence and dispatch labels are name-based classifications; inspect the listed calls");
         appendMeta(root, jdbi, cls.sourceTokens(), cls.sourceFile(), cls.module());
         return root.toString();

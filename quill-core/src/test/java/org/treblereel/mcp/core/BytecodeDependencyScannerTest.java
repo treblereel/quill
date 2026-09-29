@@ -68,6 +68,14 @@ class BytecodeDependencyScannerTest {
                 .filter(call -> call.callerBranchCount() > 0)
                 .filter(call -> !call.callerControlFlowEdges().isEmpty())
                 .count());
+        assertEquals(1, result.methodCalls().stream()
+                .filter(call -> call.fromClass().equals(Consumer.class.getName()))
+                .filter(call -> call.fromMethod().equals("guardedCreate"))
+                .filter(call -> call.toClass().equals(GuardedConstructed.class.getName()))
+                .filter(call -> call.callerExceptionHandlerCount() == 1)
+                .filter(call -> call.callerControlFlowEdges().stream()
+                        .anyMatch(edge -> edge.endsWith(">5")))
+                .count());
     }
 
     @Test
@@ -201,6 +209,14 @@ class BytecodeDependencyScannerTest {
             return enabled ? new BranchConstructed() : null;
         }
 
+        Object guardedCreate() {
+            try {
+                return new GuardedConstructed();
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+        }
+
         void setValue(int value) {
             this.value = value;
         }
@@ -213,6 +229,8 @@ class BytecodeDependencyScannerTest {
     static final class Constructed {}
 
     static final class BranchConstructed {}
+
+    static final class GuardedConstructed {}
 
     interface ServiceContract {}
 

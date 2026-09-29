@@ -774,6 +774,51 @@ class QuillToolsTest {
     }
 
     @Test
+    void analyzeExecutionOrderRejectsBypassAndIncludesExceptionalPaths() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'bypassRun', 'bypassRun():void', '()V',
+                            'void', '[]', 'public', '[]'),
+                           (1, 'METHOD', 'guardedRun', 'guardedRun():void', '()V',
+                            'void', '[]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor, to_class_id, to_method,
+                       to_descriptor, invocation_kind, occurrence_count, evidence_lines,
+                       instruction_ordinals, caller_branch_count,
+                       caller_exception_handler_count, caller_control_flow_edges)
+                    VALUES (1, 'bypassRun', '()V', 3, 'persistPlan', '()V', 'virtual',
+                            1, '[20]', '[2]', 1, 0,
+                            '["1>2","1>4","2>3","3>5","4>5"]'),
+                           (1, 'bypassRun', '()V', 4, 'dispatchBatch', '()V', 'virtual',
+                            1, '[24]', '[5]', 1, 0,
+                            '["1>2","1>4","2>3","3>5","4>5"]'),
+                           (1, 'guardedRun', '()V', 3, 'persistPlan', '()V', 'virtual',
+                            1, '[30]', '[2]', 0, 1,
+                            '["1>2","2>3","3>4","3>5","4>7","5>6","6>7"]'),
+                           (1, 'guardedRun', '()V', 4, 'dispatchBatch', '()V', 'virtual',
+                            1, '[36]', '[7]', 0, 1,
+                            '["1>2","2>3","3>4","3>5","4>7","5>6","6>7"]')""");
+        });
+
+        QuillToolQueries queries = new QuillToolQueries();
+        JsonNode bypass = JSON.readTree(queries.analyzeExecutionOrder(
+                jdbi, "OrderService", "bypassRun", null));
+        assertEquals("likely", bypass.path("ordering_analysis")
+                .path("runtime_order_status").asText());
+        assertFalse(bypass.path("control_flow").path("dominance_proven").asBoolean());
+
+        JsonNode guarded = JSON.readTree(queries.analyzeExecutionOrder(
+                jdbi, "OrderService", "guardedRun", null));
+        assertEquals("proven_on_all_cfg_paths", guarded.path("ordering_analysis")
+                .path("runtime_order_status").asText());
+        assertTrue(guarded.path("control_flow").path("exceptional_edges_included").asBoolean());
+    }
+
+    @Test
     void compareDesignImpactRanksExistingHostsAndPreservesSemanticCaveat() throws Exception {
         JsonNode result = JSON.readTree(new QuillToolQueries().compareDesignImpact(
                 jdbi, List.of("OrderService", "AuditService"), 3));

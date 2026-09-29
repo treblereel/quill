@@ -80,7 +80,7 @@ public final class QuillTools {
 
     @Tool(structured = true, description = "Find workspace usages.")
     public String find_workspace_usages(
-            @ToolArg(description = "Class or source path") String target,
+            @ToolArg(description = "Target") String target,
             @ToolArg(description = "Provider repository") Optional<String> provider_repository,
             @ToolArg(description = "Usage kind") Optional<String> usage_kind,
             @ToolArg(description = "Consumer repository page size") Optional<Integer> limit,
@@ -288,6 +288,18 @@ public final class QuillTools {
                 jdbi -> queries.getCallHierarchy(jdbi, target, requestedMethod,
                         requestedSignature, requestedDirection, requestedTransitive,
                         requestedDepth, scope.orElse("all"), requestedLimit, requestedOffset)));
+    }
+
+    @Tool(structured = true,
+            description = "Trace state lifecycle.")
+    public String trace_state_lifecycle(
+            @ToolArg(description = "Class or source path") String target,
+            @ToolArg(description = "Row limit") Optional<Integer> evidence_limit,
+            @ToolArg(description = "Repo") Optional<String> project) {
+        int requestedLimit = clamp(evidence_limit.orElse(50), 1, 200);
+        return forAllProjects(project.orElse(null), p -> routeClassQuery(
+                p, target, "trace_state_lifecycle",
+                jdbi -> queries.traceStateLifecycle(jdbi, target, requestedLimit)));
     }
 
     @Tool(structured = true, description = "Find declared method overrides in indexed subclasses and implementors.")

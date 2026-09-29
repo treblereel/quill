@@ -233,6 +233,9 @@ The router profile returns the same policy in `search_tools.guidance`, including
   exact overload selection by signature/JVM descriptor, invocation kinds, source-line evidence,
   traversal depth, and call paths; use `scope=cross_class` or `scope=cross_package` to suppress
   lower-level call noise before pagination
+- **trace_state_lifecycle** — correlate exact constructor and field-access evidence with
+  persistence, dispatch, serialization, and recovery boundaries; reports candidate roles and
+  explicitly does not claim control-flow ordering
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected
   method or overload, with hierarchy paths and Java modifier checks
 - **find_unused_classes** — find conservative dead-code candidates while excluding indexed

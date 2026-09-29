@@ -653,6 +653,51 @@ class QuillToolsTest {
     }
 
     @Test
+    void traceStateLifecycleCorrelatesDurabilityAndDispatchEvidenceWithoutClaimingOrder()
+            throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("UPDATE classes SET class_name = 'org.acme.CasePersistenceSession' WHERE id = 3");
+            handle.execute("UPDATE classes SET class_name = 'org.acme.WorkerBatchDispatcher' WHERE id = 4");
+            handle.execute("UPDATE classes SET class_name = 'org.acme.CaseRecoveryTimer' WHERE id = 2");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
+                    VALUES (1, 'CONSTRUCTOR', 'OrderService', 'OrderService()', '()V',
+                            'org.acme.OrderService', '[]', 'public', '[]'),
+                           (1, 'FIELD', 'plan', 'plan:java.lang.String',
+                            'Ljava/lang/String;', 'java.lang.String', '[]', 'private', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls
+                      (from_class_id, from_method, from_descriptor,
+                       to_class_id, to_method, to_descriptor, invocation_kind,
+                       occurrence_count, evidence_lines)
+                    VALUES (3, 'persistPlan', '()V', 1, '<init>', '()V', 'special', 1, '[12]')""");
+            handle.execute("""
+                    INSERT INTO field_accesses
+                      (from_class_id, from_method, from_descriptor, to_class_id,
+                       field_name, field_descriptor, access_kind, occurrence_count, evidence_lines)
+                    VALUES (3, 'savePlan', '()V', 1, 'plan', 'Ljava/lang/String;',
+                            'write_instance', 1, '[20]'),
+                           (4, 'dispatchBatch', '()V', 1, 'plan', 'Ljava/lang/String;',
+                            'read_instance', 1, '[31]'),
+                           (2, 'recoverTimer', '()V', 1, 'plan', 'Ljava/lang/String;',
+                            'read_instance', 1, '[42]')""");
+        });
+
+        JsonNode result = JSON.readTree(
+                new QuillToolQueries().traceStateLifecycle(jdbi, "OrderService", 20));
+
+        assertTrue(result.path("inferred_roles").valueStream().anyMatch(role ->
+                role.asText().equals("durable_execution_state_candidate")));
+        assertTrue(result.path("inferred_roles").valueStream().anyMatch(role ->
+                role.asText().equals("recovery_state_candidate")));
+        assertFalse(result.path("ordered_lifecycle_proven").asBoolean());
+        assertEquals(1, result.path("semantic_boundaries").path("dispatch").size());
+        assertEquals("high", result.path("inference_confidence").asText());
+    }
+
+    @Test
     void findSymbolUsagesResolvesOverloadsConstructorsAndFieldAccess() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

@@ -38,6 +38,7 @@ public final class QuillToolQueries {
     private final ServiceDescriptorQueries serviceDescriptors = new ServiceDescriptorQueries();
     private final ConfigurationReferenceQueries configurationReferences =
             new ConfigurationReferenceQueries();
+    private final StateLifecycleQueries stateLifecycle = new StateLifecycleQueries();
     private final ResourceReferenceQueries resourceReferences = new ResourceReferenceQueries();
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
@@ -126,6 +127,10 @@ public final class QuillToolQueries {
             String direction, boolean transitive, int maxDepth, int limit, int offset) {
         return callHierarchy.getCallHierarchy(jdbi, target, method, signature, direction,
                 transitive, maxDepth, limit, offset);
+    }
+
+    String traceStateLifecycle(Jdbi jdbi, String target, int evidenceLimit) {
+        return stateLifecycle.trace(jdbi, target, evidenceLimit);
     }
 
     String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,

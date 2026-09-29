@@ -57,6 +57,7 @@ class BytecodeDependencyScannerTest {
                 .filter(call -> call.toMethod().equals("<init>"))
                 .filter(call -> call.invocationKind().equals("special"))
                 .filter(call -> !call.evidenceLines().isEmpty())
+                .filter(call -> !call.instructionOrdinals().isEmpty())
                 .count());
     }
 
@@ -76,12 +77,14 @@ class BytecodeDependencyScannerTest {
                 .filter(access -> access.fieldDescriptor().equals("I"))
                 .filter(access -> access.accessKind().equals("write_instance"))
                 .filter(access -> !access.evidenceLines().isEmpty())
+                .filter(access -> !access.instructionOrdinals().isEmpty())
                 .count());
         assertEquals(1, result.fieldAccesses().stream()
                 .filter(access -> access.fromClass().equals(Consumer.class.getName()))
                 .filter(access -> access.fromMethod().equals("getValue"))
                 .filter(access -> access.fieldName().equals("value"))
                 .filter(access -> access.accessKind().equals("read_instance"))
+                .filter(access -> !access.instructionOrdinals().isEmpty())
                 .count());
     }
 

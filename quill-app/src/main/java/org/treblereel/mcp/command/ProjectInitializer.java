@@ -476,7 +476,8 @@ public class ProjectInitializer {
                 if (from != null && to != null) {
                     methodCalls.add(new MethodCallRecord(from, call.fromMethod(),
                             call.fromDescriptor(), to, call.toMethod(), call.toDescriptor(),
-                            call.invocationKind(), call.occurrences(), call.evidenceLines()));
+                            call.invocationKind(), call.occurrences(), call.evidenceLines(),
+                            call.instructionOrdinals()));
                 }
             }
             for (BytecodeDependencyScanner.StaticFieldAccess access : bytecode.fieldAccesses()) {
@@ -486,7 +487,7 @@ public class ProjectInitializer {
                     fieldAccesses.add(new FieldAccessRecord(from, access.fromMethod(),
                             access.fromDescriptor(), to, access.fieldName(),
                             access.fieldDescriptor(), access.accessKind(), access.occurrences(),
-                            access.evidenceLines()));
+                            access.evidenceLines(), access.instructionOrdinals()));
                 }
             }
             timings.finish("bytecode_analysis");

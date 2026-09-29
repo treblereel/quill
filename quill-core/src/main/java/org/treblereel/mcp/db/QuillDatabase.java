@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 18;
+    static final int SCHEMA_VERSION = 19;
 
     private QuillDatabase() {}
 
@@ -114,6 +114,7 @@ public final class QuillDatabase {
                     invocation_kind TEXT NOT NULL,
                     occurrence_count INTEGER NOT NULL DEFAULT 1,
                     evidence_lines TEXT NOT NULL DEFAULT '[]',
+                    instruction_ordinals TEXT NOT NULL DEFAULT '[]',
                     UNIQUE(from_class_id, from_method, from_descriptor,
                            to_class_id, to_method, to_descriptor, invocation_kind)
                 )""");
@@ -128,6 +129,7 @@ public final class QuillDatabase {
                     access_kind TEXT NOT NULL,
                     occurrence_count INTEGER NOT NULL DEFAULT 1,
                     evidence_lines TEXT NOT NULL DEFAULT '[]',
+                    instruction_ordinals TEXT NOT NULL DEFAULT '[]',
                     UNIQUE(from_class_id, from_method, from_descriptor,
                            to_class_id, field_name, field_descriptor, access_kind)
                 )""");

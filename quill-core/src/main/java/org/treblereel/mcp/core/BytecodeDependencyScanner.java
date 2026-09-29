@@ -1,6 +1,7 @@
 package org.treblereel.mcp.core;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -35,7 +36,8 @@ public final class BytecodeDependencyScanner {
             String toDescriptor,
             String invocationKind,
             int occurrences,
-            List<Integer> evidenceLines) {}
+            List<Integer> evidenceLines,
+            List<Integer> instructionOrdinals) {}
 
     public record StaticFieldAccess(
             String fromClass,
@@ -46,7 +48,8 @@ public final class BytecodeDependencyScanner {
             String fieldDescriptor,
             String accessKind,
             int occurrences,
-            List<Integer> evidenceLines) {}
+            List<Integer> evidenceLines,
+            List<Integer> instructionOrdinals) {}
 
     public record ScanResult(
             List<StaticDependency> dependencies,
@@ -123,7 +126,8 @@ public final class BytecodeDependencyScanner {
                         entry.getKey().fromDescriptor(), entry.getKey().toClass(),
                         entry.getKey().toMethod(), entry.getKey().toDescriptor(),
                         entry.getKey().invocationKind(), entry.getValue().occurrences,
-                        List.copyOf(entry.getValue().lines)))
+                        List.copyOf(entry.getValue().lines),
+                        List.copyOf(entry.getValue().instructionOrdinals)))
                 .sorted(Comparator.comparing(StaticMethodCall::fromClass)
                         .thenComparing(StaticMethodCall::fromMethod)
                         .thenComparing(StaticMethodCall::fromDescriptor)
@@ -137,7 +141,8 @@ public final class BytecodeDependencyScanner {
                         entry.getKey().fromDescriptor(), entry.getKey().toClass(),
                         entry.getKey().fieldName(), entry.getKey().fieldDescriptor(),
                         entry.getKey().accessKind(), entry.getValue().occurrences,
-                        List.copyOf(entry.getValue().lines)))
+                        List.copyOf(entry.getValue().lines),
+                        List.copyOf(entry.getValue().instructionOrdinals)))
                 .sorted(Comparator.comparing(StaticFieldAccess::fromClass)
                         .thenComparing(StaticFieldAccess::fromMethod)
                         .thenComparing(StaticFieldAccess::fromDescriptor)
@@ -180,6 +185,7 @@ public final class BytecodeDependencyScanner {
             return new MethodVisitor(Opcodes.ASM9) {
                 private Type directClassLiteral;
                 private int currentLine;
+                private int instructionOrdinal;
 
                 @Override
                 public void visitLineNumber(int line, org.objectweb.asm.Label start) {
@@ -188,6 +194,7 @@ public final class BytecodeDependencyScanner {
 
                 @Override
                 public void visitTypeInsn(int opcode, String type) {
+                    nextInstruction();
                     directClassLiteral = null;
                     add(type, opcode == Opcodes.NEW ? "CONSTRUCTS" : "TYPE_USE");
                 }
@@ -195,6 +202,7 @@ public final class BytecodeDependencyScanner {
                 @Override
                 public void visitFieldInsn(int opcode, String fieldOwner, String fieldName,
                         String fieldDescriptor) {
+                    nextInstruction();
                     directClassLiteral = null;
                     addFieldAccess(fieldOwner, fieldName, fieldDescriptor,
                             fieldAccessKind(opcode));
@@ -205,6 +213,7 @@ public final class BytecodeDependencyScanner {
                 @Override
                 public void visitMethodInsn(int opcode, String methodOwner, String methodName,
                         String methodDescriptor, boolean isInterface) {
+                    nextInstruction();
                     if (methodOwner.equals("java/util/ServiceLoader")
                             && (methodName.equals("load") || methodName.equals("loadInstalled"))
                             && directClassLiteral != null) {
@@ -221,6 +230,7 @@ public final class BytecodeDependencyScanner {
                 @Override
                 public void visitInvokeDynamicInsn(String name, String descriptor,
                         Handle bootstrapMethodHandle, Object... bootstrapMethodArguments) {
+                    nextInstruction();
                     directClassLiteral = null;
                     addMethodTypes(descriptor);
                     add(bootstrapMethodHandle.getOwner(), "CALLS");
@@ -246,6 +256,7 @@ public final class BytecodeDependencyScanner {
 
                 @Override
                 public void visitLdcInsn(Object value) {
+                    nextInstruction();
                     directClassLiteral = value instanceof Type type
                             && type.getSort() == Type.OBJECT ? type : null;
                     if (value instanceof Type type) addType(type, "TYPE_USE");
@@ -253,33 +264,53 @@ public final class BytecodeDependencyScanner {
 
                 @Override
                 public void visitInsn(int opcode) {
+                    nextInstruction();
                     directClassLiteral = null;
                 }
 
                 @Override
                 public void visitIntInsn(int opcode, int operand) {
+                    nextInstruction();
                     directClassLiteral = null;
                 }
 
                 @Override
                 public void visitVarInsn(int opcode, int variable) {
+                    nextInstruction();
                     directClassLiteral = null;
                 }
 
                 @Override
                 public void visitJumpInsn(int opcode, org.objectweb.asm.Label label) {
+                    nextInstruction();
                     directClassLiteral = null;
                 }
 
                 @Override
                 public void visitIincInsn(int variable, int increment) {
+                    nextInstruction();
                     directClassLiteral = null;
                 }
 
                 @Override
                 public void visitMultiANewArrayInsn(String descriptor, int dimensions) {
+                    nextInstruction();
                     directClassLiteral = null;
                     addType(Type.getType(descriptor), "TYPE_USE");
+                }
+
+                @Override
+                public void visitTableSwitchInsn(int min, int max,
+                        org.objectweb.asm.Label dflt, org.objectweb.asm.Label... labels) {
+                    nextInstruction();
+                    directClassLiteral = null;
+                }
+
+                @Override
+                public void visitLookupSwitchInsn(org.objectweb.asm.Label dflt, int[] keys,
+                        org.objectweb.asm.Label[] labels) {
+                    nextInstruction();
+                    directClassLiteral = null;
                 }
 
                 @Override
@@ -319,6 +350,10 @@ public final class BytecodeDependencyScanner {
                             .add(currentLine);
                 }
 
+                private void nextInstruction() {
+                    instructionOrdinal++;
+                }
+
                 private void addCall(String internalName, String methodName,
                         String methodDescriptor, String kind) {
                     if (internalName == null || methodName == null || methodDescriptor == null
@@ -326,8 +361,8 @@ public final class BytecodeDependencyScanner {
                     String target = className(internalName);
                     if (!applicationClasses.contains(target)) return;
                     calls.computeIfAbsent(new CallEdge(owner, callerMethod, callerDescriptor,
-                                    target, methodName, methodDescriptor, kind),
-                            ignored -> new EdgeEvidence()).add(currentLine);
+                            target, methodName, methodDescriptor, kind),
+                            ignored -> new EdgeEvidence()).add(currentLine, instructionOrdinal);
                 }
 
                 private void addFieldAccess(String internalName, String fieldName,
@@ -337,8 +372,8 @@ public final class BytecodeDependencyScanner {
                     String target = className(internalName);
                     if (!applicationClasses.contains(target)) return;
                     fields.computeIfAbsent(new FieldEdge(owner, callerMethod, callerDescriptor,
-                                    target, fieldName, fieldDescriptor, kind),
-                            ignored -> new EdgeEvidence()).add(currentLine);
+                            target, fieldName, fieldDescriptor, kind),
+                            ignored -> new EdgeEvidence()).add(currentLine, instructionOrdinal);
                 }
             };
         }
@@ -370,10 +405,16 @@ public final class BytecodeDependencyScanner {
     private static final class EdgeEvidence {
         private int occurrences;
         private final Set<Integer> lines = new TreeSet<>();
+        private final List<Integer> instructionOrdinals = new ArrayList<>();
 
         private void add(int line) {
             occurrences++;
             if (line > 0) lines.add(line);
+        }
+
+        private void add(int line, int instructionOrdinal) {
+            add(line);
+            if (instructionOrdinal > 0) instructionOrdinals.add(instructionOrdinal);
         }
     }
 

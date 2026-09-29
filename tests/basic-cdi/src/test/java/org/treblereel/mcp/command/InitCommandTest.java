@@ -39,8 +39,8 @@ class InitCommandTest {
 
         Jdbi jdbi = QuillDatabase.open(dbPath);
         var classes = IndexReader.findAllClasses(jdbi);
-        assertEquals(8, classes.stream().filter(cls -> "main".equals(cls.sourceSet())).count(),
-                "Should index all 8 main fixture classes");
+        assertEquals(13, classes.stream().filter(cls -> "main".equals(cls.sourceSet())).count(),
+                "Should index all 13 main fixture classes");
 
         var beans = IndexReader.findBeans(jdbi, null);
         assertTrue(beans.size() >= 3, "Should find at least 3 CDI beans (Stripe, Mock, Order), plus non-bean classes");

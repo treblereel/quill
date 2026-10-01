@@ -259,33 +259,57 @@ class McpToolCatalogTest {
     }
 
     @Test
-    void symbolToolsAdvertiseDomainSpecificOutputFields() {
-        AsyncToolSpecification specification = McpToolCatalog.create(
+    void specializedOutputSchemasAdvertiseTheirCompleteTopLevelContracts() {
+        Set<String> errorEnvelope = Set.of(
+                "error_code", "message", "retryable", "retry_with", "_meta");
+        Map<String, Set<String>> expected = Map.of(
+                "get_overview", Set.of(
+                        "capabilities", "project", "problems", "architecture_hubs"),
+                "search_symbols", Set.of(
+                        "pattern", "kind", "language_filter", "symbols",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "get_symbol_details", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "class", "kind", "location", "members",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "get_symbol_at_position", Set.of(
+                        "path", "line", "column", "identifier", "resolution", "confidence",
+                        "selected", "candidates", "limitations"),
+                "find_symbol_usages", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "kind", "usages",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "get_call_hierarchy", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "method", "calls",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "find_method_overrides", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "method", "base_declarations", "overrides",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "analyze_execution_order", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "method", "bytecode_sequence", "ordering_analysis"));
+        Map<String, AsyncToolSpecification> catalog = McpToolCatalog.create(
                         new QuillTools(new ProjectRegistry()), workers, responses,
-                        Duration.ofSeconds(1))
-                .stream().filter(candidate -> candidate.tool().name().equals("search_symbols"))
-                .findFirst().orElseThrow();
+                        Duration.ofSeconds(1)).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        specification -> specification.tool().name(),
+                        specification -> specification));
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> properties = (Map<String, Object>) specification.tool()
-                .outputSchema().get("properties");
-        assertEquals("array", ((Map<?, ?>) properties.get("symbols")).get("type"));
-        assertEquals("string", ((Map<?, ?>) properties.get("language_filter")).get("type"));
-        assertEquals("string", ((Map<?, ?>) properties.get("error_code")).get("type"));
-    }
-
-    @Test
-    void overviewAdvertisesCapabilitiesInItsOutputSchema() {
-        AsyncToolSpecification specification = McpToolCatalog.create(
-                        new QuillTools(new ProjectRegistry()), workers, responses,
-                        Duration.ofSeconds(1))
-                .stream().filter(candidate -> candidate.tool().name().equals("get_overview"))
-                .findFirst().orElseThrow();
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> properties = (Map<String, Object>) specification.tool()
-                .outputSchema().get("properties");
-        assertEquals("object", ((Map<?, ?>) properties.get("capabilities")).get("type"));
+        expected.forEach((toolName, domainFields) -> {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> properties = (Map<String, Object>) catalog.get(toolName)
+                    .tool().outputSchema().get("properties");
+            Set<String> allFields = new java.util.HashSet<>(domainFields);
+            allFields.addAll(errorEnvelope);
+            assertEquals(allFields, properties.keySet(), toolName);
+            assertFalse(properties.containsKey("error"), toolName);
+            assertEquals("string", ((Map<?, ?>) properties.get("error_code")).get("type"),
+                    toolName);
+            assertEquals("boolean", ((Map<?, ?>) properties.get("retryable")).get("type"),
+                    toolName);
+        });
     }
 
     @Test
@@ -295,10 +319,11 @@ class McpToolCatalogTest {
                 Duration.ofSeconds(1));
         int characters = tools.stream()
                 .mapToInt(specification -> specification.tool().description().length()
-                        + specification.tool().inputSchema().toString().length())
+                        + specification.tool().inputSchema().toString().length()
+                        + specification.tool().outputSchema().toString().length())
                 .sum();
         int averageCharacters = characters / tools.size();
-        assertTrue(characters < 22_000 && averageCharacters < 430,
+        assertTrue(characters < 32_000 && averageCharacters < 650,
                 "catalog characters: " + characters + ", average: " + averageCharacters);
     }
 

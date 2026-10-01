@@ -39,8 +39,8 @@ final class SymbolUsageQueries {
                 kind = reference.kind();
                 signature = reference.descriptor();
             }
-        } catch (IllegalArgumentException error) {
-            return errorResponse("MALFORMED_SYMBOL_ID", "Malformed symbol_id");
+        } catch (SymbolContract.ParseException error) {
+            return errorResponse(error.errorCode(), error.getMessage());
         }
         String normalizedKind = kind == null ? "" : kind.strip().toUpperCase(Locale.ROOT);
         if (!KINDS.contains(normalizedKind)) {

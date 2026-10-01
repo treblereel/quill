@@ -39,8 +39,8 @@ final class ClassTargetResolver {
             String requested = target;
             target = SymbolContract.parse(requested)
                     .map(SymbolContract.Reference::className).orElse(requested);
-        } catch (IllegalArgumentException error) {
-            return Lookup.error("MALFORMED_SYMBOL_ID", "Malformed symbol_id",
+        } catch (SymbolContract.ParseException error) {
+            return Lookup.error(error.errorCode(), error.getMessage(),
                     List.of(), List.of());
         }
         var exactNames = IndexReader.findClassesByName(jdbi, target);

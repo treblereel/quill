@@ -56,8 +56,8 @@ final class CallHierarchyQueries {
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
-        } catch (IllegalArgumentException error) {
-            return errorResponse("MALFORMED_SYMBOL_ID", "Malformed symbol_id");
+        } catch (SymbolContract.ParseException error) {
+            return errorResponse(error.errorCode(), error.getMessage());
         }
         String normalizedDirection = direction == null
                 ? "both" : direction.trim().toLowerCase(Locale.ROOT);

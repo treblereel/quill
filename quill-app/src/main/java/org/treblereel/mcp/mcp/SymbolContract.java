@@ -6,6 +6,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.KotlinDeclarationRecord;
@@ -13,7 +14,12 @@ import org.treblereel.mcp.model.KotlinDeclarationRecord;
 /** Shared, source-oriented identity fields for symbols returned by MCP tools. */
 final class SymbolContract {
 
+    private static final String SYMBOL_PREFIX = "quill:symbol:";
     private static final String PREFIX = "quill:symbol:v1:";
+    private static final Set<String> TYPE_KINDS = Set.of(
+            "CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD");
+    private static final Set<String> MEMBER_KINDS = Set.of(
+            "FIELD", "CONSTRUCTOR", "METHOD");
 
     private SymbolContract() {}
 
@@ -84,27 +90,39 @@ final class SymbolContract {
     }
 
     static boolean isId(String value) {
-        return value != null && value.startsWith(PREFIX);
+        return value != null && value.startsWith(SYMBOL_PREFIX);
     }
 
     static Optional<Reference> parse(String value) {
         if (!isId(value)) return Optional.empty();
+        if (!value.startsWith(PREFIX)) {
+            throw new ParseException("UNSUPPORTED_SYMBOL_ID_VERSION",
+                    "Unsupported symbol_id version");
+        }
         String[] parts = value.substring(PREFIX.length()).split(":", -1);
         if (parts.length != 4) {
-            throw new IllegalArgumentException("Malformed symbol_id");
+            throw malformed(null);
         }
         try {
             String className = decode(parts[0]);
             String kind = parts[1].toUpperCase(Locale.ROOT);
             String jvmName = decode(parts[2]);
             String descriptor = decode(parts[3]);
-            if (className.isBlank() || kind.isBlank()) {
-                throw new IllegalArgumentException("Malformed symbol_id");
+            if (className.isBlank() || jvmName.isBlank()
+                    || (!TYPE_KINDS.contains(kind) && !MEMBER_KINDS.contains(kind))
+                    || (MEMBER_KINDS.contains(kind) && descriptor.isBlank())) {
+                throw malformed(null);
             }
             return Optional.of(new Reference(className, kind, jvmName, descriptor));
+        } catch (ParseException error) {
+            throw error;
         } catch (IllegalArgumentException error) {
-            throw new IllegalArgumentException("Malformed symbol_id", error);
+            throw malformed(error);
         }
+    }
+
+    private static ParseException malformed(Throwable cause) {
+        return new ParseException("MALFORMED_SYMBOL_ID", "Malformed symbol_id", cause);
     }
 
     private static String sourceClassName(
@@ -144,4 +162,22 @@ final class SymbolContract {
     }
 
     record Reference(String className, String kind, String jvmName, String descriptor) {}
+
+    static final class ParseException extends IllegalArgumentException {
+        private final String errorCode;
+
+        ParseException(String errorCode, String message) {
+            super(message);
+            this.errorCode = errorCode;
+        }
+
+        ParseException(String errorCode, String message, Throwable cause) {
+            super(message, cause);
+            this.errorCode = errorCode;
+        }
+
+        String errorCode() {
+            return errorCode;
+        }
+    }
 }

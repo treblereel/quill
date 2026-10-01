@@ -72,6 +72,27 @@ class ClassTargetResolverTest {
                 lookup.candidates().stream().map(ClassRecord::module).toList());
     }
 
+    @Test
+    void reportsUnsupportedSymbolIdVersionsWithoutTreatingThemAsClassNames() {
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(
+                database(List.of(current("example.Type"))), "quill:symbol:v2:anything");
+
+        assertFalse(lookup.found());
+        assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", lookup.errorCode());
+        assertEquals("Unsupported symbol_id version", lookup.error());
+        assertTrue(lookup.candidates().isEmpty());
+    }
+
+    @Test
+    void reportsMalformedRecognizedSymbolIds() {
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(
+                database(List.of(current("example.Type"))), "quill:symbol:v1:broken");
+
+        assertFalse(lookup.found());
+        assertEquals("MALFORMED_SYMBOL_ID", lookup.errorCode());
+        assertEquals("Malformed symbol_id", lookup.error());
+    }
+
     private Jdbi database(List<ClassRecord> classes) {
         Jdbi jdbi = QuillDatabase.create(tempDir.resolve("index-" + System.nanoTime() + ".db"));
         IndexWriter.write(jdbi, classes, List.of(), List.of(), List.of(),

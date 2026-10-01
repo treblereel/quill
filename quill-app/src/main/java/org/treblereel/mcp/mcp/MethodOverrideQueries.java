@@ -41,8 +41,8 @@ final class MethodOverrideQueries {
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
-        } catch (IllegalArgumentException error) {
-            return errorResponse("MALFORMED_SYMBOL_ID", "Malformed symbol_id");
+        } catch (SymbolContract.ParseException error) {
+            return errorResponse(error.errorCode(), error.getMessage());
         }
         if (method == null || method.isBlank()) {
             return errorResponse("MISSING_METHOD", "Method name or symbol_id must be provided");

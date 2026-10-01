@@ -331,6 +331,10 @@ does not imply that an executor, reactive stream, or message publication has com
 - **get_overview** — compact project summary by default; set `details=true` for diagnostic
   samples and per-dimension architecture-hub rankings. Its `capabilities` block advertises
   supported source languages, stable `symbol_id` chaining, and machine-readable errors
+
+Tool failures use a single structured envelope: `error_code`, `message`, `retryable`, and,
+when the request can be refined, `retry_with`. The former free-form `error` field is not
+emitted by the MCP surface.
 - **list_beans** — filter beans by scope, kind, qualifier (CDI and Spring); supports
   `limit`/`offset`
 - **list_injection_points** — injection resolution status for a bean

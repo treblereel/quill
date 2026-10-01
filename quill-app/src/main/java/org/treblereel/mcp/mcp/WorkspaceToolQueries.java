@@ -129,8 +129,7 @@ final class WorkspaceToolQueries {
                 trace.event("route_skipped", Map.of("reason", "non_object_response"));
                 return response;
             }
-            boolean localMissing = root.path("error").asText("")
-                    .startsWith("Class not found");
+            boolean localMissing = isClassNotFound(root);
             boolean dependencyClass = "dependency".equals(root.path("origin").asText());
             if (!localMissing && !dependencyClass) {
                 trace.event("route_skipped", Map.of("reason", "local_source_class"));
@@ -147,8 +146,8 @@ final class WorkspaceToolQueries {
                 ObjectNode localResolution = root.putObject("local_resolution");
                 localResolution.put("status", "not_found");
                 localResolution.put("repository", consumerRepository);
-                localResolution.put("message", root.path("error").asText());
-                root.remove("error");
+                localResolution.put("message", errorMessage(root));
+                root.remove(List.of("error", "error_code", "message", "retryable"));
                 root.put("target", resolvedTarget);
                 root.put("origin", "workspace_provider");
             }
@@ -227,7 +226,7 @@ final class WorkspaceToolQueries {
                 ProjectAvailabilityResponses.append(traversal, "project_warnings",
                         providerResolution.issues());
             }
-            if (providerData.has("error")) {
+            if (hasToolError(providerData)) {
                 traversal.put("status", "provider_index_incomplete");
                 traversal.put("complete", false);
             } else {
@@ -573,7 +572,7 @@ final class WorkspaceToolQueries {
             }
             try {
                 var data = JSON.readTree(result.json());
-                if (data.has("error")) {
+                if (hasToolError(data)) {
                     unresolvedConsumers.add(new ConsumerResolutionFailure(
                             result.project(), data));
                     continue;
@@ -627,9 +626,8 @@ final class WorkspaceToolQueries {
         unresolvedConsumers.stream().limit(20).forEach(value -> {
             ObjectNode node = unresolved.addObject();
             node.put("repository", value.repository());
-            node.put("status", value.data().path("error").asText("unknown_error"));
-            node.put("message", value.data().path("message")
-                    .asText(value.data().path("error").asText("unknown_error")));
+            node.put("status", errorCode(value.data(), "UNKNOWN_ERROR"));
+            node.put("message", errorMessage(value.data(), "unknown error"));
             copyIfPresent(value.data(), node, "target_resolution");
             copyIfPresent(value.data(), node, "resolution_strategies_checked");
             copyIfPresent(value.data(), node, "dependency_evidence");
@@ -652,7 +650,7 @@ final class WorkspaceToolQueries {
                 jdbi, target, usageKind, null, limit, 0, false);
         try {
             JsonNode parsed = JSON.readTree(response);
-            if (!parsed.path("error").asText("").startsWith("Class not found")) {
+            if (!isClassNotFound(parsed)) {
                 return response;
             }
             List<org.treblereel.mcp.model.ExternalBeanRecord> beans =
@@ -808,7 +806,7 @@ final class WorkspaceToolQueries {
         if (registry.workspaceScope() == null) return response;
         try {
             JsonNode parsed = JSON.readTree(response);
-            if (!parsed.path("error").asText("").startsWith("Class not found")) {
+            if (!isClassNotFound(parsed)) {
                 return response;
             }
             List<ProviderClass> providers = findProviderClasses(target, null);
@@ -822,7 +820,7 @@ final class WorkspaceToolQueries {
             root.putObject("local_resolution")
                     .put("status", "not_found")
                     .put("repository", consumerRepository)
-                    .put("message", parsed.path("error").asText());
+                    .put("message", errorMessage(parsed));
             root.set("workspace_usage", workspaceResult);
             root.put("answer_complete", workspaceResult.path("complete").asBoolean(false));
             return root.toString();
@@ -837,7 +835,7 @@ final class WorkspaceToolQueries {
         DebugTrace.Trace trace = DebugTrace.start("workspace_route");
         try {
             JsonNode local = JSON.readTree(response);
-            String localError = local.path("error").asText("");
+            String localError = errorMessage(local);
             if (!isRoutableClassMiss(localError)) {
                 trace.event("route_skipped", Map.of("operation", operation,
                         "reason", "local_result_available"));
@@ -896,8 +894,7 @@ final class WorkspaceToolQueries {
 
             JsonNode providerData = JSON.readTree(providerQuery.apply(
                     availability.projects().getFirst().jdbi()));
-            boolean absentFromIndex = providerData.path("error").asText("")
-                    .startsWith("Class not found");
+            boolean absentFromIndex = isClassNotFound(providerData);
             workspaceResult.put("status", absentFromIndex
                     ? "provider_index_incomplete" : "resolved");
             boolean complete = !absentFromIndex && providerFresh
@@ -1221,6 +1218,32 @@ final class WorkspaceToolQueries {
 
     private static String nullToUnknown(String value) {
         return value == null || value.isBlank() ? "unknown" : value;
+    }
+
+    private static boolean isClassNotFound(JsonNode node) {
+        return "CLASS_NOT_FOUND".equals(node.path("error_code").asText())
+                || errorMessage(node).startsWith("Class not found");
+    }
+
+    private static boolean hasToolError(JsonNode node) {
+        return node.has("error_code") || node.has("error");
+    }
+
+    private static String errorCode(JsonNode node, String fallback) {
+        String code = node.path("error_code").asText();
+        if (!code.isBlank()) return code;
+        String legacy = node.path("error").asText();
+        return legacy.isBlank() ? fallback : legacy;
+    }
+
+    private static String errorMessage(JsonNode node) {
+        return errorMessage(node, "");
+    }
+
+    private static String errorMessage(JsonNode node, String fallback) {
+        String message = node.path("message").asText();
+        if (!message.isBlank()) return message;
+        return node.path("error").asText(fallback);
     }
 
     private static String workspaceRequired() {

@@ -1141,6 +1141,17 @@ public final class QuillTools {
 
     private static boolean isNotFoundError(String json) {
         if (json == null) return false;
+        try {
+            JsonNode parsed = JSON.readTree(json);
+            if ("CLASS_NOT_FOUND".equals(parsed.path("error_code").asText())) return true;
+            String message = parsed.path("message").asText();
+            if (!message.isBlank()) {
+                return message.startsWith("Annotation not found")
+                        || message.startsWith("Not a bean:");
+            }
+        } catch (Exception ignored) {
+            // Fall through for older internal query payloads that are not valid JSON.
+        }
         return NOT_FOUND_PREFIXES.stream().anyMatch(json::startsWith);
     }
 

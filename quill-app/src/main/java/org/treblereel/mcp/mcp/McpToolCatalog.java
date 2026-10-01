@@ -226,17 +226,34 @@ final class McpToolCatalog {
     private static Object structuredContent(String text, boolean error) {
         try {
             var parsed = JSON.readTree(text);
-            if (parsed != null && parsed.isObject()) return parsed;
+            if (parsed instanceof com.fasterxml.jackson.databind.node.ObjectNode object) {
+                return normalizeErrorEnvelope(object);
+            }
         } catch (Exception ignored) {
             // Catalog-generated failures are converted to a stable structured envelope.
         }
         if (!error) return JSON.createObjectNode().put("result", text);
         var envelope = JSON.createObjectNode();
-        envelope.put("error", text);
         envelope.put("error_code", "TOOL_INVOCATION_ERROR");
         envelope.put("message", text);
         envelope.put("retryable", text.contains("retry"));
         return envelope;
+    }
+
+    private static Object normalizeErrorEnvelope(
+            com.fasterxml.jackson.databind.node.ObjectNode object) {
+        if (!object.has("error")) return object;
+        String legacy = object.path("error").asText("Tool failed");
+        if (!object.has("error_code")) {
+            String code = legacy.matches("[a-z][a-z0-9_]*")
+                    ? legacy.toUpperCase(java.util.Locale.ROOT)
+                    : "TOOL_ERROR";
+            object.put("error_code", code);
+        }
+        if (!object.has("message")) object.put("message", legacy);
+        if (!object.has("retryable")) object.put("retryable", false);
+        object.remove("error");
+        return object;
     }
 
     private static Object convertOptional(Object value, Class<?> targetType) {
@@ -304,7 +321,8 @@ final class McpToolCatalog {
     private static boolean isToolError(String text) {
         if (text == null || text.isBlank() || text.charAt(0) != '{') return false;
         try {
-            return JSON.readTree(text).has("error");
+            var parsed = JSON.readTree(text);
+            return parsed.has("error_code") || parsed.has("error");
         } catch (Exception ignored) {
             return false;
         }

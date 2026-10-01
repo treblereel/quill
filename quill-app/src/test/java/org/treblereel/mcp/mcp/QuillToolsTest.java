@@ -189,7 +189,8 @@ class QuillToolsTest {
         JsonNode result = JSON.readTree(new QuillTools().getBeans(
                 jdbi, "PaymentServ", null, null, null, null));
 
-        assertEquals("Class not found", result.get("error").asText());
+        assertEquals("CLASS_NOT_FOUND", result.path("error_code").asText());
+        assertEquals("Class not found", result.path("message").asText());
         assertTrue(result.get("candidates").toString().contains("PaymentService"));
     }
 
@@ -318,7 +319,7 @@ class QuillToolsTest {
 
         assertEquals(1, matching.path("total").asInt());
         assertEquals(0, excluded.path("total").asInt());
-        assertTrue(invalid.path("error").asText().startsWith("Invalid usage_kind"));
+        assertTrue(invalid.path("message").asText().startsWith("Invalid usage_kind"));
     }
 
     @Test
@@ -385,7 +386,7 @@ class QuillToolsTest {
 
         assertFalse(compact.path("members_included").asBoolean());
         assertFalse(compact.has("members"));
-        assertTrue(invalid.path("error").asText().startsWith("Invalid member_kind"));
+        assertTrue(invalid.path("message").asText().startsWith("Invalid member_kind"));
     }
 
     @Test
@@ -467,7 +468,7 @@ class QuillToolsTest {
         assertFalse(result.path("compiled_test_outputs_indexed").asBoolean());
         assertTrue(result.path("limitations").get(0).asText()
                 .contains("No compiled test classes"));
-        assertEquals("At least one target is required", invalid.path("error").asText());
+        assertEquals("At least one target is required", invalid.path("message").asText());
     }
 
     @Test
@@ -518,7 +519,7 @@ class QuillToolsTest {
         assertEquals("descendants", page.path("direction").asText());
         assertEquals(1, page.path("showing").asInt());
         assertEquals(1, page.path("total").asInt());
-        assertTrue(invalid.path("error").asText().contains("Invalid direction"));
+        assertTrue(invalid.path("message").asText().contains("Invalid direction"));
     }
 
     @Test
@@ -584,15 +585,14 @@ class QuillToolsTest {
         assertTrue(kotlinSymbol.path("default_parameters").asBoolean());
         assertTrue(kotlinOnly.path("symbols").valueStream()
                 .allMatch(value -> value.path("language").asText().equals("kotlin")));
-        assertTrue(invalidLanguage.path("error").asText().contains("Invalid language"));
+        assertFalse(invalidLanguage.has("error"));
         assertEquals("INVALID_ARGUMENT", invalidLanguage.path("error_code").asText());
-        assertEquals(invalidLanguage.path("error").asText(),
-                invalidLanguage.path("message").asText());
+        assertTrue(invalidLanguage.path("message").asText().contains("Invalid language"));
         assertFalse(invalidLanguage.path("retryable").asBoolean());
         assertEquals("orders", property.path("source_name").asText());
         assertEquals("property", property.path("source_kind").asText());
         assertEquals("property_field", property.path("jvm_role").asText());
-        assertTrue(invalid.path("error").asText().contains("Invalid kind"));
+        assertTrue(invalid.path("message").asText().contains("Invalid kind"));
     }
 
     @Test
@@ -605,7 +605,7 @@ class QuillToolsTest {
         assertEquals(2, page.path("showing").asInt());
         assertEquals(1, page.path("offset").asInt());
         assertTrue(page.path("has_more").asBoolean());
-        assertTrue(blank.path("error").asText().contains("must not be blank"));
+        assertTrue(blank.path("message").asText().contains("must not be blank"));
     }
 
     @Test
@@ -665,7 +665,7 @@ class QuillToolsTest {
                 .map(JsonNode::asInt).toList());
         assertEquals("org.acme.Order", outbound.path("callee").path("parameters")
                 .get(0).asText());
-        assertTrue(invalid.path("error").asText().contains("Invalid direction"));
+        assertTrue(invalid.path("message").asText().contains("Invalid direction"));
         assertEquals(2, transitive.path("total").asInt());
         assertFalse(transitive.path("direct_only").asBoolean());
         assertEquals(2, transitive.path("max_depth").asInt());
@@ -711,7 +711,7 @@ class QuillToolsTest {
         JsonNode ambiguous = JSON.readTree(queries.getCallHierarchy(
                 jdbi, "OrderService", "process", null,
                 "inbound", false, 1, 10, 0));
-        assertTrue(ambiguous.path("error").asText().startsWith("Ambiguous method"));
+        assertTrue(ambiguous.path("message").asText().startsWith("Ambiguous method"));
         assertEquals(2, ambiguous.path("candidates").size());
         String candidateId = ambiguous.path("candidates").get(0).path("symbol_id").asText();
         assertTrue(candidateId.startsWith("quill:symbol:v1:"));
@@ -732,7 +732,7 @@ class QuillToolsTest {
         JsonNode missing = JSON.readTree(queries.getCallHierarchy(
                 jdbi, "OrderService", "process", "(J)V",
                 "inbound", false, 1, 10, 0));
-        assertEquals("Method not found", missing.path("error").asText());
+        assertEquals("Method not found", missing.path("message").asText());
         assertEquals(2, missing.path("candidates").size());
     }
 
@@ -1054,7 +1054,7 @@ class QuillToolsTest {
         QuillToolQueries queries = new QuillToolQueries();
         JsonNode ambiguous = JSON.readTree(queries.findSymbolUsages(
                 jdbi, "OrderService", "submit", "method", null, "all", 10, 0));
-        assertEquals("Ambiguous symbol", ambiguous.path("error").asText());
+        assertFalse(ambiguous.has("error"));
         assertEquals("AMBIGUOUS_SYMBOL", ambiguous.path("error_code").asText());
         assertEquals("Ambiguous symbol", ambiguous.path("message").asText());
         assertTrue(ambiguous.path("retryable").asBoolean());
@@ -1197,7 +1197,7 @@ class QuillToolsTest {
         JsonNode result = JSON.readTree(new QuillTools().findMethodOverrides(
                 jdbi, "PaymentService", "processPayment", "missing()", true, 10, 0));
 
-        assertEquals("Method signature not found", result.path("error").asText());
+        assertEquals("Method signature not found", result.path("message").asText());
         assertEquals("processPayment(double):void", result.path("candidates").get(0).asText());
     }
 
@@ -1664,11 +1664,11 @@ class QuillToolsTest {
         assertEquals("Invalid scope: expected package or module", JSON.readTree(
                 queries.findArchitectureViolations(jdbi, "class", "org.acme",
                         List.of("org.persistence"), List.of(), false, false, 10, 0))
-                .path("error").asText());
+                .path("message").asText());
         assertEquals("At least one forbidden pattern is required", JSON.readTree(
                 queries.findArchitectureViolations(jdbi, "package", "org.acme",
                         List.of(), List.of(), false, false, 10, 0))
-                .path("error").asText());
+                .path("message").asText());
     }
 
     @Test
@@ -1738,7 +1738,7 @@ class QuillToolsTest {
     void findCyclesRejectsUnknownScope() throws Exception {
         JsonNode result = JSON.readTree(new QuillTools().findCycles(
                 jdbi, "package", null, false, false, 20, 0));
-        assertEquals("Invalid scope: expected class or module", result.path("error").asText());
+        assertEquals("Invalid scope: expected class or module", result.path("message").asText());
     }
 
     @Test
@@ -2044,7 +2044,7 @@ class QuillToolsTest {
 
         JsonNode invalid = JSON.readTree(new QuillTools().getDependencies(
                 jdbi, "OrderService", "both", 2, true, 1, 0, cursor));
-        assertEquals("Invalid or expired dependency cursor", invalid.get("error").asText());
+        assertEquals("Invalid or expired dependency cursor", invalid.path("message").asText());
     }
 
     private static String relationClass(JsonNode page) {
@@ -2550,7 +2550,7 @@ class QuillToolsTest {
         assertEquals(2, history.path("commits").size());
 
         JsonNode missingClass = JSON.readTree(tools.getRisk(historyDb, "example.Deleted"));
-        assertEquals("Class not found", missingClass.path("error").asText());
+        assertEquals("Class not found", missingClass.path("message").asText());
         assertTrue(missingClass.path("candidates").toString().contains("Deleted.java"));
         assertTrue(missingClass.path("candidates").toString().contains("historical"));
         assertEquals(1, missingClass.path("candidates").size());

@@ -74,8 +74,8 @@ final class ToolOutputSchemas {
 
     private static Map<String, Object> errorFields() {
         return fields(
-                field("error", string()), field("error_code", string()),
-                field("message", string()), field("retryable", bool()),
+                field("error_code", string()), field("message", string()),
+                field("retryable", bool()),
                 field("retry_with", unconstrainedObject()));
     }
 

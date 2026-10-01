@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -163,7 +164,8 @@ class McpToolCatalogTest {
 
         assertTrue(Boolean.TRUE.equals(result.isError()));
         JsonNode structured = (JsonNode) result.structuredContent();
-        assertEquals("build_required", structured.path("error").asText());
+        assertFalse(structured.has("error"));
+        assertEquals("BUILD_REQUIRED", structured.path("error_code").asText());
         assertEquals("mcp_client", structured.path("decision_owner").asText());
         assertTrue(!structured.path("build_was_started").asBoolean(true));
     }
@@ -238,8 +240,7 @@ class McpToolCatalogTest {
                         "structured", Map.of("unexpected", true), Map.of()))
                 .block(Duration.ofSeconds(2));
         assertTrue(Boolean.TRUE.equals(invalid.isError()));
-        assertEquals("Unknown argument: unexpected",
-                ((JsonNode) invalid.structuredContent()).path("error").asText());
+        assertFalse(((JsonNode) invalid.structuredContent()).has("error"));
         assertEquals("TOOL_INVOCATION_ERROR",
                 ((JsonNode) invalid.structuredContent()).path("error_code").asText());
         assertEquals("Unknown argument: unexpected",
@@ -431,7 +432,7 @@ class McpToolCatalogTest {
                 .block(Duration.ofSeconds(2));
         assertTrue(Boolean.TRUE.equals(result.isError()));
         assertEquals("Missing required argument: pattern",
-                ((JsonNode) result.structuredContent()).path("error").asText());
+                ((JsonNode) result.structuredContent()).path("message").asText());
         assertThrows(IllegalArgumentException.class,
                 () -> McpToolProfile.parse("router,git"));
     }
@@ -484,7 +485,7 @@ class McpToolCatalogTest {
 
         assertTrue(Boolean.TRUE.equals(result.isError()));
         assertTrue(result.content().isEmpty());
-        assertTrue(((JsonNode) result.structuredContent()).path("error").asText()
+        assertTrue(((JsonNode) result.structuredContent()).path("message").asText()
                 .contains("No projects configured"));
     }
 

@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,9 +27,9 @@ class PositionSymbolQueriesTest {
         var result = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
                 jdbi, temp, "Empty.kt", 2, 1));
 
-        assertEquals("Line is outside the source file", result.path("error").asText());
+        assertFalse(result.has("error"));
         assertEquals("INVALID_POSITION", result.path("error_code").asText());
-        assertEquals(result.path("error").asText(), result.path("message").asText());
+        assertEquals("Line is outside the source file", result.path("message").asText());
     }
 
     @Test

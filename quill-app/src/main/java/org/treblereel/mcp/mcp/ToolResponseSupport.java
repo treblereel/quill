@@ -128,7 +128,6 @@ final class ToolResponseSupport {
     }
 
     static ObjectNode appendError(ObjectNode root, String code, String message) {
-        root.put("error", message);
         root.put("error_code", code);
         root.put("message", message);
         root.put("retryable", false);

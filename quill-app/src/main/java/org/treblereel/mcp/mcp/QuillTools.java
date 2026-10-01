@@ -179,7 +179,8 @@ public final class QuillTools {
                 p.name(), target, requestedKind, requestedLimit, requestedOffset));
     }
 
-    @Tool(structured = true, description = "Find exact method, constructor, or field usages.")
+    @Tool(structured = true, output = "symbol_usages",
+            description = "Find exact method, constructor, or field usages.")
     public String find_symbol_usages(
             @ToolArg(description = "Class, path, or symbol_id") String target,
             @ToolArg(description = "Member name; omit for symbol_id or constructor") Optional<String> name,
@@ -203,7 +204,8 @@ public final class QuillTools {
                         requestedSignature, requestedAccess, requestedLimit, requestedOffset)));
     }
 
-    @Tool(structured = true, description = "Inspect a class and its members.")
+    @Tool(structured = true, output = "symbol_details",
+            description = "Inspect a class and its members.")
     public String get_symbol_details(
             @ToolArg(description = "Class or source path") String target,
             @ToolArg(description = "Include members; default true") Optional<Boolean> include_members,
@@ -254,7 +256,8 @@ public final class QuillTools {
                         requestedDepth, requestedLimit, requestedOffset)));
     }
 
-    @Tool(structured = true, description = "Search indexed symbols.")
+    @Tool(structured = true, output = "symbol_search",
+            description = "Search indexed symbols.")
     public String search_symbols(
             @ToolArg(description = "Name or signature pattern; * is a wildcard") String pattern,
             @ToolArg(description = "Symbol kind", allowed = {"all", "class", "interface",
@@ -270,7 +273,8 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Inspect bytecode callers and callees.")
+    @Tool(structured = true, output = "call_hierarchy",
+            description = "Inspect bytecode callers and callees.")
     public String get_call_hierarchy(
             @ToolArg(description = "Class, path, or symbol_id") String target,
             @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
@@ -310,7 +314,8 @@ public final class QuillTools {
                 jdbi -> queries.traceStateLifecycle(jdbi, target, requestedLimit)));
     }
 
-    @Tool(structured = true, description = "Analyze call instruction order in one method.")
+    @Tool(structured = true, output = "execution_order",
+            description = "Analyze call instruction order in one method.")
     public String analyze_execution_order(
             @ToolArg(description = "Class, path, or symbol_id") String target,
             @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
@@ -340,7 +345,8 @@ public final class QuillTools {
                 queries.compareDesignImpact(p.jdbi(), candidates, requestedDepth));
     }
 
-    @Tool(structured = true, description = "Find method overrides in indexed descendants.")
+    @Tool(structured = true, output = "method_overrides",
+            description = "Find method overrides in indexed descendants.")
     public String find_method_overrides(
             @ToolArg(description = "Class, interface, path, or symbol_id") String target,
             @ToolArg(description = "Declared method; omit for symbol_id") Optional<String> method,
@@ -504,7 +510,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true,
+    @Tool(structured = true, output = "position_symbol",
             description = "Resolve the Java or Kotlin identifier at a live source position to indexed declarations.")
     public String get_symbol_at_position(
             @ToolArg(description = "Repository-relative Java or Kotlin source path") String path,

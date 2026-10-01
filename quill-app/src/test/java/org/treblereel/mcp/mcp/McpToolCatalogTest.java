@@ -254,6 +254,22 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void symbolToolsAdvertiseDomainSpecificOutputFields() {
+        AsyncToolSpecification specification = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1))
+                .stream().filter(candidate -> candidate.tool().name().equals("search_symbols"))
+                .findFirst().orElseThrow();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) specification.tool()
+                .outputSchema().get("properties");
+        assertEquals("array", ((Map<?, ?>) properties.get("symbols")).get("type"));
+        assertEquals("string", ((Map<?, ?>) properties.get("language_filter")).get("type"));
+        assertEquals("string", ((Map<?, ?>) properties.get("error_code")).get("type"));
+    }
+
+    @Test
     void quillCatalogStaysCompact() {
         var tools = McpToolCatalog.create(
                 new QuillTools(new ProjectRegistry()), workers, responses,

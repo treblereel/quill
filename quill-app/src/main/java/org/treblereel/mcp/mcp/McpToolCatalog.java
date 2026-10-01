@@ -81,7 +81,11 @@ final class McpToolCatalog {
         McpSchema.Tool.Builder toolBuilder =
                 McpSchema.Tool.builder(method.getName(), inputSchema(method))
                         .description(annotation.description());
-        if (annotation.structured()) toolBuilder.outputSchema(OBJECT_OUTPUT_SCHEMA);
+        if (annotation.structured()) {
+            toolBuilder.outputSchema(annotation.output().isBlank()
+                    ? OBJECT_OUTPUT_SCHEMA
+                    : ToolOutputSchemas.schema(annotation.output()));
+        }
         McpSchema.Tool tool = toolBuilder.build();
 
         return AsyncToolSpecification.builder()

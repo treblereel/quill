@@ -270,6 +270,15 @@ class WorkspaceCommandTest {
     }
 
     @Test
+    void rejectsInvalidJobCountWithoutPublishingManifest() {
+        Captured result = execute("workspace", "init", "--project", workspace.toString(),
+                "--jobs", "0");
+
+        assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+        assertFalse(Files.exists(WorkspaceManifestStore.manifest(workspace)));
+    }
+
+    @Test
     void clearRemovesOnlyWorkspaceDataAndIsIdempotent() throws Exception {
         Path repositoryIndex = Files.createDirectories(workspace.resolve("engine/.quill"));
         Files.writeString(repositoryIndex.resolve("keep.db"), "keep");

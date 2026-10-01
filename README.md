@@ -108,8 +108,10 @@ the router must remain at most 20% of the full catalog, preventing silent contex
 | `quill clean` | Remove `.quill`, Quill-managed build integration, and MCP client configuration |
 | `quill workspace init` | Discover and initialize all suitable repositories in a workspace |
 | `quill workspace init --depth N` | Discover repositories up to the requested directory depth |
+| `quill workspace init --jobs N` | Process up to N repositories concurrently (default: 4) |
 | `quill workspace init --index-only` | Initialize workspace indexes without installing integration or MCP configuration |
 | `quill workspace refresh` | Reconcile added/removed repositories and index missing repositories |
+| `quill workspace refresh --jobs N` | Process up to N repositories concurrently (default: 4) |
 | `quill workspace refresh --index-only` | Refresh indexes without installing integration or MCP configuration |
 | `quill workspace status` | Show workspace configuration and per-repository readiness |
 | `quill workspace status --json` | Emit workspace status as machine-readable JSON |

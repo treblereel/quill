@@ -30,6 +30,14 @@ public final class ClassOccurrenceScanner {
             Path projectRoot, ClassFileSnapshot snapshot, Map<Path, Path> directoryOwners,
             Map<Path, String> directorySourceSets, Map<String, Integer> logicalClassIds,
             List<Path> sourceRoots) {
+        return scan(projectRoot, snapshot, directoryOwners, directorySourceSets,
+                logicalClassIds, sourceRoots, Map.of());
+    }
+
+    public static List<ClassOccurrenceRecord> scan(
+            Path projectRoot, ClassFileSnapshot snapshot, Map<Path, Path> directoryOwners,
+            Map<Path, String> directorySourceSets, Map<String, Integer> logicalClassIds,
+            List<Path> sourceRoots, Map<String, Path> sourceMappings) {
         Path root = projectRoot.toAbsolutePath().normalize();
         Map<Path, Path> normalizedOwners = directoryOwners.entrySet().stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -52,6 +60,7 @@ public final class ClassOccurrenceScanner {
                     .filter(sourceRoot -> sourceRoot.toAbsolutePath().normalize().startsWith(owner))
                     .toList();
             Path source = BytecodeSourceMapper.source(entry, ownerSourceRoots);
+            if (source == null) source = sourceMappings.get(className);
             if (source == null) source = findSource(owner, sourceSet, className);
             result.add(new ClassOccurrenceRecord(
                     0, classId, className, relative(root, owner), sourceSet,

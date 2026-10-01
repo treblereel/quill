@@ -35,6 +35,7 @@ public final class JandexScanner {
     public record ScanResult(
             IndexView index, List<ClassRecord> classes,
             Map<String, KotlinMetadataReader.Result> kotlinMetadata,
+            Map<String, Path> sourceMappings,
             int cacheHits, int cacheShards) {}
 
     public static ScanResult scan(Path classesDir) {
@@ -66,11 +67,45 @@ public final class JandexScanner {
             Path sourceTokenCache, Path applicationIndexCache) {
         ApplicationIndexCache.Result cached =
                 ApplicationIndexCache.loadOrBuild(classFiles, applicationIndexCache);
+        Map<String, KotlinMetadataReader.Result> kotlinMetadata =
+                extractKotlinMetadata(cached.index());
+        Map<String, Path> sourceMappings = enrichKotlinSourceMappings(
+                BytecodeSourceMapper.map(classFiles, sourceRoots), kotlinMetadata);
         return new ScanResult(cached.index(),
                 extractClasses(cached.index(), sourceRoots, sourceTokenCache,
-                        BytecodeSourceMapper.map(classFiles, sourceRoots)),
-                extractKotlinMetadata(cached.index()),
+                        sourceMappings),
+                kotlinMetadata, sourceMappings,
                 cached.hits(), cached.shardCount());
+    }
+
+    static Map<String, Path> enrichKotlinSourceMappings(
+            Map<String, Path> bytecodeSources,
+            Map<String, KotlinMetadataReader.Result> kotlinMetadata) {
+        Map<String, Path> result = new HashMap<>(bytecodeSources);
+        kotlinMetadata.forEach((className, metadata) -> {
+            if (metadata.status() != KotlinMetadataReader.Status.PARSED) return;
+            if (metadata.kind() == KotlinMetadataReader.Kind.MULTIFILE_PART) {
+                putFirstSource(result, normalizeKotlinClassName(metadata.detail()),
+                        bytecodeSources.get(className));
+            } else if (metadata.kind() == KotlinMetadataReader.Kind.MULTIFILE_FACADE
+                    && metadata.detail() != null) {
+                for (String part : metadata.detail().split(",")) {
+                    putFirstSource(result, className,
+                            bytecodeSources.get(normalizeKotlinClassName(part)));
+                }
+            }
+        });
+        return Map.copyOf(result);
+    }
+
+    private static void putFirstSource(Map<String, Path> mappings, String className, Path source) {
+        if (className == null || className.isBlank() || source == null) return;
+        mappings.merge(className, source, (left, right) -> left.toString()
+                .compareTo(right.toString()) <= 0 ? left : right);
+    }
+
+    private static String normalizeKotlinClassName(String className) {
+        return className == null ? null : className.trim().replace('/', '.');
     }
 
     private static Map<String, KotlinMetadataReader.Result> extractKotlinMetadata(

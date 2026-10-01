@@ -53,8 +53,31 @@ class KotlinMavenIT {
                 .filter(value -> value.name().equals("fetchInvoice")).findFirst().orElseThrow();
         assertTrue(fetch.isSuspend());
 
+        var multifileFacade = IndexReader.findClassByName(jdbi,
+                "org.treblereel.mcp.fixture.kotlin.BillingApi").orElseThrow();
+        assertTrue(multifileFacade.sourceFile().endsWith("BillingQuotes.kt"));
+        assertEquals("source", multifileFacade.origin());
+        assertEquals("source", IndexReader.findClassOccurrencesByClassIds(
+                jdbi, java.util.List.of(multifileFacade.id()))
+                .get(multifileFacade.id()).getFirst().origin());
+        assertEquals("MULTIFILE_FACADE",
+                IndexReader.findKotlinDeclarations(jdbi, multifileFacade.id())
+                        .getFirst().kind());
+        var quotesPart = IndexReader.findClassByName(jdbi,
+                "org.treblereel.mcp.fixture.kotlin.BillingApi__BillingQuotesKt")
+                .orElseThrow();
+        assertTrue(quotesPart.sourceFile().endsWith("BillingQuotes.kt"));
+        assertTrue(IndexReader.findKotlinDeclarations(jdbi, quotesPart.id()).stream()
+                .anyMatch(value -> value.name().equals("quote")));
+        var validationPart = IndexReader.findClassByName(jdbi,
+                "org.treblereel.mcp.fixture.kotlin.BillingApi__BillingValidationKt")
+                .orElseThrow();
+        assertTrue(validationPart.sourceFile().endsWith("BillingValidation.kt"));
+        assertTrue(IndexReader.findKotlinDeclarations(jdbi, validationPart.id()).stream()
+                .anyMatch(value -> value.name().equals("validateInvoice")));
+
         var metadata = IndexReader.getMetadata(jdbi);
-        assertTrue(Integer.parseInt(metadata.get("kotlin_metadata_classes")) >= 4);
+        assertTrue(Integer.parseInt(metadata.get("kotlin_metadata_classes")) >= 7);
         assertEquals("0", metadata.get("kotlin_metadata_fallbacks"));
     }
 

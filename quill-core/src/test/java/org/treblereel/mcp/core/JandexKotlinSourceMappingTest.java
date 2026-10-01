@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import kotlin.Metadata;
 import kotlinx.metadata.Flag;
 import kotlinx.metadata.FlagsKt;
@@ -18,6 +19,28 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 
 class JandexKotlinSourceMappingTest {
+
+    @Test
+    void mapsMultifileFacadeToFirstPartSourceDeterministically(@TempDir Path project) {
+        Path first = project.resolve("src/main/kotlin/org/acme/First.kt");
+        Path second = project.resolve("src/main/kotlin/org/acme/Second.kt");
+        var facade = new KotlinMetadataReader.Result(
+                KotlinMetadataReader.Status.PARSED,
+                KotlinMetadataReader.Kind.MULTIFILE_FACADE, null, "2.4.0",
+                false, false, false, false, List.of(), List.of(),
+                "org/acme/Api__SecondKt,org/acme/Api__FirstKt");
+        var firstPart = new KotlinMetadataReader.Result(
+                KotlinMetadataReader.Status.PARSED,
+                KotlinMetadataReader.Kind.MULTIFILE_PART, null, "2.4.0",
+                false, false, false, false, List.of(), List.of(), "org/acme/Api");
+
+        var mappings = JandexScanner.enrichKotlinSourceMappings(Map.of(
+                        "org.acme.Api__FirstKt", first,
+                        "org.acme.Api__SecondKt", second),
+                Map.of("org.acme.Api", facade, "org.acme.Api__FirstKt", firstPart));
+
+        assertEquals(first, mappings.get("org.acme.Api"));
+    }
 
     @Test
     void indexesClassWhoseKotlinFilenameDoesNotMatchClassName(

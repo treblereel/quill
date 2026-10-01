@@ -351,6 +351,12 @@ class QuillToolsTest {
                 jdbi, "OrderService", true, "method", 10, 0));
 
         assertEquals("org.acme.OrderService", first.path("class").asText());
+        assertEquals("java", first.path("language").asText());
+        assertEquals("OrderService", first.path("source_name").asText());
+        assertEquals("org.acme.OrderService", first.path("jvm_name").asText());
+        assertTrue(first.path("symbol_id").asText().startsWith("quill:symbol:v1:"));
+        assertEquals("src/main/java/org/acme/OrderService.java",
+                first.path("location").path("path").asText());
         assertEquals("@ApplicationScoped", first.path("bean").path("scope").asText());
         assertEquals(1, first.path("dependency_metrics").path("fan_out").asInt());
         assertEquals("jakarta.enterprise.context.ApplicationScoped",
@@ -358,6 +364,13 @@ class QuillToolsTest {
         assertEquals(2, first.path("total").asInt());
         assertTrue(first.path("has_more").asBoolean());
         assertEquals("createOrder", methods.path("members").get(0).path("name").asText());
+        assertEquals("java", methods.path("members").get(0).path("language").asText());
+        assertEquals("createOrder",
+                methods.path("members").get(0).path("source_name").asText());
+        assertEquals("createOrder",
+                methods.path("members").get(0).path("jvm_name").asText());
+        assertTrue(methods.path("members").get(0).path("symbol_id").asText()
+                .startsWith("quill:symbol:v1:"));
         assertEquals("java.lang.String",
                 methods.path("members").get(0).path("parameters").get(0).asText());
     }
@@ -390,6 +403,8 @@ class QuillToolsTest {
                 jdbi, "OrderService", false, null, 10, 0));
 
         assertEquals("kotlin", result.path("language").asText());
+        assertEquals("OrderService", result.path("source_name").asText());
+        assertTrue(result.path("symbol_id").asText().startsWith("quill:symbol:v1:"));
         assertEquals("kotlin_metadata", result.path("semantic_model").asText());
         JsonNode function = result.path("kotlin_declarations").get(1);
         assertEquals("function", function.path("kind").asText());
@@ -537,6 +552,12 @@ class QuillToolsTest {
         assertEquals(1, result.path("total").asInt());
         JsonNode symbol = result.path("symbols").get(0);
         assertEquals("method", symbol.path("kind").asText());
+        assertEquals("kotlin", symbol.path("language").asText());
+        assertEquals("createKotlinOrder", symbol.path("source_name").asText());
+        assertEquals("createOrder", symbol.path("jvm_name").asText());
+        assertTrue(symbol.path("symbol_id").asText().startsWith("quill:symbol:v1:"));
+        assertEquals("src/main/java/org/acme/OrderService.java",
+                symbol.path("location").path("path").asText());
         assertEquals("createOrder", symbol.path("name").asText());
         assertEquals("org.acme.OrderService", symbol.path("declaring_class").asText());
         assertEquals("org.acme.Order", symbol.path("type").asText());
@@ -546,6 +567,8 @@ class QuillToolsTest {
         JsonNode kotlinSymbol = kotlinResult.path("symbols").get(0);
         assertEquals("createOrder", kotlinSymbol.path("name").asText());
         assertEquals("kotlin", kotlinSymbol.path("language").asText());
+        assertEquals("createKotlinOrder", kotlinSymbol.path("source_name").asText());
+        assertEquals("createOrder", kotlinSymbol.path("jvm_name").asText());
         assertEquals("function", kotlinSymbol.path("kotlin_kind").asText());
         assertEquals("createKotlinOrder", kotlinSymbol.path("kotlin_name").asText());
         assertTrue(kotlinSymbol.path("suspend").asBoolean());

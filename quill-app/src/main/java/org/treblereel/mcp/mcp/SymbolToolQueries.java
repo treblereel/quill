@@ -37,6 +37,8 @@ final class SymbolToolQueries {
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
+        List<KotlinDeclarationRecord> kotlinDeclarations =
+                IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
         ObjectNode root = JSON.createObjectNode();
         root.put("class", cls.className());
@@ -48,6 +50,7 @@ final class SymbolToolQueries {
         root.put("origin", cls.origin());
         root.put("lifecycle", cls.lifecycle());
         root.put("source_tokens", cls.sourceTokens());
+        SymbolContract.appendClass(root, cls, kotlinDeclarations);
         appendContext(root, cls);
 
         List<ClassAnnotationRecord> annotations = IndexReader.findClassAnnotations(jdbi, cls.id());
@@ -57,7 +60,7 @@ final class SymbolToolQueries {
         root.set("meta_annotations", JSON.valueToTree(annotations.stream()
                 .filter(annotation -> !annotation.direct())
                 .map(ClassAnnotationRecord::annotationName).distinct().sorted().toList()));
-        appendKotlinDeclarations(root, IndexReader.findKotlinDeclarations(jdbi, cls.id()));
+        appendKotlinDeclarations(root, kotlinDeclarations);
 
         ObjectNode dependencyMetrics = root.putObject("dependency_metrics");
         dependencyMetrics.put("fan_in", IndexReader.countDependents(jdbi, cls.id()));
@@ -99,6 +102,7 @@ final class SymbolToolQueries {
             node.set("parameters", JSON.valueToTree(member.parameterTypes()));
             node.put("modifiers", member.modifiers());
             node.set("annotations", JSON.valueToTree(member.annotations()));
+            SymbolContract.appendMember(node, cls, member, kotlinDeclarations);
             ArrayNode details = node.putArray("annotation_details");
             member.annotationDetails().forEach(annotation -> {
                 ObjectNode detail = details.addObject();

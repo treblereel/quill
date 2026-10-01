@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
@@ -141,6 +142,13 @@ class PositionSymbolQueriesTest {
         assertEquals("resolved", result.path("resolution").asText());
         assertEquals("submitOrderJvm", result.path("selected").path("member_name").asText());
         assertEquals("kotlin", result.path("selected").path("language").asText());
+        assertEquals("submitOrder", result.path("selected").path("source_name").asText());
+        assertEquals("submitOrderJvm", result.path("selected").path("jvm_name").asText());
+        assertEquals("()V", result.path("selected").path("jvm_descriptor").asText());
+        assertTrue(result.path("selected").path("symbol_id").asText()
+                .startsWith("quill:symbol:v1:"));
+        assertEquals("src/main/kotlin/acme/Orders.kt",
+                result.path("selected").path("location").path("path").asText());
         assertEquals("submitOrder", result.path("selected").path("kotlin_name").asText());
     }
 }

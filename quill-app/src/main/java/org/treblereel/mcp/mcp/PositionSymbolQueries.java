@@ -87,8 +87,9 @@ final class PositionSymbolQueries {
 
     private static List<Candidate> declarations(Jdbi jdbi, String identifier, String path) {
         return jdbi.withHandle(handle -> handle.createQuery("""
-                        SELECT c.class_name, 'CLASS' AS kind, NULL AS member_name,
-                               NULL AS signature, NULL AS parameter_types, c.source_file,
+                        SELECT c.class_name, 'CLASS' AS kind, c.class_name AS member_name,
+                               NULL AS signature, NULL AS descriptor, NULL AS parameter_types,
+                               c.source_file, c.source_line,
                                NULL AS semantic_kind, NULL AS semantic_name,
                                CASE WHEN c.source_file = :path OR f.project_path = :path
                                           OR f.repository_path = :path THEN 1 ELSE 0 END AS same_file
@@ -98,8 +99,9 @@ final class PositionSymbolQueries {
                                OR c.class_name LIKE '%.' || :identifier
                                OR c.class_name LIKE '%$' || :identifier)
                         UNION ALL
-                        SELECT c.class_name, m.kind, m.name, m.signature, m.parameter_types,
-                               c.source_file, kd.kind AS semantic_kind,
+                        SELECT c.class_name, m.kind, m.name, m.signature, m.descriptor,
+                               m.parameter_types, c.source_file, c.source_line,
+                               kd.kind AS semantic_kind,
                                kd.name AS semantic_name,
                                CASE WHEN c.source_file = :path OR f.project_path = :path
                                           OR f.repository_path = :path THEN 1 ELSE 0 END AS same_file
@@ -118,8 +120,10 @@ final class PositionSymbolQueries {
                 .map((row, context) -> new Candidate(
                         row.getString("class_name"), row.getString("kind"),
                         row.getString("member_name"), row.getString("signature"),
+                        row.getString("descriptor"),
                         parameterCount(row.getString("parameter_types")),
-                        row.getString("source_file"), row.getInt("same_file") == 1,
+                        row.getString("source_file"), row.getInt("source_line"),
+                        row.getInt("same_file") == 1,
                         row.getString("semantic_kind"), row.getString("semantic_name")))
                 .list());
     }
@@ -260,8 +264,12 @@ final class PositionSymbolQueries {
         item.put("kind", candidate.kind());
         if (candidate.memberName() != null) item.put("member_name", candidate.memberName());
         if (candidate.signature() != null) item.put("signature", candidate.signature());
+        SymbolContract.append(item, candidate.className(), candidate.kind(),
+                candidate.memberName(), candidate.descriptor(), candidate.semanticName(),
+                candidate.sourceFile(), candidate.sourceLine(),
+                candidate.semanticName() != null
+                        || SymbolContract.language(candidate.sourceFile(), false).equals("kotlin"));
         if (candidate.semanticName() != null) {
-            item.put("language", "kotlin");
             item.put("kotlin_kind", candidate.semanticKind().toLowerCase(Locale.ROOT));
             item.put("kotlin_name", candidate.semanticName());
         }
@@ -280,7 +288,8 @@ final class PositionSymbolQueries {
     private enum ContextKind { CONSTRUCTOR_CALL, METHOD_CALL, MEMBER_ACCESS, IDENTIFIER }
     private record SourceContext(ContextKind kind, Integer argumentCount) {}
     private record Candidate(String className, String kind, String memberName,
-            String signature, Integer parameterCount, String sourceFile, boolean sameFile,
+            String signature, String descriptor, Integer parameterCount, String sourceFile,
+            int sourceLine, boolean sameFile,
             String semanticKind, String semanticName) {}
     private record RankedCandidate(Candidate candidate, int score, List<String> reasons) {}
     private record EnclosingClass(String className, int sourceLine) {}

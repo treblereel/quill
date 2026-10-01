@@ -62,6 +62,9 @@ final class SymbolSearchQueries {
                 node.put("modifiers", match.modifiers());
                 node.set("annotations", JSON.valueToTree(match.annotations()));
             }
+            SymbolContract.append(node, match.className(), match.symbolKind(),
+                    match.symbolName(), match.descriptor(), match.semanticName(),
+                    match.sourceFile(), match.sourceLine(), "kotlin".equals(match.language()));
             appendKotlinSemantics(node, match);
             if (countedClasses.add(match.classId())) naiveTokens += match.sourceTokens();
         }
@@ -72,7 +75,6 @@ final class SymbolSearchQueries {
 
     private static void appendKotlinSemantics(ObjectNode node, SymbolSearchResult match) {
         if (!"kotlin".equals(match.language())) return;
-        node.put("language", "kotlin");
         node.put("kotlin_kind", match.semanticKind().toLowerCase(Locale.ROOT));
         node.put("kotlin_name", match.semanticName());
         if (match.isSuspend()) node.put("suspend", true);

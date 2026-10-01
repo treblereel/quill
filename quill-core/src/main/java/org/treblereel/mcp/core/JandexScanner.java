@@ -65,7 +65,8 @@ public final class JandexScanner {
         ApplicationIndexCache.Result cached =
                 ApplicationIndexCache.loadOrBuild(classFiles, applicationIndexCache);
         return new ScanResult(cached.index(),
-                extractClasses(cached.index(), sourceRoots, sourceTokenCache),
+                extractClasses(cached.index(), sourceRoots, sourceTokenCache,
+                        BytecodeSourceMapper.map(classFiles, sourceRoots)),
                 cached.hits(), cached.shardCount());
     }
 
@@ -91,14 +92,22 @@ public final class JandexScanner {
 
     static List<ClassRecord> extractClasses(
             IndexView index, List<Path> sourceRoots, Path sourceTokenCache) {
+        return extractClasses(index, sourceRoots, sourceTokenCache, Map.of());
+    }
+
+    private static List<ClassRecord> extractClasses(
+            IndexView index, List<Path> sourceRoots, Path sourceTokenCache,
+            Map<String, Path> bytecodeSources) {
         List<ClassRecord> result = new ArrayList<>();
         List<ClassInfo> knownClasses = List.copyOf(index.getKnownClasses());
         Map<String, Path> sourceFiles = sourceFilesByRelativePath(sourceRoots);
         Map<String, Path> sourcesByClass = new HashMap<>();
         Set<Path> matchedSources = new LinkedHashSet<>();
         for (ClassInfo ci : knownClasses) {
-            String classPath = ci.name().toString().replace('.', '/');
-            Path source = sourceFiles.get(classPath + ".java");
+            String className = ci.name().toString();
+            String classPath = className.replace('.', '/');
+            Path source = bytecodeSources.get(className);
+            if (source == null) source = sourceFiles.get(classPath + ".java");
             if (source == null) source = sourceFiles.get(classPath + ".kt");
             if (source != null) {
                 sourcesByClass.put(ci.name().toString(), source);

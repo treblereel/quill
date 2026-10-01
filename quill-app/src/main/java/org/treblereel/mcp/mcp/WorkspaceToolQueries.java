@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.function.Function;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.GitAnalyzer;
+import org.treblereel.mcp.core.JvmSourceFiles;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.diagnostics.DebugTrace;
@@ -1082,7 +1083,6 @@ final class WorkspaceToolQueries {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null || target == null || !target.contains(".")
                 || target.contains("/") || target.contains("\\")) return;
-        String relativeClass = target.replace('.', '/') + ".java";
         WorkspaceCoordinateCatalog.Result catalog =
                 WorkspaceCoordinateCatalog.discover(scope.manifest());
         for (WorkspaceCoordinateCatalog.Module module : catalog.modules()) {
@@ -1093,9 +1093,9 @@ final class WorkspaceToolQueries {
             java.nio.file.Path moduleRoot = ".".equals(module.module())
                     ? repositoryRoot : repositoryRoot.resolve(module.module());
             for (String sourceSet : List.of("main", "test")) {
-                java.nio.file.Path source = moduleRoot.resolve(
-                        "src/" + sourceSet + "/java").resolve(relativeClass);
-                if (!java.nio.file.Files.isRegularFile(source)) continue;
+                java.nio.file.Path source = JvmSourceFiles.findConventionalSource(
+                        moduleRoot, sourceSet, target);
+                if (source == null) continue;
                 String sourceFile = repositoryRoot.relativize(source).toString()
                         .replace('\\', '/');
                 String key = module.repository() + ':' + target + ':' + module.module();

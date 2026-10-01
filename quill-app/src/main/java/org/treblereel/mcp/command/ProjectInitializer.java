@@ -386,7 +386,7 @@ public class ProjectInitializer {
                         scanResult.index(), classNameToSqliteId);
         List<ClassOccurrenceRecord> classOccurrences = ClassOccurrenceScanner.scan(
                 root, classFiles, classDirectoryOwners, classDirectorySourceSets,
-                classNameToSqliteId);
+                classNameToSqliteId, sourceRoots);
 
         Map<String, Integer> sourceFileToClassId = new HashMap<>();
         for (int i = 0; i < classes.size(); i++) {

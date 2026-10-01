@@ -572,8 +572,13 @@ class McpStdioIT {
             assertNotNull(invalidCall, "Invalid tool input should return a tool result");
             assertTrue(invalidCall.get("isError").asBoolean());
             assertNoTextPayload(invalidCall);
+            JsonNode invalidPayload = invalidCall.path("structuredContent");
+            assertFalse(invalidPayload.has("error"), invalidPayload::toString);
+            assertEquals("TOOL_INVOCATION_ERROR",
+                    invalidPayload.path("error_code").asText());
             assertEquals("Unknown argument: unexpected",
-                    invalidCall.path("structuredContent").path("error").asText());
+                    invalidPayload.path("message").asText());
+            assertFalse(invalidPayload.path("retryable").asBoolean(true));
 
             if (projectRoot.getFileName().toString().equals("basic-cdi")) {
                 sendRequest(stdin, 5, "tools/call",
@@ -714,7 +719,9 @@ class McpStdioIT {
                         .map(Map.Entry::getValue)
                         .anyMatch(response -> response.path("result").path("isError").asBoolean()
                                 && response.path("result").path("structuredContent")
-                                        .path("error").asText().contains("Server busy"));
+                                        .path("message").asText().contains("Server busy")
+                                && response.path("result").path("structuredContent")
+                                        .path("retryable").asBoolean());
                 assertTrue(busy, "A saturated bounded queue must return an explicit busy error");
             }
         } finally {
@@ -788,7 +795,11 @@ class McpStdioIT {
             JsonNode structured = toolResponse.path("result").path("structuredContent");
             assertTrue(structured.toString().contains("broken-native-project"), structured::toString);
             assertEquals("build_required", structured.path("status").asText(), structured::toString);
-            assertEquals("build_required", structured.path("error").asText(), structured::toString);
+            assertFalse(structured.has("error"), structured::toString);
+            assertEquals("BUILD_REQUIRED", structured.path("error_code").asText(),
+                    structured::toString);
+            assertFalse(structured.path("message").asText().isBlank(), structured::toString);
+            assertFalse(structured.path("retryable").asBoolean(true), structured::toString);
             assertEquals("mcp_client", structured.path("decision_owner").asText(), structured::toString);
             assertFalse(structured.path("build_was_started").asBoolean(true), structured::toString);
             assertNoTextPayload(toolResponse.path("result"));

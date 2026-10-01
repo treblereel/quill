@@ -1110,6 +1110,54 @@ class QuillToolsTest {
     }
 
     @Test
+    void staleSymbolIdsFailClosedAndReturnCurrentCandidates() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members
+                  (class_id, kind, name, signature, descriptor, type_name,
+                   parameter_types, modifiers, annotations)
+                VALUES (1, 'METHOD', 'submit', 'submit(int):void', '(I)V', 'void',
+                        '["int"]', 'public', '[]')"""));
+        QuillToolQueries queries = new QuillToolQueries();
+
+        JsonNode missingClass = JSON.readTree(queries.findSymbolUsages(
+                jdbi, SymbolContract.id("org.acme.RemovedService", "METHOD",
+                        "submit", "(I)V"),
+                null, null, null, "all", 10, 0));
+        assertEquals("CLASS_NOT_FOUND", missingClass.path("error_code").asText());
+
+        JsonNode removedMember = JSON.readTree(queries.findSymbolUsages(
+                jdbi, SymbolContract.id("org.acme.OrderService", "METHOD",
+                        "removed", "()V"),
+                null, null, null, "all", 10, 0));
+        assertEquals("SYMBOL_NOT_FOUND", removedMember.path("error_code").asText());
+        assertFalse(removedMember.has("symbol_id"));
+
+        String staleDescriptor = SymbolContract.id(
+                "org.acme.OrderService", "METHOD", "submit", "(J)V");
+        JsonNode changedUsage = JSON.readTree(queries.findSymbolUsages(
+                jdbi, staleDescriptor, null, null, null, "all", 10, 0));
+        assertEquals("SYMBOL_NOT_FOUND", changedUsage.path("error_code").asText());
+        assertEquals("(I)V", changedUsage.path("candidates").get(0)
+                .path("descriptor").asText());
+        assertNotEquals(staleDescriptor, changedUsage.path("candidates").get(0)
+                .path("symbol_id").asText());
+
+        JsonNode changedHierarchy = JSON.readTree(queries.getCallHierarchy(
+                jdbi, staleDescriptor, null, null,
+                "both", false, 1, 10, 0));
+        assertEquals("METHOD_NOT_FOUND", changedHierarchy.path("error_code").asText());
+        assertEquals("(I)V", changedHierarchy.path("candidates").get(0)
+                .path("descriptor").asText());
+
+        JsonNode futureVersion = JSON.readTree(queries.findSymbolUsages(
+                jdbi, "quill:symbol:v2:anything", null, null, null,
+                "all", 10, 0));
+        assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION",
+                futureVersion.path("error_code").asText());
+        assertFalse(futureVersion.has("error"));
+    }
+
+    @Test
     void findMethodOverridesHandlesOverloadsAndTransitiveDescendants() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

@@ -122,6 +122,11 @@ class McpToolCatalogTest {
                 Map.of("target", "OrderService", "limit", 2.5));
         assertTrue(Boolean.TRUE.equals(fractionalInteger.isError()));
         assertTrue(text(fractionalInteger).contains("Expected integer"));
+
+        McpSchema.CallToolResult invalidTarget = call(tools, "validate",
+                Map.of("target", "OtherService"));
+        assertTrue(Boolean.TRUE.equals(invalidTarget.isError()));
+        assertTrue(text(invalidTarget).contains("expected one of"));
         assertEquals(0, tools.invocations);
     }
 
@@ -176,6 +181,22 @@ class McpToolCatalogTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> enabled = (Map<String, Object>) properties.get("enabled");
         assertEquals("boolean", enabled.get("type"));
+    }
+
+    @Test
+    void constrainedToolArgumentAdvertisesAllowedValues() {
+        AsyncToolSpecification specification = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1))
+                .stream().filter(candidate -> candidate.tool().name().equals("search_symbols"))
+                .findFirst().orElseThrow();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) specification.tool()
+                .inputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> language = (Map<String, Object>) properties.get("language");
+        assertEquals(java.util.List.of("all", "java", "kotlin"), language.get("enum"));
     }
 
     @Test
@@ -537,7 +558,8 @@ class McpToolCatalogTest {
 
         @Tool(description = "Validates arguments")
         public String validate(
-                @ToolArg(description = "Required target") String target,
+                @ToolArg(description = "Required target",
+                        allowed = {"OrderService", "missing"}) String target,
                 @ToolArg(description = "Optional switch") Optional<Boolean> enabled,
                 @ToolArg(description = "Optional limit") Optional<Integer> limit) {
             invocations++;

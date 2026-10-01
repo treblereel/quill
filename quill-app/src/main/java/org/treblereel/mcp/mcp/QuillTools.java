@@ -183,9 +183,11 @@ public final class QuillTools {
     public String find_symbol_usages(
             @ToolArg(description = "Class, path, or symbol_id") String target,
             @ToolArg(description = "Member name; omit for symbol_id or constructor") Optional<String> name,
-            @ToolArg(description = "method, constructor, or field; omit for symbol_id") Optional<String> kind,
+            @ToolArg(description = "Kind; omit for symbol_id",
+                    allowed = {"method", "constructor", "field"}) Optional<String> kind,
             @ToolArg(description = "Exact source signature or JVM descriptor; required when overloaded") Optional<String> signature,
-            @ToolArg(description = "For fields: all, read, or write (default: all)") Optional<String> access,
+            @ToolArg(description = "Field access",
+                    allowed = {"all", "read", "write"}) Optional<String> access,
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
@@ -252,11 +254,13 @@ public final class QuillTools {
                         requestedDepth, requestedLimit, requestedOffset)));
     }
 
-    @Tool(structured = true, description = "Search indexed type, method, field, and constructor declarations.")
+    @Tool(structured = true, description = "Search indexed symbols.")
     public String search_symbols(
             @ToolArg(description = "Name or signature pattern; * is a wildcard") String pattern,
-            @ToolArg(description = "Symbol kind or all; default all") Optional<String> kind,
-            @ToolArg(description = "java, kotlin, or all") Optional<String> language,
+            @ToolArg(description = "Symbol kind", allowed = {"all", "class", "interface",
+                    "annotation", "enum", "record", "field", "constructor", "method"}) Optional<String> kind,
+            @ToolArg(description = "Language",
+                    allowed = {"all", "java", "kotlin"}) Optional<String> language,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
@@ -266,15 +270,17 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Inspect method callers and callees from bytecode evidence.")
+    @Tool(structured = true, description = "Inspect bytecode callers and callees.")
     public String get_call_hierarchy(
             @ToolArg(description = "Class, path, or symbol_id") String target,
             @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
             @ToolArg(description = "Exact indexed signature or JVM descriptor for overload selection") Optional<String> signature,
-            @ToolArg(description = "inbound, outbound, or both; default both") Optional<String> direction,
+            @ToolArg(description = "Direction",
+                    allowed = {"inbound", "outbound", "both"}) Optional<String> direction,
             @ToolArg(description = "Traverse calls; default false") Optional<Boolean> transitive,
             @ToolArg(description = "Traversal depth; default 3") Optional<Integer> max_depth,
-            @ToolArg(description = "Noise scope: all, cross_class, or cross_package; default all") Optional<String> scope,
+            @ToolArg(description = "Noise scope",
+                    allowed = {"all", "cross_class", "cross_package"}) Optional<String> scope,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {

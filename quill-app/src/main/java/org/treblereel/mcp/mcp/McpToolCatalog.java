@@ -117,8 +117,13 @@ final class McpToolCatalog {
                 property.put("additionalProperties", true);
             }
             ToolArg arg = parameter.getAnnotation(ToolArg.class);
-            if (arg != null && !SELF_DESCRIBING_ARGUMENTS.contains(parameter.getName())) {
-                property.put("description", arg.description());
+            if (arg != null) {
+                if (!SELF_DESCRIBING_ARGUMENTS.contains(parameter.getName())) {
+                    property.put("description", arg.description());
+                }
+                if (arg.allowed().length > 0) {
+                    property.put("enum", List.of(arg.allowed()));
+                }
             }
             properties.put(parameter.getName(), property);
             if (!isOptional(parameter.getParameterizedType())) required.add(parameter.getName());
@@ -177,6 +182,15 @@ final class McpToolCatalog {
                         return new Invocation(
                                 "Missing required argument: " + parameter.getName(), true);
                     }
+                }
+                ToolArg arg = parameter.getAnnotation(ToolArg.class);
+                if (value != null && arg != null && arg.allowed().length > 0
+                        && (!(value instanceof String string)
+                                || !List.of(arg.allowed()).contains(string))) {
+                    return new Invocation("Invalid argument " + parameter.getName()
+                            + ": expected one of " + String.join(", ", arg.allowed()), true);
+                }
+                if (!isOptional(parameter.getParameterizedType())) {
                     values[i] = convert(value, parameter.getType());
                 }
             }

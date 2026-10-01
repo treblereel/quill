@@ -75,6 +75,7 @@ public final class WorkspaceStatusCommand implements Callable<Integer> {
 
     private static String summary(WorkspaceRepositoryStatusInspector.Status status) {
         if (!status.supported()) return "unsupported";
+        if ("metadata_only".equals(status.codeExpectation())) return "metadata only";
         if (!status.compiled()) return "build required";
         if (!status.indexed()) return "index missing";
         if (!status.fresh()) return "indexed (" + status.indexHealth() + ")";
@@ -88,6 +89,8 @@ public final class WorkspaceStatusCommand implements Callable<Integer> {
         result.put("supported", status.supported());
         if (status.buildSystem() == null) result.putNull("buildSystem");
         else result.put("buildSystem", status.buildSystem());
+        if (status.codeExpectation() == null) result.putNull("codeExpectation");
+        else result.put("codeExpectation", status.codeExpectation());
         result.put("compiled", status.compiled());
         result.put("compiledDirectories", status.compiledDirectories());
         result.put("indexed", status.indexed());

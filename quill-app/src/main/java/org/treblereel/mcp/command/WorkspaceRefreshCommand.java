@@ -67,6 +67,7 @@ public final class WorkspaceRefreshCommand implements Callable<Integer> {
         System.out.println("Workspace refresh complete: added=" + added + ", removed=" + removed
                 + ", indexed=" + result.indexed()
                 + ", pending_build=" + result.pendingBuild()
+                + ", metadata_only=" + result.metadataOnly()
                 + ", skipped=" + result.skipped() + ", unchanged=" + result.unchanged()
                 + ", failed=" + result.failed());
         return result.successful() ? CommandLine.ExitCode.OK : CommandLine.ExitCode.SOFTWARE;

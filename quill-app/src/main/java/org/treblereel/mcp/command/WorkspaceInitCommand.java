@@ -48,6 +48,7 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
         }
         System.out.println("Workspace initialization complete: indexed=" + result.indexed()
                 + ", pending_build=" + result.pendingBuild()
+                + ", metadata_only=" + result.metadataOnly()
                 + ", skipped=" + result.skipped() + ", failed=" + result.failed()
                 + ", unchanged=" + result.unchanged());
         return result.successful() ? CommandLine.ExitCode.OK : CommandLine.ExitCode.SOFTWARE;

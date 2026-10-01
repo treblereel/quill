@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.ProjectCodeExpectation;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.workspace.WorkspaceDiscovery;
 
@@ -15,6 +16,7 @@ final class WorkspaceRepositoryStatusInspector {
             Path root,
             boolean supported,
             String buildSystem,
+            String codeExpectation,
             boolean compiled,
             int compiledDirectories,
             boolean indexed,
@@ -39,13 +41,15 @@ final class WorkspaceRepositoryStatusInspector {
         try {
             buildSystem = BuildSystem.detect(root);
         } catch (IllegalArgumentException unsupported) {
-            return new Status(repository.name(), root, false, null, false, 0,
+            return new Status(repository.name(), root, false, null, null, false, 0,
                     false, "unsupported", null, QuillDatabase.currentSchemaVersion(),
                     false, List.of(), "not_applicable", false,
                     "Unsupported Java project");
         }
 
         List<Path> compiledDirectories = ProjectInitializer.findMainClassesDirs(root);
+        String codeExpectation = ProjectCodeExpectation.inspect(root, buildSystem)
+                .name().toLowerCase(Locale.ROOT);
         ProjectDiagnostics.Report index = ProjectDiagnostics.inspect(root);
         BuildIntegrationInstaller.Inspection integration =
                 BuildIntegrationInstaller.inspect(root);
@@ -56,6 +60,7 @@ final class WorkspaceRepositoryStatusInspector {
         String diagnostic = index.indexed() ? null : index.errorMessage();
         return new Status(repository.name(), root, true,
                 buildSystem.name().toLowerCase(Locale.ROOT),
+                codeExpectation,
                 !compiledDirectories.isEmpty(), compiledDirectories.size(),
                 index.indexed(), index.health(), schema, QuillDatabase.currentSchemaVersion(),
                 fresh, staleReasons, integration.state().name().toLowerCase(Locale.ROOT),

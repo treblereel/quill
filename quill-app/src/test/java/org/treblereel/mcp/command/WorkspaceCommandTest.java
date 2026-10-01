@@ -55,7 +55,8 @@ class WorkspaceCommandTest {
         assertEquals(CommandLine.ExitCode.OK, result.exitCode(),
                 result.stdout() + System.lineSeparator() + result.stderr());
         assertTrue(result.stdout().contains(
-                "indexed=2, pending_build=0, skipped=0, failed=0"), result.stdout());
+                "indexed=2, pending_build=0, metadata_only=0, skipped=0, failed=0"),
+                result.stdout());
         for (String name : java.util.List.of("engine", "platform")) {
             Path repository = workspace.resolve(name);
             assertTrue(ProjectIndexStore.findBestAvailableDb(repository) != null);
@@ -120,7 +121,8 @@ class WorkspaceCommandTest {
 
         assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
         assertTrue(result.stdout().contains(
-                "indexed=0, pending_build=1, skipped=1, failed=0"), result.stdout());
+                "indexed=0, pending_build=1, metadata_only=0, skipped=1, failed=0"),
+                result.stdout());
         assertTrue(Files.isRegularFile(uncompiled.resolve(".mvn/extensions.xml")));
         assertWorkspaceMcp(uncompiled.resolve(".mcp.json"));
         assertFalse(Files.exists(uncompiled.resolve(".quill/refs.json")));
@@ -173,6 +175,60 @@ class WorkspaceCommandTest {
         assertFalse(Files.exists(repository.resolve(".mvn/extensions.xml")));
         assertFalse(Files.exists(repository.resolve(".mcp.json")));
         assertFalse(Files.exists(repository.resolve(".quill/refs.json")));
+    }
+
+    @Test
+    void pureParentPomIsMetadataOnlyAndDoesNotInstallBuildIntegration() throws Exception {
+        Path repository = Files.createDirectories(workspace.resolve("parent"));
+        Files.createDirectories(repository.resolve(".git"));
+        Files.writeString(repository.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>parent</artifactId><version>1</version>
+                  <packaging>pom</packaging>
+                </project>
+                """);
+
+        Captured initialized = execute(
+                "workspace", "init", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, initialized.exitCode(), initialized.stderr());
+        assertTrue(initialized.stdout().contains("pending_build=0, metadata_only=1"),
+                initialized.stdout());
+        assertFalse(Files.exists(repository.resolve(".mvn/extensions.xml")));
+        assertFalse(Files.exists(repository.resolve(".quill/refs.json")));
+
+        Captured status = execute(
+                "workspace", "status", "--project", workspace.toString(), "--json");
+        var parent = JSON.readTree(status.stdout()).path("repositories").get(0);
+        assertEquals("metadata_only", parent.path("codeExpectation").asText());
+        assertFalse(parent.path("queryReady").asBoolean());
+    }
+
+    @Test
+    void pomAggregatorWithCodeModuleRemainsPendingBuild() throws Exception {
+        Path repository = Files.createDirectories(workspace.resolve("reactor"));
+        Files.createDirectories(repository.resolve(".git"));
+        Files.writeString(repository.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>reactor</artifactId><version>1</version>
+                  <packaging>pom</packaging><modules><module>service</module></modules>
+                </project>
+                """);
+        Path service = Files.createDirectories(repository.resolve("service"));
+        Files.writeString(service.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <parent><groupId>org.acme</groupId><artifactId>reactor</artifactId>
+                    <version>1</version></parent><artifactId>service</artifactId>
+                </project>
+                """);
+
+        Captured initialized = execute(
+                "workspace", "init", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, initialized.exitCode(), initialized.stderr());
+        assertTrue(initialized.stdout().contains("pending_build=1, metadata_only=0"),
+                initialized.stdout());
+        assertTrue(Files.isRegularFile(repository.resolve(".mvn/extensions.xml")));
     }
 
     @Test

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.ProjectCodeExpectation;
 import org.treblereel.mcp.workspace.WorkspaceDiscovery;
 
 /** Initializes every discovered Java repository that already has compiled main classes. */
@@ -18,7 +19,7 @@ final class WorkspaceRepositoryInitializer {
     record RepositoryResult(String name, Path root, String status, String diagnostic) {}
 
     record Result(List<RepositoryResult> repositories, int indexed, int pendingBuild,
-            int skipped, int unchanged, int failed) {
+            int metadataOnly, int skipped, int unchanged, int failed) {
         Result {
             repositories = List.copyOf(repositories);
         }
@@ -45,19 +46,33 @@ final class WorkspaceRepositoryInitializer {
         List<RepositoryResult> results = new ArrayList<>();
         int indexed = 0;
         int pendingBuild = 0;
+        int metadataOnly = 0;
         int skipped = 0;
         int unchanged = 0;
         int failed = 0;
         for (WorkspaceDiscovery.Repository repository : discovery.repositories()) {
             Path root = repository.root();
+            BuildSystem buildSystem;
             try {
-                BuildSystem.detect(root);
+                buildSystem = BuildSystem.detect(root);
             } catch (IllegalArgumentException unsupported) {
                 String diagnostic = "unsupported Java project";
                 output.accept("Skipped " + repository.name() + ": " + diagnostic);
                 results.add(new RepositoryResult(repository.name(), root,
                         "skipped", diagnostic));
                 skipped++;
+                continue;
+            }
+            List<Path> mainClasses = ProjectInitializer.findMainClassesDirs(root);
+            if (mainClasses.isEmpty()
+                    && ProjectCodeExpectation.inspect(root, buildSystem)
+                            == ProjectCodeExpectation.State.METADATA_ONLY) {
+                if (!indexOnly) BuildIntegrationInstaller.uninstall(root);
+                String diagnostic = "build metadata does not declare JVM code; no index required";
+                output.accept("Metadata only " + repository.name() + ": " + diagnostic);
+                results.add(new RepositoryResult(repository.name(), root,
+                        "metadata_only", diagnostic));
+                metadataOnly++;
                 continue;
             }
             BuildIntegrationInstaller.Result integration =
@@ -76,7 +91,7 @@ final class WorkspaceRepositoryInitializer {
                 unchanged++;
                 continue;
             }
-            if (ProjectInitializer.findMainClassesDirs(root).isEmpty()) {
+            if (mainClasses.isEmpty()) {
                 String diagnostic = indexOnly
                         ? "no compiled main classes; build the repository, then run "
                                 + "workspace refresh"
@@ -106,6 +121,7 @@ final class WorkspaceRepositoryInitializer {
             }
         }
         discovery.diagnostics().forEach(value -> output.accept("Discovery warning: " + value));
-        return new Result(results, indexed, pendingBuild, skipped, unchanged, failed);
+        return new Result(
+                results, indexed, pendingBuild, metadataOnly, skipped, unchanged, failed);
     }
 }

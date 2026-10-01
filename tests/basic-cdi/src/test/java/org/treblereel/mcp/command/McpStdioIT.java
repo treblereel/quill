@@ -799,7 +799,7 @@ class McpStdioIT {
             assertEquals("BUILD_REQUIRED", structured.path("error_code").asText(),
                     structured::toString);
             assertFalse(structured.path("message").asText().isBlank(), structured::toString);
-            assertFalse(structured.path("retryable").asBoolean(true), structured::toString);
+            assertTrue(structured.path("retryable").asBoolean(), structured::toString);
             assertEquals("mcp_client", structured.path("decision_owner").asText(), structured::toString);
             assertFalse(structured.path("build_was_started").asBoolean(true), structured::toString);
             assertNoTextPayload(toolResponse.path("result"));

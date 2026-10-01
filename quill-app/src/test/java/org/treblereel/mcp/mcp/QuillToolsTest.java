@@ -2268,6 +2268,9 @@ class QuillToolsTest {
         assertEquals(List.of("java", "kotlin"), capabilities.path("supported_languages")
                 .valueStream().map(JsonNode::asText).toList());
         assertTrue(capabilities.path("stable_symbol_ids").asBoolean());
+        assertEquals(2, capabilities.path("symbol_id_version").asInt());
+        assertEquals("project", capabilities.path("symbol_id_scope").asText());
+        assertTrue(capabilities.path("workspace_symbol_ids_require_project").asBoolean());
         assertTrue(capabilities.path("machine_readable_errors").asBoolean());
         assertTrue(capabilities.path("symbol_id_consumers").toString()
                 .contains("find_symbol_usages"));

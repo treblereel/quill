@@ -38,7 +38,9 @@ final class ProjectOverviewQueries {
         capabilities.put("contract_version", 1);
         capabilities.set("supported_languages", JSON.valueToTree(List.of("java", "kotlin")));
         capabilities.put("stable_symbol_ids", true);
-        capabilities.put("symbol_id_version", 1);
+        capabilities.put("symbol_id_version", 2);
+        capabilities.put("symbol_id_scope", "project");
+        capabilities.put("workspace_symbol_ids_require_project", true);
         capabilities.put("machine_readable_errors", true);
         capabilities.put("error_contract_version", 1);
         capabilities.set("symbol_id_consumers", JSON.valueToTree(List.of(

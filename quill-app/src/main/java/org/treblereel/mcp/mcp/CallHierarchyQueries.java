@@ -1,7 +1,9 @@
 package org.treblereel.mcp.mcp;
 
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendPage;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendRetryWith;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
@@ -47,29 +49,33 @@ final class CallHierarchyQueries {
             if (reference != null) {
                 if (!"METHOD".equals(reference.kind())
                         && !"CONSTRUCTOR".equals(reference.kind())) {
-                    return errorResponse("symbol_id must identify a method or constructor");
+                    return errorResponse("INVALID_SYMBOL_KIND",
+                            "symbol_id must identify a method or constructor");
                 }
                 target = reference.className();
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
         } catch (IllegalArgumentException error) {
-            return errorResponse("Malformed symbol_id");
+            return errorResponse("MALFORMED_SYMBOL_ID", "Malformed symbol_id");
         }
         String normalizedDirection = direction == null
                 ? "both" : direction.trim().toLowerCase(Locale.ROOT);
         if (!DIRECTIONS.contains(normalizedDirection)) {
-            return errorResponse("Invalid direction: expected inbound, outbound, or both");
+            return errorResponse("INVALID_ARGUMENT",
+                    "Invalid direction: expected inbound, outbound, or both");
         }
         String normalizedScope = scope == null ? "all" : scope.trim().toLowerCase(Locale.ROOT);
         if (!SCOPES.contains(normalizedScope)) {
-            return errorResponse("Invalid scope: expected all, cross_class, or cross_package");
+            return errorResponse("INVALID_ARGUMENT",
+                    "Invalid scope: expected all, cross_class, or cross_package");
         }
         String normalizedMethod = method == null || method.isBlank() ? null : method.trim();
         String normalizedSignature = signature == null || signature.isBlank()
                 ? null : signature.trim();
         if (normalizedMethod == null && normalizedSignature != null) {
-            return errorResponse("A method name is required when signature is provided");
+            return errorResponse("MISSING_METHOD",
+                    "A method name is required when signature is provided");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
@@ -108,7 +114,8 @@ final class CallHierarchyQueries {
             descriptor = JvmDescriptors.methodDescriptor(selected);
             if (descriptor == null) {
                 ObjectNode error = JSON.createObjectNode();
-                error.put("error", "Method descriptor is unavailable; rebuild the Quill index");
+                appendError(error, "DESCRIPTOR_UNAVAILABLE",
+                        "Method descriptor is unavailable; rebuild the Quill index");
                 appendCandidate(error.putArray("candidates"), selected);
                 appendMeta(error, jdbi, 0);
                 return error.toString();
@@ -321,14 +328,18 @@ final class CallHierarchyQueries {
             String method, String signature, List<ClassMemberRecord> candidates,
             boolean ambiguous) {
         ObjectNode error = JSON.createObjectNode();
-        error.put("error", ambiguous
-                ? "Ambiguous method; provide signature or JVM descriptor"
-                : "Method not found");
+        appendError(error, ambiguous ? "AMBIGUOUS_METHOD" : "METHOD_NOT_FOUND",
+                ambiguous ? "Ambiguous method; provide signature or JVM descriptor"
+                        : "Method not found");
         error.put("target", cls.className());
         error.put("method", method);
         if (signature != null) error.put("signature", signature);
         ArrayNode values = error.putArray("candidates");
         candidates.forEach(candidate -> appendCandidate(values, candidate));
+        if (ambiguous) {
+            appendRetryWith(error, "signature",
+                    "Use one candidate's exact signature, descriptor, or symbol_id");
+        }
         appendMeta(error, jdbi, 0);
         return error.toString();
     }

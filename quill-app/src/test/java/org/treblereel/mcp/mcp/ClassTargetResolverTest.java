@@ -37,6 +37,7 @@ class ClassTargetResolverTest {
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, "BeanManager");
 
         assertFalse(lookup.found());
+        assertEquals("AMBIGUOUS_CLASS", lookup.errorCode());
         assertEquals("Ambiguous class name", lookup.error());
         assertEquals(List.of("first.BeanManager", "second.BeanManager"),
                 lookup.candidates().stream().map(ClassRecord::className).toList());
@@ -65,6 +66,7 @@ class ClassTargetResolverTest {
                 ClassTargetResolver.resolve(jdbi, "example.GeneratedRegistry");
 
         assertFalse(lookup.found());
+        assertEquals("AMBIGUOUS_CLASS", lookup.errorCode());
         assertEquals("Ambiguous class context", lookup.error());
         assertEquals(List.of("applications/one", "applications/two"),
                 lookup.candidates().stream().map(ClassRecord::module).toList());

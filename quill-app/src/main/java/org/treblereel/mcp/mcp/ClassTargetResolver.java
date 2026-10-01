@@ -12,15 +12,15 @@ import org.treblereel.mcp.model.FileRecord;
 /** Resolves the class identifiers accepted by MCP tools into one current index entity. */
 final class ClassTargetResolver {
 
-    record Lookup(ClassRecord cls, String error, List<ClassRecord> candidates,
+    record Lookup(ClassRecord cls, String errorCode, String error, List<ClassRecord> candidates,
             List<FileRecord> fileCandidates) {
         static Lookup found(ClassRecord cls) {
-            return new Lookup(cls, null, List.of(), List.of());
+            return new Lookup(cls, null, null, List.of(), List.of());
         }
 
-        static Lookup error(String message, List<ClassRecord> candidates,
+        static Lookup error(String code, String message, List<ClassRecord> candidates,
                 List<FileRecord> fileCandidates) {
-            return new Lookup(null, message, candidates, fileCandidates);
+            return new Lookup(null, code, message, candidates, fileCandidates);
         }
 
         boolean found() {
@@ -32,19 +32,22 @@ final class ClassTargetResolver {
 
     static Lookup resolve(Jdbi jdbi, String target) {
         if (target == null || target.isBlank()) {
-            return Lookup.error("Class target or symbol_id is required", List.of(), List.of());
+            return Lookup.error("MISSING_TARGET", "Class target or symbol_id is required",
+                    List.of(), List.of());
         }
         try {
             String requested = target;
             target = SymbolContract.parse(requested)
                     .map(SymbolContract.Reference::className).orElse(requested);
         } catch (IllegalArgumentException error) {
-            return Lookup.error("Malformed symbol_id", List.of(), List.of());
+            return Lookup.error("MALFORMED_SYMBOL_ID", "Malformed symbol_id",
+                    List.of(), List.of());
         }
         var exactNames = IndexReader.findClassesByName(jdbi, target);
         if (exactNames.size() == 1) return Lookup.found(exactNames.getFirst());
         if (exactNames.size() > 1) {
-            return Lookup.error("Ambiguous class context", exactNames, List.of());
+            return Lookup.error("AMBIGUOUS_CLASS", "Ambiguous class context",
+                    exactNames, List.of());
         }
 
         var exactPath = IndexReader.findClassByPath(jdbi, target);
@@ -57,7 +60,8 @@ final class ClassTargetResolver {
                 return Lookup.found(shortNameCandidates.getFirst());
             }
             if (shortNameCandidates.size() > 1) {
-                return Lookup.error("Ambiguous class name", shortNameCandidates, List.of());
+                return Lookup.error("AMBIGUOUS_CLASS", "Ambiguous class name",
+                        shortNameCandidates, List.of());
             }
         }
 
@@ -67,14 +71,14 @@ final class ClassTargetResolver {
             basename = basename.substring(0, basename.lastIndexOf('.'));
         }
         return Lookup.error(
-                "Class not found",
+                "CLASS_NOT_FOUND", "Class not found",
                 IndexReader.searchClasses(jdbi, basename, 5),
                 IndexReader.findFileCandidates(jdbi, target, 5));
     }
 
     static ObjectNode errorResponse(ObjectMapper json, Lookup lookup, String target) {
         ObjectNode root = json.createObjectNode();
-        root.put("error", lookup.error());
+        ToolResponseSupport.appendError(root, lookup.errorCode(), lookup.error());
         root.put("target", target);
         if ("Ambiguous class context".equals(lookup.error())) {
             root.put("reason", "The same FQCN exists in more than one module/source set; "
@@ -101,6 +105,10 @@ final class ClassTargetResolver {
             if (candidate.module() != null) node.put("module", candidate.module());
             if (candidate.sourceSet() != null) node.put("source_set", candidate.sourceSet());
             node.put("reason", "matching Java source basename");
+        }
+        if ("AMBIGUOUS_CLASS".equals(lookup.errorCode())) {
+            ToolResponseSupport.appendRetryWith(root, "target",
+                    "Use one candidate's project path or symbol_id");
         }
         return root;
     }

@@ -240,6 +240,10 @@ class McpToolCatalogTest {
         assertTrue(Boolean.TRUE.equals(invalid.isError()));
         assertEquals("Unknown argument: unexpected",
                 ((JsonNode) invalid.structuredContent()).path("error").asText());
+        assertEquals("TOOL_INVOCATION_ERROR",
+                ((JsonNode) invalid.structuredContent()).path("error_code").asText());
+        assertEquals("Unknown argument: unexpected",
+                ((JsonNode) invalid.structuredContent()).path("message").asText());
     }
 
     @Test

@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendPage;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
@@ -33,17 +34,18 @@ final class MethodOverrideQueries {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
             if (reference != null) {
                 if (!"METHOD".equals(reference.kind())) {
-                    return errorResponse("symbol_id must identify a method");
+                    return errorResponse("INVALID_SYMBOL_KIND",
+                            "symbol_id must identify a method");
                 }
                 target = reference.className();
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
         } catch (IllegalArgumentException error) {
-            return errorResponse("Malformed symbol_id");
+            return errorResponse("MALFORMED_SYMBOL_ID", "Malformed symbol_id");
         }
         if (method == null || method.isBlank()) {
-            return errorResponse("Method name or symbol_id must be provided");
+            return errorResponse("MISSING_METHOD", "Method name or symbol_id must be provided");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
@@ -66,7 +68,7 @@ final class MethodOverrideQueries {
                 .toList();
         if (baseDeclarations.isEmpty()) {
             ObjectNode error = JSON.createObjectNode();
-            error.put("error", requestedSignature == null
+            appendError(error, "METHOD_NOT_FOUND", requestedSignature == null
                     ? "Method not found" : "Method signature not found");
             error.put("class", base.className());
             error.put("method", methodName);

@@ -1,7 +1,9 @@
 package org.treblereel.mcp.mcp;
 
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendPage;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendRetryWith;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
@@ -38,19 +40,21 @@ final class SymbolUsageQueries {
                 signature = reference.descriptor();
             }
         } catch (IllegalArgumentException error) {
-            return errorResponse("Malformed symbol_id");
+            return errorResponse("MALFORMED_SYMBOL_ID", "Malformed symbol_id");
         }
         String normalizedKind = kind == null ? "" : kind.strip().toUpperCase(Locale.ROOT);
         if (!KINDS.contains(normalizedKind)) {
-            return errorResponse("Invalid kind: expected method, constructor, or field");
+            return errorResponse("INVALID_ARGUMENT",
+                    "Invalid kind: expected method, constructor, or field");
         }
         String normalizedAccess = access == null
                 ? "ALL" : access.strip().toUpperCase(Locale.ROOT);
         if (!ACCESS_MODES.contains(normalizedAccess)) {
-            return errorResponse("Invalid access: expected all, read, or write");
+            return errorResponse("INVALID_ARGUMENT",
+                    "Invalid access: expected all, read, or write");
         }
         if (!"FIELD".equals(normalizedKind) && !"ALL".equals(normalizedAccess)) {
-            return errorResponse("The access filter applies only to fields");
+            return errorResponse("INVALID_ARGUMENT", "The access filter applies only to fields");
         }
         String requestedName = name;
         String requestedSignature = signature;
@@ -73,7 +77,9 @@ final class SymbolUsageQueries {
                         || member.descriptor().equals(requestedSignature.strip())).toList();
         if (matches.size() != 1) {
             ObjectNode error = JSON.createObjectNode();
-            error.put("error", matches.isEmpty() ? "Symbol not found" : "Ambiguous symbol");
+            boolean ambiguous = !matches.isEmpty();
+            appendError(error, ambiguous ? "AMBIGUOUS_SYMBOL" : "SYMBOL_NOT_FOUND",
+                    ambiguous ? "Ambiguous symbol" : "Symbol not found");
             error.put("target", cls.className());
             error.put("kind", normalizedKind.toLowerCase(Locale.ROOT));
             error.put("name", requestedName);
@@ -82,6 +88,10 @@ final class SymbolUsageQueries {
             if (candidates.isEmpty()) candidates = kindMembers;
             ArrayNode values = error.putArray("candidates");
             candidates.forEach(candidate -> appendCandidate(values, candidate));
+            if (ambiguous) {
+                appendRetryWith(error, "signature",
+                        "Use one candidate's exact signature, descriptor, or symbol_id");
+            }
             appendMeta(error, jdbi, 0);
             return error.toString();
         }
@@ -91,7 +101,8 @@ final class SymbolUsageQueries {
                 .declaration(selected, kotlinDeclarations).orElse(null);
         if (selected.descriptor().isBlank()) {
             ObjectNode error = JSON.createObjectNode();
-            error.put("error", "Symbol descriptor is unavailable; rebuild the Quill index");
+            appendError(error, "DESCRIPTOR_UNAVAILABLE",
+                    "Symbol descriptor is unavailable; rebuild the Quill index");
             appendCandidate(error.putArray("candidates"), selected);
             appendMeta(error, jdbi, 0);
             return error.toString();

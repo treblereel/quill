@@ -1,6 +1,8 @@
 package org.treblereel.mcp.mcp;
 
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendRetryWith;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
@@ -42,17 +44,18 @@ final class ExecutionOrderQueries {
             if (reference != null) {
                 if (!"METHOD".equals(reference.kind())
                         && !"CONSTRUCTOR".equals(reference.kind())) {
-                    return errorResponse("symbol_id must identify a method or constructor");
+                    return errorResponse("INVALID_SYMBOL_KIND",
+                            "symbol_id must identify a method or constructor");
                 }
                 target = reference.className();
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
         } catch (IllegalArgumentException error) {
-            return errorResponse("Malformed symbol_id");
+            return errorResponse("MALFORMED_SYMBOL_ID", "Malformed symbol_id");
         }
         if (method == null || method.isBlank()) {
-            return errorResponse("Method name or symbol_id must be provided");
+            return errorResponse("MISSING_METHOD", "Method name or symbol_id must be provided");
         }
         String requestedMethod = method;
         String requestedSignature = signature;
@@ -280,7 +283,9 @@ final class ExecutionOrderQueries {
     private static String selectionError(Jdbi jdbi, ClassRecord cls, String method,
             String signature, List<ClassMemberRecord> candidates) {
         ObjectNode root = JSON.createObjectNode();
-        root.put("error", candidates.isEmpty() ? "Method not found" : "Ambiguous method");
+        boolean ambiguous = !candidates.isEmpty();
+        appendError(root, ambiguous ? "AMBIGUOUS_METHOD" : "METHOD_NOT_FOUND",
+                ambiguous ? "Ambiguous method" : "Method not found");
         root.put("target", cls.className());
         root.put("method", method);
         if (signature != null) root.put("requested_signature", signature);
@@ -289,6 +294,10 @@ final class ExecutionOrderQueries {
             ObjectNode choice = choices.addObject();
             choice.put("signature", candidate.signature());
             choice.put("descriptor", candidate.descriptor());
+        }
+        if (ambiguous) {
+            appendRetryWith(root, "signature",
+                    "Use one candidate's exact signature, descriptor, or symbol_id");
         }
         appendMeta(root, jdbi, cls.sourceTokens(), cls.sourceFile(), cls.module());
         return root.toString();

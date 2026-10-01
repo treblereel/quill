@@ -32,7 +32,8 @@ final class SymbolToolQueries {
             String memberKind, int memberLimit, int memberOffset) {
         String normalizedKind = normalizeMemberKind(memberKind);
         if (normalizedKind != null && !MEMBER_KINDS.contains(normalizedKind)) {
-            return errorResponse("Invalid member_kind: expected field, constructor, or method");
+            return errorResponse("INVALID_ARGUMENT",
+                    "Invalid member_kind: expected field, constructor, or method");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);

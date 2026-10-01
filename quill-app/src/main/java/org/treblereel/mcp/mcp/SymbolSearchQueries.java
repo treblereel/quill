@@ -29,11 +29,11 @@ final class SymbolSearchQueries {
     String searchSymbols(Jdbi jdbi, String pattern, String kind, String language,
             int limit, int offset) {
         if (pattern == null || pattern.isBlank()) {
-            return errorResponse("Search pattern must not be blank");
+            return errorResponse("MISSING_PATTERN", "Search pattern must not be blank");
         }
         String normalizedKind = normalizeKind(kind);
         if (normalizedKind != null && !KINDS.contains(normalizedKind)) {
-            return errorResponse("Invalid kind: expected class, interface, annotation, enum, "
+            return errorResponse("INVALID_ARGUMENT", "Invalid kind: expected class, interface, annotation, enum, "
                     + "record, field, constructor, method, or all");
         }
         String normalizedLanguage = language == null || language.isBlank()
@@ -41,7 +41,7 @@ final class SymbolSearchQueries {
                         : language.trim().toLowerCase(Locale.ROOT);
         if (normalizedLanguage != null
                 && !Set.of("java", "kotlin").contains(normalizedLanguage)) {
-            return errorResponse("Invalid language: expected java, kotlin, or all");
+            return errorResponse("INVALID_ARGUMENT", "Invalid language: expected java, kotlin, or all");
         }
         var matches = IndexReader.searchSymbols(
                 jdbi, pattern.trim(), normalizedKind, normalizedLanguage, limit, offset);

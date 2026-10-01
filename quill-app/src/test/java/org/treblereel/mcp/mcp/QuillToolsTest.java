@@ -585,6 +585,10 @@ class QuillToolsTest {
         assertTrue(kotlinOnly.path("symbols").valueStream()
                 .allMatch(value -> value.path("language").asText().equals("kotlin")));
         assertTrue(invalidLanguage.path("error").asText().contains("Invalid language"));
+        assertEquals("INVALID_ARGUMENT", invalidLanguage.path("error_code").asText());
+        assertEquals(invalidLanguage.path("error").asText(),
+                invalidLanguage.path("message").asText());
+        assertFalse(invalidLanguage.path("retryable").asBoolean());
         assertEquals("orders", property.path("source_name").asText());
         assertEquals("property", property.path("source_kind").asText());
         assertEquals("property_field", property.path("jvm_role").asText());
@@ -1045,6 +1049,11 @@ class QuillToolsTest {
         JsonNode ambiguous = JSON.readTree(queries.findSymbolUsages(
                 jdbi, "OrderService", "submit", "method", null, "all", 10, 0));
         assertEquals("Ambiguous symbol", ambiguous.path("error").asText());
+        assertEquals("AMBIGUOUS_SYMBOL", ambiguous.path("error_code").asText());
+        assertEquals("Ambiguous symbol", ambiguous.path("message").asText());
+        assertTrue(ambiguous.path("retryable").asBoolean());
+        assertTrue(ambiguous.path("retry_with").path("signature").asText()
+                .contains("descriptor"));
         assertEquals(2, ambiguous.path("candidates").size());
 
         JsonNode method = JSON.readTree(queries.findSymbolUsages(

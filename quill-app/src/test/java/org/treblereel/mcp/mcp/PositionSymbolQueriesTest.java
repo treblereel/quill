@@ -18,6 +18,20 @@ class PositionSymbolQueriesTest {
     @TempDir Path temp;
 
     @Test
+    void errorsUseStableMachineReadableEnvelope() throws Exception {
+        Path source = temp.resolve("Empty.kt");
+        Files.writeString(source, "val value = 1\n");
+        Jdbi jdbi = QuillDatabase.create(temp.resolve("error-index.db"));
+
+        var result = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
+                jdbi, temp, "Empty.kt", 2, 1));
+
+        assertEquals("Line is outside the source file", result.path("error").asText());
+        assertEquals("INVALID_POSITION", result.path("error_code").asText());
+        assertEquals(result.path("error").asText(), result.path("message").asText());
+    }
+
+    @Test
     void resolvesIdentifierAtLiveSourcePosition() throws Exception {
         Path source = temp.resolve("src/main/java/acme/OrderService.java");
         Files.createDirectories(source.getParent());

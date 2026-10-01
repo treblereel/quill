@@ -230,7 +230,13 @@ final class McpToolCatalog {
         } catch (Exception ignored) {
             // Catalog-generated failures are converted to a stable structured envelope.
         }
-        return JSON.createObjectNode().put(error ? "error" : "result", text);
+        if (!error) return JSON.createObjectNode().put("result", text);
+        var envelope = JSON.createObjectNode();
+        envelope.put("error", text);
+        envelope.put("error_code", "TOOL_INVOCATION_ERROR");
+        envelope.put("message", text);
+        envelope.put("retryable", text.contains("retry"));
+        return envelope;
     }
 
     private static Object convertOptional(Object value, Class<?> targetType) {

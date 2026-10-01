@@ -21,21 +21,26 @@ final class PositionSymbolQueries {
         String normalized = sourcePath.strip().replace('\\', '/');
         Path file = root.resolve(normalized).normalize();
         if (!file.startsWith(root.toAbsolutePath().normalize())) {
-            return error("Source path escapes the project root");
+            return error("INVALID_SOURCE_PATH", "Source path escapes the project root");
         }
         List<String> lines;
         try {
             lines = Files.readAllLines(file);
         } catch (IOException error) {
-            return error("Could not read source file: " + normalized);
+            return error("SOURCE_NOT_FOUND", "Could not read source file: " + normalized);
         }
-        if (line < 1 || line > lines.size()) return error("Line is outside the source file");
+        if (line < 1 || line > lines.size()) {
+            return error("INVALID_POSITION", "Line is outside the source file");
+        }
         String sourceLine = lines.get(line - 1);
         if (column < 1 || column > sourceLine.length() + 1) {
-            return error("Column is outside the source line");
+            return error("INVALID_POSITION", "Column is outside the source line");
         }
         Identifier located = identifierAt(sourceLine, column - 1);
-        if (located == null) return error("No Java/Kotlin identifier at the requested position");
+        if (located == null) {
+            return error("SYMBOL_NOT_FOUND",
+                    "No Java/Kotlin identifier at the requested position");
+        }
         String identifier = located.value();
 
         List<Candidate> candidates = declarations(jdbi, identifier, normalized);
@@ -281,8 +286,8 @@ final class PositionSymbolQueries {
         item.set("ranking_reasons", JSON.valueToTree(ranked.reasons()));
     }
 
-    private static String error(String message) {
-        return JSON.createObjectNode().put("error", message).toString();
+    private static String error(String code, String message) {
+        return ToolResponseSupport.errorResponse(code, message);
     }
 
     private record Identifier(String value, int start, int end) {}

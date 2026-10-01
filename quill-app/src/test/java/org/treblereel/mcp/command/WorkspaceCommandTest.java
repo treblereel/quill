@@ -187,6 +187,9 @@ class WorkspaceCommandTest {
                   <packaging>pom</packaging>
                 </project>
                 """);
+        assertEquals(BuildIntegrationInstaller.Result.INSTALLED,
+                BuildIntegrationInstaller.install(repository));
+        assertTrue(Files.isRegularFile(repository.resolve(".mvn/extensions.xml")));
 
         Captured initialized = execute(
                 "workspace", "init", "--project", workspace.toString());

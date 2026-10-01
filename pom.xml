@@ -47,6 +47,7 @@
         <jdbi.version>3.54.0</jdbi.version>
         <jgit.version>7.7.1.202607240634-r</jgit.version>
         <asm.version>9.9.1</asm.version>
+        <kotlinx.metadata.version>0.9.0</kotlinx.metadata.version>
         <junit.version>5.12.2</junit.version>
         <jakarta.cdi.version>4.1.0</jakarta.cdi.version>
         <jakarta.inject.version>2.0.1</jakarta.inject.version>
@@ -100,6 +101,11 @@
                 <groupId>org.codehaus.plexus</groupId>
                 <artifactId>plexus-utils</artifactId>
                 <version>${plexus-utils.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains.kotlinx</groupId>
+                <artifactId>kotlinx-metadata-jvm</artifactId>
+                <version>${kotlinx.metadata.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.slf4j</groupId>

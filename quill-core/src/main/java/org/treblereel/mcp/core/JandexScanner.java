@@ -33,7 +33,9 @@ public final class JandexScanner {
     private JandexScanner() {}
 
     public record ScanResult(
-            IndexView index, List<ClassRecord> classes, int cacheHits, int cacheShards) {}
+            IndexView index, List<ClassRecord> classes,
+            Map<String, KotlinMetadataReader.Result> kotlinMetadata,
+            int cacheHits, int cacheShards) {}
 
     public static ScanResult scan(Path classesDir) {
         return scan(List.of(classesDir));
@@ -67,7 +69,22 @@ public final class JandexScanner {
         return new ScanResult(cached.index(),
                 extractClasses(cached.index(), sourceRoots, sourceTokenCache,
                         BytecodeSourceMapper.map(classFiles, sourceRoots)),
+                extractKotlinMetadata(cached.index()),
                 cached.hits(), cached.shardCount());
+    }
+
+    private static Map<String, KotlinMetadataReader.Result> extractKotlinMetadata(
+            IndexView index) {
+        Map<String, KotlinMetadataReader.Result> result = new LinkedHashMap<>();
+        index.getKnownClasses().stream()
+                .sorted(Comparator.comparing(value -> value.name().toString()))
+                .forEach(classInfo -> {
+                    KotlinMetadataReader.Result metadata = KotlinMetadataReader.read(classInfo);
+                    if (metadata.status() != KotlinMetadataReader.Status.ABSENT) {
+                        result.put(classInfo.name().toString(), metadata);
+                    }
+                });
+        return Map.copyOf(result);
     }
 
     private static Path sourceRoot(Path classesDir) {

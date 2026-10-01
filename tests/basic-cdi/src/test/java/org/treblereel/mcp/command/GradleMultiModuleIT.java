@@ -105,7 +105,10 @@ class GradleMultiModuleIT {
         Path db = ProjectIndexStore.findDbForHead(springProject);
         assertNotNull(db);
         var jdbi = QuillDatabase.open(db);
-        assertEquals("Spring", IndexReader.getMetadata(jdbi).get("framework"));
+        var metadata = IndexReader.getMetadata(jdbi);
+        assertEquals("Spring", metadata.get("framework"));
+        assertTrue(Integer.parseInt(metadata.get("kotlin_metadata_classes")) > 0);
+        assertNotNull(metadata.get("kotlin_metadata_fallbacks"));
         assertEquals(2, IndexReader.findBeans(jdbi, null).size());
         assertTrue(IndexReader.findAllClasses(jdbi).stream()
                 .allMatch(record -> record.sourceTokens() > 0));

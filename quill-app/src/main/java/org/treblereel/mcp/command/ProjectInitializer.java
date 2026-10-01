@@ -38,6 +38,7 @@ import org.treblereel.mcp.core.FileInventory;
 import org.treblereel.mcp.core.ExternalBeanScanner;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.JandexScanner;
+import org.treblereel.mcp.core.KotlinMetadataReader;
 import org.treblereel.mcp.core.ModuleClasspathResolver;
 import org.treblereel.mcp.core.ServiceProviderScanner;
 import org.treblereel.mcp.core.SpringResolver;
@@ -627,6 +628,12 @@ public class ProjectInitializer {
                 Integer.toString(scanResult.cacheHits()));
         metadata.put("application_index_cache_shards",
                 Integer.toString(scanResult.cacheShards()));
+        metadata.put("kotlin_metadata_classes",
+                Integer.toString(scanResult.kotlinMetadata().size()));
+        metadata.put("kotlin_metadata_fallbacks", Long.toString(
+                scanResult.kotlinMetadata().values().stream()
+                        .filter(value -> value.status() != KotlinMetadataReader.Status.PARSED)
+                        .count()));
         metadata.put("class_occurrences", Integer.toString(classOccurrences.size()));
         metadata.put("module_contexts", Integer.toString(moduleDirectories.size()));
         metadata.put("discovered_module_count",

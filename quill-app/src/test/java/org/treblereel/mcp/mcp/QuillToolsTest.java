@@ -2202,6 +2202,14 @@ class QuillToolsTest {
 
         JsonNode project = root.get("project");
         assertNotNull(project);
+        JsonNode capabilities = root.path("capabilities");
+        assertEquals(1, capabilities.path("contract_version").asInt());
+        assertEquals(List.of("java", "kotlin"), capabilities.path("supported_languages")
+                .valueStream().map(JsonNode::asText).toList());
+        assertTrue(capabilities.path("stable_symbol_ids").asBoolean());
+        assertTrue(capabilities.path("machine_readable_errors").asBoolean());
+        assertTrue(capabilities.path("symbol_id_consumers").toString()
+                .contains("find_symbol_usages"));
         assertEquals(4, project.get("classes").asInt());
         assertEquals(3, project.get("beans").asInt());
         assertEquals("degraded", project.get("dependency_index").asText());

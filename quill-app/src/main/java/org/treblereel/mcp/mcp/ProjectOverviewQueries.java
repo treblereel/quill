@@ -34,6 +34,17 @@ final class ProjectOverviewQueries {
         Map<String, String> meta = IndexReader.getMetadata(jdbi);
         ObjectNode root = JSON.createObjectNode();
 
+        ObjectNode capabilities = root.putObject("capabilities");
+        capabilities.put("contract_version", 1);
+        capabilities.set("supported_languages", JSON.valueToTree(List.of("java", "kotlin")));
+        capabilities.put("stable_symbol_ids", true);
+        capabilities.put("symbol_id_version", 1);
+        capabilities.put("machine_readable_errors", true);
+        capabilities.put("error_contract_version", 1);
+        capabilities.set("symbol_id_consumers", JSON.valueToTree(List.of(
+                "find_symbol_usages", "get_call_hierarchy",
+                "analyze_execution_order", "find_method_overrides")));
+
         ObjectNode project = root.putObject("project");
         int classCount = IndexReader.countClasses(jdbi);
         int beanCount = IndexReader.countBeans(jdbi);

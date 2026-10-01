@@ -274,6 +274,20 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void overviewAdvertisesCapabilitiesInItsOutputSchema() {
+        AsyncToolSpecification specification = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1))
+                .stream().filter(candidate -> candidate.tool().name().equals("get_overview"))
+                .findFirst().orElseThrow();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) specification.tool()
+                .outputSchema().get("properties");
+        assertEquals("object", ((Map<?, ?>) properties.get("capabilities")).get("type"));
+    }
+
+    @Test
     void quillCatalogStaysCompact() {
         var tools = McpToolCatalog.create(
                 new QuillTools(new ProjectRegistry()), workers, responses,

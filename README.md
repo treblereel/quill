@@ -329,7 +329,8 @@ does not imply that an executor, reactive stream, or message publication has com
 - **assess_change_risk** — class blast radius or file-level risk based on file
   criticality, coupling, churn, and bus factor; accepts class names and arbitrary paths
 - **get_overview** — compact project summary by default; set `details=true` for diagnostic
-  samples and per-dimension architecture-hub rankings
+  samples and per-dimension architecture-hub rankings. Its `capabilities` block advertises
+  supported source languages, stable `symbol_id` chaining, and machine-readable errors
 - **list_beans** — filter beans by scope, kind, qualifier (CDI and Spring); supports
   `limit`/`offset`
 - **list_injection_points** — injection resolution status for a bean

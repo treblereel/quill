@@ -10,6 +10,11 @@ final class ToolOutputSchemas {
 
     static Map<String, Object> schema(String name) {
         return switch (name) {
+            case "overview" -> object(
+                    field("capabilities", unconstrainedObject()),
+                    field("project", unconstrainedObject()),
+                    field("problems", unconstrainedObject()),
+                    field("architecture_hubs", array()));
             case "symbol_search" -> object(
                     field("pattern", string()), field("kind", string()),
                     field("language_filter", string()), field("symbols", array()),

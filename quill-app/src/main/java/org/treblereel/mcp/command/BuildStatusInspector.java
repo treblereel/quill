@@ -31,6 +31,7 @@ public final class BuildStatusInspector {
         ProjectLayout.ClassesDiscovery outputDiscovery =
                 ProjectLayout.discoverClassesDirs(root, false);
         List<Path> outputs = outputDiscovery.classesDirectories();
+        CompiledOutputInspector.Report compiledStatus = CompiledOutputInspector.inspect(root);
         BuildIntegrationInstaller.Inspection integration =
                 BuildIntegrationInstaller.inspect(root);
         long pendingEvents = pendingEvents(root);
@@ -59,6 +60,8 @@ public final class BuildStatusInspector {
         outputs.stream().map(path -> relative(root, path)).sorted()
                 .limit(100).forEach(directories::add);
         compiled.put("directories_truncated", outputs.size() > 100);
+        compiled.put("status", compiledStatus.state().name().toLowerCase());
+        compiled.set("stale_modules", JSON.valueToTree(compiledStatus.staleModules()));
         if (latestClassModified == null) compiled.putNull("latest_class_modified_at");
         else compiled.put("latest_class_modified_at",
                 Instant.ofEpochMilli(latestClassModified).toString());
@@ -85,9 +88,11 @@ public final class BuildStatusInspector {
         freshnessNode.put("structure_stale", freshness.structureStale());
         freshnessNode.set("stale_reasons", JSON.valueToTree(freshness.staleReasons()));
 
-        Recommendation recommendation = recommendation(buildSystem, outputs, integration,
+        Recommendation recommendation = recommendation(buildSystem, compiledStatus, integration,
                 pendingEvents, freshness, outputsChangedAfterIndex, fingerprintChanged);
         result.put("status", recommendation.status());
+        if (recommendation.buildReason() == null) result.putNull("build_reason");
+        else result.put("build_reason", recommendation.buildReason());
         result.put("action_required", recommendation.action() != null);
         if (recommendation.action() == null) result.putNull("recommended_action");
         else result.put("recommended_action", recommendation.action());
@@ -95,38 +100,47 @@ public final class BuildStatusInspector {
         return result.toString();
     }
 
-    private static Recommendation recommendation(BuildSystem buildSystem, List<Path> outputs,
+    private static Recommendation recommendation(BuildSystem buildSystem,
+            CompiledOutputInspector.Report compiled,
             BuildIntegrationInstaller.Inspection integration, long pendingEvents,
             MetaEnvelope freshness, boolean outputsChangedAfterIndex, Boolean fingerprintChanged) {
-        if (outputs.isEmpty()) {
-            return new Recommendation("build_required", buildSystem == BuildSystem.MAVEN
+        if (compiled.state() == CompiledOutputInspector.State.MISSING) {
+            return new Recommendation("build_required", "classes_missing",
+                    buildSystem == BuildSystem.MAVEN
                     ? "Run the project's Maven compile/package command"
                     : "Run the project's Gradle classes/build command");
         }
+        if (compiled.state() == CompiledOutputInspector.State.STALE) {
+            return new Recommendation("build_required", "classes_stale",
+                    buildSystem == BuildSystem.MAVEN
+                            ? "Rebuild the stale Maven modules; Quill will refresh after success"
+                            : "Rebuild the stale Gradle modules; Quill will refresh after success");
+        }
         if (integration.state() == BuildIntegrationInstaller.State.INVALID) {
-            return new Recommendation("integration_error",
+            return new Recommendation("integration_error", null,
                     "Repair " + integration.path() + " or reinstall Quill build integration");
         }
         if (integration.state() == BuildIntegrationInstaller.State.MISSING
                 || integration.state() == BuildIntegrationInstaller.State.OUTDATED) {
-            return new Recommendation("integration_required",
+            return new Recommendation("integration_required", null,
                     "Run quill init to install the build-result integration");
         }
         if (pendingEvents > 0) {
-            return new Recommendation("refresh_pending",
+            return new Recommendation("refresh_pending", null,
                     "Make another MCP request to consume the build-result event");
         }
         if (freshness.staleReasons().contains("dirty_worktree_not_compiled")) {
-            return new Recommendation("build_required", buildSystem == BuildSystem.MAVEN
+            return new Recommendation("build_required", "classes_stale",
+                    buildSystem == BuildSystem.MAVEN
                     ? "Compile the Maven project; Quill will refresh after a successful build"
                     : "Compile the Gradle project; Quill will refresh after a successful build");
         }
         if (outputsChangedAfterIndex || Boolean.TRUE.equals(fingerprintChanged)
                 || freshness.commitStale()) {
-            return new Recommendation("index_refresh_required",
+            return new Recommendation("index_refresh_required", null,
                     "Run quill update or make a new MCP request after a successful build event");
         }
-        return new Recommendation("ready", null);
+        return new Recommendation("ready", null, null);
     }
 
     private static long pendingEvents(Path root) {
@@ -178,5 +192,5 @@ public final class BuildStatusInspector {
                 : normalized.toString();
     }
 
-    private record Recommendation(String status, String action) {}
+    private record Recommendation(String status, String buildReason, String action) {}
 }

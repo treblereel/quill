@@ -295,7 +295,8 @@ does not imply that an executor, reactive stream, or message publication has com
 - **compare_index** — compare the active immutable index with a retained generation, including
   class/member, static dependency, bean, and injection-resolution deltas
 - **get_build_status** — inspect build-result integration, compiled outputs, pending events,
-  index freshness, and the next required action without invoking Maven or Gradle
+  index freshness, and the next required action without invoking Maven or Gradle; build-required
+  responses distinguish `classes_missing` from `classes_stale` and identify stale modules
 - **get_build_problems** — read normalized errors captured from the last Maven or Gradle build,
   including source positions and module filtering, without starting a build
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short

@@ -1882,9 +1882,26 @@ class QuillToolsTest {
         assertEquals(1, result.path("compiled_outputs").path("count").asInt());
         assertEquals("missing", result.path("integration").path("state").asText());
         assertEquals("integration_required", result.path("status").asText());
+        assertEquals("fresh", result.path("compiled_outputs").path("status").asText());
+        assertTrue(result.path("build_reason").isNull());
         assertTrue(result.path("action_required").asBoolean());
         assertFalse(result.path("build_was_started").asBoolean());
         assertEquals(0, result.path("build_events").path("pending").asInt());
+
+        Path source = tempDir.resolve("src/main/java/org/acme/Sample.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; public final class Sample {}\n");
+        long now = System.currentTimeMillis();
+        Files.setLastModifiedTime(classes.resolve("Sample.class"),
+                java.nio.file.attribute.FileTime.fromMillis(now - 2_000));
+        Files.setLastModifiedTime(source,
+                java.nio.file.attribute.FileTime.fromMillis(now + 2_000));
+
+        JsonNode stale = JSON.readTree(new QuillTools().getBuildStatus(jdbi, tempDir));
+        assertEquals("build_required", stale.path("status").asText());
+        assertEquals("classes_stale", stale.path("build_reason").asText());
+        assertEquals("stale", stale.path("compiled_outputs").path("status").asText());
+        assertEquals(".", stale.path("compiled_outputs").path("stale_modules").get(0).asText());
     }
 
     @Test

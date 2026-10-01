@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import org.jdbi.v3.core.Jdbi;
 
 /** Resolves the identifier under a live source position against indexed declarations. */
@@ -88,6 +89,7 @@ final class PositionSymbolQueries {
         return jdbi.withHandle(handle -> handle.createQuery("""
                         SELECT c.class_name, 'CLASS' AS kind, NULL AS member_name,
                                NULL AS signature, NULL AS parameter_types, c.source_file,
+                               NULL AS semantic_kind, NULL AS semantic_name,
                                CASE WHEN c.source_file = :path OR f.project_path = :path
                                           OR f.repository_path = :path THEN 1 ELSE 0 END AS same_file
                         FROM classes c LEFT JOIN files f ON f.id = c.file_id
@@ -96,12 +98,19 @@ final class PositionSymbolQueries {
                                OR c.class_name LIKE '%.' || :identifier
                                OR c.class_name LIKE '%$' || :identifier)
                         UNION ALL
-                        SELECT c.class_name, m.kind, m.name, m.signature, m.parameter_types, c.source_file,
+                        SELECT c.class_name, m.kind, m.name, m.signature, m.parameter_types,
+                               c.source_file, kd.kind AS semantic_kind,
+                               kd.name AS semantic_name,
                                CASE WHEN c.source_file = :path OR f.project_path = :path
                                           OR f.repository_path = :path THEN 1 ELSE 0 END AS same_file
                         FROM class_members m JOIN classes c ON c.id = m.class_id
                         LEFT JOIN files f ON f.id = c.file_id
-                        WHERE c.lifecycle = 'current' AND m.name = :identifier
+                        LEFT JOIN kotlin_declarations kd ON kd.class_id = m.class_id
+                          AND ((kd.kind = 'FUNCTION' AND kd.jvm_name = m.name
+                                AND kd.descriptor = m.descriptor)
+                               OR (kd.kind = 'PROPERTY' AND kd.jvm_name = m.name))
+                        WHERE c.lifecycle = 'current'
+                          AND (m.name = :identifier OR kd.name = :identifier)
                         ORDER BY same_file DESC, class_name, kind, signature
                         LIMIT 200
                         """)
@@ -110,7 +119,8 @@ final class PositionSymbolQueries {
                         row.getString("class_name"), row.getString("kind"),
                         row.getString("member_name"), row.getString("signature"),
                         parameterCount(row.getString("parameter_types")),
-                        row.getString("source_file"), row.getInt("same_file") == 1))
+                        row.getString("source_file"), row.getInt("same_file") == 1,
+                        row.getString("semantic_kind"), row.getString("semantic_name")))
                 .list());
     }
 
@@ -250,6 +260,11 @@ final class PositionSymbolQueries {
         item.put("kind", candidate.kind());
         if (candidate.memberName() != null) item.put("member_name", candidate.memberName());
         if (candidate.signature() != null) item.put("signature", candidate.signature());
+        if (candidate.semanticName() != null) {
+            item.put("language", "kotlin");
+            item.put("kotlin_kind", candidate.semanticKind().toLowerCase(Locale.ROOT));
+            item.put("kotlin_name", candidate.semanticName());
+        }
         if (candidate.parameterCount() != null) item.put("parameter_count", candidate.parameterCount());
         if (candidate.sourceFile() != null) item.put("source_file", candidate.sourceFile());
         item.put("same_file", candidate.sameFile());
@@ -265,7 +280,8 @@ final class PositionSymbolQueries {
     private enum ContextKind { CONSTRUCTOR_CALL, METHOD_CALL, MEMBER_ACCESS, IDENTIFIER }
     private record SourceContext(ContextKind kind, Integer argumentCount) {}
     private record Candidate(String className, String kind, String memberName,
-            String signature, Integer parameterCount, String sourceFile, boolean sameFile) {}
+            String signature, Integer parameterCount, String sourceFile, boolean sameFile,
+            String semanticKind, String semanticName) {}
     private record RankedCandidate(Candidate candidate, int score, List<String> reasons) {}
     private record EnclosingClass(String className, int sourceLine) {}
 }

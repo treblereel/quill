@@ -96,4 +96,51 @@ class PositionSymbolQueriesTest {
         assertEquals("CONSTRUCTOR", result.path("selected").path("kind").asText());
         assertEquals(2, result.path("selected").path("parameter_count").asInt());
     }
+
+    @Test
+    void resolvesKotlinSourceNameWhenJvmNameDiffers() throws Exception {
+        Path source = temp.resolve("src/main/kotlin/acme/Orders.kt");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, """
+                package acme
+                fun submitOrder() = Unit
+                """);
+        Jdbi jdbi = QuillDatabase.create(temp.resolve("kotlin-position.db"));
+        jdbi.useHandle(handle -> {
+            int file = handle.createUpdate("""
+                    INSERT INTO files(project_path, repository_path, kind, origin, lifecycle)
+                    VALUES (:path, :path, 'kotlin', 'source', 'current')
+                    """).bind("path", "src/main/kotlin/acme/Orders.kt")
+                    .executeAndReturnGeneratedKeys("id").mapTo(Integer.class).one();
+            int cls = handle.createUpdate("""
+                    INSERT INTO classes(class_name, kind, interfaces, source_file, source_line,
+                                        file_id, origin, lifecycle)
+                    VALUES ('acme.OrdersKt', 'CLASS', '[]', :path, 1,
+                            :file, 'source', 'current')
+                    """).bind("path", "src/main/kotlin/acme/Orders.kt")
+                    .bind("file", file).executeAndReturnGeneratedKeys("id")
+                    .mapTo(Integer.class).one();
+            handle.createUpdate("""
+                    INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                                              type_name, parameter_types, modifiers, annotations)
+                    VALUES (:class, 'METHOD', 'submitOrderJvm', 'void submitOrderJvm()', '()V',
+                            'void', '[]', 'public static', '[]')
+                    """).bind("class", cls).execute();
+            handle.createUpdate("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model)
+                    VALUES (:class, 'FUNCTION', 'submitOrder', 'submitOrderJvm', '()V',
+                            'kotlin_metadata')
+                    """).bind("class", cls).execute();
+        });
+
+        var result = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
+                jdbi, temp, "src/main/kotlin/acme/Orders.kt", 2, 7));
+
+        assertEquals("submitOrder", result.path("identifier").asText());
+        assertEquals("resolved", result.path("resolution").asText());
+        assertEquals("submitOrderJvm", result.path("selected").path("member_name").asText());
+        assertEquals("kotlin", result.path("selected").path("language").asText());
+        assertEquals("submitOrder", result.path("selected").path("kotlin_name").asText());
+    }
 }

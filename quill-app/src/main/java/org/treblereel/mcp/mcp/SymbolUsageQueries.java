@@ -87,7 +87,7 @@ final class SymbolUsageQueries {
             List<ClassMemberRecord> candidates = matches.isEmpty() ? namedMembers : matches;
             if (candidates.isEmpty()) candidates = kindMembers;
             ArrayNode values = error.putArray("candidates");
-            candidates.forEach(candidate -> appendCandidate(values, candidate));
+            candidates.forEach(candidate -> appendCandidate(values, cls, candidate));
             if (ambiguous) {
                 appendRetryWith(error, "signature",
                         "Use one candidate's exact signature, descriptor, or symbol_id");
@@ -103,7 +103,7 @@ final class SymbolUsageQueries {
             ObjectNode error = JSON.createObjectNode();
             appendError(error, "DESCRIPTOR_UNAVAILABLE",
                     "Symbol descriptor is unavailable; rebuild the Quill index");
-            appendCandidate(error.putArray("candidates"), selected);
+            appendCandidate(error.putArray("candidates"), cls, selected);
             appendMeta(error, jdbi, 0);
             return error.toString();
         }
@@ -208,8 +208,11 @@ final class SymbolUsageQueries {
                 requested.strip(), member, kotlinDeclarations);
     }
 
-    private static void appendCandidate(ArrayNode target, ClassMemberRecord candidate) {
+    private static void appendCandidate(
+            ArrayNode target, ClassRecord cls, ClassMemberRecord candidate) {
         ObjectNode node = target.addObject();
+        node.put("symbol_id", SymbolContract.id(cls.className(), candidate.kind(),
+                candidate.name(), candidate.descriptor()));
         node.put("name", candidate.name());
         node.put("signature", candidate.signature());
         node.put("descriptor", candidate.descriptor());

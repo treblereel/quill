@@ -292,6 +292,8 @@ final class ExecutionOrderQueries {
         ArrayNode choices = root.putArray("candidates");
         for (ClassMemberRecord candidate : candidates) {
             ObjectNode choice = choices.addObject();
+            choice.put("symbol_id", SymbolContract.id(cls.className(), candidate.kind(),
+                    candidate.name(), candidate.descriptor()));
             choice.put("signature", candidate.signature());
             choice.put("descriptor", candidate.descriptor());
         }

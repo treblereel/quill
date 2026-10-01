@@ -713,6 +713,12 @@ class QuillToolsTest {
                 "inbound", false, 1, 10, 0));
         assertTrue(ambiguous.path("error").asText().startsWith("Ambiguous method"));
         assertEquals(2, ambiguous.path("candidates").size());
+        String candidateId = ambiguous.path("candidates").get(0).path("symbol_id").asText();
+        assertTrue(candidateId.startsWith("quill:symbol:v1:"));
+        JsonNode byId = JSON.readTree(queries.getCallHierarchy(
+                jdbi, candidateId, null, null, "inbound", false, 1, 10, 0));
+        assertFalse(byId.has("error"));
+        assertEquals(candidateId, byId.path("symbol_id").asText());
 
         JsonNode exact = JSON.readTree(queries.getCallHierarchy(
                 jdbi, "OrderService", "process", "(I)V",
@@ -1055,6 +1061,13 @@ class QuillToolsTest {
         assertTrue(ambiguous.path("retry_with").path("signature").asText()
                 .contains("descriptor"));
         assertEquals(2, ambiguous.path("candidates").size());
+        String candidateId = ambiguous.path("candidates").get(0).path("symbol_id").asText();
+        assertTrue(candidateId.startsWith("quill:symbol:v1:"));
+
+        JsonNode selectedById = JSON.readTree(queries.findSymbolUsages(
+                jdbi, candidateId, null, null, null, "all", 10, 0));
+        assertFalse(selectedById.has("error"));
+        assertEquals(candidateId, selectedById.path("symbol_id").asText());
 
         JsonNode method = JSON.readTree(queries.findSymbolUsages(
                 jdbi, "OrderService", "submit", "method", "(Ljava/lang/String;)V",

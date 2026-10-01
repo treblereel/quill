@@ -790,13 +790,34 @@ public class ProjectInitializer {
                     "kotlin_metadata", function.suspend(), function.extension(),
                     function.hasDefaultParameters(), false, false, false,
                     function.synthesized())));
-            value.properties().forEach(property -> result.add(new KotlinDeclarationRecord(
-                    classId, "PROPERTY", property.name(), property.getterName() != null
-                            ? property.getterName() : property.fieldName(),
-                    "", "kotlin_metadata", false, property.extension(), false,
-                    property.mutable(), property.lateinit(), property.delegated(), false)));
+            value.properties().forEach(property -> {
+                int before = result.size();
+                addPropertyDeclaration(result, classId, property, property.fieldName(),
+                        property.fieldDescriptor());
+                addPropertyDeclaration(result, classId, property, property.getterName(),
+                        property.getterDescriptor());
+                addPropertyDeclaration(result, classId, property, property.setterName(),
+                        property.setterDescriptor());
+                if (result.size() == before) {
+                    addPropertyDeclaration(result, classId, property, null, null);
+                }
+            });
         });
         return List.copyOf(result);
+    }
+
+    private static void addPropertyDeclaration(List<KotlinDeclarationRecord> result, int classId,
+            KotlinMetadataReader.Property property, String jvmName, String descriptor) {
+        if (jvmName == null && descriptor != null) return;
+        if (jvmName == null && result.stream().anyMatch(value -> value.classId() == classId
+                && "PROPERTY".equals(value.kind()) && property.name().equals(value.name()))) {
+            return;
+        }
+        result.add(new KotlinDeclarationRecord(
+                classId, "PROPERTY", property.name(), jvmName,
+                descriptor == null ? "" : descriptor,
+                "kotlin_metadata", false, property.extension(), false,
+                property.mutable(), property.lateinit(), property.delegated(), false));
     }
 
     private static String kotlinDeclarationKind(KotlinMetadataReader.Result value) {

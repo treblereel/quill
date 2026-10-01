@@ -95,6 +95,11 @@ public final class QuillToolQueries {
         return symbolSearch.searchSymbols(jdbi, pattern, kind, limit, offset);
     }
 
+    String searchSymbols(Jdbi jdbi, String pattern, String kind, String language,
+            int limit, int offset) {
+        return symbolSearch.searchSymbols(jdbi, pattern, kind, language, limit, offset);
+    }
+
     String findAnnotatedSymbols(Jdbi jdbi, String annotation, String kind,
             boolean includeMetaAnnotations, int limit, int offset) {
         return annotatedSymbols.findAnnotatedSymbols(

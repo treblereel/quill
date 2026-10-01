@@ -42,6 +42,18 @@ class KotlinMavenIT {
         assertEquals(invoice.sourceFile(), facade.sourceFile());
         var invoiceDeclarations = IndexReader.findKotlinDeclarations(jdbi, invoice.id());
         assertEquals("DATA_CLASS", invoiceDeclarations.getFirst().kind());
+        var stateAccessors = invoiceDeclarations.stream()
+                .filter(value -> value.kind().equals("PROPERTY"))
+                .filter(value -> value.name().equals("state")).toList();
+        assertTrue(stateAccessors.stream().anyMatch(value ->
+                "state".equals(value.jvmName())
+                        && "Ljava/lang/String;".equals(value.descriptor())));
+        assertTrue(stateAccessors.stream().anyMatch(value ->
+                "getState".equals(value.jvmName())
+                        && "()Ljava/lang/String;".equals(value.descriptor())));
+        assertTrue(stateAccessors.stream().anyMatch(value ->
+                "setState".equals(value.jvmName())
+                        && "(Ljava/lang/String;)V".equals(value.descriptor())));
         var facadeDeclarations = IndexReader.findKotlinDeclarations(jdbi, facade.id());
         assertEquals("FILE_FACADE", facadeDeclarations.getFirst().kind());
         var charge = facadeDeclarations.stream()

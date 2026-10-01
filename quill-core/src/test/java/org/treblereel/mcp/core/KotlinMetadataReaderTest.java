@@ -71,7 +71,10 @@ class KotlinMetadataReaderTest {
         assertTrue(property.mutable());
         assertTrue(property.lateinit());
         assertEquals("getState", property.getterName());
+        assertEquals("()Ljava/lang/String;", property.getterDescriptor());
         assertEquals("setState", property.setterName());
+        assertEquals("(Ljava/lang/String;)V", property.setterDescriptor());
+        assertEquals("Ljava/lang/String;", property.fieldDescriptor());
     }
 
     @Test

@@ -110,7 +110,8 @@ final class PositionSymbolQueries {
                         LEFT JOIN kotlin_declarations kd ON kd.class_id = m.class_id
                           AND ((kd.kind = 'FUNCTION' AND kd.jvm_name = m.name
                                 AND kd.descriptor = m.descriptor)
-                               OR (kd.kind = 'PROPERTY' AND kd.jvm_name = m.name))
+                               OR (kd.kind = 'PROPERTY' AND kd.jvm_name = m.name
+                                   AND (kd.descriptor = '' OR kd.descriptor = m.descriptor)))
                         WHERE c.lifecycle = 'current'
                           AND (m.name = :identifier OR kd.name = :identifier)
                         ORDER BY same_file DESC, class_name, kind, signature

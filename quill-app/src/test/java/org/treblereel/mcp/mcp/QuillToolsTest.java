@@ -540,7 +540,9 @@ class QuillToolsTest {
                       (class_id, kind, name, jvm_name, descriptor, semantic_model,
                        is_suspend, has_default_parameters)
                     VALUES (1, 'FUNCTION', 'createKotlinOrder', 'createOrder', '',
-                            'kotlin_metadata', 1, 1)""");
+                            'kotlin_metadata', 1, 1),
+                           (1, 'PROPERTY', 'orders', 'orderRepository', '',
+                            'kotlin_metadata', 0, 0)""");
         });
 
         QuillTools tools = new QuillTools();
@@ -564,6 +566,13 @@ class QuillToolsTest {
         assertTrue(symbol.path("annotations").toString().contains("Transactional"));
         JsonNode kotlinResult = JSON.readTree(tools.searchSymbols(
                 jdbi, "createKotlinOrder", "method", 10, 0));
+        JsonNode kotlinOnly = JSON.readTree(tools.searchSymbols(
+                jdbi, "order", null, "kotlin", 10, 0));
+        JsonNode invalidLanguage = JSON.readTree(tools.searchSymbols(
+                jdbi, "order", null, "scala", 10, 0));
+        JsonNode property = JSON.readTree(tools.searchSymbols(
+                jdbi, "orders", "field", "kotlin", 10, 0))
+                .path("symbols").get(0);
         JsonNode kotlinSymbol = kotlinResult.path("symbols").get(0);
         assertEquals("createOrder", kotlinSymbol.path("name").asText());
         assertEquals("kotlin", kotlinSymbol.path("language").asText());
@@ -573,6 +582,12 @@ class QuillToolsTest {
         assertEquals("createKotlinOrder", kotlinSymbol.path("kotlin_name").asText());
         assertTrue(kotlinSymbol.path("suspend").asBoolean());
         assertTrue(kotlinSymbol.path("default_parameters").asBoolean());
+        assertTrue(kotlinOnly.path("symbols").valueStream()
+                .allMatch(value -> value.path("language").asText().equals("kotlin")));
+        assertTrue(invalidLanguage.path("error").asText().contains("Invalid language"));
+        assertEquals("orders", property.path("source_name").asText());
+        assertEquals("property", property.path("source_kind").asText());
+        assertEquals("property_field", property.path("jvm_role").asText());
         assertTrue(invalid.path("error").asText().contains("Invalid kind"));
     }
 

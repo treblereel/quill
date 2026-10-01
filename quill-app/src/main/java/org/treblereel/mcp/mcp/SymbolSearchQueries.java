@@ -23,6 +23,11 @@ final class SymbolSearchQueries {
             "FIELD", "CONSTRUCTOR", "METHOD");
 
     String searchSymbols(Jdbi jdbi, String pattern, String kind, int limit, int offset) {
+        return searchSymbols(jdbi, pattern, kind, null, limit, offset);
+    }
+
+    String searchSymbols(Jdbi jdbi, String pattern, String kind, String language,
+            int limit, int offset) {
         if (pattern == null || pattern.isBlank()) {
             return errorResponse("Search pattern must not be blank");
         }
@@ -31,14 +36,24 @@ final class SymbolSearchQueries {
             return errorResponse("Invalid kind: expected class, interface, annotation, enum, "
                     + "record, field, constructor, method, or all");
         }
+        String normalizedLanguage = language == null || language.isBlank()
+                || "all".equalsIgnoreCase(language) ? null
+                        : language.trim().toLowerCase(Locale.ROOT);
+        if (normalizedLanguage != null
+                && !Set.of("java", "kotlin").contains(normalizedLanguage)) {
+            return errorResponse("Invalid language: expected java, kotlin, or all");
+        }
         var matches = IndexReader.searchSymbols(
-                jdbi, pattern.trim(), normalizedKind, limit, offset);
-        int total = IndexReader.countSymbols(jdbi, pattern.trim(), normalizedKind);
+                jdbi, pattern.trim(), normalizedKind, normalizedLanguage, limit, offset);
+        int total = IndexReader.countSymbols(
+                jdbi, pattern.trim(), normalizedKind, normalizedLanguage);
 
         ObjectNode root = JSON.createObjectNode();
         root.put("pattern", pattern.trim());
         if (normalizedKind == null) root.putNull("kind");
         else root.put("kind", normalizedKind.toLowerCase(Locale.ROOT));
+        if (normalizedLanguage == null) root.putNull("language_filter");
+        else root.put("language_filter", normalizedLanguage);
         ArrayNode symbols = root.putArray("symbols");
         int naiveTokens = 0;
         Set<Integer> countedClasses = new HashSet<>();
@@ -74,9 +89,12 @@ final class SymbolSearchQueries {
     }
 
     private static void appendKotlinSemantics(ObjectNode node, SymbolSearchResult match) {
-        if (!"kotlin".equals(match.language())) return;
+        if (!"kotlin".equals(match.language()) || match.semanticKind() == null) return;
         node.put("kotlin_kind", match.semanticKind().toLowerCase(Locale.ROOT));
         node.put("kotlin_name", match.semanticName());
+        node.put("source_kind", match.semanticKind().toLowerCase(Locale.ROOT));
+        node.put("jvm_role", SymbolContract.jvmRole(
+                match.semanticKind(), match.symbolKind(), match.descriptor()));
         if (match.isSuspend()) node.put("suspend", true);
         if (match.extension()) node.put("extension", true);
         if (match.hasDefaultParameters()) node.put("default_parameters", true);

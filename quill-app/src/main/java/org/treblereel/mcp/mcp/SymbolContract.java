@@ -49,6 +49,11 @@ final class SymbolContract {
         node.put("source_name", sourceName);
         node.put("jvm_name", member.name());
         node.put("jvm_descriptor", member.descriptor());
+        if (declaration != null) {
+            node.put("source_kind", declaration.kind().toLowerCase(Locale.ROOT));
+            node.put("jvm_role", jvmRole(
+                    declaration.kind(), member.kind(), member.descriptor()));
+        }
         appendLocation(node, cls.sourceFile(), cls.sourceLine());
     }
 
@@ -67,6 +72,15 @@ final class SymbolContract {
         return PREFIX + encode(className) + ":" + kind.toLowerCase(Locale.ROOT) + ":"
                 + encode(jvmName == null ? "" : jvmName) + ":"
                 + encode(descriptor == null ? "" : descriptor);
+    }
+
+    static String jvmRole(String semanticKind, String memberKind, String descriptor) {
+        if (!"PROPERTY".equals(semanticKind)) {
+            return "FUNCTION".equals(semanticKind) ? "function" : "type";
+        }
+        if ("FIELD".equals(memberKind)) return "property_field";
+        return descriptor != null && descriptor.endsWith(")V")
+                ? "property_setter" : "property_getter";
     }
 
     static boolean isId(String value) {

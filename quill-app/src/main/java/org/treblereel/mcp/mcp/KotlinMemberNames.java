@@ -20,11 +20,12 @@ final class KotlinMemberNames {
 
     static Optional<KotlinDeclarationRecord> declaration(ClassMemberRecord member,
             List<KotlinDeclarationRecord> declarations) {
-        if (!"METHOD".equals(member.kind())) return Optional.empty();
         return declarations.stream()
-                .filter(value -> "FUNCTION".equals(value.kind()))
+                .filter(value -> "FUNCTION".equals(value.kind())
+                        || "PROPERTY".equals(value.kind()))
                 .filter(value -> member.name().equals(value.jvmName()))
-                .filter(value -> member.descriptor().equals(value.descriptor()))
+                .filter(value -> value.descriptor() == null || value.descriptor().isBlank()
+                        || member.descriptor().equals(value.descriptor()))
                 .findFirst();
     }
 }

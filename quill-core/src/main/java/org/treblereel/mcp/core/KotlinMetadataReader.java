@@ -49,7 +49,9 @@ public final class KotlinMetadataReader {
 
     public record Property(
             String name, boolean mutable, boolean lateinit, boolean delegated,
-            boolean extension, String fieldName, String getterName, String setterName) {}
+            boolean extension, String fieldName, String fieldDescriptor,
+            String getterName, String getterDescriptor,
+            String setterName, String setterDescriptor) {}
 
     public record Result(
             Status status, Kind kind, String kotlinName, String metadataVersion,
@@ -163,8 +165,11 @@ public final class KotlinMetadataReader {
                     Flag.Property.IS_DELEGATED.invoke(flags),
                     property.getReceiverParameterType() != null,
                     field == null ? null : field.getName(),
+                    field == null ? null : field.getDescriptor(),
                     getter == null ? null : getter.getName(),
-                    setter == null ? null : setter.getName()));
+                    getter == null ? null : getter.getDescriptor(),
+                    setter == null ? null : setter.getName(),
+                    setter == null ? null : setter.getDescriptor()));
         }
         return List.copyOf(result);
     }

@@ -234,11 +234,13 @@ The router profile returns the same policy in `search_tools.guidance`, including
 - **get_worktree_status** — inspect live branch/HEAD, indexed commit, and paged dirty files with
   structural-change classification
 - **get_symbol_at_position** — resolve the identifier at a one-based Java/Kotlin source position
-  to indexed class/member declarations, with ambiguity and confidence reported explicitly
+  to indexed class/member declarations, with ambiguity and confidence reported explicitly;
+  resolved declarations include a stable `symbol_id`
 - **search_external_symbols** / **get_external_symbol_details** — search and inspect class/member
   declarations indexed from dependency bytecode without mixing them with application symbols
 - **search_symbols** — search class, method, field, and constructor declarations by name or
-  signature, with kind filtering and pagination
+  signature, with kind/language filtering and pagination. Results distinguish source-level and
+  JVM names and include a stable `symbol_id`
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with
   exact overload selection by signature/JVM descriptor, invocation kinds, source-line evidence,
   traversal depth, and call paths; use `scope=cross_class` or `scope=cross_package` to suppress
@@ -312,7 +314,8 @@ does not imply that an executor, reactive stream, or message publication has com
 - **find_usages** — find bytecode calls, constructor calls, field access, type references,
   injection, inheritance, annotations, and ServiceLoader usages with evidence and pagination
 - **find_symbol_usages** — find exact method, constructor, or field usages by declaration
-  signature/JVM descriptor, including call or read/write evidence and pagination
+  signature/JVM descriptor, including call or read/write evidence and pagination; pass a
+  `symbol_id` as `target` to select an overload without repeating its name or descriptor
 - **get_symbol_details** — inspect hierarchy, annotations, declared members, DI context,
   dependency metrics, implementations, occurrences, and external types for one class
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,

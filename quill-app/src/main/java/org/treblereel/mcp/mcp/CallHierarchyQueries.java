@@ -23,6 +23,7 @@ import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.IndexReader.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Returns direct or bounded-transitive caller/callee edges captured from application bytecode. */
 final class CallHierarchyQueries {
@@ -59,12 +60,15 @@ final class CallHierarchyQueries {
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
+        List<KotlinDeclarationRecord> kotlinDeclarations =
+                IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
         List<ClassMemberRecord> candidates = normalizedMethod == null ? List.of()
                 : IndexReader.findClassMembers(jdbi, cls.id()).stream()
                         .filter(member -> member.kind().equals("METHOD")
                                 || member.kind().equals("CONSTRUCTOR"))
-                        .filter(member -> member.name().equals(normalizedMethod)
+                        .filter(member -> KotlinMemberNames.matches(
+                                normalizedMethod, member, kotlinDeclarations)
                                 || (normalizedMethod.equals("<init>")
                                         && member.kind().equals("CONSTRUCTOR")))
                         .toList();
@@ -76,6 +80,7 @@ final class CallHierarchyQueries {
         ClassMemberRecord selected = null;
         String descriptor = null;
         String bytecodeMethod = normalizedMethod;
+        KotlinDeclarationRecord kotlinDeclaration = null;
         if (normalizedMethod != null) {
             if (matchingMembers.size() != 1) {
                 return symbolSelectionError(jdbi, cls, normalizedMethod,
@@ -84,6 +89,8 @@ final class CallHierarchyQueries {
                                 || (normalizedSignature == null && candidates.size() > 1));
             }
             selected = matchingMembers.getFirst();
+            kotlinDeclaration = KotlinMemberNames
+                    .declaration(selected, kotlinDeclarations).orElse(null);
             descriptor = JvmDescriptors.methodDescriptor(selected);
             if (descriptor == null) {
                 ObjectNode error = JSON.createObjectNode();
@@ -92,7 +99,7 @@ final class CallHierarchyQueries {
                 appendMeta(error, jdbi, 0);
                 return error.toString();
             }
-            if ("CONSTRUCTOR".equals(selected.kind())) bytecodeMethod = "<init>";
+            bytecodeMethod = "CONSTRUCTOR".equals(selected.kind()) ? "<init>" : selected.name();
         }
 
         TraversalResult unfiltered = transitive
@@ -112,6 +119,16 @@ final class CallHierarchyQueries {
             root.put("signature", selected.signature());
             root.put("descriptor", descriptor);
             root.put("member_kind", selected.kind().toLowerCase(Locale.ROOT));
+            if (kotlinDeclaration != null) {
+                root.put("language", "kotlin");
+                root.put("kotlin_name", kotlinDeclaration.name());
+                root.put("jvm_name", selected.name());
+                if (kotlinDeclaration.isSuspend()) root.put("suspend", true);
+                if (kotlinDeclaration.extension()) root.put("extension", true);
+                if (kotlinDeclaration.hasDefaultParameters()) {
+                    root.put("default_parameters", true);
+                }
+            }
         }
         root.put("direction", normalizedDirection);
         root.put("direct_only", !transitive);

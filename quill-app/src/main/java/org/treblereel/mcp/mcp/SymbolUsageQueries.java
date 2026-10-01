@@ -18,6 +18,7 @@ import org.treblereel.mcp.db.IndexReader.FieldAccessView;
 import org.treblereel.mcp.db.IndexReader.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Finds exact bytecode usages of a selected method, constructor, or field declaration. */
 final class SymbolUsageQueries {
@@ -43,11 +44,14 @@ final class SymbolUsageQueries {
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
+        List<KotlinDeclarationRecord> kotlinDeclarations =
+                IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
         List<ClassMemberRecord> kindMembers = IndexReader.findClassMembers(jdbi, cls.id()).stream()
                 .filter(member -> member.kind().equals(normalizedKind)).toList();
         List<ClassMemberRecord> namedMembers = kindMembers.stream()
-                .filter(member -> matchesName(member, name, normalizedKind)).toList();
+                .filter(member -> matchesName(
+                        member, name, normalizedKind, kotlinDeclarations)).toList();
         List<ClassMemberRecord> matches = signature == null || signature.isBlank()
                 ? namedMembers
                 : namedMembers.stream().filter(member -> member.signature().equals(signature.strip())
@@ -68,6 +72,8 @@ final class SymbolUsageQueries {
         }
 
         ClassMemberRecord selected = matches.getFirst();
+        KotlinDeclarationRecord kotlinDeclaration = KotlinMemberNames
+                .declaration(selected, kotlinDeclarations).orElse(null);
         if (selected.descriptor().isBlank()) {
             ObjectNode error = JSON.createObjectNode();
             error.put("error", "Symbol descriptor is unavailable; rebuild the Quill index");
@@ -77,17 +83,17 @@ final class SymbolUsageQueries {
         }
         return "FIELD".equals(normalizedKind)
                 ? fieldUsages(jdbi, cls, selected, normalizedAccess, limit, offset)
-                : methodUsages(jdbi, cls, selected, limit, offset);
+                : methodUsages(jdbi, cls, selected, kotlinDeclaration, limit, offset);
     }
 
     private String methodUsages(Jdbi jdbi, ClassRecord cls, ClassMemberRecord selected,
-            int limit, int offset) {
+            KotlinDeclarationRecord kotlinDeclaration, int limit, int offset) {
         String bytecodeName = "CONSTRUCTOR".equals(selected.kind()) ? "<init>" : selected.name();
         List<MethodCallView> usages = IndexReader.findExactMethodUsages(
                 jdbi, cls.id(), bytecodeName, selected.descriptor(), limit, offset);
         int total = IndexReader.countExactMethodUsages(
                 jdbi, cls.id(), bytecodeName, selected.descriptor());
-        ObjectNode root = base(cls, selected);
+        ObjectNode root = base(cls, selected, kotlinDeclaration);
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
@@ -116,7 +122,7 @@ final class SymbolUsageQueries {
                 accessFilter, limit, offset);
         int total = IndexReader.countExactFieldUsages(
                 jdbi, cls.id(), selected.name(), selected.descriptor(), accessFilter);
-        ObjectNode root = base(cls, selected);
+        ObjectNode root = base(cls, selected, null);
         root.put("access", access.toLowerCase(Locale.ROOT));
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
@@ -138,13 +144,24 @@ final class SymbolUsageQueries {
         return root.toString();
     }
 
-    private static ObjectNode base(ClassRecord cls, ClassMemberRecord selected) {
+    private static ObjectNode base(ClassRecord cls, ClassMemberRecord selected,
+            KotlinDeclarationRecord kotlinDeclaration) {
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
         root.put("kind", selected.kind().toLowerCase(Locale.ROOT));
         root.put("name", selected.name());
         root.put("signature", selected.signature());
         root.put("descriptor", selected.descriptor());
+        if (kotlinDeclaration != null) {
+            root.put("language", "kotlin");
+            root.put("kotlin_name", kotlinDeclaration.name());
+            root.put("jvm_name", selected.name());
+            if (kotlinDeclaration.isSuspend()) root.put("suspend", true);
+            if (kotlinDeclaration.extension()) root.put("extension", true);
+            if (kotlinDeclaration.hasDefaultParameters()) {
+                root.put("default_parameters", true);
+            }
+        }
         return root;
     }
 
@@ -155,12 +172,14 @@ final class SymbolUsageQueries {
     }
 
     private static boolean matchesName(
-            ClassMemberRecord member, String requested, String kind) {
+            ClassMemberRecord member, String requested, String kind,
+            List<KotlinDeclarationRecord> kotlinDeclarations) {
         if ("CONSTRUCTOR".equals(kind)) {
             return requested == null || requested.isBlank() || "<init>".equals(requested)
                     || member.name().equals(requested);
         }
-        return requested != null && member.name().equals(requested.strip());
+        return requested != null && KotlinMemberNames.matches(
+                requested.strip(), member, kotlinDeclarations);
     }
 
     private static void appendCandidate(ArrayNode target, ClassMemberRecord candidate) {

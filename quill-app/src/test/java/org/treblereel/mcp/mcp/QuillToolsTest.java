@@ -571,11 +571,12 @@ class QuillToolsTest {
         jdbi.useHandle(handle -> {
             handle.execute("""
                     INSERT INTO class_members
-                      (class_id, kind, name, signature, type_name, parameter_types,
-                       modifiers, annotations)
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
                     VALUES (1, 'METHOD', 'createOrder',
                             'createOrder(java.lang.String):org.acme.Order',
-                            'org.acme.Order', '["java.lang.String"]', 'public', '[]')""");
+                            '(Ljava/lang/String;)Lorg/acme/Order;', 'org.acme.Order',
+                            '["java.lang.String"]', 'public', '[]')""");
             handle.execute("""
                     INSERT INTO method_calls
                       (from_class_id, from_method, from_descriptor,
@@ -587,6 +588,13 @@ class QuillToolsTest {
                             '(Ljava/lang/String;)Lorg/acme/Order;', 'virtual', 1, '[42]'),
                            (4, 'audit', '(Lorg/acme/Order;)V', 2, 'notify',
                             '()V', 'interface', 1, '[17]')""");
+            handle.execute("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model,
+                       is_suspend)
+                    VALUES (1, 'FUNCTION', 'createKotlinOrder', 'createOrder',
+                            '(Ljava/lang/String;)Lorg/acme/Order;',
+                            'kotlin_metadata', 1)""");
         });
 
         QuillTools tools = new QuillTools();
@@ -596,6 +604,8 @@ class QuillToolsTest {
                 jdbi, "OrderService", null, "sideways", 10, 0));
         JsonNode transitive = JSON.readTree(tools.getCallHierarchy(
                 jdbi, "OrderService", "createOrder", "outbound", true, 2, 10, 0));
+        JsonNode kotlinResult = JSON.readTree(tools.getCallHierarchy(
+                jdbi, "OrderService", "createKotlinOrder", "both", 10, 0));
 
         assertEquals(2, result.path("total").asInt());
         assertTrue(result.path("declared_method_found").asBoolean());
@@ -621,6 +631,11 @@ class QuillToolsTest {
         assertEquals(2, indirect.path("depth").asInt());
         assertEquals("outbound", indirect.path("traversal_direction").asText());
         assertEquals(3, indirect.path("path").size());
+        assertEquals(2, kotlinResult.path("total").asInt(), kotlinResult.toPrettyString());
+        assertEquals("kotlin", kotlinResult.path("language").asText());
+        assertEquals("createKotlinOrder", kotlinResult.path("kotlin_name").asText());
+        assertEquals("createOrder", kotlinResult.path("jvm_name").asText());
+        assertTrue(kotlinResult.path("suspend").asBoolean());
     }
 
     @Test
@@ -960,6 +975,12 @@ class QuillToolsTest {
                             'read_instance', 2, '[41,44]'),
                            (4, 'write', '()V', 1, 'status', 'Ljava/lang/String;',
                             'write_instance', 1, '[22]')""");
+            handle.execute("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model,
+                       has_default_parameters)
+                    VALUES (1, 'FUNCTION', 'submitOrder', 'submit',
+                            '(Ljava/lang/String;)V', 'kotlin_metadata', 1)""");
         });
 
         QuillToolQueries queries = new QuillToolQueries();
@@ -977,6 +998,15 @@ class QuillToolsTest {
                 .path("evidence_lines").valueStream().map(JsonNode::asInt).toList());
         assertEquals("org.acme.StripePaymentService",
                 method.path("usages").get(0).path("caller").path("class").asText());
+
+        JsonNode kotlinMethod = JSON.readTree(queries.findSymbolUsages(
+                jdbi, "OrderService", "submitOrder", "method", null,
+                "all", 10, 0));
+        assertEquals(1, kotlinMethod.path("total").asInt());
+        assertEquals("kotlin", kotlinMethod.path("language").asText());
+        assertEquals("submitOrder", kotlinMethod.path("kotlin_name").asText());
+        assertEquals("submit", kotlinMethod.path("jvm_name").asText());
+        assertTrue(kotlinMethod.path("default_parameters").asBoolean());
 
         JsonNode constructor = JSON.readTree(queries.findSymbolUsages(
                 jdbi, "OrderService", null, "constructor",

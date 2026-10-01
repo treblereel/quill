@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.QuillDatabase;
 
@@ -27,10 +28,7 @@ class KotlinMavenIT {
                 PROJECT_FIXTURE, tempDir.resolve("kotlin-maven"));
         compile(project);
 
-        InitCommand command = new InitCommand();
-        command.projectPath = project;
-        command.indexOnly = true;
-        command.call();
+        initialize(project);
 
         Path db = ProjectIndexStore.findDbForHead(project);
         assertNotNull(db);
@@ -90,5 +88,28 @@ class KotlinMavenIT {
         assertTrue(process.waitFor(2, TimeUnit.MINUTES),
                 "Kotlin Maven fixture compilation timed out");
         assertEquals(0, process.exitValue(), "Kotlin Maven fixture compilation failed");
+    }
+
+    private static void initialize(Path project) throws Exception {
+        if (!Boolean.getBoolean("native.tests.required")) {
+            InitCommand command = new InitCommand();
+            command.projectPath = project;
+            command.indexOnly = true;
+            command.call();
+            return;
+        }
+        Path repositoryRoot = TESTS_ROOT.getParent();
+        Path nativeImage = repositoryRoot.resolve(BuildSystem.isWindows()
+                ? "quill-app/target/quill.exe" : "quill-app/target/quill");
+        assertTrue(java.nio.file.Files.isExecutable(nativeImage),
+                "Native quality gate requires an executable image at " + nativeImage);
+        Process process = new ProcessBuilder(nativeImage.toString(), "init", "--project",
+                project.toString(), "--index-only")
+                .directory(project.toFile())
+                .inheritIO()
+                .start();
+        assertTrue(process.waitFor(2, TimeUnit.MINUTES),
+                "Native Kotlin indexing timed out");
+        assertEquals(0, process.exitValue(), "Native Kotlin indexing failed");
     }
 }

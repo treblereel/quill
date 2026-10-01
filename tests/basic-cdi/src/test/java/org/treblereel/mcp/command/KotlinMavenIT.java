@@ -42,6 +42,16 @@ class KotlinMavenIT {
         var facade = IndexReader.findClassByName(jdbi,
                 "org.treblereel.mcp.fixture.kotlin.BillingKt").orElseThrow();
         assertEquals(invoice.sourceFile(), facade.sourceFile());
+        var invoiceDeclarations = IndexReader.findKotlinDeclarations(jdbi, invoice.id());
+        assertEquals("DATA_CLASS", invoiceDeclarations.getFirst().kind());
+        var facadeDeclarations = IndexReader.findKotlinDeclarations(jdbi, facade.id());
+        assertEquals("FILE_FACADE", facadeDeclarations.getFirst().kind());
+        var charge = facadeDeclarations.stream()
+                .filter(value -> value.name().equals("charge")).findFirst().orElseThrow();
+        assertTrue(charge.hasDefaultParameters());
+        var fetch = facadeDeclarations.stream()
+                .filter(value -> value.name().equals("fetchInvoice")).findFirst().orElseThrow();
+        assertTrue(fetch.isSuspend());
 
         var metadata = IndexReader.getMetadata(jdbi);
         assertTrue(Integer.parseInt(metadata.get("kotlin_metadata_classes")) >= 4);

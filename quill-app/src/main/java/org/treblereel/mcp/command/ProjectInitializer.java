@@ -58,6 +58,7 @@ import org.treblereel.mcp.model.ExternalBeanRecord;
 import org.treblereel.mcp.model.FieldAccessRecord;
 import org.treblereel.mcp.model.FrameworkEndpointRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 import org.treblereel.mcp.model.MethodCallRecord;
 
@@ -634,6 +635,9 @@ public class ProjectInitializer {
                 scanResult.kotlinMetadata().values().stream()
                         .filter(value -> value.status() != KotlinMetadataReader.Status.PARSED)
                         .count()));
+        List<KotlinDeclarationRecord> kotlinDeclarations = kotlinDeclarations(
+                scanResult.kotlinMetadata(), classNameToSqliteId);
+        metadata.put("kotlin_declarations", Integer.toString(kotlinDeclarations.size()));
         metadata.put("class_occurrences", Integer.toString(classOccurrences.size()));
         metadata.put("module_contexts", Integer.toString(moduleDirectories.size()));
         metadata.put("discovered_module_count",
@@ -694,6 +698,7 @@ public class ProjectInitializer {
                         + writeTimings.rowsUnchanged() + " unchanged.");
             }
             Jdbi stagedIndex = QuillDatabase.openWritable(stagedDb);
+            IndexWriter.writeKotlinDeclarations(stagedIndex, kotlinDeclarations);
             IndexWriter.writeExternalBeans(stagedIndex, externalBeans);
             IndexWriter.writeModuleClasspath(stagedIndex, moduleClasspath);
             long validationStartedAt = System.nanoTime();
@@ -765,6 +770,42 @@ public class ProjectInitializer {
                 + (gitResult.isEmpty() ? "" : ", " + gitResult.commits().size() + " git commits")
                 + depStatus + ".");
         return InitializationResult.success(startedAtNanos);
+    }
+
+    private static List<KotlinDeclarationRecord> kotlinDeclarations(
+            Map<String, KotlinMetadataReader.Result> metadata,
+            Map<String, Integer> classIds) {
+        List<KotlinDeclarationRecord> result = new ArrayList<>();
+        metadata.forEach((className, value) -> {
+            Integer classId = classIds.get(className);
+            if (classId == null || value.status() != KotlinMetadataReader.Status.PARSED) return;
+            String name = value.kotlinName() == null ? className : value.kotlinName();
+            result.add(new KotlinDeclarationRecord(classId, kotlinDeclarationKind(value), name,
+                    className, "", "kotlin_metadata", false, false, false,
+                    false, false, false,
+                    value.kind() == KotlinMetadataReader.Kind.SYNTHETIC));
+            value.functions().forEach(function -> result.add(new KotlinDeclarationRecord(
+                    classId, "FUNCTION", function.name(), function.jvmName(),
+                    function.descriptor() == null ? "" : function.descriptor(),
+                    "kotlin_metadata", function.suspend(), function.extension(),
+                    function.hasDefaultParameters(), false, false, false,
+                    function.synthesized())));
+            value.properties().forEach(property -> result.add(new KotlinDeclarationRecord(
+                    classId, "PROPERTY", property.name(), property.getterName() != null
+                            ? property.getterName() : property.fieldName(),
+                    "", "kotlin_metadata", false, property.extension(), false,
+                    property.mutable(), property.lateinit(), property.delegated(), false)));
+        });
+        return List.copyOf(result);
+    }
+
+    private static String kotlinDeclarationKind(KotlinMetadataReader.Result value) {
+        if (value.kind() == KotlinMetadataReader.Kind.CLASS && value.data()) return "DATA_CLASS";
+        if (value.kind() == KotlinMetadataReader.Kind.CLASS && value.value()) return "VALUE_CLASS";
+        if (value.kind() == KotlinMetadataReader.Kind.INTERFACE && value.funInterface()) {
+            return "FUN_INTERFACE";
+        }
+        return value.kind().name();
     }
 
     private static String toJson(Object value) {

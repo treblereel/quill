@@ -15,6 +15,29 @@ public final class IndexReader {
 
     public record DependencyBreakdown(String origin, int classes, int edges) {}
 
+    public static List<KotlinDeclarationRecord> findKotlinDeclarations(
+            Jdbi jdbi, int classId) {
+        return jdbi.withHandle(handle -> handle.createQuery("""
+                        SELECT class_id, kind, name, jvm_name, descriptor, semantic_model,
+                               is_suspend, is_extension, has_default_parameters,
+                               is_mutable, is_lateinit, is_delegated, is_synthetic
+                        FROM kotlin_declarations
+                        WHERE class_id = :classId
+                        ORDER BY CASE kind WHEN 'FUNCTION' THEN 1 WHEN 'PROPERTY' THEN 2 ELSE 0 END,
+                                 name, descriptor
+                        """)
+                .bind("classId", classId)
+                .map((row, context) -> new KotlinDeclarationRecord(
+                        row.getInt("class_id"), row.getString("kind"), row.getString("name"),
+                        row.getString("jvm_name"), row.getString("descriptor"),
+                        row.getString("semantic_model"), row.getInt("is_suspend") == 1,
+                        row.getInt("is_extension") == 1,
+                        row.getInt("has_default_parameters") == 1,
+                        row.getInt("is_mutable") == 1, row.getInt("is_lateinit") == 1,
+                        row.getInt("is_delegated") == 1, row.getInt("is_synthetic") == 1))
+                .list());
+    }
+
     public record ArchitectureHub(
             int classId,
             int totalDependents,

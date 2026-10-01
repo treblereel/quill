@@ -376,6 +376,29 @@ class QuillToolsTest {
     }
 
     @Test
+    void getSymbolDetailsIncludesKotlinSemanticDeclarations() throws Exception {
+        IndexWriter.writeKotlinDeclarations(jdbi, List.of(
+                new KotlinDeclarationRecord(1, "CLASS", "org.acme.OrderService",
+                        "org.acme.OrderService", "", "kotlin_metadata",
+                        false, false, false, false, false, false, false),
+                new KotlinDeclarationRecord(1, "FUNCTION", "createOrder", "createOrder",
+                        "(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;",
+                        "kotlin_metadata", true, true, true,
+                        false, false, false, false)));
+
+        JsonNode result = JSON.readTree(new QuillTools().getSymbolDetails(
+                jdbi, "OrderService", false, null, 10, 0));
+
+        assertEquals("kotlin", result.path("language").asText());
+        assertEquals("kotlin_metadata", result.path("semantic_model").asText());
+        JsonNode function = result.path("kotlin_declarations").get(1);
+        assertEquals("function", function.path("kind").asText());
+        assertTrue(function.path("suspend").asBoolean());
+        assertTrue(function.path("extension").asBoolean());
+        assertTrue(function.path("default_parameters").asBoolean());
+    }
+
+    @Test
     void findImpactedTestsCombinesTransitiveStaticAndGitEvidence() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""

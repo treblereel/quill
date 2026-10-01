@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 24;
+    static final int SCHEMA_VERSION = 25;
 
     private QuillDatabase() {}
 
@@ -102,6 +102,23 @@ public final class QuillDatabase {
                     annotations TEXT NOT NULL,
                     annotation_details TEXT NOT NULL DEFAULT '[]',
                     UNIQUE(class_id, kind, signature)
+                )""");
+            h.execute("""
+                CREATE TABLE IF NOT EXISTS kotlin_declarations (
+                    class_id INTEGER NOT NULL REFERENCES classes(id),
+                    kind TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    jvm_name TEXT,
+                    descriptor TEXT NOT NULL DEFAULT '',
+                    semantic_model TEXT NOT NULL,
+                    is_suspend INTEGER NOT NULL DEFAULT 0,
+                    is_extension INTEGER NOT NULL DEFAULT 0,
+                    has_default_parameters INTEGER NOT NULL DEFAULT 0,
+                    is_mutable INTEGER NOT NULL DEFAULT 0,
+                    is_lateinit INTEGER NOT NULL DEFAULT 0,
+                    is_delegated INTEGER NOT NULL DEFAULT 0,
+                    is_synthetic INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(class_id, kind, name, jvm_name, descriptor)
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS method_calls (
@@ -314,6 +331,8 @@ public final class QuillDatabase {
         h.execute("CREATE INDEX IF NOT EXISTS idx_annotations_name ON class_annotations(annotation_name)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_annotations_class ON class_annotations(class_id)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_members_class ON class_members(class_id, kind, name)");
+        h.execute("CREATE INDEX IF NOT EXISTS idx_kotlin_declarations_class "
+                + "ON kotlin_declarations(class_id, kind, name)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_calls_from ON method_calls(from_class_id, from_method, from_descriptor)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_calls_to ON method_calls(to_class_id, to_method, to_descriptor)");
         h.execute("CREATE INDEX IF NOT EXISTS idx_fields_from ON field_accesses(from_class_id, from_method)");

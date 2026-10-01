@@ -18,6 +18,36 @@ class IndexWriterReaderTest {
     @TempDir Path tempDir;
 
     @Test
+    void storesAndReadsKotlinSemanticDeclarations() {
+        Jdbi database = QuillDatabase.create(tempDir.resolve("kotlin.db"));
+        IndexWriter.write(database, List.of(new ClassRecord(
+                        0, "org.acme.Order", "CLASS", "java.lang.Object", List.of(),
+                        "src/main/kotlin/org/acme/Order.kt", 1, false, 20)),
+                List.of(), List.of(), List.of(), Map.of());
+        IndexWriter.writeKotlinDeclarations(database, List.of(
+                new KotlinDeclarationRecord(1, "DATA_CLASS", "org.acme.Order",
+                        "org.acme.Order", "", "kotlin_metadata", false, false,
+                        false, false, false, false, false),
+                new KotlinDeclarationRecord(1, "FUNCTION", "load", "load",
+                        "(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;",
+                        "kotlin_metadata", true, true, true,
+                        false, false, false, false),
+                new KotlinDeclarationRecord(1, "PROPERTY", "state", "getState", "",
+                        "kotlin_metadata", false, false, false,
+                        true, true, false, false)));
+
+        var declarations = IndexReader.findKotlinDeclarations(database, 1);
+
+        assertEquals(3, declarations.size());
+        assertEquals("DATA_CLASS", declarations.get(0).kind());
+        assertTrue(declarations.get(1).isSuspend());
+        assertTrue(declarations.get(1).extension());
+        assertTrue(declarations.get(1).hasDefaultParameters());
+        assertTrue(declarations.get(2).mutable());
+        assertTrue(declarations.get(2).lateinit());
+    }
+
+    @Test
     void incrementallyUpdatesConfigurationReferencesWithoutReplacingStableRows() {
         Path dbPath = tempDir.resolve("configuration.db");
         Jdbi database = QuillDatabase.create(dbPath);

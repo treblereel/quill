@@ -19,6 +19,7 @@ import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.IndexReader.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Reconstructs the emitted bytecode order of calls inside one indexed method. */
 final class ExecutionOrderQueries {
@@ -38,10 +39,13 @@ final class ExecutionOrderQueries {
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
+        List<KotlinDeclarationRecord> kotlinDeclarations =
+                IndexReader.findKotlinDeclarations(jdbi, cls.id());
         List<ClassMemberRecord> candidates = IndexReader.findClassMembers(jdbi, cls.id()).stream()
                 .filter(member -> member.kind().equals("METHOD")
                         || member.kind().equals("CONSTRUCTOR"))
-                .filter(member -> indexedName(member).equals(method))
+                .filter(member -> indexedName(member).equals(method)
+                        || KotlinMemberNames.matches(method, member, kotlinDeclarations))
                 .filter(member -> signature == null || signature.isBlank()
                         || member.descriptor().equals(signature)
                         || member.signature().equals(signature))
@@ -49,6 +53,8 @@ final class ExecutionOrderQueries {
         if (candidates.size() != 1) return selectionError(jdbi, cls, method, signature, candidates);
 
         ClassMemberRecord selected = candidates.getFirst();
+        KotlinDeclarationRecord kotlinDeclaration = KotlinMemberNames
+                .declaration(selected, kotlinDeclarations).orElse(null);
         String indexedMethod = indexedName(selected);
         List<MethodCallView> calls = IndexReader.findMethodCalls(jdbi, cls.id(), indexedMethod,
                 selected.descriptor(), "outbound", 10_000, 0);
@@ -97,6 +103,16 @@ final class ExecutionOrderQueries {
         root.put("method", indexedMethod);
         root.put("signature", selected.signature());
         root.put("descriptor", selected.descriptor());
+        if (kotlinDeclaration != null) {
+            root.put("language", "kotlin");
+            root.put("kotlin_name", kotlinDeclaration.name());
+            root.put("jvm_name", selected.name());
+            if (kotlinDeclaration.isSuspend()) root.put("suspend", true);
+            if (kotlinDeclaration.extension()) root.put("extension", true);
+            if (kotlinDeclaration.hasDefaultParameters()) {
+                root.put("default_parameters", true);
+            }
+        }
         root.put("event_count", events.size());
         ArrayNode sequence = root.putArray("bytecode_sequence");
         for (Event event : events) appendEvent(sequence, event, cls.sourceFile());

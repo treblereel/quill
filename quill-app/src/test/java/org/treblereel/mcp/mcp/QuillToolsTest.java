@@ -770,6 +770,12 @@ class QuillToolsTest {
                             '[20]', '[4]'),
                            (1, 'run', '()V', 4, 'dispatchBatch', '()V', 'virtual', 1,
                             '[21]', '[9]')""");
+            handle.execute("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model,
+                       is_suspend)
+                    VALUES (1, 'FUNCTION', 'executeOrders', 'run', '()V',
+                            'kotlin_metadata', 1)""");
         });
 
         JsonNode result = JSON.readTree(new QuillToolQueries()
@@ -787,11 +793,18 @@ class QuillToolsTest {
         JsonNode custom = JSON.readTree(new QuillToolQueries().analyzeExecutionOrder(
                 jdbi, "OrderService", "run", null,
                 Set.of("persistplan"), Set.of("dispatchbatch")));
+        JsonNode kotlin = JSON.readTree(new QuillToolQueries()
+                .analyzeExecutionOrder(jdbi, "OrderService", "executeOrders", null));
         assertEquals("proven", custom.path("ordering_analysis")
                 .path("instruction_order_status").asText());
         assertEquals(List.of("persistplan"), custom.path("ordering_analysis")
                 .path("before_terms").valueStream().map(JsonNode::asText).toList());
         assertFalse(custom.has("persist_before_dispatch"));
+        assertEquals(2, kotlin.path("event_count").asInt());
+        assertEquals("kotlin", kotlin.path("language").asText());
+        assertEquals("executeOrders", kotlin.path("kotlin_name").asText());
+        assertEquals("run", kotlin.path("jvm_name").asText());
+        assertTrue(kotlin.path("suspend").asBoolean());
     }
 
     @Test
@@ -1035,23 +1048,32 @@ class QuillToolsTest {
                             0, 50, 'source', 'current', '.', 'main')""");
             handle.execute("""
                     INSERT INTO class_members
-                      (class_id, kind, name, signature, type_name, parameter_types,
-                       modifiers, annotations)
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
                     VALUES (2, 'METHOD', 'processPayment',
-                            'processPayment(double):void', 'void', '["double"]',
+                            'processPayment(double):void', '(D)V', 'void', '["double"]',
                             'public abstract', '[]'),
                            (2, 'METHOD', 'processPayment',
-                            'processPayment(java.lang.String):void', 'void',
+                            'processPayment(java.lang.String):void',
+                            '(Ljava/lang/String;)V', 'void',
                             '["java.lang.String"]', 'public abstract', '[]'),
                            (3, 'METHOD', 'processPayment',
-                            'processPayment(double):void', 'void', '["double"]',
+                            'processPayment(double):void', '(D)V', 'void', '["double"]',
                             'public', '[]'),
                            (5, 'METHOD', 'processPayment',
-                            'processPayment(double):void', 'void', '["double"]',
+                            'processPayment(double):void', '(D)V', 'void', '["double"]',
                             'public final', '[]'),
                            (5, 'METHOD', 'processPayment',
-                            'processPayment(java.lang.String):void', 'void',
+                            'processPayment(java.lang.String):void',
+                            '(Ljava/lang/String;)V', 'void',
                             '["java.lang.String"]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model)
+                    VALUES (2, 'FUNCTION', 'processKotlinPayment', 'processPayment',
+                            '(D)V', 'kotlin_metadata'),
+                           (2, 'FUNCTION', 'processKotlinPayment', 'processPayment',
+                            '(Ljava/lang/String;)V', 'kotlin_metadata')""");
         });
 
         QuillTools tools = new QuillTools();
@@ -1062,6 +1084,8 @@ class QuillToolsTest {
         JsonNode overload = JSON.readTree(tools.findMethodOverrides(
                 jdbi, "PaymentService", "processPayment",
                 "processPayment(java.lang.String):void", true, 10, 0));
+        JsonNode kotlin = JSON.readTree(tools.findMethodOverrides(
+                jdbi, "PaymentService", "processKotlinPayment", null, true, 10, 0));
 
         assertEquals(3, all.path("total").asInt());
         assertEquals(2, all.path("base_declarations").size());
@@ -1073,6 +1097,11 @@ class QuillToolsTest {
         assertEquals(1, overload.path("total").asInt());
         assertEquals("processPayment(java.lang.String):void",
                 overload.path("overrides").get(0).path("base_signature").asText());
+        assertEquals(3, kotlin.path("total").asInt());
+        assertEquals("kotlin", kotlin.path("language").asText());
+        assertEquals("processKotlinPayment", kotlin.path("kotlin_name").asText());
+        assertEquals(List.of("processPayment"), kotlin.path("jvm_names").valueStream()
+                .map(JsonNode::asText).toList());
     }
 
     @Test

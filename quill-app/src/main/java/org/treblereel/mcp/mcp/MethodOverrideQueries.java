@@ -20,6 +20,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Finds declared method overrides in indexed descendants. */
 final class MethodOverrideQueries {
@@ -37,14 +38,18 @@ final class MethodOverrideQueries {
         String methodName = method.trim();
         String requestedSignature = signature == null || signature.isBlank()
                 ? null : signature.trim();
+        List<KotlinDeclarationRecord> kotlinDeclarations =
+                IndexReader.findKotlinDeclarations(jdbi, base.id());
         List<ClassMemberRecord> namedDeclarations = IndexReader.findClassMembers(
                 jdbi, base.id()).stream()
                 .filter(member -> "METHOD".equals(member.kind()))
-                .filter(member -> methodName.equals(member.name()))
+                .filter(member -> KotlinMemberNames.matches(
+                        methodName, member, kotlinDeclarations))
                 .toList();
         List<ClassMemberRecord> baseDeclarations = namedDeclarations.stream()
                 .filter(member -> requestedSignature == null
-                        || requestedSignature.equals(member.signature()))
+                        || requestedSignature.equals(member.signature())
+                        || requestedSignature.equals(member.descriptor()))
                 .toList();
         if (baseDeclarations.isEmpty()) {
             ObjectNode error = JSON.createObjectNode();
@@ -68,11 +73,11 @@ final class MethodOverrideQueries {
         for (ClassRecord descendant : descendants) {
             for (ClassMemberRecord candidate : members.getOrDefault(
                     descendant.id(), List.of())) {
-                if (!"METHOD".equals(candidate.kind()) || !methodName.equals(candidate.name())
-                        || hasModifier(candidate, "static")
+                if (!"METHOD".equals(candidate.kind()) || hasModifier(candidate, "static")
                         || hasModifier(candidate, "private")) continue;
                 for (ClassMemberRecord declaration : baseDeclarations) {
-                    if (!overridable(declaration, base, descendant)
+                    if (!declaration.name().equals(candidate.name())
+                            || !overridable(declaration, base, descendant)
                             || !declaration.parameterTypes().equals(candidate.parameterTypes())) {
                         continue;
                     }
@@ -92,6 +97,17 @@ final class MethodOverrideQueries {
         ObjectNode root = JSON.createObjectNode();
         root.put("target", base.className());
         root.put("method", methodName);
+        KotlinDeclarationRecord kotlinDeclaration = baseDeclarations.stream()
+                .map(member -> KotlinMemberNames.declaration(member, kotlinDeclarations)
+                        .orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .findFirst().orElse(null);
+        if (kotlinDeclaration != null) {
+            root.put("language", "kotlin");
+            root.put("kotlin_name", kotlinDeclaration.name());
+            root.set("jvm_names", JSON.valueToTree(baseDeclarations.stream()
+                    .map(ClassMemberRecord::name).distinct().sorted().toList()));
+        }
         if (requestedSignature == null) root.putNull("signature");
         else root.put("signature", requestedSignature);
         root.put("transitive", transitive);

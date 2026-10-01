@@ -81,7 +81,11 @@ final class McpToolCatalog {
         McpSchema.Tool.Builder toolBuilder =
                 McpSchema.Tool.builder(method.getName(), inputSchema(method))
                         .description(annotation.description());
-        if (annotation.structured()) toolBuilder.outputSchema(OBJECT_OUTPUT_SCHEMA);
+        if (annotation.structured()) {
+            toolBuilder.outputSchema(annotation.output().isBlank()
+                    ? OBJECT_OUTPUT_SCHEMA
+                    : ToolOutputSchemas.schema(annotation.output()));
+        }
         McpSchema.Tool tool = toolBuilder.build();
 
         return AsyncToolSpecification.builder()
@@ -117,8 +121,13 @@ final class McpToolCatalog {
                 property.put("additionalProperties", true);
             }
             ToolArg arg = parameter.getAnnotation(ToolArg.class);
-            if (arg != null && !SELF_DESCRIBING_ARGUMENTS.contains(parameter.getName())) {
-                property.put("description", arg.description());
+            if (arg != null) {
+                if (!SELF_DESCRIBING_ARGUMENTS.contains(parameter.getName())) {
+                    property.put("description", arg.description());
+                }
+                if (arg.allowed().length > 0) {
+                    property.put("enum", List.of(arg.allowed()));
+                }
             }
             properties.put(parameter.getName(), property);
             if (!isOptional(parameter.getParameterizedType())) required.add(parameter.getName());
@@ -177,6 +186,15 @@ final class McpToolCatalog {
                         return new Invocation(
                                 "Missing required argument: " + parameter.getName(), true);
                     }
+                }
+                ToolArg arg = parameter.getAnnotation(ToolArg.class);
+                if (value != null && arg != null && arg.allowed().length > 0
+                        && (!(value instanceof String string)
+                                || !List.of(arg.allowed()).contains(string))) {
+                    return new Invocation("Invalid argument " + parameter.getName()
+                            + ": expected one of " + String.join(", ", arg.allowed()), true);
+                }
+                if (!isOptional(parameter.getParameterizedType())) {
                     values[i] = convert(value, parameter.getType());
                 }
             }
@@ -208,11 +226,34 @@ final class McpToolCatalog {
     private static Object structuredContent(String text, boolean error) {
         try {
             var parsed = JSON.readTree(text);
-            if (parsed != null && parsed.isObject()) return parsed;
+            if (parsed instanceof com.fasterxml.jackson.databind.node.ObjectNode object) {
+                return normalizeErrorEnvelope(object);
+            }
         } catch (Exception ignored) {
             // Catalog-generated failures are converted to a stable structured envelope.
         }
-        return JSON.createObjectNode().put(error ? "error" : "result", text);
+        if (!error) return JSON.createObjectNode().put("result", text);
+        var envelope = JSON.createObjectNode();
+        envelope.put("error_code", "TOOL_INVOCATION_ERROR");
+        envelope.put("message", text);
+        envelope.put("retryable", text.contains("retry"));
+        return envelope;
+    }
+
+    private static Object normalizeErrorEnvelope(
+            com.fasterxml.jackson.databind.node.ObjectNode object) {
+        if (!object.has("error")) return object;
+        String legacy = object.path("error").asText("Tool failed");
+        if (!object.has("error_code")) {
+            String code = legacy.matches("[a-z][a-z0-9_]*")
+                    ? legacy.toUpperCase(java.util.Locale.ROOT)
+                    : "TOOL_ERROR";
+            object.put("error_code", code);
+        }
+        if (!object.has("message")) object.put("message", legacy);
+        if (!object.has("retryable")) object.put("retryable", false);
+        object.remove("error");
+        return object;
     }
 
     private static Object convertOptional(Object value, Class<?> targetType) {
@@ -280,7 +321,8 @@ final class McpToolCatalog {
     private static boolean isToolError(String text) {
         if (text == null || text.isBlank() || text.charAt(0) != '{') return false;
         try {
-            return JSON.readTree(text).has("error");
+            var parsed = JSON.readTree(text);
+            return parsed.has("error_code") || parsed.has("error");
         } catch (Exception ignored) {
             return false;
         }

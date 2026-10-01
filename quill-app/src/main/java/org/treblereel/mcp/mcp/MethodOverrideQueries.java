@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendPage;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
@@ -20,6 +21,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Finds declared method overrides in indexed descendants. */
 final class MethodOverrideQueries {
@@ -28,8 +30,22 @@ final class MethodOverrideQueries {
 
     String findMethodOverrides(Jdbi jdbi, String target, String method,
             String signature, boolean transitive, int limit, int offset) {
+        try {
+            SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
+            if (reference != null) {
+                if (!"METHOD".equals(reference.kind())) {
+                    return errorResponse("INVALID_SYMBOL_KIND",
+                            "symbol_id must identify a method");
+                }
+                target = reference.resolutionTarget();
+                method = reference.jvmName();
+                signature = reference.descriptor();
+            }
+        } catch (SymbolContract.ParseException error) {
+            return errorResponse(error.errorCode(), error.getMessage());
+        }
         if (method == null || method.isBlank()) {
-            return errorResponse("Method name must not be blank");
+            return errorResponse("MISSING_METHOD", "Method name or symbol_id must be provided");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
@@ -37,18 +53,22 @@ final class MethodOverrideQueries {
         String methodName = method.trim();
         String requestedSignature = signature == null || signature.isBlank()
                 ? null : signature.trim();
+        List<KotlinDeclarationRecord> kotlinDeclarations =
+                IndexReader.findKotlinDeclarations(jdbi, base.id());
         List<ClassMemberRecord> namedDeclarations = IndexReader.findClassMembers(
                 jdbi, base.id()).stream()
                 .filter(member -> "METHOD".equals(member.kind()))
-                .filter(member -> methodName.equals(member.name()))
+                .filter(member -> KotlinMemberNames.matches(
+                        methodName, member, kotlinDeclarations))
                 .toList();
         List<ClassMemberRecord> baseDeclarations = namedDeclarations.stream()
                 .filter(member -> requestedSignature == null
-                        || requestedSignature.equals(member.signature()))
+                        || requestedSignature.equals(member.signature())
+                        || requestedSignature.equals(member.descriptor()))
                 .toList();
         if (baseDeclarations.isEmpty()) {
             ObjectNode error = JSON.createObjectNode();
-            error.put("error", requestedSignature == null
+            appendError(error, "METHOD_NOT_FOUND", requestedSignature == null
                     ? "Method not found" : "Method signature not found");
             error.put("class", base.className());
             error.put("method", methodName);
@@ -68,11 +88,11 @@ final class MethodOverrideQueries {
         for (ClassRecord descendant : descendants) {
             for (ClassMemberRecord candidate : members.getOrDefault(
                     descendant.id(), List.of())) {
-                if (!"METHOD".equals(candidate.kind()) || !methodName.equals(candidate.name())
-                        || hasModifier(candidate, "static")
+                if (!"METHOD".equals(candidate.kind()) || hasModifier(candidate, "static")
                         || hasModifier(candidate, "private")) continue;
                 for (ClassMemberRecord declaration : baseDeclarations) {
-                    if (!overridable(declaration, base, descendant)
+                    if (!declaration.name().equals(candidate.name())
+                            || !overridable(declaration, base, descendant)
                             || !declaration.parameterTypes().equals(candidate.parameterTypes())) {
                         continue;
                     }
@@ -92,12 +112,24 @@ final class MethodOverrideQueries {
         ObjectNode root = JSON.createObjectNode();
         root.put("target", base.className());
         root.put("method", methodName);
+        KotlinDeclarationRecord kotlinDeclaration = baseDeclarations.stream()
+                .map(member -> KotlinMemberNames.declaration(member, kotlinDeclarations)
+                        .orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .findFirst().orElse(null);
+        if (kotlinDeclaration != null) {
+            root.put("language", "kotlin");
+            root.put("kotlin_name", kotlinDeclaration.name());
+            root.set("jvm_names", JSON.valueToTree(baseDeclarations.stream()
+                    .map(ClassMemberRecord::name).distinct().sorted().toList()));
+        }
         if (requestedSignature == null) root.putNull("signature");
         else root.put("signature", requestedSignature);
         root.put("transitive", transitive);
         ArrayNode declarations = root.putArray("base_declarations");
         for (ClassMemberRecord declaration : baseDeclarations) {
             ObjectNode node = declarations.addObject();
+            SymbolContract.appendMember(node, base, declaration, kotlinDeclarations);
             node.put("signature", declaration.signature());
             node.set("parameters", JSON.valueToTree(declaration.parameterTypes()));
             node.put("return_type", declaration.typeName());
@@ -117,6 +149,8 @@ final class MethodOverrideQueries {
         countedClasses.add(base.id());
         for (OverrideMatch match : page) {
             ObjectNode node = overrides.addObject();
+            SymbolContract.appendMember(node, match.owner(), match.member(),
+                    IndexReader.findKotlinDeclarations(jdbi, match.owner().id()));
             node.put("class", match.owner().className());
             node.put("signature", match.member().signature());
             node.set("parameters", JSON.valueToTree(match.member().parameterTypes()));

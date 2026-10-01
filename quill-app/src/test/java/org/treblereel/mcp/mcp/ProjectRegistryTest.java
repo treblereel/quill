@@ -36,6 +36,7 @@ class ProjectRegistryTest {
         assertTrue(resolution.errors().getFirst().contains("my-project"));
         ProjectRegistry.ProjectIssue issue = resolution.issues().getFirst();
         assertEquals("build_required", issue.code());
+        assertEquals("classes_missing", issue.buildReason());
         assertEquals("maven", issue.buildSystem());
         assertFalse(issue.buildWasStarted());
         assertTrue(issue.recommendedAction().contains("Decide whether"));
@@ -118,7 +119,40 @@ class ProjectRegistryTest {
         assertEquals(1, resolution.projects().size());
         assertTrue(resolution.errors().isEmpty());
         assertEquals("build_required", resolution.issues().getFirst().code());
+        assertEquals("classes_missing", resolution.issues().getFirst().buildReason());
         assertFalse(resolution.issues().getFirst().buildWasStarted());
+    }
+
+    @Test
+    void indexedProjectWithNewerSourcesRemainsQueryableButReportsStaleClasses()
+            throws IOException {
+        Path project = Files.createDirectories(tempDir.resolve("stale-project"));
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        Path source = project.resolve("src/main/java/org/acme/App.java");
+        Path compiled = project.resolve("target/classes/org/acme/App.class");
+        Files.createDirectories(source.getParent());
+        Files.createDirectories(compiled.getParent());
+        Files.writeString(source, "package org.acme; public final class App {}\n");
+        Files.write(compiled, new byte[] {1});
+        long now = System.currentTimeMillis();
+        Files.setLastModifiedTime(compiled,
+                java.nio.file.attribute.FileTime.fromMillis(now - 2_000));
+        Files.setLastModifiedTime(source,
+                java.nio.file.attribute.FileTime.fromMillis(now + 2_000));
+        createPublishedDatabase(project, "stale");
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project);
+
+        ProjectRegistry.Resolution resolution = registry.resolve();
+
+        assertEquals(1, resolution.projects().size());
+        ProjectRegistry.ProjectIssue issue = resolution.issues().getFirst();
+        assertEquals("build_required", issue.code());
+        assertEquals("classes_stale", issue.buildReason());
+        assertEquals(List.of("."), issue.staleModules());
+        String response = ProjectAvailabilityResponses.error(issue);
+        assertTrue(response.contains("\"build_reason\":\"classes_stale\""));
+        assertTrue(response.contains("\"stale_modules\":[\".\"]"));
     }
 
     @Test

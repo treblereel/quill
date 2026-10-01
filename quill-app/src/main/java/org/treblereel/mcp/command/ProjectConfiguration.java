@@ -29,10 +29,10 @@ final class ProjectConfiguration {
 
     private ProjectConfiguration() {}
 
-    static void prepareForIndex(Path root, boolean indexOnly) {
-        if (indexOnly) return;
+    static BuildIntegrationInstaller.Result prepareForIndex(Path root, boolean indexOnly) {
+        if (indexOnly) return BuildIntegrationInstaller.Result.NOT_FOUND;
         ensureGitignore(root);
-        BuildIntegrationInstaller.install(root);
+        return BuildIntegrationInstaller.install(root);
     }
 
     static void finishInitialization(Path root, boolean indexOnly) {

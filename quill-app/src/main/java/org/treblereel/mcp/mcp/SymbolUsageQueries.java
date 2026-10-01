@@ -1,7 +1,9 @@
 package org.treblereel.mcp.mcp;
 
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendPage;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendRetryWith;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
@@ -18,6 +20,7 @@ import org.treblereel.mcp.db.IndexReader.FieldAccessView;
 import org.treblereel.mcp.db.IndexReader.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Finds exact bytecode usages of a selected method, constructor, or field declaration. */
 final class SymbolUsageQueries {
@@ -28,66 +31,95 @@ final class SymbolUsageQueries {
 
     String findSymbolUsages(Jdbi jdbi, String target, String name, String kind,
             String signature, String access, int limit, int offset) {
+        try {
+            SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
+            if (reference != null) {
+                target = reference.resolutionTarget();
+                name = reference.jvmName();
+                kind = reference.kind();
+                signature = reference.descriptor();
+            }
+        } catch (SymbolContract.ParseException error) {
+            return errorResponse(error.errorCode(), error.getMessage());
+        }
         String normalizedKind = kind == null ? "" : kind.strip().toUpperCase(Locale.ROOT);
         if (!KINDS.contains(normalizedKind)) {
-            return errorResponse("Invalid kind: expected method, constructor, or field");
+            return errorResponse("INVALID_ARGUMENT",
+                    "Invalid kind: expected method, constructor, or field");
         }
         String normalizedAccess = access == null
                 ? "ALL" : access.strip().toUpperCase(Locale.ROOT);
         if (!ACCESS_MODES.contains(normalizedAccess)) {
-            return errorResponse("Invalid access: expected all, read, or write");
+            return errorResponse("INVALID_ARGUMENT",
+                    "Invalid access: expected all, read, or write");
         }
         if (!"FIELD".equals(normalizedKind) && !"ALL".equals(normalizedAccess)) {
-            return errorResponse("The access filter applies only to fields");
+            return errorResponse("INVALID_ARGUMENT", "The access filter applies only to fields");
         }
+        String requestedName = name;
+        String requestedSignature = signature;
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
+        List<KotlinDeclarationRecord> kotlinDeclarations =
+                IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
         List<ClassMemberRecord> kindMembers = IndexReader.findClassMembers(jdbi, cls.id()).stream()
                 .filter(member -> member.kind().equals(normalizedKind)).toList();
         List<ClassMemberRecord> namedMembers = kindMembers.stream()
-                .filter(member -> matchesName(member, name, normalizedKind)).toList();
-        List<ClassMemberRecord> matches = signature == null || signature.isBlank()
+                .filter(member -> matchesName(
+                        member, requestedName, normalizedKind, kotlinDeclarations)).toList();
+        List<ClassMemberRecord> matches = requestedSignature == null
+                || requestedSignature.isBlank()
                 ? namedMembers
-                : namedMembers.stream().filter(member -> member.signature().equals(signature.strip())
-                        || member.descriptor().equals(signature.strip())).toList();
+                : namedMembers.stream().filter(member -> member.signature().equals(
+                        requestedSignature.strip())
+                        || member.descriptor().equals(requestedSignature.strip())).toList();
         if (matches.size() != 1) {
             ObjectNode error = JSON.createObjectNode();
-            error.put("error", matches.isEmpty() ? "Symbol not found" : "Ambiguous symbol");
+            boolean ambiguous = !matches.isEmpty();
+            appendError(error, ambiguous ? "AMBIGUOUS_SYMBOL" : "SYMBOL_NOT_FOUND",
+                    ambiguous ? "Ambiguous symbol" : "Symbol not found");
             error.put("target", cls.className());
             error.put("kind", normalizedKind.toLowerCase(Locale.ROOT));
-            error.put("name", name);
-            if (signature != null) error.put("signature", signature);
+            error.put("name", requestedName);
+            if (requestedSignature != null) error.put("signature", requestedSignature);
             List<ClassMemberRecord> candidates = matches.isEmpty() ? namedMembers : matches;
             if (candidates.isEmpty()) candidates = kindMembers;
             ArrayNode values = error.putArray("candidates");
-            candidates.forEach(candidate -> appendCandidate(values, candidate));
+            candidates.forEach(candidate -> appendCandidate(values, cls, candidate));
+            if (ambiguous) {
+                appendRetryWith(error, "signature",
+                        "Use one candidate's exact signature, descriptor, or symbol_id");
+            }
             appendMeta(error, jdbi, 0);
             return error.toString();
         }
 
         ClassMemberRecord selected = matches.getFirst();
+        KotlinDeclarationRecord kotlinDeclaration = KotlinMemberNames
+                .declaration(selected, kotlinDeclarations).orElse(null);
         if (selected.descriptor().isBlank()) {
             ObjectNode error = JSON.createObjectNode();
-            error.put("error", "Symbol descriptor is unavailable; rebuild the Quill index");
-            appendCandidate(error.putArray("candidates"), selected);
+            appendError(error, "DESCRIPTOR_UNAVAILABLE",
+                    "Symbol descriptor is unavailable; rebuild the Quill index");
+            appendCandidate(error.putArray("candidates"), cls, selected);
             appendMeta(error, jdbi, 0);
             return error.toString();
         }
         return "FIELD".equals(normalizedKind)
                 ? fieldUsages(jdbi, cls, selected, normalizedAccess, limit, offset)
-                : methodUsages(jdbi, cls, selected, limit, offset);
+                : methodUsages(jdbi, cls, selected, kotlinDeclaration, limit, offset);
     }
 
     private String methodUsages(Jdbi jdbi, ClassRecord cls, ClassMemberRecord selected,
-            int limit, int offset) {
+            KotlinDeclarationRecord kotlinDeclaration, int limit, int offset) {
         String bytecodeName = "CONSTRUCTOR".equals(selected.kind()) ? "<init>" : selected.name();
         List<MethodCallView> usages = IndexReader.findExactMethodUsages(
                 jdbi, cls.id(), bytecodeName, selected.descriptor(), limit, offset);
         int total = IndexReader.countExactMethodUsages(
                 jdbi, cls.id(), bytecodeName, selected.descriptor());
-        ObjectNode root = base(cls, selected);
+        ObjectNode root = base(cls, selected, kotlinDeclaration);
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
@@ -116,7 +148,7 @@ final class SymbolUsageQueries {
                 accessFilter, limit, offset);
         int total = IndexReader.countExactFieldUsages(
                 jdbi, cls.id(), selected.name(), selected.descriptor(), accessFilter);
-        ObjectNode root = base(cls, selected);
+        ObjectNode root = base(cls, selected, null);
         root.put("access", access.toLowerCase(Locale.ROOT));
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
@@ -138,13 +170,24 @@ final class SymbolUsageQueries {
         return root.toString();
     }
 
-    private static ObjectNode base(ClassRecord cls, ClassMemberRecord selected) {
+    private static ObjectNode base(ClassRecord cls, ClassMemberRecord selected,
+            KotlinDeclarationRecord kotlinDeclaration) {
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
         root.put("kind", selected.kind().toLowerCase(Locale.ROOT));
         root.put("name", selected.name());
         root.put("signature", selected.signature());
         root.put("descriptor", selected.descriptor());
+        SymbolContract.appendMember(root, cls, selected,
+                kotlinDeclaration == null ? List.of() : List.of(kotlinDeclaration));
+        if (kotlinDeclaration != null) {
+            root.put("kotlin_name", kotlinDeclaration.name());
+            if (kotlinDeclaration.isSuspend()) root.put("suspend", true);
+            if (kotlinDeclaration.extension()) root.put("extension", true);
+            if (kotlinDeclaration.hasDefaultParameters()) {
+                root.put("default_parameters", true);
+            }
+        }
         return root;
     }
 
@@ -155,16 +198,21 @@ final class SymbolUsageQueries {
     }
 
     private static boolean matchesName(
-            ClassMemberRecord member, String requested, String kind) {
+            ClassMemberRecord member, String requested, String kind,
+            List<KotlinDeclarationRecord> kotlinDeclarations) {
         if ("CONSTRUCTOR".equals(kind)) {
             return requested == null || requested.isBlank() || "<init>".equals(requested)
                     || member.name().equals(requested);
         }
-        return requested != null && member.name().equals(requested.strip());
+        return requested != null && KotlinMemberNames.matches(
+                requested.strip(), member, kotlinDeclarations);
     }
 
-    private static void appendCandidate(ArrayNode target, ClassMemberRecord candidate) {
+    private static void appendCandidate(
+            ArrayNode target, ClassRecord cls, ClassMemberRecord candidate) {
         ObjectNode node = target.addObject();
+        node.put("symbol_id", SymbolContract.id(cls, candidate.kind(),
+                candidate.name(), candidate.descriptor()));
         node.put("name", candidate.name());
         node.put("signature", candidate.signature());
         node.put("descriptor", candidate.descriptor());

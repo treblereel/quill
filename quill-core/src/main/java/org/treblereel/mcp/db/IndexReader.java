@@ -15,6 +15,29 @@ public final class IndexReader {
 
     public record DependencyBreakdown(String origin, int classes, int edges) {}
 
+    public static List<KotlinDeclarationRecord> findKotlinDeclarations(
+            Jdbi jdbi, int classId) {
+        return jdbi.withHandle(handle -> handle.createQuery("""
+                        SELECT class_id, kind, name, jvm_name, descriptor, semantic_model,
+                               is_suspend, is_extension, has_default_parameters,
+                               is_mutable, is_lateinit, is_delegated, is_synthetic
+                        FROM kotlin_declarations
+                        WHERE class_id = :classId
+                        ORDER BY CASE kind WHEN 'FUNCTION' THEN 1 WHEN 'PROPERTY' THEN 2 ELSE 0 END,
+                                 name, descriptor
+                        """)
+                .bind("classId", classId)
+                .map((row, context) -> new KotlinDeclarationRecord(
+                        row.getInt("class_id"), row.getString("kind"), row.getString("name"),
+                        row.getString("jvm_name"), row.getString("descriptor"),
+                        row.getString("semantic_model"), row.getInt("is_suspend") == 1,
+                        row.getInt("is_extension") == 1,
+                        row.getInt("has_default_parameters") == 1,
+                        row.getInt("is_mutable") == 1, row.getInt("is_lateinit") == 1,
+                        row.getInt("is_delegated") == 1, row.getInt("is_synthetic") == 1))
+                .list());
+    }
+
     public record ArchitectureHub(
             int classId,
             int totalDependents,
@@ -40,7 +63,16 @@ public final class IndexReader {
             String origin,
             String module,
             String sourceSet,
-            int sourceTokens) {}
+            int sourceTokens,
+            String language,
+            String semanticKind,
+            String semanticName,
+            boolean isSuspend,
+            boolean extension,
+            boolean hasDefaultParameters,
+            boolean mutable,
+            boolean lateinit,
+            boolean delegated) {}
 
     public record AnnotatedSymbolResult(
             int classId,
@@ -574,19 +606,35 @@ public final class IndexReader {
 
     public static List<SymbolSearchResult> searchSymbols(Jdbi jdbi, String namePattern,
             String symbolKind, int limit, int offset) {
+        return searchSymbols(jdbi, namePattern, symbolKind, null, limit, offset);
+    }
+
+    public static List<SymbolSearchResult> searchSymbols(Jdbi jdbi, String namePattern,
+            String symbolKind, String language, int limit, int offset) {
         String pattern = namePattern.replace("*", "%");
         if (!pattern.contains("%")) pattern = "%" + pattern + "%";
         String kindFilter = symbolKind == null ? "" : " AND symbol_kind = :kind";
+        String languageFilter = language == null ? "" : " AND language = :language";
         String sql = """
-                WITH symbols AS (
+                WITH kotlin_types AS (
+                    SELECT class_id, kind, name
+                    FROM kotlin_declarations
+                    WHERE kind NOT IN ('FUNCTION', 'PROPERTY')
+                ), symbols AS (
                     SELECT c.id AS class_id, c.class_name, c.kind AS class_kind,
                            c.kind AS symbol_kind, c.class_name AS symbol_name,
                            NULL AS signature, NULL AS descriptor, NULL AS type_name,
                            '[]' AS parameter_types,
                            '' AS modifiers, '[]' AS annotations,
                            c.source_file, c.source_line, c.origin, c.module, c.source_set,
-                           c.source_tokens
+                           c.source_tokens,
+                           CASE WHEN kt.class_id IS NOT NULL OR lower(c.source_file) LIKE '%.kt'
+                                THEN 'kotlin' ELSE 'java' END AS language,
+                           kt.kind AS semantic_kind, kt.name AS semantic_name,
+                           0 AS is_suspend, 0 AS is_extension, 0 AS has_default_parameters,
+                           0 AS is_mutable, 0 AS is_lateinit, 0 AS is_delegated
                     FROM classes c
+                    LEFT JOIN kotlin_types kt ON kt.class_id = c.id
                     WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
                       AND c.class_name LIKE :pattern
                     UNION ALL
@@ -595,13 +643,29 @@ public final class IndexReader {
                            m.signature, m.descriptor, m.type_name, m.parameter_types,
                            m.modifiers, m.annotations,
                            c.source_file, c.source_line, c.origin, c.module, c.source_set,
-                           c.source_tokens
+                           c.source_tokens,
+                           CASE WHEN kd.class_id IS NOT NULL OR lower(c.source_file) LIKE '%.kt'
+                                THEN 'kotlin' ELSE 'java' END AS language,
+                           kd.kind AS semantic_kind, kd.name AS semantic_name,
+                           COALESCE(kd.is_suspend, 0) AS is_suspend,
+                           COALESCE(kd.is_extension, 0) AS is_extension,
+                           COALESCE(kd.has_default_parameters, 0) AS has_default_parameters,
+                           COALESCE(kd.is_mutable, 0) AS is_mutable,
+                           COALESCE(kd.is_lateinit, 0) AS is_lateinit,
+                           COALESCE(kd.is_delegated, 0) AS is_delegated
                     FROM class_members m JOIN classes c ON c.id = m.class_id
+                    LEFT JOIN kotlin_declarations kd ON kd.class_id = m.class_id
+                      AND ((kd.kind = 'FUNCTION' AND kd.jvm_name = m.name
+                            AND kd.descriptor = m.descriptor)
+                           OR (kd.kind = 'PROPERTY' AND kd.jvm_name = m.name
+                               AND (kd.descriptor = '' OR kd.descriptor = m.descriptor)))
                     WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
-                      AND (m.name LIKE :pattern OR m.signature LIKE :pattern)
+                      AND (m.name LIKE :pattern OR m.signature LIKE :pattern
+                           OR kd.name LIKE :pattern)
                 )
                 SELECT * FROM symbols WHERE 1 = 1
-                """ + kindFilter + " ORDER BY symbol_name, class_name, signature "
+                """ + kindFilter + languageFilter
+                + " ORDER BY symbol_name, class_name, signature "
                 + "LIMIT :limit OFFSET :offset";
         String finalPattern = pattern;
         return jdbi.withHandle(handle -> {
@@ -610,6 +674,7 @@ public final class IndexReader {
                     .bind("limit", limit)
                     .bind("offset", offset);
             if (symbolKind != null) query.bind("kind", symbolKind);
+            if (language != null) query.bind("language", language);
             return query.map((rs, ctx) -> new SymbolSearchResult(
                     rs.getInt("class_id"), rs.getString("class_name"),
                     rs.getString("class_kind"), rs.getString("symbol_kind"),
@@ -619,32 +684,59 @@ public final class IndexReader {
                     rs.getString("modifiers"), fromJson(rs.getString("annotations")),
                     rs.getString("source_file"), rs.getInt("source_line"),
                     rs.getString("origin"), rs.getString("module"),
-                    rs.getString("source_set"), rs.getInt("source_tokens"))).list();
+                    rs.getString("source_set"), rs.getInt("source_tokens"),
+                    rs.getString("language"), rs.getString("semantic_kind"),
+                    rs.getString("semantic_name"), rs.getInt("is_suspend") == 1,
+                    rs.getInt("is_extension") == 1,
+                    rs.getInt("has_default_parameters") == 1,
+                    rs.getInt("is_mutable") == 1, rs.getInt("is_lateinit") == 1,
+                    rs.getInt("is_delegated") == 1)).list();
         });
     }
 
     public static int countSymbols(Jdbi jdbi, String namePattern, String symbolKind) {
+        return countSymbols(jdbi, namePattern, symbolKind, null);
+    }
+
+    public static int countSymbols(
+            Jdbi jdbi, String namePattern, String symbolKind, String language) {
         String pattern = namePattern.replace("*", "%");
         if (!pattern.contains("%")) pattern = "%" + pattern + "%";
         String kindFilter = symbolKind == null ? "" : " AND symbol_kind = :kind";
+        String languageFilter = language == null ? "" : " AND language = :language";
         String sql = """
-                WITH symbols AS (
-                    SELECT c.kind AS symbol_kind
+                WITH kotlin_types AS (
+                    SELECT class_id FROM kotlin_declarations
+                    WHERE kind NOT IN ('FUNCTION', 'PROPERTY')
+                ), symbols AS (
+                    SELECT c.kind AS symbol_kind,
+                           CASE WHEN kt.class_id IS NOT NULL OR lower(c.source_file) LIKE '%.kt'
+                                THEN 'kotlin' ELSE 'java' END AS language
                     FROM classes c
+                    LEFT JOIN kotlin_types kt ON kt.class_id = c.id
                     WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
                       AND c.class_name LIKE :pattern
                     UNION ALL
-                    SELECT m.kind AS symbol_kind
+                    SELECT m.kind AS symbol_kind,
+                           CASE WHEN kd.class_id IS NOT NULL OR lower(c.source_file) LIKE '%.kt'
+                                THEN 'kotlin' ELSE 'java' END AS language
                     FROM class_members m JOIN classes c ON c.id = m.class_id
+                    LEFT JOIN kotlin_declarations kd ON kd.class_id = m.class_id
+                      AND ((kd.kind = 'FUNCTION' AND kd.jvm_name = m.name
+                            AND kd.descriptor = m.descriptor)
+                           OR (kd.kind = 'PROPERTY' AND kd.jvm_name = m.name
+                               AND (kd.descriptor = '' OR kd.descriptor = m.descriptor)))
                     WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
-                      AND (m.name LIKE :pattern OR m.signature LIKE :pattern)
+                      AND (m.name LIKE :pattern OR m.signature LIKE :pattern
+                           OR kd.name LIKE :pattern)
                 )
                 SELECT count(*) FROM symbols WHERE 1 = 1
-                """ + kindFilter;
+                """ + kindFilter + languageFilter;
         String finalPattern = pattern;
         return jdbi.withHandle(handle -> {
             var query = handle.createQuery(sql).bind("pattern", finalPattern);
             if (symbolKind != null) query.bind("kind", symbolKind);
+            if (language != null) query.bind("language", language);
             return query.mapTo(Integer.class).one();
         });
     }

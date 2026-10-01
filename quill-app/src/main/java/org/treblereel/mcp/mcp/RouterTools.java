@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -110,8 +111,11 @@ final class RouterTools {
             trace.event("tool_completed", Map.of("tool", name, "is_error", invocation.error()));
             if (!invocation.error()) return invocation.text();
             try {
-                if (invocation.text() != null && JSON.readTree(invocation.text()).has("error")) {
-                    return invocation.text();
+                if (invocation.text() != null) {
+                    JsonNode payload = JSON.readTree(invocation.text());
+                    if (payload.has("error_code") || payload.has("error")) {
+                        return invocation.text();
+                    }
                 }
             } catch (Exception ignored) {
                 // Convert catalog validation and invocation failures to structured errors.

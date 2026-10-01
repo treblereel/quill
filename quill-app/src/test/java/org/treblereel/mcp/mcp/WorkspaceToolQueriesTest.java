@@ -466,14 +466,15 @@ class WorkspaceToolQueriesTest {
                 "io.casehub.engine.EngineService", Optional.of("both"), Optional.of(5),
                 Optional.of(20), Optional.empty(), Optional.of("platform")));
         JsonNode overrides = JSON.readTree(tools.find_method_overrides(
-                "io.casehub.engine.EngineService", "execute", Optional.empty(),
+                "io.casehub.engine.EngineService", Optional.of("execute"), Optional.empty(),
                 Optional.of(true), Optional.of(20), Optional.empty(),
                 Optional.of("platform")));
         JsonNode details = JSON.readTree(tools.get_symbol_details(
                 "io.casehub.engine.EngineService", Optional.of(true), Optional.empty(),
                 Optional.of(20), Optional.empty(), Optional.of("platform")));
         JsonNode symbolUsages = JSON.readTree(tools.find_symbol_usages(
-                "io.casehub.engine.EngineService", Optional.of("execute"), "method",
+                "io.casehub.engine.EngineService", Optional.of("execute"),
+                Optional.of("method"),
                 Optional.empty(), Optional.empty(), Optional.of(20), Optional.empty(),
                 Optional.of("platform")));
         JsonNode calls = JSON.readTree(tools.get_call_hierarchy(
@@ -541,6 +542,25 @@ class WorkspaceToolQueriesTest {
                 .path("provider").path("repository").asText());
         assertEquals("build_required", result.path("workspace_usage")
                 .path("provider_warnings").get(0).path("status").asText());
+    }
+
+    @Test
+    void routesSourceOnlyKotlinProviderWhenClassIsAbsentLocally() throws Exception {
+        Path source = workspace.resolve(
+                "engine/src/main/kotlin/io/casehub/engine/KotlinService.kt");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package io.casehub.engine\nclass KotlinService");
+
+        JsonNode result = JSON.readTree(tools.get_dependencies(
+                "io.casehub.engine.KotlinService", Optional.of("outbound"), Optional.of(1),
+                Optional.of(true), Optional.of(20), Optional.empty(), Optional.empty(),
+                Optional.of("platform")));
+
+        assertFalse(result.has("error"), result.toString());
+        assertEquals("workspace_provider", result.path("origin").asText());
+        assertEquals("src/main/kotlin/io/casehub/engine/KotlinService.kt",
+                result.path("workspace_traversal").path("provider")
+                        .path("source_file").asText(), result.toString());
     }
 
     private void removePlatformDependencyClass() {

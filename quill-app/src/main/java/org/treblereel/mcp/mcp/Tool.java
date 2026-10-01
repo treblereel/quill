@@ -12,4 +12,7 @@ import java.lang.annotation.Target;
 
     /** Whether this tool returns a JSON object that should also be exposed as structured content. */
     boolean structured() default false;
+
+    /** Optional identifier for a more specific output schema. */
+    String output() default "";
 }

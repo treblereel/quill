@@ -37,6 +37,7 @@ class ClassTargetResolverTest {
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, "BeanManager");
 
         assertFalse(lookup.found());
+        assertEquals("AMBIGUOUS_CLASS", lookup.errorCode());
         assertEquals("Ambiguous class name", lookup.error());
         assertEquals(List.of("first.BeanManager", "second.BeanManager"),
                 lookup.candidates().stream().map(ClassRecord::className).toList());
@@ -65,9 +66,50 @@ class ClassTargetResolverTest {
                 ClassTargetResolver.resolve(jdbi, "example.GeneratedRegistry");
 
         assertFalse(lookup.found());
+        assertEquals("AMBIGUOUS_CLASS", lookup.errorCode());
         assertEquals("Ambiguous class context", lookup.error());
         assertEquals(List.of("applications/one", "applications/two"),
                 lookup.candidates().stream().map(ClassRecord::module).toList());
+    }
+
+    @Test
+    void reportsUnsupportedSymbolIdVersionsWithoutTreatingThemAsClassNames() {
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(
+                database(List.of(current("example.Type"))), "quill:symbol:v3:anything");
+
+        assertFalse(lookup.found());
+        assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", lookup.errorCode());
+        assertEquals("Unsupported symbol_id version", lookup.error());
+        assertTrue(lookup.candidates().isEmpty());
+    }
+
+    @Test
+    void reportsMalformedRecognizedSymbolIds() {
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(
+                database(List.of(current("example.Type"))), "quill:symbol:v2:broken");
+
+        assertFalse(lookup.found());
+        assertEquals("MALFORMED_SYMBOL_ID", lookup.errorCode());
+        assertEquals("Malformed symbol_id", lookup.error());
+    }
+
+    @Test
+    void scopedIdsDisambiguateDuplicateFqcnsAcrossModules() {
+        Jdbi jdbi = database(List.of(
+                current("example.GeneratedRegistry", "applications/one"),
+                current("example.GeneratedRegistry", "applications/two")));
+        List<ClassRecord> duplicates = ClassTargetResolver.resolve(
+                jdbi, "example.GeneratedRegistry").candidates();
+        String firstId = SymbolContract.id(
+                duplicates.get(0), "CLASS", "example.GeneratedRegistry", "");
+        String secondId = SymbolContract.id(
+                duplicates.get(1), "CLASS", "example.GeneratedRegistry", "");
+
+        assertNotEquals(firstId, secondId);
+        assertEquals("applications/one",
+                ClassTargetResolver.resolve(jdbi, firstId).cls().module());
+        assertEquals("applications/two",
+                ClassTargetResolver.resolve(jdbi, secondId).cls().module());
     }
 
     private Jdbi database(List<ClassRecord> classes) {

@@ -1,7 +1,9 @@
 package org.treblereel.mcp.mcp;
 
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendPage;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendRetryWith;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
@@ -23,6 +25,7 @@ import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.IndexReader.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Returns direct or bounded-transitive caller/callee edges captured from application bytecode. */
 final class CallHierarchyQueries {
@@ -41,30 +44,51 @@ final class CallHierarchyQueries {
     String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
             String direction, boolean transitive, int maxDepth, String scope,
             int limit, int offset) {
+        try {
+            SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
+            if (reference != null) {
+                if (!"METHOD".equals(reference.kind())
+                        && !"CONSTRUCTOR".equals(reference.kind())) {
+                    return errorResponse("INVALID_SYMBOL_KIND",
+                            "symbol_id must identify a method or constructor");
+                }
+                target = reference.resolutionTarget();
+                method = reference.jvmName();
+                signature = reference.descriptor();
+            }
+        } catch (SymbolContract.ParseException error) {
+            return errorResponse(error.errorCode(), error.getMessage());
+        }
         String normalizedDirection = direction == null
                 ? "both" : direction.trim().toLowerCase(Locale.ROOT);
         if (!DIRECTIONS.contains(normalizedDirection)) {
-            return errorResponse("Invalid direction: expected inbound, outbound, or both");
+            return errorResponse("INVALID_ARGUMENT",
+                    "Invalid direction: expected inbound, outbound, or both");
         }
         String normalizedScope = scope == null ? "all" : scope.trim().toLowerCase(Locale.ROOT);
         if (!SCOPES.contains(normalizedScope)) {
-            return errorResponse("Invalid scope: expected all, cross_class, or cross_package");
+            return errorResponse("INVALID_ARGUMENT",
+                    "Invalid scope: expected all, cross_class, or cross_package");
         }
         String normalizedMethod = method == null || method.isBlank() ? null : method.trim();
         String normalizedSignature = signature == null || signature.isBlank()
                 ? null : signature.trim();
         if (normalizedMethod == null && normalizedSignature != null) {
-            return errorResponse("A method name is required when signature is provided");
+            return errorResponse("MISSING_METHOD",
+                    "A method name is required when signature is provided");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
+        List<KotlinDeclarationRecord> kotlinDeclarations =
+                IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
         List<ClassMemberRecord> candidates = normalizedMethod == null ? List.of()
                 : IndexReader.findClassMembers(jdbi, cls.id()).stream()
                         .filter(member -> member.kind().equals("METHOD")
                                 || member.kind().equals("CONSTRUCTOR"))
-                        .filter(member -> member.name().equals(normalizedMethod)
+                        .filter(member -> KotlinMemberNames.matches(
+                                normalizedMethod, member, kotlinDeclarations)
                                 || (normalizedMethod.equals("<init>")
                                         && member.kind().equals("CONSTRUCTOR")))
                         .toList();
@@ -76,6 +100,7 @@ final class CallHierarchyQueries {
         ClassMemberRecord selected = null;
         String descriptor = null;
         String bytecodeMethod = normalizedMethod;
+        KotlinDeclarationRecord kotlinDeclaration = null;
         if (normalizedMethod != null) {
             if (matchingMembers.size() != 1) {
                 return symbolSelectionError(jdbi, cls, normalizedMethod,
@@ -84,15 +109,18 @@ final class CallHierarchyQueries {
                                 || (normalizedSignature == null && candidates.size() > 1));
             }
             selected = matchingMembers.getFirst();
+            kotlinDeclaration = KotlinMemberNames
+                    .declaration(selected, kotlinDeclarations).orElse(null);
             descriptor = JvmDescriptors.methodDescriptor(selected);
             if (descriptor == null) {
                 ObjectNode error = JSON.createObjectNode();
-                error.put("error", "Method descriptor is unavailable; rebuild the Quill index");
-                appendCandidate(error.putArray("candidates"), selected);
+                appendError(error, "DESCRIPTOR_UNAVAILABLE",
+                        "Method descriptor is unavailable; rebuild the Quill index");
+                appendCandidate(error.putArray("candidates"), cls, selected);
                 appendMeta(error, jdbi, 0);
                 return error.toString();
             }
-            if ("CONSTRUCTOR".equals(selected.kind())) bytecodeMethod = "<init>";
+            bytecodeMethod = "CONSTRUCTOR".equals(selected.kind()) ? "<init>" : selected.name();
         }
 
         TraversalResult unfiltered = transitive
@@ -112,6 +140,15 @@ final class CallHierarchyQueries {
             root.put("signature", selected.signature());
             root.put("descriptor", descriptor);
             root.put("member_kind", selected.kind().toLowerCase(Locale.ROOT));
+            SymbolContract.appendMember(root, cls, selected, kotlinDeclarations);
+            if (kotlinDeclaration != null) {
+                root.put("kotlin_name", kotlinDeclaration.name());
+                if (kotlinDeclaration.isSuspend()) root.put("suspend", true);
+                if (kotlinDeclaration.extension()) root.put("extension", true);
+                if (kotlinDeclaration.hasDefaultParameters()) {
+                    root.put("default_parameters", true);
+                }
+            }
         }
         root.put("direction", normalizedDirection);
         root.put("direct_only", !transitive);
@@ -291,24 +328,31 @@ final class CallHierarchyQueries {
             String method, String signature, List<ClassMemberRecord> candidates,
             boolean ambiguous) {
         ObjectNode error = JSON.createObjectNode();
-        error.put("error", ambiguous
-                ? "Ambiguous method; provide signature or JVM descriptor"
-                : "Method not found");
+        appendError(error, ambiguous ? "AMBIGUOUS_METHOD" : "METHOD_NOT_FOUND",
+                ambiguous ? "Ambiguous method; provide signature or JVM descriptor"
+                        : "Method not found");
         error.put("target", cls.className());
         error.put("method", method);
         if (signature != null) error.put("signature", signature);
         ArrayNode values = error.putArray("candidates");
-        candidates.forEach(candidate -> appendCandidate(values, candidate));
+        candidates.forEach(candidate -> appendCandidate(values, cls, candidate));
+        if (ambiguous) {
+            appendRetryWith(error, "signature",
+                    "Use one candidate's exact signature, descriptor, or symbol_id");
+        }
         appendMeta(error, jdbi, 0);
         return error.toString();
     }
 
-    private static void appendCandidate(ArrayNode target, ClassMemberRecord candidate) {
+    private static void appendCandidate(
+            ArrayNode target, ClassRecord cls, ClassMemberRecord candidate) {
         ObjectNode node = target.addObject();
+        String descriptor = JvmDescriptors.methodDescriptor(candidate);
+        node.put("symbol_id", SymbolContract.id(cls, candidate.kind(),
+                candidate.name(), descriptor));
         node.put("kind", candidate.kind().toLowerCase(Locale.ROOT));
         node.put("name", candidate.name());
         node.put("signature", candidate.signature());
-        String descriptor = JvmDescriptors.methodDescriptor(candidate);
         if (descriptor != null) node.put("descriptor", descriptor);
     }
 

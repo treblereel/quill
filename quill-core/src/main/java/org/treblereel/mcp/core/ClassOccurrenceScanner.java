@@ -22,6 +22,22 @@ public final class ClassOccurrenceScanner {
     public static List<ClassOccurrenceRecord> scan(
             Path projectRoot, ClassFileSnapshot snapshot, Map<Path, Path> directoryOwners,
             Map<Path, String> directorySourceSets, Map<String, Integer> logicalClassIds) {
+        return scan(projectRoot, snapshot, directoryOwners, directorySourceSets,
+                logicalClassIds, List.of());
+    }
+
+    public static List<ClassOccurrenceRecord> scan(
+            Path projectRoot, ClassFileSnapshot snapshot, Map<Path, Path> directoryOwners,
+            Map<Path, String> directorySourceSets, Map<String, Integer> logicalClassIds,
+            List<Path> sourceRoots) {
+        return scan(projectRoot, snapshot, directoryOwners, directorySourceSets,
+                logicalClassIds, sourceRoots, Map.of());
+    }
+
+    public static List<ClassOccurrenceRecord> scan(
+            Path projectRoot, ClassFileSnapshot snapshot, Map<Path, Path> directoryOwners,
+            Map<Path, String> directorySourceSets, Map<String, Integer> logicalClassIds,
+            List<Path> sourceRoots, Map<String, Path> sourceMappings) {
         Path root = projectRoot.toAbsolutePath().normalize();
         Map<Path, Path> normalizedOwners = directoryOwners.entrySet().stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -40,7 +56,12 @@ public final class ClassOccurrenceScanner {
             if (classId == null) continue;
             Path owner = normalizedOwners.getOrDefault(output, root);
             String sourceSet = normalizedSourceSets.getOrDefault(output, sourceSet(output, owner));
-            Path source = findSource(owner, sourceSet, className);
+            List<Path> ownerSourceRoots = sourceRoots.stream()
+                    .filter(sourceRoot -> sourceRoot.toAbsolutePath().normalize().startsWith(owner))
+                    .toList();
+            Path source = BytecodeSourceMapper.source(entry, ownerSourceRoots);
+            if (source == null) source = sourceMappings.get(className);
+            if (source == null) source = findSource(owner, sourceSet, className);
             result.add(new ClassOccurrenceRecord(
                     0, classId, className, relative(root, owner), sourceSet,
                     relative(root, output), relative(root, entry.path()),
@@ -75,19 +96,21 @@ public final class ClassOccurrenceScanner {
     }
 
     private static Path findSource(Path module, String sourceSet, String className) {
+        Path conventional = JvmSourceFiles.findConventionalSource(module, sourceSet, className);
+        if (conventional != null) return conventional.toAbsolutePath().normalize();
         String topLevel = className.contains("$")
                 ? className.substring(0, className.indexOf('$')) : className;
         Path javaPath = Path.of(topLevel.replace('.', '/') + ".java");
         Path kotlinPath = Path.of(topLevel.replace('.', '/') + ".kt");
         List<Path> roots = new ArrayList<>();
-        roots.add(module.resolve("src").resolve(sourceSet).resolve("java"));
-        roots.add(module.resolve("src").resolve(sourceSet).resolve("kotlin"));
         if (sourceSet.equals("test")) {
             roots.add(module.resolve("target/generated-test-sources/test-annotations"));
             roots.add(module.resolve("build/generated/sources/annotationProcessor/java/test"));
+            roots.add(module.resolve("build/generated/ksp/test/kotlin"));
         } else {
             roots.add(module.resolve("target/generated-sources/annotations"));
             roots.add(module.resolve("build/generated/sources/annotationProcessor/java/main"));
+            roots.add(module.resolve("build/generated/ksp/main/kotlin"));
         }
         for (Path sourceRoot : roots) {
             Path java = sourceRoot.resolve(javaPath);

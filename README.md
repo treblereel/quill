@@ -108,8 +108,10 @@ the router must remain at most 20% of the full catalog, preventing silent contex
 | `quill clean` | Remove `.quill`, Quill-managed build integration, and MCP client configuration |
 | `quill workspace init` | Discover and initialize all suitable repositories in a workspace |
 | `quill workspace init --depth N` | Discover repositories up to the requested directory depth |
+| `quill workspace init --jobs N` | Process up to N repositories concurrently (default: 4) |
 | `quill workspace init --index-only` | Initialize workspace indexes without installing integration or MCP configuration |
 | `quill workspace refresh` | Reconcile added/removed repositories and index missing repositories |
+| `quill workspace refresh --jobs N` | Process up to N repositories concurrently (default: 4) |
 | `quill workspace refresh --index-only` | Refresh indexes without installing integration or MCP configuration |
 | `quill workspace status` | Show workspace configuration and per-repository readiness |
 | `quill workspace status --json` | Emit workspace status as machine-readable JSON |
@@ -234,11 +236,13 @@ The router profile returns the same policy in `search_tools.guidance`, including
 - **get_worktree_status** — inspect live branch/HEAD, indexed commit, and paged dirty files with
   structural-change classification
 - **get_symbol_at_position** — resolve the identifier at a one-based Java/Kotlin source position
-  to indexed class/member declarations, with ambiguity and confidence reported explicitly
+  to indexed class/member declarations, with ambiguity and confidence reported explicitly;
+  resolved declarations include a stable `symbol_id`
 - **search_external_symbols** / **get_external_symbol_details** — search and inspect class/member
   declarations indexed from dependency bytecode without mixing them with application symbols
 - **search_symbols** — search class, method, field, and constructor declarations by name or
-  signature, with kind filtering and pagination
+  signature, with kind/language filtering and pagination. Results distinguish source-level and
+  JVM names and include a stable `symbol_id`
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with
   exact overload selection by signature/JVM descriptor, invocation kinds, source-line evidence,
   traversal depth, and call paths; use `scope=cross_class` or `scope=cross_package` to suppress
@@ -291,7 +295,8 @@ does not imply that an executor, reactive stream, or message publication has com
 - **compare_index** — compare the active immutable index with a retained generation, including
   class/member, static dependency, bean, and injection-resolution deltas
 - **get_build_status** — inspect build-result integration, compiled outputs, pending events,
-  index freshness, and the next required action without invoking Maven or Gradle
+  index freshness, and the next required action without invoking Maven or Gradle; build-required
+  responses distinguish `classes_missing` from `classes_stale` and identify stale modules
 - **get_build_problems** — read normalized errors captured from the last Maven or Gradle build,
   including source positions and module filtering, without starting a build
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
@@ -312,7 +317,8 @@ does not imply that an executor, reactive stream, or message publication has com
 - **find_usages** — find bytecode calls, constructor calls, field access, type references,
   injection, inheritance, annotations, and ServiceLoader usages with evidence and pagination
 - **find_symbol_usages** — find exact method, constructor, or field usages by declaration
-  signature/JVM descriptor, including call or read/write evidence and pagination
+  signature/JVM descriptor, including call or read/write evidence and pagination; pass a
+  `symbol_id` as `target` to select an overload without repeating its name or descriptor
 - **get_symbol_details** — inspect hierarchy, annotations, declared members, DI context,
   dependency metrics, implementations, occurrences, and external types for one class
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
@@ -326,7 +332,12 @@ does not imply that an executor, reactive stream, or message publication has com
 - **assess_change_risk** — class blast radius or file-level risk based on file
   criticality, coupling, churn, and bus factor; accepts class names and arbitrary paths
 - **get_overview** — compact project summary by default; set `details=true` for diagnostic
-  samples and per-dimension architecture-hub rankings
+  samples and per-dimension architecture-hub rankings. Its `capabilities` block advertises
+  supported source languages, stable `symbol_id` chaining, and machine-readable errors
+
+Tool failures use a single structured envelope: `error_code`, `message`, `retryable`, and,
+when the request can be refined, `retry_with`. The former free-form `error` field is not
+emitted by the MCP surface.
 - **list_beans** — filter beans by scope, kind, qualifier (CDI and Spring); supports
   `limit`/`offset`
 - **list_injection_points** — injection resolution status for a bean

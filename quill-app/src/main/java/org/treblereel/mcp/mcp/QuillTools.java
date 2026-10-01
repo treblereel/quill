@@ -179,13 +179,16 @@ public final class QuillTools {
                 p.name(), target, requestedKind, requestedLimit, requestedOffset));
     }
 
-    @Tool(structured = true, description = "Find exact bytecode usages of a method, constructor, or field declaration.")
+    @Tool(structured = true, output = "symbol_usages",
+            description = "Find exact method, constructor, or field usages.")
     public String find_symbol_usages(
-            @ToolArg(description = "Declaring class name or source path") String target,
-            @ToolArg(description = "Member name; optional for constructors") Optional<String> name,
-            @ToolArg(description = "Symbol kind: method, constructor, or field") String kind,
+            @ToolArg(description = "Class, path, or symbol_id") String target,
+            @ToolArg(description = "Member name; omit for symbol_id or constructor") Optional<String> name,
+            @ToolArg(description = "Kind; omit for symbol_id",
+                    allowed = {"method", "constructor", "field"}) Optional<String> kind,
             @ToolArg(description = "Exact source signature or JVM descriptor; required when overloaded") Optional<String> signature,
-            @ToolArg(description = "For fields: all, read, or write (default: all)") Optional<String> access,
+            @ToolArg(description = "Field access",
+                    allowed = {"all", "read", "write"}) Optional<String> access,
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
@@ -196,11 +199,13 @@ public final class QuillTools {
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "find_symbol_usages",
-                jdbi -> queries.findSymbolUsages(jdbi, target, requestedName, kind,
+                jdbi -> queries.findSymbolUsages(jdbi, target, requestedName,
+                        kind.orElse(null),
                         requestedSignature, requestedAccess, requestedLimit, requestedOffset)));
     }
 
-    @Tool(structured = true, description = "Inspect a class and its members.")
+    @Tool(structured = true, output = "symbol_details",
+            description = "Inspect a class and its members.")
     public String get_symbol_details(
             @ToolArg(description = "Class or source path") String target,
             @ToolArg(description = "Include members; default true") Optional<Boolean> include_members,
@@ -251,28 +256,35 @@ public final class QuillTools {
                         requestedDepth, requestedLimit, requestedOffset)));
     }
 
-    @Tool(structured = true, description = "Search indexed type, method, field, and constructor declarations.")
+    @Tool(structured = true, output = "symbol_search",
+            description = "Search indexed symbols.")
     public String search_symbols(
             @ToolArg(description = "Name or signature pattern; * is a wildcard") String pattern,
-            @ToolArg(description = "Symbol kind or all; default all") Optional<String> kind,
+            @ToolArg(description = "Symbol kind", allowed = {"all", "class", "interface",
+                    "annotation", "enum", "record", "field", "constructor", "method"}) Optional<String> kind,
+            @ToolArg(description = "Language",
+                    allowed = {"all", "java", "kotlin"}) Optional<String> language,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.searchSymbols(
-                p.jdbi(), pattern, kind.orElse(null),
+                p.jdbi(), pattern, kind.orElse(null), language.orElse(null),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Inspect method callers and callees from bytecode evidence.")
+    @Tool(structured = true, output = "call_hierarchy",
+            description = "Inspect bytecode callers and callees.")
     public String get_call_hierarchy(
-            @ToolArg(description = "Current class or source path") String target,
-            @ToolArg(description = "Optional method name; use <init> for constructors") Optional<String> method,
+            @ToolArg(description = "Class, path, or symbol_id") String target,
+            @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
             @ToolArg(description = "Exact indexed signature or JVM descriptor for overload selection") Optional<String> signature,
-            @ToolArg(description = "inbound, outbound, or both; default both") Optional<String> direction,
+            @ToolArg(description = "Direction",
+                    allowed = {"inbound", "outbound", "both"}) Optional<String> direction,
             @ToolArg(description = "Traverse calls; default false") Optional<Boolean> transitive,
             @ToolArg(description = "Traversal depth; default 3") Optional<Integer> max_depth,
-            @ToolArg(description = "Noise scope: all, cross_class, or cross_package; default all") Optional<String> scope,
+            @ToolArg(description = "Noise scope",
+                    allowed = {"all", "cross_class", "cross_package"}) Optional<String> scope,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
@@ -302,10 +314,11 @@ public final class QuillTools {
                 jdbi -> queries.traceStateLifecycle(jdbi, target, requestedLimit)));
     }
 
-    @Tool(structured = true, description = "Analyze call instruction order in one method.")
+    @Tool(structured = true, output = "execution_order",
+            description = "Analyze call instruction order in one method.")
     public String analyze_execution_order(
-            @ToolArg(description = "Class or source path") String target,
-            @ToolArg(description = "Method name; use <init> for constructors") String method,
+            @ToolArg(description = "Class, path, or symbol_id") String target,
+            @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
             @ToolArg(description = "Signature or JVM descriptor for overloads") Optional<String> signature,
             @ToolArg(description = "Before terms") Optional<String> before_terms,
             @ToolArg(description = "After terms") Optional<String> after_terms,
@@ -318,7 +331,7 @@ public final class QuillTools {
                         "invoke", "execute"));
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "analyze_execution_order",
-                jdbi -> queries.analyzeExecutionOrder(jdbi, target, method,
+                jdbi -> queries.analyzeExecutionOrder(jdbi, target, method.orElse(null),
                         signature.orElse(null), before, after)));
     }
 
@@ -332,10 +345,11 @@ public final class QuillTools {
                 queries.compareDesignImpact(p.jdbi(), candidates, requestedDepth));
     }
 
-    @Tool(structured = true, description = "Find declared method overrides in indexed subclasses and implementors.")
+    @Tool(structured = true, output = "method_overrides",
+            description = "Find method overrides in indexed descendants.")
     public String find_method_overrides(
-            @ToolArg(description = "Current class, interface, or source path") String target,
-            @ToolArg(description = "Declared method name") String method,
+            @ToolArg(description = "Class, interface, path, or symbol_id") String target,
+            @ToolArg(description = "Declared method; omit for symbol_id") Optional<String> method,
             @ToolArg(description = "Optional exact signature to select one overload") Optional<String> signature,
             @ToolArg(description = "Include indirect descendants; default true") Optional<Boolean> transitive,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
@@ -347,7 +361,7 @@ public final class QuillTools {
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "find_method_overrides",
-                jdbi -> queries.findMethodOverrides(jdbi, target, method,
+                jdbi -> queries.findMethodOverrides(jdbi, target, method.orElse(null),
                         requestedSignature, requestedTransitive, requestedLimit,
                         requestedOffset)));
     }
@@ -496,7 +510,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true,
+    @Tool(structured = true, output = "position_symbol",
             description = "Resolve the Java or Kotlin identifier at a live source position to indexed declarations.")
     public String get_symbol_at_position(
             @ToolArg(description = "Repository-relative Java or Kotlin source path") String path,
@@ -735,7 +749,8 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Summarize frameworks, beans/classes, architecture hubs, DI problems, libraries, Git activity, and freshness.")
+    @Tool(structured = true, output = "overview",
+            description = "Summarize frameworks, beans/classes, architecture hubs, DI problems, libraries, Git activity, and freshness.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings (default: false)") Optional<Boolean> details,
             @ToolArg(description = "Project to query; omit for all") Optional<String> project) {
@@ -883,6 +898,11 @@ public final class QuillTools {
 
     String searchSymbols(Jdbi jdbi, String pattern, String kind, int limit, int offset) {
         return queries.searchSymbols(jdbi, pattern, kind, limit, offset);
+    }
+
+    String searchSymbols(Jdbi jdbi, String pattern, String kind, String language,
+            int limit, int offset) {
+        return queries.searchSymbols(jdbi, pattern, kind, language, limit, offset);
     }
 
     String getCallHierarchy(Jdbi jdbi, String target, String method,
@@ -1121,6 +1141,17 @@ public final class QuillTools {
 
     private static boolean isNotFoundError(String json) {
         if (json == null) return false;
+        try {
+            JsonNode parsed = JSON.readTree(json);
+            if ("CLASS_NOT_FOUND".equals(parsed.path("error_code").asText())) return true;
+            String message = parsed.path("message").asText();
+            if (!message.isBlank()) {
+                return message.startsWith("Annotation not found")
+                        || message.startsWith("Not a bean:");
+            }
+        } catch (Exception ignored) {
+            // Fall through for older internal query payloads that are not valid JSON.
+        }
         return NOT_FOUND_PREFIXES.stream().anyMatch(json::startsWith);
     }
 

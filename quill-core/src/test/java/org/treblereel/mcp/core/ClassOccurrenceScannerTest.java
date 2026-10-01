@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 
 class ClassOccurrenceScannerTest {
 
@@ -43,5 +45,50 @@ class ClassOccurrenceScannerTest {
                 "app-two/target/generated-sources/annotations/org/acme/GeneratedRegistry.java",
                 occurrences.get(1).sourceFile());
         assertEquals(7, occurrences.get(1).classId());
+    }
+
+    @Test
+    void mapsDuplicateKotlinClassesToSourcesInTheirOwningModules(
+            @TempDir Path project) throws Exception {
+        Path firstModule = project.resolve("app-one");
+        Path secondModule = project.resolve("app-two");
+        Path first = firstModule.resolve("build/classes/kotlin/main");
+        Path second = secondModule.resolve("build/classes/kotlin/main");
+        writeClass(first, "org/acme/Invoice", "Billing.kt");
+        writeClass(second, "org/acme/Invoice", "Billing.kt");
+        Path firstSource = writeSource(firstModule, "one");
+        Path secondSource = writeSource(secondModule, "two");
+
+        ClassFileSnapshot snapshot = ClassFileSnapshot.capture(List.of(first, second));
+        var occurrences = ClassOccurrenceScanner.scan(project, snapshot,
+                Map.of(first, firstModule, second, secondModule),
+                Map.of(first, "main", second, "main"),
+                Map.of("org.acme.Invoice", 7), List.of(
+                        firstModule.resolve("src/main/kotlin"),
+                        secondModule.resolve("src/main/kotlin")));
+
+        assertEquals(List.of(
+                        project.relativize(firstSource).toString(),
+                        project.relativize(secondSource).toString()),
+                occurrences.stream().map(value -> value.sourceFile()).toList());
+    }
+
+    private static Path writeSource(Path module, String marker) throws Exception {
+        Path source = module.resolve("src/main/kotlin/org/acme/Billing.kt");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme\nclass Invoice // " + marker);
+        return source;
+    }
+
+    private static void writeClass(
+            Path classes, String internalName, String sourceFile) throws Exception {
+        ClassWriter writer = new ClassWriter(0);
+        writer.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, internalName, null,
+                "java/lang/Object", null);
+        writer.visitSource(sourceFile, null);
+        writer.visitEnd();
+        Path output = classes.resolve(internalName + ".class");
+        Files.createDirectories(output.getParent());
+        Files.write(output, writer.toByteArray());
     }
 }

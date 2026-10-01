@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -122,6 +123,11 @@ class McpToolCatalogTest {
                 Map.of("target", "OrderService", "limit", 2.5));
         assertTrue(Boolean.TRUE.equals(fractionalInteger.isError()));
         assertTrue(text(fractionalInteger).contains("Expected integer"));
+
+        McpSchema.CallToolResult invalidTarget = call(tools, "validate",
+                Map.of("target", "OtherService"));
+        assertTrue(Boolean.TRUE.equals(invalidTarget.isError()));
+        assertTrue(text(invalidTarget).contains("expected one of"));
         assertEquals(0, tools.invocations);
     }
 
@@ -158,7 +164,8 @@ class McpToolCatalogTest {
 
         assertTrue(Boolean.TRUE.equals(result.isError()));
         JsonNode structured = (JsonNode) result.structuredContent();
-        assertEquals("build_required", structured.path("error").asText());
+        assertFalse(structured.has("error"));
+        assertEquals("BUILD_REQUIRED", structured.path("error_code").asText());
         assertEquals("mcp_client", structured.path("decision_owner").asText());
         assertTrue(!structured.path("build_was_started").asBoolean(true));
     }
@@ -176,6 +183,22 @@ class McpToolCatalogTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> enabled = (Map<String, Object>) properties.get("enabled");
         assertEquals("boolean", enabled.get("type"));
+    }
+
+    @Test
+    void constrainedToolArgumentAdvertisesAllowedValues() {
+        AsyncToolSpecification specification = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1))
+                .stream().filter(candidate -> candidate.tool().name().equals("search_symbols"))
+                .findFirst().orElseThrow();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) specification.tool()
+                .inputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> language = (Map<String, Object>) properties.get("language");
+        assertEquals(java.util.List.of("all", "java", "kotlin"), language.get("enum"));
     }
 
     @Test
@@ -217,8 +240,11 @@ class McpToolCatalogTest {
                         "structured", Map.of("unexpected", true), Map.of()))
                 .block(Duration.ofSeconds(2));
         assertTrue(Boolean.TRUE.equals(invalid.isError()));
+        assertFalse(((JsonNode) invalid.structuredContent()).has("error"));
+        assertEquals("TOOL_INVOCATION_ERROR",
+                ((JsonNode) invalid.structuredContent()).path("error_code").asText());
         assertEquals("Unknown argument: unexpected",
-                ((JsonNode) invalid.structuredContent()).path("error").asText());
+                ((JsonNode) invalid.structuredContent()).path("message").asText());
     }
 
     @Test
@@ -233,16 +259,71 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void specializedOutputSchemasAdvertiseTheirCompleteTopLevelContracts() {
+        Set<String> errorEnvelope = Set.of(
+                "error_code", "message", "retryable", "retry_with", "_meta");
+        Map<String, Set<String>> expected = Map.of(
+                "get_overview", Set.of(
+                        "capabilities", "project", "problems", "architecture_hubs"),
+                "search_symbols", Set.of(
+                        "pattern", "kind", "language_filter", "symbols",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "get_symbol_details", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "class", "kind", "location", "members",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "get_symbol_at_position", Set.of(
+                        "path", "line", "column", "identifier", "resolution", "confidence",
+                        "selected", "candidates", "limitations"),
+                "find_symbol_usages", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "kind", "usages",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "get_call_hierarchy", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "method", "calls",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "find_method_overrides", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "method", "base_declarations", "overrides",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "analyze_execution_order", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "method", "bytecode_sequence", "ordering_analysis"));
+        Map<String, AsyncToolSpecification> catalog = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1)).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        specification -> specification.tool().name(),
+                        specification -> specification));
+
+        expected.forEach((toolName, domainFields) -> {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> properties = (Map<String, Object>) catalog.get(toolName)
+                    .tool().outputSchema().get("properties");
+            Set<String> allFields = new java.util.HashSet<>(domainFields);
+            allFields.addAll(errorEnvelope);
+            assertEquals(allFields, properties.keySet(), toolName);
+            assertFalse(properties.containsKey("error"), toolName);
+            assertEquals("string", ((Map<?, ?>) properties.get("error_code")).get("type"),
+                    toolName);
+            assertEquals("boolean", ((Map<?, ?>) properties.get("retryable")).get("type"),
+                    toolName);
+        });
+    }
+
+    @Test
     void quillCatalogStaysCompact() {
         var tools = McpToolCatalog.create(
                 new QuillTools(new ProjectRegistry()), workers, responses,
                 Duration.ofSeconds(1));
         int characters = tools.stream()
                 .mapToInt(specification -> specification.tool().description().length()
-                        + specification.tool().inputSchema().toString().length())
+                        + specification.tool().inputSchema().toString().length()
+                        + specification.tool().outputSchema().toString().length())
                 .sum();
         int averageCharacters = characters / tools.size();
-        assertTrue(characters < 22_000 && averageCharacters < 430,
+        assertTrue(characters < 32_000 && averageCharacters < 650,
                 "catalog characters: " + characters + ", average: " + averageCharacters);
     }
 
@@ -376,7 +457,7 @@ class McpToolCatalogTest {
                 .block(Duration.ofSeconds(2));
         assertTrue(Boolean.TRUE.equals(result.isError()));
         assertEquals("Missing required argument: pattern",
-                ((JsonNode) result.structuredContent()).path("error").asText());
+                ((JsonNode) result.structuredContent()).path("message").asText());
         assertThrows(IllegalArgumentException.class,
                 () -> McpToolProfile.parse("router,git"));
     }
@@ -429,7 +510,7 @@ class McpToolCatalogTest {
 
         assertTrue(Boolean.TRUE.equals(result.isError()));
         assertTrue(result.content().isEmpty());
-        assertTrue(((JsonNode) result.structuredContent()).path("error").asText()
+        assertTrue(((JsonNode) result.structuredContent()).path("message").asText()
                 .contains("No projects configured"));
     }
 
@@ -537,7 +618,8 @@ class McpToolCatalogTest {
 
         @Tool(description = "Validates arguments")
         public String validate(
-                @ToolArg(description = "Required target") String target,
+                @ToolArg(description = "Required target",
+                        allowed = {"OrderService", "missing"}) String target,
                 @ToolArg(description = "Optional switch") Optional<Boolean> enabled,
                 @ToolArg(description = "Optional limit") Optional<Integer> limit) {
             invocations++;

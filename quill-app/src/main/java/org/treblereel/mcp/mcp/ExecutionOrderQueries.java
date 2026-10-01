@@ -1,24 +1,28 @@
 package org.treblereel.mcp.mcp;
 
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendRetryWith;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.IndexReader.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Reconstructs the emitted bytecode order of calls inside one indexed method. */
 final class ExecutionOrderQueries {
@@ -35,20 +39,49 @@ final class ExecutionOrderQueries {
 
     String analyze(Jdbi jdbi, String target, String method, String signature,
             Set<String> beforeTerms, Set<String> afterTerms) {
+        try {
+            SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
+            if (reference != null) {
+                if (!"METHOD".equals(reference.kind())
+                        && !"CONSTRUCTOR".equals(reference.kind())) {
+                    return errorResponse("INVALID_SYMBOL_KIND",
+                            "symbol_id must identify a method or constructor");
+                }
+                target = reference.resolutionTarget();
+                method = reference.jvmName();
+                signature = reference.descriptor();
+            }
+        } catch (SymbolContract.ParseException error) {
+            return errorResponse(error.errorCode(), error.getMessage());
+        }
+        if (method == null || method.isBlank()) {
+            return errorResponse("MISSING_METHOD", "Method name or symbol_id must be provided");
+        }
+        String requestedMethod = method;
+        String requestedSignature = signature;
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
+        List<KotlinDeclarationRecord> kotlinDeclarations =
+                IndexReader.findKotlinDeclarations(jdbi, cls.id());
         List<ClassMemberRecord> candidates = IndexReader.findClassMembers(jdbi, cls.id()).stream()
                 .filter(member -> member.kind().equals("METHOD")
                         || member.kind().equals("CONSTRUCTOR"))
-                .filter(member -> indexedName(member).equals(method))
-                .filter(member -> signature == null || signature.isBlank()
-                        || member.descriptor().equals(signature)
-                        || member.signature().equals(signature))
+                .filter(member -> indexedName(member).equals(requestedMethod)
+                        || KotlinMemberNames.matches(
+                                requestedMethod, member, kotlinDeclarations))
+                .filter(member -> requestedSignature == null || requestedSignature.isBlank()
+                        || member.descriptor().equals(requestedSignature)
+                        || member.signature().equals(requestedSignature))
                 .toList();
-        if (candidates.size() != 1) return selectionError(jdbi, cls, method, signature, candidates);
+        if (candidates.size() != 1) {
+            return selectionError(
+                    jdbi, cls, requestedMethod, requestedSignature, candidates);
+        }
 
         ClassMemberRecord selected = candidates.getFirst();
+        KotlinDeclarationRecord kotlinDeclaration = KotlinMemberNames
+                .declaration(selected, kotlinDeclarations).orElse(null);
         String indexedMethod = indexedName(selected);
         List<MethodCallView> calls = IndexReader.findMethodCalls(jdbi, cls.id(), indexedMethod,
                 selected.descriptor(), "outbound", 10_000, 0);
@@ -97,6 +130,15 @@ final class ExecutionOrderQueries {
         root.put("method", indexedMethod);
         root.put("signature", selected.signature());
         root.put("descriptor", selected.descriptor());
+        SymbolContract.appendMember(root, cls, selected, kotlinDeclarations);
+        if (kotlinDeclaration != null) {
+            root.put("kotlin_name", kotlinDeclaration.name());
+            if (kotlinDeclaration.isSuspend()) root.put("suspend", true);
+            if (kotlinDeclaration.extension()) root.put("extension", true);
+            if (kotlinDeclaration.hasDefaultParameters()) {
+                root.put("default_parameters", true);
+            }
+        }
         root.put("event_count", events.size());
         ArrayNode sequence = root.putArray("bytecode_sequence");
         for (Event event : events) appendEvent(sequence, event, cls.sourceFile());
@@ -241,15 +283,23 @@ final class ExecutionOrderQueries {
     private static String selectionError(Jdbi jdbi, ClassRecord cls, String method,
             String signature, List<ClassMemberRecord> candidates) {
         ObjectNode root = JSON.createObjectNode();
-        root.put("error", candidates.isEmpty() ? "Method not found" : "Ambiguous method");
+        boolean ambiguous = !candidates.isEmpty();
+        appendError(root, ambiguous ? "AMBIGUOUS_METHOD" : "METHOD_NOT_FOUND",
+                ambiguous ? "Ambiguous method" : "Method not found");
         root.put("target", cls.className());
         root.put("method", method);
         if (signature != null) root.put("requested_signature", signature);
         ArrayNode choices = root.putArray("candidates");
         for (ClassMemberRecord candidate : candidates) {
             ObjectNode choice = choices.addObject();
+            choice.put("symbol_id", SymbolContract.id(cls, candidate.kind(),
+                    candidate.name(), candidate.descriptor()));
             choice.put("signature", candidate.signature());
             choice.put("descriptor", candidate.descriptor());
+        }
+        if (ambiguous) {
+            appendRetryWith(root, "signature",
+                    "Use one candidate's exact signature, descriptor, or symbol_id");
         }
         appendMeta(root, jdbi, cls.sourceTokens(), cls.sourceFile(), cls.module());
         return root.toString();

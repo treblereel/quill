@@ -33,7 +33,10 @@ public final class JandexScanner {
     private JandexScanner() {}
 
     public record ScanResult(
-            IndexView index, List<ClassRecord> classes, int cacheHits, int cacheShards) {}
+            IndexView index, List<ClassRecord> classes,
+            Map<String, KotlinMetadataReader.Result> kotlinMetadata,
+            Map<String, Path> sourceMappings,
+            int cacheHits, int cacheShards) {}
 
     public static ScanResult scan(Path classesDir) {
         return scan(List.of(classesDir));
@@ -64,9 +67,59 @@ public final class JandexScanner {
             Path sourceTokenCache, Path applicationIndexCache) {
         ApplicationIndexCache.Result cached =
                 ApplicationIndexCache.loadOrBuild(classFiles, applicationIndexCache);
+        Map<String, KotlinMetadataReader.Result> kotlinMetadata =
+                extractKotlinMetadata(cached.index());
+        Map<String, Path> sourceMappings = enrichKotlinSourceMappings(
+                BytecodeSourceMapper.map(classFiles, sourceRoots), kotlinMetadata);
         return new ScanResult(cached.index(),
-                extractClasses(cached.index(), sourceRoots, sourceTokenCache),
+                extractClasses(cached.index(), sourceRoots, sourceTokenCache,
+                        sourceMappings),
+                kotlinMetadata, sourceMappings,
                 cached.hits(), cached.shardCount());
+    }
+
+    static Map<String, Path> enrichKotlinSourceMappings(
+            Map<String, Path> bytecodeSources,
+            Map<String, KotlinMetadataReader.Result> kotlinMetadata) {
+        Map<String, Path> result = new HashMap<>(bytecodeSources);
+        kotlinMetadata.forEach((className, metadata) -> {
+            if (metadata.status() != KotlinMetadataReader.Status.PARSED) return;
+            if (metadata.kind() == KotlinMetadataReader.Kind.MULTIFILE_PART) {
+                putFirstSource(result, normalizeKotlinClassName(metadata.detail()),
+                        bytecodeSources.get(className));
+            } else if (metadata.kind() == KotlinMetadataReader.Kind.MULTIFILE_FACADE
+                    && metadata.detail() != null) {
+                for (String part : metadata.detail().split(",")) {
+                    putFirstSource(result, className,
+                            bytecodeSources.get(normalizeKotlinClassName(part)));
+                }
+            }
+        });
+        return Map.copyOf(result);
+    }
+
+    private static void putFirstSource(Map<String, Path> mappings, String className, Path source) {
+        if (className == null || className.isBlank() || source == null) return;
+        mappings.merge(className, source, (left, right) -> left.toString()
+                .compareTo(right.toString()) <= 0 ? left : right);
+    }
+
+    private static String normalizeKotlinClassName(String className) {
+        return className == null ? null : className.trim().replace('/', '.');
+    }
+
+    private static Map<String, KotlinMetadataReader.Result> extractKotlinMetadata(
+            IndexView index) {
+        Map<String, KotlinMetadataReader.Result> result = new LinkedHashMap<>();
+        index.getKnownClasses().stream()
+                .sorted(Comparator.comparing(value -> value.name().toString()))
+                .forEach(classInfo -> {
+                    KotlinMetadataReader.Result metadata = KotlinMetadataReader.read(classInfo);
+                    if (metadata.status() != KotlinMetadataReader.Status.ABSENT) {
+                        result.put(classInfo.name().toString(), metadata);
+                    }
+                });
+        return Map.copyOf(result);
     }
 
     private static Path sourceRoot(Path classesDir) {
@@ -91,14 +144,22 @@ public final class JandexScanner {
 
     static List<ClassRecord> extractClasses(
             IndexView index, List<Path> sourceRoots, Path sourceTokenCache) {
+        return extractClasses(index, sourceRoots, sourceTokenCache, Map.of());
+    }
+
+    private static List<ClassRecord> extractClasses(
+            IndexView index, List<Path> sourceRoots, Path sourceTokenCache,
+            Map<String, Path> bytecodeSources) {
         List<ClassRecord> result = new ArrayList<>();
         List<ClassInfo> knownClasses = List.copyOf(index.getKnownClasses());
         Map<String, Path> sourceFiles = sourceFilesByRelativePath(sourceRoots);
         Map<String, Path> sourcesByClass = new HashMap<>();
         Set<Path> matchedSources = new LinkedHashSet<>();
         for (ClassInfo ci : knownClasses) {
-            String classPath = ci.name().toString().replace('.', '/');
-            Path source = sourceFiles.get(classPath + ".java");
+            String className = ci.name().toString();
+            String classPath = className.replace('.', '/');
+            Path source = bytecodeSources.get(className);
+            if (source == null) source = sourceFiles.get(classPath + ".java");
             if (source == null) source = sourceFiles.get(classPath + ".kt");
             if (source != null) {
                 sourcesByClass.put(ci.name().toString(), source);

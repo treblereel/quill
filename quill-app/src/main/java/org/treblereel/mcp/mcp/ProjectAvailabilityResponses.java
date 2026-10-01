@@ -49,6 +49,9 @@ final class ProjectAvailabilityResponses {
         root.put("message", issue.message());
         if (issue.recommendedAction() == null) root.putNull("recommended_action");
         else root.put("recommended_action", issue.recommendedAction());
+        if (issue.buildReason() == null) root.putNull("build_reason");
+        else root.put("build_reason", issue.buildReason());
+        root.set("stale_modules", JSON.valueToTree(issue.staleModules()));
         root.put("build_was_started", issue.buildWasStarted());
         root.put("decision_owner", "mcp_client");
         root.put("retryable", !"unsupported_project".equals(issue.code())

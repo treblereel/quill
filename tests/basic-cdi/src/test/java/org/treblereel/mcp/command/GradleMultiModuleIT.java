@@ -123,6 +123,27 @@ class GradleMultiModuleIT {
         var serviceBean = IndexReader.findBeanByClassId(jdbi, serviceClass.id()).orElseThrow();
         assertNotNull(IndexReader.findInjectionPoints(jdbi, serviceBean.id())
                 .getFirst().resolvedBeanId());
+        var repository = IndexReader.findKotlinDeclarations(jdbi, serviceClass.id()).stream()
+                .filter(value -> value.name().equals("repository"))
+                .findFirst().orElseThrow();
+        assertTrue(repository.mutable());
+        assertTrue(repository.lateinit());
+
+        var functionsClass = IndexReader.findClassByName(jdbi,
+                "org.treblereel.mcp.fixture.gradlespring.OrderFunctionsKt").orElseThrow();
+        assertTrue(functionsClass.sourceFile().endsWith("OrderFunctions.kt"));
+        var functions = IndexReader.findKotlinDeclarations(jdbi, functionsClass.id());
+        assertEquals("FILE_FACADE", functions.getFirst().kind());
+        assertTrue(functions.stream()
+                .filter(value -> value.name().equals("formatOrder"))
+                .anyMatch(value -> value.hasDefaultParameters()));
+        assertTrue(functions.stream()
+                .filter(value -> value.name().equals("loadOrder"))
+                .anyMatch(value -> value.isSuspend()));
+        int declarationCount = IndexReader.findAllClasses(jdbi).stream()
+                .mapToInt(value -> IndexReader.findKotlinDeclarations(jdbi, value.id()).size())
+                .sum();
+        assertEquals(Integer.toString(declarationCount), metadata.get("kotlin_declarations"));
     }
 
     private static void assumeGradleAvailable() throws Exception {

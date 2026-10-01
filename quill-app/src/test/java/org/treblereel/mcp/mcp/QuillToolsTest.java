@@ -520,6 +520,12 @@ class QuillToolsTest {
                            (1, 'FIELD', 'orderRepository',
                             'orderRepository:org.acme.OrderRepository',
                             'org.acme.OrderRepository', '[]', 'private', '[]')""");
+            handle.execute("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model,
+                       is_suspend, has_default_parameters)
+                    VALUES (1, 'FUNCTION', 'createKotlinOrder', 'createOrder', '',
+                            'kotlin_metadata', 1, 1)""");
         });
 
         QuillTools tools = new QuillTools();
@@ -535,6 +541,15 @@ class QuillToolsTest {
         assertEquals("org.acme.OrderService", symbol.path("declaring_class").asText());
         assertEquals("org.acme.Order", symbol.path("type").asText());
         assertTrue(symbol.path("annotations").toString().contains("Transactional"));
+        JsonNode kotlinResult = JSON.readTree(tools.searchSymbols(
+                jdbi, "createKotlinOrder", "method", 10, 0));
+        JsonNode kotlinSymbol = kotlinResult.path("symbols").get(0);
+        assertEquals("createOrder", kotlinSymbol.path("name").asText());
+        assertEquals("kotlin", kotlinSymbol.path("language").asText());
+        assertEquals("function", kotlinSymbol.path("kotlin_kind").asText());
+        assertEquals("createKotlinOrder", kotlinSymbol.path("kotlin_name").asText());
+        assertTrue(kotlinSymbol.path("suspend").asBoolean());
+        assertTrue(kotlinSymbol.path("default_parameters").asBoolean());
         assertTrue(invalid.path("error").asText().contains("Invalid kind"));
     }
 

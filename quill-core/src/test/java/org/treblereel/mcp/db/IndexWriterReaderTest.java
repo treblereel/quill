@@ -24,11 +24,18 @@ class IndexWriterReaderTest {
                         0, "org.acme.Order", "CLASS", "java.lang.Object", List.of(),
                         "src/main/kotlin/org/acme/Order.kt", 1, false, 20)),
                 List.of(), List.of(), List.of(), Map.of());
+        database.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members
+                  (class_id, kind, name, signature, descriptor, type_name,
+                   parameter_types, modifiers, annotations)
+                VALUES (1, 'METHOD', 'loadJvm', 'loadJvm(int):java.lang.Object',
+                        '(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;',
+                        'java.lang.Object', '["int"]', 'public', '[]')"""));
         IndexWriter.writeKotlinDeclarations(database, List.of(
                 new KotlinDeclarationRecord(1, "DATA_CLASS", "org.acme.Order",
                         "org.acme.Order", "", "kotlin_metadata", false, false,
                         false, false, false, false, false),
-                new KotlinDeclarationRecord(1, "FUNCTION", "load", "load",
+                new KotlinDeclarationRecord(1, "FUNCTION", "load", "loadJvm",
                         "(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;",
                         "kotlin_metadata", true, true, true,
                         false, false, false, false),
@@ -45,6 +52,13 @@ class IndexWriterReaderTest {
         assertTrue(declarations.get(1).hasDefaultParameters());
         assertTrue(declarations.get(2).mutable());
         assertTrue(declarations.get(2).lateinit());
+        var matches = IndexReader.searchSymbols(database, "load", "METHOD", 10, 0);
+        assertEquals(1, matches.size());
+        assertEquals(1, IndexReader.countSymbols(database, "load", "METHOD"));
+        assertEquals("loadJvm", matches.getFirst().symbolName());
+        assertEquals("load", matches.getFirst().semanticName());
+        assertTrue(matches.getFirst().isSuspend());
+        assertTrue(matches.getFirst().hasDefaultParameters());
     }
 
     @Test

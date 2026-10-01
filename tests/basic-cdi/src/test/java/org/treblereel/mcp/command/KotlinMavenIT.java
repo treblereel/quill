@@ -1,6 +1,7 @@
 package org.treblereel.mcp.command;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -59,9 +60,61 @@ class KotlinMavenIT {
         var charge = facadeDeclarations.stream()
                 .filter(value -> value.name().equals("charge")).findFirst().orElseThrow();
         assertTrue(charge.hasDefaultParameters());
+        var greeting = facadeDeclarations.stream()
+                .filter(value -> value.name().equals("greeting")).findFirst().orElseThrow();
+        assertTrue(greeting.hasDefaultParameters());
+        var loadInvoice = facadeDeclarations.stream()
+                .filter(value -> value.name().equals("loadInvoice")).findFirst().orElseThrow();
+        assertTrue(loadInvoice.jvmName().startsWith("loadInvoice-"));
+        assertFalse(loadInvoice.jvmName().equals(loadInvoice.name()));
+        assertEquals("(Ljava/lang/String;)Lorg/treblereel/mcp/fixture/kotlin/Invoice;",
+                loadInvoice.descriptor());
         var fetch = facadeDeclarations.stream()
                 .filter(value -> value.name().equals("fetchInvoice")).findFirst().orElseThrow();
         assertTrue(fetch.isSuspend());
+        var facadeMembers = IndexReader.findClassMembers(jdbi, facade.id());
+        assertFalse(facadeMembers.stream().anyMatch(value ->
+                value.name().equals("charge$default")));
+        assertFalse(facadeMembers.stream().anyMatch(value ->
+                value.name().equals("greeting$default")));
+        assertFalse(facadeDeclarations.stream().anyMatch(value ->
+                value.name().endsWith("$default")),
+                "Synthetic default bridges must not become source declarations");
+
+        var invoiceId = IndexReader.findClassByName(jdbi,
+                "org.treblereel.mcp.fixture.kotlin.InvoiceId").orElseThrow();
+        assertEquals("VALUE_CLASS",
+                IndexReader.findKotlinDeclarations(jdbi, invoiceId.id()).getFirst().kind());
+
+        var propertyShapes = IndexReader.findClassByName(jdbi,
+                "org.treblereel.mcp.fixture.kotlin.PropertyShapes").orElseThrow();
+        var propertyDeclarations = IndexReader.findKotlinDeclarations(
+                jdbi, propertyShapes.id()).stream()
+                .filter(value -> value.kind().equals("PROPERTY")).toList();
+        assertTrue(propertyDeclarations.stream().anyMatch(value ->
+                value.name().equals("isActive") && value.jvmName().equals("isActive")
+                        && value.descriptor().equals("Z")));
+        assertTrue(propertyDeclarations.stream().anyMatch(value ->
+                value.name().equals("isActive") && value.jvmName().equals("isActive")
+                        && value.descriptor().equals("()Z")));
+        assertTrue(propertyDeclarations.stream().anyMatch(value ->
+                value.name().equals("exposed") && value.jvmName().equals("exposed")
+                        && value.descriptor().equals("Ljava/lang/String;")));
+        assertFalse(propertyDeclarations.stream().anyMatch(value ->
+                value.name().equals("exposed") && value.jvmName().startsWith("get")));
+        assertTrue(propertyDeclarations.stream().anyMatch(value ->
+                value.name().equals("delegated") && value.delegated()
+                        && value.jvmName().equals("getDelegated")
+                        && value.descriptor().equals("()Ljava/lang/String;")));
+
+        var companion = IndexReader.findClassByName(jdbi,
+                "org.treblereel.mcp.fixture.kotlin.PropertyShapes$Companion").orElseThrow();
+        assertTrue(IndexReader.findKotlinDeclarations(jdbi, companion.id()).stream()
+                .anyMatch(value -> value.kind().equals("PROPERTY")
+                        && value.name().equals("PREFIX")));
+        assertTrue(IndexReader.findClassMembers(jdbi, propertyShapes.id()).stream()
+                .anyMatch(value -> value.kind().equals("FIELD")
+                        && value.name().equals("PREFIX")));
 
         var multifileFacade = IndexReader.findClassByName(jdbi,
                 "org.treblereel.mcp.fixture.kotlin.BillingApi").orElseThrow();

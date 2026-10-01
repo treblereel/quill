@@ -90,6 +90,39 @@ class KotlinMetadataReaderTest {
         assertFalse(result.detail().isBlank());
     }
 
+    @Test
+    void preservesValueClassManglingAndDelegatedPropertyFlags() {
+        KmClass type = new KmClass();
+        type.setName("org/acme/InvoiceId");
+        type.setFlags(FlagsKt.flagsOf(Flag.Class.IS_CLASS, Flag.Class.IS_VALUE));
+
+        KmFunction load = new KmFunction("loadInvoice");
+        load.setFlags(FlagsKt.flagsOf(Flag.Function.IS_DECLARATION));
+        load.setReturnType(type("org/acme/Invoice"));
+        JvmExtensionsKt.setSignature(load, new JvmMethodSignature(
+                "loadInvoice-soC6T9M", "(Ljava/lang/String;)Lorg/acme/Invoice;"));
+        type.getFunctions().add(load);
+
+        KmProperty delegated = new KmProperty("cached");
+        delegated.setFlags(FlagsKt.flagsOf(
+                Flag.Property.IS_DECLARATION, Flag.Property.IS_DELEGATED));
+        delegated.setReturnType(type("kotlin/String"));
+        JvmExtensionsKt.setFieldSignature(delegated,
+                new JvmFieldSignature("cached$delegate", "Lkotlin/Lazy;"));
+        JvmExtensionsKt.setGetterSignature(delegated,
+                new JvmMethodSignature("getCached", "()Ljava/lang/String;"));
+        type.getProperties().add(delegated);
+
+        var result = KotlinMetadataReader.read(KotlinClassMetadata.writeClass(type));
+
+        assertTrue(result.value());
+        assertEquals("loadInvoice", result.functions().getFirst().name());
+        assertEquals("loadInvoice-soC6T9M", result.functions().getFirst().jvmName());
+        assertTrue(result.properties().getFirst().delegated());
+        assertEquals("cached$delegate", result.properties().getFirst().fieldName());
+        assertEquals("getCached", result.properties().getFirst().getterName());
+    }
+
     private static KmType type(String name) {
         KmType result = new KmType();
         result.setClassifier(new KmClassifier.Class(name));

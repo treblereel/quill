@@ -42,6 +42,20 @@ final class CallHierarchyQueries {
     String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
             String direction, boolean transitive, int maxDepth, String scope,
             int limit, int offset) {
+        try {
+            SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
+            if (reference != null) {
+                if (!"METHOD".equals(reference.kind())
+                        && !"CONSTRUCTOR".equals(reference.kind())) {
+                    return errorResponse("symbol_id must identify a method or constructor");
+                }
+                target = reference.className();
+                method = reference.jvmName();
+                signature = reference.descriptor();
+            }
+        } catch (IllegalArgumentException error) {
+            return errorResponse("Malformed symbol_id");
+        }
         String normalizedDirection = direction == null
                 ? "both" : direction.trim().toLowerCase(Locale.ROOT);
         if (!DIRECTIONS.contains(normalizedDirection)) {
@@ -119,10 +133,9 @@ final class CallHierarchyQueries {
             root.put("signature", selected.signature());
             root.put("descriptor", descriptor);
             root.put("member_kind", selected.kind().toLowerCase(Locale.ROOT));
+            SymbolContract.appendMember(root, cls, selected, kotlinDeclarations);
             if (kotlinDeclaration != null) {
-                root.put("language", "kotlin");
                 root.put("kotlin_name", kotlinDeclaration.name());
-                root.put("jvm_name", selected.name());
                 if (kotlinDeclaration.isSuspend()) root.put("suspend", true);
                 if (kotlinDeclaration.extension()) root.put("extension", true);
                 if (kotlinDeclaration.hasDefaultParameters()) {

@@ -181,9 +181,9 @@ public final class QuillTools {
 
     @Tool(structured = true, description = "Find exact bytecode usages of a method, constructor, or field declaration.")
     public String find_symbol_usages(
-            @ToolArg(description = "Declaring class name or source path") String target,
-            @ToolArg(description = "Member name; optional for constructors") Optional<String> name,
-            @ToolArg(description = "Symbol kind: method, constructor, or field") String kind,
+            @ToolArg(description = "Class, path, or symbol_id") String target,
+            @ToolArg(description = "Member name; omit for symbol_id or constructor") Optional<String> name,
+            @ToolArg(description = "method, constructor, or field; omit for symbol_id") Optional<String> kind,
             @ToolArg(description = "Exact source signature or JVM descriptor; required when overloaded") Optional<String> signature,
             @ToolArg(description = "For fields: all, read, or write (default: all)") Optional<String> access,
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
@@ -196,7 +196,8 @@ public final class QuillTools {
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "find_symbol_usages",
-                jdbi -> queries.findSymbolUsages(jdbi, target, requestedName, kind,
+                jdbi -> queries.findSymbolUsages(jdbi, target, requestedName,
+                        kind.orElse(null),
                         requestedSignature, requestedAccess, requestedLimit, requestedOffset)));
     }
 
@@ -266,8 +267,8 @@ public final class QuillTools {
 
     @Tool(structured = true, description = "Inspect method callers and callees from bytecode evidence.")
     public String get_call_hierarchy(
-            @ToolArg(description = "Current class or source path") String target,
-            @ToolArg(description = "Optional method name; use <init> for constructors") Optional<String> method,
+            @ToolArg(description = "Class, path, or symbol_id") String target,
+            @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
             @ToolArg(description = "Exact indexed signature or JVM descriptor for overload selection") Optional<String> signature,
             @ToolArg(description = "inbound, outbound, or both; default both") Optional<String> direction,
             @ToolArg(description = "Traverse calls; default false") Optional<Boolean> transitive,
@@ -304,8 +305,8 @@ public final class QuillTools {
 
     @Tool(structured = true, description = "Analyze call instruction order in one method.")
     public String analyze_execution_order(
-            @ToolArg(description = "Class or source path") String target,
-            @ToolArg(description = "Method name; use <init> for constructors") String method,
+            @ToolArg(description = "Class, path, or symbol_id") String target,
+            @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
             @ToolArg(description = "Signature or JVM descriptor for overloads") Optional<String> signature,
             @ToolArg(description = "Before terms") Optional<String> before_terms,
             @ToolArg(description = "After terms") Optional<String> after_terms,
@@ -318,7 +319,7 @@ public final class QuillTools {
                         "invoke", "execute"));
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "analyze_execution_order",
-                jdbi -> queries.analyzeExecutionOrder(jdbi, target, method,
+                jdbi -> queries.analyzeExecutionOrder(jdbi, target, method.orElse(null),
                         signature.orElse(null), before, after)));
     }
 
@@ -334,8 +335,8 @@ public final class QuillTools {
 
     @Tool(structured = true, description = "Find declared method overrides in indexed subclasses and implementors.")
     public String find_method_overrides(
-            @ToolArg(description = "Current class, interface, or source path") String target,
-            @ToolArg(description = "Declared method name") String method,
+            @ToolArg(description = "Class, interface, path, or symbol_id") String target,
+            @ToolArg(description = "Declared method; omit for symbol_id") Optional<String> method,
             @ToolArg(description = "Optional exact signature to select one overload") Optional<String> signature,
             @ToolArg(description = "Include indirect descendants; default true") Optional<Boolean> transitive,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
@@ -347,7 +348,7 @@ public final class QuillTools {
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "find_method_overrides",
-                jdbi -> queries.findMethodOverrides(jdbi, target, method,
+                jdbi -> queries.findMethodOverrides(jdbi, target, method.orElse(null),
                         requestedSignature, requestedTransitive, requestedLimit,
                         requestedOffset)));
     }

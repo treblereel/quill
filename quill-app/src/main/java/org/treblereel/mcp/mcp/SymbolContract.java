@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.KotlinDeclarationRecord;
@@ -68,6 +69,30 @@ final class SymbolContract {
                 + encode(descriptor == null ? "" : descriptor);
     }
 
+    static boolean isId(String value) {
+        return value != null && value.startsWith(PREFIX);
+    }
+
+    static Optional<Reference> parse(String value) {
+        if (!isId(value)) return Optional.empty();
+        String[] parts = value.substring(PREFIX.length()).split(":", -1);
+        if (parts.length != 4) {
+            throw new IllegalArgumentException("Malformed symbol_id");
+        }
+        try {
+            String className = decode(parts[0]);
+            String kind = parts[1].toUpperCase(Locale.ROOT);
+            String jvmName = decode(parts[2]);
+            String descriptor = decode(parts[3]);
+            if (className.isBlank() || kind.isBlank()) {
+                throw new IllegalArgumentException("Malformed symbol_id");
+            }
+            return Optional.of(new Reference(className, kind, jvmName, descriptor));
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException("Malformed symbol_id", error);
+        }
+    }
+
     private static String sourceClassName(
             String className, List<KotlinDeclarationRecord> declarations) {
         if (declarations != null) {
@@ -99,4 +124,10 @@ final class SymbolContract {
         return Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
+
+    private static String decode(String value) {
+        return new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
+    }
+
+    record Reference(String className, String kind, String jvmName, String descriptor) {}
 }

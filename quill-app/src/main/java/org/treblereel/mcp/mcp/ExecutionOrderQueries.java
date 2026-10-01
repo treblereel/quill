@@ -2,17 +2,18 @@ package org.treblereel.mcp.mcp;
 
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
@@ -36,6 +37,25 @@ final class ExecutionOrderQueries {
 
     String analyze(Jdbi jdbi, String target, String method, String signature,
             Set<String> beforeTerms, Set<String> afterTerms) {
+        try {
+            SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
+            if (reference != null) {
+                if (!"METHOD".equals(reference.kind())
+                        && !"CONSTRUCTOR".equals(reference.kind())) {
+                    return errorResponse("symbol_id must identify a method or constructor");
+                }
+                target = reference.className();
+                method = reference.jvmName();
+                signature = reference.descriptor();
+            }
+        } catch (IllegalArgumentException error) {
+            return errorResponse("Malformed symbol_id");
+        }
+        if (method == null || method.isBlank()) {
+            return errorResponse("Method name or symbol_id must be provided");
+        }
+        String requestedMethod = method;
+        String requestedSignature = signature;
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
@@ -44,13 +64,17 @@ final class ExecutionOrderQueries {
         List<ClassMemberRecord> candidates = IndexReader.findClassMembers(jdbi, cls.id()).stream()
                 .filter(member -> member.kind().equals("METHOD")
                         || member.kind().equals("CONSTRUCTOR"))
-                .filter(member -> indexedName(member).equals(method)
-                        || KotlinMemberNames.matches(method, member, kotlinDeclarations))
-                .filter(member -> signature == null || signature.isBlank()
-                        || member.descriptor().equals(signature)
-                        || member.signature().equals(signature))
+                .filter(member -> indexedName(member).equals(requestedMethod)
+                        || KotlinMemberNames.matches(
+                                requestedMethod, member, kotlinDeclarations))
+                .filter(member -> requestedSignature == null || requestedSignature.isBlank()
+                        || member.descriptor().equals(requestedSignature)
+                        || member.signature().equals(requestedSignature))
                 .toList();
-        if (candidates.size() != 1) return selectionError(jdbi, cls, method, signature, candidates);
+        if (candidates.size() != 1) {
+            return selectionError(
+                    jdbi, cls, requestedMethod, requestedSignature, candidates);
+        }
 
         ClassMemberRecord selected = candidates.getFirst();
         KotlinDeclarationRecord kotlinDeclaration = KotlinMemberNames
@@ -103,10 +127,9 @@ final class ExecutionOrderQueries {
         root.put("method", indexedMethod);
         root.put("signature", selected.signature());
         root.put("descriptor", selected.descriptor());
+        SymbolContract.appendMember(root, cls, selected, kotlinDeclarations);
         if (kotlinDeclaration != null) {
-            root.put("language", "kotlin");
             root.put("kotlin_name", kotlinDeclaration.name());
-            root.put("jvm_name", selected.name());
             if (kotlinDeclaration.isSuspend()) root.put("suspend", true);
             if (kotlinDeclaration.extension()) root.put("extension", true);
             if (kotlinDeclaration.hasDefaultParameters()) {

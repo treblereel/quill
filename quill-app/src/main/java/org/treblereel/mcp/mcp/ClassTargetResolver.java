@@ -31,6 +31,16 @@ final class ClassTargetResolver {
     private ClassTargetResolver() {}
 
     static Lookup resolve(Jdbi jdbi, String target) {
+        if (target == null || target.isBlank()) {
+            return Lookup.error("Class target or symbol_id is required", List.of(), List.of());
+        }
+        try {
+            String requested = target;
+            target = SymbolContract.parse(requested)
+                    .map(SymbolContract.Reference::className).orElse(requested);
+        } catch (IllegalArgumentException error) {
+            return Lookup.error("Malformed symbol_id", List.of(), List.of());
+        }
         var exactNames = IndexReader.findClassesByName(jdbi, target);
         if (exactNames.size() == 1) return Lookup.found(exactNames.getFirst());
         if (exactNames.size() > 1) {
@@ -71,7 +81,8 @@ final class ClassTargetResolver {
                     + "use its project path to select a concrete class");
         }
         root.set("accepted_target_types", json.valueToTree(
-                List.of("fqcn", "short_class_name", "project_path", "repository_path")));
+                List.of("symbol_id", "fqcn", "short_class_name", "project_path",
+                        "repository_path")));
         ArrayNode candidates = root.putArray("candidates");
         for (ClassRecord candidate : lookup.candidates()) {
             ObjectNode node = candidates.addObject();

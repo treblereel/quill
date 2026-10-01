@@ -29,8 +29,21 @@ final class MethodOverrideQueries {
 
     String findMethodOverrides(Jdbi jdbi, String target, String method,
             String signature, boolean transitive, int limit, int offset) {
+        try {
+            SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
+            if (reference != null) {
+                if (!"METHOD".equals(reference.kind())) {
+                    return errorResponse("symbol_id must identify a method");
+                }
+                target = reference.className();
+                method = reference.jvmName();
+                signature = reference.descriptor();
+            }
+        } catch (IllegalArgumentException error) {
+            return errorResponse("Malformed symbol_id");
+        }
         if (method == null || method.isBlank()) {
-            return errorResponse("Method name must not be blank");
+            return errorResponse("Method name or symbol_id must be provided");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
@@ -114,6 +127,7 @@ final class MethodOverrideQueries {
         ArrayNode declarations = root.putArray("base_declarations");
         for (ClassMemberRecord declaration : baseDeclarations) {
             ObjectNode node = declarations.addObject();
+            SymbolContract.appendMember(node, base, declaration, kotlinDeclarations);
             node.put("signature", declaration.signature());
             node.set("parameters", JSON.valueToTree(declaration.parameterTypes()));
             node.put("return_type", declaration.typeName());
@@ -133,6 +147,8 @@ final class MethodOverrideQueries {
         countedClasses.add(base.id());
         for (OverrideMatch match : page) {
             ObjectNode node = overrides.addObject();
+            SymbolContract.appendMember(node, match.owner(), match.member(),
+                    IndexReader.findKotlinDeclarations(jdbi, match.owner().id()));
             node.put("class", match.owner().className());
             node.put("signature", match.member().signature());
             node.set("parameters", JSON.valueToTree(match.member().parameterTypes()));

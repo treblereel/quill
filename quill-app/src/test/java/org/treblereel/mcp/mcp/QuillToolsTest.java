@@ -629,6 +629,8 @@ class QuillToolsTest {
                 jdbi, "OrderService", "createOrder", "outbound", true, 2, 10, 0));
         JsonNode kotlinResult = JSON.readTree(tools.getCallHierarchy(
                 jdbi, "OrderService", "createKotlinOrder", "both", 10, 0));
+        JsonNode byId = JSON.readTree(tools.getCallHierarchy(
+                jdbi, kotlinResult.path("symbol_id").asText(), null, "both", 10, 0));
 
         assertEquals(2, result.path("total").asInt());
         assertTrue(result.path("declared_method_found").asBoolean());
@@ -658,6 +660,8 @@ class QuillToolsTest {
         assertEquals("kotlin", kotlinResult.path("language").asText());
         assertEquals("createKotlinOrder", kotlinResult.path("kotlin_name").asText());
         assertEquals("createOrder", kotlinResult.path("jvm_name").asText());
+        assertEquals(kotlinResult.path("symbol_id").asText(),
+                byId.path("symbol_id").asText());
         assertTrue(kotlinResult.path("suspend").asBoolean());
     }
 
@@ -812,6 +816,9 @@ class QuillToolsTest {
         assertEquals("proven_on_normal_completion", result.path("persist_before_dispatch")
                 .path("runtime_order_status").asText());
         assertTrue(result.path("control_flow").path("straight_line").asBoolean());
+        JsonNode byId = JSON.readTree(new QuillToolQueries().analyzeExecutionOrder(
+                jdbi, result.path("symbol_id").asText(), null, null));
+        assertEquals(result.path("symbol_id").asText(), byId.path("symbol_id").asText());
 
         JsonNode custom = JSON.readTree(new QuillToolQueries().analyzeExecutionOrder(
                 jdbi, "OrderService", "run", null,
@@ -1034,6 +1041,7 @@ class QuillToolsTest {
                 .path("evidence_lines").valueStream().map(JsonNode::asInt).toList());
         assertEquals("org.acme.StripePaymentService",
                 method.path("usages").get(0).path("caller").path("class").asText());
+        assertTrue(method.path("symbol_id").asText().startsWith("quill:symbol:v1:"));
 
         JsonNode kotlinMethod = JSON.readTree(queries.findSymbolUsages(
                 jdbi, "OrderService", "submitOrder", "method", null,
@@ -1043,6 +1051,12 @@ class QuillToolsTest {
         assertEquals("submitOrder", kotlinMethod.path("kotlin_name").asText());
         assertEquals("submit", kotlinMethod.path("jvm_name").asText());
         assertTrue(kotlinMethod.path("default_parameters").asBoolean());
+        JsonNode byId = JSON.readTree(queries.findSymbolUsages(
+                jdbi, kotlinMethod.path("symbol_id").asText(), null, null, null,
+                "all", 10, 0));
+        assertEquals(kotlinMethod.path("symbol_id").asText(),
+                byId.path("symbol_id").asText());
+        assertEquals(1, byId.path("total").asInt());
 
         JsonNode constructor = JSON.readTree(queries.findSymbolUsages(
                 jdbi, "OrderService", null, "constructor",
@@ -1125,6 +1139,12 @@ class QuillToolsTest {
         assertEquals("processKotlinPayment", kotlin.path("kotlin_name").asText());
         assertEquals(List.of("processPayment"), kotlin.path("jvm_names").valueStream()
                 .map(JsonNode::asText).toList());
+        String symbolId = kotlin.path("base_declarations").get(0)
+                .path("symbol_id").asText();
+        JsonNode byId = JSON.readTree(tools.findMethodOverrides(
+                jdbi, symbolId, null, null, true, 10, 0));
+        assertEquals(symbolId,
+                byId.path("base_declarations").get(0).path("symbol_id").asText());
     }
 
     @Test

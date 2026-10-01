@@ -29,6 +29,17 @@ final class SymbolUsageQueries {
 
     String findSymbolUsages(Jdbi jdbi, String target, String name, String kind,
             String signature, String access, int limit, int offset) {
+        try {
+            SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
+            if (reference != null) {
+                target = reference.className();
+                name = reference.jvmName();
+                kind = reference.kind();
+                signature = reference.descriptor();
+            }
+        } catch (IllegalArgumentException error) {
+            return errorResponse("Malformed symbol_id");
+        }
         String normalizedKind = kind == null ? "" : kind.strip().toUpperCase(Locale.ROOT);
         if (!KINDS.contains(normalizedKind)) {
             return errorResponse("Invalid kind: expected method, constructor, or field");
@@ -41,6 +52,8 @@ final class SymbolUsageQueries {
         if (!"FIELD".equals(normalizedKind) && !"ALL".equals(normalizedAccess)) {
             return errorResponse("The access filter applies only to fields");
         }
+        String requestedName = name;
+        String requestedSignature = signature;
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
@@ -51,18 +64,20 @@ final class SymbolUsageQueries {
                 .filter(member -> member.kind().equals(normalizedKind)).toList();
         List<ClassMemberRecord> namedMembers = kindMembers.stream()
                 .filter(member -> matchesName(
-                        member, name, normalizedKind, kotlinDeclarations)).toList();
-        List<ClassMemberRecord> matches = signature == null || signature.isBlank()
+                        member, requestedName, normalizedKind, kotlinDeclarations)).toList();
+        List<ClassMemberRecord> matches = requestedSignature == null
+                || requestedSignature.isBlank()
                 ? namedMembers
-                : namedMembers.stream().filter(member -> member.signature().equals(signature.strip())
-                        || member.descriptor().equals(signature.strip())).toList();
+                : namedMembers.stream().filter(member -> member.signature().equals(
+                        requestedSignature.strip())
+                        || member.descriptor().equals(requestedSignature.strip())).toList();
         if (matches.size() != 1) {
             ObjectNode error = JSON.createObjectNode();
             error.put("error", matches.isEmpty() ? "Symbol not found" : "Ambiguous symbol");
             error.put("target", cls.className());
             error.put("kind", normalizedKind.toLowerCase(Locale.ROOT));
-            error.put("name", name);
-            if (signature != null) error.put("signature", signature);
+            error.put("name", requestedName);
+            if (requestedSignature != null) error.put("signature", requestedSignature);
             List<ClassMemberRecord> candidates = matches.isEmpty() ? namedMembers : matches;
             if (candidates.isEmpty()) candidates = kindMembers;
             ArrayNode values = error.putArray("candidates");
@@ -152,10 +167,10 @@ final class SymbolUsageQueries {
         root.put("name", selected.name());
         root.put("signature", selected.signature());
         root.put("descriptor", selected.descriptor());
+        SymbolContract.appendMember(root, cls, selected,
+                kotlinDeclaration == null ? List.of() : List.of(kotlinDeclaration));
         if (kotlinDeclaration != null) {
-            root.put("language", "kotlin");
             root.put("kotlin_name", kotlinDeclaration.name());
-            root.put("jvm_name", selected.name());
             if (kotlinDeclaration.isSuspend()) root.put("suspend", true);
             if (kotlinDeclaration.extension()) root.put("extension", true);
             if (kotlinDeclaration.hasDefaultParameters()) {

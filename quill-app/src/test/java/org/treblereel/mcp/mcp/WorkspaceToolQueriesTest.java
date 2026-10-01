@@ -466,14 +466,15 @@ class WorkspaceToolQueriesTest {
                 "io.casehub.engine.EngineService", Optional.of("both"), Optional.of(5),
                 Optional.of(20), Optional.empty(), Optional.of("platform")));
         JsonNode overrides = JSON.readTree(tools.find_method_overrides(
-                "io.casehub.engine.EngineService", "execute", Optional.empty(),
+                "io.casehub.engine.EngineService", Optional.of("execute"), Optional.empty(),
                 Optional.of(true), Optional.of(20), Optional.empty(),
                 Optional.of("platform")));
         JsonNode details = JSON.readTree(tools.get_symbol_details(
                 "io.casehub.engine.EngineService", Optional.of(true), Optional.empty(),
                 Optional.of(20), Optional.empty(), Optional.of("platform")));
         JsonNode symbolUsages = JSON.readTree(tools.find_symbol_usages(
-                "io.casehub.engine.EngineService", Optional.of("execute"), "method",
+                "io.casehub.engine.EngineService", Optional.of("execute"),
+                Optional.of("method"),
                 Optional.empty(), Optional.empty(), Optional.of(20), Optional.empty(),
                 Optional.of("platform")));
         JsonNode calls = JSON.readTree(tools.get_call_hierarchy(

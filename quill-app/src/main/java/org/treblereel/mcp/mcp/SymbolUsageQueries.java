@@ -34,7 +34,7 @@ final class SymbolUsageQueries {
         try {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
             if (reference != null) {
-                target = reference.className();
+                target = reference.resolutionTarget();
                 name = reference.jvmName();
                 kind = reference.kind();
                 signature = reference.descriptor();
@@ -211,7 +211,7 @@ final class SymbolUsageQueries {
     private static void appendCandidate(
             ArrayNode target, ClassRecord cls, ClassMemberRecord candidate) {
         ObjectNode node = target.addObject();
-        node.put("symbol_id", SymbolContract.id(cls.className(), candidate.kind(),
+        node.put("symbol_id", SymbolContract.id(cls, candidate.kind(),
                 candidate.name(), candidate.descriptor()));
         node.put("name", candidate.name());
         node.put("signature", candidate.signature());

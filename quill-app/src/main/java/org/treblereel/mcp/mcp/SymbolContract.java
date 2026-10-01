@@ -15,7 +15,7 @@ import org.treblereel.mcp.model.KotlinDeclarationRecord;
 final class SymbolContract {
 
     private static final String SYMBOL_PREFIX = "quill:symbol:";
-    private static final String PREFIX = "quill:symbol:v1:";
+    private static final String PREFIX = "quill:symbol:v2:";
     private static final Set<String> TYPE_KINDS = Set.of(
             "CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD");
     private static final Set<String> MEMBER_KINDS = Set.of(
@@ -37,7 +37,7 @@ final class SymbolContract {
     static void appendClass(ObjectNode node, ClassRecord cls,
             List<KotlinDeclarationRecord> declarations) {
         String sourceName = sourceClassName(cls.className(), declarations);
-        node.put("symbol_id", id(cls.className(), cls.kind(), cls.className(), ""));
+        node.put("symbol_id", id(cls, cls.kind(), cls.className(), ""));
         node.put("language", language(cls, declarations));
         node.put("source_name", sourceName);
         node.put("jvm_name", cls.className());
@@ -49,8 +49,7 @@ final class SymbolContract {
         KotlinDeclarationRecord declaration = KotlinMemberNames
                 .declaration(member, declarations).orElse(null);
         String sourceName = declaration == null ? member.name() : declaration.name();
-        node.put("symbol_id", id(
-                cls.className(), member.kind(), member.name(), member.descriptor()));
+        node.put("symbol_id", id(cls, member.kind(), member.name(), member.descriptor()));
         node.put("language", language(cls, declarations));
         node.put("source_name", sourceName);
         node.put("jvm_name", member.name());
@@ -66,7 +65,7 @@ final class SymbolContract {
     static void append(ObjectNode node, String className, String kind, String jvmName,
             String descriptor, String sourceName, String sourceFile, int sourceLine,
             boolean kotlin) {
-        node.put("symbol_id", id(className, kind, jvmName, descriptor));
+        node.put("symbol_id", id(className, kind, jvmName, descriptor, sourceFile));
         node.put("language", language(sourceFile, kotlin));
         node.put("source_name", sourceName == null ? jvmName : sourceName);
         node.put("jvm_name", jvmName);
@@ -75,9 +74,19 @@ final class SymbolContract {
     }
 
     static String id(String className, String kind, String jvmName, String descriptor) {
+        return id(className, kind, jvmName, descriptor, "");
+    }
+
+    static String id(ClassRecord cls, String kind, String jvmName, String descriptor) {
+        return id(cls.className(), kind, jvmName, descriptor, cls.sourceFile());
+    }
+
+    private static String id(String className, String kind, String jvmName,
+            String descriptor, String sourceFile) {
         return PREFIX + encode(className) + ":" + kind.toLowerCase(Locale.ROOT) + ":"
                 + encode(jvmName == null ? "" : jvmName) + ":"
-                + encode(descriptor == null ? "" : descriptor);
+                + encode(descriptor == null ? "" : descriptor) + ":"
+                + encode(sourceFile == null ? "" : sourceFile);
     }
 
     static String jvmRole(String semanticKind, String memberKind, String descriptor) {
@@ -100,7 +109,7 @@ final class SymbolContract {
                     "Unsupported symbol_id version");
         }
         String[] parts = value.substring(PREFIX.length()).split(":", -1);
-        if (parts.length != 4) {
+        if (parts.length != 5) {
             throw malformed(null);
         }
         try {
@@ -108,12 +117,14 @@ final class SymbolContract {
             String kind = parts[1].toUpperCase(Locale.ROOT);
             String jvmName = decode(parts[2]);
             String descriptor = decode(parts[3]);
+            String sourceFile = decode(parts[4]);
             if (className.isBlank() || jvmName.isBlank()
                     || (!TYPE_KINDS.contains(kind) && !MEMBER_KINDS.contains(kind))
                     || (MEMBER_KINDS.contains(kind) && descriptor.isBlank())) {
                 throw malformed(null);
             }
-            return Optional.of(new Reference(className, kind, jvmName, descriptor));
+            return Optional.of(new Reference(
+                    className, kind, jvmName, descriptor, sourceFile));
         } catch (ParseException error) {
             throw error;
         } catch (IllegalArgumentException error) {
@@ -161,7 +172,12 @@ final class SymbolContract {
         return new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
     }
 
-    record Reference(String className, String kind, String jvmName, String descriptor) {}
+    record Reference(String className, String kind, String jvmName, String descriptor,
+            String sourceFile) {
+        String resolutionTarget() {
+            return sourceFile == null || sourceFile.isBlank() ? className : sourceFile;
+        }
+    }
 
     static final class ParseException extends IllegalArgumentException {
         private final String errorCode;

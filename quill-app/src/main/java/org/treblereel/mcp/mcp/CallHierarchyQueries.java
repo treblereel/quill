@@ -52,7 +52,7 @@ final class CallHierarchyQueries {
                     return errorResponse("INVALID_SYMBOL_KIND",
                             "symbol_id must identify a method or constructor");
                 }
-                target = reference.className();
+                target = reference.resolutionTarget();
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
@@ -348,7 +348,7 @@ final class CallHierarchyQueries {
             ArrayNode target, ClassRecord cls, ClassMemberRecord candidate) {
         ObjectNode node = target.addObject();
         String descriptor = JvmDescriptors.methodDescriptor(candidate);
-        node.put("symbol_id", SymbolContract.id(cls.className(), candidate.kind(),
+        node.put("symbol_id", SymbolContract.id(cls, candidate.kind(),
                 candidate.name(), descriptor));
         node.put("kind", candidate.kind().toLowerCase(Locale.ROOT));
         node.put("name", candidate.name());

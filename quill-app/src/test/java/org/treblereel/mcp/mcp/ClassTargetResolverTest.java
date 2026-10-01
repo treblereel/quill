@@ -75,7 +75,7 @@ class ClassTargetResolverTest {
     @Test
     void reportsUnsupportedSymbolIdVersionsWithoutTreatingThemAsClassNames() {
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(
-                database(List.of(current("example.Type"))), "quill:symbol:v2:anything");
+                database(List.of(current("example.Type"))), "quill:symbol:v3:anything");
 
         assertFalse(lookup.found());
         assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", lookup.errorCode());
@@ -86,11 +86,30 @@ class ClassTargetResolverTest {
     @Test
     void reportsMalformedRecognizedSymbolIds() {
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(
-                database(List.of(current("example.Type"))), "quill:symbol:v1:broken");
+                database(List.of(current("example.Type"))), "quill:symbol:v2:broken");
 
         assertFalse(lookup.found());
         assertEquals("MALFORMED_SYMBOL_ID", lookup.errorCode());
         assertEquals("Malformed symbol_id", lookup.error());
+    }
+
+    @Test
+    void scopedIdsDisambiguateDuplicateFqcnsAcrossModules() {
+        Jdbi jdbi = database(List.of(
+                current("example.GeneratedRegistry", "applications/one"),
+                current("example.GeneratedRegistry", "applications/two")));
+        List<ClassRecord> duplicates = ClassTargetResolver.resolve(
+                jdbi, "example.GeneratedRegistry").candidates();
+        String firstId = SymbolContract.id(
+                duplicates.get(0), "CLASS", "example.GeneratedRegistry", "");
+        String secondId = SymbolContract.id(
+                duplicates.get(1), "CLASS", "example.GeneratedRegistry", "");
+
+        assertNotEquals(firstId, secondId);
+        assertEquals("applications/one",
+                ClassTargetResolver.resolve(jdbi, firstId).cls().module());
+        assertEquals("applications/two",
+                ClassTargetResolver.resolve(jdbi, secondId).cls().module());
     }
 
     private Jdbi database(List<ClassRecord> classes) {

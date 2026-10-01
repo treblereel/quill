@@ -38,7 +38,7 @@ final class ClassTargetResolver {
         try {
             String requested = target;
             target = SymbolContract.parse(requested)
-                    .map(SymbolContract.Reference::className).orElse(requested);
+                    .map(SymbolContract.Reference::resolutionTarget).orElse(requested);
         } catch (SymbolContract.ParseException error) {
             return Lookup.error(error.errorCode(), error.getMessage(),
                     List.of(), List.of());

@@ -19,6 +19,7 @@ class SymbolContractTest {
         assertEquals("METHOD", reference.kind());
         assertEquals("`when`:impl", reference.jvmName());
         assertEquals("(Ljava/lang/String;[Лмодель;)Ljava/lang/Object;", reference.descriptor());
+        assertEquals("", reference.sourceFile());
     }
 
     @Test
@@ -30,17 +31,20 @@ class SymbolContractTest {
 
     @Test
     void rejectsUnsupportedVersionsExplicitly() {
-        SymbolContract.ParseException error = assertThrows(SymbolContract.ParseException.class,
-                () -> SymbolContract.parse("quill:symbol:v2:anything"));
-
-        assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", error.errorCode());
-        assertEquals("Unsupported symbol_id version", error.getMessage());
+        for (String id : new String[] {
+                "quill:symbol:v1:anything", "quill:symbol:v3:anything"}) {
+            SymbolContract.ParseException error = assertThrows(
+                    SymbolContract.ParseException.class,
+                    () -> SymbolContract.parse(id));
+            assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", error.errorCode());
+            assertEquals("Unsupported symbol_id version", error.getMessage());
+        }
     }
 
     @Test
     void rejectsMalformedShapeAndBase64() {
-        assertMalformed("quill:symbol:v1:only:three:parts");
-        assertMalformed("quill:symbol:v1:not+url:method:name:descriptor");
+        assertMalformed("quill:symbol:v2:only:four:identity:parts");
+        assertMalformed("quill:symbol:v2:not+url:method:name:descriptor:scope");
     }
 
     @Test
@@ -70,8 +74,8 @@ class SymbolContractTest {
     }
 
     private static String rawId(String className, String kind, String name, String descriptor) {
-        return "quill:symbol:v1:" + encode(className) + ":" + kind + ":"
-                + encode(name) + ":" + encode(descriptor);
+        return "quill:symbol:v2:" + encode(className) + ":" + kind + ":"
+                + encode(name) + ":" + encode(descriptor) + ":";
     }
 
     private static String encode(String value) {

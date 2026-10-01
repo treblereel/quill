@@ -37,7 +37,7 @@ final class MethodOverrideQueries {
                     return errorResponse("INVALID_SYMBOL_KIND",
                             "symbol_id must identify a method");
                 }
-                target = reference.className();
+                target = reference.resolutionTarget();
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }

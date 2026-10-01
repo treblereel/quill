@@ -47,7 +47,7 @@ final class ExecutionOrderQueries {
                     return errorResponse("INVALID_SYMBOL_KIND",
                             "symbol_id must identify a method or constructor");
                 }
-                target = reference.className();
+                target = reference.resolutionTarget();
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
@@ -292,7 +292,7 @@ final class ExecutionOrderQueries {
         ArrayNode choices = root.putArray("candidates");
         for (ClassMemberRecord candidate : candidates) {
             ObjectNode choice = choices.addObject();
-            choice.put("symbol_id", SymbolContract.id(cls.className(), candidate.kind(),
+            choice.put("symbol_id", SymbolContract.id(cls, candidate.kind(),
                     candidate.name(), candidate.descriptor()));
             choice.put("signature", candidate.signature());
             choice.put("descriptor", candidate.descriptor());

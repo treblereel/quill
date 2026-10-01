@@ -17,8 +17,8 @@ final class WorkspaceRepositoryInitializer {
 
     record RepositoryResult(String name, Path root, String status, String diagnostic) {}
 
-    record Result(List<RepositoryResult> repositories, int indexed, int skipped,
-            int unchanged, int failed) {
+    record Result(List<RepositoryResult> repositories, int indexed, int pendingBuild,
+            int skipped, int unchanged, int failed) {
         Result {
             repositories = List.copyOf(repositories);
         }
@@ -44,17 +44,12 @@ final class WorkspaceRepositoryInitializer {
             Mode mode, Consumer<String> output) {
         List<RepositoryResult> results = new ArrayList<>();
         int indexed = 0;
+        int pendingBuild = 0;
         int skipped = 0;
         int unchanged = 0;
         int failed = 0;
         for (WorkspaceDiscovery.Repository repository : discovery.repositories()) {
             Path root = repository.root();
-            if (mode == Mode.MISSING && ProjectIndexStore.findBestAvailableDb(root) != null) {
-                results.add(new RepositoryResult(repository.name(), root,
-                        "unchanged", null));
-                unchanged++;
-                continue;
-            }
             try {
                 BuildSystem.detect(root);
             } catch (IllegalArgumentException unsupported) {
@@ -65,12 +60,32 @@ final class WorkspaceRepositoryInitializer {
                 skipped++;
                 continue;
             }
-            if (ProjectInitializer.findMainClassesDirs(root).isEmpty()) {
-                String diagnostic = "no compiled main classes; build the repository first";
-                output.accept("Skipped " + repository.name() + ": " + diagnostic);
+            BuildIntegrationInstaller.Result integration =
+                    ProjectConfiguration.prepareForIndex(root, indexOnly);
+            if (integration == BuildIntegrationInstaller.Result.FAILED) {
+                String diagnostic = "could not install build integration";
+                output.accept("Failed " + repository.name() + ": " + diagnostic);
                 results.add(new RepositoryResult(repository.name(), root,
-                        "skipped", diagnostic));
-                skipped++;
+                        "failed", diagnostic));
+                failed++;
+                continue;
+            }
+            if (mode == Mode.MISSING && ProjectIndexStore.findBestAvailableDb(root) != null) {
+                results.add(new RepositoryResult(repository.name(), root,
+                        "unchanged", null));
+                unchanged++;
+                continue;
+            }
+            if (ProjectInitializer.findMainClassesDirs(root).isEmpty()) {
+                String diagnostic = indexOnly
+                        ? "no compiled main classes; build the repository, then run "
+                                + "workspace refresh"
+                        : "no compiled main classes; build integration is installed and the next "
+                                + "successful build will make the repository indexable";
+                output.accept("Pending build " + repository.name() + ": " + diagnostic);
+                results.add(new RepositoryResult(repository.name(), root,
+                        "pending_build", diagnostic));
+                pendingBuild++;
                 continue;
             }
 
@@ -91,6 +106,6 @@ final class WorkspaceRepositoryInitializer {
             }
         }
         discovery.diagnostics().forEach(value -> output.accept("Discovery warning: " + value));
-        return new Result(results, indexed, skipped, unchanged, failed);
+        return new Result(results, indexed, pendingBuild, skipped, unchanged, failed);
     }
 }

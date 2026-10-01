@@ -47,6 +47,7 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
             WorkspaceRepositoryStateStore.write(manifest.root(), discovery.repositories());
         }
         System.out.println("Workspace initialization complete: indexed=" + result.indexed()
+                + ", pending_build=" + result.pendingBuild()
                 + ", skipped=" + result.skipped() + ", failed=" + result.failed()
                 + ", unchanged=" + result.unchanged());
         return result.successful() ? CommandLine.ExitCode.OK : CommandLine.ExitCode.SOFTWARE;

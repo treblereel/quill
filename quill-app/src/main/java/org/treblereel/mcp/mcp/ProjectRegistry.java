@@ -179,7 +179,11 @@ public class ProjectRegistry {
         return new ProjectIssue(project.name(), root, "index_required",
                 buildSystem.name().toLowerCase(java.util.Locale.ROOT),
                 "Compiled classes are available, but no usable Quill index was found",
-                "Run quill init for this project, then retry the MCP request", false);
+                scope instanceof WorkspaceProjectScope workspace
+                        ? "Run quill workspace refresh --project " + workspace.root()
+                                + ", then retry the MCP request"
+                        : "Run quill init for this project, then retry the MCP request",
+                false);
     }
 
     private ProjectIssue buildRequiredIssue(ProjectScope.Project project) {

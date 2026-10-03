@@ -37,6 +37,7 @@ final class VerificationPlanQueries {
         result.set("focused_tests", JSON.valueToTree(tests));
         ArrayNode commands = result.putArray("commands");
         if (runner.available()) {
+            appendCompile(commands, buildSystem, runner.argvPrefix(), modules);
             if (!tests.isEmpty()) append(commands, buildSystem, runner.argvPrefix(), modules,
                     tests, "focused", "Run the statically ranked affected tests");
             append(commands, buildSystem, runner.argvPrefix(), modules, List.of(),
@@ -49,15 +50,27 @@ final class VerificationPlanQueries {
         return result;
     }
 
+    private static void appendCompile(ArrayNode commands, BuildSystem system,
+            List<String> prefix, Set<String> modules) {
+        List<String> argv = new ArrayList<>(prefix);
+        if (system == BuildSystem.MAVEN) {
+            appendMavenModules(argv, modules);
+            argv.add("test-compile");
+        } else {
+            String task = modules.size() == 1 && !modules.contains(".")
+                    ? ":" + modules.iterator().next().replace('/', ':') + ":testClasses"
+                    : "testClasses";
+            argv.add(task);
+        }
+        appendCommand(commands, argv, "quick_compile",
+                "Compile production and standard test sources without running tests", false, true);
+    }
+
     private static void append(ArrayNode commands, BuildSystem system, List<String> prefix,
             Set<String> modules, List<String> tests, String scope, String reason) {
         List<String> argv = new ArrayList<>(prefix);
         if (system == BuildSystem.MAVEN) {
-            if (!modules.isEmpty() && !modules.equals(Set.of("."))) {
-                argv.add("-pl");
-                argv.add(String.join(",", modules));
-                argv.add("-am");
-            }
+            appendMavenModules(argv, modules);
             if (!tests.isEmpty()) argv.add("-Dtest=" + String.join(",", tests));
             argv.add("test");
         } else {
@@ -69,13 +82,28 @@ final class VerificationPlanQueries {
                 argv.add(test);
             }
         }
+        appendCommand(commands, argv, scope, reason, true, true);
+    }
+
+    private static void appendMavenModules(List<String> argv, Set<String> modules) {
+        if (!modules.isEmpty() && !modules.equals(Set.of("."))) {
+            argv.add("-pl");
+            argv.add(String.join(",", modules));
+            argv.add("-am");
+        }
+    }
+
+    private static void appendCommand(ArrayNode commands, List<String> argv,
+            String scope, String reason, boolean executesTests, boolean safeToRun) {
         ObjectNode command = commands.addObject();
         command.set("argv", JSON.valueToTree(argv));
         command.put("display", argv.stream().map(VerificationPlanQueries::displayArg)
                 .collect(java.util.stream.Collectors.joining(" ")));
         command.put("scope", scope);
         command.put("reason", reason);
-        command.put("safe_to_run", true);
+        command.put("executes_tests", executesTests);
+        command.put("compiles_test_sources", true);
+        command.put("safe_to_run", safeToRun);
     }
 
     private static Set<String> modules(JsonNode contexts) {

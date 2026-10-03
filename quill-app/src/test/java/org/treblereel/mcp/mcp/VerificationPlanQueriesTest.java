@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -32,12 +33,18 @@ class VerificationPlanQueriesTest {
 
         assertEquals("wrapper", result.path("runner").path("kind").asText());
         assertEquals(List.of(wrapper.toAbsolutePath().toString(), "-pl", "runtime", "-am",
-                        "-Dtest=org.acme.OrderServiceTest", "test"),
+                        "test-compile"),
                 strings(result.path("commands").get(0).path("argv")));
-        assertEquals("focused", result.path("commands").get(0).path("scope").asText());
+        assertEquals("quick_compile", result.path("commands").get(0).path("scope").asText());
+        assertFalse(result.path("commands").get(0).path("executes_tests").asBoolean());
+        assertTrue(result.path("commands").get(0).path("compiles_test_sources").asBoolean());
+        assertEquals(List.of(wrapper.toAbsolutePath().toString(), "-pl", "runtime", "-am",
+                        "-Dtest=org.acme.OrderServiceTest", "test"),
+                strings(result.path("commands").get(1).path("argv")));
+        assertEquals("focused", result.path("commands").get(1).path("scope").asText());
         assertEquals(List.of(wrapper.toAbsolutePath().toString(), "-pl", "runtime", "-am",
                         "test"),
-                strings(result.path("commands").get(1).path("argv")));
+                strings(result.path("commands").get(2).path("argv")));
     }
 
     @Test
@@ -55,8 +62,11 @@ class VerificationPlanQueriesTest {
         JsonNode result = new VerificationPlanQueries().plan(tempDir, contexts, tests);
 
         assertEquals(List.of(wrapper.toAbsolutePath().toString(),
-                        ":services:payment:test", "--tests", "org.acme.PaymentTest"),
+                        ":services:payment:testClasses"),
                 strings(result.path("commands").get(0).path("argv")));
+        assertEquals(List.of(wrapper.toAbsolutePath().toString(),
+                        ":services:payment:test", "--tests", "org.acme.PaymentTest"),
+                strings(result.path("commands").get(1).path("argv")));
     }
 
     private static List<String> strings(JsonNode values) {

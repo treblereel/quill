@@ -325,6 +325,8 @@ does not imply that an executor, reactive stream, or message publication has com
   symbol and DI details, coupling, usages, affected tests, risk, and index freshness
 - **plan_change** — turn an intended change into an ordered, evidence-backed plan with primary
   files, dependency-review candidates, ranked tests, risk, coverage, and freshness warnings
+- **verify_change** — combine live worktree state, captured build diagnostics, affected tests,
+  and index freshness into `ready`, `needs_build`, `blocked`, or `partial` verification
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
   with explicit reporting when compiled test outputs are not indexed
 - **get_type_hierarchy** — inspect paged ancestor and descendant paths, including external

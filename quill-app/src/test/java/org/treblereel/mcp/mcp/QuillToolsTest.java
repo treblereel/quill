@@ -461,6 +461,60 @@ class QuillToolsTest {
     }
 
     @Test
+    void verifyChangeBlocksOnCapturedBuildFailure() throws Exception {
+        writeMinimalPom();
+        Path state = tempDir.resolve(".quill/build-state.json");
+        Files.createDirectories(state.getParent());
+        Files.writeString(state, """
+                {
+                  "buildTool": "maven",
+                  "finishedAt": 1791067200000,
+                  "successful": false,
+                  "captureScope": "task_output",
+                  "diagnostics": [
+                    "src/main/java/org/acme/OrderService.java:10:5: incompatible types"
+                  ],
+                  "failureMessages": []
+                }
+                """);
+
+        JsonNode result = JSON.readTree(new QuillTools().verifyChange(
+                jdbi, tempDir, List.of("OrderService"), 10));
+
+        assertEquals("blocked", result.path("verdict").asText());
+        assertFalse(result.path("verified").asBoolean());
+        assertEquals("failed", result.path("diagnostics").path("build_status").asText());
+        assertEquals(1, result.path("diagnostics").path("total").asInt());
+        assertEquals("BUILD_FAILED", result.path("blockers").get(0).path("code").asText());
+        assertFalse(result.path("build").path("build_was_started").asBoolean());
+        assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());
+    }
+
+    @Test
+    void verifyChangeRequiresBuildEvidenceWhenNoBuildWasCaptured() throws Exception {
+        writeMinimalPom();
+        JsonNode result = JSON.readTree(new QuillTools().verifyChange(
+                jdbi, tempDir, List.of("OrderService"), 10));
+
+        assertEquals("needs_build", result.path("verdict").asText());
+        assertEquals("unknown", result.path("diagnostics").path("build_status").asText());
+        assertTrue(result.path("blockers").valueStream()
+                .anyMatch(blocker -> blocker.path("code").asText()
+                        .equals("BUILD_EVIDENCE_REQUIRED")));
+    }
+
+    private void writeMinimalPom() throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId>
+                  <artifactId>verification-fixture</artifactId>
+                  <version>1</version>
+                </project>
+                """);
+    }
+
+    @Test
     void getSymbolDetailsIncludesKotlinSemanticDeclarations() throws Exception {
         IndexWriter.writeKotlinDeclarations(jdbi, List.of(
                 new KotlinDeclarationRecord(1, "CLASS", "org.acme.OrderService",

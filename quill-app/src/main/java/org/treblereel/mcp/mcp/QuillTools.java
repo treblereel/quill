@@ -248,6 +248,17 @@ public final class QuillTools {
                 p.jdbi(), targets, change, requestedLimit));
     }
 
+    @Tool(structured = true,
+            description = "Verify a change from worktree, build, diagnostics, affected-test, and index-freshness evidence without running a build.")
+    public String verify_change(
+            @ToolArg(description = "Changed classes or source paths (max 10)") List<String> targets,
+            @ToolArg(description = "Changes, diagnostics, and tests per section; default 20, max 100") Optional<Integer> limit,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        int requestedLimit = clamp(limit.orElse(20), 1, 100);
+        return forAllProjects(project.orElse(null), p -> queries.verifyChange(
+                p.jdbi(), p.root(), targets, requestedLimit));
+    }
+
     @Tool(structured = true, description = "Rank tests affected by changed classes.")
     public String find_impacted_tests(
             @ToolArg(description = "Classes or source paths") List<String> targets,
@@ -1066,6 +1077,10 @@ public final class QuillTools {
 
     String planChange(Jdbi jdbi, List<String> targets, String change, int limit) {
         return queries.planChange(jdbi, targets, change, limit);
+    }
+
+    String verifyChange(Jdbi jdbi, Path projectRoot, List<String> targets, int limit) {
+        return queries.verifyChange(jdbi, projectRoot, targets, limit);
     }
 
     String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {

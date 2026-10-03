@@ -16,6 +16,7 @@ public final class QuillToolQueries {
     private final TestImpactQueries testImpact = new TestImpactQueries();
     private final ContextQueries context = new ContextQueries();
     private final ChangePlanQueries changePlan = new ChangePlanQueries();
+    private final ChangeVerificationQueries changeVerification = new ChangeVerificationQueries();
     private final TypeHierarchyQueries typeHierarchy = new TypeHierarchyQueries();
     private final SymbolSearchQueries symbolSearch = new SymbolSearchQueries();
     private final AnnotatedSymbolQueries annotatedSymbols = new AnnotatedSymbolQueries();
@@ -93,6 +94,10 @@ public final class QuillToolQueries {
 
     String planChange(Jdbi jdbi, List<String> targets, String change, int limit) {
         return changePlan.planChange(jdbi, targets, change, limit);
+    }
+
+    String verifyChange(Jdbi jdbi, Path projectRoot, List<String> targets, int limit) {
+        return changeVerification.verifyChange(jdbi, projectRoot, targets, limit);
     }
 
     String getTypeHierarchy(Jdbi jdbi, String target, String direction,

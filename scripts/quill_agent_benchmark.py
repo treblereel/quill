@@ -449,12 +449,24 @@ def tool_usage_diagnostics(tool_trace: list[dict[str, Any]],
     ]
     quill_calls = sum(trace.get("provider") == "quill" for trace in tool_trace)
     source_calls = sum(trace.get("provider") == "source" for trace in tool_trace)
+    first_tool = next(iter(tool_trace), None)
+    first_quill_trace = next((trace for trace in tool_trace
+                              if trace.get("provider") == "quill"), None)
+    first_successful_quill = next((trace for trace in tool_trace
+                                   if trace.get("provider") == "quill"
+                                   and trace.get("status") == "ok"
+                                   and "error" not in trace.get("outcome_flags", [])), None)
     return {
         "quill_call_count": quill_calls,
         "source_call_count": source_calls,
         "source_first_count": len(source_first),
         "source_first_calls": source_first,
         "quill_bypassed": bool(quill_advertised and quill_calls == 0),
+        "time_to_first_tool_ms": (first_tool or {}).get("elapsed_since_task_start_ms"),
+        "time_to_first_quill_ms": (first_quill_trace or {}).get(
+            "elapsed_since_task_start_ms"),
+        "time_to_first_successful_quill_ms": (first_successful_quill or {}).get(
+            "elapsed_since_task_start_ms"),
     }
 
 
@@ -620,6 +632,8 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
                 if provider.last_call:
                     tool_trace.append({
                         "round": totals["model_requests"],
+                        "elapsed_since_task_start_ms": round(
+                            (time.perf_counter() - started) * 1000, 3),
                         **provider.last_call,
                     })
                 outputs.append({"type": "function_call_output",

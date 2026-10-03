@@ -22,6 +22,8 @@ def run(mode, first, second):
              "output_tokens": 20, "model_requests": 1, "requests": 2,
              "manual_verification_steps": 1, "source_fallback_count": 2,
              "source_first_count": 1, "quill_bypass_count": 0,
+             "time_to_first_tool_ms": 100, "time_to_first_quill_ms": 150,
+             "time_to_first_successful_quill_ms": 175,
              "source_fallbacks": [{"quill_tool": "quill_get_dependencies",
                                     "source_tool": "source_search"}]},
             {"id": "two", "observed": second, "duration_seconds": 3,
@@ -52,6 +54,10 @@ class QuillTaskBenchmarkTest(unittest.TestCase):
         self.assertEqual(1, result["totals"]["source_first_count"])
         self.assertEqual(0, result["totals"]["quill_bypass_count"])
         self.assertEqual(1, len(result["tasks"][0]["source_fallbacks"]))
+        self.assertEqual(1, result["ux_latency"]["time_to_first_quill_ms"]
+                         ["observations"])
+        self.assertEqual(150, result["ux_latency"]["time_to_first_quill_ms"]
+                         ["median"])
 
     def test_comparison_uses_paired_runs_and_not_compression(self):
         with_quill = run("with_quill",
@@ -123,6 +129,8 @@ class QuillTaskBenchmarkTest(unittest.TestCase):
         duration = report["with_quill"]["summary"]["metrics"]["duration_seconds"]
         self.assertEqual(10, duration["median"])
         self.assertEqual(15, duration["p95"])
+        self.assertEqual(150, report["with_quill"]["summary"]["ux_latency"]
+                         ["time_to_first_quill_ms"]["median"])
         self.assertGreater(report["paired_delta_median"]["fact_accuracy"], 0)
 
     def test_expands_repeated_run_documents(self):

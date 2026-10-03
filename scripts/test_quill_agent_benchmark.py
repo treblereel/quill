@@ -203,8 +203,10 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
 
     def test_reports_source_first_and_quill_bypass_separately(self):
         trace = [
-            {"round": 1, "tool": "source_search", "provider": "source"},
-            {"round": 2, "tool": "read_file", "provider": "source"},
+            {"round": 1, "tool": "source_search", "provider": "source",
+             "elapsed_since_task_start_ms": 12},
+            {"round": 2, "tool": "read_file", "provider": "source",
+             "elapsed_since_task_start_ms": 20},
         ]
 
         diagnostics = tool_usage_diagnostics(trace, quill_advertised=True)
@@ -212,11 +214,15 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
         self.assertEqual(2, diagnostics["source_first_count"])
         self.assertEqual(0, diagnostics["quill_call_count"])
         self.assertTrue(diagnostics["quill_bypassed"])
+        self.assertEqual(12, diagnostics["time_to_first_tool_ms"])
+        self.assertIsNone(diagnostics["time_to_first_quill_ms"])
 
     def test_source_before_quill_is_source_first_but_not_bypass(self):
         trace = [
-            {"round": 1, "tool": "source_search", "provider": "source"},
-            {"round": 2, "tool": "quill_get_dependencies", "provider": "quill"},
+            {"round": 1, "tool": "source_search", "provider": "source",
+             "elapsed_since_task_start_ms": 10},
+            {"round": 2, "tool": "quill_get_dependencies", "provider": "quill",
+             "elapsed_since_task_start_ms": 25, "status": "ok"},
             {"round": 3, "tool": "read_file", "provider": "source"},
         ]
 
@@ -224,6 +230,8 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
 
         self.assertEqual(1, diagnostics["source_first_count"])
         self.assertFalse(diagnostics["quill_bypassed"])
+        self.assertEqual(25, diagnostics["time_to_first_quill_ms"])
+        self.assertEqual(25, diagnostics["time_to_first_successful_quill_ms"])
 
 
 if __name__ == "__main__":

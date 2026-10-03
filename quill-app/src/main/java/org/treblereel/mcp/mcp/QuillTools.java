@@ -223,6 +223,31 @@ public final class QuillTools {
                         requestedKind, requestedLimit, requestedOffset)));
     }
 
+    @Tool(structured = true,
+            description = "Get a compact change-ready context card for one or more classes.")
+    public String get_context(
+            @ToolArg(description = "Classes or source paths (max 10)") List<String> targets,
+            @ToolArg(description = "Include declared members; default false") Optional<Boolean> include_members,
+            @ToolArg(description = "Members, usages, and tests per section; default 10, max 25") Optional<Integer> limit,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        boolean requestedMembers = include_members.orElse(false);
+        int requestedLimit = clamp(limit.orElse(10), 1, 25);
+        return forAllProjects(project.orElse(null), p -> queries.getContext(
+                p.jdbi(), targets, requestedMembers, requestedLimit));
+    }
+
+    @Tool(structured = true,
+            description = "Build an evidence-backed change plan with files, dependency review, tests, risk, and freshness warnings.")
+    public String plan_change(
+            @ToolArg(description = "Classes or source paths to change (max 10)") List<String> targets,
+            @ToolArg(description = "Concise description of the intended change") String change,
+            @ToolArg(description = "Members, usages, and tests per section; default 10, max 25") Optional<Integer> limit,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        int requestedLimit = clamp(limit.orElse(10), 1, 25);
+        return forAllProjects(project.orElse(null), p -> queries.planChange(
+                p.jdbi(), targets, change, requestedLimit));
+    }
+
     @Tool(structured = true, description = "Rank tests affected by changed classes.")
     public String find_impacted_tests(
             @ToolArg(description = "Classes or source paths") List<String> targets,
@@ -1033,6 +1058,14 @@ public final class QuillTools {
 
     String getRisk(Jdbi jdbi, String target) {
         return queries.getRisk(jdbi, target);
+    }
+
+    String getContext(Jdbi jdbi, List<String> targets, boolean includeMembers, int limit) {
+        return queries.getContext(jdbi, targets, includeMembers, limit);
+    }
+
+    String planChange(Jdbi jdbi, List<String> targets, String change, int limit) {
+        return queries.planChange(jdbi, targets, change, limit);
     }
 
     String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {

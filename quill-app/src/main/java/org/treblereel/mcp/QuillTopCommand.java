@@ -13,6 +13,7 @@ import org.treblereel.mcp.command.StatusCommand;
 import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.command.WorkspaceCommand;
 import org.treblereel.mcp.diagnostics.DebugTrace;
+import org.treblereel.mcp.diagnostics.UxTelemetry;
 import org.treblereel.mcp.mcp.ProjectRegistry;
 import org.treblereel.mcp.mcp.WorkspaceProjectScope;
 import org.treblereel.mcp.mcp.McpStdioServer;
@@ -47,6 +48,9 @@ public class QuillTopCommand implements Callable<Integer> {
 
     @Option(names = "--debug-directory", description = "Root directory for .quill/debug (defaults to the served workspace or project)")
     Path debugDirectory;
+
+    @Option(names = "--telemetry", description = "Record local, content-free MCP UX metrics in .quill/telemetry")
+    boolean telemetry;
 
     public static void main(String[] args) {
         CommandLine commandLine = new CommandLine(new QuillTopCommand());
@@ -97,6 +101,8 @@ public class QuillTopCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         if (mcp) {
             DebugTrace.configure(debug || debugEnvironmentEnabled(), diagnosticRoot());
+            UxTelemetry.configure(telemetry || telemetryEnvironmentEnabled(), diagnosticRoot(),
+                    toolProfiles);
             ProjectRegistry registry;
             WorkspaceLock workspaceLock = null;
             if (workspace != null) {
@@ -140,6 +146,12 @@ public class QuillTopCommand implements Callable<Integer> {
 
     private static boolean debugEnvironmentEnabled() {
         String value = System.getenv("QUILL_DEBUG");
+        return value != null && (value.equals("1") || value.equalsIgnoreCase("true")
+                || value.equalsIgnoreCase("yes"));
+    }
+
+    private static boolean telemetryEnvironmentEnabled() {
+        String value = System.getenv("QUILL_TELEMETRY");
         return value != null && (value.equals("1") || value.equalsIgnoreCase("true")
                 || value.equalsIgnoreCase("yes"));
     }

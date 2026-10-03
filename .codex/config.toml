@@ -1,8 +1,5 @@
+# Added by Quill.
 [mcp_servers.quill]
 command = "/Users/treblereel/workspace/llm/joker/quill-app/target/quill"
-args = [
-  "--mcp",
-  "--project",
-  "/Users/treblereel/workspace/llm/joker",
-]
+args = ["--mcp", "--telemetry"]
 cwd = "/Users/treblereel/workspace/llm/joker"

@@ -28,6 +28,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.diagnostics.DebugTrace;
+import org.treblereel.mcp.diagnostics.UxTelemetry;
 import reactor.core.Disposable;
 import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
@@ -44,6 +45,7 @@ class McpToolCatalogTest {
         workers.dispose();
         responses.dispose();
         DebugTrace.configure(false, tempDir);
+        UxTelemetry.configure(false, tempDir, "full");
     }
 
     @Test
@@ -259,6 +261,29 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void uxTelemetryRecordsOnlyContentFreeToolMeasurements() throws Exception {
+        UxTelemetry.configure(true, tempDir, "core");
+        ValidationTools tools = new ValidationTools();
+
+        call(tools, "validate", Map.of("target", "OrderService", "enabled", true));
+        call(tools, "validate", Map.of("target", "missing"));
+
+        String log = Files.readString(UxTelemetry.logFile());
+        String[] lines = log.strip().split("\\R");
+        assertEquals(2, lines.length);
+        JsonNode success = new com.fasterxml.jackson.databind.ObjectMapper().readTree(lines[0]);
+        JsonNode failure = new com.fasterxml.jackson.databind.ObjectMapper().readTree(lines[1]);
+        assertEquals(1, success.path("schema_version").asInt());
+        assertEquals("validate", success.path("tool").asText());
+        assertEquals("core", success.path("tool_profile").asText());
+        assertEquals("ok", success.path("status").asText());
+        assertTrue(success.path("response_bytes").asLong() > 0);
+        assertEquals("error", failure.path("status").asText());
+        assertFalse(log.contains("OrderService"));
+        assertFalse(log.contains("target not found"));
+    }
+
+    @Test
     void specializedOutputSchemasAdvertiseTheirCompleteTopLevelContracts() {
         Set<String> errorEnvelope = Set.of(
                 "error_code", "message", "retryable", "retry_with", "_meta");
@@ -341,6 +366,8 @@ class McpToolCatalogTest {
 
         assertTrue(core.size() < full.size() / 2, core::toString);
         assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("get_overview")));
+        assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("get_context")));
+        assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("plan_change")));
         assertTrue(core.stream().noneMatch(tool -> tool.tool().name().equals("list_beans")));
         assertTrue(combined.stream().anyMatch(tool -> tool.tool().name().equals("list_beans")));
         assertTrue(combined.stream().anyMatch(
@@ -401,6 +428,7 @@ class McpToolCatalogTest {
         assertRouterChoice(router, "framework endpoints", "find_framework_endpoints", "quill");
         assertRouterChoice(router, "affected tests", "find_impacted_tests", "quill");
         assertRouterChoice(router, "implementations", "find_implementations", "quill");
+        assertRouterChoice(router, "plan change", "plan_change", "quill");
         assertRouterChoice(router, "build problems", "get_build_problems", "build");
     }
 

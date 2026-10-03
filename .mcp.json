@@ -1,18 +1,14 @@
 {
-  "mcpServers": {
-    "jetbrains": {
-      "type": "sse",
-      "url": "http://localhost:64342/sse"
+  "mcpServers" : {
+    "jetbrains" : {
+      "type" : "sse",
+      "url" : "http://localhost:64342/sse"
     },
-    "quill": {
-      "type": "stdio",
-      "command": "/Users/treblereel/workspace/llm/joker/quill-app/target/quill",
-      "args": [
-        "--mcp",
-        "--project",
-        "/Users/treblereel/workspace/llm/joker"
-      ],
-      "alwaysLoad": true
+    "quill" : {
+      "type" : "stdio",
+      "command" : "/Users/treblereel/workspace/llm/joker/quill-app/target/quill",
+      "args" : [ "--mcp", "--telemetry" ],
+      "cwd" : "/Users/treblereel/workspace/llm/joker"
     }
   }
 }

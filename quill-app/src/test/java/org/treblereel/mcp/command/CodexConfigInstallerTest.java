@@ -239,6 +239,19 @@ class CodexConfigInstallerTest {
     }
 
     @Test
+    void workspaceInitializationCreatesMissingCodexConfig() throws Exception {
+        Path workspace = tempDir.resolve("workspace");
+
+        assertEquals(CodexConfigInstaller.Result.ADDED,
+                CodexConfigInstaller.installWorkspace(tempDir, workspace, "/opt/quill"));
+
+        String content = Files.readString(tempDir.resolve(".codex/config.toml"));
+        assertTrue(content.contains("[mcp_servers.quill]"));
+        assertTrue(content.contains("\"--workspace\""));
+        assertTrue(content.contains(escaped(workspace.toAbsolutePath().toString())));
+    }
+
+    @Test
     void doesNotRemoveWorkspaceEntryManagedForAnotherWorkspace() throws Exception {
         createConfig("model = \"gpt-test\"\n");
         Path first = tempDir.resolve("first");

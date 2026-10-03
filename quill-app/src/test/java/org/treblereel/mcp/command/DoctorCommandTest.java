@@ -23,6 +23,8 @@ class DoctorCommandTest {
     void jsonReportHasStableSchemaAndActionableFailures(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), "<project/>");
         ProjectConfiguration.ensureClaudeMd(project);
+        ProjectConfiguration.ensureAgentsMd(project);
+        ClaudeSettingsInstaller.install(project);
         McpJsonInstaller.installProject(project, null);
         StringWriter output = new StringWriter();
         CommandLine cli = new CommandLine(new DoctorCommand());
@@ -45,6 +47,9 @@ class DoctorCommandTest {
         assertEquals("warning", checks.get("build_integration").path("status").asText());
         assertEquals("warning", checks.get("gitignore").path("status").asText());
         assertEquals("pass", checks.get("claude_instructions").path("status").asText());
+        assertEquals("pass", checks.get("codex_instructions").path("status").asText());
+        assertEquals("pass", checks.get("claude_approval").path("status").asText());
+        assertEquals("pass", checks.get("claude_eager_loading").path("status").asText());
         assertTrue(checks.get("claude_tool_profile").path("message").asText()
                 .contains("`full`"));
     }

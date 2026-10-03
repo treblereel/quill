@@ -165,6 +165,32 @@ public class DoctorCommand implements Callable<Integer> {
                     "CLAUDE.md contains an incomplete managed Quill block",
                     "Run `quill init --project " + normalized + "` to replace it"));
         }
+        switch (ProjectConfiguration.inspectAgentsMd(normalized)) {
+            case CURRENT -> checks.add(Check.pass("codex_instructions",
+                    "AGENTS.md contains the current managed Quill guidance"));
+            case MISSING -> checks.add(Check.warning("codex_instructions",
+                    "AGENTS.md does not contain managed Quill guidance",
+                    "Run `quill init --project " + normalized + "`"));
+            case INVALID -> checks.add(Check.warning("codex_instructions",
+                    "AGENTS.md contains an incomplete managed Quill block",
+                    "Run `quill init --project " + normalized + "` to replace it"));
+        }
+        if (ClaudeSettingsInstaller.isEnabled(normalized)) {
+            checks.add(Check.pass("claude_approval",
+                    "Claude Code project MCP configuration explicitly enables Quill"));
+        } else {
+            checks.add(Check.warning("claude_approval",
+                    "Claude Code may require interactive approval before starting Quill",
+                    "Run `quill init --project " + normalized + "`"));
+        }
+        if (claudeAlwaysLoads(normalized)) {
+            checks.add(Check.pass("claude_eager_loading",
+                    "Claude Code loads Quill tools eagerly"));
+        } else {
+            checks.add(Check.warning("claude_eager_loading",
+                    "Claude Code may defer Quill tools behind ToolSearch",
+                    "Run `quill init --project " + normalized + "`"));
+        }
         String toolProfile = claudeToolProfile(normalized);
         if (toolProfile != null) {
             checks.add(Check.pass("claude_tool_profile", "Claude Code MCP uses the `"
@@ -322,6 +348,17 @@ public class DoctorCommand implements Callable<Integer> {
             return "full";
         } catch (IOException error) {
             return null;
+        }
+    }
+
+    private static boolean claudeAlwaysLoads(Path root) {
+        Path config = root.resolve(".mcp.json");
+        if (!Files.isRegularFile(config)) return false;
+        try {
+            return JSON.readTree(config.toFile()).path("mcpServers").path("quill")
+                    .path("alwaysLoad").asBoolean(false);
+        } catch (IOException error) {
+            return false;
         }
     }
 

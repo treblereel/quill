@@ -20,18 +20,18 @@ class ProjectConfigurationTest {
 
         ProjectConfiguration.ensureClaudeMd(root);
         String installed = Files.readString(claude);
-        assertEquals(ProjectConfiguration.ClaudeInstructionsState.CURRENT,
+        assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectClaudeMd(root));
-        assertTrue(installed.contains("use ToolSearch to load the relevant Quill tools"));
+        assertTrue(installed.contains("call `get_overview`"));
         assertEquals(1, occurrences(installed, "<!-- quill:managed:start -->"));
 
         Files.writeString(claude, installed.replace(
-                "use ToolSearch to load the relevant Quill tools", "obsolete instructions"));
+                "call `get_overview`", "obsolete instructions"));
         ProjectConfiguration.ensureClaudeMd(root);
 
         String refreshed = Files.readString(claude);
         assertTrue(refreshed.startsWith("# User instructions\n"));
-        assertTrue(refreshed.contains("use ToolSearch to load the relevant Quill tools"));
+        assertTrue(refreshed.contains("call `get_overview`"));
         assertFalse(refreshed.contains("obsolete instructions"));
         assertEquals(1, occurrences(refreshed, "<!-- quill:managed:start -->"));
     }
@@ -49,8 +49,24 @@ class ProjectConfigurationTest {
         ProjectConfiguration.ensureClaudeMd(root);
         assertTrue(ProjectConfiguration.removeClaudeMd(root));
         assertFalse(Files.exists(claude));
-        assertEquals(ProjectConfiguration.ClaudeInstructionsState.MISSING,
+        assertEquals(ProjectConfiguration.InstructionsState.MISSING,
                 ProjectConfiguration.inspectClaudeMd(root));
+    }
+
+    @Test
+    void managesCodexInstructionsWithoutOverwritingUserContent() throws Exception {
+        Path agents = root.resolve("AGENTS.md");
+        Files.writeString(agents, "# User instructions\n");
+
+        ProjectConfiguration.ensureAgentsMd(root);
+
+        String installed = Files.readString(agents);
+        assertTrue(installed.startsWith("# User instructions\n"));
+        assertTrue(installed.contains("`mcp__quill__get_overview`"));
+        assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
+                ProjectConfiguration.inspectAgentsMd(root));
+        assertTrue(ProjectConfiguration.removeAgentsMd(root));
+        assertEquals("# User instructions\n", Files.readString(agents));
     }
 
     private static int occurrences(String value, String token) {

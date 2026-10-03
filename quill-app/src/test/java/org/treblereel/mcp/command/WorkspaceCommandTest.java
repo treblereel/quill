@@ -62,9 +62,19 @@ class WorkspaceCommandTest {
             assertTrue(ProjectIndexStore.findBestAvailableDb(repository) != null);
             assertTrue(Files.isRegularFile(repository.resolve(".mvn/extensions.xml")));
             assertWorkspaceMcp(repository.resolve(".mcp.json"));
+            assertTrue(Files.isRegularFile(repository.resolve(".codex/config.toml")));
+            assertTrue(Files.readString(repository.resolve(".codex/config.toml"))
+                    .contains("\"--workspace\""));
+            assertTrue(Files.readString(repository.resolve("CLAUDE.md"))
+                    .contains("quill:managed:start"));
+            assertTrue(Files.readString(repository.resolve("AGENTS.md"))
+                    .contains("mcp__quill__get_overview"));
+            assertTrue(JSON.readTree(repository.resolve(".claude/settings.json").toFile())
+                    .path("enabledMcpjsonServers").toString().contains("quill"));
             assertFalse(Files.exists(repository.resolve("build-was-invoked")));
         }
         assertWorkspaceMcp(workspace.resolve(".mcp.json"));
+        assertTrue(Files.isRegularFile(workspace.resolve(".codex/config.toml")));
     }
 
     @Test
@@ -409,6 +419,7 @@ class WorkspaceCommandTest {
         assertEquals("--workspace", quill.path("args").get(1).asText());
         assertEquals(workspace.toAbsolutePath().normalize().toString(),
                 quill.path("args").get(2).asText());
+        assertTrue(quill.path("alwaysLoad").asBoolean());
     }
 
     private void createCompiledRepository(String name) throws Exception {

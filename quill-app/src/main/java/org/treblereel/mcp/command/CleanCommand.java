@@ -42,11 +42,14 @@ public class CleanCommand implements Callable<Integer> {
         McpJsonInstaller.Result mcpConfiguration =
                 McpJsonInstaller.uninstallProject(normalized);
         boolean claudeInstructions = ProjectConfiguration.removeClaudeMd(normalized);
+        boolean codexInstructions = ProjectConfiguration.removeAgentsMd(normalized);
+        boolean claudeApproval = ClaudeSettingsInstaller.uninstall(normalized);
         boolean existed = Files.exists(normalized.resolve(".quill"));
         boolean removed = ProjectIndexLock.withLockAndDeleteDirectory(
                 normalized, () -> cleanIndexData(normalized));
         return new CleanResult(removed || existed, integration,
-                codexConfiguration, mcpConfiguration, claudeInstructions);
+                codexConfiguration, mcpConfiguration, claudeInstructions,
+                codexInstructions, claudeApproval);
     }
 
     static void printResult(Path root, CleanResult result) {
@@ -66,6 +69,12 @@ public class CleanCommand implements Callable<Integer> {
         }
         if (result.claudeInstructions()) {
             System.out.println("Claude Code Quill instructions removed.");
+        }
+        if (result.codexInstructions()) {
+            System.out.println("Codex Quill instructions removed.");
+        }
+        if (result.claudeApproval()) {
+            System.out.println("Claude Code Quill approval removed.");
         }
     }
 
@@ -89,5 +98,7 @@ public class CleanCommand implements Callable<Integer> {
                        BuildIntegrationInstaller.Result integration,
                        CodexConfigInstaller.Result codexConfiguration,
                        McpJsonInstaller.Result mcpConfiguration,
-                       boolean claudeInstructions) {}
+                       boolean claudeInstructions,
+                       boolean codexInstructions,
+                       boolean claudeApproval) {}
 }

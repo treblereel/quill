@@ -8,7 +8,7 @@ import org.treblereel.mcp.QuillLauncher;
 /** Owns the reversible project configuration installed around an index generation. */
 final class ProjectConfiguration {
 
-    enum ClaudeInstructionsState { CURRENT, MISSING, INVALID }
+    enum InstructionsState { CURRENT, MISSING, INVALID }
 
     private static final String CLAUDE_BLOCK_START = "<!-- quill:managed:start -->";
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
@@ -16,14 +16,33 @@ final class ProjectConfiguration {
             <!-- quill:managed:start -->
             ## Quill — Codebase Intelligence (MCP)
 
-            Before broad code search, dependency or impact analysis, or running a large test suite,
-            use ToolSearch to load the relevant Quill tools. Prefer Quill for project-wide semantic
+            At the beginning of a coding or code-analysis task, call `get_overview`. Before broad
+            code search, dependency or impact analysis, or running a large test suite, prefer Quill
+            for project-wide semantic
             questions: implementations, annotations, endpoints, DI, dependency graphs, affected tests,
             build problems, generated code, Git history, and change risk.
 
             Use `rg` and direct source reads for an exact literal, a known file, or one concrete
             occurrence. Do not query both by default. Verify Quill results in source when the index
             reports stale, partial, unknown, or unsupported evidence.
+            <!-- quill:managed:end -->
+            """;
+    private static final String QUILL_AGENTS_MD = """
+            <!-- quill:managed:start -->
+            ## Quill MCP
+
+            Quill is the primary code-intelligence tool for this repository. At the beginning of a
+            coding or code-analysis task, discover the `mcp__quill__*` tools and call
+            `mcp__quill__get_overview`.
+
+            Use Quill before broad filesystem searches for symbols, implementations, usages, call
+            and type hierarchies, dependencies, architecture, framework endpoints, dependency
+            injection, affected tests, build diagnostics, Git history, and change risk. Quill tools
+            may be deferred and absent from the initially displayed tool list; search the complete
+            tool catalog before concluding that Quill is unavailable.
+
+            Use `rg` and direct source reads for exact literals, known files, and verification when
+            Quill reports stale, partial, unknown, or unsupported evidence.
             <!-- quill:managed:end -->
             """;
 
@@ -38,6 +57,8 @@ final class ProjectConfiguration {
     static void finishInitialization(Path root, boolean indexOnly) {
         if (!indexOnly) {
             ensureClaudeMd(root);
+            ensureAgentsMd(root);
+            ClaudeSettingsInstaller.install(root);
             ensureMcpJson(root);
         }
         ensureCodexConfig(root, indexOnly);
@@ -69,55 +90,78 @@ final class ProjectConfiguration {
     }
 
     static void ensureClaudeMd(Path root) {
-        Path claudeMd = root.resolve("CLAUDE.md");
+        ensureInstructions(root.resolve("CLAUDE.md"), QUILL_CLAUDE_MD,
+                "CLAUDE.md with Quill tool instructions");
+    }
+
+    static void ensureAgentsMd(Path root) {
+        ensureInstructions(root.resolve("AGENTS.md"), QUILL_AGENTS_MD,
+                "AGENTS.md with Quill tool instructions");
+    }
+
+    private static void ensureInstructions(Path file, String managedBlock, String description) {
         try {
-            String content = Files.exists(claudeMd) ? Files.readString(claudeMd) : "";
+            String content = Files.exists(file) ? Files.readString(file) : "";
             int start = content.indexOf(CLAUDE_BLOCK_START);
             int end = start < 0 ? -1 : content.indexOf(CLAUDE_BLOCK_END, start);
             String updated;
             if (start >= 0) {
                 int after = end < 0 ? content.length() : end + CLAUDE_BLOCK_END.length();
-                updated = content.substring(0, start) + QUILL_CLAUDE_MD.strip()
+                updated = content.substring(0, start) + managedBlock.strip()
                         + content.substring(after);
             } else {
                 String separator = content.isEmpty() || content.endsWith("\n") ? "" : "\n";
                 String gap = content.isEmpty() ? "" : "\n";
-                updated = content + separator + gap + QUILL_CLAUDE_MD.strip() + "\n";
+                updated = content + separator + gap + managedBlock.strip() + "\n";
             }
-            Files.writeString(claudeMd, updated);
-            System.err.println("[quill] Updated CLAUDE.md with Quill tool instructions.");
+            Files.writeString(file, updated);
+            System.err.println("[quill] Updated " + description + ".");
         } catch (IOException error) {
-            System.err.println("[quill] Warning: could not update CLAUDE.md: " + error.getMessage());
+            System.err.println("[quill] Warning: could not update " + file + ": "
+                    + error.getMessage());
         }
     }
 
     static boolean removeClaudeMd(Path root) throws IOException {
-        Path claudeMd = root.resolve("CLAUDE.md");
-        if (!Files.isRegularFile(claudeMd)) return false;
-        String content = Files.readString(claudeMd);
+        return removeInstructions(root.resolve("CLAUDE.md"));
+    }
+
+    static boolean removeAgentsMd(Path root) throws IOException {
+        return removeInstructions(root.resolve("AGENTS.md"));
+    }
+
+    private static boolean removeInstructions(Path file) throws IOException {
+        if (!Files.isRegularFile(file)) return false;
+        String content = Files.readString(file);
         int start = content.indexOf(CLAUDE_BLOCK_START);
         if (start < 0) return false;
         int end = content.indexOf(CLAUDE_BLOCK_END, start);
         int after = end < 0 ? content.length() : end + CLAUDE_BLOCK_END.length();
         String updated = (content.substring(0, start) + content.substring(after))
                 .replaceFirst("\\s+$", "");
-        if (updated.isBlank()) Files.delete(claudeMd);
-        else Files.writeString(claudeMd, updated + "\n");
+        if (updated.isBlank()) Files.delete(file);
+        else Files.writeString(file, updated + "\n");
         return true;
     }
 
-    static ClaudeInstructionsState inspectClaudeMd(Path root) {
-        Path claudeMd = root.resolve("CLAUDE.md");
-        if (!Files.isRegularFile(claudeMd)) return ClaudeInstructionsState.MISSING;
+    static InstructionsState inspectClaudeMd(Path root) {
+        return inspectInstructions(root.resolve("CLAUDE.md"));
+    }
+
+    static InstructionsState inspectAgentsMd(Path root) {
+        return inspectInstructions(root.resolve("AGENTS.md"));
+    }
+
+    private static InstructionsState inspectInstructions(Path file) {
+        if (!Files.isRegularFile(file)) return InstructionsState.MISSING;
         try {
-            String content = Files.readString(claudeMd);
+            String content = Files.readString(file);
             boolean start = content.contains(CLAUDE_BLOCK_START);
             boolean end = content.contains(CLAUDE_BLOCK_END);
-            if (!start && !end) return ClaudeInstructionsState.MISSING;
-            return start && end ? ClaudeInstructionsState.CURRENT
-                    : ClaudeInstructionsState.INVALID;
+            if (!start && !end) return InstructionsState.MISSING;
+            return start && end ? InstructionsState.CURRENT : InstructionsState.INVALID;
         } catch (IOException error) {
-            return ClaudeInstructionsState.INVALID;
+            return InstructionsState.INVALID;
         }
     }
 

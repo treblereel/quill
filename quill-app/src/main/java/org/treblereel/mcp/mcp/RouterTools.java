@@ -173,7 +173,8 @@ final class RouterTools {
         private static final java.util.Set<String> QUILL = java.util.Set.of(
                 "dependency", "dependencies", "graph", "call", "injection", "bean",
                 "history", "risk", "generated", "override", "implementation",
-                "annotation", "endpoint", "impact", "symbol", "module");
+                "annotation", "endpoint", "impact", "symbol", "module", "context",
+                "plan", "change");
         private static final java.util.Set<String> BUILD = java.util.Set.of(
                 "build", "compile", "compiler", "maven", "gradle", "failure", "error",
                 "problem");

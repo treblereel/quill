@@ -321,6 +321,10 @@ does not imply that an executor, reactive stream, or message publication has com
   `symbol_id` as `target` to select an overload without repeating its name or descriptor
 - **get_symbol_details** — inspect hierarchy, annotations, declared members, DI context,
   dependency metrics, implementations, occurrences, and external types for one class
+- **get_context** — assemble a compact change-ready card for up to ten classes: resolution,
+  symbol and DI details, coupling, usages, affected tests, risk, and index freshness
+- **plan_change** — turn an intended change into an ordered, evidence-backed plan with primary
+  files, dependency-review candidates, ranked tests, risk, coverage, and freshness warnings
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
   with explicit reporting when compiled test outputs are not indexed
 - **get_type_hierarchy** — inspect paged ancestor and descendant paths, including external
@@ -385,6 +389,21 @@ response includes a `debug.trace_id` for correlation. Set `QUILL_DEBUG=1` instea
 more convenient to enable diagnostics without editing MCP arguments, or use
 `--debug-directory /path` to choose where the `.quill/debug` directory is created. Debug logs
 contain local paths and dependency coordinates and should not be committed.
+
+To measure real MCP usage without recording code, queries, arguments, paths, or response
+contents, start the server with `--telemetry` (or set `QUILL_TELEMETRY=1`). Quill appends local
+JSONL measurements to `.quill/telemetry/mcp-tools.jsonl`: tool name, profile, duration, response
+byte count, success/error state, and non-content limitation flags such as stale or truncated.
+Summarize a capture, or compare it with an earlier baseline, using:
+
+```bash
+python3 scripts/quill_ux_report.py .quill/telemetry/mcp-tools.jsonl
+python3 scripts/quill_ux_report.py .quill/telemetry/mcp-tools.jsonl \
+  --baseline /path/to/baseline.jsonl --output target/benchmarks/ux-report.json
+```
+
+Telemetry is disabled by default, never leaves the machine, rotates at 5 MiB, and is best-effort:
+failure to write it never affects an MCP request.
 
 For workspace mode, configure the client command as:
 

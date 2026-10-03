@@ -14,6 +14,8 @@ public final class QuillToolQueries {
     private final UsageToolQueries usages = new UsageToolQueries();
     private final SymbolToolQueries symbols = new SymbolToolQueries();
     private final TestImpactQueries testImpact = new TestImpactQueries();
+    private final ContextQueries context = new ContextQueries();
+    private final ChangePlanQueries changePlan = new ChangePlanQueries();
     private final TypeHierarchyQueries typeHierarchy = new TypeHierarchyQueries();
     private final SymbolSearchQueries symbolSearch = new SymbolSearchQueries();
     private final AnnotatedSymbolQueries annotatedSymbols = new AnnotatedSymbolQueries();
@@ -83,6 +85,14 @@ public final class QuillToolQueries {
             boolean transitive, int maxDepth, int limit, int offset) {
         return testImpact.findImpactedTests(
                 jdbi, targets, transitive, maxDepth, limit, offset);
+    }
+
+    String getContext(Jdbi jdbi, List<String> targets, boolean includeMembers, int limit) {
+        return context.getContext(jdbi, targets, includeMembers, limit);
+    }
+
+    String planChange(Jdbi jdbi, List<String> targets, String change, int limit) {
+        return changePlan.planChange(jdbi, targets, change, limit);
     }
 
     String getTypeHierarchy(Jdbi jdbi, String target, String direction,

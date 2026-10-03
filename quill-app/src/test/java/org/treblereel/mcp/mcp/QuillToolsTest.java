@@ -390,6 +390,77 @@ class QuillToolsTest {
     }
 
     @Test
+    void getContextComposesCompactEvidenceAndKeepsPartialResults() throws Exception {
+        QuillTools tools = new QuillTools();
+
+        JsonNode result = JSON.readTree(tools.getContext(
+                jdbi, List.of("OrderService", "MissingService"), false, 5));
+
+        assertEquals(1, result.path("resolved_target_count").asInt());
+        assertEquals(1, result.path("unresolved_target_count").asInt());
+        assertFalse(result.path("answer_complete").asBoolean());
+        JsonNode context = result.path("contexts").get(0);
+        assertEquals("org.acme.OrderService",
+                context.path("resolution").path("class").asText());
+        assertEquals("org.acme.OrderService", context.path("symbol").path("class").asText());
+        assertFalse(context.path("symbol").path("members_included").asBoolean());
+        assertEquals(1, context.path("coupling").path("fan_out").asInt());
+        assertTrue(context.path("usages").has("usages"));
+        assertTrue(context.path("risk").has("risk_score"));
+        assertFalse(context.path("risk").has("_meta"));
+        assertTrue(result.has("impacted_tests"));
+        assertEquals("MissingService",
+                result.path("unresolved_targets").get(0).path("target").asText());
+        assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());
+    }
+
+    @Test
+    void getContextValidatesTargetCount() throws Exception {
+        QuillTools tools = new QuillTools();
+        JsonNode empty = JSON.readTree(tools.getContext(jdbi, List.of(), false, 10));
+        JsonNode tooMany = JSON.readTree(tools.getContext(jdbi, List.of(
+                "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"),
+                false, 10));
+
+        assertEquals("At least one target is required", empty.path("message").asText());
+        assertEquals("At most 10 targets are allowed", tooMany.path("message").asText());
+    }
+
+    @Test
+    void planChangeSeparatesPrimaryEditsFromDependencyReview() throws Exception {
+        QuillTools tools = new QuillTools();
+
+        JsonNode result = JSON.readTree(tools.planChange(jdbi,
+                List.of("StripePaymentService"), "Add idempotent payment retries", 10));
+
+        assertEquals("Add idempotent payment retries", result.path("change").asText());
+        assertEquals("partial", result.path("plan_status").asText());
+        assertFalse(result.path("answer_complete").asBoolean());
+        JsonNode primary = result.path("primary_changes").get(0);
+        assertEquals("org.acme.StripePaymentService", primary.path("class").asText());
+        assertEquals("src/main/java/org/acme/StripePaymentService.java",
+                primary.path("file").asText());
+        JsonNode dependent = result.path("dependency_review").get(0);
+        assertEquals("org.acme.OrderService", dependent.path("class").asText());
+        assertEquals("injection", dependent.path("usage_kind").asText());
+        assertEquals("review", dependent.path("action").asText());
+        assertTrue(result.path("warnings").valueStream()
+                .anyMatch(warning -> warning.path("code").asText()
+                        .equals("INCOMPLETE_TEST_COVERAGE")));
+        assertEquals(5, result.path("sequence").size());
+        assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());
+    }
+
+    @Test
+    void planChangeRequiresDescription() throws Exception {
+        JsonNode result = JSON.readTree(new QuillTools().planChange(
+                jdbi, List.of("OrderService"), "  ", 10));
+
+        assertEquals("A non-empty change description is required",
+                result.path("message").asText());
+    }
+
+    @Test
     void getSymbolDetailsIncludesKotlinSemanticDeclarations() throws Exception {
         IndexWriter.writeKotlinDeclarations(jdbi, List.of(
                 new KotlinDeclarationRecord(1, "CLASS", "org.acme.OrderService",

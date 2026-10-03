@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
 import org.treblereel.mcp.diagnostics.DebugTrace;
+import org.treblereel.mcp.diagnostics.UxTelemetry;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
 
@@ -90,8 +91,9 @@ final class McpToolCatalog {
 
         return AsyncToolSpecification.builder()
                 .tool(tool)
-                .callHandler((exchange, request) -> Mono
-                        .fromCallable(() -> invoke(tools, method, request.arguments()))
+                .callHandler((exchange, request) -> {
+                    long started = System.nanoTime();
+                    return Mono.fromCallable(() -> invoke(tools, method, request.arguments()))
                         .subscribeOn(toolScheduler)
                         .timeout(requestTimeout)
                         .onErrorResume(RejectedExecutionException.class,
@@ -105,8 +107,20 @@ final class McpToolCatalog {
                         // The SDK stdio transport uses a unicast outbound sink whose concurrent
                         // tryEmitNext calls may fail. Serialize completion signals while keeping
                         // the actual tool work parallel.
-                        .publishOn(responseScheduler))
+                        .map(result -> {
+                            UxTelemetry.record(method.getName(), routedTool(method, request.arguments()),
+                                    (System.nanoTime() - started) / 1_000_000L, result);
+                            return result;
+                        })
+                        .publishOn(responseScheduler);
+                })
                 .build();
+    }
+
+    private static String routedTool(Method method, Map<String, Object> arguments) {
+        if (!"execute_tool".equals(method.getName()) || arguments == null) return null;
+        Object value = arguments.get("name");
+        return value instanceof String name ? name : null;
     }
 
     static Map<String, Object> inputSchema(Method method) {

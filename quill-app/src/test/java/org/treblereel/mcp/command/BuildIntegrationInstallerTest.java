@@ -91,6 +91,8 @@ class BuildIntegrationInstallerTest {
         CodexConfigInstaller.install(tempDir, null);
         McpJsonInstaller.installProject(tempDir, null);
         ProjectConfiguration.ensureClaudeMd(tempDir);
+        ProjectConfiguration.ensureAgentsMd(tempDir);
+        ClaudeSettingsInstaller.install(tempDir);
 
         CleanCommand clean = new CleanCommand();
         clean.projectPath = tempDir;
@@ -101,6 +103,8 @@ class BuildIntegrationInstallerTest {
         assertFalse(Files.exists(tempDir.resolve(".codex/config.toml")));
         assertFalse(Files.exists(tempDir.resolve(".mcp.json")));
         assertFalse(Files.exists(tempDir.resolve("CLAUDE.md")));
+        assertFalse(Files.exists(tempDir.resolve("AGENTS.md")));
+        assertFalse(Files.exists(tempDir.resolve(".claude/settings.json")));
     }
 
     @Test

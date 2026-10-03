@@ -58,6 +58,24 @@ For the current post-quality-fixes Crysknife baseline, use
 `crysknife-agent-effectiveness.json` remains pinned because its recorded captures are historical
 evidence and must not be rescored against a different revision.
 
+The broader UX suite is `benchmarks/casehub-engine-current-effectiveness.json`. It contains 15
+revision-pinned tasks covering orientation, dependency impact, DI, runtime registration, Git
+history, type hierarchy, impacted tests, framework endpoints, configuration, architecture,
+dead-code candidates, pre-modification risk, module boundaries, and bytecode execution flow:
+
+```bash
+python3 scripts/quill_agent_benchmark.py \
+  --suite benchmarks/casehub-engine-current-effectiveness.json \
+  --project /path/to/casehub/engine \
+  --quill quill-app/target/quill \
+  --repetitions 10
+```
+
+The suite is pinned to commit `acc0e3f080a4b087e2d34a256e9478f36b75fbc9`. Editor configuration
+files added to a local checkout make the worktree dirty; use `--allow-dirty` only for exploratory
+runs and only when those changes are non-structural. Publishable comparisons must use a clean
+checkout at the pinned commit.
+
 `gpt-5.6-terra` with medium reasoning is the benchmark default, so the final two options may be
 omitted. Always record overrides when comparing results produced by a different model or effort.
 
@@ -107,6 +125,9 @@ every Responses API call:
 - `model_rounds` records latency and token usage for every Responses API call;
 - `tool_trace` records tool name/provider, latency, argument/output byte counts, and status without
   duplicating potentially sensitive tool contents;
+- `time_to_first_tool_ms`, `time_to_first_quill_ms`, and
+  `time_to_first_successful_quill_ms` measure how quickly the agent reaches useful indexed
+  evidence rather than only measuring total task duration;
 - `source_fallback_count` and `source_fallbacks` identify source searches or file reads performed
   after a Quill call, including the preceding Quill tool and non-sensitive response flags such as
   `not_found`, `stale`, `truncated`, `unknown`, or `unsupported`;
@@ -122,6 +143,23 @@ every Responses API call:
 results are naturally included in API input usage; do not add their estimated sizes a second time.
 Quill startup and MCP discovery happen before the task timer because a normal editor session keeps
 the server running, but Quill tool latency during the task is included.
+
+## Observe normal editor sessions locally
+
+The paired runner measures controlled tasks. To find friction in ordinary Codex or Claude use,
+enable Quill's content-free local telemetry in the MCP command with `--telemetry`, or set
+`QUILL_TELEMETRY=1`. It writes `.quill/telemetry/mcp-tools.jsonl` and records only the tool name,
+profile, duration, response size, status, and stale/truncated/confidence flags. It does not retain
+arguments, paths, queries, source, or response bodies.
+
+```bash
+python3 scripts/quill_ux_report.py /path/to/project/.quill/telemetry/mcp-tools.jsonl \
+  --output target/benchmarks/editor-ux.json
+```
+
+Preserve the original JSONL as the baseline before changing the tool surface. A later capture can
+be compared directly with `--baseline`. Use paired task results for correctness and token claims;
+use editor telemetry to identify frequent, slow, error-prone, stale, or oversized tools.
 
 ## Manual capture protocol
 

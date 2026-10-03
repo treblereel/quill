@@ -112,6 +112,7 @@ final class McpJsonInstaller {
         ObjectNode server = JSON.createObjectNode();
         server.put("type", "stdio");
         server.put("command", binary == null ? "quill" : binary);
+        server.put("alwaysLoad", true);
         ArrayNode args = server.putArray("args");
         args.add("--mcp");
         args.add("--workspace");
@@ -123,6 +124,7 @@ final class McpJsonInstaller {
         ObjectNode server = JSON.createObjectNode();
         server.put("type", "stdio");
         server.put("command", binary == null ? "quill" : binary);
+        server.put("alwaysLoad", true);
         server.putArray("args").add("--mcp");
         server.put("cwd", projectRoot.toString());
         return server;

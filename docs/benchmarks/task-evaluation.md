@@ -218,3 +218,21 @@ Do not compare runs from different project revisions. Rebaseline expected facts 
 the target project changes. For a publishable result, repeat complete paired runs 10–20 times,
 alternate which condition runs first, and report median and p95 alongside correctness. A single
 pair is useful for debugging the protocol, not for claiming a stable token-saving percentage.
+
+## Deterministic change-workflow benchmark
+
+When a model API key is unavailable, compare the scenario workflow with its equivalent atomic MCP
+queries without making token or answer-accuracy claims:
+
+```bash
+python3 scripts/quill_workflow_benchmark.py \
+  --project /path/to/project \
+  --quill quill-app/target/quill \
+  --target com.example.ChangedService
+```
+
+The legacy path calls symbol details, usages, affected tests, and change risk separately. The
+workflow path calls `plan_change`, then records `verify_change` as a post-change gate. The report
+contains tool-call count, wall-clock latency, exact structured-response bytes, evidence-contract
+coverage, and the verification verdict. It deliberately does not estimate model tokens or claim
+answer correctness.

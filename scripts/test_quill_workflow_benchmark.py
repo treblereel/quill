@@ -13,7 +13,7 @@ class WorkflowBenchmarkTest(unittest.TestCase):
         workflow = benchmark.contract_flags("workflow", {
             "primary_changes": [{"risk_score": 4.0}],
             "dependency_review": [], "test_plan": {}, "_meta": {},
-            "sequence": [{"order": 1}],
+            "sequence": [{"order": 1}], "verification_plan": {},
         })
 
         self.assertTrue(all(legacy.values()))
@@ -39,6 +39,20 @@ class WorkflowBenchmarkTest(unittest.TestCase):
         self.assertEqual(4, len(legacy))
         self.assertEqual(["plan_change"], [name for name, _ in workflow])
         self.assertEqual(["Target"], workflow[0][1]["targets"])
+
+    def test_verification_plan_summary_exposes_runner_and_argv(self):
+        result = benchmark.verification_plan_summary({
+            "verification_plan": {
+                "runner": {"kind": "system", "source": "/usr/bin/mvn", "available": True},
+                "commands": [{"argv": ["/usr/bin/mvn", "-pl", "engine", "test"]}],
+            },
+        })
+
+        self.assertEqual("system", result["runner_kind"])
+        self.assertEqual("/usr/bin/mvn", result["runner_source"])
+        self.assertTrue(result["runner_available"])
+        self.assertEqual(1, result["command_count"])
+        self.assertEqual(["/usr/bin/mvn", "-pl", "engine", "test"], result["first_argv"])
 
 
 if __name__ == "__main__":

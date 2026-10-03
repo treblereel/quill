@@ -92,8 +92,9 @@ public final class QuillToolQueries {
         return context.getContext(jdbi, targets, includeMembers, limit);
     }
 
-    String planChange(Jdbi jdbi, List<String> targets, String change, int limit) {
-        return changePlan.planChange(jdbi, targets, change, limit);
+    String planChange(Jdbi jdbi, Path projectRoot, List<String> targets,
+            String change, int limit) {
+        return changePlan.planChange(jdbi, projectRoot, targets, change, limit);
     }
 
     String verifyChange(Jdbi jdbi, Path projectRoot, List<String> targets, int limit) {

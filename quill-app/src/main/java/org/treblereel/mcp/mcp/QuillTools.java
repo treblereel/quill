@@ -245,7 +245,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(10), 1, 25);
         return forAllProjects(project.orElse(null), p -> queries.planChange(
-                p.jdbi(), targets, change, requestedLimit));
+                p.jdbi(), p.root(), targets, change, requestedLimit));
     }
 
     @Tool(structured = true,
@@ -1075,8 +1075,9 @@ public final class QuillTools {
         return queries.getContext(jdbi, targets, includeMembers, limit);
     }
 
-    String planChange(Jdbi jdbi, List<String> targets, String change, int limit) {
-        return queries.planChange(jdbi, targets, change, limit);
+    String planChange(Jdbi jdbi, Path projectRoot, List<String> targets,
+            String change, int limit) {
+        return queries.planChange(jdbi, projectRoot, targets, change, limit);
     }
 
     String verifyChange(Jdbi jdbi, Path projectRoot, List<String> targets, int limit) {

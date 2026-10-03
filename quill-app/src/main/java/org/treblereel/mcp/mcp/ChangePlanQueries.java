@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -17,7 +18,8 @@ final class ChangePlanQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final ContextQueries contextQueries = new ContextQueries();
 
-    String planChange(Jdbi jdbi, List<String> targets, String change, int limit) {
+    String planChange(Jdbi jdbi, Path projectRoot, List<String> targets,
+            String change, int limit) {
         if (change == null || change.isBlank()) {
             return errorResponse("A non-empty change description is required");
         }
@@ -83,6 +85,8 @@ final class ChangePlanQueries {
         copy(impact, testPlan, "showing");
         copy(impact, testPlan, "total");
         copy(impact, testPlan, "has_more");
+        root.set("verification_plan", new VerificationPlanQueries().plan(
+                projectRoot, context.path("contexts"), impact));
 
         ArrayNode warnings = root.putArray("warnings");
         if (context.path("unresolved_target_count").asInt() > 0) {

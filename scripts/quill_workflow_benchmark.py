@@ -117,6 +117,23 @@ def contract_flags(name: str, payload: dict[str, Any]) -> dict[str, bool]:
         "risk": any("risk_score" in item for item in payload.get("primary_changes", [])),
         "freshness": isinstance(payload.get("_meta"), dict),
         "ordered_sequence": bool(payload.get("sequence")),
+        "verification_plan": isinstance(payload.get("verification_plan"), dict),
+    }
+
+
+def verification_plan_summary(payload: dict[str, Any]) -> dict[str, Any] | None:
+    plan = payload.get("verification_plan")
+    if not isinstance(plan, dict):
+        return None
+    runner = plan.get("runner") if isinstance(plan.get("runner"), dict) else {}
+    commands = plan.get("commands") if isinstance(plan.get("commands"), list) else []
+    first_command = commands[0] if commands and isinstance(commands[0], dict) else {}
+    return {
+        "runner_kind": runner.get("kind"),
+        "runner_source": runner.get("source"),
+        "runner_available": runner.get("available"),
+        "command_count": len(commands),
+        "first_argv": first_command.get("argv"),
     }
 
 
@@ -138,6 +155,7 @@ def run_path(client: WorkflowClient, calls: list[tuple[str, dict[str, Any]]],
         "contract_flags": flags,
         "trace": traces,
         "result_status": evidence.get("plan_status") if mode != "legacy" else None,
+        "verification_plan": verification_plan_summary(evidence),
     }
 
 
@@ -155,6 +173,7 @@ def aggregate(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "contract_flags": samples[-1]["contract_flags"],
         "last_trace": samples[-1]["trace"],
         "result_status": samples[-1].get("result_status"),
+        "verification_plan": samples[-1].get("verification_plan"),
     }
 
 

@@ -57,6 +57,8 @@ final class ChangeVerificationQueries {
         root.set("test_evidence", compact(impact, List.of(
                 "test_index_coverage", "answer_complete", "limitations", "tests", "showing",
                 "total", "has_more")));
+        root.set("verification_plan", new VerificationPlanQueries().plan(
+                projectRoot, context.path("contexts"), impact));
 
         String verdict = verdict(context, build, diagnostics, changes,
                 effectiveTargets.isEmpty(), inferenceTruncated);

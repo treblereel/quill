@@ -429,8 +429,9 @@ class QuillToolsTest {
     @Test
     void planChangeSeparatesPrimaryEditsFromDependencyReview() throws Exception {
         QuillTools tools = new QuillTools();
+        writeMinimalPom();
 
-        JsonNode result = JSON.readTree(tools.planChange(jdbi,
+        JsonNode result = JSON.readTree(tools.planChange(jdbi, tempDir,
                 List.of("StripePaymentService"), "Add idempotent payment retries", 10));
 
         assertEquals("Add idempotent payment retries", result.path("change").asText());
@@ -448,13 +449,16 @@ class QuillToolsTest {
                 .anyMatch(warning -> warning.path("code").asText()
                         .equals("INCOMPLETE_TEST_COVERAGE")));
         assertEquals(5, result.path("sequence").size());
+        assertEquals("maven", result.path("verification_plan")
+                .path("build_system").asText());
+        assertTrue(result.path("verification_plan").path("runner").has("available"));
         assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());
     }
 
     @Test
     void planChangeRequiresDescription() throws Exception {
         JsonNode result = JSON.readTree(new QuillTools().planChange(
-                jdbi, List.of("OrderService"), "  ", 10));
+                jdbi, tempDir, List.of("OrderService"), "  ", 10));
 
         assertEquals("A non-empty change description is required",
                 result.path("message").asText());

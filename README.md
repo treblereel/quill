@@ -327,6 +327,8 @@ does not imply that an executor, reactive stream, or message publication has com
   files, dependency-review candidates, ranked tests, risk, coverage, and freshness warnings
 - **verify_change** — combine live worktree state, captured build diagnostics, affected tests,
   and index freshness into `ready`, `needs_build`, `blocked`, or `partial` verification
+  plus a non-executing verification plan that uses a project wrapper when usable, falls back to
+  an installed build tool only when present on `PATH`, and otherwise reports the runner unavailable
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
   with explicit reporting when compiled test outputs are not indexed
 - **get_type_hierarchy** — inspect paged ancestor and descendant paths, including external

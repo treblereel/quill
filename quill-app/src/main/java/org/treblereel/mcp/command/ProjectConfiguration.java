@@ -25,6 +25,14 @@ final class ProjectConfiguration {
             Use `rg` and direct source reads for an exact literal, a known file, or one concrete
             occurrence. Do not query both by default. Verify Quill results in source when the index
             reports stale, partial, unknown, or unsupported evidence.
+
+            For a code change, use `plan_change` before editing and `verify_change` afterwards. When
+            build evidence is missing or stale, prefer the `verification_plan` command whose scope is
+            `quick_compile`: run its exact `argv` from `working_directory` in the external shell, then
+            call `verify_change` again. This compiles production and standard test sources without
+            running tests. Treat `focused` and `module_fallback` as separate test recommendations;
+            run them only when the task or user requires tests. Quill recommends commands but never
+            executes a build itself.
             <!-- quill:managed:end -->
             """;
     private static final String QUILL_AGENTS_MD = """
@@ -43,6 +51,14 @@ final class ProjectConfiguration {
 
             Use `rg` and direct source reads for exact literals, known files, and verification when
             Quill reports stale, partial, unknown, or unsupported evidence.
+
+            For a code change, call `mcp__quill__plan_change` before editing and
+            `mcp__quill__verify_change` afterwards. If build evidence is missing or stale, prefer the
+            `verification_plan` command with scope `quick_compile`: run its exact `argv` from
+            `working_directory` using the terminal, then call `mcp__quill__verify_change` again. It
+            compiles production and standard test sources without running tests. Commands with scope
+            `focused` or `module_fallback` are separate test recommendations; run them only when the
+            task or user requires tests. Quill recommends commands but does not execute builds.
             <!-- quill:managed:end -->
             """;
 

@@ -237,7 +237,7 @@ public final class QuillTools {
     }
 
     @Tool(structured = true,
-            description = "Build an evidence-backed change plan with files, dependency review, tests, risk, and freshness warnings.")
+            description = "Build an evidence-backed change plan with files, dependency review, tests, risk, freshness warnings, and non-executing verification commands.")
     public String plan_change(
             @ToolArg(description = "Classes or source paths to change (max 10)") List<String> targets,
             @ToolArg(description = "Concise description of the intended change") String change,
@@ -249,7 +249,7 @@ public final class QuillTools {
     }
 
     @Tool(structured = true,
-            description = "Verify a change from worktree, build, diagnostics, affected-test, and index-freshness evidence without running a build.")
+            description = "Verify a change from worktree, build, diagnostics, affected-test, and index-freshness evidence; recommend compile or test commands without running them.")
     public String verify_change(
             @ToolArg(description = "Changed classes or source paths; omit to infer up to 10 dirty JVM files") Optional<List<String>> targets,
             @ToolArg(description = "Changes, diagnostics, and tests per section; default 20, max 100") Optional<Integer> limit,

@@ -23,6 +23,8 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(installed.contains("call `get_overview`"));
+        assertTrue(installed.contains("scope is\n`quick_compile`"));
+        assertTrue(installed.contains("never\nexecutes a build itself"));
         assertEquals(1, occurrences(installed, "<!-- quill:managed:start -->"));
 
         Files.writeString(claude, installed.replace(
@@ -63,6 +65,9 @@ class ProjectConfigurationTest {
         String installed = Files.readString(agents);
         assertTrue(installed.startsWith("# User instructions\n"));
         assertTrue(installed.contains("`mcp__quill__get_overview`"));
+        assertTrue(installed.contains("`mcp__quill__plan_change`"));
+        assertTrue(installed.contains("scope `quick_compile`"));
+        assertTrue(installed.contains("does not execute builds"));
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(ProjectConfiguration.removeAgentsMd(root));

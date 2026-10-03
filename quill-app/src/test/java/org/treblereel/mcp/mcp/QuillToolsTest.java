@@ -503,6 +503,30 @@ class QuillToolsTest {
                         .equals("BUILD_EVIDENCE_REQUIRED")));
     }
 
+    @Test
+    void verifyChangeInfersTargetsFromDirtyJvmSources() throws Exception {
+        writeMinimalPom();
+        Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; class OrderService {}\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            Files.writeString(source, "package org.acme; class OrderService { void changed() {} }\n");
+
+            JsonNode result = JSON.readTree(new QuillTools().verifyChange(
+                    jdbi, tempDir, List.of(), 10));
+
+            assertEquals("dirty_worktree", result.path("target_source").asText());
+            assertEquals(1, result.path("inferred_target_count").asInt());
+            assertFalse(result.path("target_inference_truncated").asBoolean());
+            assertEquals("src/main/java/org/acme/OrderService.java",
+                    result.path("requested_targets").get(0).asText());
+            assertEquals(1, result.path("resolved_target_count").asInt());
+        }
+    }
+
     private void writeMinimalPom() throws Exception {
         Files.writeString(tempDir.resolve("pom.xml"), """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">

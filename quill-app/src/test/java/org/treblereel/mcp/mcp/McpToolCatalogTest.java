@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -523,6 +524,26 @@ class McpToolCatalogTest {
         String schema = implementations.tool().inputSchema().toString();
         assertTrue(!schema.contains("\"module\""), schema);
         assertTrue(!schema.contains("\"source_set\""), schema);
+    }
+
+    @Test
+    void optionalStringArraysHaveArraySchemasAndAreNotRequired() {
+        AsyncToolSpecification verification = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1)).stream()
+                .filter(candidate -> candidate.tool().name().equals("verify_change"))
+                .findFirst().orElseThrow();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) verification.tool()
+                .inputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> targets = (Map<String, Object>) properties.get("targets");
+        @SuppressWarnings("unchecked")
+        List<String> required = (List<String>) verification.tool().inputSchema().get("required");
+        assertEquals("array", targets.get("type"));
+        assertEquals(Map.of("type", "string"), targets.get("items"));
+        assertFalse(required.contains("targets"));
     }
 
     @Test

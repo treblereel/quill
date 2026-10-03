@@ -316,11 +316,17 @@ final class McpToolCatalog {
 
     private static Class<?> optionalArgument(Type type) {
         Type argument = ((ParameterizedType) type).getActualTypeArguments()[0];
-        return argument instanceof Class<?> cls ? cls : String.class;
+        if (argument instanceof Class<?> cls) return cls;
+        if (argument instanceof ParameterizedType parameterized
+                && parameterized.getRawType() instanceof Class<?> raw) return raw;
+        return String.class;
     }
 
     private static String jsonType(Type type) {
         if (type instanceof ParameterizedType parameterized) {
+            if (parameterized.getRawType() == Optional.class) {
+                return jsonType(parameterized.getActualTypeArguments()[0]);
+            }
             if (parameterized.getRawType() == List.class) return "array";
             if (parameterized.getRawType() == Map.class) return "object";
         }

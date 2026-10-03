@@ -251,12 +251,12 @@ public final class QuillTools {
     @Tool(structured = true,
             description = "Verify a change from worktree, build, diagnostics, affected-test, and index-freshness evidence without running a build.")
     public String verify_change(
-            @ToolArg(description = "Changed classes or source paths (max 10)") List<String> targets,
+            @ToolArg(description = "Changed classes or source paths; omit to infer up to 10 dirty JVM files") Optional<List<String>> targets,
             @ToolArg(description = "Changes, diagnostics, and tests per section; default 20, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
         return forAllProjects(project.orElse(null), p -> queries.verifyChange(
-                p.jdbi(), p.root(), targets, requestedLimit));
+                p.jdbi(), p.root(), targets.orElse(List.of()), requestedLimit));
     }
 
     @Tool(structured = true, description = "Rank tests affected by changed classes.")

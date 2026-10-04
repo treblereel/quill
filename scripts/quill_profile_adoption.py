@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""Opt-in native-agent comparison of full/core/router; consumes configured client usage."""
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import platform
+import statistics
+
+import quill_adoption_diagnostic as diagnostic
+from quill_adoption_scenarios import SCENARIOS
+
+PROFILES = ("full", "core", "router")
+CASES = ("project_read_only", "claude_project")
+
+
+def supported(profile, scenario):
+    # This declared exclusion is checked against each live wire catalog before inference.
+    return not (profile == "core" and scenario == "history")
+
+
+def summarize(runs, planned, unsupported):
+    groups = {}
+    expected_keys = {(item["profile"], item["case"], item["scenario"], item["sample"]) for item in planned}
+    actual_keys = [(item["profile"], item["case"], item["scenario"], item["sample"]) for item in runs]
+    for profile, case in {(item["profile"], item["case"]) for item in planned}:
+        values = [item for item in runs if item["profile"] == profile and item["case"] == case]
+        group = {"completed": len(values), "passed": 0, "answer_correct": 0,
+                 "task_tool_succeeded": 0, "overview_first": 0, "unavailable": 0,
+                 "planned": sum(item["profile"] == profile and item["case"] == case for item in planned)}
+        for item in values:
+            group["unavailable"] += int(item.get("unavailable") is True)
+            group["passed"] += int(item.get("evaluation", {}).get("passed") is True)
+            criteria = item.get("evaluation", {}).get("criteria", {})
+            for key in ("answer_correct", "task_tool_succeeded", "overview_first"):
+                group[key] += int(criteria.get(key) is True)
+        for field in ("elapsed_seconds",):
+            measured = [item[field] for item in values if type(item.get(field)) in {int, float}]
+            group[field] = {"samples": len(measured), "median": statistics.median(measured)} if measured else None
+        group["usage"] = {}
+        for key in {key for item in values for key in item.get("usage", {})}:
+            measured = [item["usage"][key] for item in values if key in item.get("usage", {})]
+            group["usage"][key] = {"samples": len(measured), "median": statistics.median(measured)}
+        groups[profile + ":" + case] = group
+    complete = len(actual_keys) == len(expected_keys) and set(actual_keys) == expected_keys
+    return {"planned": len(planned), "completed": len(runs), "remaining": max(0, len(planned) - len(runs)),
+            "unsupported": len(unsupported), "coverage_complete": complete,
+            "all_passed": bool(planned) and complete and all(
+                item.get("evaluation", {}).get("passed") is True for item in runs), "groups": groups}
+
+
+def safe_fixture(report):
+    return all(run.get("evaluation", {}).get("criteria", {}).get(
+        "fixture_unchanged") is True and (run.get("client") != "codex" or
+        run.get("user_config_unchanged") is True) for run in report.get("runs", []) if not run.get("unavailable"))
+
+
+def catalog_support(catalog, scenario):
+    names = {item.get("name") for item in catalog}
+    return bool(names.intersection(SCENARIOS[scenario]["tools"])) or {"search_tools", "execute_tool"}.issubset(names)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--quill", type=Path, default=Path("quill-app/target/quill"))
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--samples", type=int, default=1)
+    parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument("--cases", nargs="+", choices=CASES, default=list(CASES))
+    parser.add_argument("--profiles", nargs="+", choices=PROFILES, default=list(PROFILES))
+    parser.add_argument("--scenarios", nargs="+", choices=list(SCENARIOS), default=list(SCENARIOS))
+    parser.add_argument("--wire-only", action="store_true", help="Validate profile coverage without model requests")
+    args = parser.parse_args(argv)
+    if args.samples < 1 or args.timeout < 1 or any(len(values) != len(set(values))
+            for values in (args.profiles, args.cases, args.scenarios)):
+        raise ValueError("Positive samples/timeout and unique selections are required")
+    planned, unsupported = [], []
+    for sample in range(1, args.samples + 1):
+        for profile in args.profiles:
+            for case in args.cases:
+                for scenario in args.scenarios:
+                    item = {"profile": profile, "case": case, "scenario": scenario, "sample": sample}
+                    (planned if supported(profile, scenario) else unsupported).append(item)
+    binary = args.quill.resolve()
+    with binary.open("rb") as source:
+        binary_hash = hashlib.file_digest(source, "sha256").hexdigest()
+    report = {"schema_version": 1, "mode": "wire_only" if args.wire_only else "native_inference",
+              "created_at": datetime.now(timezone.utc).isoformat(),
+              "host": platform.platform(), "quill_binary_sha256": binary_hash,
+              "scope": "bounded native CLI fixtures; inherited models/auth; not causal or statistical evidence",
+              "usage_scope": "provider-reported counts with missing samples explicit; not comparable across providers",
+              "profile_scope": "generated fixture configs and independent wire catalog; not runtime client catalog enumeration",
+              "config_invariance_scope": "fixture inputs/outputs and Codex user config hash; Claude global config not checked",
+              "planned": [] if args.wire_only else planned, "unsupported": unsupported,
+              "runs": [], "wire": [], "summary": {}}
+    output = args.output.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    def save():
+        report["summary"] = summarize(report["runs"], report["planned"], unsupported)
+        report["summary"]["wire_passed"] = len(report["wire"]) == len(args.profiles) * args.samples and all(
+            item["valid"] for item in report["wire"])
+        report["summary"]["all_passed"] &= report["summary"]["wire_passed"]
+        output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+
+    save()
+    for sample in range(1, args.samples + 1):
+        offset = (sample - 1) % len(args.profiles)
+        for profile in args.profiles[offset:] + args.profiles[:offset]:
+            # An independent fixture per profile/sample prevents cross-profile conversation/index state reuse.
+            child_path = output.with_name(output.stem + f"-{sample}-{profile}.json")
+            tasks = [name for name in args.scenarios if supported(profile, name)]
+            child_args = ["--quill", str(binary), "--output", str(child_path), "--tool-profile", profile,
+                          "--cases", *args.cases, "--scenarios", *(tasks or args.scenarios),
+                          "--samples", "1", "--timeout", str(args.timeout)]
+            if args.wire_only or not tasks:
+                child_args.append("--wire-only")
+            try:
+                diagnostic.main(child_args)
+                child = json.loads(child_path.read_text())
+                valid = all(child["wire_contract"].values()) and all(
+                    catalog_support(child["tools"], name) == supported(profile, name) for name in args.scenarios)
+                report["wire"].append({"profile": profile, "sample": sample, "valid": valid,
+                    "contract": child["wire_contract"], "catalog_tools": len(child["tools"]),
+                    "client_versions": child.get("client_versions", {})})
+                for run in child["runs"]:
+                    report["runs"].append({**run, "profile": profile, "sample": sample})
+                save()
+                if not valid or (not args.wire_only and child["runs"] and not safe_fixture(child)):
+                    report["stopped"] = "Wire contract, fixture or configuration invariance failed"
+                    save()
+                    return 1
+            except Exception as failure:
+                report["failure"] = type(failure).__name__  # No remote error body or credentials.
+                save()
+                return 1
+    save()
+    print(json.dumps(report["summary"], indent=2), flush=True)
+    return 0 if (report["summary"]["wire_passed"] if args.wire_only else report["summary"]["all_passed"]) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

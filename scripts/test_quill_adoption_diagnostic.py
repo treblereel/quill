@@ -6,7 +6,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from quill_adoption_diagnostic import PROMPT, main, metadata_contract, plan_expectations
+from quill_adoption_diagnostic import (PROMPT, main, metadata_contract, plan_expectations,
+                                      configure_fixture_profile, client_usage, profile_catalog_valid)
 from quill_adoption_scenarios import SCENARIOS
 
 
@@ -34,7 +35,7 @@ class AdoptionDiagnosticTest(unittest.TestCase):
         self.assertFalse(metadata_contract(initialized, {"tools": []})["query_safety_hints"])
 
     def run_diagnostic(self, *, wire_only=False, unavailable=False, no_overview=False,
-                       config_changed=False, scenarios=("navigation",)):
+                       config_changed=False, bad_wire=False, scenarios=("navigation",)):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             quill = root / "quill"
@@ -43,8 +44,12 @@ class AdoptionDiagnosticTest(unittest.TestCase):
             wire = MagicMock()
             wire.__enter__.return_value = wire
             wire.initialized = {"instructions": "get_overview change_session"}
-            wire.request.return_value = {"tools": [{"name": "get_overview", "annotations": {
-                "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}}]}
+            wire.request.return_value = {"tools": [{"name": name, "annotations": {
+                "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}}
+                for name in ("get_overview", "search_symbols", "find_symbol_usages", "get_dependencies",
+                             "get_file_history", "change_session")]}
+            if bad_wire:
+                wire.request.return_value = {"tools": []}
             wire.call.return_value = ({"phase": "planned", "directive": {"primary_action": {
                 "action": "inspect_primary", "description": "Inspect declarations"}}}, 0)
 
@@ -90,6 +95,12 @@ class AdoptionDiagnosticTest(unittest.TestCase):
         self.assertEqual("wire_only", report["mode"])
         self.assertEqual(0, report["summary"]["total"])
 
+    def test_bad_wire_contract_stops_before_inference_and_keeps_remaining_coverage(self):
+        code, report, calls = self.run_diagnostic(bad_wire=True)
+        self.assertEqual((1, 0), (code, calls))
+        self.assertEqual(1, report["summary"]["remaining"])
+        self.assertFalse(report["wire_contract"]["profile_catalog"])
+
     def test_main_scores_success_and_omits_raw_client_captures(self):
         code, report, calls = self.run_diagnostic()
         self.assertEqual((0, 1), (code, calls))
@@ -111,6 +122,41 @@ class AdoptionDiagnosticTest(unittest.TestCase):
         self.assertEqual((1, 1), (code, calls))
         self.assertEqual((2, 1, 1), tuple(report["summary"][key] for key in ("total", "completed", "remaining")))
         self.assertFalse(report["runs"][0]["evaluation"]["criteria"]["user_config_unchanged"])
+
+    def test_profile_configuration_is_fixture_only_and_rejects_extra_settings(self):
+        import tomllib
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / ".codex").mkdir()
+            codex = project / ".codex/config.toml"
+            original = '[mcp_servers.quill]\ncommand="quill"\nargs=["--mcp"]\ncwd="/fixture"\n'
+            codex.write_text(original)
+            (project / ".mcp.json").write_text(json.dumps({"mcpServers": {
+                "quill": {"command": "quill", "args": ["--mcp"]}, "other": {"command": "other"}}}))
+            configure_fixture_profile(project, "router")
+            self.assertEqual(["--mcp", "--tools", "router"],
+                tomllib.loads(codex.read_text())["mcp_servers"]["quill"]["args"])
+            self.assertEqual({"command": "other"}, json.loads((project / ".mcp.json").read_text())["mcpServers"]["other"])
+            codex.write_text('model="do-not-touch"\n' + original)
+            before = codex.read_text()
+            with self.assertRaises(ValueError):
+                configure_fixture_profile(project, "core")
+            self.assertEqual(before, codex.read_text())
+
+    def test_usage_does_not_turn_missing_invalid_values_into_zero(self):
+        self.assertEqual({}, client_usage("codex", [{"type": "turn.completed", "usage": {
+            "input_tokens": True, "output_tokens": -1}}]))
+        self.assertEqual({"input_tokens": 3}, client_usage("codex", [
+            {"type": "turn.completed", "usage": {"input_tokens": 1}},
+            {"type": "turn.completed", "usage": {"input_tokens": 2}}]))
+        self.assertEqual({"cache_read_input_tokens": 0}, client_usage("claude", [
+            {"type": "result", "usage": {"cache_read_input_tokens": 0, "secret": "ignored"}}]))
+
+    def test_wire_profile_catalog_prevents_wrong_catalog_from_reaching_inference(self):
+        router = {"tools": [{"name": name} for name in ("get_overview", "search_tools", "execute_tool")]}
+        self.assertTrue(profile_catalog_valid("router", router))
+        self.assertFalse(profile_catalog_valid("core", router))
+        self.assertFalse(profile_catalog_valid("full", {"tools": [{"name": "get_overview"}]}))
 
 
 if __name__ == "__main__":

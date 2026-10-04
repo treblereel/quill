@@ -664,3 +664,73 @@ Three native samples with uncontrolled caches do not establish a meaningful late
 The runtime and generated default profile remain unchanged (`full`); a default switch requires
 native-agent task-quality/adoption comparisons, especially for Claude's missing orientation.
 The normalized capture is `target/benchmarks/quill-profile-comparison.json` (ignored artifact).
+
+### Native-agent task quality across MCP profiles
+
+```bash
+python3 scripts/quill_profile_adoption.py \
+  --cases project_read_only claude_project --scenarios navigation change_plan \
+  --samples 1 --output target/benchmarks/quill-profile-adoption-native.json
+```
+
+This opt-in comparison uses the existing unprompted adoption rubric with real headless clients.
+It consumes their configured inference usage; no model or authentication is selected. Neither
+ordinary init nor the generated default profile changes. `--wire-only` compiles/indexes temporary
+fixtures and checks all selected profile catalogs without any native model request. It reports
+wire success separately and never claims adoption. `quill_adoption_diagnostic.py --tool-profile`
+also supports individual profile investigations; its default remains `full`.
+
+Only generated temporary fixture configuration is changed. Both clients receive the selected
+Quill launcher arguments; an independent native MCP connection checks safety annotations,
+instructions and profile catalog before inference. Router workflow expectations come through
+`search_tools` and `execute_tool`. That wire check is not enumeration of the running AI client's
+catalog. Each profile/sample uses a fresh fixture and each task a fresh headless conversation;
+profile order rotates across samples, but case/task order and inherited model defaults are not
+randomized. This is neither a controlled causal experiment nor a model comparison.
+
+The default selection covers five scenarios and two clients: history is deliberately excluded
+from core's inference runs, with the unsupported cells retained in the report (28 supported
+requests and 2 exclusions per sample). Live catalog evidence checks that exclusion. Coverage
+requires exactly the planned profile/case/scenario/sample cells; duplicate or missing cells,
+unavailable clients, wrong facts, failed semantic calls or startup-policy failures cannot become
+a full pass. Reports distinguish answer correctness, task-specific tool adoption, orientation,
+and the complete rubric. A non-zero exit for policy failures is expected evidence, not a harness
+crash. Fixture or Codex-config mutations stop further runs without rollback; Claude global
+configuration is not measured. Partial/exception reports retain the planned denominator and
+omit raw remote error bodies, stderr and indexed source contents.
+
+Elapsed time and provider-reported token counts retain their sample counts. Missing usage is
+not zero. Codex cached-input counts and Claude cache-read/cache-creation counts are separate;
+they must not be compared as equivalent fields or interpreted as billed cost. A small catalog
+does not establish lower total model usage, because discovery and additional inference rounds
+also contribute. The JSONL event handling follows the official
+[Codex non-interactive documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
+
+On October 4, the command above completed all 12 bounded runs (one sample of navigation and
+change planning per client/profile). All answers matched the independent expected facts.
+
+| Client | Profile | Correct answers | Task-specific Quill call | Overview first | Full rubric |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Codex | full | 2/2 | 2/2 | 2/2 | 2/2 |
+| Codex | core | 2/2 | 2/2 | 2/2 | 2/2 |
+| Codex | router | 2/2 | 2/2 | 2/2 | 2/2 |
+| Claude | full | 2/2 | 2/2 | 0/2 | 0/2 |
+| Claude | core | 2/2 | 2/2 | 1/2 | 1/2 |
+| Claude | router | 2/2 | 1/2 | 2/2 | 1/2 |
+
+Codex used the router's discovery/invocation path successfully in both tasks. Claude used it
+for change planning, but answered router navigation through `get_overview` followed by `Grep`,
+without a task-specific semantic query. That correct source-based answer does not satisfy this
+benchmark's Quill-adoption criterion. Thus reducing the catalog can coincide with better startup
+orientation but less semantic-tool use in these particular samples. It does not prove the
+profile caused either behavior. The comparison intentionally exits 1 (8/12 full passes), while
+wire checks, fixture invariance and every Codex user-config invariance check passed.
+
+Captures are `target/benchmarks/quill-profile-adoption-native.json` and its profile-specific
+siblings; `target/benchmarks/quill-profile-adoption-wire-final.json` separately records three native
+wire checks, including core's history exclusions. No default switch is justified by two tasks
+per profile/client. A next experiment should repeat the paired tasks before changing Claude
+startup guidance or selecting a reduced default. Python harness tests and compile-only JVM
+verification are separate checks; Quill does not index the modified Python harness sources.
+All 116 Python unit tests passed; the unchanged JVM tool contracts returned a satisfied
+`complete`/verified receipt after compile-only freshness verification.

@@ -6,10 +6,25 @@ import unittest
 from unittest.mock import patch
 
 from quill_fixture_session_hook import emit, main
-from quill_adoption_diagnostic import OVERVIEW_FIRST_GUIDANCE, configure_fixture_guidance
+from quill_adoption_diagnostic import OVERVIEW_FIRST_GUIDANCE, ROUTING_GUIDANCE, configure_fixture_guidance
 
 
 class FixtureSessionHookTest(unittest.TestCase):
+    def test_routing_hook_and_file_use_identical_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "project"
+            project.mkdir()
+            original = "<!-- quill:managed:start -->baseline"
+            (project / "CLAUDE.md").write_text(original)
+            (project / "AGENTS.md").write_text("same")
+            configure_fixture_guidance(project, "routing_file")
+            self.assertEqual(ROUTING_GUIDANCE + original, (project / "CLAUDE.md").read_text())
+            output = io.StringIO()
+            payload = {"hook_event_name": "SessionStart", "source": "startup", "cwd": str(project)}
+            self.assertTrue(emit(project, root / "ledger", payload, output, "routing"))
+            self.assertEqual(ROUTING_GUIDANCE, json.loads(output.getvalue())["hookSpecificOutput"]["additionalContext"])
+            self.assertFalse(emit(project, root / "ledger", payload, io.StringIO(), "unknown"))
     def test_emits_exact_context_and_external_digest_only(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

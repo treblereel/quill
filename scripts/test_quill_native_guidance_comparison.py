@@ -1,4 +1,5 @@
 import io
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -6,12 +7,12 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from quill_native_guidance_comparison import main, summarize
-from quill_adoption_diagnostic import OVERVIEW_FIRST_GUIDANCE
+from quill_native_guidance_comparison import main, summarize, experiment_controls
+from quill_adoption_diagnostic import OVERVIEW_FIRST_GUIDANCE, ROUTING_GUIDANCE
 
 
 class NativeGuidanceComparisonTest(unittest.TestCase):
-    def exercise(self, wire_only=False, mutation=False, drift=False, exception=False, scenarios=None, treatments=None):
+    def exercise(self, wire_only=False, mutation=False, drift=False, exception=False, scenarios=None, treatments=None, rubric="legacy"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             binary = root / "quill"
@@ -30,11 +31,15 @@ class NativeGuidanceComparisonTest(unittest.TestCase):
                     for scenario in selected]
                 Path(argv[argv.index("--output") + 1]).write_text(json.dumps({
                     "wire_contract": {"ok": True}, "tool_profile": "full", "guidance_variant": variant,
+                    "rubric": rubric,
+                    "hook": {"context_sha256": hashlib.sha256((ROUTING_GUIDANCE if variant == "routing_hook"
+                        else OVERVIEW_FIRST_GUIDANCE).encode()).hexdigest()},
                     "tools": [{"name": "get_overview"}], "server_instructions": "same instructions",
                     "scenarios": {scenario: "changed" if drift and variant == "overview_first" else "same"
                                   for scenario in selected},
                     "guidance": {"AGENTS.md": "same agents", "CLAUDE.md":
-                        (OVERVIEW_FIRST_GUIDANCE if variant == "overview_first" else "") + "same baseline"},
+                        (OVERVIEW_FIRST_GUIDANCE if variant == "overview_first" else
+                         ROUTING_GUIDANCE if variant == "routing_file" else "") + "same baseline"},
                     "runs": runs}))
             args = ["--quill", str(binary), "--output", str(output), "--samples", "2"]
             if wire_only:
@@ -43,6 +48,7 @@ class NativeGuidanceComparisonTest(unittest.TestCase):
                 args.extend(["--scenarios", *scenarios])
             if treatments:
                 args.extend(["--variants", *treatments])
+            args.extend(["--rubric", rubric])
             with patch("quill_native_guidance_comparison.diagnostic.main", side_effect=diagnostic), \
                     redirect_stdout(io.StringIO()):
                 code = main(args)
@@ -67,6 +73,19 @@ class NativeGuidanceComparisonTest(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertEqual(["baseline", "session_start", "session_start", "baseline"], variants)
         self.assertEqual(8, report["summary"]["completed"])
+
+    def test_identical_routing_text_normalizes_to_baseline_controls(self):
+        code, report, _ = self.exercise(treatments=["baseline", "routing_file", "routing_hook"],
+                                        scenarios=["call_chain", "known_file"], rubric="routing")
+        self.assertEqual(0, code)
+        self.assertEqual(12, report["summary"]["completed"])
+        self.assertEqual("routing", report["rubric"])
+
+    def test_missing_hook_context_or_source_control_legacy_rejected(self):
+        with self.assertRaises(ValueError):
+            experiment_controls({"guidance": {"CLAUDE.md": "same"}}, "routing_hook")
+        with self.assertRaises(ValueError):
+            main(["--output", "/unused", "--scenarios", "known_file"])
 
     def test_duplicate_or_single_variant_rejected_before_binary_read(self):
         for variants in (["baseline"], ["baseline", "baseline"]):

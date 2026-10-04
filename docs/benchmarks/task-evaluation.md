@@ -958,3 +958,82 @@ passed, including fail-open/input guards, unchanged instruction files, selected-
 wire-only non-attestation and missing/matching hook-emission scoring. The recommended JVM
 compile-only command succeeded without running JVM tests; the unchanged JVM contracts returned
 `complete`, a satisfied gate and a verified receipt. That receipt does not verify the Python helper.
+
+### Task routing versus mandatory orientation
+
+```bash
+python3 scripts/quill_native_guidance_comparison.py \
+  --variants baseline routing_file routing_hook --rubric routing \
+  --scenarios usages call_chain change_plan known_file literal \
+  --samples 2 --timeout 120 \
+  --output target/benchmarks/quill-task-routing-comparison.json
+```
+
+The two routing treatments deliver byte-identical short text through a CLAUDE.md prefix or
+SessionStart additional context. Symbols, callers including tests, call chains, dependencies
+and change impact prefer semantic queries; change planning uses change_session; a known file or
+exact literal uses direct reads/searches; stale/partial/unsupported results require source
+verification. Generated managed instructions remain intact underneath the prefix, AGENTS.md
+and server instructions are unchanged, and all arms use the same full tool catalog and prompts.
+This is additional guidance, not a replacement of the existing mandatory-overview policy.
+
+Three tasks are added explicitly: a two-edge production call chain through an endpoint,
+controller and service; reading the greeting prefix from a named source file; and locating an
+exact literal. Existing production/test usage and change-planning tasks round out the workload.
+The endpoint is generated only when the chain task is selected. Original five-task defaults,
+profile workloads and the legacy rubric remain unchanged; source-control tasks require the
+explicit routing rubric. This is still a small **single-module** fixture, not evidence about
+multi-module dependencies or realistic change-impact completeness.
+
+The routing rubric requires a successful first substantive call to the expected provider,
+successful task evidence, correct final JSON and the existing safety/invariance conditions.
+ToolSearch, search_tools and overview are discovery/orientation and excluded only from the
+first-substantive-call decision. Failed source calls before Quill do not count as semantic
+preference. Orientation is still reported independently. Source controls need a successful
+direct read/search instead of a semantic query, and do not fail merely because orientation
+preceded the read. Trace counts expose any unnecessary queries separately. The legacy rubric
+still requires overview; these scores must not be presented as improvements over that rubric.
+Codex command traces now retain nonzero exit/error status rather than marking every completion
+as successful observed source evidence. No native Codex requests were made in this experiment.
+
+On October 4, Claude Code 2.1.287 completed 30 requests, with variant order reversed on sample 2.
+All six child wire/control checks passed. Post-capture validation also checked matching hook
+context digests and normalized controls in all six children. All fixture-invariance checks passed;
+no edit or build tool calls occurred. The hook emitted matching context once in each of its ten
+requests. Claude global config invariance remains unmeasured.
+
+| Variant, ten requests | Appropriate first route | Correct JSON / full routing rubric | Overview first | Total tool calls |
+| --- | ---: | ---: | ---: | ---: |
+| baseline | 10/10 | 9/10 | 1/10 | 12 |
+| routing_file | 10/10 | 10/10 | 2/10 | 12 |
+| routing_hook | 10/10 | 8/10 | 0/10 | 13 |
+
+All 18 semantic tasks initially selected a successful Quill query and eventually obtained
+successful task-tool evidence. All 12 source controls used Read/Grep and made **zero** Quill
+calls. Thus neither treatment demonstrated better provider selection than baseline. Three
+chain answers failed strict JSON decoding: one baseline request and both hook requests. Their
+normalized `observed` values are null; this does not establish that their factual prose was
+wrong. The other three chain answers matched both expected edges. These successful chain
+answers also began with overview, but the association is not causal evidence: tool arguments,
+returned evidence and raw answers are not retained in this capture. Do not relax parsing after
+seeing the failures or describe successful calls as proof of correct reasoning.
+
+No tool calls were recorded as errors, so this run is not the Git-permission-fallback confound.
+Median total request times were 7.611 s baseline, 8.262 s routing_file and 7.497 s routing_hook.
+Tiny samples, inherited models/auth, fixed task order and uncontrolled caches preclude claims
+about speed, cost or superior delivery channels. The command exited 1 for the three answer-format
+failures, not missing coverage, mutation or transport failure. Reports and six child captures
+remain ignored under target/benchmarks. Later informational answer-format/call-count fields can
+also be derived directly from this run's normalized observed answers and traces.
+
+Next: investigate the chain-answer failures with bounded, fixture-only query-argument and
+response-shape evidence, then expand to multi-module and change-impact tasks. Do not install
+production hooks based on provider-selection results that are already at ceiling in every arm.
+Live freshness injection, PostToolUse augmentation and Claude interactive trust behavior are
+not tested here. Production instructions, default profiles and global settings remain unchanged.
+
+All 146 Python tests passed, including default-workload preservation, routing/legacy separation,
+failed-source fallback, source-control evidence, paired text/digest identity and selection guards.
+The exact recommended quick_compile command succeeded without running JVM tests. Quill returned
+`complete`, a satisfied phase gate and a verified receipt for unchanged JVM contracts; Python
+correctness is covered separately by its unit tests and this native experiment.

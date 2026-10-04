@@ -19,15 +19,21 @@ def summarize(runs, planned):
 def experiment_controls(child, variant):
     """Verify the experiment changed only the intended prefix, not prompts/catalog/agent guidance."""
     claude = child["guidance"]["CLAUDE.md"]
-    if variant == "overview_first":
-        if not claude.startswith(diagnostic.OVERVIEW_FIRST_GUIDANCE):
+    if variant in {"overview_first", "routing_file"}:
+        prefix = diagnostic.ROUTING_GUIDANCE if variant == "routing_file" else diagnostic.OVERVIEW_FIRST_GUIDANCE
+        if not claude.startswith(prefix):
             raise ValueError("Experimental guidance prefix missing")
-        claude = claude[len(diagnostic.OVERVIEW_FIRST_GUIDANCE):]
+        claude = claude[len(prefix):]
+    if variant in {"session_start", "routing_hook"}:
+        context = diagnostic.ROUTING_GUIDANCE if variant == "routing_hook" else diagnostic.OVERVIEW_FIRST_GUIDANCE
+        if child.get("hook", {}).get("context_sha256") != hashlib.sha256(context.encode()).hexdigest():
+            raise ValueError("Hook context does not match the paired instruction text")
     def digest(value):
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
     return {"baseline_claude": digest(claude), "agents": digest(child["guidance"]["AGENTS.md"]),
             "catalog": digest(child["tools"]), "server_instructions": digest(child["server_instructions"]),
-            "prompts": digest(child["scenarios"]), "client_versions": child.get("client_versions", {})}
+            "prompts": digest(child["scenarios"]), "rubric": child.get("rubric", "legacy"),
+            "client_versions": child.get("client_versions", {})}
 
 
 def main(argv=None):
@@ -37,6 +43,7 @@ def main(argv=None):
     parser.add_argument("--samples", type=int, default=1)
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--wire-only", action="store_true", help="No native model requests")
+    parser.add_argument("--rubric", choices=["legacy", "routing"], default="legacy")
     parser.add_argument("--variants", nargs="+", choices=diagnostic.GUIDANCE_VARIANTS,
                         default=["baseline", "overview_first"], help="Fixture-only treatments to compare")
     parser.add_argument("--scenarios", nargs="+", choices=list(diagnostic.SCENARIOS),
@@ -49,6 +56,8 @@ def main(argv=None):
         raise ValueError("Duplicate scenarios cannot form independent paired task cells")
     if len(set(args.variants)) != len(args.variants) or len(args.variants) < 2:
         raise ValueError("At least two distinct variants required")
+    if args.rubric == "legacy" and any(diagnostic.SCENARIOS[name].get("route") == "source" for name in args.scenarios):
+        raise ValueError("Source-control scenarios require the routing rubric")
     binary = args.quill.resolve()
     with binary.open("rb") as source:
         binary_hash = hashlib.file_digest(source, "sha256").hexdigest()
@@ -65,6 +74,7 @@ def main(argv=None):
               "quill_binary_sha256": binary_hash,
               "scenarios": args.scenarios,
               "variants": args.variants,
+              "rubric": args.rubric,
               "planned": [] if args.wire_only else planned, "runs": [], "wire": []}
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -87,6 +97,7 @@ def main(argv=None):
                           "--guidance-variant", variant, "--tool-profile", "full",
                           "--cases", "claude_project", "--scenarios", *args.scenarios,
                           "--samples", "1", "--timeout", str(args.timeout)]
+            child_args.extend(["--rubric", args.rubric])
             if args.wire_only:
                 child_args.append("--wire-only")
             try:
@@ -94,6 +105,7 @@ def main(argv=None):
                 child = json.loads(child_path.read_text())
                 valid = bool(child["wire_contract"]) and all(child["wire_contract"].values())
                 valid &= child.get("guidance_variant") == variant and child.get("tool_profile") == "full"
+                valid &= child.get("rubric", "legacy") == args.rubric
                 controls = experiment_controls(child, variant)
                 if "controls" not in report:
                     report["controls"] = controls
@@ -101,6 +113,7 @@ def main(argv=None):
                 report["wire"].append({"variant": variant, "sample": sample, "valid": valid,
                     "contract": child["wire_contract"], "controls_match": controls == report["controls"],
                     "guidance_sha256": child.get("guidance_sha256"),
+                    "hook": child.get("hook"),
                     "catalog_tools": len(child["tools"]), "client_versions": child.get("client_versions", {})})
                 report["runs"].extend({**run, "variant": variant, "sample": sample} for run in child["runs"])
                 save()

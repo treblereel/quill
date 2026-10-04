@@ -3,7 +3,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from quill_adoption_scenarios import SCENARIOS, evaluate_capture, fixture_snapshot, native_trace, prompt_for, summarize
+from quill_adoption_scenarios import DEFAULT_SCENARIOS, SCENARIOS, evaluate_capture, fixture_snapshot, native_trace, prompt_for, summarize
 
 
 def codex_call(name, result=None, identifier=None, **extra):
@@ -20,6 +20,45 @@ def final(value):
 
 
 class AdoptionScenariosTest(unittest.TestCase):
+    def test_new_scenarios_do_not_expand_the_existing_default_workload(self):
+        self.assertEqual(("navigation", "usages", "dependencies", "history", "change_plan"), DEFAULT_SCENARIOS)
+    def route(self, stream, scenario="usages"):
+        return evaluate_capture("codex", stream, {"returncode": 0, "user_config_unchanged": True},
+            scenario, SCENARIOS[scenario]["expected"], True, rubric="routing")
+
+    def test_routing_does_not_require_overview_but_legacy_still_does(self):
+        stream = [codex_call("find_symbol_usages"), final(SCENARIOS["usages"]["expected"])]
+        result = self.route(stream)
+        self.assertTrue(result["passed"])
+        self.assertFalse(result["criteria"]["overview_first"])
+        self.assertNotIn("overview_first", result["required_criteria"])
+        self.assertIn("first_route_appropriate", result["required_criteria"])
+        self.assertFalse(self.score(stream, scenario="usages")["passed"])
+
+    def test_source_controls_require_successful_direct_evidence_not_just_correct_answer(self):
+        for scenario in ("known_file", "literal"):
+            answer = final(SCENARIOS[scenario]["expected"])
+            read = {"type": "item.completed", "item": {"type": "command_execution",
+                "command": "rg Welcome src", "exit_code": 0}}
+            self.assertTrue(self.route([read, answer], scenario)["passed"])
+            self.assertFalse(self.route([answer], scenario)["passed"])
+            failed = {"type": "item.completed", "item": {**read["item"], "exit_code": 1}}
+            self.assertFalse(self.route([failed, answer], scenario)["passed"])
+            self.assertFalse(self.route([codex_call("search_symbols"), read, answer], scenario)["passed"])
+            self.assertTrue(self.route([codex_call("get_overview"), read, answer], scenario)["passed"])
+
+    def test_semantic_fallback_after_source_failure_is_not_initial_preference(self):
+        failed = {"type": "item.completed", "item": {"type": "command_execution", "exit_code": 1}}
+        result = self.route([failed, codex_call("find_symbol_usages"), final(SCENARIOS["usages"]["expected"])])
+        self.assertTrue(result["criteria"]["task_tool_succeeded"])
+        self.assertFalse(result["criteria"]["first_route_appropriate"])
+        self.assertFalse(result["passed"])
+
+    def test_chain_answer_and_task_evidence_are_both_required(self):
+        answer = final(SCENARIOS["call_chain"]["expected"])
+        self.assertTrue(self.route([codex_call("get_call_hierarchy"), answer], "call_chain")["passed"])
+        self.assertFalse(self.route([codex_call("search_symbols"), answer], "call_chain")["passed"])
+
     def score(self, stream, scenario="dependencies", expected=None, **capture):
         return evaluate_capture("codex", stream,
             {"returncode": 0, "timeout": False, "user_config_unchanged": True, **capture},

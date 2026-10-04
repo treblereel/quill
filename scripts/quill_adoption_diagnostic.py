@@ -15,13 +15,13 @@ from pathlib import Path
 
 import quill_change_loop_e2e as loop
 from quill_native_client_probe import events, invoke
-from quill_adoption_scenarios import SCENARIOS, evaluate_capture, fixture_snapshot, prompt_for, summarize
+from quill_adoption_scenarios import DEFAULT_SCENARIOS, SCENARIOS, evaluate_capture, fixture_snapshot, prompt_for, summarize
 from quill_workflow_benchmark import WorkflowClient
 
 
 PROMPT = prompt_for("change_plan")  # Compatibility for external imports; all tasks use SCENARIOS.
 
-GUIDANCE_VARIANTS = ("baseline", "overview_first", "session_start")
+GUIDANCE_VARIANTS = ("baseline", "overview_first", "session_start", "routing_file", "routing_hook")
 OVERVIEW_FIRST_GUIDANCE = """## Experimental code-intelligence startup checklist
 
 For code navigation and change analysis, use this order:
@@ -33,6 +33,18 @@ Do not treat a successful source search as a substitute for the initial overview
 This checklist does not authorize edits, builds, tests, or additional services.
 
 """
+ROUTING_GUIDANCE = """## Experimental task routing
+
+Choose the retrieval route from the question, not from a desire to call more tools.
+- Symbols, callers including tests, call chains, dependencies and change impact: discover
+  Quill MCP tools and prefer the corresponding semantic query. Use change_session for change planning.
+- Reading a known file or locating an exact literal: Read/Grep/Glob is sufficient; do not
+  add semantic queries solely to demonstrate tool use.
+- If Quill reports stale, partial or unsupported evidence, verify the relevant source.
+Keep overview orientation separate from task-specific evidence. This does not authorize
+edits, builds, tests, or additional services.
+
+"""
 
 
 def configure_fixture_guidance(project, variant):
@@ -41,10 +53,10 @@ def configure_fixture_guidance(project, variant):
         raise ValueError("Unknown guidance variant")
     path = project / "CLAUDE.md"
     original = path.read_text()
-    if variant == "overview_first":
+    if variant in {"overview_first", "routing_file"}:
         if "<!-- quill:managed:start -->" not in original:
             raise ValueError("Expected generated managed fixture guidance")
-        path.write_text(OVERVIEW_FIRST_GUIDANCE + original)
+        path.write_text((ROUTING_GUIDANCE if variant == "routing_file" else OVERVIEW_FIRST_GUIDANCE) + original)
     return {name: hashlib.sha256((project / name).read_bytes()).hexdigest()
             for name in ("AGENTS.md", "CLAUDE.md")}
 
@@ -116,7 +128,7 @@ def profile_catalog_valid(profile, catalog):
     if profile == "router":
         return names == {"get_overview", "search_tools", "execute_tool"}
     return "get_overview" in names and all(
-        bool(names.intersection(SCENARIOS[scenario]["tools"])) for scenario in SCENARIOS
+        bool(names.intersection(SCENARIOS[scenario]["tools"])) for scenario in DEFAULT_SCENARIOS
         if scenario != "history") and (bool(names.intersection(SCENARIOS["history"]["tools"]))
         == (profile == "full")) and not {"search_tools", "execute_tool"}.intersection(names)
 
@@ -128,6 +140,7 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--samples", type=int, default=1)
     parser.add_argument("--wire-only", action="store_true", help="Check native wire metadata without inference")
+    parser.add_argument("--rubric", choices=["legacy", "routing"], default="legacy")
     parser.add_argument("--guidance-variant", choices=GUIDANCE_VARIANTS, default="baseline",
                         help="Fixture-only Claude instruction variant; production guidance is unchanged")
     parser.add_argument("--tool-profile", choices=["full", "core", "router"], default="full",
@@ -136,9 +149,11 @@ def main(argv=None):
                         "project_workspace_write", "claude_project", "profile_read_only"],
                         default=["project_read_only", "transport_read_only",
                                  "project_workspace_write", "claude_project"])
-    parser.add_argument("--scenarios", nargs="+", choices=list(SCENARIOS), default=list(SCENARIOS),
-                        help="Unprompted tasks to run (default: all; each case/sample/task uses inference)")
+    parser.add_argument("--scenarios", nargs="+", choices=list(SCENARIOS), default=list(DEFAULT_SCENARIOS),
+                        help="Unprompted tasks (default: original five; each case/sample/task uses inference)")
     args = parser.parse_args(argv)
+    if args.rubric == "legacy" and any(SCENARIOS[name].get("route") == "source" for name in args.scenarios):
+        raise ValueError("Source-control scenarios require the routing rubric")
     if args.guidance_variant != "baseline" and (args.tool_profile != "full"
             or args.cases != ["claude_project"]):
         raise ValueError("Experimental guidance requires full catalog and only claude_project")
@@ -150,6 +165,7 @@ def main(argv=None):
               "mode": "wire_only" if args.wire_only else "native_inference",
               "tool_profile": args.tool_profile,
               "guidance_variant": args.guidance_variant,
+              "rubric": args.rubric,
               "scenarios": {name: {"prompt": prompt_for(name), "expected_tools": SCENARIOS[name]["tools"]}
                             for name in args.scenarios}, "runs": []}
     quill, maven = args.quill.resolve(), shutil.which("mvn")
@@ -166,6 +182,11 @@ def main(argv=None):
             "package org.example;\npublic class GreetingController {\n"
             "  private final GreetingService service = new GreetingService();\n"
             "  public String hello(String name) { return service.greet(name); }\n}\n")
+        if "call_chain" in args.scenarios:
+            (project / "src/main/java/org/example/GreetingEndpoint.java").write_text(
+                "package org.example;\npublic class GreetingEndpoint {\n"
+                "  private final GreetingController controller = new GreetingController();\n"
+                "  public String render(String name) { return controller.hello(name); }\n}\n")
         for argv in (["git", "init", "-q"],
                      ["git", "config", "user.name", "Quill diagnostic"],
                      ["git", "config", "user.email", "diagnostic@example.invalid"],
@@ -182,18 +203,22 @@ def main(argv=None):
             configure_fixture_profile(project, args.tool_profile)
         report["guidance_sha256"] = configure_fixture_guidance(project, args.guidance_variant)
         ledger = Path(hook_temporary) / "emissions.jsonl"
-        if args.guidance_variant == "session_start":
+        if args.guidance_variant in {"session_start", "routing_hook"}:
             settings_path = project / ".claude/settings.json"
             settings = json.loads(settings_path.read_text())
             if "hooks" in settings:
                 raise ValueError("Unexpected existing fixture hooks")
-            command = shlex.join([sys.executable, str(Path(__file__).with_name(
-                "quill_fixture_session_hook.py").resolve()), str(project), str(ledger)])
+            hook_args = [sys.executable, str(Path(__file__).with_name(
+                "quill_fixture_session_hook.py").resolve()), str(project), str(ledger)]
+            context = ROUTING_GUIDANCE if args.guidance_variant == "routing_hook" else OVERVIEW_FIRST_GUIDANCE
+            if args.guidance_variant == "routing_hook":
+                hook_args.append("routing")
+            command = shlex.join(hook_args)
             settings["hooks"] = {"SessionStart": [{"matcher": "startup|resume|clear",
                 "hooks": [{"type": "command", "command": command, "timeout": 5}]}]}
             settings_path.write_text(json.dumps(settings, indent=2) + "\n")
             report["hook"] = {"event": "SessionStart", "timeout_seconds": 5,
-                "context_sha256": hashlib.sha256(OVERVIEW_FIRST_GUIDANCE.encode()).hexdigest(),
+                "context_sha256": hashlib.sha256(context.encode()).hexdigest(),
                 "evidence_scope": "Harness-owned temporary ledger outside fixture; emission is not proof of model compliance"}
         wire = WorkflowClient([str(quill), "--tools", args.tool_profile], project, 60)
         try:
@@ -263,14 +288,14 @@ def main(argv=None):
                     stream = events(capture["stdout"])
                     evaluation = evaluate_capture(client, stream, capture, scenario,
                         expected_plan if scenario == "change_plan" else SCENARIOS[scenario]["expected"], unchanged,
-                        expected_plan_variants if scenario == "change_plan" else ())
+                        expected_plan_variants if scenario == "change_plan" else (), rubric=args.rubric)
                     # Keep normalized evidence, not raw client stderr or indexed source contents.
                     run = {key: value for key, value in capture.items() if key not in {"stdout", "stderr"}}
                     run.update({"case": case, "client": client, "scenario": scenario,
                                 "sample": sample + 1, "evaluation": evaluation,
                                 "elapsed_seconds": round(time.perf_counter() - started, 3),
                                 "usage": client_usage(client, stream)})
-                    if args.guidance_variant == "session_start":
+                    if args.guidance_variant in {"session_start", "routing_hook"}:
                         emissions = ledger.read_text().splitlines() if ledger.exists() else []
                         added = emissions[len(hook_before):]
                         emitted = len(added) == 1 and json.loads(added[0]) == {
@@ -279,6 +304,7 @@ def main(argv=None):
                             "response_events": sum(event.get("type") == "system" and
                                 event.get("subtype") == "hook_response" for event in stream)}
                         evaluation["criteria"]["session_hook_emitted"] = emitted
+                        evaluation["required_criteria"].append("session_hook_emitted")
                         evaluation["passed"] &= emitted
                     report["runs"].append(run)
                     report["summary"] = summarize(report["runs"], expected_runs)

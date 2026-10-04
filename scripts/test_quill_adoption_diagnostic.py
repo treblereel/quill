@@ -38,6 +38,12 @@ class AdoptionDiagnosticTest(unittest.TestCase):
                     main(["--output", "/unused", "--guidance-variant", "overview_first", *extra])
                 inference.assert_not_called()
 
+    def test_source_controls_reject_legacy_rubric_before_fixture_or_client_creation(self):
+        with patch("quill_adoption_diagnostic.invoke") as inference:
+            with self.assertRaises(ValueError):
+                main(["--output", "/unused", "--scenarios", "literal"])
+            inference.assert_not_called()
+
     def test_action_representations_are_derived_only_from_snapshot_not_model_answer(self):
         expected, variants = plan_expectations({"phase": "planned", "directive": {
             "primary_action": {"action": "inspect_primary", "description": "Inspect declarations"}}})
@@ -61,7 +67,8 @@ class AdoptionDiagnosticTest(unittest.TestCase):
         self.assertFalse(metadata_contract(initialized, {"tools": []})["query_safety_hints"])
 
     def run_diagnostic(self, *, wire_only=False, unavailable=False, no_overview=False,
-                       config_changed=False, bad_wire=False, scenarios=("navigation",), hook=False, hook_emits=False):
+                       config_changed=False, bad_wire=False, scenarios=("navigation",), hook=False,
+                       hook_emits=False, hook_variant="session_start"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             quill = root / "quill"
@@ -97,9 +104,10 @@ class AdoptionDiagnosticTest(unittest.TestCase):
                     from quill_fixture_session_hook import emit
                     settings = json.loads((project / ".claude/settings.json").read_text())
                     command = settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
-                    ledger = Path(shlex.split(command)[-1])
+                    parts = shlex.split(command)
+                    ledger = Path(parts[3])
                     emit(project, ledger, {"hook_event_name": "SessionStart", "source": "startup",
-                        "cwd": str(project)}, io.StringIO())
+                        "cwd": str(project)}, io.StringIO(), parts[4] if len(parts) == 5 else "overview_first")
                 scenario = next(name for name in scenarios if SCENARIOS[name]["prompt"] in prompt)
                 calls = []
                 for tool in ([] if no_overview else ["get_overview"]) + [SCENARIOS[scenario]["tools"][0]]:
@@ -115,7 +123,7 @@ class AdoptionDiagnosticTest(unittest.TestCase):
             argv = ["diagnostic", "--quill", str(quill), "--output", str(output),
                     "--cases", "claude_project" if hook else "project_read_only", "--scenarios", *scenarios]
             if hook:
-                argv.extend(["--guidance-variant", "session_start"])
+                argv.extend(["--guidance-variant", hook_variant])
             if wire_only:
                 argv.append("--wire-only")
             with patch("sys.argv", argv), patch("quill_adoption_diagnostic.loop.run", side_effect=run), \
@@ -147,6 +155,10 @@ class AdoptionDiagnosticTest(unittest.TestCase):
         code, report, calls = self.run_diagnostic(hook=True, wire_only=True)
         self.assertEqual((0, 0), (code, calls))
         self.assertEqual([], report["runs"])
+
+    def test_routing_hook_scores_the_correct_context_digest(self):
+        _, report, _ = self.run_diagnostic(hook=True, hook_emits=True, hook_variant="routing_hook")
+        self.assertTrue(report["runs"][0]["hook_evidence"]["expected_context_emitted"])
 
     def test_bad_wire_contract_stops_before_inference_and_keeps_remaining_coverage(self):
         code, report, calls = self.run_diagnostic(bad_wire=True)

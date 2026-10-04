@@ -9,7 +9,7 @@ import platform
 import statistics
 
 import quill_adoption_diagnostic as diagnostic
-from quill_adoption_scenarios import SCENARIOS
+from quill_adoption_scenarios import DEFAULT_SCENARIOS, SCENARIOS
 
 PROFILES = ("full", "core", "router")
 CASES = ("project_read_only", "claude_project")
@@ -80,6 +80,8 @@ def safe_fixture(report):
 
 
 def catalog_support(catalog, scenario):
+    if SCENARIOS[scenario].get("route") == "source":
+        return True
     names = {item.get("name") for item in catalog}
     return bool(names.intersection(SCENARIOS[scenario]["tools"])) or {"search_tools", "execute_tool"}.issubset(names)
 
@@ -92,7 +94,7 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--cases", nargs="+", choices=CASES, default=list(CASES))
     parser.add_argument("--profiles", nargs="+", choices=PROFILES, default=list(PROFILES))
-    parser.add_argument("--scenarios", nargs="+", choices=list(SCENARIOS), default=list(SCENARIOS))
+    parser.add_argument("--scenarios", nargs="+", choices=list(DEFAULT_SCENARIOS), default=list(DEFAULT_SCENARIOS))
     parser.add_argument("--wire-only", action="store_true", help="Validate profile coverage without model requests")
     args = parser.parse_args(argv)
     if args.samples < 1 or args.timeout < 1 or any(len(values) != len(set(values))

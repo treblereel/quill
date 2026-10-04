@@ -50,6 +50,28 @@ SCENARIOS = {
         "tools": ("change_session",),
     },
 }
+DEFAULT_SCENARIOS = tuple(SCENARIOS)  # Preserve existing opt-in workload and profile contracts.
+SCENARIOS.update({
+    "call_chain": {
+        "prompt": "Trace the internal production call chain from "
+                  "org.example.GreetingEndpoint.render to the method that constructs the greeting. "
+                  'Return only JSON with an "edges" array of "fully.qualified.Class.method -> fully.qualified.Class.method" strings.',
+        "expected": {"edges": ["org.example.GreetingEndpoint.render -> org.example.GreetingController.hello",
+                               "org.example.GreetingController.hello -> org.example.GreetingService.greet"]},
+        "tools": ("get_call_hierarchy",),
+    },
+    "known_file": {
+        "prompt": "Read src/main/java/org/example/GreetingService.java and report "
+                  'the greeting prefix string, including its trailing space. Return only JSON with "prefix".',
+        "expected": {"prefix": "Welcome, "}, "tools": (), "route": "source",
+    },
+    "literal": {
+        "prompt": 'Locate the exact literal "Welcome, " in production Java source. '
+                  'Return only JSON with "source_file", a path relative to the fixture root.',
+        "expected": {"source_file": "src/main/java/org/example/GreetingService.java"},
+        "tools": (), "route": "source",
+    },
+})
 
 
 def prompt_for(scenario):
@@ -157,8 +179,10 @@ def native_trace(client, stream):
                 if identifier:
                     calls[identifier] = call
             if event.get("type") == "item.completed":
-                call["status"] = _response_status(item.get("result"), bool(item.get("error"))
-                        or item.get("status") in {"failed", "error"}) if kind == "mcp_tool_call" else "observed"
+                failed = bool(item.get("error")) or item.get("status") in {"failed", "error"} \
+                    or item.get("exit_code") not in {None, 0}
+                call["status"] = _response_status(item.get("result"), failed) if kind == "mcp_tool_call" \
+                    else "error" if failed else "observed"
         else:
             if event.get("type") == "result":
                 final = event.get("result", final)
@@ -223,7 +247,9 @@ def _correct(observed, expected):
     return True
 
 
-def evaluate_capture(client, stream, capture, scenario, expected, fixture_unchanged, expected_variants=()):
+def evaluate_capture(client, stream, capture, scenario, expected, fixture_unchanged, expected_variants=(), rubric="legacy"):
+    if rubric not in {"legacy", "routing"}:
+        raise ValueError("Unknown task rubric")
     trace, final, client_failed = native_trace(client, stream)
     observed = _observed(final)
     quill = [call for call in trace if call["provider"] == "quill"]
@@ -244,7 +270,30 @@ def evaluate_capture(client, stream, capture, scenario, expected, fixture_unchan
         "user_config_unchanged": client != "codex" or capture.get("user_config_unchanged") is True,
     }
     first_quill = next((index for index, call in enumerate(trace) if call["provider"] == "quill"), len(trace))
-    return {"passed": all(criteria.values()), "criteria": criteria, "expected": expected,
+    meaningful = [call for call in trace if call["tool"] not in {"ToolSearch", "get_overview", "search_tools"}]
+    route = SCENARIOS[scenario].get("route", "quill")
+    source_tools = {"Read", "Grep", "Glob", "command_execution"}
+    first = meaningful[0] if meaningful else None
+    routing = bool(first) and first["provider"] == route and first["status"] in {"ok", "observed"}
+    if route == "source":
+        routing &= bool(first) and first["tool"] in source_tools
+    required = set(criteria) - {"overview_first", "task_tool_succeeded"}
+    routing_success = any(call["provider"] == "source" and call["tool"] in source_tools
+                          and call["status"] in {"ok", "observed"} for call in meaningful) if route == "source" \
+        else criteria["task_tool_succeeded"]
+    routing_passed = all(criteria[key] for key in required) and routing and routing_success
+    if rubric == "routing":
+        criteria["first_route_appropriate"] = routing
+        criteria["route_evidence_succeeded"] = routing_success
+    passed = all(criteria.values()) if rubric == "legacy" else routing_passed
+    return {"passed": passed, "rubric": rubric, "routing_passed": routing_passed,
+            "required_criteria": sorted(criteria if rubric == "legacy" else
+                                        required | {"first_route_appropriate", "route_evidence_succeeded"}),
+            "answer_format_valid": observed is not None,
+            "call_count": len(trace), "failed_call_count": sum(call["status"] == "error" for call in trace),
+            "first_meaningful_call": first, "expected_route": route,
+            "non_overview_quill_call_count": sum(call["tool"] != "get_overview" for call in quill),
+            "criteria": criteria, "expected": expected,
             "expected_variants": list(expected_variants),
             "observed": observed, "trace": trace, "source_before_quill": first_quill,
             "quill_call_count": len(quill), "successful_quill_call_count": len(successful)}

@@ -159,12 +159,15 @@ def main() -> int:
             if planned.get("phase") != "planned" or planned.get("view") != "plan":
                 failures.append(f"unexpected initial phase/view: "
                                 f"{planned.get('phase')}/{planned.get('view')}")
-            if required.get("phase") != "verification_required" \
+            if required.get("phase") != "review_required" \
                     or required.get("view") != "verification":
                 failures.append(f"unexpected dirty phase/view: "
                                 f"{required.get('phase')}/{required.get('view')}")
             if "BUILD_EVIDENCE_REQUIRED" not in blocker_codes(required):
                 failures.append("dirty session did not require build evidence")
+            if not required.get("next_actions") or required["next_actions"][0].get("reason") \
+                    != "INCOMPLETE_TEST_COVERAGE":
+                failures.append("review action was not ordered before build verification")
             if failures:
                 raise RuntimeError("Pre-execution contract failed: " + "; ".join(failures))
 
@@ -214,6 +217,7 @@ def main() -> int:
             "phases": [planned.get("phase"), required.get("phase"), completed.get("phase")],
             "views": [planned.get("view"), required.get("view"), completed.get("view")],
             "quick_compile": command,
+            "review_actions": required.get("next_actions", []),
             "external_execution": {
                 "returncode": build.returncode,
                 "production_compiled": True,

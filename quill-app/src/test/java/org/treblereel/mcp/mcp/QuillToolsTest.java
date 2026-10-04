@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.eclipse.jgit.api.Git;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.statement.SqlLogger;
@@ -566,9 +567,11 @@ class QuillToolsTest {
                     List.of("OrderService"), "Add a method", 10));
 
             assertEquals("planned", planned.path("phase").asText());
-            assertEquals("verification_required", changed.path("phase").asText());
+            assertEquals("review_required", changed.path("phase").asText());
             assertTrue(changed.path("verification").path("worktree")
                     .path("structural_dirty").asBoolean());
+            assertEquals("INCOMPLETE_TEST_COVERAGE",
+                    changed.path("next_actions").get(0).path("reason").asText());
         }
     }
 
@@ -659,7 +662,7 @@ class QuillToolsTest {
             assertEquals("src/main/java/org/acme/OrderService.java",
                     result.path("requested_targets").get(0).asText());
             assertEquals("org.acme.OrderService", result.path("targets").get(0).asText());
-            assertEquals("verification_required", result.path("phase").asText());
+            assertEquals("review_required", result.path("phase").asText());
 
             JsonNode auto = JSON.readTree(new ChangeSessionQueries().snapshot(
                     jdbi, tempDir, List.of(), "Add retry support", 10,
@@ -670,6 +673,17 @@ class QuillToolsTest {
             assertTrue(auto.has("verification_plan"));
             assertTrue(auto.has("verification_receipt"));
         }
+    }
+
+    @Test
+    void changeSessionUsesVerificationPhaseWhenOnlyBuildEvidenceIsMissing() {
+        ObjectNode verification = JSON.createObjectNode();
+        verification.put("verdict", "needs_build");
+        verification.putObject("worktree").put("structural_dirty", true);
+        verification.putArray("blockers").addObject()
+                .put("code", "BUILD_EVIDENCE_REQUIRED");
+
+        assertEquals("verification_required", ChangeSessionQueries.phase(verification));
     }
 
     private void writeMinimalPom() throws Exception {

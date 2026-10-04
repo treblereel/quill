@@ -267,8 +267,12 @@ The fixture intentionally has neither a Maven wrapper nor a pre-existing `.gitig
 runs the system Maven fallback to bootstrap compiled classes, initializes Quill, edits a production
 source, and obtains the exact `quick_compile` argv from `change_session`. The harness—not Quill—
 executes that command and then calls `change_session` again. The report requires the phase sequence
-`planned` → `verification_required` → `complete`, compiled production and standard test classes,
+`planned` → `review_required` → `complete`, compiled production and standard test classes,
 no Surefire or Failsafe reports, a captured successful build event, and removal of the
 build-evidence blocker. The completed snapshot must also contain a verification receipt with the
 same recommended argv, successful observed evidence, completion reasons, and an explicit
 `not_captured` command attestation so build results are never presented as proof of exact argv.
+Because sessions are stateless evidence snapshots, phases may be skipped: `review_required` is
+reported only while unresolved targets, incomplete test coverage, truncated target inference, or
+truncated worktree evidence needs attention; `verification_required` means only build evidence is
+missing. Review actions are ordered before external compilation recommendations.

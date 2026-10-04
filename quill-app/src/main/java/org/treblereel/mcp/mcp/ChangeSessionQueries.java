@@ -11,12 +11,16 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 
 /** Builds a compact, stateless snapshot of the change workflow. */
 final class ChangeSessionQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Set<String> REVIEW_REASONS = Set.of(
+            "UNRESOLVED_TARGETS", "INCOMPLETE_TEST_COVERAGE",
+            "TARGET_INFERENCE_TRUNCATED", "WORKTREE_TRUNCATED");
     private final ContextQueries contexts = new ContextQueries();
     private final ChangePlanQueries plans = new ChangePlanQueries();
     private final ChangeVerificationQueries verification = new ChangeVerificationQueries();
@@ -97,8 +101,9 @@ final class ChangeSessionQueries {
             result.set("verification_receipt",
                     verificationReceipt(stableSessionId, currentPhase, verify));
         }
-        result.set("next_actions", (effectiveView.equals("plan")
-                ? plan.path("sequence") : verify.path("next_actions")).deepCopy());
+        result.set("next_actions", effectiveView.equals("plan")
+                ? plan.path("sequence").deepCopy()
+                : phaseActions(currentPhase, verify.path("next_actions")));
         copy(verify, result, "_meta");
         var omitted = result.putArray("omitted_sections");
         if (!includePlan) omitted.add("plan");
@@ -262,11 +267,31 @@ final class ChangeSessionQueries {
         return result;
     }
 
-    private static String phase(ObjectNode verification) {
+    private static JsonNode phaseActions(String phase, JsonNode source) {
+        if (!phase.equals("review_required") || !source.isArray()) return source.deepCopy();
+        var ordered = JSON.createArrayNode();
+        for (boolean review : List.of(true, false)) {
+            for (JsonNode action : source) {
+                boolean reviewAction = REVIEW_REASONS.contains(action.path("reason").asText());
+                if (reviewAction == review) ordered.add(action.deepCopy());
+            }
+        }
+        for (int index = 0; index < ordered.size(); index++) {
+            ((ObjectNode) ordered.get(index)).put("order", index + 1);
+        }
+        return ordered;
+    }
+
+    static String phase(ObjectNode verification) {
         String verdict = verification.path("verdict").asText();
         if (verdict.equals("ready")) return "complete";
         if (verdict.equals("blocked")) return "blocked";
         if (!verification.path("worktree").path("structural_dirty").asBoolean()) return "planned";
+        for (JsonNode blocker : verification.path("blockers")) {
+            if (REVIEW_REASONS.contains(blocker.path("code").asText())) {
+                return "review_required";
+            }
+        }
         return "verification_required";
     }
 

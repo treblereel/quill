@@ -12,7 +12,8 @@ from quill_adoption_diagnostic import OVERVIEW_FIRST_GUIDANCE, ROUTING_GUIDANCE
 
 
 class NativeGuidanceComparisonTest(unittest.TestCase):
-    def exercise(self, wire_only=False, mutation=False, drift=False, exception=False, scenarios=None, treatments=None, rubric="legacy"):
+    def exercise(self, wire_only=False, mutation=False, drift=False, exception=False, scenarios=None, treatments=None,
+                 rubric="legacy", fixture_kind="single"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             binary = root / "quill"
@@ -32,6 +33,7 @@ class NativeGuidanceComparisonTest(unittest.TestCase):
                 Path(argv[argv.index("--output") + 1]).write_text(json.dumps({
                     "wire_contract": {"ok": True}, "tool_profile": "full", "guidance_variant": variant,
                     "rubric": rubric,
+                    "fixture_kind": fixture_kind,
                     "hook": {"context_sha256": hashlib.sha256((ROUTING_GUIDANCE if variant == "routing_hook"
                         else OVERVIEW_FIRST_GUIDANCE).encode()).hexdigest()},
                     "tools": [{"name": "get_overview"}], "server_instructions": "same instructions",
@@ -49,6 +51,7 @@ class NativeGuidanceComparisonTest(unittest.TestCase):
             if treatments:
                 args.extend(["--variants", *treatments])
             args.extend(["--rubric", rubric])
+            args.extend(["--fixture-kind", fixture_kind])
             with patch("quill_native_guidance_comparison.diagnostic.main", side_effect=diagnostic), \
                     redirect_stdout(io.StringIO()):
                 code = main(args)
@@ -86,6 +89,17 @@ class NativeGuidanceComparisonTest(unittest.TestCase):
             experiment_controls({"guidance": {"CLAUDE.md": "same"}}, "routing_hook")
         with self.assertRaises(ValueError):
             main(["--output", "/unused", "--scenarios", "known_file"])
+
+    def test_multimodule_source_paths_rejected_before_binary_read(self):
+        with self.assertRaises(ValueError):
+            main(["--output", "/unused", "--fixture-kind", "multimodule", "--scenarios", "navigation"])
+
+    def test_multimodule_selection_retains_exact_semantic_task_cells(self):
+        code, report, _ = self.exercise(fixture_kind="multimodule", rubric="routing",
+            scenarios=["call_chain", "usages", "dependencies", "change_plan"])
+        self.assertEqual(0, code)
+        self.assertEqual("multimodule", report["fixture_kind"])
+        self.assertEqual(16, report["summary"]["completed"])
 
     def test_duplicate_or_single_variant_rejected_before_binary_read(self):
         for variants in (["baseline"], ["baseline", "baseline"]):

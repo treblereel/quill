@@ -141,6 +141,8 @@ def main(argv=None):
     parser.add_argument("--samples", type=int, default=1)
     parser.add_argument("--wire-only", action="store_true", help="Check native wire metadata without inference")
     parser.add_argument("--rubric", choices=["legacy", "routing"], default="legacy")
+    parser.add_argument("--fixture-kind", choices=["single", "multimodule"], default="single")
+    parser.add_argument("--capture-chain-evidence", action="store_true", help="Bounded fixture-only diagnostics; no raw output")
     parser.add_argument("--guidance-variant", choices=GUIDANCE_VARIANTS, default="baseline",
                         help="Fixture-only Claude instruction variant; production guidance is unchanged")
     parser.add_argument("--tool-profile", choices=["full", "core", "router"], default="full",
@@ -152,6 +154,8 @@ def main(argv=None):
     parser.add_argument("--scenarios", nargs="+", choices=list(SCENARIOS), default=list(DEFAULT_SCENARIOS),
                         help="Unprompted tasks (default: original five; each case/sample/task uses inference)")
     args = parser.parse_args(argv)
+    if args.fixture_kind == "multimodule" and set(args.scenarios) - {"call_chain", "usages", "dependencies", "change_plan"}:
+        raise ValueError("Multimodule fixture supports semantic tasks only")
     if args.rubric == "legacy" and any(SCENARIOS[name].get("route") == "source" for name in args.scenarios):
         raise ValueError("Source-control scenarios require the routing rubric")
     if args.guidance_variant != "baseline" and (args.tool_profile != "full"
@@ -166,6 +170,7 @@ def main(argv=None):
               "tool_profile": args.tool_profile,
               "guidance_variant": args.guidance_variant,
               "rubric": args.rubric,
+              "fixture_kind": args.fixture_kind,
               "scenarios": {name: {"prompt": prompt_for(name), "expected_tools": SCENARIOS[name]["tools"]}
                             for name in args.scenarios}, "runs": []}
     quill, maven = args.quill.resolve(), shutil.which("mvn")
@@ -187,12 +192,15 @@ def main(argv=None):
                 "package org.example;\npublic class GreetingEndpoint {\n"
                 "  private final GreetingController controller = new GreetingController();\n"
                 "  public String render(String name) { return controller.hello(name); }\n}\n")
+        source = project / "src/main/java/org/example/GreetingService.java"
+        if args.fixture_kind == "multimodule":
+            from quill_multimodule_fixture import convert
+            source = convert(project)
         for argv in (["git", "init", "-q"],
                      ["git", "config", "user.name", "Quill diagnostic"],
                      ["git", "config", "user.email", "diagnostic@example.invalid"],
                      ["git", "add", "."], ["git", "commit", "-q", "-m", "Fixture"]):
             loop.run(argv, project)
-        source = project / "src/main/java/org/example/GreetingService.java"
         source.write_text(source.read_text().replace('"Hello, "', '"Welcome, "'))
         for argv in (["git", "add", str(source)],
                      ["git", "commit", "-q", "-m", "Use a welcoming greeting"],
@@ -225,6 +233,13 @@ def main(argv=None):
             wire.__enter__()
             initialized = wire.initialized
             catalog = wire.request("tools/list", {})
+            if args.capture_chain_evidence and "call_chain" in args.scenarios and args.tool_profile == "full":
+                chain, _ = wire.call("get_call_hierarchy", {"target": "org.example.GreetingEndpoint",
+                    "method": "render", "direction": "outbound", "transitive": True, "max_depth": 5})
+                report["chain_wire_evidence"] = {
+                    "calls_count": len(chain["calls"]) if isinstance(chain.get("calls"), list) else None,
+                    "has_more": chain.get("has_more"), "error": bool(chain.get("error_code")),
+                    "scope": "Independent fixture query; result shape only, not completeness attestation"}
             if args.tool_profile == "router":
                 wire.call("search_tools", {"query": "change_session"})
                 planned, _ = wire.call("execute_tool", {"name": "change_session",
@@ -295,6 +310,9 @@ def main(argv=None):
                                 "sample": sample + 1, "evaluation": evaluation,
                                 "elapsed_seconds": round(time.perf_counter() - started, 3),
                                 "usage": client_usage(client, stream)})
+                    if args.capture_chain_evidence and scenario == "call_chain":
+                        from quill_chain_evidence import chain_evidence
+                        run["chain_evidence"] = chain_evidence(client, stream, SCENARIOS[scenario]["expected"])
                     if args.guidance_variant in {"session_start", "routing_hook"}:
                         emissions = ledger.read_text().splitlines() if ledger.exists() else []
                         added = emissions[len(hook_before):]

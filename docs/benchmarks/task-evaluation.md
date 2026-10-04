@@ -1037,3 +1037,88 @@ failed-source fallback, source-control evidence, paired text/digest identity and
 The exact recommended quick_compile command succeeded without running JVM tests. Quill returned
 `complete`, a satisfied phase gate and a verified receipt for unchanged JVM contracts; Python
 correctness is covered separately by its unit tests and this native experiment.
+
+### Bounded chain diagnosis and a two-module reactor
+
+```bash
+python3 scripts/quill_adoption_diagnostic.py --cases claude_project \
+  --scenarios call_chain --rubric routing --capture-chain-evidence --samples 3 \
+  --timeout 120 --output target/benchmarks/quill-chain-diagnosis.json
+python3 scripts/quill_native_guidance_comparison.py --variants baseline routing_file \
+  --rubric routing --fixture-kind multimodule --capture-chain-evidence \
+  --scenarios call_chain usages dependencies change_plan --samples 1 --wire-only \
+  --output target/benchmarks/quill-multimodule-wire.json
+python3 scripts/quill_native_guidance_comparison.py --variants baseline routing_file \
+  --rubric routing --fixture-kind multimodule --capture-chain-evidence \
+  --scenarios call_chain usages dependencies change_plan --samples 2 --timeout 120 \
+  --output target/benchmarks/quill-multimodule-routing.json
+```
+
+The opt-in evidence capture retains only whitelisted fixture targets/methods and hierarchy
+options, response key/count/error shapes, final character counts and whether the expected JSON
+object appears within the answer. It never retains raw answers, arbitrary arguments or source
+contents. Capture is bounded to 16 hierarchy calls, 8,192 answer characters, 2,048 argument
+characters and 65,536 response characters; duplicate call IDs are excluded.
+Surrounding-character counts are diagnostic, not an excuse to alter strict scoring. The original
+parser accepts a whole fenced JSON object, but rejects additional surrounding text; its behavior
+is unchanged. Embedded matching JSON does not make a failed request pass.
+
+On October 4, three fresh single-module Claude requests all called overview followed by
+get_call_hierarchy with outbound/transitive/max_depth=5. Each hierarchy response contained two
+calls without an error. All three final answers contained the expected two-edge JSON object;
+only one met the existing whole-answer JSON contract. Two answers had additional framing. Thus
+the newly reproduced failures are not missing expected chain facts, and overview-first does not
+guarantee final formatting. The older three failures lacked this capture; their exact cause
+cannot be retrospectively established. Raw surrounding prose is not retained, so this does not
+attest every statement in a failed final answer.
+
+The new temporary reactor places GreetingService and its standard test probe in **core**,
+and GreetingController/GreetingEndpoint in **api**, which declares its dependency on core.
+The same fully qualified symbols and expected semantic facts are preserved. Conversion is
+restricted to a fresh, recognizable harness fixture before Git initialization, rejects existing
+modules and source-root symlinks, and never operates on the production repository. Maven
+test-compile builds the reactor and standard test sources without running tests. Task selection
+is restricted to semantic scenarios because old single-module paths are intentionally invalid.
+Single-module/default behavior remains unchanged.
+
+Both wire-only preflights passed. The native paired run completed 16 requests over two samples,
+reversing baseline/routing_file order on the second sample. All four child wire/control checks
+and all fixture-invariance checks passed, with no edit/build tool calls. Each independent wire
+hierarchy query returned two calls, has_more=false and no error; this shape check is not a general
+completeness attestation. No global client settings or production instructions were changed;
+Claude global configuration invariance remains unmeasured.
+
+| Two-module tasks, eight requests per variant | Baseline | Routing file |
+| --- | ---: | ---: |
+| Successful appropriate first route | 8/8 | 8/8 |
+| Successful task-specific Quill evidence | 8/8 | 8/8 |
+| Correct whole-answer JSON / full routing rubric | 7/8 | 7/8 |
+| Chain answers containing both expected edges | 2/2 | 2/2 |
+| Chain answers meeting whole-answer JSON contract | 1/2 | 1/2 |
+
+All usages, dependencies and change-planning answers passed. Both failed chain answers contained
+the expected JSON object with extra surrounding text: their prefix/suffix character counts were
+124/4 and 76/4. Both successful chain answers were whole fenced JSON objects (8/4 framing counts)
+accepted by the pre-existing parser. One successful baseline chain answer skipped overview and
+read source after a successful hierarchy query; the earlier overview/success association does
+not generalize. Cross-module task selection worked in this small reactor, without demonstrating
+an advantage for additional routing text or proving correctness on more complex codebases.
+
+Median total request times were 8.125 s baseline and 7.951 s routing_file. Tiny samples, inherited
+models/auth, fixed task order, uncontrolled caches and additional reads prevent speed/cost claims.
+Diagnostic and native comparison commands deliberately exit 1 for whole-answer contract failures;
+wire-only exits 0. All requests completed: these are not transport or fixture-mutation failures.
+The 19 native requests and two wire-only preflights are separate evidence sets; do not pool them
+as a paired improvement estimate. Captures remain ignored under target/benchmarks.
+
+Next: separate structured factual evaluation from whole-answer formatting through an explicitly
+versioned evaluation contract, rather than silently loosening parsing after observing failures.
+Expand impact tasks with independently checked affected modules/callers/tests. The current
+change_plan task validates workflow phase/action/receipt, not affected-test or risk completeness.
+There is still no provider-selection evidence justifying production hooks or stronger reminders.
+
+All 155 Python tests passed, including diagnostic non-leakage, bounded/deduplicated capture,
+embedded-JSON non-acceptance, safe reactor conversion and exact multimodule task coverage.
+The recommended compile-only JVM command succeeded without JVM tests; unchanged JVM contracts
+returned `complete`, a satisfied gate and a verified receipt. These Python changes are not indexed
+by Quill; their correctness is covered separately by unit tests and the fixture experiments.

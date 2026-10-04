@@ -33,6 +33,7 @@ def experiment_controls(child, variant):
     return {"baseline_claude": digest(claude), "agents": digest(child["guidance"]["AGENTS.md"]),
             "catalog": digest(child["tools"]), "server_instructions": digest(child["server_instructions"]),
             "prompts": digest(child["scenarios"]), "rubric": child.get("rubric", "legacy"),
+            "fixture_kind": child.get("fixture_kind", "single"),
             "client_versions": child.get("client_versions", {})}
 
 
@@ -44,6 +45,8 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--wire-only", action="store_true", help="No native model requests")
     parser.add_argument("--rubric", choices=["legacy", "routing"], default="legacy")
+    parser.add_argument("--fixture-kind", choices=["single", "multimodule"], default="single")
+    parser.add_argument("--capture-chain-evidence", action="store_true")
     parser.add_argument("--variants", nargs="+", choices=diagnostic.GUIDANCE_VARIANTS,
                         default=["baseline", "overview_first"], help="Fixture-only treatments to compare")
     parser.add_argument("--scenarios", nargs="+", choices=list(diagnostic.SCENARIOS),
@@ -58,6 +61,8 @@ def main(argv=None):
         raise ValueError("At least two distinct variants required")
     if args.rubric == "legacy" and any(diagnostic.SCENARIOS[name].get("route") == "source" for name in args.scenarios):
         raise ValueError("Source-control scenarios require the routing rubric")
+    if args.fixture_kind == "multimodule" and set(args.scenarios) - {"call_chain", "usages", "dependencies", "change_plan"}:
+        raise ValueError("Multimodule fixture supports semantic tasks only")
     binary = args.quill.resolve()
     with binary.open("rb") as source:
         binary_hash = hashlib.file_digest(source, "sha256").hexdigest()
@@ -75,6 +80,7 @@ def main(argv=None):
               "scenarios": args.scenarios,
               "variants": args.variants,
               "rubric": args.rubric,
+              "fixture_kind": args.fixture_kind,
               "planned": [] if args.wire_only else planned, "runs": [], "wire": []}
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -98,6 +104,9 @@ def main(argv=None):
                           "--cases", "claude_project", "--scenarios", *args.scenarios,
                           "--samples", "1", "--timeout", str(args.timeout)]
             child_args.extend(["--rubric", args.rubric])
+            child_args.extend(["--fixture-kind", args.fixture_kind])
+            if args.capture_chain_evidence:
+                child_args.append("--capture-chain-evidence")
             if args.wire_only:
                 child_args.append("--wire-only")
             try:
@@ -106,6 +115,7 @@ def main(argv=None):
                 valid = bool(child["wire_contract"]) and all(child["wire_contract"].values())
                 valid &= child.get("guidance_variant") == variant and child.get("tool_profile") == "full"
                 valid &= child.get("rubric", "legacy") == args.rubric
+                valid &= child.get("fixture_kind", "single") == args.fixture_kind
                 controls = experiment_controls(child, variant)
                 if "controls" not in report:
                     report["controls"] = controls
@@ -114,6 +124,7 @@ def main(argv=None):
                     "contract": child["wire_contract"], "controls_match": controls == report["controls"],
                     "guidance_sha256": child.get("guidance_sha256"),
                     "hook": child.get("hook"),
+                    "chain_wire_evidence": child.get("chain_wire_evidence"),
                     "catalog_tools": len(child["tools"]), "client_versions": child.get("client_versions", {})})
                 report["runs"].extend({**run, "variant": variant, "sample": sample} for run in child["runs"])
                 save()

@@ -139,6 +139,9 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--repetitions", type=int, default=1,
                         help="Number of independent paired runs (use 10-20 for reporting)")
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument("--guidance-file", type=Path,
+                        help="Installed AGENTS.md or CLAUDE.md; inject its managed Quill block "
+                             "into with_quill runs to measure instruction adoption")
     return parser.parse_args()
 
 
@@ -147,6 +150,15 @@ def load_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"Expected a JSON object in {path}")
     return value
+
+
+def managed_guidance(path: Path) -> str:
+    content = path.read_text(encoding="utf-8")
+    start, end = "<!-- quill:managed:start -->", "<!-- quill:managed:end -->"
+    if content.count(start) != 1 or content.count(end) != 1 \
+            or content.index(end) < content.index(start):
+        raise ValueError(f"Malformed managed Quill guidance in {path}")
+    return content[content.index(start):content.index(end) + len(end)]
 
 
 def checked_path(project: Path, value: str) -> Path:
@@ -550,7 +562,8 @@ def selected_quill_tools(task: dict[str, Any], quill: QuillTools | None,
 
 def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: str,
               reasoning_effort: str, source: SourceTools,
-              quill: QuillTools | None, tool_selection: str = "suite") -> dict[str, Any]:
+              quill: QuillTools | None, tool_selection: str = "suite",
+              guidance: str = "") -> dict[str, Any]:
     expected = task.get("expected")
     if not isinstance(expected, dict) or not expected:
         raise ValueError(f"Task {task.get('id')} has no expected object")
@@ -568,6 +581,8 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
         f"{json.dumps(expected_shape)}. Array values must be sorted. "
         "Use null when evidence is insufficient."
     )
+    if guidance and mode == "with_quill":
+        instructions += "\n\nInstalled Quill guidance:\n" + guidance
     next_input: Any = task["prompt"]
     previous_response_id: str | None = None
     totals = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0,
@@ -652,6 +667,7 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
     usage_diagnostics = tool_usage_diagnostics(tool_trace, bool(quill_tools))
     return {
         "id": task["id"],
+        "installed_guidance_used": bool(guidance and mode == "with_quill"),
         "observed": parsed["observed"],
         "duration_seconds": round(time.perf_counter() - started, 3),
         "input_tokens": totals["input_tokens"],
@@ -696,6 +712,7 @@ def main() -> int:
     if args.repetitions < 1:
         raise ValueError("--repetitions must be at least 1")
     project = args.project.resolve()
+    guidance = managed_guidance(args.guidance_file) if args.guidance_file else ""
     revision = verify_project(suite, project, args.allow_dirty)
     api_key = os.environ.get(args.api_key_env)
     if not api_key:
@@ -739,7 +756,7 @@ def main() -> int:
                                     args.tool_output_limit) as quill:
                         result = run_agent(client, task, mode, args.model,
                                            args.reasoning_effort, source, quill,
-                                           args.tool_selection)
+                                           args.tool_selection, guidance)
                 else:
                     result = run_agent(client, task, mode, args.model,
                                        args.reasoning_effort, source, None)

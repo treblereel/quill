@@ -339,6 +339,8 @@ does not imply that an executor, reactive stream, or message publication has com
   acknowledgement. A phase gate states whether unresolved evidence prevents progress and names the
   exact transition needed for the current phase. A factual directive selects one primary action,
   while stable action IDs let clients distinguish repeated guidance from a new requirement;
+  all views preserve the same directive. Primary actions include their evidence snapshot and any
+  external command needed for preparation or retry, even when the corresponding section is omitted;
   summary detail is the default, while
   full detail preserves the complete plan/verification parity contract, and `view=auto` returns
   only the plan before structural edits or verification evidence afterwards. Dirty changes with
@@ -491,6 +493,10 @@ working native executable. Initialization also refreshes versioned Quill guidanc
 and `CLAUDE.md`, preserving surrounding user content, so both clients follow the current
 change-session directive, phase gate, review, and verification contract. Quill does not create a
 Codex configuration file implicitly.
+
+`quill doctor` distinguishes outdated managed guidance from malformed marker boundaries. `init`
+refreshes an intact outdated block. When markers are missing, reversed, or duplicated, `init` and
+`clean` preserve the entire instructions file and report the boundaries that need repair.
 
 Here `cwd` lets Quill discover the project automatically, so `--project` is not
 needed. Project-scoped configuration is loaded only for trusted projects. Check the

@@ -155,11 +155,11 @@ final class ChangeVerificationQueries {
         if (!context.path("impacted_tests").path("answer_complete").asBoolean(true)) {
             blockers.addObject().put("code", "INCOMPLETE_TEST_COVERAGE")
                     .put("message", "The ranked affected-test set is incomplete");
-            ObjectNode fallback = action(actions, "consider_external_command",
+            ObjectNode fallback = action(actions, "inspect_test_evidence",
                     "INCOMPLETE_TEST_COVERAGE");
-            fallback.put("command_scope", "module_fallback");
-            fallback.put("command_source", "verification_plan.commands");
-            fallback.put("requires_tests", true);
+            fallback.put("evidence", "test_evidence");
+            fallback.put("description", "Inspect affected-test limitations; compile test sources "
+                    + "and refresh stale evidence before deciding whether test execution is needed");
         }
         if (context.path("_meta").path("structure_stale").asBoolean()) {
             blockers.addObject().put("code", "STALE_INDEX")

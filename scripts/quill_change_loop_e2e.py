@@ -14,10 +14,29 @@ import tempfile
 from typing import Any
 
 from quill_workflow_benchmark import WorkflowClient
+from quill_change_session_benchmark import semantic_contract, summary_contract, auto_contract
 
 
 TARGET = "org.example.GreetingService"
 CHANGE = "Add an enthusiastic greeting without changing the public method signature"
+
+
+def assert_snapshot_views(client: WorkflowClient, args: dict[str, Any],
+                          baseline: dict[str, Any]) -> None:
+    plan, _ = client.call("plan_change", {key: args[key] for key in ("targets", "change", "limit")})
+    verification, _ = client.call("verify_change", {key: args[key] for key in ("targets", "limit")})
+    for view in ("plan", "verification", "all"):
+        snapshot, _ = client.call("change_session", {**args, "view": view})
+        for key in ("phase", "directive", "phase_gate", "next_actions"):
+            if snapshot.get(key) != baseline.get(key):
+                raise RuntimeError(f"View {view} changed workflow {key}")
+        if view == "all" and not all(summary_contract(plan, verification, snapshot).values()):
+            raise RuntimeError("Summary benchmark parity failed")
+    full, _ = client.call("change_session", {**args, "view": "all", "detail": "full"})
+    if not all(semantic_contract(plan, verification, full).values()):
+        raise RuntimeError("Full benchmark parity failed")
+    if not all(auto_contract(plan, verification, baseline).values()):
+        raise RuntimeError("Auto benchmark parity failed")
 
 
 def arguments() -> argparse.Namespace:
@@ -175,9 +194,15 @@ def main() -> int:
         }
         with WorkflowClient([str(quill)], project, args.request_timeout) as client:
             planned, planned_trace = client.call("change_session", session_args)
+            assert_snapshot_views(client, session_args, planned)
             change_source(project)
             required, required_trace = client.call("change_session", session_args)
-            command = quick_compile(required)
+            assert_snapshot_views(client, session_args, required)
+            primary = required.get("directive", {}).get("primary_action", {})
+            if primary.get("action") != "inspect_test_evidence" \
+                    or not primary.get("evidence_snapshot", {}).get("limitations"):
+                raise RuntimeError("Review directive must expose affected-test limitations")
+            command = primary.get("preparation_command", {})
             failures = assert_contract(project, command, maven)
             action = next((item for item in required.get("next_actions", [])
                            if item.get("command_scope") == "quick_compile"), {})
@@ -220,12 +245,13 @@ def main() -> int:
             if failures:
                 raise RuntimeError("Pre-execution contract failed: " + "; ".join(failures))
 
-            working_directory = Path(required["verification_plan"]["working_directory"])
+            working_directory = Path(primary["working_directory"])
             break_source(project)
             failed_build = run_unchecked(command["argv"], working_directory)
             if failed_build.returncode == 0:
                 raise RuntimeError("Intentional compiler failure unexpectedly succeeded")
             blocked, blocked_trace = client.call("change_session", session_args)
+            assert_snapshot_views(client, session_args, blocked)
             blocked_receipt = blocked.get("verification_receipt", {})
             blocked_observed = blocked_receipt.get("observed_evidence", {})
             recovery_failures: list[str] = []
@@ -243,16 +269,24 @@ def main() -> int:
             blocked_gate = blocked.get("phase_gate", {})
             if blocked_gate.get("transition") != "fix_diagnostics_and_rebuild":
                 recovery_failures.append("blocked phase gate does not require repair and rebuild")
-            recovery_command = quick_compile(blocked)
+            blocked_primary = blocked.get("directive", {}).get("primary_action", {})
+            if blocked_primary.get("action") != "fix_diagnostics" \
+                    or not blocked_primary.get("evidence_snapshot"):
+                recovery_failures.append("Repair directive must expose compiler diagnostics")
+            # Act on the repair directive, then request the next snapshot before choosing a build.
+            repair_source(project)
+            repaired, repaired_trace = client.call("change_session", session_args)
+            recovery_command = repaired.get("directive", {}).get("primary_action", {}) \
+                .get("retry_command", {})
             if recovery_command["argv"] != command["argv"]:
                 recovery_failures.append("recovery changed the quick_compile argv")
             if recovery_failures:
                 raise RuntimeError("Failed-build contract failed: "
                                    + "; ".join(recovery_failures))
 
-            repair_source(project)
             build = run(recovery_command["argv"], working_directory)
             completed, completed_trace = client.call("change_session", session_args)
+            assert_snapshot_views(client, session_args, completed)
 
         post_failures: list[str] = []
         for relative in (
@@ -328,8 +362,10 @@ def main() -> int:
                 "after_status": build_status,
             },
             "verification_receipt": receipt,
-            "mcp_trace": [planned_trace, required_trace, blocked_trace, completed_trace],
+            "mcp_trace": [planned_trace, required_trace, blocked_trace,
+                          repaired_trace, completed_trace],
             "contract_complete": True,
+            "view_invariance_and_benchmark_parity": True,
         }
 
     output = args.output or Path("target/benchmarks") / (

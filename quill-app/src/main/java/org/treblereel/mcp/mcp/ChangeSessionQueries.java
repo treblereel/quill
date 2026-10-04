@@ -106,11 +106,11 @@ final class ChangeSessionQueries {
             result.set("verification_receipt",
                     verificationReceipt(stableSessionId, currentPhase, verify, checklist));
         }
-        ArrayNode actions = identifiedActions(stableSessionId, effectiveView.equals("plan")
+        ArrayNode actions = identifiedActions(stableSessionId, currentPhase.equals("planned")
                 ? plan.path("sequence").deepCopy()
                 : phaseActions(currentPhase, verify.path("next_actions")));
         result.set("next_actions", actions);
-        result.set("directive", directive(currentPhase, actions));
+        result.set("directive", directive(currentPhase, actions, plan, verify));
         copy(verify, result, "_meta");
         var omitted = result.putArray("omitted_sections");
         if (!includePlan) omitted.add("plan");
@@ -385,7 +385,8 @@ final class ChangeSessionQueries {
         return identity.toString();
     }
 
-    private static ObjectNode directive(String phase, ArrayNode actions) {
+    private static ObjectNode directive(String phase, ArrayNode actions,
+            ObjectNode plan, ObjectNode verify) {
         ObjectNode directive = JSON.createObjectNode();
         directive.put("schema_version", 1);
         directive.put("status", phase);
@@ -399,7 +400,41 @@ final class ChangeSessionQueries {
         });
         directive.put("action_count", actions.size());
         if (actions.isEmpty()) directive.putNull("primary_action");
-        else directive.set("primary_action", actions.get(0).deepCopy());
+        else {
+            ObjectNode primary = actions.get(0).deepCopy();
+            String evidence = primary.path("evidence").asText();
+            if (!evidence.isBlank()) {
+                JsonNode value = evidence.startsWith("plan.")
+                        ? plan.at("/" + evidence.substring(5).replace('.', '/'))
+                        : verify.at("/" + evidence.replace('.', '/'));
+                primary.set("evidence_snapshot", value.deepCopy());
+            }
+            if (phase.equals("planned")) {
+                primary.set("evidence_snapshot", plan.path("primary_changes").deepCopy());
+            }
+            String scope = primary.path("command_scope").asText();
+            boolean prepareTests = primary.path("action").asText().equals("inspect_test_evidence")
+                    && (verify.path("verdict").asText().equals("needs_build")
+                        || verify.path("_meta").path("structure_stale").asBoolean());
+            for (JsonNode command : verify.path("verification_plan").path("commands")) {
+                if (command.path("scope").asText().equals(scope)) {
+                    primary.set("command", command.deepCopy());
+                }
+                if (prepareTests && command.path("scope").asText().equals("quick_compile")) {
+                    primary.set("preparation_command", command.deepCopy());
+                }
+                if (phase.equals("blocked")
+                        && command.path("scope").asText().equals("quick_compile")) {
+                    primary.set("retry_command", command.deepCopy());
+                }
+            }
+            if (primary.has("command") || primary.has("preparation_command")
+                    || primary.has("retry_command")) {
+                copy(verify.path("verification_plan"), primary, "working_directory");
+                primary.put("executed_by_quill", false);
+            }
+            directive.set("primary_action", primary);
+        }
         return directive;
     }
 

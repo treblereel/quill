@@ -61,6 +61,20 @@ class ChangeSessionBenchmarkTest(unittest.TestCase):
         self.assertTrue(all(benchmark.auto_contract(
             {"sequence": sequence}, {"next_actions": []}, session).values()))
 
+    def test_action_parity_ignores_ids_but_detects_changed_semantics(self):
+        verification = {"next_actions": [{"action": "run_external_command", "order": 1}]}
+        session = {"next_actions": [{"action": "run_external_command", "order": 2,
+                                     "action_id": "stable"}]}
+        self.assertTrue(benchmark.actions_match({}, verification, session))
+        session["next_actions"][0]["action"] = "complete"
+        self.assertFalse(benchmark.actions_match({}, verification, session))
+
+    def test_review_action_parity_preserves_phase_ordering(self):
+        build = {"action": "run_external_command", "reason": "BUILD_EVIDENCE_REQUIRED"}
+        review = {"action": "inspect_test_evidence", "reason": "INCOMPLETE_TEST_COVERAGE"}
+        self.assertTrue(benchmark.actions_match({}, {"next_actions": [build, review]},
+                         {"phase": "review_required", "next_actions": [review, build]}))
+
 
 if __name__ == "__main__":
     unittest.main()

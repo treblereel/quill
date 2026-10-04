@@ -6,6 +6,7 @@ import subprocess
 from quill_agent_benchmark import (ResponsesClient, SourceTools, json_type, parse_final_json,
                                    quill_outcome_flags, run_agent, selected_quill_tools,
                                    source_fallbacks, tool_usage_diagnostics)
+from quill_agent_benchmark import managed_guidance
 
 
 class FakeResponses:
@@ -36,6 +37,30 @@ class FakeResponses:
 
 
 class QuillAgentBenchmarkTest(unittest.TestCase):
+
+    def test_installed_guidance_is_injected_only_in_quill_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / "A.java").write_text("class A {}\n", encoding="utf-8")
+            for mode in ("with_quill", "without_quill"):
+                transport = FakeResponses()
+                result = run_agent(ResponsesClient("unused", "https://example.invalid", 1, transport),
+                                   {"id": "one", "prompt": "answer", "expected": {"answer": 42}},
+                                   mode, "test-model", "medium", SourceTools(project, 1000), None,
+                                   guidance="Follow directive.primary_action")
+                self.assertEqual(mode == "with_quill", result["installed_guidance_used"])
+                self.assertEqual(mode == "with_quill",
+                                 "Follow directive.primary_action" in transport.payloads[0]["instructions"])
+
+    def test_guidance_loader_excludes_surrounding_user_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "AGENTS.md"
+            block = "<!-- quill:managed:start -->\nQuill rules\n<!-- quill:managed:end -->"
+            path.write_text("User rules\n" + block + "\nUser tail", encoding="utf-8")
+            self.assertEqual(block, managed_guidance(path))
+            path.write_text("<!-- quill:managed:start -->\nUser tail", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                managed_guidance(path)
 
     def test_collects_real_per_response_usage_and_tool_counts(self):
         with tempfile.TemporaryDirectory() as directory:

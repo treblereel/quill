@@ -687,6 +687,36 @@ class QuillToolsTest {
     }
 
     @Test
+    void changeSessionViewsPreservePhaseDirectiveAndExposePrimaryEvidence() throws Exception {
+        writeMinimalPom();
+        Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; class OrderService {}\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            for (boolean dirty : List.of(false, true)) {
+                if (dirty) Files.writeString(source,
+                        "package org.acme; class OrderService { void changed() {} }\n");
+                JsonNode baseline = null;
+                for (String view : List.of("auto", "plan", "verification", "all")) {
+                    JsonNode result = JSON.readTree(new ChangeSessionQueries().snapshot(
+                            jdbi, tempDir, List.of("OrderService"), "Add retry support", 10,
+                            "summary", view));
+                    if (baseline == null) baseline = result;
+                    assertEquals(baseline.path("directive"), result.path("directive"));
+                    assertEquals(baseline.path("phase_gate"), result.path("phase_gate"));
+                    assertTrue(result.path("directive").path("primary_action")
+                            .has("evidence_snapshot"));
+                    assertEquals(dirty ? "inspect_test_evidence" : "inspect_primary",
+                            result.path("directive").path("primary_action").path("action").asText());
+                }
+            }
+        }
+    }
+
+    @Test
     void changeSessionInfersTargetsFromDirtyJvmSources() throws Exception {
         writeMinimalPom();
         Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");

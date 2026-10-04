@@ -38,8 +38,7 @@ def semantic_contract(plan: dict[str, Any], verification: dict[str, Any],
         == session.get("verification", {}).get("blockers"),
         "verification_plan": verification.get("verification_plan")
         == session.get("verification_plan"),
-        "next_actions": verification.get("next_actions")
-        == session.get("next_actions"),
+        "next_actions": actions_match(plan, verification, session),
     }
 
 
@@ -57,8 +56,7 @@ def summary_contract(plan: dict[str, Any], verification: dict[str, Any],
         == session.get("verification", {}).get("verdict"),
         "blockers": verification.get("blockers")
         == session.get("verification", {}).get("blockers"),
-        "next_actions": verification.get("next_actions")
-        == session.get("next_actions"),
+        "next_actions": actions_match(plan, verification, session),
         "quick_compile_only": all(scope == "quick_compile" for scope in scopes),
         "omissions_declared": bool(session.get("omitted_sections")),
     }
@@ -68,14 +66,27 @@ def auto_contract(plan: dict[str, Any], verification: dict[str, Any],
                   session: dict[str, Any]) -> dict[str, bool]:
     planned = session.get("phase") == "planned"
     expected_view = "plan" if planned else "verification"
-    expected_actions = (plan.get("sequence") if planned
-                        else verification.get("next_actions"))
     return {
         "phase_view": session.get("view") == expected_view,
         "single_phase_payload": ("plan" in session) != ("verification" in session),
-        "next_actions": session.get("next_actions") == expected_actions,
+        "next_actions": actions_match(plan, verification, session),
         "omissions_declared": bool(session.get("omitted_sections")),
     }
+
+
+def actions_match(plan: dict[str, Any], verification: dict[str, Any],
+                  session: dict[str, Any]) -> bool:
+    expected = (plan.get("sequence", []) if session.get("phase") == "planned"
+                else verification.get("next_actions", []))
+    if session.get("phase") == "review_required":
+        review_reasons = {"UNRESOLVED_TARGETS", "INCOMPLETE_TEST_COVERAGE",
+                          "TARGET_INFERENCE_TRUNCATED", "WORKTREE_TRUNCATED",
+                          "MODULE_SELECTION_INCOMPLETE"}
+        expected = sorted(expected, key=lambda action: action.get("reason") not in review_reasons)
+    def normalize(actions):
+        return [{key: value for key, value in action.items()
+                 if key not in {"action_id", "order"}} for action in actions]
+    return normalize(expected) == normalize(session.get("next_actions", []))
 
 
 def aggregate(samples: list[dict[str, Any]]) -> dict[str, Any]:

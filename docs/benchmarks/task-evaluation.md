@@ -288,3 +288,12 @@ The phase `directive` must select the first ordered action as `primary_action`. 
 a stable `action_id`, so repeated stateless snapshots preserve identity while a changed reason,
 tool, scope, target, or other semantic action field produces a different action. Display order is
 excluded from the identity.
+Views project evidence without changing the phase directive. The loop inspects the primary review
+action's embedded test limitations, executes its compile-only preparation command, and uses the
+repair directive's diagnostics and retry command after a failed build. This checks a deterministic
+client following directives; it does not measure an LLM's adoption of generated instructions.
+For a separate LLM adoption experiment, pass `--guidance-file /path/to/AGENTS.md` (or `CLAUDE.md`)
+to `quill_agent_benchmark.py` with `--tool-selection all`. Only the Quill mode receives the
+installed managed block; captures report `installed_guidance_used` and the actual tool trace.
+This experiment requires the configured API key and remains read-only: it measures tool selection
+and answers, not an LLM performing edits or builds.

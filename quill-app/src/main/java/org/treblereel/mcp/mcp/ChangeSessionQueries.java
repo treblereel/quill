@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -22,6 +24,15 @@ final class ChangeSessionQueries {
 
     String snapshot(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit) {
+        return snapshot(jdbi, projectRoot, targets, change, limit, "full");
+    }
+
+    String snapshot(Jdbi jdbi, Path projectRoot, List<String> targets,
+            String change, int limit, String detail) {
+        String normalizedDetail = detail == null ? "summary" : detail.strip().toLowerCase();
+        if (!normalizedDetail.equals("summary") && !normalizedDetail.equals("full")) {
+            return errorResponse("Invalid detail: expected summary or full");
+        }
         if (change == null || change.isBlank()) {
             return plans.planChange(jdbi, projectRoot, targets, change, limit);
         }
@@ -46,6 +57,7 @@ final class ChangeSessionQueries {
         result.put("schema_version", 1);
         result.put("session_id", sessionId(projectRoot, canonicalTargets, change));
         result.put("state_model", "stateless_snapshot");
+        result.put("detail", normalizedDetail);
         result.put("change", change.strip());
         result.put("target_source", inferred ? "dirty_worktree" : "explicit");
         result.put("target_inference_truncated", inferenceTruncated);
@@ -53,29 +65,100 @@ final class ChangeSessionQueries {
         result.set("targets", JSON.valueToTree(canonicalTargets));
         result.put("phase", phase(verify));
 
-        ObjectNode planSummary = result.putObject("plan");
-        copy(plan, planSummary, "plan_status");
-        copy(plan, planSummary, "answer_complete");
-        copy(plan, planSummary, "primary_changes");
-        copy(plan, planSummary, "dependency_review");
-        copy(plan, planSummary, "test_plan");
-        copy(plan, planSummary, "warnings");
-        copy(plan, planSummary, "sequence");
-
-        ObjectNode verificationSummary = result.putObject("verification");
-        copy(verify, verificationSummary, "verdict");
-        copy(verify, verificationSummary, "verified");
-        copy(verify, verificationSummary, "target_source");
-        copy(verify, verificationSummary, "worktree");
-        copy(verify, verificationSummary, "build");
-        copy(verify, verificationSummary, "diagnostics");
-        copy(verify, verificationSummary, "test_evidence");
-        copy(verify, verificationSummary, "blockers");
-
-        copy(verify, result, "verification_plan");
+        result.set("plan", normalizedDetail.equals("full")
+                ? fullPlan(plan) : summaryPlan(plan));
+        result.set("verification", normalizedDetail.equals("full")
+                ? fullVerification(verify) : summaryVerification(verify));
+        result.set("verification_plan", normalizedDetail.equals("full")
+                ? verify.path("verification_plan").deepCopy()
+                : summaryVerificationPlan(verify.path("verification_plan")));
         copy(verify, result, "next_actions");
         copy(verify, result, "_meta");
+        if (normalizedDetail.equals("summary")) {
+            result.putArray("omitted_sections")
+                    .add("plan.member_contracts")
+                    .add("plan.coupling")
+                    .add("verification.worktree.changes")
+                    .add("verification.diagnostics.problems_after_first_5")
+                    .add("verification.test_evidence.tests")
+                    .add("verification_plan.non_quick_compile_commands");
+        }
         return result.toString();
+    }
+
+    private static ObjectNode fullPlan(ObjectNode plan) {
+        return compact(plan, List.of("plan_status", "answer_complete", "primary_changes",
+                "dependency_review", "test_plan", "warnings", "sequence"));
+    }
+
+    private static ObjectNode summaryPlan(ObjectNode plan) {
+        ObjectNode result = compact(plan, List.of(
+                "plan_status", "answer_complete", "warnings", "sequence"));
+        var primary = result.putArray("primary_changes");
+        for (JsonNode item : plan.path("primary_changes")) {
+            primary.add(compact(item, List.of("class", "file", "module", "source_set",
+                    "kind", "bean", "risk_score", "risk_level", "recommendation")));
+        }
+        var dependencies = result.putArray("dependency_review");
+        for (JsonNode item : plan.path("dependency_review")) {
+            dependencies.add(compact(item, List.of(
+                    "class", "file", "module", "usage_kind", "action", "reason")));
+        }
+        result.set("test_plan", compact(plan.path("test_plan"), List.of(
+                "test_index_coverage", "answer_complete", "limitations", "showing",
+                "total", "has_more")));
+        return result;
+    }
+
+    private static ObjectNode fullVerification(ObjectNode verify) {
+        return compact(verify, List.of("verdict", "verified", "target_source", "worktree",
+                "build", "diagnostics", "test_evidence", "blockers"));
+    }
+
+    private static ObjectNode summaryVerification(ObjectNode verify) {
+        ObjectNode result = compact(verify, List.of(
+                "verdict", "verified", "target_source", "blockers"));
+        result.set("worktree", compact(verify.path("worktree"), List.of(
+                "branch", "commit_stale", "dirty", "structural_dirty",
+                "counts_by_status", "showing", "total", "has_more")));
+        result.set("build", compact(verify.path("build"), List.of(
+                "build_system", "compiled_outputs", "freshness", "status",
+                "build_reason", "action_required", "recommended_action")));
+        ObjectNode diagnostics = compact(verify.path("diagnostics"), List.of(
+                "build_status", "build_tool", "finished_at", "limitations",
+                "showing", "total", "has_more", "recommended_action"));
+        var problems = diagnostics.putArray("problems");
+        int count = 0;
+        for (JsonNode problem : verify.path("diagnostics").path("problems")) {
+            if (count++ == 5) break;
+            problems.add(problem.deepCopy());
+        }
+        result.set("diagnostics", diagnostics);
+        result.set("test_evidence", compact(verify.path("test_evidence"), List.of(
+                "test_index_coverage", "answer_complete", "limitations",
+                "showing", "total", "has_more")));
+        return result;
+    }
+
+    private static ObjectNode summaryVerificationPlan(JsonNode plan) {
+        ObjectNode result = compact(plan, List.of("build_system", "working_directory",
+                "runner", "modules", "refresh_index_after_success", "commands_executable"));
+        var commands = result.putArray("commands");
+        var otherScopes = result.putArray("other_command_scopes");
+        for (JsonNode command : plan.path("commands")) {
+            if (command.path("scope").asText().equals("quick_compile")) {
+                commands.add(command.deepCopy());
+            } else {
+                otherScopes.add(command.path("scope").asText());
+            }
+        }
+        return result;
+    }
+
+    private static ObjectNode compact(JsonNode source, List<String> fields) {
+        ObjectNode result = JSON.createObjectNode();
+        fields.forEach(field -> copy(source, result, field));
+        return result;
     }
 
     private static String phase(ObjectNode verification) {

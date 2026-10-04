@@ -34,6 +34,23 @@ class ChangeSessionBenchmarkTest(unittest.TestCase):
         self.assertEqual(20.0, result["latency_ms_median"])
         self.assertEqual(200, result["response_bytes_median"])
 
+    def test_summary_contract_accepts_compact_semantic_evidence(self):
+        plan = {"primary_changes": [{"class": "A", "file": "A.java"}]}
+        verification = {
+            "verdict": "needs_build", "blockers": [],
+            "next_actions": [{"action": "run_external_command"}],
+        }
+        session = {
+            "plan": {"primary_changes": [{"class": "A", "file": "A.java"}]},
+            "verification": {"verdict": "needs_build", "blockers": []},
+            "verification_plan": {"commands": [{"scope": "quick_compile"}]},
+            "next_actions": [{"action": "run_external_command"}],
+            "omitted_sections": ["plan.member_contracts"],
+        }
+
+        self.assertTrue(all(benchmark.summary_contract(
+            plan, verification, session).values()))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -249,4 +249,5 @@ python3 scripts/quill_change_session_benchmark.py \
 
 The report compares two MCP calls (`plan_change` plus `verify_change`) with one `change_session`
 call and requires semantic parity for primary changes, dependency review, verdict, blockers,
-verification commands, and next actions.
+verification commands, and next actions. It also measures the default summary response separately
+and verifies that primary files, verdict, blockers, quick compilation, and next actions remain.

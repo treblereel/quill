@@ -43,6 +43,27 @@ def semantic_contract(plan: dict[str, Any], verification: dict[str, Any],
     }
 
 
+def summary_contract(plan: dict[str, Any], verification: dict[str, Any],
+                     session: dict[str, Any]) -> dict[str, bool]:
+    split_primary = [(item.get("class"), item.get("file"))
+                     for item in plan.get("primary_changes", [])]
+    session_primary = [(item.get("class"), item.get("file"))
+                       for item in session.get("plan", {}).get("primary_changes", [])]
+    scopes = [item.get("scope")
+              for item in session.get("verification_plan", {}).get("commands", [])]
+    return {
+        "primary_files": split_primary == session_primary,
+        "verdict": verification.get("verdict")
+        == session.get("verification", {}).get("verdict"),
+        "blockers": verification.get("blockers")
+        == session.get("verification", {}).get("blockers"),
+        "next_actions": verification.get("next_actions")
+        == session.get("next_actions"),
+        "quick_compile_only": all(scope == "quick_compile" for scope in scopes),
+        "omissions_declared": bool(session.get("omitted_sections")),
+    }
+
+
 def aggregate(samples: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "samples": len(samples),
@@ -62,15 +83,20 @@ def main() -> int:
     command = [str(Path(args.quill).resolve())] if Path(args.quill).exists() else [args.quill]
     split_samples: list[dict[str, Any]] = []
     session_samples: list[dict[str, Any]] = []
+    summary_samples: list[dict[str, Any]] = []
     contracts: list[dict[str, bool]] = []
-    session_args = {"targets": [args.target], "change": args.change, "limit": args.limit}
+    summary_contracts: list[dict[str, bool]] = []
+    plan_args = {"targets": [args.target], "change": args.change, "limit": args.limit}
+    session_args = {**plan_args, "detail": "full"}
+    summary_args = {**session_args, "detail": "summary"}
     verify_args = {"targets": [args.target], "limit": args.limit}
 
     with WorkflowClient(command, project, args.request_timeout) as client:
         for _ in range(args.samples):
-            plan, plan_trace = client.call("plan_change", session_args)
+            plan, plan_trace = client.call("plan_change", plan_args)
             verification, verify_trace = client.call("verify_change", verify_args)
             session, session_trace = client.call("change_session", session_args)
+            summary, summary_trace = client.call("change_session", summary_args)
             split_samples.append({
                 "tool_calls": 2,
                 "latency_ms": plan_trace["latency_ms"] + verify_trace["latency_ms"],
@@ -81,10 +107,17 @@ def main() -> int:
                 "latency_ms": session_trace["latency_ms"],
                 "response_bytes": session_trace["response_bytes"],
             })
+            summary_samples.append({
+                "tool_calls": 1,
+                "latency_ms": summary_trace["latency_ms"],
+                "response_bytes": summary_trace["response_bytes"],
+            })
             contracts.append(semantic_contract(plan, verification, session))
+            summary_contracts.append(summary_contract(plan, verification, summary))
 
     split = aggregate(split_samples)
     combined = aggregate(session_samples)
+    summary = aggregate(summary_samples)
     comparison = {
         "tool_call_reduction": split["tool_calls_per_sample"]
         - combined["tool_calls_per_sample"],
@@ -94,6 +127,11 @@ def main() -> int:
         - split["response_bytes_median"],
         "semantic_parity": all(all(contract.values()) for contract in contracts),
         "contract_flags": contracts[-1],
+        "summary_response_bytes_delta": summary["response_bytes_median"]
+        - split["response_bytes_median"],
+        "summary_contract_complete": all(
+            all(contract.values()) for contract in summary_contracts),
+        "summary_contract_flags": summary_contracts[-1],
     }
     result = {
         "schema_version": 1,
@@ -104,6 +142,7 @@ def main() -> int:
         "change": args.change,
         "split": split,
         "session": combined,
+        "summary": summary,
         "comparison": comparison,
     }
     output = args.output or Path("target/benchmarks") / (

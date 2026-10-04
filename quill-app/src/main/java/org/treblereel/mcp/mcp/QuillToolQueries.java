@@ -103,8 +103,8 @@ public final class QuillToolQueries {
     }
 
     String changeSession(Jdbi jdbi, Path projectRoot, List<String> targets,
-            String change, int limit, String detail) {
-        return changeSession.snapshot(jdbi, projectRoot, targets, change, limit, detail);
+            String change, int limit, String detail, String view) {
+        return changeSession.snapshot(jdbi, projectRoot, targets, change, limit, detail, view);
     }
 
     String getTypeHierarchy(Jdbi jdbi, String target, String direction,

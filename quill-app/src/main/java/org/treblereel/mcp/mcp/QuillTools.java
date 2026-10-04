@@ -265,12 +265,13 @@ public final class QuillTools {
             @ToolArg(description = "Classes or source paths; omit to infer up to 10 dirty JVM files") Optional<List<String>> targets,
             @ToolArg(description = "Concise description of the intended change") String change,
             @ToolArg(description = "Response detail: summary (default) or full") Optional<String> detail,
+            @ToolArg(description = "View: auto (default), plan, verification, or all") Optional<String> view,
             @ToolArg(description = "Evidence per section; default 20, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
         return forAllProjects(project.orElse(null), p -> queries.changeSession(
                 p.jdbi(), p.root(), targets.orElse(List.of()), change, requestedLimit,
-                detail.orElse("summary")));
+                detail.orElse("summary"), view.orElse("auto")));
     }
 
     @Tool(structured = true, description = "Rank tests affected by changed classes.")
@@ -1100,7 +1101,7 @@ public final class QuillTools {
 
     String changeSession(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit) {
-        return queries.changeSession(jdbi, projectRoot, targets, change, limit, "full");
+        return queries.changeSession(jdbi, projectRoot, targets, change, limit, "full", "all");
     }
 
     String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {

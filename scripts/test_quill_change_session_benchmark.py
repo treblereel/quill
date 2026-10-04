@@ -51,6 +51,16 @@ class ChangeSessionBenchmarkTest(unittest.TestCase):
         self.assertTrue(all(benchmark.summary_contract(
             plan, verification, session).values()))
 
+    def test_auto_contract_uses_plan_actions_for_planned_phase(self):
+        sequence = [{"action": "inspect_primary"}]
+        session = {
+            "phase": "planned", "view": "plan", "plan": {},
+            "next_actions": sequence, "omitted_sections": ["verification"],
+        }
+
+        self.assertTrue(all(benchmark.auto_contract(
+            {"sequence": sequence}, {"next_actions": []}, session).values()))
+
 
 if __name__ == "__main__":
     unittest.main()

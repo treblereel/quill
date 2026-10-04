@@ -64,6 +64,20 @@ def summary_contract(plan: dict[str, Any], verification: dict[str, Any],
     }
 
 
+def auto_contract(plan: dict[str, Any], verification: dict[str, Any],
+                  session: dict[str, Any]) -> dict[str, bool]:
+    planned = session.get("phase") == "planned"
+    expected_view = "plan" if planned else "verification"
+    expected_actions = (plan.get("sequence") if planned
+                        else verification.get("next_actions"))
+    return {
+        "phase_view": session.get("view") == expected_view,
+        "single_phase_payload": ("plan" in session) != ("verification" in session),
+        "next_actions": session.get("next_actions") == expected_actions,
+        "omissions_declared": bool(session.get("omitted_sections")),
+    }
+
+
 def aggregate(samples: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "samples": len(samples),
@@ -84,11 +98,14 @@ def main() -> int:
     split_samples: list[dict[str, Any]] = []
     session_samples: list[dict[str, Any]] = []
     summary_samples: list[dict[str, Any]] = []
+    auto_samples: list[dict[str, Any]] = []
     contracts: list[dict[str, bool]] = []
     summary_contracts: list[dict[str, bool]] = []
+    auto_contracts: list[dict[str, bool]] = []
     plan_args = {"targets": [args.target], "change": args.change, "limit": args.limit}
-    session_args = {**plan_args, "detail": "full"}
-    summary_args = {**session_args, "detail": "summary"}
+    session_args = {**plan_args, "detail": "full", "view": "all"}
+    summary_args = {**session_args, "detail": "summary", "view": "all"}
+    auto_args = {**session_args, "detail": "summary", "view": "auto"}
     verify_args = {"targets": [args.target], "limit": args.limit}
 
     with WorkflowClient(command, project, args.request_timeout) as client:
@@ -97,6 +114,7 @@ def main() -> int:
             verification, verify_trace = client.call("verify_change", verify_args)
             session, session_trace = client.call("change_session", session_args)
             summary, summary_trace = client.call("change_session", summary_args)
+            auto, auto_trace = client.call("change_session", auto_args)
             split_samples.append({
                 "tool_calls": 2,
                 "latency_ms": plan_trace["latency_ms"] + verify_trace["latency_ms"],
@@ -112,12 +130,19 @@ def main() -> int:
                 "latency_ms": summary_trace["latency_ms"],
                 "response_bytes": summary_trace["response_bytes"],
             })
+            auto_samples.append({
+                "tool_calls": 1,
+                "latency_ms": auto_trace["latency_ms"],
+                "response_bytes": auto_trace["response_bytes"],
+            })
             contracts.append(semantic_contract(plan, verification, session))
             summary_contracts.append(summary_contract(plan, verification, summary))
+            auto_contracts.append(auto_contract(plan, verification, auto))
 
     split = aggregate(split_samples)
     combined = aggregate(session_samples)
     summary = aggregate(summary_samples)
+    auto = aggregate(auto_samples)
     comparison = {
         "tool_call_reduction": split["tool_calls_per_sample"]
         - combined["tool_calls_per_sample"],
@@ -132,6 +157,11 @@ def main() -> int:
         "summary_contract_complete": all(
             all(contract.values()) for contract in summary_contracts),
         "summary_contract_flags": summary_contracts[-1],
+        "auto_response_bytes_delta": auto["response_bytes_median"]
+        - split["response_bytes_median"],
+        "auto_contract_complete": all(
+            all(contract.values()) for contract in auto_contracts),
+        "auto_contract_flags": auto_contracts[-1],
     }
     result = {
         "schema_version": 1,
@@ -143,6 +173,7 @@ def main() -> int:
         "split": split,
         "session": combined,
         "summary": summary,
+        "auto": auto,
         "comparison": comparison,
     }
     output = args.output or Path("target/benchmarks") / (

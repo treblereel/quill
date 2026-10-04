@@ -589,6 +589,23 @@ class QuillToolsTest {
     }
 
     @Test
+    void changeSessionAutoViewFocusesOnPlanBeforeStructuralEdits() throws Exception {
+        writeMinimalPom();
+
+        JsonNode result = JSON.readTree(new ChangeSessionQueries().snapshot(
+                jdbi, tempDir, List.of("OrderService"), "Add retry support", 10,
+                "summary", "auto"));
+
+        assertEquals("planned", result.path("phase").asText());
+        assertEquals("plan", result.path("view").asText());
+        assertTrue(result.has("plan"));
+        assertFalse(result.has("verification"));
+        assertFalse(result.has("verification_plan"));
+        assertEquals("inspect_primary",
+                result.path("next_actions").get(0).path("action").asText());
+    }
+
+    @Test
     void changeSessionInfersTargetsFromDirtyJvmSources() throws Exception {
         writeMinimalPom();
         Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
@@ -609,6 +626,14 @@ class QuillToolsTest {
                     result.path("requested_targets").get(0).asText());
             assertEquals("org.acme.OrderService", result.path("targets").get(0).asText());
             assertEquals("verification_required", result.path("phase").asText());
+
+            JsonNode auto = JSON.readTree(new ChangeSessionQueries().snapshot(
+                    jdbi, tempDir, List.of(), "Add retry support", 10,
+                    "summary", "auto"));
+            assertEquals("verification", auto.path("view").asText());
+            assertFalse(auto.has("plan"));
+            assertTrue(auto.has("verification"));
+            assertTrue(auto.has("verification_plan"));
         }
     }
 

@@ -30,8 +30,9 @@ final class ProjectConfiguration {
             verification evidence, and ordered next actions; repeat it with the same targets and
             change description to refresh the snapshot, or omit targets after editing to infer them
             from dirty JVM sources. Use `plan_change` or `verify_change` when only that focused view
-            is needed. Keep the default summary detail; request full detail only to inspect omitted
-            member, diagnostic, test, or command evidence. When build evidence is missing or stale, prefer the
+            is needed. Keep the default `view=auto` and summary detail so only the current phase is
+            returned; request another view or full detail only to inspect omitted evidence. When
+            build evidence is missing or stale, prefer the
             `verification_plan` command whose scope is `quick_compile`: run its exact `argv` from
             `working_directory` in the external shell, then verify again. This compiles production
             and standard test sources without running tests. Treat `focused` and `module_fallback` as
@@ -60,8 +61,9 @@ final class ProjectConfiguration {
             plan, verification evidence, and ordered next actions; repeat it with the same targets
             and change description to refresh the snapshot, or omit targets after editing to infer
             them from dirty JVM sources. Use `mcp__quill__plan_change` or `mcp__quill__verify_change`
-            for a focused view. Keep the default summary detail; request full detail only to inspect
-            omitted member, diagnostic, test, or command evidence. If build evidence is missing or stale,
+            for a focused view. Keep the default `view=auto` and summary detail so only the current
+            phase is returned; request another view or full detail only to inspect omitted evidence.
+            If build evidence is missing or stale,
             prefer the `verification_plan` command with scope `quick_compile`: run its exact `argv`
             from `working_directory` using the terminal, then verify again. It compiles production
             and standard test sources without running tests. Commands with scope `focused` or

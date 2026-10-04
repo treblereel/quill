@@ -251,3 +251,5 @@ The report compares two MCP calls (`plan_change` plus `verify_change`) with one 
 call and requires semantic parity for primary changes, dependency review, verdict, blockers,
 verification commands, and next actions. It also measures the default summary response separately
 and verifies that primary files, verdict, blockers, quick compilation, and next actions remain.
+The phase-aware `view=auto` response is measured independently and must expose exactly one of the
+plan or verification payloads with the correct actions for the current phase.

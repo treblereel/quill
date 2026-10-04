@@ -24,14 +24,23 @@ final class ChangeSessionQueries {
 
     String snapshot(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit) {
-        return snapshot(jdbi, projectRoot, targets, change, limit, "full");
+        return snapshot(jdbi, projectRoot, targets, change, limit, "full", "all");
     }
 
     String snapshot(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit, String detail) {
+        return snapshot(jdbi, projectRoot, targets, change, limit, detail, "all");
+    }
+
+    String snapshot(Jdbi jdbi, Path projectRoot, List<String> targets,
+            String change, int limit, String detail, String view) {
         String normalizedDetail = detail == null ? "summary" : detail.strip().toLowerCase();
         if (!normalizedDetail.equals("summary") && !normalizedDetail.equals("full")) {
             return errorResponse("Invalid detail: expected summary or full");
+        }
+        String normalizedView = view == null ? "auto" : view.strip().toLowerCase();
+        if (!List.of("auto", "plan", "verification", "all").contains(normalizedView)) {
+            return errorResponse("Invalid view: expected auto, plan, verification, or all");
         }
         if (change == null || change.isBlank()) {
             return plans.planChange(jdbi, projectRoot, targets, change, limit);
@@ -57,28 +66,49 @@ final class ChangeSessionQueries {
         result.put("schema_version", 1);
         result.put("session_id", sessionId(projectRoot, canonicalTargets, change));
         result.put("state_model", "stateless_snapshot");
+        String currentPhase = phase(verify);
+        String effectiveView = normalizedView.equals("auto")
+                ? (currentPhase.equals("planned") ? "plan" : "verification")
+                : normalizedView;
         result.put("detail", normalizedDetail);
+        result.put("view_requested", normalizedView);
+        result.put("view", effectiveView);
         result.put("change", change.strip());
         result.put("target_source", inferred ? "dirty_worktree" : "explicit");
         result.put("target_inference_truncated", inferenceTruncated);
         result.set("requested_targets", JSON.valueToTree(effectiveTargets));
         result.set("targets", JSON.valueToTree(canonicalTargets));
-        result.put("phase", phase(verify));
+        result.put("phase", currentPhase);
 
-        result.set("plan", normalizedDetail.equals("full")
-                ? fullPlan(plan) : summaryPlan(plan));
-        result.set("verification", normalizedDetail.equals("full")
-                ? fullVerification(verify) : summaryVerification(verify));
-        result.set("verification_plan", normalizedDetail.equals("full")
-                ? verify.path("verification_plan").deepCopy()
-                : summaryVerificationPlan(verify.path("verification_plan")));
-        copy(verify, result, "next_actions");
+        boolean includePlan = effectiveView.equals("plan") || effectiveView.equals("all");
+        boolean includeVerification = effectiveView.equals("verification")
+                || effectiveView.equals("all");
+        if (includePlan) {
+            result.set("plan", normalizedDetail.equals("full")
+                    ? fullPlan(plan) : summaryPlan(plan));
+        }
+        if (includeVerification) {
+            result.set("verification", normalizedDetail.equals("full")
+                    ? fullVerification(verify) : summaryVerification(verify));
+            result.set("verification_plan", normalizedDetail.equals("full")
+                    ? verify.path("verification_plan").deepCopy()
+                    : summaryVerificationPlan(verify.path("verification_plan")));
+        }
+        result.set("next_actions", (effectiveView.equals("plan")
+                ? plan.path("sequence") : verify.path("next_actions")).deepCopy());
         copy(verify, result, "_meta");
-        if (normalizedDetail.equals("summary")) {
-            result.putArray("omitted_sections")
-                    .add("plan.member_contracts")
-                    .add("plan.coupling")
-                    .add("verification.worktree.changes")
+        var omitted = result.putArray("omitted_sections");
+        if (!includePlan) omitted.add("plan");
+        if (!includeVerification) {
+            omitted.add("verification");
+            omitted.add("verification_plan");
+        }
+        if (normalizedDetail.equals("summary") && includePlan) {
+            omitted.add("plan.member_contracts").add("plan.coupling")
+                    .add("plan.test_plan.tests");
+        }
+        if (normalizedDetail.equals("summary") && includeVerification) {
+            omitted.add("verification.worktree.changes")
                     .add("verification.diagnostics.problems_after_first_5")
                     .add("verification.test_evidence.tests")
                     .add("verification_plan.non_quick_compile_commands");
@@ -165,7 +195,7 @@ final class ChangeSessionQueries {
         String verdict = verification.path("verdict").asText();
         if (verdict.equals("ready")) return "complete";
         if (verdict.equals("blocked")) return "blocked";
-        if (!verification.path("worktree").path("dirty").asBoolean()) return "planned";
+        if (!verification.path("worktree").path("structural_dirty").asBoolean()) return "planned";
         return "verification_required";
     }
 

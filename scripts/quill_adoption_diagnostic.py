@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import shutil
+import shlex
+import sys
 import tempfile
 import time
 import tomllib
@@ -19,7 +21,7 @@ from quill_workflow_benchmark import WorkflowClient
 
 PROMPT = prompt_for("change_plan")  # Compatibility for external imports; all tasks use SCENARIOS.
 
-GUIDANCE_VARIANTS = ("baseline", "overview_first")
+GUIDANCE_VARIANTS = ("baseline", "overview_first", "session_start")
 OVERVIEW_FIRST_GUIDANCE = """## Experimental code-intelligence startup checklist
 
 For code navigation and change analysis, use this order:
@@ -39,7 +41,7 @@ def configure_fixture_guidance(project, variant):
         raise ValueError("Unknown guidance variant")
     path = project / "CLAUDE.md"
     original = path.read_text()
-    if variant != "baseline":
+    if variant == "overview_first":
         if "<!-- quill:managed:start -->" not in original:
             raise ValueError("Expected generated managed fixture guidance")
         path.write_text(OVERVIEW_FIRST_GUIDANCE + original)
@@ -156,7 +158,8 @@ def main(argv=None):
     expected_runs = 0 if args.wire_only else len(args.cases) * len(args.scenarios) * args.samples
     report["summary"] = summarize([], expected_runs)
     report["client_versions"] = {}
-    with tempfile.TemporaryDirectory(prefix="quill-adoption-diagnostic-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="quill-adoption-diagnostic-") as temporary, \
+            tempfile.TemporaryDirectory(prefix="quill-hook-evidence-") as hook_temporary:
         project = Path(temporary).resolve()
         loop.write_fixture(project)
         (project / "src/main/java/org/example/GreetingController.java").write_text(
@@ -178,6 +181,20 @@ def main(argv=None):
         if args.tool_profile != "full":
             configure_fixture_profile(project, args.tool_profile)
         report["guidance_sha256"] = configure_fixture_guidance(project, args.guidance_variant)
+        ledger = Path(hook_temporary) / "emissions.jsonl"
+        if args.guidance_variant == "session_start":
+            settings_path = project / ".claude/settings.json"
+            settings = json.loads(settings_path.read_text())
+            if "hooks" in settings:
+                raise ValueError("Unexpected existing fixture hooks")
+            command = shlex.join([sys.executable, str(Path(__file__).with_name(
+                "quill_fixture_session_hook.py").resolve()), str(project), str(ledger)])
+            settings["hooks"] = {"SessionStart": [{"matcher": "startup|resume|clear",
+                "hooks": [{"type": "command", "command": command, "timeout": 5}]}]}
+            settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+            report["hook"] = {"event": "SessionStart", "timeout_seconds": 5,
+                "context_sha256": hashlib.sha256(OVERVIEW_FIRST_GUIDANCE.encode()).hexdigest(),
+                "evidence_scope": "Harness-owned temporary ledger outside fixture; emission is not proof of model compliance"}
         wire = WorkflowClient([str(quill), "--tools", args.tool_profile], project, 60)
         try:
             wire.__enter__()
@@ -224,6 +241,7 @@ def main(argv=None):
                 for sample in range(args.samples):
                     print(f"Case {case}, scenario {scenario}, sample {sample + 1}", flush=True)
                     before = fixture_snapshot(project)
+                    hook_before = ledger.read_text().splitlines() if ledger.exists() else []
                     prompt = prompt_for(scenario)
                     started = time.perf_counter()
                     if case == "profile_read_only":
@@ -252,6 +270,16 @@ def main(argv=None):
                                 "sample": sample + 1, "evaluation": evaluation,
                                 "elapsed_seconds": round(time.perf_counter() - started, 3),
                                 "usage": client_usage(client, stream)})
+                    if args.guidance_variant == "session_start":
+                        emissions = ledger.read_text().splitlines() if ledger.exists() else []
+                        added = emissions[len(hook_before):]
+                        emitted = len(added) == 1 and json.loads(added[0]) == {
+                            "context_sha256": report["hook"]["context_sha256"]}
+                        run["hook_evidence"] = {"emissions": len(added), "expected_context_emitted": emitted,
+                            "response_events": sum(event.get("type") == "system" and
+                                event.get("subtype") == "hook_response" for event in stream)}
+                        evaluation["criteria"]["session_hook_emitted"] = emitted
+                        evaluation["passed"] &= emitted
                     report["runs"].append(run)
                     report["summary"] = summarize(report["runs"], expected_runs)
                     args.output.write_text(json.dumps(report, indent=2) + "\n")

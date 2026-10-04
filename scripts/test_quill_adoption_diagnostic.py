@@ -61,7 +61,7 @@ class AdoptionDiagnosticTest(unittest.TestCase):
         self.assertFalse(metadata_contract(initialized, {"tools": []})["query_safety_hints"])
 
     def run_diagnostic(self, *, wire_only=False, unavailable=False, no_overview=False,
-                       config_changed=False, bad_wire=False, scenarios=("navigation",)):
+                       config_changed=False, bad_wire=False, scenarios=("navigation",), hook=False, hook_emits=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             quill = root / "quill"
@@ -87,9 +87,19 @@ class AdoptionDiagnosticTest(unittest.TestCase):
                     (project / ".codex/config.toml").write_text(
                         '[mcp_servers.quill]\ncommand="quill"\nargs=["--mcp"]\n'
                         'cwd=' + json.dumps(str(project)) + '\n')
+                    (project / ".claude").mkdir()
+                    (project / ".claude/settings.json").write_text('{"enabledMcpjsonServers":["quill"]}')
                 return MagicMock(stdout="client version")
 
             def invoke(client, project, prompt, timeout, **kwargs):
+                if hook_emits:
+                    import shlex
+                    from quill_fixture_session_hook import emit
+                    settings = json.loads((project / ".claude/settings.json").read_text())
+                    command = settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+                    ledger = Path(shlex.split(command)[-1])
+                    emit(project, ledger, {"hook_event_name": "SessionStart", "source": "startup",
+                        "cwd": str(project)}, io.StringIO())
                 scenario = next(name for name in scenarios if SCENARIOS[name]["prompt"] in prompt)
                 calls = []
                 for tool in ([] if no_overview else ["get_overview"]) + [SCENARIOS[scenario]["tools"][0]]:
@@ -103,7 +113,9 @@ class AdoptionDiagnosticTest(unittest.TestCase):
                     "stderr": "secret stderr not for report", "user_config_unchanged": not config_changed}
 
             argv = ["diagnostic", "--quill", str(quill), "--output", str(output),
-                    "--cases", "project_read_only", "--scenarios", *scenarios]
+                    "--cases", "claude_project" if hook else "project_read_only", "--scenarios", *scenarios]
+            if hook:
+                argv.extend(["--guidance-variant", "session_start"])
             if wire_only:
                 argv.append("--wire-only")
             with patch("sys.argv", argv), patch("quill_adoption_diagnostic.loop.run", side_effect=run), \
@@ -120,6 +132,21 @@ class AdoptionDiagnosticTest(unittest.TestCase):
         self.assertEqual((0, 0), (code, calls))
         self.assertEqual("wire_only", report["mode"])
         self.assertEqual(0, report["summary"]["total"])
+
+    def test_hook_firing_requires_real_matching_emission_and_no_fixture_exemption(self):
+        for emits in (False, True):
+            _, report, calls = self.run_diagnostic(hook=True, hook_emits=emits)
+            self.assertEqual(1, calls)
+            run = report["runs"][0]
+            self.assertEqual(emits, run["hook_evidence"]["expected_context_emitted"])
+            self.assertEqual(int(emits), run["hook_evidence"]["emissions"])
+            self.assertEqual(emits, run["evaluation"]["criteria"]["session_hook_emitted"])
+            self.assertTrue(run["evaluation"]["criteria"]["fixture_unchanged"])
+
+    def test_hook_wire_only_never_attests_emission(self):
+        code, report, calls = self.run_diagnostic(hook=True, wire_only=True)
+        self.assertEqual((0, 0), (code, calls))
+        self.assertEqual([], report["runs"])
 
     def test_bad_wire_contract_stops_before_inference_and_keeps_remaining_coverage(self):
         code, report, calls = self.run_diagnostic(bad_wire=True)

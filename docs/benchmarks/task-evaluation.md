@@ -893,3 +893,68 @@ tests passed, including new selection/denominator and duplicate-rejection regres
 recommended compile-only JVM command passed without running tests; the unchanged JVM contracts
 returned `complete`, a satisfied gate and a verified receipt. Quill does not index the changed
 Python harness; its correctness is covered by the Python tests and these native experiments.
+
+### Fixture-only Claude SessionStart experiment
+
+```bash
+python3 scripts/quill_native_guidance_comparison.py \
+  --variants baseline session_start --scenarios navigation change_plan history \
+  --samples 2 --timeout 120 \
+  --output target/benchmarks/quill-session-hook-comparison.json
+```
+
+`--variants` preserves the original baseline/overview_first default. The new `session_start`
+treatment changes only the generated fixture's `.claude/settings.json`: a five-second command
+hook emits the **same** experimental checklist previously prepended to CLAUDE.md. Both instruction
+files, task prompts, server instructions and the full 58-tool catalog remain identical between
+these two arms. This isolates startup context injection from instruction-file changes; it does
+not test Repowise's live freshness context, PostToolUse enrichment or automatic skills.
+
+The [Claude hook reference](https://code.claude.com/docs/en/hooks#sessionstart-decision-control)
+documents `hookSpecificOutput.additionalContext` for SessionStart. Its workspace-trust section
+states that settings hooks run in `-p` mode; this experiment does not establish interactive
+startup behavior before a user accepts workspace trust.
+
+The helper reads only hook stdin, validates event/source/cwd, emits context and records its digest
+in a harness-owned temporary ledger **outside** the measured project. It does not query MCP,
+read source, build, edit project files or install global hooks. All fixture files remain covered
+by the original invariance check, with no additional exclusions. Failures are silent and exit 0;
+the benchmark separately fails its rubric if the expected per-request emission is absent.
+Ledger evidence proves helper emission, not that Claude obeyed it. `response_events` counts all
+client hook-response events, not exclusively this helper. Wire-only mode cannot attest firing.
+
+On October 4, Claude Code 2.1.287 completed all 12 requests, rotating baseline/hook to hook/baseline.
+All four wire/control checks passed; all 12 answers and fixture-invariance checks passed. Hook
+context was emitted exactly once with the expected digest in all six treatment requests.
+
+| Task, two samples | Variant | Correct answers | Task query succeeded | Overview first |
+| --- | --- | ---: | ---: | ---: |
+| Navigation | baseline | 2/2 | 2/2 | 0/2 |
+| Navigation | session_start | 2/2 | 2/2 | 2/2 |
+| Change planning | baseline | 2/2 | 2/2 | 0/2 |
+| Change planning | session_start | 2/2 | 2/2 | 2/2 |
+| Git history | baseline | 2/2 | 2/2 | 0/2 |
+| Git history | session_start | 2/2 | 1/2 | 0/2 |
+
+History started with Bash in every request. Both baseline queries and one hook query attempted
+`git -C ... log`, recorded a shell error and then successfully used `get_file_history`; the
+remaining hook query used successful `git log` without MCP. These fallbacks must not be counted
+as initial Quill preference. The existing permission policy allows `git log`, not `git -C`;
+the normalized traces do not establish the exact error cause. There is no evidence here that
+the hook increases initial task-specific semantic adoption: navigation/planning already used
+the appropriate tools without it. The observed improvement is **overview ordering**, 4/4 versus
+0/4 for those tasks. History still violates that ordering despite confirmed hook emission.
+
+The command deliberately exits 1 for rubric failures, not a crash, incomplete coverage or
+transport failure. Median total request time was 8.294 s baseline and 9.621 s hook; these tiny,
+task-mixed, inherited-model/cache samples are not an overhead or cost estimate. Global Claude
+configuration invariance is not measured, and no production templates or defaults were changed.
+The checklist still mentions navigation/change analysis rather than explicitly naming history.
+Next: compare the same history-aware text in CLAUDE.md and SessionStart in a paired experiment,
+separating first tool selection from failure-driven fallback before considering production hooks.
+
+Reports and four child captures are ignored under `target/benchmarks/`. All 136 Python tests
+passed, including fail-open/input guards, unchanged instruction files, selected-variant rotation,
+wire-only non-attestation and missing/matching hook-emission scoring. The recommended JVM
+compile-only command succeeded without running JVM tests; the unchanged JVM contracts returned
+`complete`, a satisfied gate and a verified receipt. That receipt does not verify the Python helper.

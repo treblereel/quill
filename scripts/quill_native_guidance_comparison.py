@@ -37,6 +37,8 @@ def main(argv=None):
     parser.add_argument("--samples", type=int, default=1)
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--wire-only", action="store_true", help="No native model requests")
+    parser.add_argument("--variants", nargs="+", choices=diagnostic.GUIDANCE_VARIANTS,
+                        default=["baseline", "overview_first"], help="Fixture-only treatments to compare")
     parser.add_argument("--scenarios", nargs="+", choices=list(diagnostic.SCENARIOS),
                         default=["navigation", "change_plan"],
                         help="Paired tasks to compare; every sample/variant/task consumes client usage")
@@ -45,12 +47,14 @@ def main(argv=None):
         raise ValueError("Positive samples and timeout required")
     if len(set(args.scenarios)) != len(args.scenarios):
         raise ValueError("Duplicate scenarios cannot form independent paired task cells")
+    if len(set(args.variants)) != len(args.variants) or len(args.variants) < 2:
+        raise ValueError("At least two distinct variants required")
     binary = args.quill.resolve()
     with binary.open("rb") as source:
         binary_hash = hashlib.file_digest(source, "sha256").hexdigest()
     planned = [{"variant": variant, "case": "claude_project", "scenario": scenario, "sample": sample}
                for sample in range(1, args.samples + 1)
-               for variant in diagnostic.GUIDANCE_VARIANTS
+               for variant in args.variants
                for scenario in args.scenarios]
     report = {"schema_version": 1, "mode": "wire_only" if args.wire_only else "native_inference",
               "scope": "fixture-only Claude guidance; full catalog, unchanged paired prompts; no causal claim",
@@ -60,20 +64,21 @@ def main(argv=None):
                               "No production instruction or default-profile change"],
               "quill_binary_sha256": binary_hash,
               "scenarios": args.scenarios,
+              "variants": args.variants,
               "planned": [] if args.wire_only else planned, "runs": [], "wire": []}
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
 
     def save():
         report["summary"] = summarize(report["runs"], report["planned"])
-        report["summary"]["wire_passed"] = len(report["wire"]) == 2 * args.samples and all(
+        report["summary"]["wire_passed"] = len(report["wire"]) == len(args.variants) * args.samples and all(
             item["valid"] for item in report["wire"])
         report["summary"]["all_passed"] &= report["summary"]["wire_passed"]
         output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
 
     save()
     for sample in range(1, args.samples + 1):
-        variants = list(diagnostic.GUIDANCE_VARIANTS)
+        variants = list(args.variants)
         if sample % 2 == 0:
             variants.reverse()
         for variant in variants:

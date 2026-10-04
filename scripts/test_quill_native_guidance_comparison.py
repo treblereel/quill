@@ -11,7 +11,7 @@ from quill_adoption_diagnostic import OVERVIEW_FIRST_GUIDANCE
 
 
 class NativeGuidanceComparisonTest(unittest.TestCase):
-    def exercise(self, wire_only=False, mutation=False, drift=False, exception=False, scenarios=None):
+    def exercise(self, wire_only=False, mutation=False, drift=False, exception=False, scenarios=None, treatments=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             binary = root / "quill"
@@ -41,6 +41,8 @@ class NativeGuidanceComparisonTest(unittest.TestCase):
                 args.append("--wire-only")
             if scenarios:
                 args.extend(["--scenarios", *scenarios])
+            if treatments:
+                args.extend(["--variants", *treatments])
             with patch("quill_native_guidance_comparison.diagnostic.main", side_effect=diagnostic), \
                     redirect_stdout(io.StringIO()):
                 code = main(args)
@@ -59,6 +61,17 @@ class NativeGuidanceComparisonTest(unittest.TestCase):
         self.assertTrue(report["summary"]["wire_passed"])
         self.assertFalse(report["summary"]["all_passed"])
         self.assertEqual([], report["planned"])
+
+    def test_hook_comparison_rotates_selected_variants(self):
+        code, report, variants = self.exercise(treatments=["baseline", "session_start"])
+        self.assertEqual(0, code)
+        self.assertEqual(["baseline", "session_start", "session_start", "baseline"], variants)
+        self.assertEqual(8, report["summary"]["completed"])
+
+    def test_duplicate_or_single_variant_rejected_before_binary_read(self):
+        for variants in (["baseline"], ["baseline", "baseline"]):
+            with self.assertRaises(ValueError):
+                main(["--output", "/unused", "--variants", *variants])
 
     def test_selected_tasks_propagate_to_children_and_exact_denominator(self):
         code, report, _ = self.exercise(scenarios=["usages", "dependencies", "history"])

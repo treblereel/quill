@@ -14,15 +14,20 @@ import org.jdbi.v3.core.Jdbi;
 final class ChangeSessionQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private final ContextQueries contexts = new ContextQueries();
     private final ChangePlanQueries plans = new ChangePlanQueries();
     private final ChangeVerificationQueries verification = new ChangeVerificationQueries();
 
     String snapshot(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit) {
-        ObjectNode plan = parse(plans.planChange(jdbi, projectRoot, targets, change, limit));
-        if (plan.has("error_code")) return plan.toString();
-        ObjectNode verify = parse(verification.verifyChange(
-                jdbi, projectRoot, targets, limit));
+        if (change == null || change.isBlank()) {
+            return plans.planChange(jdbi, projectRoot, targets, change, limit);
+        }
+        ObjectNode context = parse(contexts.getContext(jdbi, targets, true, limit));
+        if (context.has("error_code")) return context.toString();
+        ObjectNode plan = plans.planFromContext(projectRoot, context, change);
+        ObjectNode verify = parse(verification.verifyChangeWithContext(
+                jdbi, projectRoot, targets, limit, context));
         if (verify.has("error_code")) return verify.toString();
 
         ObjectNode result = JSON.createObjectNode();

@@ -29,6 +29,21 @@ final class ChangeVerificationQueries {
                 ? emptyContext(jdbi) : parse(contexts.getContext(
                         jdbi, effectiveTargets, false, limit));
         if (context.has("error_code")) return context.toString();
+        return compose(jdbi, projectRoot, effectiveTargets, limit, context, changes,
+                inferred, inferenceTruncated);
+    }
+
+    String verifyChangeWithContext(Jdbi jdbi, Path projectRoot, List<String> targets,
+            int limit, ObjectNode context) {
+        ObjectNode changes = parse(worktree.getWorktreeStatus(
+                jdbi, projectRoot, null, limit, 0));
+        return compose(jdbi, projectRoot, List.copyOf(targets), limit, context, changes,
+                false, false);
+    }
+
+    private String compose(Jdbi jdbi, Path projectRoot, List<String> effectiveTargets,
+            int limit, ObjectNode context, ObjectNode changes, boolean inferred,
+            boolean inferenceTruncated) {
         ObjectNode build = parse(BuildStatusInspector.inspect(projectRoot, jdbi));
         ObjectNode diagnostics = parse(BuildProblemInspector.inspect(
                 projectRoot, "all", null, limit, 0));

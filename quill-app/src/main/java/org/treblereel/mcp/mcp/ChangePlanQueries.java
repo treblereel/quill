@@ -25,7 +25,10 @@ final class ChangePlanQueries {
         }
         ObjectNode context = parse(contextQueries.getContext(jdbi, targets, true, limit));
         if (context.has("error_code")) return context.toString();
+        return planFromContext(projectRoot, context, change).toString();
+    }
 
+    ObjectNode planFromContext(Path projectRoot, ObjectNode context, String change) {
         ObjectNode root = JSON.createObjectNode();
         root.put("change", change.strip());
         copy(context, root, "requested_targets");
@@ -121,7 +124,7 @@ final class ChangePlanQueries {
         root.put("plan_status", complete ? "ready" : "partial");
         root.put("answer_complete", complete);
         root.set("_meta", meta.deepCopy());
-        return root.toString();
+        return root;
     }
 
     private static void step(ArrayNode steps, int order, String action, String description) {

@@ -331,6 +331,8 @@ does not imply that an executor, reactive stream, or message publication has com
   an installed build tool only when present on `PATH`, and otherwise reports the runner unavailable;
   its first recommendation compiles production and standard test sources without running tests,
   and structured `next_actions` tell the external agent how to resolve evidence gaps and re-check
+- **change_session** — return a compact stateless snapshot with a stable session ID, current workflow
+  phase, change plan, verification evidence, safe command recommendations, and ordered next actions
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
   with explicit reporting when compiled test outputs are not indexed
 - **get_type_hierarchy** — inspect paged ancestor and descendant paths, including external

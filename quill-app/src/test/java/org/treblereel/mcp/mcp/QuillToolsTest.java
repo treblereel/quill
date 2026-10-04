@@ -546,6 +546,28 @@ class QuillToolsTest {
         }
     }
 
+    @Test
+    void changeSessionReturnsStableStatelessWorkflowSnapshot() throws Exception {
+        writeMinimalPom();
+        QuillTools tools = new QuillTools();
+
+        JsonNode first = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                List.of("OrderService"), "Add retry support", 10));
+        JsonNode second = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                List.of("OrderService"), "Add retry support", 10));
+
+        assertEquals(1, first.path("schema_version").asInt());
+        assertEquals("stateless_snapshot", first.path("state_model").asText());
+        assertEquals("planned", first.path("phase").asText());
+        assertEquals(first.path("session_id").asText(), second.path("session_id").asText());
+        assertEquals("org.acme.OrderService",
+                first.path("plan").path("primary_changes").get(0).path("class").asText());
+        assertEquals("needs_build",
+                first.path("verification").path("verdict").asText());
+        assertTrue(first.path("verification_plan").path("commands").isArray());
+        assertTrue(first.path("next_actions").get(0).path("action").isTextual());
+    }
+
     private void writeMinimalPom() throws Exception {
         Files.writeString(tempDir.resolve("pom.xml"), """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">

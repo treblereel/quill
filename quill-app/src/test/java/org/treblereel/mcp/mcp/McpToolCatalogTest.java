@@ -370,6 +370,7 @@ class McpToolCatalogTest {
         assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("get_context")));
         assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("plan_change")));
         assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("verify_change")));
+        assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("change_session")));
         assertTrue(core.stream().noneMatch(tool -> tool.tool().name().equals("list_beans")));
         assertTrue(combined.stream().anyMatch(tool -> tool.tool().name().equals("list_beans")));
         assertTrue(combined.stream().anyMatch(
@@ -432,6 +433,7 @@ class McpToolCatalogTest {
         assertRouterChoice(router, "implementations", "find_implementations", "quill");
         assertRouterChoice(router, "plan change", "plan_change", "quill");
         assertRouterChoice(router, "verify change", "verify_change", "quill");
+        assertRouterChoice(router, "change session", "change_session", "quill");
         assertRouterChoice(router, "build problems", "get_build_problems", "build");
     }
 

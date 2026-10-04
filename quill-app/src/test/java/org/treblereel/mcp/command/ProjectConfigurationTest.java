@@ -23,8 +23,9 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(installed.contains("call `get_overview`"));
-        assertTrue(installed.contains("scope is\n`quick_compile`"));
-        assertTrue(installed.contains("never\nexecutes a build itself"));
+        assertTrue(installed.contains("prefer `change_session`"));
+        assertTrue(installed.contains("`quick_compile`"));
+        assertTrue(installed.contains("never executes a build"));
         assertEquals(1, occurrences(installed, "<!-- quill:managed:start -->"));
 
         Files.writeString(claude, installed.replace(
@@ -66,6 +67,7 @@ class ProjectConfigurationTest {
         assertTrue(installed.startsWith("# User instructions\n"));
         assertTrue(installed.contains("`mcp__quill__get_overview`"));
         assertTrue(installed.contains("`mcp__quill__plan_change`"));
+        assertTrue(installed.contains("`mcp__quill__change_session`"));
         assertTrue(installed.contains("scope `quick_compile`"));
         assertTrue(installed.contains("does not execute builds"));
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,

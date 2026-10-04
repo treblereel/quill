@@ -346,3 +346,46 @@ Both builds used `/opt/homebrew/bin/mvn test-compile`; the final answer was
 
 This demonstrates one constrained API-agent workflow, not native Codex/Claude client integration,
 unrestricted editing safety, comparative effectiveness, or reliability across repeated runs.
+
+### Native client integration probe
+
+```bash
+python3 scripts/quill_native_client_probe.py --client both
+python3 scripts/quill_native_client_probe.py --client codex --smoke-only
+```
+
+The probe initializes a separate temporary Maven project for each installed client. It relies on
+the generated `.codex/config.toml`, `.mcp.json`, `AGENTS.md`, and `CLAUDE.md`; no server transport or
+guidance is injected through CLI flags. It retains normal user configuration and saved client
+authentication, does not select a model, and makes no global trust/configuration changes. A Codex
+read-only discovery failure triggers a per-invocation project-trust retry. Claude runs in `dontAsk`
+mode with read/edit/Quill permissions and narrowly permitted `test-compile` commands, not unrestricted
+Bash. Codex working stages use its workspace-write sandbox. Every invocation has a timeout and
+its own process group, terminated on timeout before the fixture is removed. Reports are checkpointed
+after each invocation. These are native headless CLI checks, not interactive desktop sessions.
+
+An October 3 local-time run used Codex CLI 0.147.0 (ChatGPT authentication) and Claude Code 2.1.287
+(Vertex authentication). Both clients performed the requested source edit and compile-only build,
+then repaired a compiler error injected by the harness and rebuilt. Independent Quill snapshots
+confirmed `complete` with boolean `verified=true` after each working stage; the injected failure
+produced `blocked`. Standard test classes were regenerated and no Surefire/Failsafe reports existed.
+Actual native MCP traces include `get_overview`, `change_session`, and `verify_change` for both
+clients. Claude executed `/opt/homebrew/bin/mvn test-compile` in both stages. Codex executed
+`mvn test-compile -DskipTests` and `mvn -q -DskipTests test-compile`: still compile-only, but not the
+exact recommended argv. Its extra flags are an instruction-adoption deviation, not an exact-command
+attestation by Quill. Captures are in `target/benchmarks/quill-native-client-standard.json`.
+
+Read-only discovery did not pass for Codex in this environment: it reported Quill unavailable;
+resource requests failed with `unknown MCP server 'quill'`. A separate normal-configuration run
+also failed after per-invocation trust was supplied, so trust alone is not an established cause.
+Working workspace-write stages did expose the real Quill tools without that override. The root
+cause of this mode-dependent configuration/tool exposure remains unverified; do not interpret
+resource-list attempts or tool mentions as successful workflow access. The read-only captures are
+in `target/benchmarks/quill-native-codex-discovery.json`. Claude's normal read-only discovery called
+`get_overview` and `change_session` successfully. An initial experiment that disabled user config
+is retained separately and is not used to establish normal-client behavior.
+
+These single-run results demonstrate native edit/build/recovery, but not flawless instruction
+ordering or reliable discovery in every client mode. In particular, Claude queried its
+`change_session` after editing, and Codex added compile flags. Repeated runs and a separate
+read-only Codex configuration investigation are still needed.

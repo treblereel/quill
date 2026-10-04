@@ -234,5 +234,5 @@ python3 scripts/quill_workflow_benchmark.py \
 The legacy path calls symbol details, usages, affected tests, and change risk separately. The
 workflow path calls `plan_change`, then records `verify_change` as a post-change gate. The report
 contains tool-call count, wall-clock latency, exact structured-response bytes, evidence-contract
-coverage, and the verification verdict. It deliberately does not estimate model tokens or claim
-answer correctness.
+coverage, the verification verdict, blocker codes, and ordered next-action types. It deliberately
+does not estimate model tokens or claim answer correctness.

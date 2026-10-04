@@ -490,6 +490,15 @@ class QuillToolsTest {
         assertEquals("failed", result.path("diagnostics").path("build_status").asText());
         assertEquals(1, result.path("diagnostics").path("total").asInt());
         assertEquals("BUILD_FAILED", result.path("blockers").get(0).path("code").asText());
+        assertEquals("fix_diagnostics",
+                result.path("next_actions").get(0).path("action").asText());
+        assertEquals("run_external_command",
+                result.path("next_actions").get(1).path("action").asText());
+        assertEquals("quick_compile",
+                result.path("next_actions").get(1).path("command_scope").asText());
+        assertFalse(result.path("next_actions").get(1).path("executed_by_quill").asBoolean());
+        assertEquals("verify_change",
+                findAction(result, "call_tool").path("tool").asText());
         assertFalse(result.path("build").path("build_was_started").asBoolean());
         assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());
     }
@@ -505,6 +514,12 @@ class QuillToolsTest {
         assertTrue(result.path("blockers").valueStream()
                 .anyMatch(blocker -> blocker.path("code").asText()
                         .equals("BUILD_EVIDENCE_REQUIRED")));
+        assertEquals("run_external_command",
+                result.path("next_actions").get(0).path("action").asText());
+        assertEquals("quick_compile",
+                result.path("next_actions").get(0).path("command_scope").asText());
+        assertEquals("verify_change",
+                findAction(result, "call_tool").path("tool").asText());
     }
 
     @Test
@@ -540,6 +555,12 @@ class QuillToolsTest {
                   <version>1</version>
                 </project>
                 """);
+    }
+
+    private static JsonNode findAction(JsonNode result, String action) {
+        return result.path("next_actions").valueStream()
+                .filter(candidate -> action.equals(candidate.path("action").asText()))
+                .findFirst().orElseThrow();
     }
 
     @Test

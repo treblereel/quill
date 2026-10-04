@@ -218,6 +218,8 @@ def main() -> int:
             "verified": verification_payload.get("verified"),
             "blocker_codes": [item.get("code")
                               for item in verification_payload.get("blockers", [])],
+            "next_actions": [item.get("action")
+                             for item in verification_payload.get("next_actions", [])],
             "trace": verification_trace,
         }
 

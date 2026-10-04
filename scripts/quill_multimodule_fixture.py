@@ -31,3 +31,38 @@ def convert(project):
         if (source / name).exists():
             shutil.move(str(source / name), str(destination / name))
     return project / "core/src/main/java/org/example/GreetingService.java"
+
+
+def add_impact_controls(project):
+    """Fixed, independent source oracle: two related modules/tests and one negative control."""
+    project = Path(project)
+    if (project / ".git").exists() or (project / "unrelated").exists() or not (project / "api/pom.xml").is_file():
+        raise ValueError("Expected fresh two-module harness fixture")
+    pom = project / "pom.xml"
+    pom.write_text(pom.read_text().replace("</modules>", "<module>unrelated</module></modules>"))
+    (project / "unrelated").mkdir()
+    (project / "unrelated/pom.xml").write_text((project / "core/pom.xml").read_text().replace(
+        "<artifactId>core</artifactId>", "<artifactId>unrelated</artifactId>"))
+    junit = "<dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-api</artifactId>" \
+        "<version>5.12.2</version><scope>test</scope></dependency>"
+    for module in ("core", "api", "unrelated"):
+        module_pom = project / module / "pom.xml"
+        content = module_pom.read_text()
+        content = content.replace("</dependencies>", junit + "</dependencies>") if "</dependencies>" in content \
+            else content.replace("</project>", "<dependencies>" + junit + "</dependencies></project>")
+        module_pom.write_text(content)
+    main = project / "unrelated/src/main/java/org/example/UnrelatedService.java"
+    main.parent.mkdir(parents=True)
+    main.write_text("package org.example; public class UnrelatedService { public boolean value() { return true; } }\n")
+    for module, test, statement in (
+        ("core", "GreetingServiceTest", 'org.junit.jupiter.api.Assertions.assertEquals("Welcome, A", new GreetingService().greet("A"));'),
+        ("api", "GreetingEndpointTest", 'org.junit.jupiter.api.Assertions.assertEquals("Welcome, B", new GreetingEndpoint().render("B"));'),
+        ("unrelated", "UnrelatedServiceTest", 'org.junit.jupiter.api.Assertions.assertTrue(new UnrelatedService().value());')):
+        path = project / module / "src/test/java/org/example" / (test + ".java")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("package org.example; public class " + test + " { @org.junit.jupiter.api.Test "
+                        "void checksBehavior() { " + statement + " } }\n")
+    return {"review_modules": ["core", "api"],
+            "review_tests": ["org.example.GreetingServiceTest", "org.example.GreetingEndpointTest"],
+            "excluded_module": "unrelated", "excluded_test": "org.example.UnrelatedServiceTest",
+            "origin": "fixed generated source graph and JUnit annotations, not Quill output"}

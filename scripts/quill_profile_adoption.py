@@ -46,6 +46,9 @@ def cell_summary(runs, planned):
                 if type(item.get("elapsed_seconds")) in {int, float}]
     group["elapsed_seconds"] = {"samples": len(measured), "median": statistics.median(measured)} if measured else None
     group["usage"] = {}
+    if any(item.get("evaluation", {}).get("answer_dimensions") for item in runs):
+        from quill_answer_dimensions import dimension_counts
+        group["answer_dimensions"] = dimension_counts(runs)
     for name in {name for item in runs for name in item.get("usage", {})}:
         measured = [item["usage"][name] for item in runs if name in item.get("usage", {})]
         group["usage"][name] = {"samples": len(measured), "median": statistics.median(measured)}

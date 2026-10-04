@@ -3,10 +3,25 @@ import tempfile
 import unittest
 
 import quill_change_loop_e2e as loop
-from quill_multimodule_fixture import convert
+from quill_multimodule_fixture import convert, add_impact_controls
 
 
 class MultimoduleFixtureTest(unittest.TestCase):
+    def test_impact_expectations_include_negative_controls_and_real_junit_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            loop.write_fixture(root)
+            convert(root)
+            oracle = add_impact_controls(root)
+            self.assertEqual(["core", "api"], oracle["review_modules"])
+            self.assertNotIn("unrelated", oracle["review_modules"])
+            self.assertNotIn(oracle["excluded_test"], oracle["review_tests"])
+            for module, test in (("core", "GreetingServiceTest"), ("api", "GreetingEndpointTest"),
+                                 ("unrelated", "UnrelatedServiceTest")):
+                self.assertIn("@org.junit.jupiter.api.Test", (root / module / "src/test/java/org/example" /
+                    (test + ".java")).read_text())
+            with self.assertRaises(ValueError):
+                add_impact_controls(root)
     def test_reactor_preserves_core_test_and_moves_api_callers(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

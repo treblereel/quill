@@ -1122,3 +1122,90 @@ embedded-JSON non-acceptance, safe reactor conversion and exact multimodule task
 The recommended compile-only JVM command succeeded without JVM tests; unchanged JVM contracts
 returned `complete`, a satisfied gate and a verified receipt. These Python changes are not indexed
 by Quill; their correctness is covered separately by unit tests and the fixture experiments.
+
+### Versioned facts/format dimensions and independent impact controls
+
+```bash
+python3 scripts/quill_native_guidance_comparison.py --variants baseline routing_file \
+  --rubric routing --fixture-kind impact --scenarios call_chain impact_modules impacted_tests \
+  --samples 1 --wire-only --output target/benchmarks/quill-impact-wire.json
+python3 scripts/quill_native_guidance_comparison.py --variants baseline routing_file \
+  --rubric routing --fixture-kind impact --capture-chain-evidence \
+  --scenarios call_chain impact_modules impacted_tests --samples 2 --timeout 120 \
+  --output target/benchmarks/quill-impact-dimensions.json
+python3 scripts/quill_native_guidance_comparison.py --variants baseline routing_file \
+  --rubric routing --fixture-kind impact --scenarios impact_modules --samples 2 --timeout 120 \
+  --output target/benchmarks/quill-impact-module-contract-v2.json
+```
+
+`facts_and_format:v1` is an additional, explicitly versioned evaluation axis. It does not change
+legacy whole-answer parsing, `answer_correct`, `passed`, CLI exit status or old captures. A factual
+result requires exactly one top-level JSON object with the expected key set, exact value types
+and independently expected values. A matching object embedded in framing text can score facts,
+but not format. Duplicate keys and multiple matching-schema candidates are rejected as unknown;
+objects nested inside other objects/arrays are not cherry-picked. Inspection is bounded to 8,192
+characters and 32 decode attempts. Missing, ambiguous, malformed, oversized and unavailable
+answers are unknown rather than false or successful. List comparisons retain the existing exact
+members/duplicate/type checks and ignore ordering. This validates the extracted structured claim,
+not every assertion in surrounding prose.
+
+The factual workflow dimension retains successful initial provider routing, task-specific
+evidence and all safety/invariance checks, but substitutes factual correctness for whole-answer
+format acceptance. Hook emission remains required when a hook treatment is used. Summaries
+report captured, fact-evaluated, fact-correct and format-valid counts separately; missing samples
+are not zero-valued evaluations. Old records without dimensions are not retrospectively upgraded.
+
+The dedicated impact fixture extends the reactor with an independent **unrelated** module.
+Core GreetingServiceTest directly asserts greet behavior; api GreetingEndpointTest asserts behavior
+through endpoint/controller/service; unrelated UnrelatedServiceTest asserts an independent service.
+All three are real JUnit-annotated sources using junit-jupiter-api 5.12.2, matching the repository's
+pinned version. They are compiled, not executed. The compile-only probe remains and is explicitly
+excluded by the question. Independent expected review modules are core/api, and expected JUnit
+review classes are GreetingServiceTest/GreetingEndpointTest; the unrelated module/test are negative
+controls. These expectations come from fixed generated source references and annotations, not
+Quill responses. Their manifest is hashed into cross-variant controls, and a preflight checks all
+three JUnit class outputs before native inference. Existing fixtures/default workloads are unchanged.
+
+On October 4, both wire-only preflights passed and the paired three-task run completed all twelve
+requests with reversed variant order on sample two. All four child wire/control checks and every
+fixture-invariance check passed. Every request initially selected a successful Quill semantic
+query. All twelve extracted structured claims matched the independent expected values, excluding
+the unrelated module/test. None passed the pre-existing whole-answer formatting contract.
+
+| Original impact run, six requests per variant | Baseline | Routing file |
+| --- | ---: | ---: |
+| Successful appropriate initial route | 6/6 | 6/6 |
+| Fact-evaluated / fact-correct structured claims | 6/6 | 6/6 |
+| Whole-answer format-valid / original strict pass | 0/6 | 0/6 |
+| Factual workflow under original task-tool binding | 4/6 | 4/6 |
+
+The initial module-task binding was too narrow: it accepted change_session/plan_change/dependencies,
+but not caller/hierarchy queries used by all four module requests. Their correct facts and successful
+Quill calls must not be described as tool avoidance. This is a benchmark classification limitation.
+The original captures and 4/6 workflow counts remain intact. The module task's revised
+`module_impact:v2` contract additionally accepts successful call-hierarchy or symbol-usage queries;
+merely enumerating modules with get_module_graph is insufficient. A separate, fresh four-request
+module-only run tested that contract, with two samples and reversed order. Both variants scored
+2/2 correct structured claims and 2/2 factual workflows. Baseline passed whole-answer formatting
+1/2; routing_file passed 0/2. All four new wire/control and fixture checks passed. Do not pool
+different task bindings into an apparent improvement or rescore earlier failures silently.
+
+The unchanged original strict exit policy returns 1 for both native commands, not a crash or
+incomplete coverage. Original median total request times were 16.967 s baseline and 15.188 s
+routing_file; module-only medians were 16.786 s and 19.590 s. Tiny inherited-model/cache samples,
+fixed task order, framing variation and task-binding changes preclude speed/cost or causal claims.
+No production guidance, default profiles or global client settings were modified; Claude global
+configuration invariance is not measured. Captures remain ignored under target/benchmarks.
+
+Conclusion: these controlled tasks support correct semantic use and correct extracted impact facts,
+not a benefit from stronger reminders or production hooks. JSON protocol compliance is a separate
+failure mode. Next, test a representative real workspace and ordinary client startup without
+repeated reminders; if machine-readable output is required, evaluate an explicit structured-output
+contract separately from semantic adoption. These fixtures do not establish general risk/test
+completeness, test execution results or normal interactive startup behavior.
+
+All 164 Python tests passed, including ambiguous/duplicate/nested extraction rejection, unchanged
+strict failure behavior, factual safety gates, missing-sample denominators and negative controls.
+The recommended JVM quick_compile command succeeded without executing JVM tests; unchanged JVM
+contracts returned `complete`, a satisfied gate and a verified receipt. Quill does not index the
+changed Python code; its correctness is verified by Python tests and the separate fixture captures.

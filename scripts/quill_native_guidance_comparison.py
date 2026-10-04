@@ -34,6 +34,7 @@ def experiment_controls(child, variant):
             "catalog": digest(child["tools"]), "server_instructions": digest(child["server_instructions"]),
             "prompts": digest(child["scenarios"]), "rubric": child.get("rubric", "legacy"),
             "fixture_kind": child.get("fixture_kind", "single"),
+            "fixture_expectations": digest(child.get("fixture_expectations")),
             "client_versions": child.get("client_versions", {})}
 
 
@@ -45,7 +46,7 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--wire-only", action="store_true", help="No native model requests")
     parser.add_argument("--rubric", choices=["legacy", "routing"], default="legacy")
-    parser.add_argument("--fixture-kind", choices=["single", "multimodule"], default="single")
+    parser.add_argument("--fixture-kind", choices=["single", "multimodule", "impact"], default="single")
     parser.add_argument("--capture-chain-evidence", action="store_true")
     parser.add_argument("--variants", nargs="+", choices=diagnostic.GUIDANCE_VARIANTS,
                         default=["baseline", "overview_first"], help="Fixture-only treatments to compare")
@@ -63,6 +64,10 @@ def main(argv=None):
         raise ValueError("Source-control scenarios require the routing rubric")
     if args.fixture_kind == "multimodule" and set(args.scenarios) - {"call_chain", "usages", "dependencies", "change_plan"}:
         raise ValueError("Multimodule fixture supports semantic tasks only")
+    if args.fixture_kind == "impact" and set(args.scenarios) - {"call_chain", "dependencies", "change_plan", "impact_modules", "impacted_tests"}:
+        raise ValueError("Impact fixture supports scoped semantic tasks only")
+    if args.fixture_kind != "impact" and set(args.scenarios) & {"impact_modules", "impacted_tests"}:
+        raise ValueError("Impact tasks require their independent impact fixture")
     binary = args.quill.resolve()
     with binary.open("rb") as source:
         binary_hash = hashlib.file_digest(source, "sha256").hexdigest()

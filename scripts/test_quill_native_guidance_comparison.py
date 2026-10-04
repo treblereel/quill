@@ -94,6 +94,12 @@ class NativeGuidanceComparisonTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             main(["--output", "/unused", "--fixture-kind", "multimodule", "--scenarios", "navigation"])
 
+    def test_impact_tasks_require_dedicated_fixture_before_binary_read(self):
+        with self.assertRaises(ValueError):
+            main(["--output", "/unused", "--scenarios", "impacted_tests"])
+        with self.assertRaises(ValueError):
+            main(["--output", "/unused", "--fixture-kind", "impact", "--scenarios", "usages"])
+
     def test_multimodule_selection_retains_exact_semantic_task_cells(self):
         code, report, _ = self.exercise(fixture_kind="multimodule", rubric="routing",
             scenarios=["call_chain", "usages", "dependencies", "change_plan"])

@@ -71,6 +71,22 @@ SCENARIOS.update({
         "expected": {"source_file": "src/main/java/org/example/GreetingService.java"},
         "tools": (), "route": "source",
     },
+    "impact_modules": {
+        "prompt": "If the behavior of org.example.GreetingService.greet changes without changing its signature, "
+                  "which Maven modules contain that class or transitive production callers that should be reviewed? "
+                  'Exclude the aggregator and independent modules. Return only JSON with a "modules" array of module directory names.',
+        "expected": {"modules": ["core", "api"]},
+        "tools": ("change_session", "plan_change", "get_dependencies", "get_call_hierarchy", "find_symbol_usages"),
+        "evidence_contract": "module_impact:v2",
+    },
+    "impacted_tests": {
+        "prompt": "Which JUnit test classes should be reviewed if the behavior of "
+                  "org.example.GreetingService.greet changes without changing its signature? Include transitive "
+                  "production callers; exclude compile-only probes and tests of independent services. "
+                  'Return only JSON with a "tests" array of fully qualified test class names.',
+        "expected": {"tests": ["org.example.GreetingServiceTest", "org.example.GreetingEndpointTest"]},
+        "tools": ("find_impacted_tests", "change_session", "plan_change"),
+    },
 })
 
 
@@ -257,7 +273,8 @@ def evaluate_capture(client, stream, capture, scenario, expected, fixture_unchan
     criteria = {
         "client_completed": capture.get("returncode") == 0 and not capture.get("timeout") and not client_failed,
         "overview_first": bool(quill) and quill[0]["tool"] == "get_overview" and quill[0]["status"] == "ok",
-        "task_tool_succeeded": any(tool in successful for tool in SCENARIOS[scenario]["tools"]),
+        "task_tool_succeeded": any(tool in successful for tool in SCENARIOS[scenario]["tools"]) or any(
+            set(group).issubset(successful) for group in SCENARIOS[scenario].get("tool_sets", ())),
         "answer_correct": _correct(observed, expected) or any(_correct(observed, value) for value in expected_variants),
         "fixture_unchanged": fixture_unchanged,
         "no_edit_tool_calls": not any(call["provider"] == "source" and call["tool"] in
@@ -286,7 +303,13 @@ def evaluate_capture(client, stream, capture, scenario, expected, fixture_unchan
         criteria["first_route_appropriate"] = routing
         criteria["route_evidence_succeeded"] = routing_success
     passed = all(criteria.values()) if rubric == "legacy" else routing_passed
+    from quill_answer_dimensions import score_answer
+    dimensions = score_answer(final, expected, expected_variants, _correct, observed is not None)
+    fact_gate = all(criteria[key] for key in required - {"answer_correct"}) and routing and routing_success
+    dimensions["factual_workflow_passed"] = fact_gate and dimensions["facts_correct"] is True
     return {"passed": passed, "rubric": rubric, "routing_passed": routing_passed,
+            "evidence_contract": SCENARIOS[scenario].get("evidence_contract", "task_tools:v1"),
+            "answer_dimensions": dimensions,
             "required_criteria": sorted(criteria if rubric == "legacy" else
                                         required | {"first_route_appropriate", "route_evidence_succeeded"}),
             "answer_format_valid": observed is not None,
@@ -317,4 +340,7 @@ def summarize(runs, expected_total=None):
         for criterion, passed in evaluation.get("criteria", {}).items():
             result["criteria_passed"][criterion] = result["criteria_passed"].get(criterion, 0) + int(passed is True)
     result["all_passed"] = bool(runs) and len(runs) == total and result["passed"] == total
+    if any(run.get("evaluation", {}).get("answer_dimensions") for run in runs):
+        from quill_answer_dimensions import dimension_counts
+        result["answer_dimensions"] = dimension_counts(runs)
     return result

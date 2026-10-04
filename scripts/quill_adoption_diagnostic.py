@@ -141,7 +141,7 @@ def main(argv=None):
     parser.add_argument("--samples", type=int, default=1)
     parser.add_argument("--wire-only", action="store_true", help="Check native wire metadata without inference")
     parser.add_argument("--rubric", choices=["legacy", "routing"], default="legacy")
-    parser.add_argument("--fixture-kind", choices=["single", "multimodule"], default="single")
+    parser.add_argument("--fixture-kind", choices=["single", "multimodule", "impact"], default="single")
     parser.add_argument("--capture-chain-evidence", action="store_true", help="Bounded fixture-only diagnostics; no raw output")
     parser.add_argument("--guidance-variant", choices=GUIDANCE_VARIANTS, default="baseline",
                         help="Fixture-only Claude instruction variant; production guidance is unchanged")
@@ -156,6 +156,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.fixture_kind == "multimodule" and set(args.scenarios) - {"call_chain", "usages", "dependencies", "change_plan"}:
         raise ValueError("Multimodule fixture supports semantic tasks only")
+    if args.fixture_kind == "impact" and set(args.scenarios) - {"call_chain", "dependencies", "change_plan", "impact_modules", "impacted_tests"}:
+        raise ValueError("Impact fixture supports scoped semantic tasks only")
+    if args.fixture_kind != "impact" and set(args.scenarios) & {"impact_modules", "impacted_tests"}:
+        raise ValueError("Impact tasks require their independent impact fixture")
     if args.rubric == "legacy" and any(SCENARIOS[name].get("route") == "source" for name in args.scenarios):
         raise ValueError("Source-control scenarios require the routing rubric")
     if args.guidance_variant != "baseline" and (args.tool_profile != "full"
@@ -171,7 +175,9 @@ def main(argv=None):
               "guidance_variant": args.guidance_variant,
               "rubric": args.rubric,
               "fixture_kind": args.fixture_kind,
-              "scenarios": {name: {"prompt": prompt_for(name), "expected_tools": SCENARIOS[name]["tools"]}
+              "scenarios": {name: {"prompt": prompt_for(name), "expected_tools": SCENARIOS[name]["tools"],
+                            "expected_tool_sets": SCENARIOS[name].get("tool_sets", ()),
+                            "evidence_contract": SCENARIOS[name].get("evidence_contract", "task_tools:v1")}
                             for name in args.scenarios}, "runs": []}
     quill, maven = args.quill.resolve(), shutil.which("mvn")
     if not quill.is_file() or not maven or args.samples < 1 or args.timeout < 1:
@@ -187,15 +193,18 @@ def main(argv=None):
             "package org.example;\npublic class GreetingController {\n"
             "  private final GreetingService service = new GreetingService();\n"
             "  public String hello(String name) { return service.greet(name); }\n}\n")
-        if "call_chain" in args.scenarios:
+        if "call_chain" in args.scenarios or args.fixture_kind == "impact":
             (project / "src/main/java/org/example/GreetingEndpoint.java").write_text(
                 "package org.example;\npublic class GreetingEndpoint {\n"
                 "  private final GreetingController controller = new GreetingController();\n"
                 "  public String render(String name) { return controller.hello(name); }\n}\n")
         source = project / "src/main/java/org/example/GreetingService.java"
-        if args.fixture_kind == "multimodule":
+        if args.fixture_kind in {"multimodule", "impact"}:
             from quill_multimodule_fixture import convert
             source = convert(project)
+            if args.fixture_kind == "impact":
+                from quill_multimodule_fixture import add_impact_controls
+                report["fixture_expectations"] = add_impact_controls(project)
         for argv in (["git", "init", "-q"],
                      ["git", "config", "user.name", "Quill diagnostic"],
                      ["git", "config", "user.email", "diagnostic@example.invalid"],
@@ -252,6 +261,10 @@ def main(argv=None):
         report["server_instructions"] = initialized.get("instructions")
         report["wire_contract"] = metadata_contract(initialized, catalog)
         report["wire_contract"]["profile_catalog"] = profile_catalog_valid(args.tool_profile, catalog)
+        if args.fixture_kind == "impact":
+            report["wire_contract"]["impact_fixture_compiled"] = all((project / module / "target/test-classes/org/example" /
+                (test + ".class")).is_file() for module, test in (("core", "GreetingServiceTest"),
+                ("api", "GreetingEndpointTest"), ("unrelated", "UnrelatedServiceTest")))
         report["tools"] = [{"name": item["name"], "annotations": item.get("annotations")}
                            for item in catalog["tools"]]
         report["guidance"] = {name: (project / name).read_text()
@@ -324,6 +337,7 @@ def main(argv=None):
                         evaluation["criteria"]["session_hook_emitted"] = emitted
                         evaluation["required_criteria"].append("session_hook_emitted")
                         evaluation["passed"] &= emitted
+                        evaluation["answer_dimensions"]["factual_workflow_passed"] &= emitted
                     report["runs"].append(run)
                     report["summary"] = summarize(report["runs"], expected_runs)
                     args.output.write_text(json.dumps(report, indent=2) + "\n")

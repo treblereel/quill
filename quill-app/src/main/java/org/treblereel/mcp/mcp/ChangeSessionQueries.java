@@ -247,6 +247,7 @@ final class ChangeSessionQueries {
 
         var reasons = receipt.putArray("reason_codes");
         if (buildStatus.equals("success")) reasons.add("SUCCESSFUL_BUILD_EVENT");
+        if (buildStatus.equals("failed")) reasons.add("FAILED_BUILD_EVENT");
         if (!metadata.path("structure_stale").asBoolean()) reasons.add("INDEX_CURRENT");
         if (verify.path("unresolved_target_count").asInt() == 0) {
             reasons.add("TARGETS_RESOLVED");

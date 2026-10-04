@@ -572,6 +572,20 @@ class QuillToolsTest {
                     .path("structural_dirty").asBoolean());
             assertEquals("INCOMPLETE_TEST_COVERAGE",
                     changed.path("next_actions").get(0).path("reason").asText());
+
+            Path state = tempDir.resolve(".quill/build-state.json");
+            Files.createDirectories(state.getParent());
+            Files.writeString(state, """
+                    {"buildTool":"maven","finishedAt":%d,"successful":false,
+                     "captureScope":"task_output","diagnostics":["compile error"],
+                     "failureMessages":[]}
+                    """.formatted(System.currentTimeMillis()));
+            JsonNode blocked = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                    List.of("OrderService"), "Add a method", 10));
+            assertEquals("blocked", blocked.path("phase").asText());
+            assertFalse(blocked.path("verification_receipt").path("verified").asBoolean());
+            assertTrue(blocked.path("verification_receipt").path("reason_codes").valueStream()
+                    .anyMatch(reason -> reason.asText().equals("FAILED_BUILD_EVENT")));
         }
     }
 

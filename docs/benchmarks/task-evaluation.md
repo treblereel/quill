@@ -265,11 +265,13 @@ python3 scripts/quill_change_loop_e2e.py \
 
 The fixture intentionally has neither a Maven wrapper nor a pre-existing `.gitignore`. The harness
 runs the system Maven fallback to bootstrap compiled classes, initializes Quill, edits a production
-source, and obtains the exact `quick_compile` argv from `change_session`. The harness—not Quill—
-executes that command and then calls `change_session` again. The report requires the phase sequence
-`planned` → `review_required` → `complete`, compiled production and standard test classes,
-no Surefire or Failsafe reports, a captured successful build event, and removal of the
-build-evidence blocker. The completed snapshot must also contain a verification receipt with the
+source, and obtains the exact `quick_compile` argv from `change_session`. The harness introduces a
+compiler error, executes that command outside Quill, inspects the failed receipt, repairs the
+source, and retries the recommended command. The report requires the phase sequence `planned` →
+`review_required` → `blocked` → `complete`, diagnostics-first recovery actions, compiled production
+and standard test classes, no Surefire or Failsafe reports, a captured successful build event, and
+removal of the build-evidence blocker. The completed snapshot must contain a verification receipt
+with the
 same recommended argv, successful observed evidence, completion reasons, and an explicit
 `not_captured` command attestation so build results are never presented as proof of exact argv.
 Because sessions are stateless evidence snapshots, phases may be skipped: `review_required` is

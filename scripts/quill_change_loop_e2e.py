@@ -30,12 +30,17 @@ def arguments() -> argparse.Namespace:
 
 
 def run(argv: list[str], cwd: Path, timeout: int = 180) -> subprocess.CompletedProcess[str]:
-    completed = subprocess.run(
-        argv, cwd=cwd, text=True, capture_output=True, timeout=timeout, check=False)
+    completed = run_unchecked(argv, cwd, timeout)
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()
         raise RuntimeError(f"Command failed ({completed.returncode}): {argv!r}\n{detail}")
     return completed
+
+
+def run_unchecked(
+        argv: list[str], cwd: Path, timeout: int = 180) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        argv, cwd=cwd, text=True, capture_output=True, timeout=timeout, check=False)
 
 
 def write_fixture(root: Path) -> None:
@@ -83,6 +88,18 @@ def change_source(root: Path) -> None:
         'return "Hello, " + name;', 'return "Hello, " + name + "!";'), encoding="utf-8")
     # Force proof that quick_compile compiles standard test sources as well as production code.
     shutil.rmtree(root / "target/test-classes", ignore_errors=True)
+
+
+def break_source(root: Path) -> None:
+    source = root / "src/main/java/org/example/GreetingService.java"
+    source.write_text(source.read_text(encoding="utf-8").replace(
+        'return "Hello, " + name + "!";', 'return "Hello, " + ;'), encoding="utf-8")
+
+
+def repair_source(root: Path) -> None:
+    source = root / "src/main/java/org/example/GreetingService.java"
+    source.write_text(source.read_text(encoding="utf-8").replace(
+        'return "Hello, " + ;', 'return "Hello, " + name + "!";'), encoding="utf-8")
 
 
 def quick_compile(session: dict[str, Any]) -> dict[str, Any]:
@@ -171,8 +188,35 @@ def main() -> int:
             if failures:
                 raise RuntimeError("Pre-execution contract failed: " + "; ".join(failures))
 
-            build = run(command["argv"], Path(
-                required["verification_plan"]["working_directory"]))
+            working_directory = Path(required["verification_plan"]["working_directory"])
+            break_source(project)
+            failed_build = run_unchecked(command["argv"], working_directory)
+            if failed_build.returncode == 0:
+                raise RuntimeError("Intentional compiler failure unexpectedly succeeded")
+            blocked, blocked_trace = client.call("change_session", session_args)
+            blocked_receipt = blocked.get("verification_receipt", {})
+            blocked_observed = blocked_receipt.get("observed_evidence", {})
+            recovery_failures: list[str] = []
+            if blocked.get("phase") != "blocked":
+                recovery_failures.append(f"expected blocked phase, got {blocked.get('phase')!r}")
+            if "BUILD_FAILED" not in blocker_codes(blocked):
+                recovery_failures.append("failed compile did not create BUILD_FAILED blocker")
+            if blocked_observed.get("build_status") != "failed":
+                recovery_failures.append("failed receipt does not contain failed build evidence")
+            if "FAILED_BUILD_EVENT" not in blocked_receipt.get("reason_codes", []):
+                recovery_failures.append("failed receipt lacks FAILED_BUILD_EVENT reason")
+            if not blocked.get("next_actions") \
+                    or blocked["next_actions"][0].get("action") != "fix_diagnostics":
+                recovery_failures.append("blocked session does not prioritize diagnostics")
+            recovery_command = quick_compile(blocked)
+            if recovery_command["argv"] != command["argv"]:
+                recovery_failures.append("recovery changed the quick_compile argv")
+            if recovery_failures:
+                raise RuntimeError("Failed-build contract failed: "
+                                   + "; ".join(recovery_failures))
+
+            repair_source(project)
+            build = run(recovery_command["argv"], working_directory)
             completed, completed_trace = client.call("change_session", session_args)
 
         post_failures: list[str] = []
@@ -214,8 +258,10 @@ def main() -> int:
             "fixture": {"build_system": "maven", "wrapper_present": False,
                         "target": TARGET},
             "init": {"stdout": init.stdout.strip(), "stderr": init.stderr.strip()},
-            "phases": [planned.get("phase"), required.get("phase"), completed.get("phase")],
-            "views": [planned.get("view"), required.get("view"), completed.get("view")],
+            "phases": [planned.get("phase"), required.get("phase"),
+                       blocked.get("phase"), completed.get("phase")],
+            "views": [planned.get("view"), required.get("view"),
+                      blocked.get("view"), completed.get("view")],
             "quick_compile": command,
             "review_actions": required.get("next_actions", []),
             "external_execution": {
@@ -224,13 +270,18 @@ def main() -> int:
                 "test_sources_compiled": True,
                 "tests_executed": False,
             },
+            "failed_execution": {
+                "returncode": failed_build.returncode,
+                "receipt": blocked_receipt,
+                "blockers": blocker_codes(blocked),
+            },
             "build_evidence": {
                 "before_blockers": blocker_codes(required),
                 "after_blockers": blocker_codes(completed),
                 "after_status": build_status,
             },
             "verification_receipt": receipt,
-            "mcp_trace": [planned_trace, required_trace, completed_trace],
+            "mcp_trace": [planned_trace, required_trace, blocked_trace, completed_trace],
             "contract_complete": True,
         }
 

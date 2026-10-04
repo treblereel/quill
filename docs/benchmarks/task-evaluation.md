@@ -838,3 +838,58 @@ Captures are the two command outputs and their variant-specific siblings under i
 guards, exact coverage, variant rotation, control drift, mutation-stop and sanitized exception
 regressions. Compile-only JVM verification returned `complete`, a satisfied gate and a verified
 receipt for unchanged MCP contracts; Python correctness is established by its separate tests.
+
+### Repeated startup guidance and expanded task coverage
+
+```bash
+python3 scripts/quill_native_guidance_comparison.py --samples 2 --timeout 120 \
+  --output target/benchmarks/quill-guidance-comparison-repeat.json
+python3 scripts/quill_native_guidance_comparison.py --samples 1 --timeout 120 \
+  --scenarios usages dependencies history \
+  --output target/benchmarks/quill-guidance-comparison-expanded.json
+```
+
+The comparison now accepts `--scenarios` from the diagnostic's existing task catalog. Its
+default remains navigation/change planning; selection is forwarded to both variants, included
+in the report, and used for the exact planned-cell denominator. Duplicate scenarios are rejected
+before reading the binary or launching clients. This does not change task prompts, fixtures,
+production guidance, MCP defaults, client permissions or the definition of adoption success.
+
+On October 4, the repeat completed eight requests across two samples, rotating variant order
+from baseline/checklist to checklist/baseline. The expanded run completed six more requests,
+one per variant for usages, dependencies and history. All six child wire/control checks passed,
+all 14 answers matched their independent expectations, and all fixture-invariance checks passed.
+Claude global configuration invariance is not measured. Both commands exited 1 because rubric
+failures are deliberately propagated; neither experiment crashed or lacked task coverage.
+
+| Tasks | Guidance | Correct answers | Successful task query | Overview first | Full rubric |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Navigation/planning, two samples | baseline | 4/4 | 4/4 | 0/4 | 0/4 |
+| Navigation/planning, two samples | overview_first | 4/4 | 4/4 | 4/4 | 4/4 |
+| Usages/dependencies/history, one sample | baseline | 3/3 | 2/3 | 0/3 | 0/3 |
+| Usages/dependencies/history, one sample | overview_first | 3/3 | 3/3 | 2/3 | 2/3 |
+
+The checklist's navigation/planning result repeated, and usages/dependencies also began with
+overview followed by the appropriate semantic query. History was an important exception:
+baseline answered through a successful `git log` Bash call without Quill. The checklist variant
+first attempted `git -C <fixture> log`, whose normalized trace records an error, then successfully
+called `get_file_history`, without ever calling overview. The fallback is not evidence that the
+variant preferred Quill initially. The harness allows `git log/show/status/diff` Bash prefixes,
+not their `git -C` forms; this is a possible permission confound, but the sanitized trace does not
+establish the shell error's cause. Do not interpret the 2/3 versus 3/3 semantic-query count as an
+instruction-only effect.
+
+The experimental prefix explicitly addresses "code navigation and change analysis" and does
+not name history. That is a candidate explanation for the exception, not a demonstrated cause.
+A next fixture-only variant should make Git/history coverage explicit, hold the permission
+policy fixed, and distinguish initial semantic-tool selection from error-driven fallback.
+Production templates and default profiles remain unchanged: tiny inherited-model samples,
+fixed task order, uncontrolled caches, prepend placement and the shell-permission confound
+still limit generalization. The experiment establishes observed task-specific behavior, not
+a guaranteed adoption rate or causal improvement.
+
+Reports and six child captures remain ignored under `target/benchmarks/`. All 128 Python unit
+tests passed, including new selection/denominator and duplicate-rejection regressions. The
+recommended compile-only JVM command passed without running tests; the unchanged JVM contracts
+returned `complete`, a satisfied gate and a verified receipt. Quill does not index the changed
+Python harness; its correctness is covered by the Python tests and these native experiments.

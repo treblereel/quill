@@ -37,16 +37,21 @@ def main(argv=None):
     parser.add_argument("--samples", type=int, default=1)
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--wire-only", action="store_true", help="No native model requests")
+    parser.add_argument("--scenarios", nargs="+", choices=list(diagnostic.SCENARIOS),
+                        default=["navigation", "change_plan"],
+                        help="Paired tasks to compare; every sample/variant/task consumes client usage")
     args = parser.parse_args(argv)
     if args.samples < 1 or args.timeout < 1:
         raise ValueError("Positive samples and timeout required")
+    if len(set(args.scenarios)) != len(args.scenarios):
+        raise ValueError("Duplicate scenarios cannot form independent paired task cells")
     binary = args.quill.resolve()
     with binary.open("rb") as source:
         binary_hash = hashlib.file_digest(source, "sha256").hexdigest()
     planned = [{"variant": variant, "case": "claude_project", "scenario": scenario, "sample": sample}
                for sample in range(1, args.samples + 1)
                for variant in diagnostic.GUIDANCE_VARIANTS
-               for scenario in ("navigation", "change_plan")]
+               for scenario in args.scenarios]
     report = {"schema_version": 1, "mode": "wire_only" if args.wire_only else "native_inference",
               "scope": "fixture-only Claude guidance; full catalog, unchanged paired prompts; no causal claim",
               "limitations": ["Inherited client models/auth and uncontrolled caches",
@@ -54,6 +59,7 @@ def main(argv=None):
                               "Claude global config invariance is not measured",
                               "No production instruction or default-profile change"],
               "quill_binary_sha256": binary_hash,
+              "scenarios": args.scenarios,
               "planned": [] if args.wire_only else planned, "runs": [], "wire": []}
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -74,7 +80,7 @@ def main(argv=None):
             child_path = output.with_name(output.stem + f"-{sample}-{variant}.json")
             child_args = ["--quill", str(binary), "--output", str(child_path),
                           "--guidance-variant", variant, "--tool-profile", "full",
-                          "--cases", "claude_project", "--scenarios", "navigation", "change_plan",
+                          "--cases", "claude_project", "--scenarios", *args.scenarios,
                           "--samples", "1", "--timeout", str(args.timeout)]
             if args.wire_only:
                 child_args.append("--wire-only")

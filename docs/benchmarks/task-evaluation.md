@@ -615,3 +615,52 @@ raw stderr from reaching reports. JVM runtime and managed instructions are uncha
 milestone; the existing indexed tool contract was refreshed and returned a satisfied
 `complete`/verified receipt. Codex trace handling follows its
 [documented JSONL event stream](https://learn.chatgpt.com/docs/non-interactive-mode).
+
+### Native profile overhead comparison (no inference)
+
+```bash
+python3 scripts/quill_profile_benchmark.py \
+  --project /absolute/path/to/indexed/project --target org.example.Service \
+  --samples 3 --output /absolute/path/outside/project/profile-report.json
+```
+
+This separate benchmark compares `full`, `core`, and `router` without launching Codex/Claude,
+selecting models, changing client configuration, or running builds. It requires an existing
+compiled/indexed project. Starting Quill can refresh derived index state. Every sample uses a
+fresh native MCP process; profile order rotates across samples. OS caches are uncontrolled and
+this is **not** cold-index performance. Startup measures through initialize; lazy index loading
+belongs to the first `get_overview` query, not to the handshake metric.
+
+The benchmark records catalog tool count, compact UTF-8 JSON size, instruction bytes, startup
+and request latency, request counts, and serialized MCP result bytes. These are neither raw
+wire bytes nor model tokens. Each hidden router query explicitly runs uncached `search_tools`
+and then `execute_tool`; discovery bytes and latency are included. The deterministic harness
+knows the intended semantic tool and searches its exact name. This is one successful search,
+not natural-language/model-driven discovery, which may need more attempts. A client caching
+previous discoveries could instead skip that search. Actual agent discovery remains a separate test.
+
+Orientation, symbol navigation, dependencies, and change workflow are compared across all
+three profiles. History is compared across full/router; its absence from core is explicit,
+not silently treated as success. Semantic payloads must be exactly equal across participating
+profiles and samples, excluding only nested `_meta` provenance. Warnings, gates, completeness,
+and facts remain part of equality. This proves equivalent returned evidence for these bounded
+queries, not independent correctness of every fact. Missing shared coverage, failed calls,
+different answers, incomplete runs, or changed fixture inputs/outputs fail the benchmark.
+Partial/error reports omit remote error bodies and source payloads. Reports include Git state,
+binary SHA-256, host platform, negotiated protocol, and server version.
+
+On October 4, a three-sample run against this repository's `McpToolProfile` observed:
+
+| Profile | Exposed tools | Catalog JSON bytes | Hidden query calls | History |
+| --- | ---: | ---: | ---: | --- |
+| full | 58 | 44,308 | 1 direct | available |
+| core | 27 | 21,064 | 1 direct | unavailable |
+| router | 3 | 1,490 | 2 including discovery | available |
+
+All nine process runs passed semantic equality and input/output invariance. Catalog size was
+approximately 52.5% smaller with core and 96.6% smaller with router than full. Router responses
+also include discovery overhead, so catalog savings do not imply lower total conversation cost.
+Three native samples with uncontrolled caches do not establish a meaningful latency winner.
+The runtime and generated default profile remain unchanged (`full`); a default switch requires
+native-agent task-quality/adoption comparisons, especially for Claude's missing orientation.
+The normalized capture is `target/benchmarks/quill-profile-comparison.json` (ignored artifact).

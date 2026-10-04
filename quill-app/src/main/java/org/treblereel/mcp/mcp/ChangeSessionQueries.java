@@ -89,6 +89,7 @@ final class ChangeSessionQueries {
         boolean includePlan = effectiveView.equals("plan") || effectiveView.equals("all");
         boolean includeVerification = effectiveView.equals("verification")
                 || effectiveView.equals("all");
+        ObjectNode checklist = reviewChecklist(plan, verify);
         if (includePlan) {
             result.set("plan", normalizedDetail.equals("full")
                     ? fullPlan(plan) : summaryPlan(plan));
@@ -99,8 +100,9 @@ final class ChangeSessionQueries {
             result.set("verification_plan", normalizedDetail.equals("full")
                     ? verify.path("verification_plan").deepCopy()
                     : summaryVerificationPlan(verify.path("verification_plan")));
+            result.set("review_checklist", checklist);
             result.set("verification_receipt",
-                    verificationReceipt(stableSessionId, currentPhase, verify));
+                    verificationReceipt(stableSessionId, currentPhase, verify, checklist));
         }
         result.set("next_actions", effectiveView.equals("plan")
                 ? plan.path("sequence").deepCopy()
@@ -111,6 +113,7 @@ final class ChangeSessionQueries {
         if (!includeVerification) {
             omitted.add("verification");
             omitted.add("verification_plan");
+            omitted.add("review_checklist");
             omitted.add("verification_receipt");
         }
         if (normalizedDetail.equals("summary") && includePlan) {
@@ -198,7 +201,7 @@ final class ChangeSessionQueries {
     }
 
     private static ObjectNode verificationReceipt(
-            String sessionId, String currentPhase, ObjectNode verify) {
+            String sessionId, String currentPhase, ObjectNode verify, ObjectNode checklist) {
         JsonNode diagnostics = verify.path("diagnostics");
         JsonNode build = verify.path("build");
         JsonNode metadata = verify.path("_meta");
@@ -219,6 +222,8 @@ final class ChangeSessionQueries {
         receipt.put("phase", currentPhase);
         receipt.put("verdict", verify.path("verdict").asText());
         receipt.put("verified", verify.path("verified").asBoolean());
+        receipt.put("review_status", checklist.path("status").asText());
+        receipt.put("review_required_count", checklist.path("required_count").asInt());
 
         ObjectNode recommendation = receipt.putObject("recommendation");
         recommendation.put("scope", "quick_compile");
@@ -263,6 +268,69 @@ final class ChangeSessionQueries {
             limitations.add("The build event attests the result, not the exact command argv");
         }
         return receipt;
+    }
+
+    private static ObjectNode reviewChecklist(ObjectNode plan, ObjectNode verify) {
+        Set<String> blockers = new java.util.LinkedHashSet<>();
+        for (JsonNode blocker : verify.path("blockers")) {
+            blockers.add(blocker.path("code").asText());
+        }
+        ObjectNode checklist = JSON.createObjectNode();
+        checklist.put("schema_version", 1);
+        checklist.put("acknowledgement_model", "evidence_only");
+        var items = checklist.putArray("items");
+        checklistItem(items, "primary_contracts", "Review changed declarations and contracts",
+                plan.path("primary_changes").isEmpty() ? "clear" : "advisory",
+                "plan.primary_changes", plan.path("primary_changes").size(), null);
+        checklistItem(items, "dependency_usages", "Review callers and dependency fallout",
+                plan.path("dependency_review").isEmpty() ? "clear" : "advisory",
+                "plan.dependency_review", plan.path("dependency_review").size(), null);
+        checklistItem(items, "target_resolution", "Resolve every requested target",
+                blockers.contains("UNRESOLVED_TARGETS") ? "required" : "clear",
+                "verification.blockers", verify.path("unresolved_target_count").asInt(),
+                blockers.contains("UNRESOLVED_TARGETS") ? "UNRESOLVED_TARGETS" : null);
+        checklistItem(items, "test_coverage", "Review incomplete affected-test evidence",
+                blockers.contains("INCOMPLETE_TEST_COVERAGE") ? "required" : "clear",
+                "verification.test_evidence", verify.path("test_evidence")
+                        .path("limitations").size(), blockers.contains("INCOMPLETE_TEST_COVERAGE")
+                                ? "INCOMPLETE_TEST_COVERAGE" : null);
+        checklistItem(items, "module_selection", "Resolve build-system module mappings",
+                blockers.contains("MODULE_SELECTION_INCOMPLETE") ? "required" : "clear",
+                "verification_plan.unresolved_modules", verify.path("verification_plan")
+                        .path("unresolved_modules").size(),
+                blockers.contains("MODULE_SELECTION_INCOMPLETE")
+                        ? "MODULE_SELECTION_INCOMPLETE" : null);
+        boolean worktreeIncomplete = blockers.contains("TARGET_INFERENCE_TRUNCATED")
+                || blockers.contains("WORKTREE_TRUNCATED");
+        checklistItem(items, "worktree_scope", "Inspect all structurally changed files",
+                worktreeIncomplete ? "required" : "clear", "verification.worktree",
+                verify.path("worktree").path("total").asInt(), worktreeIncomplete
+                        ? (blockers.contains("TARGET_INFERENCE_TRUNCATED")
+                                ? "TARGET_INFERENCE_TRUNCATED" : "WORKTREE_TRUNCATED")
+                        : null);
+
+        int required = 0;
+        int advisory = 0;
+        for (JsonNode item : items) {
+            if (item.path("status").asText().equals("required")) required++;
+            if (item.path("status").asText().equals("advisory")) advisory++;
+        }
+        checklist.put("required_count", required);
+        checklist.put("advisory_count", advisory);
+        checklist.put("status", required > 0 ? "required" : advisory > 0 ? "advisory" : "clear");
+        return checklist;
+    }
+
+    private static void checklistItem(com.fasterxml.jackson.databind.node.ArrayNode items,
+            String id, String label, String status, String evidence, int count, String reason) {
+        ObjectNode item = items.addObject();
+        item.put("id", id);
+        item.put("label", label);
+        item.put("status", status);
+        item.put("evidence", evidence);
+        item.put("evidence_count", count);
+        if (reason == null) item.putNull("reason_code");
+        else item.put("reason_code", reason);
     }
 
     private static ObjectNode compact(JsonNode source, List<String> fields) {

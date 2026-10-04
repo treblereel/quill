@@ -334,7 +334,9 @@ does not imply that an executor, reactive stream, or message publication has com
 - **change_session** — return a compact stateless snapshot with a stable session ID, current workflow
   phase, canonical or dirty-worktree-inferred targets, change plan, verification evidence, safe
   command recommendations, ordered next actions, and a structured verification receipt that keeps
-  recommended argv separate from observed build evidence; summary detail is the default, while
+  recommended argv separate from observed build evidence. Its evidence-only review checklist
+  identifies required target, coverage, module, and worktree review without claiming human
+  acknowledgement; summary detail is the default, while
   full detail preserves the complete plan/verification parity contract, and `view=auto` returns
   only the plan before structural edits or verification evidence afterwards. Dirty changes with
   unresolved contract, target, module, coverage, or pagination evidence enter `review_required`;

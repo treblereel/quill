@@ -278,3 +278,6 @@ Because sessions are stateless evidence snapshots, phases may be skipped: `revie
 reported only while unresolved targets, incomplete test coverage, truncated target inference, or
 truncated worktree evidence needs attention; `verification_required` means only build evidence is
 missing. Review actions are ordered before external compilation recommendations.
+The dirty snapshot must expose an evidence-only `review_checklist` whose required items correspond
+to review blockers. A completed receipt must report zero required review items; advisory contract
+and dependency checks remain visible without preventing evidence-backed completion.

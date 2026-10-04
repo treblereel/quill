@@ -185,6 +185,12 @@ def main() -> int:
             if not required.get("next_actions") or required["next_actions"][0].get("reason") \
                     != "INCOMPLETE_TEST_COVERAGE":
                 failures.append("review action was not ordered before build verification")
+            checklist = required.get("review_checklist", {})
+            required_items = [item.get("id") for item in checklist.get("items", [])
+                              if item.get("status") == "required"]
+            if checklist.get("acknowledgement_model") != "evidence_only" \
+                    or "test_coverage" not in required_items:
+                failures.append("review checklist does not expose the test-coverage evidence gap")
             if failures:
                 raise RuntimeError("Pre-execution contract failed: " + "; ".join(failures))
 
@@ -240,6 +246,8 @@ def main() -> int:
         observed = receipt.get("observed_evidence", {})
         if receipt.get("verified") is not True or receipt.get("phase") != "complete":
             post_failures.append("verification receipt does not attest the complete phase")
+        if receipt.get("review_required_count") != 0:
+            post_failures.append("completed receipt retains required review evidence")
         if recommendation.get("argv") != command["argv"]:
             post_failures.append("verification receipt changed the recommended argv")
         if recommendation.get("command_attestation") != "not_captured":
@@ -264,6 +272,7 @@ def main() -> int:
                       blocked.get("view"), completed.get("view")],
             "quick_compile": command,
             "review_actions": required.get("next_actions", []),
+            "review_checklist": required.get("review_checklist", {}),
             "external_execution": {
                 "returncode": build.returncode,
                 "production_compiled": True,

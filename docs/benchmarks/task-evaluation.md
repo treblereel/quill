@@ -253,3 +253,19 @@ verification commands, and next actions. It also measures the default summary re
 and verifies that primary files, verdict, blockers, quick compilation, and next actions remain.
 The phase-aware `view=auto` response is measured independently and must expose exactly one of the
 plan or verification payloads with the correct actions for the current phase.
+
+## External change-loop E2E
+
+Validate the complete agent-facing loop on an isolated Maven fixture:
+
+```bash
+python3 scripts/quill_change_loop_e2e.py \
+  --quill quill-app/target/quill
+```
+
+The fixture intentionally has no Maven wrapper. The harness runs the system Maven fallback to
+bootstrap compiled classes, initializes Quill, edits a production source, and obtains the exact
+`quick_compile` argv from `change_session`. The harness—not Quill—executes that command and then
+calls `change_session` again. The report requires the phase sequence `planned` →
+`verification_required` → `complete`, compiled production and standard test classes, no Surefire
+or Failsafe reports, a captured successful build event, and removal of the build-evidence blocker.

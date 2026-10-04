@@ -19,7 +19,7 @@ final class ChangeVerificationQueries {
     private final WorktreeStatusQueries worktree = new WorktreeStatusQueries();
 
     String verifyChange(Jdbi jdbi, Path projectRoot, List<String> targets, int limit) {
-        ObjectNode changes = parse(worktree.getWorktreeStatus(
+        ObjectNode changes = parse(worktree.getFreshWorktreeStatus(
                 jdbi, projectRoot, null, limit, 0));
         boolean inferred = targets == null || targets.isEmpty();
         List<String> candidates = inferred ? inferredTargets(changes) : List.copyOf(targets);
@@ -35,7 +35,7 @@ final class ChangeVerificationQueries {
 
     String verifyChangeWithContext(Jdbi jdbi, Path projectRoot, List<String> targets,
             int limit, ObjectNode context) {
-        ObjectNode changes = parse(worktree.getWorktreeStatus(
+        ObjectNode changes = parse(worktree.getFreshWorktreeStatus(
                 jdbi, projectRoot, null, limit, 0));
         return verifyChangeWithContext(jdbi, projectRoot, targets, limit, context,
                 changes, false, false);

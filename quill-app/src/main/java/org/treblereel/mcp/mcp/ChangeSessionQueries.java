@@ -45,7 +45,7 @@ final class ChangeSessionQueries {
         if (change == null || change.isBlank()) {
             return plans.planChange(jdbi, projectRoot, targets, change, limit);
         }
-        ObjectNode changes = parse(worktree.getWorktreeStatus(
+        ObjectNode changes = parse(worktree.getFreshWorktreeStatus(
                 jdbi, projectRoot, null, limit, 0));
         boolean inferred = targets == null || targets.isEmpty();
         List<String> candidates = inferred

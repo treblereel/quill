@@ -547,6 +547,32 @@ class QuillToolsTest {
     }
 
     @Test
+    void changeSessionSeesAnEditImmediatelyAfterAPlannedSnapshot() throws Exception {
+        writeMinimalPom();
+        Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; class OrderService {}\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            QuillTools tools = new QuillTools();
+            JsonNode planned = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                    List.of("OrderService"), "Add a method", 10));
+
+            Files.writeString(source,
+                    "package org.acme; class OrderService { void changed() {} }\n");
+            JsonNode changed = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                    List.of("OrderService"), "Add a method", 10));
+
+            assertEquals("planned", planned.path("phase").asText());
+            assertEquals("verification_required", changed.path("phase").asText());
+            assertTrue(changed.path("verification").path("worktree")
+                    .path("structural_dirty").asBoolean());
+        }
+    }
+
+    @Test
     void changeSessionReturnsStableStatelessWorkflowSnapshot() throws Exception {
         writeMinimalPom();
         QuillTools tools = new QuillTools();

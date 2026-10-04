@@ -7,11 +7,37 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from quill_adoption_diagnostic import (PROMPT, main, metadata_contract, plan_expectations,
-                                      configure_fixture_profile, client_usage, profile_catalog_valid)
+                                      configure_fixture_profile, client_usage, profile_catalog_valid,
+                                      configure_fixture_guidance, OVERVIEW_FIRST_GUIDANCE)
 from quill_adoption_scenarios import SCENARIOS
 
 
 class AdoptionDiagnosticTest(unittest.TestCase):
+    def test_guidance_variants_preserve_generated_block_and_agents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = "<!-- quill:managed:start -->\nmanaged guidance\n<!-- quill:managed:end -->\n"
+            (root / "CLAUDE.md").write_text(original)
+            (root / "AGENTS.md").write_text("unchanged agents")
+            baseline = configure_fixture_guidance(root, "baseline")
+            self.assertEqual(original, (root / "CLAUDE.md").read_text())
+            variant = configure_fixture_guidance(root, "overview_first")
+            self.assertEqual(OVERVIEW_FIRST_GUIDANCE + original, (root / "CLAUDE.md").read_text())
+            self.assertEqual(baseline["AGENTS.md"], variant["AGENTS.md"])
+            self.assertNotEqual(baseline["CLAUDE.md"], variant["CLAUDE.md"])
+            (root / "CLAUDE.md").write_text("not managed")
+            with self.assertRaises(ValueError):
+                configure_fixture_guidance(root, "overview_first")
+            self.assertEqual("not managed", (root / "CLAUDE.md").read_text())
+
+    def test_experimental_guidance_rejects_other_clients_or_catalogs_before_launch(self):
+        for extra in ([], ["--cases", "project_read_only"],
+                      ["--cases", "claude_project", "--tool-profile", "router"]):
+            with patch("quill_adoption_diagnostic.invoke") as inference:
+                with self.assertRaises(ValueError):
+                    main(["--output", "/unused", "--guidance-variant", "overview_first", *extra])
+                inference.assert_not_called()
+
     def test_action_representations_are_derived_only_from_snapshot_not_model_answer(self):
         expected, variants = plan_expectations({"phase": "planned", "directive": {
             "primary_action": {"action": "inspect_primary", "description": "Inspect declarations"}}})

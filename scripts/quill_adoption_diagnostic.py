@@ -2,6 +2,7 @@
 """Separate native project-config loading from unprompted Quill tool adoption."""
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -17,6 +18,33 @@ from quill_workflow_benchmark import WorkflowClient
 
 
 PROMPT = prompt_for("change_plan")  # Compatibility for external imports; all tasks use SCENARIOS.
+
+GUIDANCE_VARIANTS = ("baseline", "overview_first")
+OVERVIEW_FIRST_GUIDANCE = """## Experimental code-intelligence startup checklist
+
+For code navigation and change analysis, use this order:
+1. Discover the Quill MCP tools (use ToolSearch if they are deferred).
+2. Call get_overview before any other Quill query or broad source search.
+3. Use the task-specific semantic query, or change_session for change planning.
+4. Read exact source files to confirm details or resolve stale/unsupported evidence.
+Do not treat a successful source search as a substitute for the initial overview.
+This checklist does not authorize edits, builds, tests, or additional services.
+
+"""
+
+
+def configure_fixture_guidance(project, variant):
+    """Experimental Claude guidance only; invoked on freshly generated fixtures."""
+    if variant not in GUIDANCE_VARIANTS:
+        raise ValueError("Unknown guidance variant")
+    path = project / "CLAUDE.md"
+    original = path.read_text()
+    if variant != "baseline":
+        if "<!-- quill:managed:start -->" not in original:
+            raise ValueError("Expected generated managed fixture guidance")
+        path.write_text(OVERVIEW_FIRST_GUIDANCE + original)
+    return {name: hashlib.sha256((project / name).read_bytes()).hexdigest()
+            for name in ("AGENTS.md", "CLAUDE.md")}
 
 
 def metadata_contract(initialized, catalog):
@@ -98,6 +126,8 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--samples", type=int, default=1)
     parser.add_argument("--wire-only", action="store_true", help="Check native wire metadata without inference")
+    parser.add_argument("--guidance-variant", choices=GUIDANCE_VARIANTS, default="baseline",
+                        help="Fixture-only Claude instruction variant; production guidance is unchanged")
     parser.add_argument("--tool-profile", choices=["full", "core", "router"], default="full",
                         help="MCP catalog selected only for this temporary fixture")
     parser.add_argument("--cases", nargs="+", choices=["project_read_only", "transport_read_only",
@@ -107,6 +137,9 @@ def main(argv=None):
     parser.add_argument("--scenarios", nargs="+", choices=list(SCENARIOS), default=list(SCENARIOS),
                         help="Unprompted tasks to run (default: all; each case/sample/task uses inference)")
     args = parser.parse_args(argv)
+    if args.guidance_variant != "baseline" and (args.tool_profile != "full"
+            or args.cases != ["claude_project"]):
+        raise ValueError("Experimental guidance requires full catalog and only claude_project")
     report = {"schema_version": 2, "scope": "native CLI fixture tasks; no causal or general adoption claim",
               "permissions": "Codex read-only or selected workspace-write; Claude Read/Grep/Glob, "
                               "narrow read-only Git Bash prefixes and Quill MCP; no unrestricted Bash approval",
@@ -114,6 +147,7 @@ def main(argv=None):
                                          "Claude global configuration is not checked",
               "mode": "wire_only" if args.wire_only else "native_inference",
               "tool_profile": args.tool_profile,
+              "guidance_variant": args.guidance_variant,
               "scenarios": {name: {"prompt": prompt_for(name), "expected_tools": SCENARIOS[name]["tools"]}
                             for name in args.scenarios}, "runs": []}
     quill, maven = args.quill.resolve(), shutil.which("mvn")
@@ -143,6 +177,7 @@ def main(argv=None):
             loop.run(argv, project)
         if args.tool_profile != "full":
             configure_fixture_profile(project, args.tool_profile)
+        report["guidance_sha256"] = configure_fixture_guidance(project, args.guidance_variant)
         wire = WorkflowClient([str(quill), "--tools", args.tool_profile], project, 60)
         try:
             wire.__enter__()

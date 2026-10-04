@@ -788,3 +788,53 @@ Captures are `target/benchmarks/quill-profile-adoption-repeat.json` and six prof
 (ignored artifacts). All 119 Python unit tests passed, including three new breakdown regressions.
 Compile-only JVM verification returned a satisfied `complete`/verified receipt for unchanged MCP
 contracts; it does not validate the Python harness, which is covered by its own tests.
+
+### Fixture-only Claude startup guidance comparison
+
+```bash
+python3 scripts/quill_native_guidance_comparison.py --wire-only \
+  --output target/benchmarks/quill-guidance-comparison-wire.json
+python3 scripts/quill_native_guidance_comparison.py --timeout 120 \
+  --output target/benchmarks/quill-guidance-comparison-native.json
+```
+
+This opt-in experiment compares generated `CLAUDE.md` unchanged (`baseline`) with a short
+ordered startup checklist prepended outside the managed block (`overview_first`). Only fresh
+temporary fixtures are modified. Production templates, repository guidance, client settings
+and default profiles are unchanged. The diagnostic rejects experimental guidance with any
+client case other than Claude or any catalog other than full. User prompts remain unprompted:
+neither task names Quill or its tools. Each task uses a fresh native conversation.
+
+Both variants use the full catalog and the same navigation/change-planning tasks. The runner
+checks matching hashes of the baseline Claude block, AGENTS guidance, tool catalog and annotations,
+server instructions, and task prompts, plus identical client versions. Independent wire checks
+validate the full profile before each child's inference; cross-variant controls are compared
+after each child finishes. Missing, duplicate or wrong task cells cannot count as complete
+coverage. Invariance failures stop further requests without rollback. Exception reports retain
+the planned denominator and only the exception type, not remote error bodies. `--wire-only`
+makes no model requests and cannot report adoption success.
+
+On October 4, all four planned native Claude requests completed:
+
+| Guidance | Correct answers | Successful task query | Overview first | Full rubric |
+| --- | ---: | ---: | ---: | ---: |
+| baseline | 2/2 | 2/2 | 0/2 | 0/2 |
+| overview_first | 2/2 | 2/2 | 2/2 | 2/2 |
+
+Baseline called `search_symbols` and `change_session` directly. The variant called `get_overview`
+before those same task-specific queries. Every fixture invariance check, both full-profile wire
+checks and the cross-variant controls passed. The comparison intentionally exits 1 because
+baseline fails the orientation rubric; this is not a harness crash or MCP connectivity failure.
+Claude global configuration invariance is not measured.
+
+This is one sample per task/variant, with inherited models/auth, fixed task order and uncontrolled
+caches. It does not establish a causal effect or a stable improvement; no production-guidance
+change is justified yet. Use `--samples 2` or more to repeat with alternating variant order;
+even-numbered samples run the checklist before baseline. Provider usage counts retain their own
+sample counts, are not billed costs, and missing values are not zero.
+
+Captures are the two command outputs and their variant-specific siblings under ignored
+`target/benchmarks/`. All 126 Python tests passed, including fixture-only guidance, selection
+guards, exact coverage, variant rotation, control drift, mutation-stop and sanitized exception
+regressions. Compile-only JVM verification returned `complete`, a satisfied gate and a verified
+receipt for unchanged MCP contracts; Python correctness is established by its separate tests.

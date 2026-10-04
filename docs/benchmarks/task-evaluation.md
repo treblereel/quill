@@ -734,3 +734,57 @@ startup guidance or selecting a reduced default. Python harness tests and compil
 verification are separate checks; Quill does not index the modified Python harness sources.
 All 116 Python unit tests passed; the unchanged JVM tool contracts returned a satisfied
 `complete`/verified receipt after compile-only freshness verification.
+
+### Repeated paired adoption tasks
+
+```bash
+python3 scripts/quill_profile_adoption.py \
+  --cases project_read_only claude_project --scenarios navigation change_plan \
+  --samples 2 --output target/benchmarks/quill-profile-adoption-repeat.json
+```
+
+On October 4, this repeat completed all 24 planned native requests, with no unavailable
+clients or missing cells. Profile order was full/core/router in sample 1 and core/router/full
+in sample 2. Prompts, generated guidance and runtime defaults were unchanged. The six wire
+checks passed; all fixture invariance checks and all 12 Codex user-config invariance checks
+passed. Claude global configuration remains outside the measured scope.
+
+Codex passed every criterion in all 12 requests: both tasks in both samples for every profile.
+Claude results separate successful semantic-tool use from the required initial overview:
+
+| Claude profile | Navigation task call | Navigation overview | Planning task call | Planning overview | Full rubric |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| full | 2/2 | 0/2 | 2/2 | 1/2 | 1/4 |
+| core | 2/2 | 0/2 | 2/2 | 1/2 | 1/4 |
+| router | 0/2 | 0/2 | 2/2 | 2/2 | 2/4 |
+
+Both Claude router-navigation traces contained only `Grep`, with no Quill call, and their final
+answers could not be parsed as the requested JSON object. This is an output-format and adoption
+failure, not evidence that a parsed factual answer was wrong. The other 22 answers matched
+their expected JSON facts. Router change planning successfully used overview, discovery and
+hidden invocation in both Claude samples. Full/core navigation successfully used `search_symbols`
+but skipped overview in all four Claude cases. Thus MCP reachability, semantic-tool adoption,
+startup orientation and final-answer format are distinct concerns in these observations.
+
+The comparison intentionally exited 1: 16/24 full-rubric passes despite complete coverage and
+passing transport/safety checks. This does not establish a profile's causal effect or a general
+client success rate. Two samples, inherited models, fixed case/task order and uncontrolled caches
+remain limitations. The initial experiment's apparent router-orientation advantage did not hold
+for repeated navigation. No default-profile switch or forced startup hook is justified here.
+A useful next controlled experiment is a fixture-only Claude guidance variant, holding the
+full catalog and these paired tasks fixed, measuring overview compliance separately from
+semantic-tool adoption and answer correctness before changing generated production guidance.
+
+Profile reports now add `groups.<profile:case>.by_scenario`, including planned/completed/remaining
+counts, exact-cell coverage, failures versus unavailable clients, criterion counts, and separately
+sampled latency/provider usage. Missing tasks stay visible even when another task passed; duplicate
+cells cannot satisfy task coverage. An unavailable client cannot contribute success even if its
+record also contains a contradictory positive evaluation. Existing aggregate fields are preserved.
+The repeat was started before this additive reporting change; its original report contains the
+raw normalized runs and aggregate groups. The table above was recomputed from those runs with
+the updated `summarize`, without additional inference.
+
+Captures are `target/benchmarks/quill-profile-adoption-repeat.json` and six profile/sample siblings
+(ignored artifacts). All 119 Python unit tests passed, including three new breakdown regressions.
+Compile-only JVM verification returned a satisfied `complete`/verified receipt for unchanged MCP
+contracts; it does not validate the Python harness, which is covered by its own tests.

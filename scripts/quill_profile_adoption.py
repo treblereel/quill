@@ -20,34 +20,57 @@ def supported(profile, scenario):
     return not (profile == "core" and scenario == "history")
 
 
+def cell_summary(runs, planned):
+    """Keep task denominators and missing/duplicate coverage explicit at every level."""
+    key = lambda item: (item["profile"], item["case"], item["scenario"], item["sample"])
+    expected = {key(item) for item in planned}
+    actual = [key(item) for item in runs]
+    group = {"planned": len(planned), "completed": len(runs),
+             "remaining": max(0, len(planned) - len(runs)),
+             "coverage_complete": len(actual) == len(expected) and set(actual) == expected,
+             "passed": 0, "failed": 0, "answer_correct": 0,
+             "task_tool_succeeded": 0, "overview_first": 0, "unavailable": 0,
+             "criteria_passed": {}}
+    for item in runs:
+        unavailable = item.get("unavailable") is True
+        passed = not unavailable and item.get("evaluation", {}).get("passed") is True
+        group["unavailable"] += int(unavailable)
+        group["passed"] += int(passed)
+        group["failed"] += int(not unavailable and not passed)
+        criteria = item.get("evaluation", {}).get("criteria", {}) if not unavailable else {}
+        for name in ("answer_correct", "task_tool_succeeded", "overview_first"):
+            group[name] += int(criteria.get(name) is True)
+        for name, value in criteria.items():
+            group["criteria_passed"][name] = group["criteria_passed"].get(name, 0) + int(value is True)
+    measured = [item["elapsed_seconds"] for item in runs
+                if type(item.get("elapsed_seconds")) in {int, float}]
+    group["elapsed_seconds"] = {"samples": len(measured), "median": statistics.median(measured)} if measured else None
+    group["usage"] = {}
+    for name in {name for item in runs for name in item.get("usage", {})}:
+        measured = [item["usage"][name] for item in runs if name in item.get("usage", {})]
+        group["usage"][name] = {"samples": len(measured), "median": statistics.median(measured)}
+    return group
+
+
 def summarize(runs, planned, unsupported):
     groups = {}
     expected_keys = {(item["profile"], item["case"], item["scenario"], item["sample"]) for item in planned}
     actual_keys = [(item["profile"], item["case"], item["scenario"], item["sample"]) for item in runs]
-    for profile, case in {(item["profile"], item["case"]) for item in planned}:
+    for profile, case in sorted({(item["profile"], item["case"]) for item in planned}):
         values = [item for item in runs if item["profile"] == profile and item["case"] == case]
-        group = {"completed": len(values), "passed": 0, "answer_correct": 0,
-                 "task_tool_succeeded": 0, "overview_first": 0, "unavailable": 0,
-                 "planned": sum(item["profile"] == profile and item["case"] == case for item in planned)}
-        for item in values:
-            group["unavailable"] += int(item.get("unavailable") is True)
-            group["passed"] += int(item.get("evaluation", {}).get("passed") is True)
-            criteria = item.get("evaluation", {}).get("criteria", {})
-            for key in ("answer_correct", "task_tool_succeeded", "overview_first"):
-                group[key] += int(criteria.get(key) is True)
-        for field in ("elapsed_seconds",):
-            measured = [item[field] for item in values if type(item.get(field)) in {int, float}]
-            group[field] = {"samples": len(measured), "median": statistics.median(measured)} if measured else None
-        group["usage"] = {}
-        for key in {key for item in values for key in item.get("usage", {})}:
-            measured = [item["usage"][key] for item in values if key in item.get("usage", {})]
-            group["usage"][key] = {"samples": len(measured), "median": statistics.median(measured)}
+        cells = [item for item in planned if item["profile"] == profile and item["case"] == case]
+        group = cell_summary(values, cells)
+        group["by_scenario"] = {scenario: cell_summary(
+            [item for item in values if item["scenario"] == scenario],
+            [item for item in cells if item["scenario"] == scenario])
+            for scenario in sorted({item["scenario"] for item in cells})}
         groups[profile + ":" + case] = group
     complete = len(actual_keys) == len(expected_keys) and set(actual_keys) == expected_keys
     return {"planned": len(planned), "completed": len(runs), "remaining": max(0, len(planned) - len(runs)),
             "unsupported": len(unsupported), "coverage_complete": complete,
             "all_passed": bool(planned) and complete and all(
-                item.get("evaluation", {}).get("passed") is True for item in runs), "groups": groups}
+                not item.get("unavailable") and item.get("evaluation", {}).get("passed") is True
+                for item in runs), "groups": groups}
 
 
 def safe_fixture(report):

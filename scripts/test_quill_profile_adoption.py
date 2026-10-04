@@ -41,6 +41,43 @@ class ProfileAdoptionTest(unittest.TestCase):
         self.assertTrue(safe_fixture({"runs": [good, {"unavailable": True}]}))
         self.assertFalse(safe_fixture({"runs": [{**good, "user_config_unchanged": False}]}))
 
+    def test_task_breakdown_does_not_hide_a_missing_task_behind_an_aggregate(self):
+        navigation = {"profile": "full", "case": "claude_project", "scenario": "navigation", "sample": 1}
+        planning = {**navigation, "scenario": "change_plan"}
+        run = {**navigation, "evaluation": {"passed": True, "criteria": {"overview_first": True}}}
+        group = summarize([run], [navigation, planning], [])["groups"]["full:claude_project"]
+        self.assertEqual((2, 1, 1), tuple(group[name] for name in ("planned", "completed", "remaining")))
+        self.assertFalse(group["coverage_complete"])
+        tasks = group["by_scenario"]
+        self.assertTrue(tasks["navigation"]["coverage_complete"])
+        self.assertEqual(1, tasks["navigation"]["criteria_passed"]["overview_first"])
+        self.assertEqual((1, 0, 1), tuple(tasks["change_plan"][name]
+                                        for name in ("planned", "completed", "remaining")))
+        self.assertIsNone(tasks["change_plan"]["elapsed_seconds"])
+        self.assertEqual({}, tasks["change_plan"]["usage"])
+
+    def test_task_breakdown_separates_orientation_failures_from_correct_answers(self):
+        cells = [{"profile": "router", "case": "claude_project", "scenario": "navigation", "sample": i}
+                 for i in (1, 2)]
+        runs = [{**cells[0], "evaluation": {"passed": False, "criteria": {
+            "answer_correct": True, "task_tool_succeeded": True, "overview_first": False}}},
+            {**cells[1], "evaluation": {"passed": True, "criteria": {
+            "answer_correct": True, "task_tool_succeeded": True, "overview_first": True}}}]
+        task = summarize(runs, cells, [])["groups"]["router:claude_project"]["by_scenario"]["navigation"]
+        self.assertEqual((2, 1, 1, 2, 1), tuple(task[name] for name in
+            ("completed", "passed", "failed", "answer_correct", "overview_first")))
+        self.assertFalse(summarize([runs[0], runs[0]], cells, [])["groups"]
+                         ["router:claude_project"]["by_scenario"]["navigation"]["coverage_complete"])
+
+    def test_unavailable_task_cannot_contribute_success_even_with_malformed_evaluation(self):
+        item = {"profile": "core", "case": "claude_project", "scenario": "navigation", "sample": 1}
+        run = {**item, "unavailable": True, "evaluation": {"passed": True,
+               "criteria": {"answer_correct": True}}}
+        task = summarize([run], [item], [])["groups"]["core:claude_project"]["by_scenario"]["navigation"]
+        self.assertEqual((1, 0, 0, 0), tuple(task[name] for name in
+                         ("unavailable", "passed", "failed", "answer_correct")))
+        self.assertFalse(summarize([run], [item], [])["all_passed"])
+
     def exercise(self, wire_only=False, mutation=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

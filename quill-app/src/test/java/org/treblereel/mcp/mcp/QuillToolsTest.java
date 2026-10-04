@@ -594,6 +594,11 @@ class QuillToolsTest {
         assertEquals("needs_build",
                 first.path("verification").path("verdict").asText());
         assertTrue(first.path("verification_plan").path("commands").isArray());
+        assertEquals(first.path("session_id").asText(),
+                first.path("verification_receipt").path("session_id").asText());
+        assertEquals("not_captured", first.path("verification_receipt")
+                .path("recommendation").path("command_attestation").asText());
+        assertFalse(first.path("verification_receipt").path("verified").asBoolean());
         assertTrue(first.path("next_actions").get(0).path("action").isTextual());
     }
 
@@ -627,6 +632,9 @@ class QuillToolsTest {
         assertTrue(result.has("plan"));
         assertFalse(result.has("verification"));
         assertFalse(result.has("verification_plan"));
+        assertFalse(result.has("verification_receipt"));
+        assertTrue(result.path("omitted_sections").valueStream()
+                .anyMatch(item -> item.asText().equals("verification_receipt")));
         assertEquals("inspect_primary",
                 result.path("next_actions").get(0).path("action").asText());
     }
@@ -660,6 +668,7 @@ class QuillToolsTest {
             assertFalse(auto.has("plan"));
             assertTrue(auto.has("verification"));
             assertTrue(auto.has("verification_plan"));
+            assertTrue(auto.has("verification_receipt"));
         }
     }
 

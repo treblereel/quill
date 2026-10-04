@@ -333,9 +333,10 @@ does not imply that an executor, reactive stream, or message publication has com
   and structured `next_actions` tell the external agent how to resolve evidence gaps and re-check
 - **change_session** — return a compact stateless snapshot with a stable session ID, current workflow
   phase, canonical or dirty-worktree-inferred targets, change plan, verification evidence, safe
-  command recommendations, and ordered next actions; summary detail is the default, while full
-  detail preserves the complete plan/verification parity contract, and `view=auto` returns only
-  the plan before structural edits or verification evidence afterwards
+  command recommendations, ordered next actions, and a structured verification receipt that keeps
+  recommended argv separate from observed build evidence; summary detail is the default, while
+  full detail preserves the complete plan/verification parity contract, and `view=auto` returns
+  only the plan before structural edits or verification evidence afterwards
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
   with explicit reporting when compiled test outputs are not indexed
 - **get_type_hierarchy** — inspect paged ancestor and descendant paths, including external

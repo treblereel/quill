@@ -64,7 +64,8 @@ final class ChangeSessionQueries {
 
         ObjectNode result = JSON.createObjectNode();
         result.put("schema_version", 1);
-        result.put("session_id", sessionId(projectRoot, canonicalTargets, change));
+        String stableSessionId = sessionId(projectRoot, canonicalTargets, change);
+        result.put("session_id", stableSessionId);
         result.put("state_model", "stateless_snapshot");
         String currentPhase = phase(verify);
         String effectiveView = normalizedView.equals("auto")
@@ -93,6 +94,8 @@ final class ChangeSessionQueries {
             result.set("verification_plan", normalizedDetail.equals("full")
                     ? verify.path("verification_plan").deepCopy()
                     : summaryVerificationPlan(verify.path("verification_plan")));
+            result.set("verification_receipt",
+                    verificationReceipt(stableSessionId, currentPhase, verify));
         }
         result.set("next_actions", (effectiveView.equals("plan")
                 ? plan.path("sequence") : verify.path("next_actions")).deepCopy());
@@ -102,6 +105,7 @@ final class ChangeSessionQueries {
         if (!includeVerification) {
             omitted.add("verification");
             omitted.add("verification_plan");
+            omitted.add("verification_receipt");
         }
         if (normalizedDetail.equals("summary") && includePlan) {
             omitted.add("plan.member_contracts").add("plan.coupling")
@@ -185,6 +189,73 @@ final class ChangeSessionQueries {
         return result;
     }
 
+    private static ObjectNode verificationReceipt(
+            String sessionId, String currentPhase, ObjectNode verify) {
+        JsonNode diagnostics = verify.path("diagnostics");
+        JsonNode build = verify.path("build");
+        JsonNode metadata = verify.path("_meta");
+        JsonNode quickCompile = null;
+        for (JsonNode command : verify.path("verification_plan").path("commands")) {
+            if (command.path("scope").asText().equals("quick_compile")) {
+                quickCompile = command;
+                break;
+            }
+        }
+
+        ObjectNode receipt = JSON.createObjectNode();
+        receipt.put("schema_version", 1);
+        receipt.put("receipt_id", digest(sessionId + "\n"
+                + diagnostics.path("finished_at").asText() + "\n"
+                + verify.path("verdict").asText()));
+        receipt.put("session_id", sessionId);
+        receipt.put("phase", currentPhase);
+        receipt.put("verdict", verify.path("verdict").asText());
+        receipt.put("verified", verify.path("verified").asBoolean());
+
+        ObjectNode recommendation = receipt.putObject("recommendation");
+        recommendation.put("scope", "quick_compile");
+        recommendation.set("argv", quickCompile == null
+                ? JSON.createArrayNode() : quickCompile.path("argv").deepCopy());
+        copy(verify.path("verification_plan"), recommendation, "working_directory");
+        if (quickCompile != null) {
+            copy(quickCompile, recommendation, "executes_tests");
+            copy(quickCompile, recommendation, "compiles_test_sources");
+        }
+        recommendation.put("executed_by_quill", false);
+        recommendation.put("command_attestation", "not_captured");
+
+        ObjectNode observed = receipt.putObject("observed_evidence");
+        String buildStatus = diagnostics.path("build_status").asText("unknown");
+        observed.put("build_event_observed",
+                !buildStatus.equals("unknown") && !buildStatus.equals("unavailable"));
+        observed.put("build_status", buildStatus);
+        copy(diagnostics, observed, "build_tool");
+        copy(diagnostics, observed, "finished_at");
+        copy(diagnostics, observed, "capture_scope");
+        copy(build, observed, "compiled_outputs");
+        observed.put("index_current", !metadata.path("structure_stale").asBoolean());
+        observed.put("structural_worktree_dirty",
+                verify.path("worktree").path("structural_dirty").asBoolean());
+
+        var reasons = receipt.putArray("reason_codes");
+        if (buildStatus.equals("success")) reasons.add("SUCCESSFUL_BUILD_EVENT");
+        if (!metadata.path("structure_stale").asBoolean()) reasons.add("INDEX_CURRENT");
+        if (verify.path("unresolved_target_count").asInt() == 0) {
+            reasons.add("TARGETS_RESOLVED");
+        }
+        if (verify.path("test_evidence").path("answer_complete").asBoolean()) {
+            reasons.add("TEST_EVIDENCE_COMPLETE");
+        }
+        for (JsonNode blocker : verify.path("blockers")) {
+            reasons.add("BLOCKER_" + blocker.path("code").asText());
+        }
+        var limitations = receipt.putArray("limitations");
+        if (observed.path("build_event_observed").asBoolean()) {
+            limitations.add("The build event attests the result, not the exact command argv");
+        }
+        return receipt;
+    }
+
     private static ObjectNode compact(JsonNode source, List<String> fields) {
         ObjectNode result = JSON.createObjectNode();
         fields.forEach(field -> copy(source, result, field));
@@ -202,6 +273,10 @@ final class ChangeSessionQueries {
     private static String sessionId(Path root, List<String> targets, String change) {
         String identity = root.toAbsolutePath().normalize() + "\n"
                 + String.join("\n", targets) + "\n" + change.strip();
+        return digest(identity);
+    }
+
+    private static String digest(String identity) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(identity.getBytes(StandardCharsets.UTF_8));

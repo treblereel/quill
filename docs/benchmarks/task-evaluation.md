@@ -269,4 +269,6 @@ source, and obtains the exact `quick_compile` argv from `change_session`. The ha
 executes that command and then calls `change_session` again. The report requires the phase sequence
 `planned` → `verification_required` → `complete`, compiled production and standard test classes,
 no Surefire or Failsafe reports, a captured successful build event, and removal of the
-build-evidence blocker.
+build-evidence blocker. The completed snapshot must also contain a verification receipt with the
+same recommended argv, successful observed evidence, completion reasons, and an explicit
+`not_captured` command attestation so build results are never presented as proof of exact argv.

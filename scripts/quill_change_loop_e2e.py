@@ -188,6 +188,20 @@ def main() -> int:
             post_failures.append(f"expected successful build status, got {build_status!r}")
         if completed.get("phase") != "complete":
             post_failures.append(f"expected complete phase, got {completed.get('phase')!r}")
+        receipt = completed.get("verification_receipt", {})
+        recommendation = receipt.get("recommendation", {})
+        observed = receipt.get("observed_evidence", {})
+        if receipt.get("verified") is not True or receipt.get("phase") != "complete":
+            post_failures.append("verification receipt does not attest the complete phase")
+        if recommendation.get("argv") != command["argv"]:
+            post_failures.append("verification receipt changed the recommended argv")
+        if recommendation.get("command_attestation") != "not_captured":
+            post_failures.append("verification receipt overstates command attestation")
+        if observed.get("build_status") != "success" \
+                or observed.get("build_event_observed") is not True:
+            post_failures.append("verification receipt lacks successful build evidence")
+        if "SUCCESSFUL_BUILD_EVENT" not in receipt.get("reason_codes", []):
+            post_failures.append("verification receipt lacks its successful-build reason")
         if post_failures:
             raise RuntimeError("Post-execution contract failed: " + "; ".join(post_failures))
 
@@ -211,6 +225,7 @@ def main() -> int:
                 "after_blockers": blocker_codes(completed),
                 "after_status": build_status,
             },
+            "verification_receipt": receipt,
             "mcp_trace": [planned_trace, required_trace, completed_trace],
             "contract_complete": True,
         }

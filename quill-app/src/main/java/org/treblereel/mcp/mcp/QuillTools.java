@@ -1202,9 +1202,32 @@ public final class QuillTools {
             JsonNode parsed = JSON.readTree(json);
             if (!(parsed instanceof ObjectNode root)) return json;
             ProjectAvailabilityResponses.append(root, "project_warnings", issues);
+            annotateScopedBuildWarnings(root);
             return root.toString();
         } catch (Exception ignored) {
             return json;
+        }
+    }
+
+    static void annotateScopedBuildWarnings(ObjectNode root) {
+        JsonNode build = root.has("build") ? root.path("build") : root.path("verification").path("build");
+        JsonNode scope = build.path("verification_scope");
+        if (!scope.path("kind").asText().equals("modules_with_prerequisites")) return;
+        Set<String> modules = scope.path("modules").valueStream().map(JsonNode::asText)
+                .collect(java.util.stream.Collectors.toSet());
+        if (modules.isEmpty()) return;
+        for (JsonNode warning : root.path("project_warnings")) {
+            if (!(warning instanceof ObjectNode object)
+                    || !warning.path("build_reason").asText().equals("classes_stale")
+                    || warning.path("stale_modules").isEmpty()) continue;
+            boolean outside = warning.path("stale_modules").valueStream()
+                    .map(JsonNode::asText).noneMatch(modules::contains);
+            if (outside) {
+                object.put("scope", "repository_outside_change");
+                object.put("blocking_for_change", false);
+                object.put("recommended_action", "Advisory outside this verification scope; "
+                        + "follow the change directive. Rebuild these modules only for repository-wide verification.");
+            }
         }
     }
 

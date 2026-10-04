@@ -30,6 +30,11 @@ public final class CompiledOutputInspector {
     private CompiledOutputInspector() {}
 
     public static Report inspect(Path projectRoot) {
+        return inspect(projectRoot, null);
+    }
+
+    /** Null means repository scope; otherwise inspect only these root-relative modules. */
+    public static Report inspect(Path projectRoot, java.util.Collection<String> modules) {
         Path root = projectRoot.toAbsolutePath().normalize();
         BuildSystem buildSystem = BuildSystem.detect(root);
         if (ProjectCodeExpectation.inspect(root, buildSystem)
@@ -41,6 +46,7 @@ public final class CompiledOutputInspector {
                 ProjectLayout.discoverClassesDirs(root, false);
         List<ProjectLayout.CompiledOutput> mainOutputs = discovery.outputs().stream()
                 .filter(output -> output.sourceSet().equals("main"))
+                .filter(output -> modules == null || modules.contains(moduleName(root, output.moduleDirectory())))
                 .toList();
         if (mainOutputs.isEmpty()) return new Report(State.MISSING, List.of());
 
@@ -50,7 +56,17 @@ public final class CompiledOutputInspector {
                         LinkedHashMap::new, java.util.stream.Collectors.toList()));
         List<String> staleModules = new ArrayList<>();
         long sharedBuildInput = newestSharedBuildInput(root);
+        if (modules != null) {
+            for (Path module : discovery.moduleDirectories()) {
+                if (modules.contains(moduleName(root, module))
+                        && newestMainContent(module) == 0
+                        && outputsByModule.getOrDefault(module, List.of()).isEmpty()) {
+                    sharedBuildInput = Math.max(sharedBuildInput, newestModuleBuildInput(module));
+                }
+            }
+        }
         for (Path module : discovery.moduleDirectories()) {
+            if (modules != null && !modules.contains(moduleName(root, module))) continue;
             List<ProjectLayout.CompiledOutput> moduleOutputs =
                     outputsByModule.getOrDefault(module, List.of());
             long newestContent = newestMainContent(module);

@@ -51,7 +51,19 @@ final class ChangeVerificationQueries {
     private String compose(Jdbi jdbi, Path projectRoot, List<String> effectiveTargets,
             int limit, ObjectNode context, ObjectNode changes, boolean inferred,
             boolean inferenceTruncated) {
-        ObjectNode build = parse(BuildStatusInspector.inspect(projectRoot, jdbi));
+        JsonNode impact = context.path("impacted_tests");
+        ObjectNode verificationPlan = new VerificationPlanQueries().plan(
+                projectRoot, context.path("contexts"), impact);
+        JsonNode scope = verificationPlan.path("verification_scope");
+        List<String> modules = scope.path("kind").asText().equals("modules_with_prerequisites")
+                ? scope.path("modules").valueStream().map(JsonNode::asText).toList() : null;
+        ObjectNode repositoryBuild = parse(BuildStatusInspector.inspect(projectRoot, jdbi));
+        ObjectNode build = modules == null ? repositoryBuild
+                : parse(BuildStatusInspector.inspect(projectRoot, jdbi, modules));
+        build.set("verification_scope", scope.deepCopy());
+        build.put("repository_status", repositoryBuild.path("status").asText());
+        build.set("repository_stale_modules", repositoryBuild.path("compiled_outputs")
+                .path("stale_modules").deepCopy());
         ObjectNode diagnostics = parse(BuildProblemInspector.inspect(
                 projectRoot, "all", null, limit, 0));
 
@@ -70,17 +82,15 @@ final class ChangeVerificationQueries {
         root.set("build", compact(build, List.of(
                 "build_system", "integration", "compiled_outputs", "index", "freshness",
                 "status", "build_reason", "action_required", "recommended_action",
+                "verification_scope", "repository_status", "repository_stale_modules",
                 "build_was_started")));
         root.set("diagnostics", compact(diagnostics, List.of(
                 "build_status", "build_tool", "finished_at", "capture_scope", "limitations",
                 "problems", "showing", "total", "has_more", "recommended_action",
                 "build_was_started")));
-        JsonNode impact = context.path("impacted_tests");
         root.set("test_evidence", compact(impact, List.of(
                 "test_index_coverage", "answer_complete", "limitations", "tests", "showing",
                 "total", "has_more")));
-        ObjectNode verificationPlan = new VerificationPlanQueries().plan(
-                projectRoot, context.path("contexts"), impact);
         root.set("verification_plan", verificationPlan);
 
         String verdict = verdict(context, build, diagnostics, changes, verificationPlan,

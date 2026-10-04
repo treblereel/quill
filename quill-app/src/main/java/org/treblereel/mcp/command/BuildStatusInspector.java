@@ -24,14 +24,25 @@ public final class BuildStatusInspector {
     private BuildStatusInspector() {}
 
     public static String inspect(Path projectRoot, Jdbi jdbi) {
+        return inspect(projectRoot, jdbi, null);
+    }
+
+    public static String inspect(Path projectRoot, Jdbi jdbi, List<String> modules) {
         Path root = projectRoot.toAbsolutePath().normalize();
         BuildSystem buildSystem = BuildSystem.detect(root);
         Map<String, String> metadata = IndexReader.getMetadata(jdbi);
         MetaEnvelope freshness = MetaEnvelope.from(jdbi, 0, 0);
         ProjectLayout.ClassesDiscovery outputDiscovery =
                 ProjectLayout.discoverClassesDirs(root, false);
+        if (modules != null) {
+            outputDiscovery = new ProjectLayout.ClassesDiscovery(outputDiscovery.outputs().stream()
+                    .filter(output -> modules.contains(relative(root, output.moduleDirectory()))).toList(),
+                    outputDiscovery.moduleDirectories().stream()
+                            .filter(module -> modules.contains(relative(root, module))).toList(),
+                    outputDiscovery.moduleScope(), outputDiscovery.complete());
+        }
         List<Path> outputs = outputDiscovery.classesDirectories();
-        CompiledOutputInspector.Report compiledStatus = CompiledOutputInspector.inspect(root);
+        CompiledOutputInspector.Report compiledStatus = CompiledOutputInspector.inspect(root, modules);
         BuildIntegrationInstaller.Inspection integration =
                 BuildIntegrationInstaller.inspect(root);
         long pendingEvents = pendingEvents(root);

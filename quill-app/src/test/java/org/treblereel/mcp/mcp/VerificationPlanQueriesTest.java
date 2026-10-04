@@ -134,7 +134,7 @@ class VerificationPlanQueriesTest {
                 project, contexts, JSON.createObjectNode());
 
         List<String> argv = strings(result.path("commands").get(0).path("argv"));
-        assertEquals(List.of(":common:testClasses", ":custom:testClasses"),
+        assertEquals(List.of("testClasses"),
                 argv.subList(1, argv.size()));
         assertEquals(List.of(":common", ":custom"),
                 strings(result.path("command_modules")));
@@ -153,8 +153,10 @@ class VerificationPlanQueriesTest {
                 project, contexts, JSON.createObjectNode());
 
         List<String> argv = strings(result.path("commands").get(0).path("argv"));
-        assertEquals(List.of("-pl", "common,service", "-am", "test-compile"),
+        assertEquals(List.of("test-compile"),
                 argv.subList(1, argv.size()));
+        assertEquals("repository", result.path("verification_scope").path("kind").asText());
+        assertEquals("external_parent", result.path("verification_scope").path("reason").asText());
         assertTrue(result.path("module_selection_complete").asBoolean());
     }
 

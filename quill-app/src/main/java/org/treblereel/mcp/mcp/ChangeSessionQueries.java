@@ -170,6 +170,7 @@ final class ChangeSessionQueries {
                 "counts_by_status", "showing", "total", "has_more")));
         result.set("build", compact(verify.path("build"), List.of(
                 "build_system", "compiled_outputs", "freshness", "status",
+                "verification_scope", "repository_status", "repository_stale_modules",
                 "build_reason", "action_required", "recommended_action")));
         ObjectNode diagnostics = compact(verify.path("diagnostics"), List.of(
                 "build_status", "build_tool", "finished_at", "limitations",
@@ -189,8 +190,8 @@ final class ChangeSessionQueries {
 
     private static ObjectNode summaryVerificationPlan(JsonNode plan) {
         ObjectNode result = compact(plan, List.of("build_system", "working_directory",
-                "runner", "requested_modules", "modules", "command_modules",
-                "unresolved_modules", "module_selection_complete",
+                "runner", "requested_modules", "modules", "command_modules", "quick_compile_modules",
+                "unresolved_modules", "module_selection_complete", "verification_scope",
                 "refresh_index_after_success", "commands_executable"));
         var commands = result.putArray("commands");
         var otherScopes = result.putArray("other_command_scopes");
@@ -250,6 +251,9 @@ final class ChangeSessionQueries {
         copy(diagnostics, observed, "finished_at");
         copy(diagnostics, observed, "capture_scope");
         copy(build, observed, "compiled_outputs");
+        copy(build, observed, "verification_scope");
+        copy(build, observed, "repository_status");
+        copy(build, observed, "repository_stale_modules");
         observed.put("index_current", !metadata.path("structure_stale").asBoolean());
         observed.put("structural_worktree_dirty",
                 verify.path("worktree").path("structural_dirty").asBoolean());

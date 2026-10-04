@@ -487,3 +487,50 @@ runs also adopted the workflow and confirmed `user_config_unchanged=true` in bot
 `target/benchmarks/quill-adoption-config-invariance.json`. These runs use project-only MCP transport,
 not transport overrides or a selected trust profile. The wire contract still passed. All 71 Python
 unit tests and the focused JVM doctor test passed after the correction.
+
+### Module-scoped build freshness
+
+```bash
+python3 scripts/quill_scoped_verification_e2e.py
+```
+
+The regression originally produced `needs_build` for a fresh target because the global
+`CompiledOutputInspector` found stale classes in an unrelated module. `quick_compile` only
+recommended the target modules, so following it could never satisfy this global freshness gate.
+
+Maven change verification now shares an explicit `verification_scope` with the compile plan.
+For a statically resolvable reactor it checks target modules and a conservative prerequisite
+closure, including local parents, all dependency scopes, profiles, dependency management, plugins,
+and annotation-processor artifact references. Matching artifact IDs over-approximates differing
+groups/versions rather than silently dropping possible prerequisites. External/unresolved parents,
+interpolated artifact IDs, unreadable models, incomplete reactors, unknown module selection and
+Gradle use repository scope with a matching whole-project compile-only recommendation. This is a
+static model, not execution or attestation of arbitrary build-plugin behavior. `quick_compile_modules`
+distinguishes the actual compile selection from the selection used by focused test commands.
+
+`get_build_status` still reports the entire repository. Scoped verification's `build` reports its
+own compiled outputs plus `repository_status` and `repository_stale_modules`; the scope is also
+retained in summary views and the verification receipt. A project warning proven to concern only
+stale modules outside the scope remains visible but is marked `blocking_for_change=false` and
+`scope=repository_outside_change`. Unknown/mixed warnings are not downgraded. Captured build
+failure, stale index, missing/incomplete test evidence, stale/missing prerequisites, and stale
+shared parent inputs remain gates; these changes do not make arbitrary successful build events
+exact-command attestations.
+
+The native probe builds a real three-module Maven fixture without tests/e2e, captures all test
+classpaths, ages only the unrelated module's compiled class, and runs a target-only `-pl app -am
+test-compile`. It requires global `build_required` alongside a scoped `complete`/verified receipt,
+then ages the provided prerequisite and requires `needs_build`. Captures are written to
+`target/benchmarks/quill-scoped-verification.json`. The initial fixture lacked an unrelated test
+classpath and correctly remained partial; the probe now captures that evidence before exercising
+build freshness, without weakening the test-evidence gate. Eleven JVM regression cases cover
+positive isolation and the negative safeguards, in addition to the existing edit/build/recovery
+wire contract and full JVM suite.
+
+On October 4 the final native scoped probe passed, including advisory warning annotations,
+standard test-class compilation, no Surefire/Failsafe reports, and stale provided-dependency
+blocking. The existing native change-loop probe also passed its `planned` → `review_required` →
+`blocked` → `complete` sequence and view-invariance contracts. Full `./mvnw verify`, native packaging,
+and all 71 Python unit tests passed. A fresh native MCP process against this repository returned
+`complete`, a satisfied gate and boolean `verified=true` for the changed workflow classes, with
+scope `[".", "quill-app", "quill-core"]` and no blockers.

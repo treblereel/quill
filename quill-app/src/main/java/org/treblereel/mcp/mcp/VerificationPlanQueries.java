@@ -16,6 +16,7 @@ import org.treblereel.mcp.core.BuildRunnerResolver;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.GradleProjectDiscovery;
 import org.treblereel.mcp.core.MavenProjectDiscovery;
+import org.treblereel.mcp.command.MavenCompileScope;
 
 /** Produces safe, non-executing focused and fallback build command plans. */
 final class VerificationPlanQueries {
@@ -27,6 +28,13 @@ final class VerificationPlanQueries {
         BuildRunnerResolver.Runner runner = BuildRunnerResolver.resolve(projectRoot, buildSystem);
         Set<String> requestedModules = modules(contexts);
         ModuleSelection selection = selectModules(projectRoot, buildSystem, requestedModules);
+        var scope = buildSystem == BuildSystem.MAVEN && selection.complete()
+                ? MavenCompileScope.resolve(projectRoot, selection.commandModules())
+                : new MavenCompileScope.Scope(List.of(), true, "unknown_or_non_maven_scope");
+        ModuleSelection compileSelection = scope.repository()
+                ? new ModuleSelection(selection.modules(),
+                        Set.of(buildSystem == BuildSystem.MAVEN ? "." : ":"),
+                        selection.unresolvedModules(), selection.complete()) : selection;
         List<String> tests = tests(testEvidence);
 
         ObjectNode result = JSON.createObjectNode();
@@ -42,12 +50,17 @@ final class VerificationPlanQueries {
         result.set("requested_modules", JSON.valueToTree(requestedModules));
         result.set("modules", JSON.valueToTree(selection.modules()));
         result.set("command_modules", JSON.valueToTree(selection.commandModules()));
+        result.set("quick_compile_modules", JSON.valueToTree(compileSelection.commandModules()));
         result.set("unresolved_modules", JSON.valueToTree(selection.unresolvedModules()));
         result.put("module_selection_complete", selection.complete());
+        ObjectNode scopeNode = result.putObject("verification_scope");
+        scopeNode.put("kind", scope.repository() ? "repository" : "modules_with_prerequisites");
+        scopeNode.set("modules", JSON.valueToTree(scope.modules()));
+        scopeNode.put("reason", scope.reason());
         result.set("focused_tests", JSON.valueToTree(tests));
         ArrayNode commands = result.putArray("commands");
         if (runner.available()) {
-            appendCompile(commands, buildSystem, runner.argvPrefix(), selection);
+            appendCompile(commands, buildSystem, runner.argvPrefix(), compileSelection);
             if (!tests.isEmpty()) append(commands, buildSystem, runner.argvPrefix(), selection,
                     tests, "focused", "Run the statically ranked affected tests");
             append(commands, buildSystem, runner.argvPrefix(), selection, List.of(),

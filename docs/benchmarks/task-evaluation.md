@@ -236,3 +236,17 @@ workflow path calls `plan_change`, then records `verify_change` as a post-change
 contains tool-call count, wall-clock latency, exact structured-response bytes, evidence-contract
 coverage, the verification verdict, blocker codes, and ordered next-action types. It deliberately
 does not estimate model tokens or claim answer correctness.
+
+To measure whether the combined stateless snapshot improves on separate planning and verification
+calls, run:
+
+```bash
+python3 scripts/quill_change_session_benchmark.py \
+  --project /path/to/project \
+  --quill quill-app/target/quill \
+  --target com.example.ChangedService
+```
+
+The report compares two MCP calls (`plan_change` plus `verify_change`) with one `change_session`
+call and requires semantic parity for primary changes, dependency review, verdict, blockers,
+verification commands, and next actions.

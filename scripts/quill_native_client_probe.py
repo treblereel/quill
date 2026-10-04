@@ -2,6 +2,7 @@
 """Probe installed native coding clients against Quill-created project configuration."""
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -48,13 +49,29 @@ def workflow_access(capture):
                for name in capture["tools"])
 
 
+def user_config_digest():
+    """Detect client-side config writes without recording configuration or secrets."""
+    path = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")) / "config.toml"
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except FileNotFoundError:
+        return None
+
+
 def invoke(client, project, prompt, timeout, trusted=False, edit=False, config_overrides=(),
            profile=None):
+    # Writable headless threads can persist implicit trust. Supply it in memory
+    # instead, including when callers initially observed successful discovery.
+    trusted = trusted or (client == "codex" and edit)
+    config_before = user_config_digest() if client == "codex" else None
     if client == "codex":
         argv = ["codex", "exec", "--ephemeral", "--json",
                 "--sandbox", "workspace-write" if edit else "read-only", "-C", str(project)]
         if trusted:
-            argv += ["-c", 'projects.' + json.dumps(str(project)) + '.trust_level="trusted"']
+            # Codex splits override keys on dots literally; quoted dotted path keys
+            # retain their quotes. Put the path inside a TOML inline-table value.
+            argv += ["-c", 'projects={' + json.dumps(str(project))
+                     + '={trust_level="trusted"}}']
         for override in config_overrides:
             argv += ["-c", override]
         if profile:
@@ -87,6 +104,8 @@ def invoke(client, project, prompt, timeout, trusted=False, edit=False, config_o
         capture = {"returncode": None if timed_out else process.returncode,
                    "timeout": timed_out, "stdout": stdout, "stderr": stderr}
     capture["tools"] = tool_names(client, events(capture["stdout"]))
+    if client == "codex":
+        capture["user_config_unchanged"] = config_before == user_config_digest()
     print(json.dumps({"client": client, "returncode": capture["returncode"],
                       "tools": capture["tools"]}), flush=True)
     return capture

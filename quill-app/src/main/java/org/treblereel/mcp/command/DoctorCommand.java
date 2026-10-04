@@ -152,8 +152,9 @@ public class DoctorCommand implements Callable<Integer> {
                     "Project configuration is present; live Codex tool activation was not checked",
                     "Trust this project in Codex and start a fresh session, then confirm get_overview "
                             + "is callable. Project-local config requires project trust; empty MCP "
-                            + "resources do not prove missing tools. For headless automation, use a "
-                            + "trusted user profile or explicit mcp_servers.quill transport overrides."));
+                            + "resources do not prove missing tools. For headless automation, pass "
+                            + "trust with a projects inline-table override (not a quoted dotted key), "
+                            + "or use a trusted user profile or explicit mcp_servers.quill transport overrides."));
         }
         if (!brokenLaunchers.isEmpty()) {
             checks.add(Check.error("mcp_launcher",

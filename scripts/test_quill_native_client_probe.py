@@ -1,4 +1,5 @@
 import unittest
+import tomllib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -25,12 +26,50 @@ class NativeClientProbeTest(unittest.TestCase):
                     self.assertIn("Bash(mvn test-compile)", argv)
                     self.assertNotIn("Bash", argv[argv.index("--allowedTools") + 1:])
                 else:
-                    self.assertIn('projects."/tmp/fixture".trust_level="trusted"', argv)
+                    self.assertIn('projects={"/tmp/fixture"={trust_level="trusted"}}', argv)
+
+    def test_trust_override_keeps_path_in_value_not_dotted_key(self):
+        project = Path('/tmp/fixture.with.dots and spaces')
+        process = MagicMock()
+        process.__enter__.return_value = process
+        process.communicate.return_value = ("", "")
+        process.returncode = 0
+        with patch("quill_native_client_probe.subprocess.Popen", return_value=process) as launch:
+            invoke("codex", project, "fixture task", 1, trusted=True)
+            argv = launch.call_args.args[0]
+            override = argv[argv.index("-c") + 1]
+        key, value = override.split("=", 1)
+        self.assertEqual("projects", key)
+        self.assertEqual({str(project): {"trust_level": "trusted"}},
+                         tomllib.loads("value=" + value)["value"])
+
+    def test_writable_codex_probe_supplies_in_memory_trust(self):
+        process = MagicMock()
+        process.__enter__.return_value = process
+        process.communicate.return_value = ("", "")
+        process.returncode = 0
+        with patch("quill_native_client_probe.subprocess.Popen", return_value=process) as launch:
+            invoke("codex", Path("/tmp/fixture"), "task", 1, edit=True)
+        self.assertIn('projects={"/tmp/fixture"={trust_level="trusted"}}',
+                      launch.call_args.args[0])
 
     def test_resources_or_mentions_do_not_prove_workflow_access(self):
         self.assertFalse(workflow_access({"tools": ["quill:list_mcp_resources"]}))
         for tool in ("quill:change_session", "mcp__quill__change_session"):
             self.assertTrue(workflow_access({"tools": [tool]}))
+
+    def test_client_config_side_effects_are_reported_without_contents(self):
+        process = MagicMock()
+        process.__enter__.return_value = process
+        process.communicate.return_value = ("", "")
+        process.returncode = 0
+        for after, unchanged in (("before", True), ("changed", False)):
+            with patch("quill_native_client_probe.subprocess.Popen", return_value=process), \
+                    patch("quill_native_client_probe.user_config_digest", side_effect=["before", after]):
+                capture = invoke("codex", Path("/tmp/fixture"), "task", 1, trusted=True)
+            self.assertEqual(unchanged, capture["user_config_unchanged"])
+            self.assertNotIn("before", capture.values())
+            self.assertNotIn("changed", capture.values())
 
     def test_event_parser_ignores_noise_and_nonobjects(self):
         self.assertEqual([{"type": "result"}], events('noise\n[]\n{"type":"result"}\n'))

@@ -357,7 +357,8 @@ python3 scripts/quill_native_client_probe.py --client codex --smoke-only
 The probe initializes a separate temporary Maven project for each installed client. It relies on
 the generated `.codex/config.toml`, `.mcp.json`, `AGENTS.md`, and `CLAUDE.md`; no server transport or
 guidance is injected through CLI flags. It retains normal user configuration and saved client
-authentication, does not select a model, and makes no global trust/configuration changes. A Codex
+authentication and does not select a model. The harness does not directly write global trust or
+configuration; it now detects client-side user-config changes (see the correction below). A Codex
 read-only discovery failure triggers a per-invocation project-trust retry. Claude runs in `dontAsk`
 mode with read/edit/Quill permissions and narrowly permitted `test-compile` commands, not unrestricted
 Bash. Codex working stages use its workspace-write sandbox. Every invocation has a timeout and
@@ -377,7 +378,8 @@ attestation by Quill. Captures are in `target/benchmarks/quill-native-client-sta
 
 Read-only discovery did not pass for Codex in this environment: it reported Quill unavailable;
 resource requests failed with `unknown MCP server 'quill'`. A separate normal-configuration run
-also failed after per-invocation trust was supplied, so trust alone is not an established cause.
+also failed after an attempted per-invocation trust override. That override was later found to be
+malformed; these captures do not establish failure with correctly supplied trust.
 Working workspace-write stages did expose the real Quill tools without that override. The root
 cause of this mode-dependent configuration/tool exposure remains unverified; do not interpret
 resource-list attempts or tool mentions as successful workflow access. The read-only captures are
@@ -414,13 +416,14 @@ reflection for `ToolAnnotations` accessors fixed this separate native-image defe
 check now requires real boolean `readOnlyHint=true`, `destructiveHint=false`, and
 `openWorldHint=false` on every tool, rather than accepting absent or empty annotations.
 
-Configuration isolation reproduced a distinct activation issue in Codex CLI 0.147.0. Project-only
-read-only runs could not call Quill even with a per-invocation project-trust override. Supplying
+Configuration isolation initially appeared to reproduce a distinct activation issue in Codex CLI
+0.147.0. Project-only read-only runs could not call Quill with the malformed project-trust override.
+Supplying
 the generated transport explicitly through CLI configuration worked, including with the old
 binary lacking hints. Selecting a temporary user profile with persisted fixture trust also worked
-in read-only mode. Project-only workspace-write runs exposed the tools. This narrows the issue
-to client configuration/trust activation, not server tool annotations, but does not establish the
-exact upstream implementation defect. Project-local MCP requires trust according to the
+in read-only mode. Project-only workspace-write runs exposed the tools. The October 4 investigation
+below retracts the suspected upstream defect: the diagnostic did not supply valid trust.
+Project-local MCP requires trust according to the
 [Codex documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 `quill doctor` now separates detected configuration from untested live client activation and
 reports these headless alternatives; Quill does not silently grant global project trust.
@@ -439,10 +442,48 @@ without task-level reminders: two Codex read-only runs using the trusted tempora
 Codex project-only workspace-write runs, and two Claude project-only runs. All exited successfully;
 the wire contract passed for both server instructions and safety hints. Captures are in
 `target/benchmarks/quill-adoption-repeated.json`. This demonstrates adoption in these tested client
-configurations, not a guarantee for every task or resolution of the project-only read-only Codex
-activation issue. Local JVM verification and 68 Python unit tests also passed.
+configurations, not a guarantee for every task. The subsequent trust-override correction resolves
+the project-only read-only diagnostic failure. Local JVM verification and 68 Python unit tests
+also passed at that milestone.
 
 The repository's own setup was refreshed separately: a missing `AGENTS.md` was installed, the
 managed `CLAUDE.md` block updated while preserving user text, and Claude's `alwaysLoad` plus
-project server approval installed. The existing telemetry argument was preserved. No other
-workspace or global client configuration was modified.
+project server approval installed. The existing telemetry argument was preserved. The installer
+did not modify another workspace or global config. However, the earlier native workspace-write
+tests allowed Codex itself to persist trust for four temporary fixture paths; the prior claim of
+no global config changes was incorrect. These entries were observed but not removed automatically.
+
+### Correction: Codex inline trust overrides
+
+The October 4 source investigation found that Codex CLI 0.147.0 splits override keys literally
+on `.` in [`apply_toml_override`](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/config/src/overrides.rs).
+Consequently, `-c 'projects."/absolute/path".trust_level="trusted"'` retains quotes in the project
+key instead of parsing them as TOML key quoting. A path containing dots is split further. The
+diagnostic now puts the path inside the TOML value, which is parsed correctly:
+
+```bash
+codex exec --sandbox read-only -C /absolute/path \
+  -c 'projects={"/absolute/path"={trust_level="trusted"}}' 'Your task'
+```
+
+This explicitly grants trust only for that invocation and does not bypass approval or sandbox
+policy. The project still supplies its normal `.codex/config.toml` transport. Native writable
+probes also supply this valid in-memory trust to avoid implicit persistence by Codex's
+[`thread/start` handler](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/app-server/src/request_processors/thread_processor.rs).
+That handler can persist trust when writable permissions are requested and no valid trust entry
+exists; this explains the earlier misleading sandbox-mode difference and side effects.
+
+Each Codex invocation now compares the user-config content hash before and after, recording only
+`user_config_unchanged`, never configuration contents or hashes. The adoption diagnostic exits
+unsuccessfully if this check detects a change. Unit tests cover dotted/spaced path keys, automatic
+in-memory trust for writable probes, and config-side-effect reporting. `quill doctor` now names
+the correct inline-table override and warns against quoted dotted keys. Quill still does not
+silently grant persistent user trust during initialization.
+
+With the corrected override, all four repeated Codex runs (two read-only, two workspace-write)
+called `get_overview` and `change_session` without prompt reminders. Captures are in
+`target/benchmarks/quill-adoption-corrected-trust.json`. A separate pair of read-only/workspace-write
+runs also adopted the workflow and confirmed `user_config_unchanged=true` in both cases; see
+`target/benchmarks/quill-adoption-config-invariance.json`. These runs use project-only MCP transport,
+not transport overrides or a selected trust profile. The wire contract still passed. All 71 Python
+unit tests and the focused JVM doctor test passed after the correction.

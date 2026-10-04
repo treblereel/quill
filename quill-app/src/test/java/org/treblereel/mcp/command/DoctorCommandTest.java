@@ -94,6 +94,8 @@ class DoctorCommandTest {
                 .findFirst().orElseThrow();
         assertEquals(DoctorCommand.Status.INFO, activation.status());
         assertTrue(activation.message().contains("activation was not checked"));
+        assertTrue(activation.action().contains("projects inline-table override"));
+        assertTrue(activation.action().contains("not a quoted dotted key"));
         assertTrue(activation.action().contains("trusted user profile"));
     }
 

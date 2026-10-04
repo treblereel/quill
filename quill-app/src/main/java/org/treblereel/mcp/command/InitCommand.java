@@ -25,10 +25,15 @@ public class InitCommand implements Callable<Integer> {
             + "launcher and check MCP connectivity (30s timeout; no AI requests)")
     boolean probeMcp;
 
+    @Option(names = "--allow-quill-tools", negatable = true,
+            description = "Allow current read-only Quill tools in local Claude permissions; "
+                    + "--no-allow-quill-tools skips the interactive consent question")
+    Boolean allowQuillTools;
+
     @Override
     public Integer call() {
-        if (probeMcp && indexOnly) {
-            System.err.println("[quill] --probe-mcp cannot be combined with --index-only");
+        if (indexOnly && (probeMcp || Boolean.TRUE.equals(allowQuillTools))) {
+            System.err.println("[quill] --probe-mcp/--allow-quill-tools cannot be combined with --index-only");
             return picocli.CommandLine.ExitCode.USAGE;
         }
         Path root = ProjectRootFinder.find(projectPath);
@@ -44,6 +49,7 @@ public class InitCommand implements Callable<Integer> {
                     + " (after " + result.elapsedMillis() + " ms)");
             return picocli.CommandLine.ExitCode.SOFTWARE;
         }
+        if (!indexOnly) ClaudePermissionConsent.configure(allowQuillTools, java.util.List.of(root));
         McpConnectivityProbe.guidance(indexOnly);
         if (probeMcp) {
             DoctorCommand.Check check = McpConnectivityProbe.inspect(root);

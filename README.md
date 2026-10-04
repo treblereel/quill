@@ -184,6 +184,22 @@ for added and removed repositories, and `workspace clear` removes only entries m
 workspace. Use `workspace clear --repositories` when indexes and build integration should also be
 removed.
 
+Both `quill init` and `quill workspace init` offer one interactive consent question to
+let Claude use Quill's current read-only MCP tools without repeated tool-approval prompts.
+For scripts, pass `--allow-quill-tools` explicitly; without a terminal no permissions are
+granted automatically. Use `--no-allow-quill-tools` to skip the question (it does not revoke
+existing permissions). `--allow-quill-tools` cannot be combined with `--index-only`.
+Workspace consent covers the workspace root and its discovered JVM repositories.
+
+Consent adds concrete tool names derived from Quill's read-only contracts to each target's
+`.claude/settings.local.json`, not global or shared permission settings. There is no wildcard
+grant for future tools. Existing rules, including `ask` and `deny`, are preserved and remain
+authoritative. New tools require renewed consent on a later `init`. Ownership is recorded in
+`.claude/quill-permissions.json`; keep that local receipt with the settings, and do not commit
+it. `quill clean` / `workspace clear` remove only permissions Quill added, preserving pre-existing
+rules. Claude's workspace trust and MCP connection approval are separate client checks;
+this option does not bypass them or change Codex permissions.
+
 The MCP server reconciles added and removed repositories while it is running. A newly added
 repository becomes routable immediately; run `workspace refresh` after compiling it to create its
 missing index. Refresh reports `added`, `removed`, `indexed`, `skipped`, `unchanged`, and `failed`

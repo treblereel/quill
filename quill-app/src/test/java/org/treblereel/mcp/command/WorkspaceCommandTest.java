@@ -30,6 +30,40 @@ class WorkspaceCommandTest {
     @TempDir Path workspace;
 
     @Test
+    void explicitPermissionFlagConfiguresWorkspaceAndRepositoriesReversibly() throws Exception {
+        createCompiledRepository("engine");
+        Captured result = execute("workspace", "init", "--project", workspace.toString(),
+                "--allow-quill-tools");
+        assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
+        for (Path target : java.util.List.of(workspace, workspace.resolve("engine"))) {
+            assertTrue(ClaudeSettingsInstaller.areToolsAllowed(target,
+                    org.treblereel.mcp.mcp.ReadOnlyToolNames.all()));
+        }
+        assertEquals(CommandLine.ExitCode.OK,
+                execute("workspace", "clear", "--project", workspace.toString()).exitCode());
+        assertFalse(Files.exists(workspace.resolve(".claude/settings.local.json")));
+        assertFalse(Files.exists(workspace.resolve("engine/.claude/settings.local.json")));
+    }
+
+    @Test
+    void permissionFlagRejectsIndexOnlyBeforeCreatingWorkspace() {
+        Captured result = execute("workspace", "init", "--project", workspace.toString(),
+                "--index-only", "--allow-quill-tools");
+        assertEquals(CommandLine.ExitCode.USAGE, result.exitCode());
+        assertFalse(Files.exists(workspace.resolve(".claude")));
+        assertFalse(Files.exists(WorkspaceManifestStore.manifest(workspace)));
+    }
+
+    @Test
+    void negativePermissionFlagKeepsNonInteractiveInitializationNonGranting() throws Exception {
+        Captured result = execute("workspace", "init", "--project", workspace.toString(),
+                "--no-allow-quill-tools");
+        assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
+        assertFalse(Files.exists(workspace.resolve(".claude/settings.local.json")));
+        assertFalse(result.stdout().contains("Optional: rerun"));
+    }
+
+    @Test
     void initializesIdempotentlyWithoutTouchingRepositoryIndexes() throws Exception {
         Path repositoryIndex = Files.createDirectories(workspace.resolve("engine/.quill"));
         Files.writeString(repositoryIndex.resolve("keep.db"), "keep");

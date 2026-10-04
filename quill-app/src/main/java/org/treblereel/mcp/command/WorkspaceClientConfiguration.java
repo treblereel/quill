@@ -59,7 +59,7 @@ final class WorkspaceClientConfiguration {
         }
     }
 
-    private static Set<Path> supportedTargets(Path workspaceRoot,
+    static Set<Path> supportedTargets(Path workspaceRoot,
             List<WorkspaceDiscovery.Repository> repositories) {
         Set<Path> targets = new LinkedHashSet<>();
         targets.add(workspaceRoot.toAbsolutePath().normalize());

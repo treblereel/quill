@@ -35,11 +35,16 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
             + ".mcp.json launcher and check MCP connectivity (30s timeout; no AI requests)")
     boolean probeMcp;
 
+    @Option(names = "--allow-quill-tools", negatable = true,
+            description = "Allow current read-only Quill tools in local Claude permissions; "
+                    + "--no-allow-quill-tools skips the interactive consent question")
+    Boolean allowQuillTools;
+
     @Override
     public Integer call() throws Exception {
         if (jobs < 1) throw new IllegalArgumentException("--jobs must be at least 1");
-        if (probeMcp && indexOnly) {
-            System.err.println("[quill] --probe-mcp cannot be combined with --index-only");
+        if (indexOnly && (probeMcp || Boolean.TRUE.equals(allowQuillTools))) {
+            System.err.println("[quill] --probe-mcp/--allow-quill-tools cannot be combined with --index-only");
             return CommandLine.ExitCode.USAGE;
         }
         WorkspaceManifest manifest = WorkspaceManifestStore.initialize(
@@ -58,6 +63,11 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
                     discovery, indexOnly, jobs, System.out::println);
             WorkspaceClientConfiguration.install(
                     manifest.root(), discovery.repositories(), indexOnly);
+            if (!indexOnly && result.successful()) {
+                ClaudePermissionConsent.configure(allowQuillTools,
+                        WorkspaceClientConfiguration.supportedTargets(
+                                manifest.root(), discovery.repositories()));
+            }
             WorkspaceRepositoryStateStore.write(manifest.root(), discovery.repositories());
         }
         System.out.println("Workspace initialization complete: indexed=" + result.indexed()

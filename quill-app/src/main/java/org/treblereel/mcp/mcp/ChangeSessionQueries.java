@@ -106,9 +106,11 @@ final class ChangeSessionQueries {
             result.set("verification_receipt",
                     verificationReceipt(stableSessionId, currentPhase, verify, checklist));
         }
-        result.set("next_actions", effectiveView.equals("plan")
+        ArrayNode actions = identifiedActions(stableSessionId, effectiveView.equals("plan")
                 ? plan.path("sequence").deepCopy()
                 : phaseActions(currentPhase, verify.path("next_actions")));
+        result.set("next_actions", actions);
+        result.set("directive", directive(currentPhase, actions));
         copy(verify, result, "_meta");
         var omitted = result.putArray("omitted_sections");
         if (!includePlan) omitted.add("plan");
@@ -365,6 +367,40 @@ final class ChangeSessionQueries {
         }
         gate.put("required_evidence_count", evidence.size());
         return gate;
+    }
+
+    private static ArrayNode identifiedActions(String sessionId, JsonNode source) {
+        ArrayNode identified = JSON.createArrayNode();
+        for (JsonNode sourceAction : source) {
+            ObjectNode action = sourceAction.deepCopy();
+            action.put("action_id", digest(sessionId + "\n" + actionIdentity(action)));
+            identified.add(action);
+        }
+        return identified;
+    }
+
+    private static String actionIdentity(JsonNode action) {
+        ObjectNode identity = action.deepCopy();
+        identity.remove(List.of("order", "action_id"));
+        return identity.toString();
+    }
+
+    private static ObjectNode directive(String phase, ArrayNode actions) {
+        ObjectNode directive = JSON.createObjectNode();
+        directive.put("schema_version", 1);
+        directive.put("status", phase);
+        directive.put("headline", switch (phase) {
+            case "planned" -> "Inspect the change plan before editing";
+            case "review_required" -> "Resolve review evidence before verification";
+            case "verification_required" -> "Capture fresh compile evidence";
+            case "blocked" -> "Fix build diagnostics before retrying verification";
+            case "complete" -> "Change verification is complete";
+            default -> throw new IllegalArgumentException("Unknown change phase: " + phase);
+        });
+        directive.put("action_count", actions.size());
+        if (actions.isEmpty()) directive.putNull("primary_action");
+        else directive.set("primary_action", actions.get(0).deepCopy());
+        return directive;
     }
 
     private static void gateEvidence(ArrayNode evidence, String id, String source, String reason) {

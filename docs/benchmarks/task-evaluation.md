@@ -284,3 +284,7 @@ and dependency checks remain visible without preventing evidence-backed completi
 Every snapshot also exposes a `phase_gate`: planned work directs the structural change, review and
 failed-build phases name their unresolved evidence and required transition, and completion is
 reported as satisfied with no remaining evidence requirements.
+The phase `directive` must select the first ordered action as `primary_action`. Every action carries
+a stable `action_id`, so repeated stateless snapshots preserve identity while a changed reason,
+tool, scope, target, or other semantic action field produces a different action. Display order is
+excluded from the identity.

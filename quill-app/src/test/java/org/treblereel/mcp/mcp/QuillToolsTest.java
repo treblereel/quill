@@ -620,6 +620,8 @@ class QuillToolsTest {
         assertEquals("apply_structural_change",
                 first.path("phase_gate").path("transition").asText());
         assertEquals(first.path("session_id").asText(), second.path("session_id").asText());
+        assertEquals(first.path("next_actions").get(0).path("action_id").asText(),
+                second.path("next_actions").get(0).path("action_id").asText());
         assertEquals("org.acme.OrderService", first.path("targets").get(0).asText());
         assertEquals("org.acme.OrderService",
                 first.path("plan").path("primary_changes").get(0).path("class").asText());
@@ -635,6 +637,11 @@ class QuillToolsTest {
                 .path("recommendation").path("command_attestation").asText());
         assertFalse(first.path("verification_receipt").path("verified").asBoolean());
         assertTrue(first.path("next_actions").get(0).path("action").isTextual());
+        assertEquals(first.path("next_actions").get(0).path("action_id").asText(),
+                first.path("directive").path("primary_action").path("action_id").asText());
+        assertEquals("planned", first.path("directive").path("status").asText());
+        assertEquals(first.path("next_actions").size(), first.path("next_actions").valueStream()
+                .map(action -> action.path("action_id").asText()).distinct().count());
     }
 
     @Test
@@ -674,6 +681,9 @@ class QuillToolsTest {
                 .anyMatch(item -> item.asText().equals("verification_receipt")));
         assertEquals("inspect_primary",
                 result.path("next_actions").get(0).path("action").asText());
+        assertFalse(result.path("next_actions").get(0).path("action_id").asText().isBlank());
+        assertEquals("inspect_primary", result.path("directive")
+                .path("primary_action").path("action").asText());
     }
 
     @Test

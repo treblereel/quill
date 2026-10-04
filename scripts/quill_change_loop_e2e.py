@@ -178,6 +178,11 @@ def main() -> int:
                                 f"{planned.get('phase')}/{planned.get('view')}")
             if planned.get("phase_gate", {}).get("transition") != "apply_structural_change":
                 failures.append("planned phase gate does not direct the structural change")
+            planned_primary = planned.get("directive", {}).get("primary_action", {})
+            planned_actions = planned.get("next_actions", [{}])
+            if not planned_primary.get("action_id") \
+                    or planned_primary.get("action") != planned_actions[0].get("action"):
+                failures.append("planned directive does not identify its primary action")
             if required.get("phase") != "review_required" \
                     or required.get("view") != "verification":
                 failures.append(f"unexpected dirty phase/view: "
@@ -187,6 +192,10 @@ def main() -> int:
             if not required.get("next_actions") or required["next_actions"][0].get("reason") \
                     != "INCOMPLETE_TEST_COVERAGE":
                 failures.append("review action was not ordered before build verification")
+            review_primary = required.get("directive", {}).get("primary_action", {})
+            if review_primary.get("action_id") \
+                    != required.get("next_actions", [{}])[0].get("action_id"):
+                failures.append("review directive does not select the first ordered action")
             checklist = required.get("review_checklist", {})
             required_items = [item.get("id") for item in checklist.get("items", [])
                               if item.get("status") == "required"]
@@ -289,6 +298,8 @@ def main() -> int:
             "review_checklist": required.get("review_checklist", {}),
             "phase_gates": [planned.get("phase_gate", {}), required.get("phase_gate", {}),
                             blocked.get("phase_gate", {}), completed.get("phase_gate", {})],
+            "directives": [planned.get("directive", {}), required.get("directive", {}),
+                           blocked.get("directive", {}), completed.get("directive", {})],
             "external_execution": {
                 "returncode": build.returncode,
                 "production_compiled": True,

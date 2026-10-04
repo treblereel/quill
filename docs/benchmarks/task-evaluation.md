@@ -297,3 +297,21 @@ to `quill_agent_benchmark.py` with `--tool-selection all`. Only the Quill mode r
 installed managed block; captures report `installed_guidance_used` and the actual tool trace.
 This experiment requires the configured API key and remains read-only: it measures tool selection
 and answers, not an LLM performing edits or builds.
+
+For a small standalone adoption probe on a freshly initialized isolated Maven fixture, run:
+
+```bash
+python3 scripts/quill_guidance_adoption.py --key-file /path/to/temporary-api-key
+```
+
+The probe consumes and removes the temporary key file, including on failure. It uses installed
+`AGENTS.md`, exposes the full Quill tool catalog, and runs two read-only tasks before and after a
+source edit. The harness performs fixture setup; the model cannot edit or run builds.
+
+On October 3, 2026, one real `gpt-5.6-terra` run called `get_overview` followed by `change_session`
+in both tasks, with no source-tool calls. It returned the correct phases and primary actions:
+`planned` / `inspect_primary`, then `review_required` / `inspect_test_evidence`. Strict output
+accuracy was 1/2: the first answer returned `verified` as the string `"false"` instead of boolean
+`false`; the second answer matched all expected fields. This is evidence of tool-selection adoption
+in two tasks, not comparative effectiveness or a full agent edit/build workflow. Detailed captures
+are written to `target/benchmarks/quill-guidance-adoption.json` and include token counts and tool traces.

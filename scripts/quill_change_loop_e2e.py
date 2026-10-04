@@ -176,6 +176,8 @@ def main() -> int:
             if planned.get("phase") != "planned" or planned.get("view") != "plan":
                 failures.append(f"unexpected initial phase/view: "
                                 f"{planned.get('phase')}/{planned.get('view')}")
+            if planned.get("phase_gate", {}).get("transition") != "apply_structural_change":
+                failures.append("planned phase gate does not direct the structural change")
             if required.get("phase") != "review_required" \
                     or required.get("view") != "verification":
                 failures.append(f"unexpected dirty phase/view: "
@@ -191,6 +193,11 @@ def main() -> int:
             if checklist.get("acknowledgement_model") != "evidence_only" \
                     or "test_coverage" not in required_items:
                 failures.append("review checklist does not expose the test-coverage evidence gap")
+            gate = required.get("phase_gate", {})
+            gate_evidence = [item.get("id") for item in gate.get("required_evidence", [])]
+            if gate.get("can_proceed_without_resolution") is not False \
+                    or "test_coverage" not in gate_evidence:
+                failures.append("review phase gate does not require its missing evidence")
             if failures:
                 raise RuntimeError("Pre-execution contract failed: " + "; ".join(failures))
 
@@ -214,6 +221,9 @@ def main() -> int:
             if not blocked.get("next_actions") \
                     or blocked["next_actions"][0].get("action") != "fix_diagnostics":
                 recovery_failures.append("blocked session does not prioritize diagnostics")
+            blocked_gate = blocked.get("phase_gate", {})
+            if blocked_gate.get("transition") != "fix_diagnostics_and_rebuild":
+                recovery_failures.append("blocked phase gate does not require repair and rebuild")
             recovery_command = quick_compile(blocked)
             if recovery_command["argv"] != command["argv"]:
                 recovery_failures.append("recovery changed the quick_compile argv")
@@ -241,6 +251,10 @@ def main() -> int:
             post_failures.append(f"expected successful build status, got {build_status!r}")
         if completed.get("phase") != "complete":
             post_failures.append(f"expected complete phase, got {completed.get('phase')!r}")
+        completed_gate = completed.get("phase_gate", {})
+        if completed_gate.get("status") != "satisfied" \
+                or completed_gate.get("required_evidence_count") != 0:
+            post_failures.append("completed phase gate is not satisfied")
         receipt = completed.get("verification_receipt", {})
         recommendation = receipt.get("recommendation", {})
         observed = receipt.get("observed_evidence", {})
@@ -273,6 +287,8 @@ def main() -> int:
             "quick_compile": command,
             "review_actions": required.get("next_actions", []),
             "review_checklist": required.get("review_checklist", {}),
+            "phase_gates": [planned.get("phase_gate", {}), required.get("phase_gate", {}),
+                            blocked.get("phase_gate", {}), completed.get("phase_gate", {})],
             "external_execution": {
                 "returncode": build.returncode,
                 "production_compiled": True,

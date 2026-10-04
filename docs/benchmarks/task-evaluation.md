@@ -281,3 +281,6 @@ missing. Review actions are ordered before external compilation recommendations.
 The dirty snapshot must expose an evidence-only `review_checklist` whose required items correspond
 to review blockers. A completed receipt must report zero required review items; advisory contract
 and dependency checks remain visible without preventing evidence-backed completion.
+Every snapshot also exposes a `phase_gate`: planned work directs the structural change, review and
+failed-build phases name their unresolved evidence and required transition, and completion is
+reported as satisfied with no remaining evidence requirements.

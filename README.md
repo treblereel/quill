@@ -336,7 +336,8 @@ does not imply that an executor, reactive stream, or message publication has com
   command recommendations, ordered next actions, and a structured verification receipt that keeps
   recommended argv separate from observed build evidence. Its evidence-only review checklist
   identifies required target, coverage, module, and worktree review without claiming human
-  acknowledgement; summary detail is the default, while
+  acknowledgement. A phase gate states whether unresolved evidence prevents progress and names the
+  exact transition needed for the current phase; summary detail is the default, while
   full detail preserves the complete plan/verification parity contract, and `view=auto` returns
   only the plan before structural edits or verification evidence afterwards. Dirty changes with
   unresolved contract, target, module, coverage, or pagination evidence enter `review_required`;

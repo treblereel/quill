@@ -4,6 +4,7 @@ import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -90,6 +91,7 @@ final class ChangeSessionQueries {
         boolean includeVerification = effectiveView.equals("verification")
                 || effectiveView.equals("all");
         ObjectNode checklist = reviewChecklist(plan, verify);
+        result.set("phase_gate", phaseGate(currentPhase, checklist));
         if (includePlan) {
             result.set("plan", normalizedDetail.equals("full")
                     ? fullPlan(plan) : summaryPlan(plan));
@@ -321,7 +323,58 @@ final class ChangeSessionQueries {
         return checklist;
     }
 
-    private static void checklistItem(com.fasterxml.jackson.databind.node.ArrayNode items,
+    static ObjectNode phaseGate(String phase, ObjectNode checklist) {
+        ObjectNode gate = JSON.createObjectNode();
+        gate.put("schema_version", 1);
+        gate.put("phase", phase);
+        gate.put("can_proceed_without_resolution",
+                phase.equals("planned") || phase.equals("complete"));
+        ArrayNode evidence = gate.putArray("required_evidence");
+        switch (phase) {
+            case "planned" -> {
+                gate.put("status", "ready");
+                gate.put("transition", "apply_structural_change");
+            }
+            case "review_required" -> {
+                gate.put("status", "action_required");
+                gate.put("transition", "resolve_review_evidence");
+                for (JsonNode item : checklist.path("items")) {
+                    if (item.path("status").asText().equals("required")) {
+                        evidence.add(compact(item, List.of(
+                                "id", "evidence", "evidence_count", "reason_code")));
+                    }
+                }
+            }
+            case "verification_required" -> {
+                gate.put("status", "action_required");
+                gate.put("transition", "capture_successful_build");
+                gateEvidence(evidence, "successful_build_event",
+                        "verification.diagnostics", "BUILD_EVIDENCE_REQUIRED");
+            }
+            case "blocked" -> {
+                gate.put("status", "action_required");
+                gate.put("transition", "fix_diagnostics_and_rebuild");
+                gateEvidence(evidence, "successful_build_event",
+                        "verification.diagnostics", "BUILD_FAILED");
+            }
+            case "complete" -> {
+                gate.put("status", "satisfied");
+                gate.put("transition", "none");
+            }
+            default -> throw new IllegalArgumentException("Unknown change phase: " + phase);
+        }
+        gate.put("required_evidence_count", evidence.size());
+        return gate;
+    }
+
+    private static void gateEvidence(ArrayNode evidence, String id, String source, String reason) {
+        ObjectNode item = evidence.addObject();
+        item.put("id", id);
+        item.put("evidence", source);
+        item.put("reason_code", reason);
+    }
+
+    private static void checklistItem(ArrayNode items,
             String id, String label, String status, String evidence, int count, String reason) {
         ObjectNode item = items.addObject();
         item.put("id", id);

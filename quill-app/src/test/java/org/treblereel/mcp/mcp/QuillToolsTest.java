@@ -567,7 +567,16 @@ class QuillToolsTest {
                     List.of("OrderService"), "Add a method", 10));
 
             assertEquals("planned", planned.path("phase").asText());
+            assertEquals("ready", planned.path("phase_gate").path("status").asText());
+            assertTrue(planned.path("phase_gate")
+                    .path("can_proceed_without_resolution").asBoolean());
             assertEquals("review_required", changed.path("phase").asText());
+            assertEquals("action_required",
+                    changed.path("phase_gate").path("status").asText());
+            assertFalse(changed.path("phase_gate")
+                    .path("can_proceed_without_resolution").asBoolean());
+            assertEquals("test_coverage", changed.path("phase_gate")
+                    .path("required_evidence").get(0).path("id").asText());
             assertTrue(changed.path("verification").path("worktree")
                     .path("structural_dirty").asBoolean());
             assertEquals("INCOMPLETE_TEST_COVERAGE",
@@ -583,6 +592,10 @@ class QuillToolsTest {
             JsonNode blocked = JSON.readTree(tools.changeSession(jdbi, tempDir,
                     List.of("OrderService"), "Add a method", 10));
             assertEquals("blocked", blocked.path("phase").asText());
+            assertEquals("fix_diagnostics_and_rebuild",
+                    blocked.path("phase_gate").path("transition").asText());
+            assertEquals("BUILD_FAILED", blocked.path("phase_gate")
+                    .path("required_evidence").get(0).path("reason_code").asText());
             assertFalse(blocked.path("verification_receipt").path("verified").asBoolean());
             assertTrue(blocked.path("verification_receipt").path("reason_codes").valueStream()
                     .anyMatch(reason -> reason.asText().equals("FAILED_BUILD_EVENT")));
@@ -604,6 +617,8 @@ class QuillToolsTest {
         assertEquals("full", first.path("detail").asText());
         assertEquals("explicit", first.path("target_source").asText());
         assertEquals("planned", first.path("phase").asText());
+        assertEquals("apply_structural_change",
+                first.path("phase_gate").path("transition").asText());
         assertEquals(first.path("session_id").asText(), second.path("session_id").asText());
         assertEquals("org.acme.OrderService", first.path("targets").get(0).asText());
         assertEquals("org.acme.OrderService",
@@ -650,6 +665,7 @@ class QuillToolsTest {
         assertEquals("planned", result.path("phase").asText());
         assertEquals("plan", result.path("view").asText());
         assertTrue(result.has("plan"));
+        assertTrue(result.has("phase_gate"));
         assertFalse(result.has("verification"));
         assertFalse(result.has("verification_plan"));
         assertFalse(result.has("verification_receipt"));
@@ -703,6 +719,13 @@ class QuillToolsTest {
                 .put("code", "BUILD_EVIDENCE_REQUIRED");
 
         assertEquals("verification_required", ChangeSessionQueries.phase(verification));
+        ObjectNode checklist = JSON.createObjectNode();
+        checklist.putArray("items");
+        JsonNode gate = ChangeSessionQueries.phaseGate("verification_required", checklist);
+        assertEquals("capture_successful_build", gate.path("transition").asText());
+        assertEquals("BUILD_EVIDENCE_REQUIRED", gate.path("required_evidence")
+                .get(0).path("reason_code").asText());
+        assertFalse(gate.path("can_proceed_without_resolution").asBoolean());
     }
 
     private void writeMinimalPom() throws Exception {

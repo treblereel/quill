@@ -554,18 +554,44 @@ class QuillToolsTest {
         JsonNode first = JSON.readTree(tools.changeSession(jdbi, tempDir,
                 List.of("OrderService"), "Add retry support", 10));
         JsonNode second = JSON.readTree(tools.changeSession(jdbi, tempDir,
-                List.of("OrderService"), "Add retry support", 10));
+                List.of("org.acme.OrderService"), "Add retry support", 10));
 
         assertEquals(1, first.path("schema_version").asInt());
         assertEquals("stateless_snapshot", first.path("state_model").asText());
+        assertEquals("explicit", first.path("target_source").asText());
         assertEquals("planned", first.path("phase").asText());
         assertEquals(first.path("session_id").asText(), second.path("session_id").asText());
+        assertEquals("org.acme.OrderService", first.path("targets").get(0).asText());
         assertEquals("org.acme.OrderService",
                 first.path("plan").path("primary_changes").get(0).path("class").asText());
         assertEquals("needs_build",
                 first.path("verification").path("verdict").asText());
         assertTrue(first.path("verification_plan").path("commands").isArray());
         assertTrue(first.path("next_actions").get(0).path("action").isTextual());
+    }
+
+    @Test
+    void changeSessionInfersTargetsFromDirtyJvmSources() throws Exception {
+        writeMinimalPom();
+        Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; class OrderService {}\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            Files.writeString(source,
+                    "package org.acme; class OrderService { void changed() {} }\n");
+
+            JsonNode result = JSON.readTree(new QuillTools().changeSession(
+                    jdbi, tempDir, List.of(), "Add retry support", 10));
+
+            assertEquals("dirty_worktree", result.path("target_source").asText());
+            assertEquals("src/main/java/org/acme/OrderService.java",
+                    result.path("requested_targets").get(0).asText());
+            assertEquals("org.acme.OrderService", result.path("targets").get(0).asText());
+            assertEquals("verification_required", result.path("phase").asText());
+        }
     }
 
     private void writeMinimalPom() throws Exception {

@@ -37,8 +37,15 @@ final class ChangeVerificationQueries {
             int limit, ObjectNode context) {
         ObjectNode changes = parse(worktree.getWorktreeStatus(
                 jdbi, projectRoot, null, limit, 0));
+        return verifyChangeWithContext(jdbi, projectRoot, targets, limit, context,
+                changes, false, false);
+    }
+
+    String verifyChangeWithContext(Jdbi jdbi, Path projectRoot, List<String> targets,
+            int limit, ObjectNode context, ObjectNode changes, boolean inferred,
+            boolean inferenceTruncated) {
         return compose(jdbi, projectRoot, List.copyOf(targets), limit, context, changes,
-                false, false);
+                inferred, inferenceTruncated);
     }
 
     private String compose(Jdbi jdbi, Path projectRoot, List<String> effectiveTargets,
@@ -207,7 +214,7 @@ final class ChangeVerificationQueries {
         result.put("after", after);
     }
 
-    private static List<String> inferredTargets(ObjectNode changes) {
+    static List<String> inferredTargets(ObjectNode changes) {
         List<String> result = new ArrayList<>();
         for (JsonNode change : changes.path("changes")) {
             String path = change.path("path").asText();

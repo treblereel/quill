@@ -262,13 +262,13 @@ public final class QuillTools {
     @Tool(structured = true,
             description = "Get a compact stateless snapshot of change planning, verification evidence, and ordered next actions without executing builds.")
     public String change_session(
-            @ToolArg(description = "Classes or source paths to change (max 10)") List<String> targets,
+            @ToolArg(description = "Classes or source paths; omit to infer up to 10 dirty JVM files") Optional<List<String>> targets,
             @ToolArg(description = "Concise description of the intended change") String change,
             @ToolArg(description = "Evidence per section; default 20, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
         return forAllProjects(project.orElse(null), p -> queries.changeSession(
-                p.jdbi(), p.root(), targets, change, requestedLimit));
+                p.jdbi(), p.root(), targets.orElse(List.of()), change, requestedLimit));
     }
 
     @Tool(structured = true, description = "Rank tests affected by changed classes.")

@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.List;
 import org.jdbi.v3.core.Jdbi;
 
@@ -17,25 +18,39 @@ final class ChangeSessionQueries {
     private final ContextQueries contexts = new ContextQueries();
     private final ChangePlanQueries plans = new ChangePlanQueries();
     private final ChangeVerificationQueries verification = new ChangeVerificationQueries();
+    private final WorktreeStatusQueries worktree = new WorktreeStatusQueries();
 
     String snapshot(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit) {
         if (change == null || change.isBlank()) {
             return plans.planChange(jdbi, projectRoot, targets, change, limit);
         }
-        ObjectNode context = parse(contexts.getContext(jdbi, targets, true, limit));
+        ObjectNode changes = parse(worktree.getWorktreeStatus(
+                jdbi, projectRoot, null, limit, 0));
+        boolean inferred = targets == null || targets.isEmpty();
+        List<String> candidates = inferred
+                ? ChangeVerificationQueries.inferredTargets(changes) : List.copyOf(targets);
+        boolean inferenceTruncated = inferred && candidates.size() > 10;
+        List<String> effectiveTargets = candidates.stream().limit(10).toList();
+        ObjectNode context = parse(contexts.getContext(
+                jdbi, effectiveTargets, true, limit));
         if (context.has("error_code")) return context.toString();
         ObjectNode plan = plans.planFromContext(projectRoot, context, change);
         ObjectNode verify = parse(verification.verifyChangeWithContext(
-                jdbi, projectRoot, targets, limit, context));
+                jdbi, projectRoot, effectiveTargets, limit, context, changes,
+                inferred, inferenceTruncated));
         if (verify.has("error_code")) return verify.toString();
+        List<String> canonicalTargets = canonicalTargets(context);
 
         ObjectNode result = JSON.createObjectNode();
         result.put("schema_version", 1);
-        result.put("session_id", sessionId(projectRoot, targets, change));
+        result.put("session_id", sessionId(projectRoot, canonicalTargets, change));
         result.put("state_model", "stateless_snapshot");
         result.put("change", change.strip());
-        result.set("targets", JSON.valueToTree(targets));
+        result.put("target_source", inferred ? "dirty_worktree" : "explicit");
+        result.put("target_inference_truncated", inferenceTruncated);
+        result.set("requested_targets", JSON.valueToTree(effectiveTargets));
+        result.set("targets", JSON.valueToTree(canonicalTargets));
         result.put("phase", phase(verify));
 
         ObjectNode planSummary = result.putObject("plan");
@@ -81,6 +96,19 @@ final class ChangeSessionQueries {
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is unavailable", impossible);
         }
+    }
+
+    private static List<String> canonicalTargets(ObjectNode context) {
+        List<String> result = new ArrayList<>();
+        for (JsonNode item : context.path("contexts")) {
+            String className = item.path("resolution").path("class").asText();
+            if (!className.isBlank() && !result.contains(className)) result.add(className);
+        }
+        for (JsonNode item : context.path("unresolved_targets")) {
+            String target = item.path("target").asText().strip();
+            if (!target.isBlank() && !result.contains(target)) result.add(target);
+        }
+        return List.copyOf(result);
     }
 
     private static void copy(JsonNode source, ObjectNode target, String field) {

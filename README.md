@@ -139,6 +139,24 @@ re-indexing the project. Warnings (for example, missing build integration) keep 
 failed requirements such as missing compiled outputs or an unreadable index return a non-zero
 exit code. Use `quill doctor --json` for a stable, versioned machine-readable report.
 
+Use `quill init --probe-mcp` or `quill workspace init --probe-mcp` to verify the installed
+project/workspace `.mcp.json` stdio transport after initialization. To retry without initializing,
+use `quill doctor --probe-mcp --json` in a Maven/Gradle project. This explicit opt-in **executes
+the configured launcher** with its arguments, environment and working directory, performs MCP `initialize`,
+`tools/list`, and `get_overview`, and terminates the subprocess (30-second total response deadline).
+Only run it for a configuration you trust. It makes no model requests, runs no builds or tests,
+and does not change client trust; starting Quill may refresh derived index state.
+Probe failure returns a non-zero exit code even when indexing succeeded; it does not roll back init.
+`--probe-mcp` cannot be combined with `--index-only`.
+
+A successful transport probe is **not** proof that Codex/Claude activated Quill: it does not
+resolve Codex TOML configuration layers, client permissions, or the current conversation's tool
+catalog. Trust the project in the client and start a fresh session
+(Codex's project-layer trust requirement is documented in
+[Config basics](https://learn.chatgpt.com/docs/config-file/config-basic)). Actual model-driven client
+adoption is a separate, explicit check via `scripts/quill_native_client_probe.py` (see its `--help`);
+that check uses the client's configured authentication and may consume model usage.
+
 ## Federated Workspaces
 
 A workspace is a directory containing independent Git repositories that may depend on one

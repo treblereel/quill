@@ -40,7 +40,7 @@ class PicocliNativeMetadataTest {
         JsonNode init = findCommand(commands, InitCommand.class.getName());
         Set<String> fields = new HashSet<>();
         init.path("fields").forEach(field -> fields.add(field.path("name").asText()));
-        assertEquals(Set.of("projectPath", "indexOnly", "timings"), fields);
+        assertEquals(Set.of("projectPath", "indexOnly", "timings", "probeMcp"), fields);
     }
 
     @Test

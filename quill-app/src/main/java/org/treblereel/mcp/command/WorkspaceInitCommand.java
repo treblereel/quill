@@ -31,9 +31,17 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
             description = "Maximum repositories to process concurrently")
     int jobs = WorkspaceRepositoryInitializer.DEFAULT_JOBS;
 
+    @Option(names = "--probe-mcp", description = "After initialization, execute the workspace "
+            + ".mcp.json launcher and check MCP connectivity (30s timeout; no AI requests)")
+    boolean probeMcp;
+
     @Override
     public Integer call() throws Exception {
         if (jobs < 1) throw new IllegalArgumentException("--jobs must be at least 1");
+        if (probeMcp && indexOnly) {
+            System.err.println("[quill] --probe-mcp cannot be combined with --index-only");
+            return CommandLine.ExitCode.USAGE;
+        }
         WorkspaceManifest manifest = WorkspaceManifestStore.initialize(
                 workspaceRoot, discoveryDepth);
         System.out.println("Initialized Quill workspace at " + manifest.root());
@@ -57,6 +65,14 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
                 + ", metadata_only=" + result.metadataOnly()
                 + ", skipped=" + result.skipped() + ", failed=" + result.failed()
                 + ", unchanged=" + result.unchanged());
-        return result.successful() ? CommandLine.ExitCode.OK : CommandLine.ExitCode.SOFTWARE;
+        if (!result.successful()) return CommandLine.ExitCode.SOFTWARE;
+        McpConnectivityProbe.guidance(indexOnly);
+        if (probeMcp) {
+            DoctorCommand.Check check = McpConnectivityProbe.inspect(manifest.root());
+            System.out.println("[" + check.status().label() + "] " + check.message());
+            if (check.action() != null) System.out.println("Action: " + check.action());
+            if (check.status() == DoctorCommand.Status.ERROR) return CommandLine.ExitCode.SOFTWARE;
+        }
+        return CommandLine.ExitCode.OK;
     }
 }

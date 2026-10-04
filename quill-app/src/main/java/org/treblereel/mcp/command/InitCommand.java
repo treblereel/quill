@@ -21,8 +21,16 @@ public class InitCommand implements Callable<Integer> {
     @Option(names = "--timings", description = "Report elapsed time for each indexing phase")
     boolean timings;
 
+    @Option(names = "--probe-mcp", description = "After indexing, execute the project .mcp.json "
+            + "launcher and check MCP connectivity (30s timeout; no AI requests)")
+    boolean probeMcp;
+
     @Override
     public Integer call() {
+        if (probeMcp && indexOnly) {
+            System.err.println("[quill] --probe-mcp cannot be combined with --index-only");
+            return picocli.CommandLine.ExitCode.USAGE;
+        }
         Path root = ProjectRootFinder.find(projectPath);
 
         System.out.println("Indexing project at " + root + " ...");
@@ -35,6 +43,13 @@ public class InitCommand implements Callable<Integer> {
             System.err.println("[quill] " + result.diagnostic()
                     + " (after " + result.elapsedMillis() + " ms)");
             return picocli.CommandLine.ExitCode.SOFTWARE;
+        }
+        McpConnectivityProbe.guidance(indexOnly);
+        if (probeMcp) {
+            DoctorCommand.Check check = McpConnectivityProbe.inspect(root);
+            System.out.println("[" + check.status().label() + "] " + check.message());
+            if (check.action() != null) System.out.println("Action: " + check.action());
+            if (check.status() == DoctorCommand.Status.ERROR) return picocli.CommandLine.ExitCode.SOFTWARE;
         }
         return picocli.CommandLine.ExitCode.OK;
     }

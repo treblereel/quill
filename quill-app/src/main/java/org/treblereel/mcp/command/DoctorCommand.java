@@ -20,7 +20,7 @@ import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 
-/** Performs project setup and index health checks without building or re-indexing. */
+/** Static project checks by default; explicit MCP probing may refresh derived index state. */
 @Command(name = "doctor", mixinStandardHelpOptions = true,
         description = "Diagnose project integration, compiled outputs, and index freshness")
 public class DoctorCommand implements Callable<Integer> {
@@ -33,6 +33,10 @@ public class DoctorCommand implements Callable<Integer> {
     @Option(names = "--json", description = "Write machine-readable JSON to stdout")
     boolean json;
 
+    @Option(names = "--probe-mcp", description = "Execute the project .mcp.json launcher and check "
+            + "MCP connectivity (30s timeout; no AI requests; may refresh index state)")
+    boolean probeMcp;
+
     @Spec
     CommandSpec spec;
 
@@ -40,6 +44,11 @@ public class DoctorCommand implements Callable<Integer> {
     public Integer call() {
         Path root = ProjectRootFinder.find(projectPath);
         Report report = inspect(root);
+        if (probeMcp) {
+            List<Check> checks = new ArrayList<>(report.checks());
+            checks.add(McpConnectivityProbe.inspect(root));
+            report = new Report(report.projectRoot(), List.copyOf(checks));
+        }
         PrintWriter output = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out);
         output.println(json ? toJson(report) : toText(report));
         output.flush();

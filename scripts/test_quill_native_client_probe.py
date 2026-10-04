@@ -7,6 +7,22 @@ from quill_native_client_probe import events, invoke, tool_names, workflow_acces
 
 
 class NativeClientProbeTest(unittest.TestCase):
+    def test_adoption_can_offer_source_search_without_unrestricted_shell_or_edits(self):
+        process = MagicMock()
+        process.__enter__.return_value = process
+        process.communicate.return_value = ("", "")
+        process.returncode = 0
+        with patch("quill_native_client_probe.subprocess.Popen", return_value=process) as launch:
+            invoke("claude", Path("/tmp/fixture"), "read-only task", 1, source_reads=True)
+        argv = launch.call_args.args[0]
+        allowed = argv[argv.index("--allowedTools") + 1:]
+        self.assertIn("Grep", allowed)
+        self.assertIn("Glob", allowed)
+        self.assertIn("Bash(git log *)", allowed)
+        self.assertNotIn("Bash", allowed)
+        self.assertNotIn("Edit", allowed)
+        self.assertNotIn("Bash(mvn test-compile)", allowed)
+
     def test_native_commands_preserve_auto_discovery_and_bound_permissions(self):
         for client in ("codex", "claude"):
             process = MagicMock()

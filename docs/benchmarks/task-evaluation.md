@@ -534,3 +534,84 @@ blocking. The existing native change-loop probe also passed its `planned` → `r
 and all 71 Python unit tests passed. A fresh native MCP process against this repository returned
 `complete`, a satisfied gate and boolean `verified=true` for the changed workflow classes, with
 scope `[".", "quill-app", "quill-core"]` and no blockers.
+
+### Unprompted native task matrix
+
+```bash
+python3 scripts/quill_adoption_diagnostic.py \
+  --cases project_read_only claude_project --samples 1 \
+  --output target/benchmarks/quill-adoption-task-matrix.json
+```
+
+The diagnostic now has five independently scored read-only scenarios: locating a method,
+finding production and standard-test callers, class dependencies, file history, and planning
+a change. `--scenarios` selects a subset. Prompts name neither Quill nor its tools, and contain
+no instruction to use installed guidance. The generated fixture has a production controller,
+a service, a compiled standard-test caller, and two real Git commits. Expected answers are
+fixture facts; the change-plan expectation comes from an independent live MCP snapshot.
+For the primary action, its exact snapshot code, exact snapshot description, or the literal
+`code — description` combination is accepted, not an arbitrary paraphrase.
+The first scorer incorrectly rejected correct descriptions;
+this was a rubric defect, not failed task reasoning.
+
+Report schema version 2 distinguishes successful use of Quill (`quill_used`) from full
+workflow conformance and answer correctness (`passed`, `criteria_passed`). A full pass requires
+successful client completion, a successful `get_overview` as the first **Quill** call,
+a successful task-specific semantic tool, exact typed answer facts, unchanged fixture inputs
+and build outputs, no recorded edit calls or recognized normal shell build invocations, and
+unchanged Codex user configuration. Reading instructions before Quill is not a failure;
+`source_before_quill` separately records preceding source calls. This is not a full arbitrary
+shell-program audit or a claim that every possible source search was classified.
+
+Codex start/completion events are correlated by call ID to preserve invocation order, including
+parallel completions. Claude `tool_use` records are correlated with `tool_result` IDs; an
+unpaired call, empty result, MCP error, or embedded structured error is not successful evidence.
+Router `execute_tool` calls retain the underlying semantic tool name. Catalog mentions,
+resource discovery, and another server's calls cannot satisfy adoption. Normalized traces and
+answers are retained, not raw client stderr or indexed source payloads. Client versions are
+recorded; model defaults remain inherited, so the report does not establish a model comparison.
+
+Unavailable clients are counted instead of disappearing from the denominator. Incremental
+reports retain the planned total and remaining runs; partial completion cannot report
+`all_passed=true`. A failed criterion makes the final process exit non-zero, as does unavailable
+coverage or failed wire metadata. Fixture/config mutations stop the diagnostic without an
+automatic rollback. Codex's user-config hash check records only a boolean. Claude global
+configuration is not measured; both clients' project fixture files are checked. Derived Git
+and Quill index state is excluded, while symlinks are recorded without following their targets.
+
+`--wire-only` checks native MCP metadata without inference and makes no adoption claim. Native
+cases use each installed client's existing authentication and can consume inference usage.
+The default matrix has four client/config cases × five scenarios × `--samples` requests;
+use the explicit two-case command above for a smaller run. No tool selection, model selection,
+persistent trust, or paid request is added to ordinary `quill init`.
+
+The adoption matrix explicitly offers Claude `Read`, `Grep`, `Glob`, and narrow read-only Git
+`Bash` approvals in addition to Quill. It does not auto-approve unrestricted Bash or edits.
+Codex retains the selected native sandbox. The original native workflow probe keeps its
+existing permissions unless this source-read option is requested. These are bounded headless
+client configurations, not a claim about unrestricted interactive sessions; fixture-only scope
+is also an agent instruction, not a complete filesystem isolation boundary.
+
+On October 4, with Codex CLI 0.147.0 and Claude Code 2.1.287, the two-client five-task
+matrix observed successful task-specific Quill calls in all 10 runs without prompt reminders.
+Codex passed the full rubric in 5/5 tasks. Claude omitted `get_overview` in 5/5 tasks, including
+the rerun with ordinary source-search tools available. Accordingly the matrix intentionally
+exits 1, with 5 full passes and 5 policy failures, rather than hiding the orientation deviation.
+This is evidence of adoption in these fixtures, but not conformance to the complete startup
+workflow, and it does not establish why Claude skipped orientation.
+
+Captures are `target/benchmarks/quill-adoption-task-matrix-final.json` (before source-search
+permissions were expanded) and `target/benchmarks/quill-adoption-task-matrix-source-reads.json`.
+The latter retains one presentation-only answer mismatch: the exact snapshot action code
+combined with its exact description. The final rubric accepts this literal combination;
+the separate native `quill-adoption-action-format-regression.json` run confirms correct facts
+under that rubric while still failing the missing-overview criterion. Historical captures
+were not rewritten or silently rescored. Fixture snapshots remained unchanged, and all Codex
+user-config invariance checks passed. Claude global configuration was not measured.
+
+The native wire-only check passed, and all 94 Python unit tests passed, including scorer
+negative cases, CLI exit behavior, unavailable coverage, mutation-stop behavior, and preventing
+raw stderr from reaching reports. JVM runtime and managed instructions are unchanged in this
+milestone; the existing indexed tool contract was refreshed and returned a satisfied
+`complete`/verified receipt. Codex trace handling follows its
+[documented JSONL event stream](https://learn.chatgpt.com/docs/non-interactive-mode).

@@ -59,7 +59,7 @@ def user_config_digest():
 
 
 def invoke(client, project, prompt, timeout, trusted=False, edit=False, config_overrides=(),
-           profile=None):
+           profile=None, source_reads=False):
     # Writable headless threads can persist implicit trust. Supply it in memory
     # instead, including when callers initially observed successful discovery.
     trusted = trusted or (client == "codex" and edit)
@@ -78,10 +78,14 @@ def invoke(client, project, prompt, timeout, trusted=False, edit=False, config_o
             argv += ["--profile", profile]
         argv.append(prompt)
     else:
+        tools = "Read,Edit,Bash,ToolSearch" + (",Grep,Glob" if source_reads else "")
         argv = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose",
                 "--no-session-persistence", "--permission-mode", "dontAsk",
-                "--tools", "Read,Edit,Bash,ToolSearch",
+                "--tools", tools,
                 "--allowedTools", "Read", "mcp__quill__*"]
+        if source_reads:
+            argv += ["Grep", "Glob", "Bash(git log *)", "Bash(git show *)",
+                     "Bash(git status *)", "Bash(git diff *)"]
         if edit:
             argv += ["Edit", "Bash(mvn test-compile)",
                      "Bash(/opt/homebrew/bin/mvn test-compile)"]

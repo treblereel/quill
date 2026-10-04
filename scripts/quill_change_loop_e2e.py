@@ -55,7 +55,6 @@ def write_fixture(root: Path) -> None:
   </properties>
 </project>
 """, encoding="utf-8")
-    (root / ".gitignore").write_text("target/\n.quill/\n", encoding="utf-8")
     main.write_text("""\
 package org.example;
 

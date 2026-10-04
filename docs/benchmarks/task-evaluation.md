@@ -263,9 +263,10 @@ python3 scripts/quill_change_loop_e2e.py \
   --quill quill-app/target/quill
 ```
 
-The fixture intentionally has no Maven wrapper. The harness runs the system Maven fallback to
-bootstrap compiled classes, initializes Quill, edits a production source, and obtains the exact
-`quick_compile` argv from `change_session`. The harness—not Quill—executes that command and then
-calls `change_session` again. The report requires the phase sequence `planned` →
-`verification_required` → `complete`, compiled production and standard test classes, no Surefire
-or Failsafe reports, a captured successful build event, and removal of the build-evidence blocker.
+The fixture intentionally has neither a Maven wrapper nor a pre-existing `.gitignore`. The harness
+runs the system Maven fallback to bootstrap compiled classes, initializes Quill, edits a production
+source, and obtains the exact `quick_compile` argv from `change_session`. The harness—not Quill—
+executes that command and then calls `change_session` again. The report requires the phase sequence
+`planned` → `verification_required` → `complete`, compiled production and standard test classes,
+no Surefire or Failsafe reports, a captured successful build event, and removal of the
+build-evidence blocker.

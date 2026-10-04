@@ -146,4 +146,29 @@ class WorktreeInspectorTest {
             assertTrue(WorktreeInspector.inspect(tempDir).structuralDirty());
         }
     }
+
+    @Test
+    void ignoresOnlyQuillClasspathArtifactsInBuildDirectories() throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), "<project/>\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("fixture").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+
+            Path moduleTarget = tempDir.resolve("service/target");
+            Path moduleBuild = tempDir.resolve("worker/build");
+            Files.createDirectories(moduleTarget);
+            Files.createDirectories(moduleBuild);
+            Files.writeString(moduleTarget.resolve("quill-classpath.txt"), "runtime");
+            Files.writeString(moduleTarget.resolve("quill-test-classpath.txt"), "test");
+            Files.writeString(moduleBuild.resolve("quill-classpath.sha256"), "fingerprint");
+            assertFalse(WorktreeInspector.inspect(tempDir).dirty());
+
+            Files.writeString(moduleTarget.resolve("user-output.txt"), "user-owned\n");
+            WorktreeInspector.Snapshot userChange = WorktreeInspector.inspect(tempDir);
+            assertTrue(userChange.dirty());
+            assertEquals("service/target/user-output.txt",
+                    userChange.changes().getFirst().projectPath());
+        }
+    }
 }

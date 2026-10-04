@@ -20,7 +20,8 @@ final class ChangeSessionQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> REVIEW_REASONS = Set.of(
             "UNRESOLVED_TARGETS", "INCOMPLETE_TEST_COVERAGE",
-            "TARGET_INFERENCE_TRUNCATED", "WORKTREE_TRUNCATED");
+            "TARGET_INFERENCE_TRUNCATED", "WORKTREE_TRUNCATED",
+            "MODULE_SELECTION_INCOMPLETE");
     private final ContextQueries contexts = new ContextQueries();
     private final ChangePlanQueries plans = new ChangePlanQueries();
     private final ChangeVerificationQueries verification = new ChangeVerificationQueries();
@@ -181,7 +182,9 @@ final class ChangeSessionQueries {
 
     private static ObjectNode summaryVerificationPlan(JsonNode plan) {
         ObjectNode result = compact(plan, List.of("build_system", "working_directory",
-                "runner", "modules", "refresh_index_after_success", "commands_executable"));
+                "runner", "requested_modules", "modules", "command_modules",
+                "unresolved_modules", "module_selection_complete",
+                "refresh_index_after_success", "commands_executable"));
         var commands = result.putArray("commands");
         var otherScopes = result.putArray("other_command_scopes");
         for (JsonNode command : plan.path("commands")) {

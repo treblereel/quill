@@ -83,7 +83,7 @@ final class ChangeVerificationQueries {
                 projectRoot, context.path("contexts"), impact);
         root.set("verification_plan", verificationPlan);
 
-        String verdict = verdict(context, build, diagnostics, changes,
+        String verdict = verdict(context, build, diagnostics, changes, verificationPlan,
                 effectiveTargets.isEmpty(), inferenceTruncated);
         root.put("verdict", verdict);
         root.put("verified", verdict.equals("ready"));
@@ -96,7 +96,8 @@ final class ChangeVerificationQueries {
     }
 
     private static String verdict(ObjectNode context, ObjectNode build,
-            ObjectNode diagnostics, ObjectNode changes, boolean noTargets,
+            ObjectNode diagnostics, ObjectNode changes, ObjectNode verificationPlan,
+            boolean noTargets,
             boolean inferenceTruncated) {
         if ("failed".equals(diagnostics.path("build_status").asText())
                 || diagnostics.path("total").asInt() > 0) return "blocked";
@@ -107,7 +108,9 @@ final class ChangeVerificationQueries {
                 || evidenceStatus.equals("unknown") || evidenceStatus.equals("unavailable")) {
             return "needs_build";
         }
-        if (noTargets || inferenceTruncated || !context.path("answer_complete").asBoolean()
+        if (noTargets || inferenceTruncated
+                || !verificationPlan.path("module_selection_complete").asBoolean(true)
+                || !context.path("answer_complete").asBoolean()
                 || !context.path("impacted_tests").path("answer_complete").asBoolean(true)
                 || context.path("_meta").path("structure_stale").asBoolean()
                 || changes.path("has_more").asBoolean()) return "partial";
@@ -169,6 +172,12 @@ final class ChangeVerificationQueries {
                     .put("message", "The worktree change list exceeds the requested limit");
             action(actions, "inspect_remaining_worktree", "WORKTREE_TRUNCATED")
                     .put("tool", "get_worktree_status");
+        }
+        if (!verificationPlan.path("module_selection_complete").asBoolean(true)) {
+            blockers.addObject().put("code", "MODULE_SELECTION_INCOMPLETE")
+                    .put("message", "Some indexed modules do not map to build-system modules");
+            action(actions, "inspect_modules", "MODULE_SELECTION_INCOMPLETE")
+                    .put("evidence", "verification_plan.unresolved_modules");
         }
         if (verdict.equals("blocked") || verdict.equals("needs_build")) {
             toolCall(actions, "verify_change", runnerAvailable

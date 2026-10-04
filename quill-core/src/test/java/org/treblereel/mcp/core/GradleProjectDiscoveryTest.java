@@ -24,9 +24,10 @@ class GradleProjectDiscoveryTest {
         Path kotlinClasses = module.resolve("build/classes/kotlin/main");
         Path testClasses = module.resolve("build/classes/java/test");
         Path manifest = Files.writeString(tempDir.resolve("projects.tsv"),
-                encode(module) + "\tmain\t" + encode(javaClasses) + "\t" + encode(kotlinClasses)
+                encode(module) + "\t:custom\tmain\t" + encode(javaClasses) + "\t"
+                        + encode(kotlinClasses)
                         + System.lineSeparator()
-                        + encode(module) + "\ttest\t" + encode(testClasses));
+                        + encode(module) + "\t:custom\ttest\t" + encode(testClasses));
 
         GradleProjectDiscovery.Discovery discovery =
                 GradleProjectDiscovery.readManifest(manifest);
@@ -42,6 +43,7 @@ class GradleProjectDiscoveryTest {
                 discovery.classDirectorySourceSets().get(javaClasses.toAbsolutePath()));
         assertEquals("test",
                 discovery.classDirectorySourceSets().get(testClasses.toAbsolutePath()));
+        assertEquals(":custom", discovery.projectPaths().get(module.toAbsolutePath()));
     }
 
     @Test

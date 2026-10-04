@@ -17,19 +17,21 @@ import java.util.UUID;
 /** Obtains the evaluated Gradle project structure without embedding Gradle in Quill. */
 public final class GradleProjectDiscovery {
 
-    private static final String CACHE_VERSION = "3";
+    private static final String CACHE_VERSION = "4";
 
     public record Discovery(
             List<Path> moduleDirectories,
             List<Path> classesDirectories,
             Map<Path, Path> classDirectoryOwners,
             Map<Path, String> classDirectorySourceSets,
+            Map<Path, String> projectPaths,
             boolean complete) {
         public Discovery {
             moduleDirectories = List.copyOf(moduleDirectories);
             classesDirectories = List.copyOf(classesDirectories);
             classDirectoryOwners = Map.copyOf(classDirectoryOwners);
             classDirectorySourceSets = Map.copyOf(classDirectorySourceSets);
+            projectPaths = Map.copyOf(projectPaths);
         }
     }
 
@@ -38,6 +40,7 @@ public final class GradleProjectDiscovery {
             List<Path> classesDirectories,
             Map<Path, Path> classDirectoryOwners,
             Map<Path, String> classDirectorySourceSets,
+            Map<Path, String> projectPaths,
             boolean valid) {}
 
     private GradleProjectDiscovery() {}
@@ -102,6 +105,7 @@ public final class GradleProjectDiscovery {
             return new Discovery(
                     parsed.moduleDirectories(), parsed.classesDirectories(),
                     parsed.classDirectoryOwners(), parsed.classDirectorySourceSets(),
+                    parsed.projectPaths(),
                     parsed.valid());
         } catch (InterruptedException e) {
             terminate(process);
@@ -131,18 +135,20 @@ public final class GradleProjectDiscovery {
         ParsedManifest parsed = parseManifest(manifest);
         return new Discovery(parsed.moduleDirectories(), parsed.classesDirectories(),
                 parsed.classDirectoryOwners(), parsed.classDirectorySourceSets(),
+                parsed.projectPaths(),
                 parsed.valid());
     }
 
     private static ParsedManifest parseManifest(Path manifest) {
         if (manifest == null || !Files.isRegularFile(manifest)) {
-            return new ParsedManifest(List.of(), List.of(), Map.of(), Map.of(), false);
+            return new ParsedManifest(List.of(), List.of(), Map.of(), Map.of(), Map.of(), false);
         }
 
         Set<Path> modules = new LinkedHashSet<>();
         Set<Path> classes = new LinkedHashSet<>();
         Map<Path, Path> owners = new LinkedHashMap<>();
         Map<Path, String> sourceSets = new LinkedHashMap<>();
+        Map<Path, String> projectPaths = new LinkedHashMap<>();
         boolean valid = true;
         try {
             for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
@@ -151,13 +157,14 @@ public final class GradleProjectDiscovery {
                 try {
                     Path module = decodePath(fields[0]);
                     modules.add(module);
-                    if (fields.length < 2
-                            || !(fields[1].equals("main") || fields[1].equals("test"))) {
+                    if (fields.length < 3 || !fields[1].startsWith(":")
+                            || !(fields[2].equals("main") || fields[2].equals("test"))) {
                         valid = false;
                         continue;
                     }
-                    String sourceSet = fields[1];
-                    for (int i = 2; i < fields.length; i++) {
+                    projectPaths.putIfAbsent(module, fields[1]);
+                    String sourceSet = fields[2];
+                    for (int i = 3; i < fields.length; i++) {
                         if (!fields[i].isEmpty()) {
                             Path classesDirectory = decodePath(fields[i]);
                             classes.add(classesDirectory);
@@ -170,10 +177,11 @@ public final class GradleProjectDiscovery {
                 }
             }
         } catch (IOException e) {
-            return new ParsedManifest(List.of(), List.of(), Map.of(), Map.of(), false);
+            return new ParsedManifest(List.of(), List.of(), Map.of(), Map.of(), Map.of(), false);
         }
         return new ParsedManifest(
-                new ArrayList<>(modules), new ArrayList<>(classes), owners, sourceSets, valid);
+                new ArrayList<>(modules), new ArrayList<>(classes), owners, sourceSets,
+                projectPaths, valid);
     }
 
     private static Path decodePath(String value) {
@@ -183,7 +191,7 @@ public final class GradleProjectDiscovery {
     }
 
     private static Discovery incomplete() {
-        return new Discovery(List.of(), List.of(), Map.of(), Map.of(), false);
+        return new Discovery(List.of(), List.of(), Map.of(), Map.of(), Map.of(), false);
     }
 
     private static Discovery readCache(Path projectRoot) {
@@ -274,7 +282,7 @@ public final class GradleProjectDiscovery {
                                             .sort { it.absolutePath }
                                         def fields = [encoder.encodeToString(
                                                 displayPath(projectDir).absolutePath.getBytes('UTF-8')),
-                                            selectedSourceSet.name]
+                                            project.path, selectedSourceSet.name]
                                         fields.addAll(classDirs.collect { file ->
                                             encoder.encodeToString(
                                                 displayPath(file).absolutePath.getBytes('UTF-8'))

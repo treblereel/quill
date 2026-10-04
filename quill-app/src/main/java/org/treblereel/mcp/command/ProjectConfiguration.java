@@ -27,7 +27,9 @@ final class ProjectConfiguration {
             occurrence. Do not query both by default. Verify Quill results in source when the index
             reports stale, partial, unknown, or unsupported evidence.
 
-            For a code change, prefer `change_session` for one stateless snapshot of the plan,
+            For a code change, call `change_session` before editing source or choosing a build.
+            This is the required first workflow step, not a suggestion to wait for a user reminder.
+            The call returns one stateless snapshot of the plan,
             verification evidence, and ordered next actions; repeat it with the same targets and
             change description to refresh the snapshot, or omit targets after editing to infer them
             from dirty JVM sources. Use `plan_change` or `verify_change` when only that focused view
@@ -65,11 +67,17 @@ final class ProjectConfiguration {
             injection, affected tests, build diagnostics, Git history, and change risk. Quill tools
             may be deferred and absent from the initially displayed tool list; search the complete
             tool catalog before concluding that Quill is unavailable.
+            Tool discovery is not MCP resource discovery: empty resources/templates do not mean
+            missing tools. Use the client's tool-search capability when available. If tools are
+            genuinely unavailable, report that limitation and the client/configuration context;
+            do not claim the server is unconfigured from resource-list results alone.
 
             Use `rg` and direct source reads for exact literals, known files, and verification when
             Quill reports stale, partial, unknown, or unsupported evidence.
 
-            For a code change, prefer `mcp__quill__change_session` for one stateless snapshot of the
+            For a code change, call `mcp__quill__change_session` before editing source or choosing
+            a build. This is the required first workflow step; do not wait for a user reminder.
+            The call returns one stateless snapshot of the
             plan, verification evidence, and ordered next actions; repeat it with the same targets
             and change description to refresh the snapshot, or omit targets after editing to infer
             them from dirty JVM sources. Use `mcp__quill__plan_change` or `mcp__quill__verify_change`

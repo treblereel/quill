@@ -48,12 +48,17 @@ def workflow_access(capture):
                for name in capture["tools"])
 
 
-def invoke(client, project, prompt, timeout, trusted=False, edit=False):
+def invoke(client, project, prompt, timeout, trusted=False, edit=False, config_overrides=(),
+           profile=None):
     if client == "codex":
         argv = ["codex", "exec", "--ephemeral", "--json",
                 "--sandbox", "workspace-write" if edit else "read-only", "-C", str(project)]
         if trusted:
             argv += ["-c", 'projects.' + json.dumps(str(project)) + '.trust_level="trusted"']
+        for override in config_overrides:
+            argv += ["-c", override]
+        if profile:
+            argv += ["--profile", profile]
         argv.append(prompt)
     else:
         argv = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose",

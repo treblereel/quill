@@ -89,6 +89,12 @@ class DoctorCommandTest {
         assertEquals(DoctorCommand.Status.ERROR, launcher.status());
         assertTrue(launcher.message().contains(missing));
         assertTrue(launcher.action().contains("Repair"));
+        DoctorCommand.Check activation = report.checks().stream()
+                .filter(check -> check.id().equals("codex_activation"))
+                .findFirst().orElseThrow();
+        assertEquals(DoctorCommand.Status.INFO, activation.status());
+        assertTrue(activation.message().contains("activation was not checked"));
+        assertTrue(activation.action().contains("trusted user profile"));
     }
 
     private static Map<String, JsonNode> checksById(JsonNode report) {

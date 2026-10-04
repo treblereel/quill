@@ -50,6 +50,38 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void queryCatalogAdvertisesExplicitSafetyHintsAcrossProfiles() {
+        for (String profile : List.of("full", "core", "code", "di", "git", "router")) {
+            var catalog = McpToolCatalog.create(new QuillTools(new ProjectRegistry()), workers,
+                    responses, Duration.ofSeconds(1), McpToolProfile.parse(profile));
+            assertFalse(catalog.isEmpty());
+            for (var specification : catalog) {
+                var annotations = specification.tool().annotations();
+                assertEquals(Boolean.TRUE, annotations.readOnlyHint(), specification.tool().name());
+                assertEquals(Boolean.FALSE, annotations.destructiveHint());
+                assertEquals(Boolean.FALSE, annotations.openWorldHint());
+                assertNull(annotations.idempotentHint(), "Live evidence need not be identical");
+            }
+        }
+        assertNull(specification(new BlockingTools(), Duration.ofSeconds(1)).tool().annotations(),
+                "New tools must opt in to read-only rather than inherit an unsafe default");
+    }
+
+    @Test
+    void initializeGuidanceNamesWorkflowAndToolDiscoveryWithoutBuildExecution() {
+        String full = McpStdioServer.serverInstructions(McpToolProfile.full());
+        assertTrue(full.substring(0, 512).contains("change_session"));
+        assertTrue(full.contains("before editing"));
+        assertTrue(full.contains("never runs builds or tests"));
+        assertTrue(full.contains("tools, not resources"));
+        String router = McpStdioServer.serverInstructions(McpToolProfile.parse("router"));
+        assertTrue(router.contains("search_tools"));
+        assertTrue(router.contains("execute_tool"));
+        assertFalse(McpStdioServer.serverInstructions(McpToolProfile.parse("di"))
+                .contains("change_session"), "Do not direct clients to a tool absent from the profile");
+    }
+
+    @Test
     void timedOutToolReturnsExplicitErrorAndInterruptsWorker() throws Exception {
         BlockingTools tools = new BlockingTools();
         AsyncToolSpecification specification = specification(tools, Duration.ofMillis(100));

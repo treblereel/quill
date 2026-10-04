@@ -82,6 +82,12 @@ final class McpToolCatalog {
         McpSchema.Tool.Builder toolBuilder =
                 McpSchema.Tool.builder(method.getName(), inputSchema(method))
                         .description(annotation.description());
+        if (annotation.readOnly()) {
+            // Queries may refresh derived caches/telemetry, but never edit source/configuration,
+            // execute builds, or contact open-ended external services.
+            toolBuilder.annotations(McpSchema.ToolAnnotations.builder()
+                    .readOnlyHint(true).destructiveHint(false).openWorldHint(false).build());
+        }
         if (annotation.structured()) {
             toolBuilder.outputSchema(annotation.output().isBlank()
                     ? OBJECT_OUTPUT_SCHEMA

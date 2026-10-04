@@ -23,7 +23,7 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(installed.contains("call `get_overview`"));
-        assertTrue(installed.contains("prefer `change_session`"));
+        assertTrue(installed.contains("call `change_session` before editing"));
         assertTrue(installed.contains("`directive.primary_action`"));
         assertTrue(installed.contains("`phase_gate`"));
         assertTrue(installed.contains("`review_checklist`"));
@@ -68,6 +68,8 @@ class ProjectConfigurationTest {
         ProjectConfiguration.ensureAgentsMd(root);
 
         String installed = Files.readString(agents);
+        assertTrue(installed.contains("before editing source or choosing"));
+        assertTrue(installed.contains("Tool discovery is not MCP resource discovery"));
         assertTrue(installed.startsWith("# User instructions\n"));
         assertTrue(installed.contains("`mcp__quill__get_overview`"));
         assertTrue(installed.contains("`mcp__quill__plan_change`"));

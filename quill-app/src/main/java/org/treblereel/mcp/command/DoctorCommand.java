@@ -147,6 +147,14 @@ public class DoctorCommand implements Callable<Integer> {
                     "Project-local MCP configuration detected for " + String.join(" and ", clients)));
         }
         List<String> brokenLaunchers = brokenClientLaunchers(normalized);
+        if (clients.contains("Codex")) {
+            checks.add(Check.info("codex_activation",
+                    "Project configuration is present; live Codex tool activation was not checked",
+                    "Trust this project in Codex and start a fresh session, then confirm get_overview "
+                            + "is callable. Project-local config requires project trust; empty MCP "
+                            + "resources do not prove missing tools. For headless automation, use a "
+                            + "trusted user profile or explicit mcp_servers.quill transport overrides."));
+        }
         if (!brokenLaunchers.isEmpty()) {
             checks.add(Check.error("mcp_launcher",
                     "Configured Quill launcher does not exist or is not executable: "

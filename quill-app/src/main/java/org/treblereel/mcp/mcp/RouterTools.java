@@ -22,7 +22,7 @@ final class RouterTools {
         this.tools = tools;
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Summarize indexed projects before choosing a specialized tool.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings")
@@ -31,7 +31,7 @@ final class RouterTools {
         return tools.get_overview(details, project);
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Search Quill's hidden tool catalog by name, purpose, or argument.")
     public String search_tools(
             @ToolArg(description = "Words to match against tool names, descriptions, and arguments")
@@ -42,7 +42,8 @@ final class RouterTools {
                     .filter(term -> !term.isBlank()).toArray(String[]::new);
             int pageSize = Math.max(1, Math.min(30, limit.orElse(10)));
             List<Method> catalog = Arrays.stream(QuillTools.class.getDeclaredMethods())
-                    .filter(method -> method.isAnnotationPresent(Tool.class)).toList();
+                    .filter(method -> method.isAnnotationPresent(Tool.class))
+                    .filter(method -> method.getAnnotation(Tool.class).readOnly()).toList();
             List<Candidate> matches = catalog.stream()
                     .map(method -> new Candidate(method, score(method, terms)))
                     .filter(candidate -> candidate.score() > 0)
@@ -88,7 +89,7 @@ final class RouterTools {
         }
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Invoke one hidden Quill tool using its name and JSON arguments.")
     public String execute_tool(
             @ToolArg(description = "Exact tool name returned by search_tools") String name,
@@ -97,6 +98,7 @@ final class RouterTools {
         try (DebugTrace.Trace trace = DebugTrace.start("router_execute")) {
             Method method = Arrays.stream(QuillTools.class.getDeclaredMethods())
                     .filter(candidate -> candidate.isAnnotationPresent(Tool.class))
+                    .filter(candidate -> candidate.getAnnotation(Tool.class).readOnly())
                     .filter(candidate -> candidate.getName().equals(name))
                     .findFirst().orElse(null);
             if (method == null) {

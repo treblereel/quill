@@ -47,6 +47,7 @@ class WorkflowClient:
         })
         if "protocolVersion" not in response:
             raise RuntimeError(f"MCP initialization failed: {response}")
+        self.initialized = response
         assert self.client.process.stdin is not None
         self.client.process.stdin.write(
             '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n')

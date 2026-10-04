@@ -49,7 +49,7 @@ public final class QuillTools {
         this.workspace = new WorkspaceToolQueries(registry);
     }
 
-    @Tool(structured = true, description = "List workspace repos.")
+    @Tool(readOnly = true, structured = true, description = "List workspace repos.")
     public String list_workspace_repositories(
             @ToolArg(description = "Include modules") Optional<Boolean> include_modules,
             @ToolArg(description = "Page size") Optional<Integer> limit,
@@ -59,7 +59,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Workspace dependencies.")
+    @Tool(readOnly = true, structured = true, description = "Workspace dependencies.")
     public String get_workspace_dependencies(
             @ToolArg(description = "Repository") Optional<String> repository,
             @ToolArg(description = "Direction") Optional<String> direction,
@@ -72,13 +72,13 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Resolve workspace entity.")
+    @Tool(readOnly = true, structured = true, description = "Resolve workspace entity.")
     public String resolve_workspace_entity(
             @ToolArg(description = "Name, path, GA, or class") String target) {
         return ResponseBudget.apply(workspace.resolveEntity(target));
     }
 
-    @Tool(structured = true, description = "Find workspace usages.")
+    @Tool(readOnly = true, structured = true, description = "Find workspace usages.")
     public String find_workspace_usages(
             @ToolArg(description = "Target") String target,
             @ToolArg(description = "Provider repository") Optional<String> provider_repository,
@@ -93,7 +93,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Assess cross-repo change risk.")
+    @Tool(readOnly = true, structured = true, description = "Assess cross-repo change risk.")
     public String assess_workspace_change_risk(
             @ToolArg(description = "Class or source path") String target,
             @ToolArg(description = "Provider repository") Optional<String> provider_repository,
@@ -102,7 +102,7 @@ public final class QuillTools {
                 provider_repository.orElse(null), clamp(max_depth.orElse(3), 1, 10)));
     }
 
-    @Tool(structured = true, description = "Find CDI/Spring beans.")
+    @Tool(readOnly = true, structured = true, description = "Find CDI/Spring beans.")
     public String list_beans(
             @ToolArg(description = "Class, path, or wildcard") Optional<String> class_name,
             @ToolArg(description = "Scope") Optional<String> scope,
@@ -123,7 +123,7 @@ public final class QuillTools {
                         clamp(offset.orElse(0), 0, Integer.MAX_VALUE))));
     }
 
-    @Tool(structured = true, description = "Get class dependency metrics and graph.")
+    @Tool(readOnly = true, structured = true, description = "Get class dependency metrics and graph.")
     public String get_dependencies(
             @ToolArg(description = "Class or source path") String target,
             @ToolArg(description = "inbound, outbound, or both") Optional<String> direction,
@@ -146,7 +146,7 @@ public final class QuillTools {
                 requestedLimit, requestedOffset, requestedCursor));
     }
 
-    @Tool(structured = true, description = "Find indexed implementations and their origins.")
+    @Tool(readOnly = true, structured = true, description = "Find indexed implementations and their origins.")
     public String find_implementations(
             @ToolArg(description = "Current class or interface name (short or FQCN), or its source path") String target,
             @ToolArg(description = "Include indirect implementations through intermediate types (default: true)") Optional<Boolean> transitive,
@@ -162,7 +162,7 @@ public final class QuillTools {
                         null, null, requestedLimit, requestedOffset)));
     }
 
-    @Tool(structured = true, description = "Find class usages from bytecode, DI, inheritance, annotations, and ServiceLoader evidence.")
+    @Tool(readOnly = true, structured = true, description = "Find class usages from bytecode, DI, inheritance, annotations, and ServiceLoader evidence.")
     public String find_usages(
             @ToolArg(description = "Current class name (short or FQCN), or its source path") String target,
             @ToolArg(description = "Usage kind; omit or use all for every supported kind") Optional<String> usage_kind,
@@ -179,7 +179,7 @@ public final class QuillTools {
                 p.name(), target, requestedKind, requestedLimit, requestedOffset));
     }
 
-    @Tool(structured = true, output = "symbol_usages",
+    @Tool(readOnly = true, structured = true, output = "symbol_usages",
             description = "Find exact method, constructor, or field usages.")
     public String find_symbol_usages(
             @ToolArg(description = "Class, path, or symbol_id") String target,
@@ -204,7 +204,7 @@ public final class QuillTools {
                         requestedSignature, requestedAccess, requestedLimit, requestedOffset)));
     }
 
-    @Tool(structured = true, output = "symbol_details",
+    @Tool(readOnly = true, structured = true, output = "symbol_details",
             description = "Inspect a class and its members.")
     public String get_symbol_details(
             @ToolArg(description = "Class or source path") String target,
@@ -223,7 +223,7 @@ public final class QuillTools {
                         requestedKind, requestedLimit, requestedOffset)));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Get a compact change-ready context card for one or more classes.")
     public String get_context(
             @ToolArg(description = "Classes or source paths (max 10)") List<String> targets,
@@ -236,7 +236,7 @@ public final class QuillTools {
                 p.jdbi(), targets, requestedMembers, requestedLimit));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Build an evidence-backed change plan with files, dependency review, tests, risk, freshness warnings, and non-executing verification commands.")
     public String plan_change(
             @ToolArg(description = "Classes or source paths to change (max 10)") List<String> targets,
@@ -248,7 +248,7 @@ public final class QuillTools {
                 p.jdbi(), p.root(), targets, change, requestedLimit));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Verify a change from worktree, build, diagnostics, affected-test, and index-freshness evidence; recommend compile or test commands without running them.")
     public String verify_change(
             @ToolArg(description = "Changed classes or source paths; omit to infer up to 10 dirty JVM files") Optional<List<String>> targets,
@@ -259,8 +259,8 @@ public final class QuillTools {
                 p.jdbi(), p.root(), targets.orElse(List.of()), requestedLimit));
     }
 
-    @Tool(structured = true,
-            description = "Get a compact stateless change snapshot with a primary directive, phase gate, review checklist, verification receipt, and stable action IDs without executing builds.")
+    @Tool(readOnly = true, structured = true,
+            description = "Plan a code change before editing, or check what to do next after edits/builds. Returns a compact stateless snapshot with the primary action, evidence gaps, phase gate and verification receipt; never runs builds.")
     public String change_session(
             @ToolArg(description = "Classes or source paths; omit to infer up to 10 dirty JVM files") Optional<List<String>> targets,
             @ToolArg(description = "Concise description of the intended change") String change,
@@ -274,7 +274,7 @@ public final class QuillTools {
                 detail.orElse("summary"), view.orElse("auto")));
     }
 
-    @Tool(structured = true, description = "Rank tests affected by changed classes.")
+    @Tool(readOnly = true, structured = true, description = "Rank tests affected by changed classes.")
     public String find_impacted_tests(
             @ToolArg(description = "Classes or source paths") List<String> targets,
             @ToolArg(description = "Traverse dependencies; default true") Optional<Boolean> transitive,
@@ -289,7 +289,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Inspect ancestor and descendant paths for a type.")
+    @Tool(readOnly = true, structured = true, description = "Inspect ancestor and descendant paths for a type.")
     public String get_type_hierarchy(
             @ToolArg(description = "Current class, interface, or source path") String target,
             @ToolArg(description = "ancestors, descendants, or both; default both") Optional<String> direction,
@@ -307,7 +307,7 @@ public final class QuillTools {
                         requestedDepth, requestedLimit, requestedOffset)));
     }
 
-    @Tool(structured = true, output = "symbol_search",
+    @Tool(readOnly = true, structured = true, output = "symbol_search",
             description = "Search indexed symbols.")
     public String search_symbols(
             @ToolArg(description = "Name or signature pattern; * is a wildcard") String pattern,
@@ -324,7 +324,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, output = "call_hierarchy",
+    @Tool(readOnly = true, structured = true, output = "call_hierarchy",
             description = "Inspect bytecode callers and callees.")
     public String get_call_hierarchy(
             @ToolArg(description = "Class, path, or symbol_id") String target,
@@ -353,7 +353,7 @@ public final class QuillTools {
                         requestedDepth, scope.orElse("all"), requestedLimit, requestedOffset)));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Trace state lifecycle.")
     public String trace_state_lifecycle(
             @ToolArg(description = "Class or source path") String target,
@@ -365,7 +365,7 @@ public final class QuillTools {
                 jdbi -> queries.traceStateLifecycle(jdbi, target, requestedLimit)));
     }
 
-    @Tool(structured = true, output = "execution_order",
+    @Tool(readOnly = true, structured = true, output = "execution_order",
             description = "Analyze call instruction order in one method.")
     public String analyze_execution_order(
             @ToolArg(description = "Class, path, or symbol_id") String target,
@@ -386,7 +386,7 @@ public final class QuillTools {
                         signature.orElse(null), before, after)));
     }
 
-    @Tool(structured = true, description = "Compare design-host change surfaces.")
+    @Tool(readOnly = true, structured = true, description = "Compare design-host change surfaces.")
     public String compare_design_impact(
             @ToolArg(description = "Candidate classes") List<String> candidates,
             @ToolArg(description = "Test depth") Optional<Integer> test_depth,
@@ -396,7 +396,7 @@ public final class QuillTools {
                 queries.compareDesignImpact(p.jdbi(), candidates, requestedDepth));
     }
 
-    @Tool(structured = true, output = "method_overrides",
+    @Tool(readOnly = true, structured = true, output = "method_overrides",
             description = "Find method overrides in indexed descendants.")
     public String find_method_overrides(
             @ToolArg(description = "Class, interface, path, or symbol_id") String target,
@@ -417,7 +417,7 @@ public final class QuillTools {
                         requestedOffset)));
     }
 
-    @Tool(structured = true, description = "Find conservative candidates for unused indexed classes; results are not proof of dead code.")
+    @Tool(readOnly = true, structured = true, description = "Find conservative candidates for unused indexed classes; results are not proof of dead code.")
     public String find_unused_classes(
             @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
             @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,
@@ -431,7 +431,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Find private methods without indexed inbound calls; results are conservative dead-code candidates.")
+    @Tool(readOnly = true, structured = true, description = "Find private methods without indexed inbound calls; results are conservative dead-code candidates.")
     public String find_unused_methods(
             @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
             @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,
@@ -445,7 +445,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Find private fields without indexed reads; write-only fields are opt-in and results are conservative dead-code candidates.")
+    @Tool(readOnly = true, structured = true, description = "Find private fields without indexed reads; write-only fields are opt-in and results are conservative dead-code candidates.")
     public String find_unused_fields(
             @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
             @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,
@@ -461,7 +461,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Find statically identifiable application and framework entry points with detection evidence.")
+    @Tool(readOnly = true, structured = true, description = "Find statically identifiable application and framework entry points with detection evidence.")
     public String find_entry_points(
             @ToolArg(description = "Kind: main, rest_resource, rest_endpoint, observer, scheduled, message_consumer, annotation_processor, service_provider, or all") Optional<String> kind,
             @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
@@ -477,7 +477,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Inspect direct project-module dependencies and transitive classpath visibility.")
+    @Tool(readOnly = true, structured = true, description = "Inspect direct project-module dependencies and transitive classpath visibility.")
     public String get_module_graph(
             @ToolArg(description = "Module path relative to the project root; omit for the complete direct-dependency graph") Optional<String> module,
             @ToolArg(description = "For a selected module: inbound, outbound, or both (default: both)") Optional<String> direction,
@@ -491,7 +491,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "List artifacts visible to main or test code from captured classpaths and reactor inference without invoking a build; reports evidence and completeness.")
     public String get_project_dependencies(
             @ToolArg(description = "Module path relative to the project root; omit for all") Optional<String> module,
@@ -514,7 +514,7 @@ public final class QuillTools {
                         clamp(offset.orElse(0), 0, Integer.MAX_VALUE)), p.name()));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "List the indexed project tree with module, source-set, lifecycle, and worktree context.")
     public String list_project_tree(
             @ToolArg(description = "Repository-relative directory; default project root") Optional<String> path,
@@ -529,7 +529,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Search indexed file paths with module, kind, lifecycle, and worktree context.")
     public String search_files(
             @ToolArg(description = "Path substring or glob pattern supporting *, **, and ?") String pattern,
@@ -548,7 +548,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Inspect the live Git branch, indexed versus current commit, and dirty worktree files.")
     public String get_worktree_status(
             @ToolArg(description = "Status filter: added, modified, deleted, untracked, or conflicting") Optional<String> status,
@@ -561,7 +561,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, output = "position_symbol",
+    @Tool(readOnly = true, structured = true, output = "position_symbol",
             description = "Resolve the Java or Kotlin identifier at a live source position to indexed declarations.")
     public String get_symbol_at_position(
             @ToolArg(description = "Repository-relative Java or Kotlin source path") String path,
@@ -572,7 +572,7 @@ public final class QuillTools {
                 p.jdbi(), p.root(), path, line, column));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Search class and member declarations indexed from external dependency bytecode.")
     public String search_external_symbols(
             @ToolArg(description = "Symbol name or signature pattern; supports * wildcard") String pattern,
@@ -592,7 +592,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Inspect an external dependency class and its bytecode-indexed members.")
     public String get_external_symbol_details(
             @ToolArg(description = "External class short name or FQCN") String class_name,
@@ -604,7 +604,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Inspect package dependency coupling.")
+    @Tool(readOnly = true, structured = true, description = "Inspect package dependency coupling.")
     public String get_package_graph(
             @ToolArg(description = "Package name/suffix; omit for all") Optional<String> package_name,
             @ToolArg(description = "inbound, outbound, or both") Optional<String> direction,
@@ -621,7 +621,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Find package or module dependency violations.")
+    @Tool(readOnly = true, structured = true, description = "Find package or module dependency violations.")
     public String find_architecture_violations(
             @ToolArg(description = "package (default) or module") Optional<String> scope,
             @ToolArg(description = "Source glob; '..' includes subpackages") String from,
@@ -638,7 +638,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Find class or module dependency cycles.")
+    @Tool(readOnly = true, structured = true, description = "Find class or module dependency cycles.")
     public String find_cycles(
             @ToolArg(description = "class (default) or module") Optional<String> scope,
             @ToolArg(description = "Class-scope module filter") Optional<String> module,
@@ -654,7 +654,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Compare the active index with an earlier local generation.")
+    @Tool(readOnly = true, structured = true, description = "Compare the active index with an earlier local generation.")
     public String compare_index(
             @ToolArg(description = "Index id or commit; default previous") Optional<String> baseline,
             @ToolArg(description = "Details per category; default 50") Optional<Integer> limit,
@@ -664,14 +664,14 @@ public final class QuillTools {
                 clamp(limit.orElse(50), 1, 200)));
     }
 
-    @Tool(structured = true, description = "Inspect build integration and compiled-index freshness without running a build.")
+    @Tool(readOnly = true, structured = true, description = "Inspect build integration and compiled-index freshness without running a build.")
     public String get_build_status(
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null),
                 p -> queries.getBuildStatus(p.jdbi(), p.root()));
     }
 
-    @Tool(structured = true, description = "Read errors captured by the last Maven or Gradle build.")
+    @Tool(readOnly = true, structured = true, description = "Read errors captured by the last Maven or Gradle build.")
     public String get_build_problems(
             @ToolArg(description = "Severity: all, error, or warning") Optional<String> severity,
             @ToolArg(description = "Exact module filter") Optional<String> module,
@@ -684,7 +684,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Read last-build diagnostics for one or more repository-relative source files without running a build.")
     public String get_file_problems(
             @ToolArg(description = "Repository-relative source paths") List<String> paths,
@@ -699,7 +699,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Inspect bean injection resolution and candidates.")
+    @Tool(readOnly = true, structured = true, description = "Inspect bean injection resolution and candidates.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
@@ -708,7 +708,7 @@ public final class QuillTools {
                 jdbi -> queries.getInjectionPoints(jdbi, target)));
     }
 
-    @Tool(structured = true, description = "Rank files/classes by Git churn with lifecycle, authors, dates, and worktree changes.")
+    @Tool(readOnly = true, structured = true, description = "Rank files/classes by Git churn with lifecycle, authors, dates, and worktree changes.")
     public String find_git_hotspots(
             @ToolArg(description = "Max results (default: 10)") Optional<Integer> limit,
             @ToolArg(description = "Only commits after this date, ISO format YYYY-MM-DD") Optional<String> since,
@@ -721,7 +721,7 @@ public final class QuillTools {
                 include_historical.orElse(false)));
     }
 
-    @Tool(structured = true, description = "Get commit history for one current class or file, "
+    @Tool(readOnly = true, structured = true, description = "Get commit history for one current class or file, "
             + "including author labels/emails and explicit returned-window counts.")
     public String get_file_history(
             @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
@@ -733,14 +733,14 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Resolve up to 20 names/paths across the current tree and Git history, including deleted paths.")
+    @Tool(readOnly = true, structured = true, description = "Resolve up to 20 names/paths across the current tree and Git history, including deleted paths.")
     public String resolve_entities(
             @ToolArg(description = "Class names, file names, or repository paths to resolve") List<String> targets,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.resolveEntities(p.jdbi(), targets));
     }
 
-    @Tool(structured = true, description = "Find files that frequently change with a class/path and report coupling ratios.")
+    @Tool(readOnly = true, structured = true, description = "Find files that frequently change with a class/path and report coupling ratios.")
     public String find_co_changed_files(
             @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
             @ToolArg(description = "Max results (default: 10)") Optional<Integer> limit,
@@ -749,7 +749,7 @@ public final class QuillTools {
                 p.jdbi(), target, clamp(limit.orElse(10), 1, 100)));
     }
 
-    @Tool(structured = true, description = "Get recent commits and their changed files/classes.")
+    @Tool(readOnly = true, structured = true, description = "Get recent commits and their changed files/classes.")
     public String get_recent_changes(
             @ToolArg(description = "Number of recent commits to inspect (default: 10)") Optional<Integer> commits,
             @ToolArg(description = "Changed files per page (default: 200, max: 200)") Optional<Integer> file_limit,
@@ -763,7 +763,7 @@ public final class QuillTools {
                 details.orElse(true)));
     }
 
-    @Tool(structured = true, description = "Inspect ordered META-INF/services providers with lines and order-sensitivity analysis.")
+    @Tool(readOnly = true, structured = true, description = "Inspect ordered META-INF/services providers with lines and order-sensitivity analysis.")
     public String inspect_service_descriptors(
             @ToolArg(description = "Optional service FQCN or short name, e.g. javax.annotation.processing.Processor") Optional<String> service,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
@@ -771,7 +771,7 @@ public final class QuillTools {
                 p -> queries.inspectServiceDescriptors(p.jdbi(), service.orElse(null)));
     }
 
-    @Tool(structured = true, description = "Find configuration definitions and annotation/programmatic consumers without exposing values.")
+    @Tool(readOnly = true, structured = true, description = "Find configuration definitions and annotation/programmatic consumers without exposing values.")
     public String find_configuration_references(
             @ToolArg(description = "Exact key or * wildcard; omit for all") Optional<String> key,
             @ToolArg(description = "Consumer class FQCN or short name") Optional<String> class_name,
@@ -786,7 +786,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Find classpath resources and programmatic consumers without reading resource contents.")
+    @Tool(readOnly = true, structured = true, description = "Find classpath resources and programmatic consumers without reading resource contents.")
     public String find_resource_references(
             @ToolArg(description = "Resource path or * wildcard, e.g. templates/order.html") String path,
             @ToolArg(description = "Consumer class FQCN or short name") Optional<String> class_name,
@@ -800,8 +800,8 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, output = "overview",
-            description = "Summarize frameworks, beans/classes, architecture hubs, DI problems, libraries, Git activity, and freshness.")
+    @Tool(readOnly = true, structured = true, output = "overview",
+            description = "Start code analysis here: orient on indexed projects, frameworks, architecture hubs, DI problems, Git activity and freshness. For planning or checking a code change, follow with change_session when available.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings (default: false)") Optional<Boolean> details,
             @ToolArg(description = "Project to query; omit for all") Optional<String> project) {
@@ -809,7 +809,7 @@ public final class QuillTools {
                 p -> queries.getOverview(p.jdbi(), details.orElse(false)));
     }
 
-    @Tool(structured = true, description = "Search current classes by wildcard name with source, origin, module, and bean context.")
+    @Tool(readOnly = true, structured = true, description = "Search current classes by wildcard name with source, origin, module, and bean context.")
     public String search_classes(
             @ToolArg(description = "Class name pattern (supports * wildcard, e.g. '*Service', 'io.casehub.*.model.*')") String pattern,
             @ToolArg(description = "Module path filter relative to the project root, or '.' for the root module") Optional<String> module,
@@ -823,7 +823,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Find classes carrying an annotation directly or "
+    @Tool(readOnly = true, structured = true, description = "Find classes carrying an annotation directly or "
             + "through a resolvable meta-annotation.")
     public String get_annotated_classes(
             @ToolArg(description = "Annotation short name or FQCN, with optional @ prefix") String annotation,
@@ -837,7 +837,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Find annotated type, method, field, and constructor declarations.")
+    @Tool(readOnly = true, structured = true, description = "Find annotated type, method, field, and constructor declarations.")
     public String find_annotated_symbols(
             @ToolArg(description = "Annotation short name or FQCN, with optional @ prefix") String annotation,
             @ToolArg(description = "Kind: all, type, method, field, constructor, or parameter") Optional<String> kind,
@@ -852,7 +852,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Find Spring MVC and JAX-RS routes.")
+    @Tool(readOnly = true, structured = true, description = "Find Spring MVC and JAX-RS routes.")
     public String find_framework_endpoints(
             @ToolArg(description = "spring, jax-rs, or all") Optional<String> framework,
             @ToolArg(description = "HTTP method") Optional<String> http_method,
@@ -871,7 +871,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(structured = true, description = "Score class/file change risk from coupling, criticality, churn, bus factor, and fan-in/out.")
+    @Tool(readOnly = true, structured = true, description = "Score class/file change risk from coupling, criticality, churn, bus factor, and fan-in/out.")
     public String assess_change_risk(
             @ToolArg(description = "Class name (short or FQCN), or any project/repository file path") String target,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
@@ -880,7 +880,7 @@ public final class QuillTools {
                 jdbi -> queries.getRisk(jdbi, target)));
     }
 
-    @Tool(structured = true, description = "Inspect third-party types used by a class or classes using a library.")
+    @Tool(readOnly = true, structured = true, description = "Inspect third-party types used by a class or classes using a library.")
     public String list_external_dependencies(
             @ToolArg(description = "Class name to inspect (short or FQCN). If omitted, shows project-wide library usage summary.") Optional<String> target,
             @ToolArg(description = "Filter by library package prefix, e.g. 'com.fasterxml.jackson' or 'jakarta.persistence'") Optional<String> library,

@@ -389,3 +389,60 @@ These single-run results demonstrate native edit/build/recovery, but not flawles
 ordering or reliable discovery in every client mode. In particular, Claude queried its
 `change_session` after editing, and Codex added compile flags. Repeated runs and a separate
 read-only Codex configuration investigation are still needed.
+
+### Unprompted adoption and configuration isolation
+
+```bash
+python3 scripts/quill_adoption_diagnostic.py --wire-only --output target/benchmarks/quill-adoption-wire.json
+python3 scripts/quill_adoption_diagnostic.py --output target/benchmarks/quill-adoption-diagnostic.json
+python3 scripts/quill_adoption_diagnostic.py --cases profile_read_only project_workspace_write claude_project --samples 2 --output target/benchmarks/quill-adoption-repeated.json
+```
+
+This diagnostic asks what to inspect before changing the fixture's greeting while preserving its
+public signature. The task prompt never names Quill, its tools, or the installed instructions;
+edits and builds are forbidden. Fixture preparation still performs external compilation before
+the client starts. Captures include actual native initialization instructions, tool annotations,
+installed guidance, and native client tool traces. No API key is needed beyond existing client
+authentication. The profile case creates and removes a separate explicitly selected temporary
+user profile containing only fixture trust; it never changes the main user configuration.
+
+The initial native binary returned no server instructions and no safety annotations. The updated
+server supplies concise workflow instructions, explicit query-only hints, and stronger generated
+AGENTS/CLAUDE guidance requiring `change_session` before source edits or build selection. Native
+serialization initially emitted empty annotation objects despite correct Java values: enabling
+reflection for `ToolAnnotations` accessors fixed this separate native-image defect. The wire-only
+check now requires real boolean `readOnlyHint=true`, `destructiveHint=false`, and
+`openWorldHint=false` on every tool, rather than accepting absent or empty annotations.
+
+Configuration isolation reproduced a distinct activation issue in Codex CLI 0.147.0. Project-only
+read-only runs could not call Quill even with a per-invocation project-trust override. Supplying
+the generated transport explicitly through CLI configuration worked, including with the old
+binary lacking hints. Selecting a temporary user profile with persisted fixture trust also worked
+in read-only mode. Project-only workspace-write runs exposed the tools. This narrows the issue
+to client configuration/trust activation, not server tool annotations, but does not establish the
+exact upstream implementation defect. Project-local MCP requires trust according to the
+[Codex documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+`quill doctor` now separates detected configuration from untested live client activation and
+reports these headless alternatives; Quill does not silently grant global project trust.
+
+Before the changes, one workspace-write Codex sample called only `get_overview`; Claude already
+called `change_session`. After the guidance changes, single samples of both clients called
+`get_overview` and `change_session`. These small before/after samples are not causal or statistical
+proof of improvement: prompts, model variability, client configuration, instructions, and metadata
+must be considered separately. Startup instructions follow the
+[MCP server guidance](https://developers.openai.com/plugins/build/mcp-server); they cannot activate
+a server the client never loads. Existing projects need their managed instructions refreshed with
+`quill init` (or workspace initialization) and a fresh client session to consume changed metadata.
+
+With the final native binary, all six repeated runs called `get_overview` and `change_session`
+without task-level reminders: two Codex read-only runs using the trusted temporary profile, two
+Codex project-only workspace-write runs, and two Claude project-only runs. All exited successfully;
+the wire contract passed for both server instructions and safety hints. Captures are in
+`target/benchmarks/quill-adoption-repeated.json`. This demonstrates adoption in these tested client
+configurations, not a guarantee for every task or resolution of the project-only read-only Codex
+activation issue. Local JVM verification and 68 Python unit tests also passed.
+
+The repository's own setup was refreshed separately: a missing `AGENTS.md` was installed, the
+managed `CLAUDE.md` block updated while preserving user text, and Claude's `alwaysLoad` plus
+project server approval installed. The existing telemetry argument was preserved. No other
+workspace or global client configuration was modified.

@@ -158,6 +158,16 @@ def main() -> int:
         run(["git", "add", "."], project)
         run(["git", "commit", "-q", "-m", "Initial fixture"], project)
         init = run([str(quill), "init", "--project", str(project)], project)
+        guidance = {
+            "AGENTS.md": (project / "AGENTS.md").read_text(encoding="utf-8"),
+            "CLAUDE.md": (project / "CLAUDE.md").read_text(encoding="utf-8"),
+        }
+        guidance_tokens = ("quill:instructions:v2", "directive.primary_action",
+                           "phase_gate", "review_checklist", "action_id")
+        missing_guidance = [f"{name}:{token}" for name, content in guidance.items()
+                            for token in guidance_tokens if token not in content]
+        if missing_guidance:
+            raise RuntimeError("Init guidance contract failed: " + ", ".join(missing_guidance))
 
         session_args = {
             "targets": [TARGET], "change": CHANGE, "limit": 10,
@@ -289,6 +299,7 @@ def main() -> int:
             "fixture": {"build_system": "maven", "wrapper_present": False,
                         "target": TARGET},
             "init": {"stdout": init.stdout.strip(), "stderr": init.stderr.strip()},
+            "init_guidance": {"version": 2, "clients": sorted(guidance)},
             "phases": [planned.get("phase"), required.get("phase"),
                        blocked.get("phase"), completed.get("phase")],
             "views": [planned.get("view"), required.get("view"),

@@ -24,6 +24,10 @@ class ProjectConfigurationTest {
                 ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(installed.contains("call `get_overview`"));
         assertTrue(installed.contains("prefer `change_session`"));
+        assertTrue(installed.contains("`directive.primary_action`"));
+        assertTrue(installed.contains("`phase_gate`"));
+        assertTrue(installed.contains("`review_checklist`"));
+        assertTrue(installed.contains("receipt is verified"));
         assertTrue(installed.contains("`quick_compile`"));
         assertTrue(installed.contains("never executes a build"));
         assertEquals(1, occurrences(installed, "<!-- quill:managed:start -->"));
@@ -68,12 +72,40 @@ class ProjectConfigurationTest {
         assertTrue(installed.contains("`mcp__quill__get_overview`"));
         assertTrue(installed.contains("`mcp__quill__plan_change`"));
         assertTrue(installed.contains("`mcp__quill__change_session`"));
+        assertTrue(installed.contains("`directive.primary_action`"));
+        assertTrue(installed.contains("`action_id`"));
+        assertTrue(installed.contains("phase is `complete`"));
         assertTrue(installed.contains("scope `quick_compile`"));
         assertTrue(installed.contains("does not execute builds"));
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(ProjectConfiguration.removeAgentsMd(root));
         assertEquals("# User instructions\n", Files.readString(agents));
+    }
+
+    @Test
+    void detectsAndRefreshesOutdatedManagedInstructions() throws Exception {
+        Path agents = root.resolve("AGENTS.md");
+        Files.writeString(agents, """
+                # User instructions
+
+                <!-- quill:managed:start -->
+                ## Quill MCP
+                Old guidance.
+                <!-- quill:managed:end -->
+                """);
+
+        assertEquals(ProjectConfiguration.InstructionsState.INVALID,
+                ProjectConfiguration.inspectAgentsMd(root));
+
+        ProjectConfiguration.ensureAgentsMd(root);
+
+        String refreshed = Files.readString(agents);
+        assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
+                ProjectConfiguration.inspectAgentsMd(root));
+        assertTrue(refreshed.contains("# User instructions"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v2 -->"));
+        assertFalse(refreshed.contains("Old guidance."));
     }
 
     private static int occurrences(String value, String token) {

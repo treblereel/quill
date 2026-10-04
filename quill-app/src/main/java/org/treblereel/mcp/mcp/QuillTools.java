@@ -260,7 +260,7 @@ public final class QuillTools {
     }
 
     @Tool(structured = true,
-            description = "Get a compact stateless snapshot of change planning, verification evidence, and ordered next actions without executing builds.")
+            description = "Get a compact stateless change snapshot with a primary directive, phase gate, review checklist, verification receipt, and stable action IDs without executing builds.")
     public String change_session(
             @ToolArg(description = "Classes or source paths; omit to infer up to 10 dirty JVM files") Optional<List<String>> targets,
             @ToolArg(description = "Concise description of the intended change") String change,

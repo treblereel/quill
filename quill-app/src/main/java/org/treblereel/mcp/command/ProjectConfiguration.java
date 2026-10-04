@@ -12,8 +12,10 @@ final class ProjectConfiguration {
 
     private static final String CLAUDE_BLOCK_START = "<!-- quill:managed:start -->";
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
+    private static final String INSTRUCTIONS_VERSION = "<!-- quill:instructions:v2 -->";
     private static final String QUILL_CLAUDE_MD = """
             <!-- quill:managed:start -->
+            <!-- quill:instructions:v2 -->
             ## Quill — Codebase Intelligence (MCP)
 
             At the beginning of a coding or code-analysis task, call `get_overview`. Before broad
@@ -32,16 +34,23 @@ final class ProjectConfiguration {
             from dirty JVM sources. Use `plan_change` or `verify_change` when only that focused view
             is needed. Keep the default `view=auto` and summary detail so only the current phase is
             returned; request another view or full detail only to inspect omitted evidence. When
-            build evidence is missing or stale, prefer the
+            acting on a snapshot, follow `directive.primary_action` first. Treat `phase_gate`
+            required evidence and required `review_checklist` items as blockers; advisory checklist
+            items are prompts to inspect evidence, not proof of human review. Reuse `action_id` to
+            recognize unchanged guidance after refreshing the same session. When build evidence is
+            missing or stale, prefer the
             `verification_plan` command whose scope is `quick_compile`: run its exact `argv` from
             `working_directory` in the external shell, then verify again. This compiles production
             and standard test sources without running tests. Treat `focused` and `module_fallback` as
             separate test recommendations; run them only when the task or user requires tests. Quill
-            recommends commands but never executes a build or persists change-session state.
+            recommends commands but never executes a build or persists change-session state. Report
+            completion only when the phase is `complete`, its gate is satisfied, and the verification
+            receipt is verified.
             <!-- quill:managed:end -->
             """;
     private static final String QUILL_AGENTS_MD = """
             <!-- quill:managed:start -->
+            <!-- quill:instructions:v2 -->
             ## Quill MCP
 
             Quill is the primary code-intelligence tool for this repository. At the beginning of a
@@ -63,13 +72,17 @@ final class ProjectConfiguration {
             them from dirty JVM sources. Use `mcp__quill__plan_change` or `mcp__quill__verify_change`
             for a focused view. Keep the default `view=auto` and summary detail so only the current
             phase is returned; request another view or full detail only to inspect omitted evidence.
-            If build evidence is missing or stale,
+            Follow `directive.primary_action` first. Treat `phase_gate` required evidence and required
+            `review_checklist` items as blockers; advisory checklist items request inspection and do
+            not attest human review. Use `action_id` to recognize unchanged guidance after refreshing
+            the same stateless session. If build evidence is missing or stale,
             prefer the `verification_plan` command with scope `quick_compile`: run its exact `argv`
             from `working_directory` using the terminal, then verify again. It compiles production
             and standard test sources without running tests. Commands with scope `focused` or
             `module_fallback` are separate test recommendations; run them only when the task or user
             requires tests. Quill recommends commands but does not execute builds or persist
-            change-session state.
+            change-session state. Report completion only when the phase is `complete`, its gate is
+            satisfied, and the verification receipt is verified.
             <!-- quill:managed:end -->
             """;
 
@@ -186,7 +199,8 @@ final class ProjectConfiguration {
             boolean start = content.contains(CLAUDE_BLOCK_START);
             boolean end = content.contains(CLAUDE_BLOCK_END);
             if (!start && !end) return InstructionsState.MISSING;
-            return start && end ? InstructionsState.CURRENT : InstructionsState.INVALID;
+            return start && end && content.contains(INSTRUCTIONS_VERSION)
+                    ? InstructionsState.CURRENT : InstructionsState.INVALID;
         } catch (IOException error) {
             return InstructionsState.INVALID;
         }

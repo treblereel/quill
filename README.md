@@ -487,7 +487,10 @@ JAR fall back to `quill` from `PATH`, keeping the generated configuration binary
 Other settings are preserved, repeated initialization is a no-op, and an existing
 user-owned `mcp_servers.quill` section is never overwritten. A Quill-managed project entry
 whose absolute launcher path no longer exists is repaired when initialization runs from a
-working native executable. Quill does not create a Codex configuration file implicitly.
+working native executable. Initialization also refreshes versioned Quill guidance in `AGENTS.md`
+and `CLAUDE.md`, preserving surrounding user content, so both clients follow the current
+change-session directive, phase gate, review, and verification contract. Quill does not create a
+Codex configuration file implicitly.
 
 Here `cwd` lets Quill discover the project automatically, so `--project` is not
 needed. Project-scoped configuration is loaded only for trusted projects. Check the

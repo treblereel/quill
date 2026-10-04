@@ -95,7 +95,7 @@ class ProjectConfigurationTest {
                 <!-- quill:managed:end -->
                 """);
 
-        assertEquals(ProjectConfiguration.InstructionsState.INVALID,
+        assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
                 ProjectConfiguration.inspectAgentsMd(root));
 
         ProjectConfiguration.ensureAgentsMd(root);
@@ -110,5 +110,37 @@ class ProjectConfigurationTest {
 
     private static int occurrences(String value, String token) {
         return value.split(java.util.regex.Pattern.quote(token), -1).length - 1;
+    }
+
+    @Test
+    void malformedBoundariesNeverOverwriteOrDeleteUserText() throws Exception {
+        for (String content : java.util.List.of(
+                "<!-- quill:managed:start -->\nUser tail\n",
+                "<!-- quill:managed:end -->\n<!-- quill:managed:start -->\nUser tail\n",
+                "<!-- quill:managed:start --><!-- quill:managed:start -->"
+                        + "User tail<!-- quill:managed:end -->")) {
+            Path file = root.resolve("AGENTS.md");
+            Files.writeString(file, content);
+            assertEquals(ProjectConfiguration.InstructionsState.INVALID,
+                    ProjectConfiguration.inspectAgentsMd(root));
+            ProjectConfiguration.ensureAgentsMd(root);
+            assertEquals(content, Files.readString(file));
+            assertFalse(ProjectConfiguration.removeAgentsMd(root));
+            assertEquals(content, Files.readString(file));
+        }
+    }
+
+    @Test
+    void versionMarkerCannotAttestModifiedContentOrAnExternalBlock() throws Exception {
+        ProjectConfiguration.ensureClaudeMd(root);
+        Path file = root.resolve("CLAUDE.md");
+        String content = Files.readString(file);
+        Files.writeString(file, content.replace("directive.primary_action", "obsolete"));
+        assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
+                ProjectConfiguration.inspectClaudeMd(root));
+        Files.writeString(file, "<!-- quill:instructions:v2 -->\n"
+                + "<!-- quill:managed:start -->\nOld instructions\n<!-- quill:managed:end -->\n");
+        assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
+                ProjectConfiguration.inspectClaudeMd(root));
     }
 }

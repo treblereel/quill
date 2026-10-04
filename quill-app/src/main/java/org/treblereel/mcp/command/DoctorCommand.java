@@ -163,7 +163,10 @@ public class DoctorCommand implements Callable<Integer> {
                     "Run `quill init --project " + normalized + "`"));
             case INVALID -> checks.add(Check.warning("claude_instructions",
                     "CLAUDE.md contains an incomplete managed Quill block",
-                    "Run `quill init --project " + normalized + "` to replace it"));
+                    "Repair Quill marker boundaries in CLAUDE.md, then run `quill init`"));
+            case OUTDATED -> checks.add(Check.warning("claude_instructions",
+                    "CLAUDE.md contains outdated or modified managed Quill guidance",
+                    "Run `quill init --project " + normalized + "` to refresh it"));
         }
         switch (ProjectConfiguration.inspectAgentsMd(normalized)) {
             case CURRENT -> checks.add(Check.pass("codex_instructions",
@@ -173,7 +176,10 @@ public class DoctorCommand implements Callable<Integer> {
                     "Run `quill init --project " + normalized + "`"));
             case INVALID -> checks.add(Check.warning("codex_instructions",
                     "AGENTS.md contains an incomplete managed Quill block",
-                    "Run `quill init --project " + normalized + "` to replace it"));
+                    "Repair Quill marker boundaries in AGENTS.md, then run `quill init`"));
+            case OUTDATED -> checks.add(Check.warning("codex_instructions",
+                    "AGENTS.md contains outdated or modified managed Quill guidance",
+                    "Run `quill init --project " + normalized + "` to refresh it"));
         }
         if (ClaudeSettingsInstaller.isEnabled(normalized)) {
             checks.add(Check.pass("claude_approval",

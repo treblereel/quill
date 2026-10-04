@@ -8,11 +8,10 @@ import org.treblereel.mcp.QuillLauncher;
 /** Owns the reversible project configuration installed around an index generation. */
 final class ProjectConfiguration {
 
-    enum InstructionsState { CURRENT, MISSING, INVALID }
+    enum InstructionsState { CURRENT, MISSING, OUTDATED, INVALID }
 
     private static final String CLAUDE_BLOCK_START = "<!-- quill:managed:start -->";
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
-    private static final String INSTRUCTIONS_VERSION = "<!-- quill:instructions:v2 -->";
     private static final String QUILL_CLAUDE_MD = """
             <!-- quill:managed:start -->
             <!-- quill:instructions:v2 -->
@@ -37,7 +36,11 @@ final class ProjectConfiguration {
             acting on a snapshot, follow `directive.primary_action` first. Treat `phase_gate`
             required evidence and required `review_checklist` items as blockers; advisory checklist
             items are prompts to inspect evidence, not proof of human review. Reuse `action_id` to
-            recognize unchanged guidance after refreshing the same session. When build evidence is
+            recognize unchanged guidance after refreshing the same session. Views project evidence
+            and preserve the same directive. Inspect its `evidence_snapshot`; use its
+            `preparation_command` to compile stale test evidence or its `retry_command` after fixing
+            diagnostics, then refresh the session. Incomplete test evidence alone does not require
+            test execution. When build evidence is
             missing or stale, prefer the
             `verification_plan` command whose scope is `quick_compile`: run its exact `argv` from
             `working_directory` in the external shell, then verify again. This compiles production
@@ -75,7 +78,10 @@ final class ProjectConfiguration {
             Follow `directive.primary_action` first. Treat `phase_gate` required evidence and required
             `review_checklist` items as blockers; advisory checklist items request inspection and do
             not attest human review. Use `action_id` to recognize unchanged guidance after refreshing
-            the same stateless session. If build evidence is missing or stale,
+            the same stateless session. Views preserve the directive. Inspect its `evidence_snapshot`
+            and run its `preparation_command` for stale test evidence or its `retry_command` after
+            repairing diagnostics, then refresh the session. Incomplete test evidence alone does not
+            require test execution. If build evidence is missing or stale,
             prefer the `verification_plan` command with scope `quick_compile`: run its exact `argv`
             from `working_directory` using the terminal, then verify again. It compiles production
             and standard test sources without running tests. Commands with scope `focused` or
@@ -144,9 +150,14 @@ final class ProjectConfiguration {
             String content = Files.exists(file) ? Files.readString(file) : "";
             int start = content.indexOf(CLAUDE_BLOCK_START);
             int end = start < 0 ? -1 : content.indexOf(CLAUDE_BLOCK_END, start);
+            if (!validMarkers(content)) {
+                System.err.println("[quill] Warning: malformed Quill markers in " + file
+                        + "; repair the marker boundaries before refreshing instructions.");
+                return;
+            }
             String updated;
             if (start >= 0) {
-                int after = end < 0 ? content.length() : end + CLAUDE_BLOCK_END.length();
+                int after = end + CLAUDE_BLOCK_END.length();
                 updated = content.substring(0, start) + managedBlock.strip()
                         + content.substring(after);
             } else {
@@ -154,6 +165,7 @@ final class ProjectConfiguration {
                 String gap = content.isEmpty() ? "" : "\n";
                 updated = content + separator + gap + managedBlock.strip() + "\n";
             }
+            if (content.equals(updated)) return;
             Files.writeString(file, updated);
             System.err.println("[quill] Updated " + description + ".");
         } catch (IOException error) {
@@ -173,10 +185,15 @@ final class ProjectConfiguration {
     private static boolean removeInstructions(Path file) throws IOException {
         if (!Files.isRegularFile(file)) return false;
         String content = Files.readString(file);
+        if (!validMarkers(content)) {
+            System.err.println("[quill] Warning: malformed Quill markers in " + file
+                    + "; instructions were preserved.");
+            return false;
+        }
         int start = content.indexOf(CLAUDE_BLOCK_START);
         if (start < 0) return false;
         int end = content.indexOf(CLAUDE_BLOCK_END, start);
-        int after = end < 0 ? content.length() : end + CLAUDE_BLOCK_END.length();
+        int after = end + CLAUDE_BLOCK_END.length();
         String updated = (content.substring(0, start) + content.substring(after))
                 .replaceFirst("\\s+$", "");
         if (updated.isBlank()) Files.delete(file);
@@ -185,25 +202,37 @@ final class ProjectConfiguration {
     }
 
     static InstructionsState inspectClaudeMd(Path root) {
-        return inspectInstructions(root.resolve("CLAUDE.md"));
+        return inspectInstructions(root.resolve("CLAUDE.md"), QUILL_CLAUDE_MD);
     }
 
     static InstructionsState inspectAgentsMd(Path root) {
-        return inspectInstructions(root.resolve("AGENTS.md"));
+        return inspectInstructions(root.resolve("AGENTS.md"), QUILL_AGENTS_MD);
     }
 
-    private static InstructionsState inspectInstructions(Path file) {
+    private static InstructionsState inspectInstructions(Path file, String expected) {
         if (!Files.isRegularFile(file)) return InstructionsState.MISSING;
         try {
             String content = Files.readString(file);
             boolean start = content.contains(CLAUDE_BLOCK_START);
             boolean end = content.contains(CLAUDE_BLOCK_END);
             if (!start && !end) return InstructionsState.MISSING;
-            return start && end && content.contains(INSTRUCTIONS_VERSION)
-                    ? InstructionsState.CURRENT : InstructionsState.INVALID;
+            if (!validMarkers(content)) return InstructionsState.INVALID;
+            String block = content.substring(content.indexOf(CLAUDE_BLOCK_START),
+                    content.indexOf(CLAUDE_BLOCK_END) + CLAUDE_BLOCK_END.length());
+            return block.replace("\r\n", "\n").equals(expected.strip())
+                    ? InstructionsState.CURRENT : InstructionsState.OUTDATED;
         } catch (IOException error) {
             return InstructionsState.INVALID;
         }
+    }
+
+    private static boolean validMarkers(String content) {
+        int start = content.indexOf(CLAUDE_BLOCK_START);
+        int end = content.indexOf(CLAUDE_BLOCK_END);
+        if (start < 0 && end < 0) return true;
+        return start >= 0 && end > start
+                && content.indexOf(CLAUDE_BLOCK_START, start + CLAUDE_BLOCK_START.length()) < 0
+                && content.indexOf(CLAUDE_BLOCK_END, end + CLAUDE_BLOCK_END.length()) < 0;
     }
 
     private static void ensureGitignore(Path root) {

@@ -315,3 +315,34 @@ accuracy was 1/2: the first answer returned `verified` as the string `"false"` i
 `false`; the second answer matched all expected fields. This is evidence of tool-selection adoption
 in two tasks, not comparative effectiveness or a full agent edit/build workflow. Detailed captures
 are written to `target/benchmarks/quill-guidance-adoption.json` and include token counts and tool traces.
+
+### Bounded real-agent edit/build/recovery
+
+```bash
+python3 scripts/quill_agent_change_loop.py --key-file /path/to/temporary-api-key
+```
+
+This separate probe enables two explicit action tools in an isolated Maven fixture: a single exact
+source replacement in `GreetingService.java`, and external execution of the current Quill primary
+directive's compile recommendation. It accepts only system Maven `test-compile` in the fixture
+directory, with a maximum of four executions. No arbitrary shell or test-running command is exposed.
+The existing benchmark remains read-only unless action instructions and extra tools are explicitly
+provided. The temporary key file is removed even on failure.
+
+The harness injects a compiler error immediately before the first compile, but the model performs
+the requested edit and subsequent repair itself. Checks require failed/blocked then successful
+compilation, the requested greeting and unchanged public signature, regenerated standard test
+classes, no test reports, a final agent `change_session` call, and a completed verified receipt.
+The receipt continues to declare exact command attestation `not_captured`; harness execution records
+provide the separate exact argv evidence.
+
+On October 3, 2026, one `gpt-5.6-terra` run passed the edit/compile/recovery checks using the freshly
+installed `AGENTS.md`. Its trace was `get_overview` → `change_session` → source read → edit →
+`change_session` → failed compile → source read → repair → successful compile → `change_session`.
+Both builds used `/opt/homebrew/bin/mvn test-compile`; the final answer was
+`{"phase":"complete","verified":true}` with correct JSON types. The run used 11 model requests,
+108,376 aggregate input tokens and 654 output tokens. Captures are stored in
+`target/benchmarks/quill-agent-change-loop.json`.
+
+This demonstrates one constrained API-agent workflow, not native Codex/Claude client integration,
+unrestricted editing safety, comparative effectiveness, or reliability across repeated runs.

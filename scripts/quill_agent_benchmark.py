@@ -563,13 +563,14 @@ def selected_quill_tools(task: dict[str, Any], quill: QuillTools | None,
 def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: str,
               reasoning_effort: str, source: SourceTools,
               quill: QuillTools | None, tool_selection: str = "suite",
-              guidance: str = "") -> dict[str, Any]:
+              guidance: str = "", *, action_instructions: str = "",
+              extra_tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     expected = task.get("expected")
     if not isinstance(expected, dict) or not expected:
         raise ValueError(f"Task {task.get('id')} has no expected object")
     expected_shape = {key: json_type(value) for key, value in expected.items()}
     quill_tools = selected_quill_tools(task, quill, tool_selection)
-    tools = [*SOURCE_TOOLS, *quill_tools]
+    tools = [*SOURCE_TOOLS, *quill_tools, *(extra_tools or [])]
     tool_catalog_bytes = len(json.dumps(tools, ensure_ascii=False).encode())
     instructions = (
         "You are evaluating a Java project. Answer only from tool evidence. "
@@ -581,6 +582,10 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
         f"{json.dumps(expected_shape)}. Array values must be sorted. "
         "Use null when evidence is insufficient."
     )
+    if action_instructions:
+        instructions = (action_instructions + "\nReturn only JSON with one key, observed, "
+                        "whose object has exactly this key/type shape: "
+                        + json.dumps(expected_shape) + ". Use null for insufficient evidence.")
     if guidance and mode == "with_quill":
         instructions += "\n\nInstalled Quill guidance:\n" + guidance
     next_input: Any = task["prompt"]

@@ -38,6 +38,25 @@ class FakeResponses:
 
 class QuillAgentBenchmarkTest(unittest.TestCase):
 
+    def test_action_mode_is_explicit_and_read_only_default_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / "A.java").write_text("class A {}\n")
+            for action_mode in (False, True):
+                transport = FakeResponses()
+                run_agent(ResponsesClient("unused", "https://example.invalid", 1, transport),
+                          {"id": "one", "prompt": "answer", "expected": {"answer": 42}},
+                          "with_quill", "test-model", "medium", SourceTools(project, 1000), None,
+                          action_instructions="Bounded writes permitted" if action_mode else "",
+                          extra_tools=[{"type": "function", "name": "bounded_edit"}]
+                          if action_mode else None)
+                payload = transport.payloads[0]
+                self.assertEqual(action_mode, "Bounded writes permitted" in payload["instructions"])
+                self.assertEqual(not action_mode, "Do not modify files or run builds" in
+                                 payload["instructions"])
+                self.assertEqual(action_mode, any(tool["name"] == "bounded_edit"
+                                                 for tool in payload["tools"]))
+
     def test_installed_guidance_is_injected_only_in_quill_mode(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)

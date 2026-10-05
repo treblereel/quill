@@ -16,14 +16,15 @@ import java.util.Set;
 /** Registers the project-local server; optional invocation permissions require separate consent. */
 final class ClaudeSettingsInstaller {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = new ObjectMapper()
+            .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
 
     private ClaudeSettingsInstaller() {}
 
     static boolean install(Path projectRoot) {
         Path file = projectRoot.resolve(".claude/settings.json");
         try {
-            ObjectNode root = readRoot(file);
+            ObjectNode root = readPermissionSettings(file);
             if (root == null) return false;
             JsonNode configured = root.get("enabledMcpjsonServers");
             if (configured != null && !configured.isArray()) return false;
@@ -92,7 +93,7 @@ final class ClaudeSettingsInstaller {
         Path receiptFile = projectRoot.resolve(".claude/quill-permissions.json");
         try {
             if (!rules.stream().allMatch(ClaudeSettingsInstaller::concreteQuillRule)) return false;
-            ObjectNode root = readRoot(file);
+            ObjectNode root = readPermissionSettings(file);
             ObjectNode receipt = readRoot(receiptFile);
             if (root == null || receipt == null || !validReceipt(receipt)) return false;
             JsonNode configured = root.get("permissions");
@@ -130,7 +131,7 @@ final class ClaudeSettingsInstaller {
         }
     }
 
-    private static boolean removeOwnedPermissions(Path projectRoot) throws IOException {
+    static boolean removeOwnedPermissions(Path projectRoot) throws IOException {
         Path receiptFile = projectRoot.resolve(".claude/quill-permissions.json");
         if (!Files.exists(receiptFile)) return false;
         ObjectNode receipt = readRoot(receiptFile);
@@ -186,11 +187,38 @@ final class ClaudeSettingsInstaller {
         return rule != null && rule.matches("mcp__quill__[a-z][a-z0-9_]*");
     }
 
+    static List<String> ownedRules(Path projectRoot) throws IOException {
+        Path file = projectRoot.resolve(".claude/quill-permissions.json");
+        ObjectNode receipt = readRoot(file);
+        if (receipt == null || !validReceipt(receipt)) throw new IOException("Invalid permission receipt");
+        java.util.ArrayList<String> rules = new java.util.ArrayList<>();
+        receipt.path("rules").forEach(rule -> rules.add(rule.asText()));
+        return List.copyOf(rules);
+    }
+
+    static ObjectNode readPermissionSettings(Path file) throws IOException {
+        ObjectNode root = readRoot(file);
+        if (root == null) throw new IOException("Unsupported settings file");
+        JsonNode permissions = root.get("permissions");
+        if (permissions != null && !permissions.isObject()) throw new IOException("Invalid permissions object");
+        if (permissions != null) {
+            for (String kind : List.of("allow", "ask", "deny")) {
+                JsonNode configured = permissions.get(kind);
+                if (configured != null && !stringArray(configured)) {
+                    throw new IOException("Invalid permission rules");
+                }
+            }
+        }
+        return root;
+    }
+
     static boolean isEnabled(Path projectRoot) {
         Path file = projectRoot.resolve(".claude/settings.json");
         if (!Files.isRegularFile(file)) return false;
         try {
-            JsonNode enabled = JSON.readTree(file.toFile()).path("enabledMcpjsonServers");
+            ObjectNode root = readRoot(file);
+            if (root == null) return false;
+            JsonNode enabled = root.path("enabledMcpjsonServers");
             if (!enabled.isArray()) return false;
             for (JsonNode name : enabled) if ("quill".equals(name.asText())) return true;
         } catch (IOException ignored) {

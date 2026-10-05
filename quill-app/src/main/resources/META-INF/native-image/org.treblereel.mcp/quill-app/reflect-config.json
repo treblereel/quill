@@ -1,5 +1,10 @@
 [
   {
+    "name": "org.treblereel.mcp.command.ClaudePermissionStatus$Report",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
     "name": "org.treblereel.mcp.mcp.QuillTools",
     "allPublicMethods": true
   },

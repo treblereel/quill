@@ -220,6 +220,26 @@ public class DoctorCommand implements Callable<Integer> {
             checks.add(Check.pass("claude_tool_profile", "Claude Code MCP uses the `"
                     + toolProfile + "` Quill tool profile"));
         }
+        ClaudePermissionStatus.Report permissions = ClaudePermissionStatus.inspect(normalized);
+        String permissionStatusCommand = "quill client permissions status --project \"" + normalized + "\"";
+        if (!permissions.valid()) {
+            checks.add(Check.warning("claude_tool_permissions", "Invalid local permission evidence in "
+                    + String.join(", ", permissions.invalid_files()), permissionStatusCommand + " --json"));
+        } else if (!permissions.denied_tools().isEmpty() || !permissions.ask_tools().isEmpty()) {
+            checks.add(Check.warning("claude_tool_permissions", "Local Quill permission policies: denied="
+                    + permissions.denied_tools().size() + ", ask=" + permissions.ask_tools().size()
+                    + "; allow rules do not override them", permissionStatusCommand
+                    + " --json; review existing policies in Claude /permissions"));
+        } else if (!permissions.missing_tools().isEmpty()) {
+            checks.add(Check.info("claude_tool_permissions", "Optional no-prompt Quill grants are missing for "
+                    + permissions.missing_tools().size() + " current tools",
+                    permissions.server_configured()
+                            ? "quill client permissions grant --project \"" + normalized + "\""
+                            : "quill init --project \"" + normalized + "\""));
+        } else {
+            checks.add(Check.pass("claude_tool_permissions", "All current read-only Quill tools have local allow rules"));
+        }
+        checks.add(Check.info("claude_permission_scope", ClaudePermissionStatus.LIMITATION, null));
         return new Report(normalized, List.copyOf(checks));
     }
 

@@ -20,6 +20,30 @@ class DoctorCommandTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @Test
+    void separatesMcpRegistrationFromPermissionPolicies(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        McpJsonInstaller.installProject(project, null);
+        ClaudeSettingsInstaller.install(project);
+        var initial = checksById(JSON.readTree(DoctorCommand.toJson(DoctorCommand.inspect(project))));
+        assertEquals("pass", initial.get("claude_approval").path("status").asText());
+        assertEquals("info", initial.get("claude_tool_permissions").path("status").asText());
+        assertTrue(initial.get("claude_tool_permissions").path("action").asText().contains("permissions grant"));
+        assertTrue(ClaudeSettingsInstaller.allowTools(project,
+                org.treblereel.mcp.mcp.ReadOnlyToolNames.all()));
+        var granted = checksById(JSON.readTree(DoctorCommand.toJson(DoctorCommand.inspect(project))));
+        assertEquals("pass", granted.get("claude_tool_permissions").path("status").asText());
+        Path local = project.resolve(".claude/settings.local.json");
+        var settings = JSON.readTree(local.toFile());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) settings.path("permissions"))
+                .putArray("deny").add("mcp__*");
+        Files.writeString(local, settings.toString());
+        var denied = checksById(JSON.readTree(DoctorCommand.toJson(DoctorCommand.inspect(project))));
+        assertEquals("warning", denied.get("claude_tool_permissions").path("status").asText());
+        assertTrue(denied.get("claude_tool_permissions").path("message").asText().contains("do not override"));
+        assertTrue(denied.get("claude_permission_scope").path("message").asText().contains("not checked"));
+    }
+
+    @Test
     void jsonReportHasStableSchemaAndActionableFailures(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), "<project/>");
         ProjectConfiguration.ensureClaudeMd(project);

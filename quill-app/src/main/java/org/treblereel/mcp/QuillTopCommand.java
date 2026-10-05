@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.Callable;
 import org.treblereel.mcp.command.CleanCommand;
+import org.treblereel.mcp.command.ClientCommand;
 import org.treblereel.mcp.command.DoctorCommand;
 import org.treblereel.mcp.command.InitCommand;
 import org.treblereel.mcp.command.StatusCommand;
@@ -27,7 +28,7 @@ import picocli.CommandLine.Option;
 @Command(name = "quill", mixinStandardHelpOptions = true,
         versionProvider = QuillTopCommand.VersionProvider.class,
         subcommands = {InitCommand.class, UpdateCommand.class, StatusCommand.class,
-                DoctorCommand.class, CleanCommand.class, WorkspaceCommand.class})
+                DoctorCommand.class, CleanCommand.class, WorkspaceCommand.class, ClientCommand.class})
 public class QuillTopCommand implements Callable<Integer> {
 
     @Option(names = "--mcp", description = "Start an MCP server (stdio transport)")
@@ -131,7 +132,7 @@ public class QuillTopCommand implements Callable<Integer> {
             }
             return CommandLine.ExitCode.OK;
         }
-        System.err.println("Use a subcommand (init, update, status, doctor, clean)"
+        System.err.println("Use a subcommand (init, update, status, doctor, clean, workspace, client)"
                 + " or --mcp to start the MCP server.");
         System.err.println("Run 'quill --help' for more information.");
         return CommandLine.ExitCode.USAGE;

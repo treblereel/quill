@@ -200,6 +200,25 @@ it. `quill clean` / `workspace clear` remove only permissions Quill added, prese
 rules. Claude's workspace trust and MCP connection approval are separate client checks;
 this option does not bypass them or change Codex permissions.
 
+Manage that choice later without re-indexing, rebuilding, or removing the MCP server:
+
+```bash
+quill client permissions status --project /path/to/project --json
+quill client permissions grant --project /path/to/project
+quill client permissions revoke --project /path/to/project
+# Apply to an initialized workspace and its recorded configured repositories:
+quill client permissions status --workspace /path/to/workspace
+```
+
+`grant` is explicit consent, so it does not ask another question. It requires an existing
+project-local Quill MCP server and never overrides `ask`/`deny`. `revoke` removes only grants
+recorded as Quill-owned; pre-existing user allows can still permit tools afterward. Both
+mutations accept `--workspace` too and validate targets before writing. `status` reports
+local allowed/missing/denied/ask tools, ownership and invalid files; it never writes files
+or contacts an AI service. `doctor` includes the same local permission diagnosis separately
+from MCP registration. Neither check attests global/managed policies, hooks, workspace trust
+or a live client's effective permissions.
+
 The MCP server reconciles added and removed repositories while it is running. A newly added
 repository becomes routable immediately; run `workspace refresh` after compiling it to create its
 missing index. Refresh reports `added`, `removed`, `indexed`, `skipped`, `unchanged`, and `failed`

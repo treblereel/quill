@@ -350,6 +350,61 @@ final class WorkspaceToolQueries {
         }
     }
 
+    String getCompactOverview(int limit, int offset) {
+        WorkspaceProjectScope scope = registry.workspaceScope();
+        if (scope == null) return workspaceRequired();
+        ProjectScope.Snapshot snapshot = scope.snapshot();
+        int total = snapshot.projects().size();
+        int from = Math.min(offset, total);
+        int to = from + Math.min(limit, total - from);
+        ObjectNode root = JSON.createObjectNode();
+        root.put("view", "compact");
+        root.put("workspace_root", scope.root().toString());
+        root.put("revision", snapshot.revision());
+        root.put("scope", "Workspace inventory; counts and freshness are from indexes on this page, not a complete architecture or endpoint analysis.");
+        ArrayNode projects = root.putArray("projects");
+        // Resolve only this page; do not construct full overview/hub/DI responses.
+        for (ProjectScope.Project project : snapshot.projects().subList(from, to)) {
+            ObjectNode node = projects.addObject();
+            node.put("name", project.name());
+            node.put("relative_path", normalize(scope.root().relativize(project.root()).toString()));
+            ProjectRegistry.Resolution resolution = registry.resolve(project.name());
+            ProjectRegistry.ProjectIssue issue = resolution.issues().stream()
+                    .filter(value -> value.project().equals(project.name())).findFirst().orElse(null);
+            node.put("indexed", !resolution.projects().isEmpty());
+            node.put("status", issue != null ? issue.code()
+                    : resolution.projects().isEmpty() ? "unavailable" : "ready");
+            if (issue != null) {
+                node.put("message", issue.message());
+                node.put("recommended_action", issue.recommendedAction());
+            }
+            try {
+                appendFreshness(node, resolution);
+                if (!resolution.projects().isEmpty()) {
+                    Jdbi db = resolution.projects().getFirst().jdbi();
+                    Map<String, String> metadata = IndexReader.getMetadata(db);
+                    node.put("framework", metadata.getOrDefault("framework", "unknown"));
+                    node.put("indexed_classes", IndexReader.countClasses(db));
+                    node.put("indexed_beans", IndexReader.countBeans(db));
+                }
+            } catch (Exception failure) {
+                node.put("status", "query_failed");
+                node.put("message", ProjectRegistry.safeMessage(failure));
+            }
+            ObjectNode next = node.putObject("details_request");
+            next.put("tool", "get_overview");
+            next.putObject("arguments").put("project", project.name()).put("view", "full");
+        }
+        ToolResponseSupport.appendPage(root, to - from, total, limit, offset);
+        if (to < total) {
+            ObjectNode next = root.putObject("next_page_request");
+            next.put("tool", "get_overview");
+            next.putObject("arguments").put("view", "compact").put("limit", limit).put("offset", to);
+        }
+        appendDiagnostics(root, snapshot.diagnostics());
+        return root.toString();
+    }
+
     String listRepositories(boolean includeModules, int limit, int offset) {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null) return workspaceRequired();

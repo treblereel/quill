@@ -17,7 +17,10 @@ final class ProjectConfiguration {
             <!-- quill:instructions:v2 -->
             ## Quill — Codebase Intelligence (MCP)
 
-            At the beginning of a coding or code-analysis task, call `get_overview`. Before broad
+            At the beginning of a coding or code-analysis task, call `get_overview`.
+            In workspace mode, request `view=compact` first and follow `next_page_request` to
+            cover the inventory; use `project=<name>` with `view=full` for detailed evidence.
+            Before broad
             code search, dependency or impact analysis, or running a large test suite, prefer Quill
             for project-wide semantic
             questions: implementations, annotations, endpoints, DI, dependency graphs, affected tests,
@@ -60,7 +63,9 @@ final class ProjectConfiguration {
 
             Quill is the primary code-intelligence tool for this repository. At the beginning of a
             coding or code-analysis task, discover the `mcp__quill__*` tools and call
-            `mcp__quill__get_overview`.
+            `mcp__quill__get_overview`. In workspace mode, request `view=compact` first and
+            follow `next_page_request` to cover the inventory; use `project=<name>` with
+            `view=full` for detailed evidence.
 
             Use Quill before broad filesystem searches for symbols, implementations, usages, call
             and type hierarchies, dependencies, architecture, framework endpoints, dependency

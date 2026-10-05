@@ -801,12 +801,29 @@ public final class QuillTools {
     }
 
     @Tool(readOnly = true, structured = true, output = "overview",
-            description = "Start code analysis here: orient on indexed projects, frameworks, architecture hubs, DI problems, Git activity and freshness. For planning or checking a code change, follow with change_session when available.")
+            description = "Start code analysis here. In workspace mode use view=compact for a paginated project map, then project=<name> for full architecture, DI and Git evidence. The default full view preserves the detailed overview. Follow with change_session for code changes.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings (default: false)") Optional<Boolean> details,
-            @ToolArg(description = "Project to query; omit for all") Optional<String> project) {
+            @ToolArg(description = "Project to query; omit for all") Optional<String> project,
+            @ToolArg(description = "full (default) or compact (workspace map)", allowed = {"full", "compact"}) Optional<String> view,
+            @ToolArg(description = "Compact view page size (default 20, max 50)") Optional<Integer> limit,
+            @ToolArg(description = "Compact view offset (default 0)") Optional<Integer> offset) {
+        if (view.orElse("full").equals("compact")) {
+            if (project.isPresent() || details.orElse(false)) {
+                return errorResponse("Compact view is a workspace map: omit project and details=true; use view=full for project details.");
+            }
+            return workspace.getCompactOverview(clamp(limit.orElse(20), 1, 50),
+                    clamp(offset.orElse(0), 0, Integer.MAX_VALUE));
+        }
+        if (!view.orElse("full").equals("full") || limit.isPresent() || offset.isPresent()) {
+            return errorResponse("Use view=compact for pagination; view must be full or compact.");
+        }
         return forAllProjects(project.orElse(null),
                 p -> queries.getOverview(p.jdbi(), details.orElse(false)));
+    }
+
+    public String get_overview(Optional<Boolean> details, Optional<String> project) {
+        return get_overview(details, project, Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     @Tool(readOnly = true, structured = true, description = "Search current classes by wildcard name with source, origin, module, and bean context.")

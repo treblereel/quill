@@ -14,7 +14,11 @@ final class ToolOutputSchemas {
                     field("capabilities", unconstrainedObject()),
                     field("project", unconstrainedObject()),
                     field("problems", unconstrainedObject()),
-                    field("architecture_hubs", array()));
+                    field("architecture_hubs", array()),
+                    field("view", string()), field("workspace_root", string()),
+                    field("revision", integer()), field("scope", string()),
+                    field("projects", array()), field("next_page_request", object()),
+                    pageFields());
             case "symbol_search" -> object(
                     field("pattern", string()), field("kind", string()),
                     field("language_filter", string()), field("symbols", array()),

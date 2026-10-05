@@ -23,12 +23,15 @@ final class RouterTools {
     }
 
     @Tool(readOnly = true, structured = true,
-            description = "Summarize indexed projects before choosing a specialized tool.")
+            description = "Start here; in workspace mode use view=compact for a paginated project map, then project=<name> for full details.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings")
                     Optional<Boolean> details,
-            @ToolArg(description = "Project to query; omit for all") Optional<String> project) {
-        return tools.get_overview(details, project);
+            @ToolArg(description = "Project to query; omit for all") Optional<String> project,
+            @ToolArg(description = "full (default) or compact (workspace map)", allowed = {"full", "compact"}) Optional<String> view,
+            @ToolArg(description = "Compact page size (default 20, max 50)") Optional<Integer> limit,
+            @ToolArg(description = "Compact offset (default 0)") Optional<Integer> offset) {
+        return tools.get_overview(details, project, view, limit, offset);
     }
 
     @Tool(readOnly = true, structured = true,

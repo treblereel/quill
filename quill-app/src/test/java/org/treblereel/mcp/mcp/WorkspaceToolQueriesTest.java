@@ -54,6 +54,75 @@ class WorkspaceToolQueriesTest {
     }
 
     @Test
+    void compactOverviewPagesInventoryAndProvidesFullDetailRequests() throws Exception {
+        JsonNode first = compact(1, 0);
+        assertEquals("compact", first.path("view").asText());
+        assertEquals(2, first.path("total").asInt());
+        assertEquals(1, first.path("showing").asInt());
+        assertTrue(first.path("has_more").asBoolean());
+        assertEquals(1, first.path("next_page_request").path("arguments").path("offset").asInt());
+        JsonNode project = first.path("projects").get(0);
+        assertEquals("engine", project.path("name").asText());
+        assertTrue(project.path("indexed").asBoolean());
+        assertEquals(1, project.path("indexed_classes").asInt());
+        assertEquals("unknown", project.path("framework").asText());
+        assertTrue(project.has("index_freshness"));
+        assertEquals("engine", project.path("details_request").path("arguments").path("project").asText());
+        assertFalse(project.has("architecture_hubs"));
+        JsonNode last = compact(1, 1);
+        assertEquals("platform", last.path("projects").get(0).path("name").asText());
+        assertFalse(last.path("has_more").asBoolean());
+        assertFalse(last.has("next_page_request"));
+        assertTrue(compact(1, Integer.MAX_VALUE).path("projects").isEmpty());
+    }
+
+    @Test
+    void compactOverviewIncludesUnbuiltProjectsWithoutInventingCounts() throws Exception {
+        Path root = Files.createDirectories(workspace.resolve("unbuilt"));
+        Files.createDirectories(root.resolve(".git"));
+        Files.writeString(root.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>test</groupId><artifactId>unbuilt</artifactId><version>1</version></project>");
+        tools = new QuillTools(new ProjectRegistry(new WorkspaceProjectScope(workspace)));
+        JsonNode result = compact(20, 0);
+        assertEquals(3, result.path("total").asInt());
+        JsonNode unbuilt = result.path("projects").get(2);
+        assertEquals("unbuilt", unbuilt.path("name").asText());
+        assertEquals("build_required", unbuilt.path("status").asText());
+        assertFalse(unbuilt.path("indexed").asBoolean());
+        assertFalse(unbuilt.has("indexed_classes"));
+        assertFalse(unbuilt.has("framework"));
+        assertFalse(Files.exists(root.resolve("target")));
+    }
+
+    @Test
+    void compactOverviewRequiresWorkspaceAndRejectsConflictingArguments() throws Exception {
+        QuillTools single = new QuillTools(new ProjectRegistry());
+        JsonNode result = JSON.readTree(single.get_overview(Optional.empty(), Optional.empty(),
+                Optional.of("compact"), Optional.empty(), Optional.empty()));
+        assertEquals("workspace_mode_required", result.path("error").asText());
+        assertTrue(JSON.readTree(tools.get_overview(Optional.of(true), Optional.empty(),
+                Optional.of("compact"), Optional.empty(), Optional.empty())).has("error"));
+        assertTrue(JSON.readTree(tools.get_overview(Optional.empty(), Optional.of("engine"),
+                Optional.of("compact"), Optional.empty(), Optional.empty())).has("error"));
+        assertTrue(JSON.readTree(tools.get_overview(Optional.empty(), Optional.empty(),
+                Optional.of("full"), Optional.of(1), Optional.empty())).has("error"));
+    }
+
+    private JsonNode compact(int limit, int offset) throws Exception {
+        return JSON.readTree(tools.get_overview(Optional.empty(), Optional.empty(),
+                Optional.of("compact"), Optional.of(limit), Optional.of(offset)));
+    }
+
+    @Test
+    void legacyOverviewStillReturnsFullProjectEvidence() throws Exception {
+        JsonNode legacy = JSON.readTree(tools.get_overview(Optional.of(false), Optional.empty()));
+        JsonNode explicit = JSON.readTree(tools.get_overview(Optional.of(false), Optional.empty(),
+                Optional.of("full"), Optional.empty(), Optional.empty()));
+        assertEquals(legacy, explicit);
+        assertEquals(2, legacy.path("projects").size());
+        assertTrue(legacy.path("projects").get(0).path("data").has("architecture_hubs"));
+    }
+
+    @Test
     void listsIndexedRepositoriesAndModuleCoordinates() throws Exception {
         JsonNode result = JSON.readTree(tools.list_workspace_repositories(
                 Optional.of(true), Optional.empty(), Optional.empty()));

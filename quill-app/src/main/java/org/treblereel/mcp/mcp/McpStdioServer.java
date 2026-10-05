@@ -93,7 +93,7 @@ public final class McpStdioServer {
 
     static String serverInstructions(McpToolProfile profile) {
         String instructions = "Quill supplies read-only code intelligence for indexed JVM projects. "
-                + "Start code analysis with get_overview. ";
+                + "Start code analysis with get_overview; in workspace mode request view=compact first, then select a project for full details. ";
         if (profile.router() || profile.includes("change_session")) {
             instructions += "For a code change, query change_session "
                 + "before editing or choosing a build, then follow directive.primary_action and "

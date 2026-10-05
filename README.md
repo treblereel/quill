@@ -410,7 +410,13 @@ does not imply that an executor, reactive stream, or message publication has com
   an opaque `next_cursor`.
 - **assess_change_risk** — class blast radius or file-level risk based on file
   criticality, coupling, churn, and bus factor; accepts class names and arbitrary paths
-- **get_overview** — compact project summary by default; set `details=true` for diagnostic
+- **get_overview** — existing full overview by default; in workspace mode use
+  `view=compact` for a paginated project map (default `limit=20`, max 50, `offset=0`).
+  The map includes unavailable projects, indexed framework/counts and freshness, and
+  explicit `next_page_request` / per-project `details_request` calls. Counts describe
+  the index, not a complete endpoint or architecture analysis. Compact mode cannot be
+  combined with a project selector or `details=true`; use `project=<name>, view=full`
+  for details. Pagination applies only to compact mode. Set `details=true` for diagnostic
   samples and per-dimension architecture-hub rankings. Its `capabilities` block advertises
   supported source languages, stable `symbol_id` chaining, and machine-readable errors
 

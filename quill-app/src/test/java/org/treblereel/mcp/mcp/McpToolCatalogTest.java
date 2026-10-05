@@ -322,7 +322,9 @@ class McpToolCatalogTest {
                 "error_code", "message", "retryable", "retry_with", "_meta");
         Map<String, Set<String>> expected = Map.of(
                 "get_overview", Set.of(
-                        "capabilities", "project", "problems", "architecture_hubs"),
+                        "capabilities", "project", "problems", "architecture_hubs",
+                        "view", "workspace_root", "revision", "scope", "projects", "next_page_request",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
                 "search_symbols", Set.of(
                         "pattern", "kind", "language_filter", "symbols",
                         "showing", "total", "limit", "offset", "has_more", "next_offset"),
@@ -420,6 +422,18 @@ class McpToolCatalogTest {
         assertEquals(Set.of("get_overview", "search_tools", "execute_tool"),
                 router.stream().map(tool -> tool.tool().name())
                         .collect(java.util.stream.Collectors.toSet()));
+        AsyncToolSpecification overview = router.stream()
+                .filter(tool -> tool.tool().name().equals("get_overview"))
+                .findFirst().orElseThrow();
+        assertTrue(((Map<?, ?>) overview.tool().inputSchema().get("properties")).keySet()
+                .containsAll(Set.of("details", "project", "view", "limit", "offset")));
+        McpSchema.CallToolResult compact = overview.callHandler()
+                .apply(null, new McpSchema.CallToolRequest(
+                        "get_overview", Map.of("view", "compact"), Map.of()))
+                .block(Duration.ofSeconds(2));
+        assertTrue(Boolean.TRUE.equals(compact.isError()));
+        assertEquals("WORKSPACE_MODE_REQUIRED", ((JsonNode) compact.structuredContent())
+                .path("error_code").asText());
         AsyncToolSpecification search = router.stream()
                 .filter(tool -> tool.tool().name().equals("search_tools"))
                 .findFirst().orElseThrow();

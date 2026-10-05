@@ -160,7 +160,8 @@ final class SymbolContract {
         ObjectNode location = node.putObject("location");
         if (sourceFile == null) location.putNull("path");
         else location.put("path", sourceFile);
-        location.put("line", sourceLine);
+        if (sourceLine > 0) location.put("line", sourceLine);
+        else location.putNull("line");
     }
 
     private static String encode(String value) {

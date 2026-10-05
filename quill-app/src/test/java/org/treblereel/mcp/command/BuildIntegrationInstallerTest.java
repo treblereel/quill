@@ -16,6 +16,11 @@ class BuildIntegrationInstallerTest {
     Path tempDir;
 
     @Test
+    void mavenExtensionVersionRemainsIndependentFromQuillReleaseVersion() {
+        assertEquals("0.1.0", BuildIntegrationInstaller.mavenExtensionVersion());
+    }
+
+    @Test
     void mavenInstallIsIdempotentAndUninstallPreservesOtherExtensions() throws Exception {
         Files.writeString(tempDir.resolve("pom.xml"), "<project/>");
         Path extensions = tempDir.resolve(".mvn/extensions.xml");

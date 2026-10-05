@@ -40,18 +40,25 @@ class PicocliNativeMetadataTest {
         JsonNode init = findCommand(commands, InitCommand.class.getName());
         Set<String> fields = new HashSet<>();
         init.path("fields").forEach(field -> fields.add(field.path("name").asText()));
-        assertEquals(Set.of("projectPath", "indexOnly", "timings", "probeMcp"), fields);
+        assertEquals(Set.of("projectPath", "indexOnly", "timings", "probeMcp",
+                "allowQuillTools"), fields);
     }
 
     @Test
     void manualMetadataDoesNotDuplicateGeneratedCommands() throws Exception {
         String manualConfig =
                 "META-INF/native-image/org.treblereel.mcp/quill-app/reflect-config.json";
+        Set<String> generatedCommandNames = new HashSet<>();
+        try (InputStream input = getClass().getClassLoader().getResourceAsStream(GENERATED_CONFIG)) {
+            assertNotNull(input);
+            JSON.readTree(input).forEach(
+                    command -> generatedCommandNames.add(command.path("name").asText()));
+        }
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(manualConfig)) {
             assertNotNull(input);
             JsonNode entries = JSON.readTree(input);
             for (JsonNode entry : entries) {
-                assertFalse(entry.path("name").asText().startsWith("org.treblereel.mcp.command."),
+                assertFalse(generatedCommandNames.contains(entry.path("name").asText()),
                         "Picocli command metadata belongs in generated configuration");
             }
         }

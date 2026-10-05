@@ -992,6 +992,29 @@ class QuillToolsTest {
     }
 
     @Test
+    void searchSymbolsDoesNotReportUnknownDeclarationLineAsZero() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("UPDATE classes SET source_line = 0 WHERE id = 1");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    VALUES (1, 'FIELD', 'orderRepository',
+                            'orderRepository:org.acme.OrderRepository',
+                            'org.acme.OrderRepository', '[]', 'private', '[]')""");
+        });
+
+        JsonNode symbol = JSON.readTree(new QuillTools().searchSymbols(
+                jdbi, "orderRepository", "field", 10, 0)).path("symbols").get(0);
+
+        assertEquals("src/main/java/org/acme/OrderService.java",
+                symbol.path("source").asText());
+        assertEquals("src/main/java/org/acme/OrderService.java",
+                symbol.path("location").path("path").asText());
+        assertTrue(symbol.path("location").path("line").isNull());
+    }
+
+    @Test
     void searchSymbolsIncludesTypesAndPaginates() throws Exception {
         QuillTools tools = new QuillTools();
         JsonNode page = JSON.readTree(tools.searchSymbols(jdbi, "Service", null, 2, 1));

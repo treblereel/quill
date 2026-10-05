@@ -63,7 +63,10 @@ final class SymbolSearchQueries {
             node.put("name", match.symbolName());
             node.put("declaring_class", match.className());
             node.put("class_kind", match.classKind().toLowerCase(Locale.ROOT));
-            node.put("source", match.sourceFile() + ":" + match.sourceLine());
+            if (match.sourceFile() == null) node.putNull("source");
+            else node.put("source", match.sourceLine() > 0
+                    ? match.sourceFile() + ":" + match.sourceLine()
+                    : match.sourceFile());
             node.put("origin", match.origin());
             if (match.module() == null) node.putNull("module");
             else node.put("module", match.module());

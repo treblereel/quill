@@ -14,12 +14,20 @@ final class ProjectConfiguration {
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
     private static final String QUILL_CLAUDE_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v2 -->
+            <!-- quill:instructions:v3 -->
             ## Quill — Codebase Intelligence (MCP)
 
-            At the beginning of a coding or code-analysis task, call `get_overview`.
-            In workspace mode, request `view=compact` first and follow `next_page_request` to
-            cover the inventory; use `project=<name>` with `view=full` for detailed evidence.
+            At the beginning of a coding or code-analysis task, discover only `get_overview`
+            by exact name, then call `get_overview`. Discover other Quill tools on demand by
+            name or task; do not enumerate or print the entire tool catalog.
+            Use `view=compact` only when server startup instructions or launch arguments
+            confirm `--workspace` mode. A repository described as a workspace does not imply
+            that server mode. In single-project or unknown mode, omit all overview arguments.
+            If compact returns `WORKSPACE_MODE_REQUIRED`, follow its `retry_with` request for
+            a full overview; do not infer that the index is missing or reconfigure the server.
+            Follow `next_page_request` to cover a compact inventory; use `project=<name>` with
+            `view=full` for detailed evidence. Read tool data from `structuredContent` when
+            present, even if text content is empty; do not repeat a successful call for that reason.
             Before broad
             code search, dependency or impact analysis, or running a large test suite, prefer Quill
             for project-wide semantic
@@ -58,20 +66,27 @@ final class ProjectConfiguration {
             """;
     private static final String QUILL_AGENTS_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v2 -->
+            <!-- quill:instructions:v3 -->
             ## Quill MCP
 
             Quill is the primary code-intelligence tool for this repository. At the beginning of a
-            coding or code-analysis task, discover the `mcp__quill__*` tools and call
-            `mcp__quill__get_overview`. In workspace mode, request `view=compact` first and
-            follow `next_page_request` to cover the inventory; use `project=<name>` with
-            `view=full` for detailed evidence.
+            coding or code-analysis task, discover only `mcp__quill__get_overview` by exact
+            name and call it first. Discover other Quill tools on demand by name or task;
+            do not enumerate or print the entire tool catalog.
+            Use `view=compact` only when server startup instructions or launch arguments
+            confirm `--workspace` mode. A repository described as a workspace does not imply
+            that server mode. In single-project or unknown mode, omit all overview arguments.
+            If compact returns `WORKSPACE_MODE_REQUIRED`, follow its `retry_with` request for
+            a full overview; do not infer that the index is missing or reconfigure the server.
+            Follow `next_page_request` to cover a compact inventory; use `project=<name>` with
+            `view=full` for detailed evidence. Read tool data from `structuredContent` when
+            present, even if text content is empty; do not repeat a successful call for that reason.
 
             Use Quill before broad filesystem searches for symbols, implementations, usages, call
             and type hierarchies, dependencies, architecture, framework endpoints, dependency
             injection, affected tests, build diagnostics, Git history, and change risk. Quill tools
             may be deferred and absent from the initially displayed tool list; search the complete
-            tool catalog before concluding that Quill is unavailable.
+            tool catalog by exact name or task before concluding that Quill is unavailable.
             Tool discovery is not MCP resource discovery: empty resources/templates do not mean
             missing tools. Use the client's tool-search capability when available. If tools are
             genuinely unavailable, report that limitation and the client/configuration context;

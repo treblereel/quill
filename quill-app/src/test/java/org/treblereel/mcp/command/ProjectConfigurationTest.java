@@ -23,6 +23,11 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(installed.contains("call `get_overview`"));
+        assertTrue(installed.contains("discover only `get_overview`"));
+        assertTrue(installed.contains("do not enumerate or print the entire tool catalog"));
+        assertTrue(installed.contains("single-project or unknown mode"));
+        assertTrue(installed.contains("`retry_with`"));
+        assertTrue(installed.contains("`structuredContent`"));
         assertTrue(installed.contains("call `change_session` before editing"));
         assertTrue(installed.contains("`directive.primary_action`"));
         assertTrue(installed.contains("`phase_gate`"));
@@ -72,6 +77,11 @@ class ProjectConfigurationTest {
         assertTrue(installed.contains("Tool discovery is not MCP resource discovery"));
         assertTrue(installed.startsWith("# User instructions\n"));
         assertTrue(installed.contains("`mcp__quill__get_overview`"));
+        assertTrue(installed.contains("discover only `mcp__quill__get_overview` by exact"));
+        assertTrue(installed.contains("do not enumerate or print the entire tool catalog"));
+        assertTrue(installed.contains("A repository described as a workspace does not imply"));
+        assertTrue(installed.contains("`WORKSPACE_MODE_REQUIRED`"));
+        assertTrue(installed.contains("`structuredContent`"));
         assertTrue(installed.contains("`mcp__quill__plan_change`"));
         assertTrue(installed.contains("`mcp__quill__change_session`"));
         assertTrue(installed.contains("`directive.primary_action`"));
@@ -106,7 +116,7 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(refreshed.contains("# User instructions"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v2 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v3 -->"));
         assertFalse(refreshed.contains("Old guidance."));
     }
 

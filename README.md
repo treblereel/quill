@@ -420,6 +420,14 @@ does not imply that an executor, reactive stream, or message publication has com
   samples and per-dimension architecture-hub rankings. Its `capabilities` block advertises
   supported source languages, stable `symbol_id` chaining, and machine-readable errors
 
+MCP startup instructions report the actual server mode: `workspace` for `--workspace`,
+otherwise `single_project`. A repository called a "workspace" in its documentation does
+not imply workspace server mode. Discover only `get_overview` first, then other tools
+on demand instead of loading the entire catalog. For single-project or unknown mode,
+call overview without arguments. If compact is requested on a single-project server,
+follow its executable `retry_with` request for full overview; no reconfiguration or build
+is needed. Read `structuredContent` even when the text content is empty.
+
 Tool failures use a single structured envelope: `error_code`, `message`, `retryable`, and,
 when the request can be refined, `retry_with`. The former free-form `error` field is not
 emitted by the MCP surface.

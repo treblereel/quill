@@ -352,7 +352,17 @@ final class WorkspaceToolQueries {
 
     String getCompactOverview(int limit, int offset) {
         WorkspaceProjectScope scope = registry.workspaceScope();
-        if (scope == null) return workspaceRequired();
+        if (scope == null) {
+            ObjectNode error = ToolResponseSupport.appendError(JSON.createObjectNode(),
+                    "WORKSPACE_MODE_REQUIRED",
+                    "Compact overview requires --workspace mode. This is a single-project server; retry get_overview with view=full and omit limit/offset. This does not mean the index is missing.");
+            error.put("server_mode", "single_project");
+            error.put("retryable", true);
+            ObjectNode retry = error.putObject("retry_with");
+            retry.put("tool", "get_overview");
+            retry.putObject("arguments").put("view", "full");
+            return error.toString();
+        }
         ProjectScope.Snapshot snapshot = scope.snapshot();
         int total = snapshot.projects().size();
         int from = Math.min(offset, total);

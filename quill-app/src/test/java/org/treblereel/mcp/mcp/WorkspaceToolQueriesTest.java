@@ -98,7 +98,11 @@ class WorkspaceToolQueriesTest {
         QuillTools single = new QuillTools(new ProjectRegistry());
         JsonNode result = JSON.readTree(single.get_overview(Optional.empty(), Optional.empty(),
                 Optional.of("compact"), Optional.empty(), Optional.empty()));
-        assertEquals("workspace_mode_required", result.path("error").asText());
+        assertEquals("WORKSPACE_MODE_REQUIRED", result.path("error_code").asText());
+        assertTrue(result.path("retryable").asBoolean());
+        assertEquals("single_project", result.path("server_mode").asText());
+        assertEquals("get_overview", result.path("retry_with").path("tool").asText());
+        assertEquals("full", result.path("retry_with").path("arguments").path("view").asText());
         assertTrue(JSON.readTree(tools.get_overview(Optional.of(true), Optional.empty(),
                 Optional.of("compact"), Optional.empty(), Optional.empty())).has("error"));
         assertTrue(JSON.readTree(tools.get_overview(Optional.empty(), Optional.of("engine"),
@@ -110,6 +114,26 @@ class WorkspaceToolQueriesTest {
     private JsonNode compact(int limit, int offset) throws Exception {
         return JSON.readTree(tools.get_overview(Optional.empty(), Optional.empty(),
                 Optional.of("compact"), Optional.of(limit), Optional.of(offset)));
+    }
+
+    @Test
+    void singleProjectCompactRetryPreservesFullOverviewWithoutReconfiguration() throws Exception {
+        ProjectRegistry singleRegistry = new ProjectRegistry();
+        singleRegistry.register(workspace.resolve("engine"));
+        QuillTools single = new QuillTools(singleRegistry);
+        JsonNode failed = JSON.readTree(single.get_overview(Optional.empty(), Optional.empty(),
+                Optional.of("compact"), Optional.of(20), Optional.of(0)));
+        JsonNode arguments = failed.path("retry_with").path("arguments");
+        assertTrue(failed.path("retryable").asBoolean());
+        assertFalse(arguments.has("limit"));
+        assertFalse(arguments.has("offset"));
+        JsonNode retried = JSON.readTree(single.get_overview(Optional.empty(), Optional.empty(),
+                Optional.of(arguments.path("view").asText()), Optional.empty(), Optional.empty()));
+        assertTrue(retried.has("architecture_hubs"));
+        assertEquals(1, retried.path("project").path("classes").asInt());
+        assertFalse(retried.has("error_code"));
+        assertFalse(single.workspaceMode());
+        assertTrue(tools.workspaceMode());
     }
 
     @Test

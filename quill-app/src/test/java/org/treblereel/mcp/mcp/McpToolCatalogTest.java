@@ -82,6 +82,21 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void startupInstructionsReportActualModeAndAvoidCatalogEnumeration() {
+        String single = McpStdioServer.serverInstructions(McpToolProfile.full(), false);
+        String workspace = McpStdioServer.serverInstructions(McpToolProfile.full(), true);
+        assertTrue(single.substring(0, 512).contains("Server mode: single_project"));
+        assertTrue(single.contains("without arguments, not view=compact"));
+        assertTrue(workspace.substring(0, 512).contains("Server mode: workspace (--workspace)"));
+        assertTrue(workspace.contains("get_overview view=compact"));
+        assertTrue(single.contains("Discover only get_overview by exact name first"));
+        assertTrue(single.contains("Follow retry_with"));
+        assertTrue(single.contains("Read structuredContent even when text is empty"));
+        assertTrue(McpStdioServer.serverInstructions(McpToolProfile.full())
+                .contains("otherwise call get_overview without arguments"));
+    }
+
+    @Test
     void timedOutToolReturnsExplicitErrorAndInterruptsWorker() throws Exception {
         BlockingTools tools = new BlockingTools();
         AsyncToolSpecification specification = specification(tools, Duration.ofMillis(100));
@@ -434,6 +449,9 @@ class McpToolCatalogTest {
         assertTrue(Boolean.TRUE.equals(compact.isError()));
         assertEquals("WORKSPACE_MODE_REQUIRED", ((JsonNode) compact.structuredContent())
                 .path("error_code").asText());
+        JsonNode compactError = (JsonNode) compact.structuredContent();
+        assertTrue(compactError.path("retryable").asBoolean());
+        assertEquals("full", compactError.path("retry_with").path("arguments").path("view").asText());
         AsyncToolSpecification search = router.stream()
                 .filter(tool -> tool.tool().name().equals("search_tools"))
                 .findFirst().orElseThrow();

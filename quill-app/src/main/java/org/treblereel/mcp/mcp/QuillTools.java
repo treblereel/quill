@@ -33,6 +33,10 @@ public final class QuillTools {
     private final ExternalSymbolQueries externalSymbols;
     private final WorkspaceToolQueries workspace;
 
+    boolean workspaceMode() {
+        return registry.workspaceScope() != null;
+    }
+
     public QuillTools() {
         this(new ProjectRegistry());
     }
@@ -801,7 +805,7 @@ public final class QuillTools {
     }
 
     @Tool(readOnly = true, structured = true, output = "overview",
-            description = "Start code analysis here. In workspace mode use view=compact for a paginated project map, then project=<name> for full architecture, DI and Git evidence. The default full view preserves the detailed overview. Follow with change_session for code changes.")
+            description = "Start code analysis here. Omit arguments for single-project or unknown server mode. Only servers launched with --workspace support view=compact for a paginated map, then project=<name> for full details. Follow retry_with on mode errors and change_session for code changes.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings (default: false)") Optional<Boolean> details,
             @ToolArg(description = "Project to query; omit for all") Optional<String> project,

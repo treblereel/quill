@@ -97,6 +97,31 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void toolDescriptionsReportActualModeEvenWithoutInitializeInstructions() throws Exception {
+        org.treblereel.mcp.workspace.WorkspaceManifestStore.initialize(tempDir, 1);
+        for (boolean workspace : List.of(false, true)) {
+            ProjectRegistry registry = workspace
+                    ? new ProjectRegistry(new WorkspaceProjectScope(tempDir)) : new ProjectRegistry();
+            for (String profile : List.of("full", "router", "core", "di")) {
+                var catalog = McpToolCatalog.create(new QuillTools(registry), workers, responses,
+                        Duration.ofSeconds(1), McpToolProfile.parse(profile));
+                var overview = catalog.stream().filter(t -> t.tool().name().equals("get_overview"))
+                        .findFirst().orElseThrow().tool().description();
+                assertTrue(overview.startsWith("Server mode: " + (workspace ? "workspace" : "single_project")));
+                assertTrue(overview.contains(workspace ? "with view=compact" : "without arguments, not view=compact"));
+                assertTrue(overview.contains("even for narrow symbol tasks"));
+                if (profile.equals("full")) assertCompactCatalog(catalog);
+                for (var specification : catalog) {
+                    if (Set.of("search_classes", "find_implementations", "find_annotated_symbols")
+                            .contains(specification.tool().name())) {
+                        assertTrue(specification.tool().description().startsWith("After get_overview: "));
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     void timedOutToolReturnsExplicitErrorAndInterruptsWorker() throws Exception {
         BlockingTools tools = new BlockingTools();
         AsyncToolSpecification specification = specification(tools, Duration.ofMillis(100));
@@ -392,6 +417,10 @@ class McpToolCatalogTest {
         var tools = McpToolCatalog.create(
                 new QuillTools(new ProjectRegistry()), workers, responses,
                 Duration.ofSeconds(1));
+        assertCompactCatalog(tools);
+    }
+
+    private static void assertCompactCatalog(List<AsyncToolSpecification> tools) {
         int characters = tools.stream()
                 .mapToInt(specification -> specification.tool().description().length()
                         + specification.tool().inputSchema().toString().length()

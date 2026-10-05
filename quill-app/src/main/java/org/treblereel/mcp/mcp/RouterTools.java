@@ -22,6 +22,10 @@ final class RouterTools {
         this.tools = tools;
     }
 
+    boolean workspaceMode() {
+        return tools.workspaceMode();
+    }
+
     @Tool(readOnly = true, structured = true,
             description = "Start here. Omit arguments for single-project or unknown server mode. Only --workspace servers support view=compact; follow retry_with on mode errors.")
     public String get_overview(

@@ -155,8 +155,17 @@ resolve Codex TOML configuration layers, client permissions, or the current conv
 catalog. Trust the project in the client and start a fresh session
 (Codex's project-layer trust requirement is documented in
 [Config basics](https://learn.chatgpt.com/docs/config-file/config-basic)). Actual model-driven client
-adoption is a separate, explicit check via `scripts/quill_native_client_probe.py` (see its `--help`);
-that check uses the client's configured authentication and may consume model usage.
+adoption is a separate, explicit check via `scripts/quill_native_client_probe.py` (see its `--help`).
+For cold-start read-only adoption with normal client tool availability and installed permission
+settings, use `scripts/quill_cold_start_probe.py --help`. It starts fresh headless client/MCP
+processes against an existing index, never installs or grants permissions, and saves only a
+sanitized call sequence and outcomes. `--trust-project` supplies explicit invocation-only Codex
+trust without writing global configuration; use it only after consenting to trust that project.
+The map task checks overview-before-source ordering; usages additionally requires a successful
+semantic query; workspace requires compact overview followed by full details for a selected
+project. Missing Quill permissions, client/provider failures, and settings changes are not successes;
+unrelated shell permission denials are reported separately. These checks use the client's
+configured authentication and may consume model usage.
 
 ## Federated Workspaces
 

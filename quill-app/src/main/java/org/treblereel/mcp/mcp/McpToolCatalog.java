@@ -81,7 +81,7 @@ final class McpToolCatalog {
         Tool annotation = method.getAnnotation(Tool.class);
         McpSchema.Tool.Builder toolBuilder =
                 McpSchema.Tool.builder(method.getName(), inputSchema(method))
-                        .description(annotation.description());
+                        .description(description(tools, method, annotation));
         if (annotation.readOnly()) {
             // Queries may refresh derived caches/telemetry, but never edit source/configuration,
             // execute builds, or contact open-ended external services.
@@ -121,6 +121,25 @@ final class McpToolCatalog {
                         .publishOn(responseScheduler);
                 })
                 .build();
+    }
+
+    private static String description(Object tools, Method method, Tool annotation) {
+        Boolean workspace = tools instanceof QuillTools quill ? quill.workspaceMode()
+                : tools instanceof RouterTools router ? router.workspaceMode() : null;
+        if (workspace == null) return annotation.description();
+        // Some clients surface only tools/list, not initialize.instructions. Keep the actual
+        // mode and first request in the advertised tool itself instead of relying on startup text.
+        if (method.getName().equals("get_overview")) {
+            String mode = workspace
+                    ? "Server mode: workspace (--workspace). First call with view=compact (limit<=50); then project=<name> with view=full. "
+                    : "Server mode: single_project. Call without arguments, not view=compact. ";
+            return mode + "Start here even for narrow symbol tasks. Index freshness and frameworks; use change_session before edits.";
+        }
+        return switch (method.getName()) {
+            case "search_classes", "find_implementations", "find_annotated_symbols" ->
+                    "After get_overview: " + annotation.description();
+            default -> annotation.description();
+        };
     }
 
     private static String routedTool(Method method, Map<String, Object> arguments) {

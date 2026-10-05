@@ -6,10 +6,10 @@ import picocli.CommandLine.Command;
 
 @Command(name = "client", mixinStandardHelpOptions = true,
         description = "Manage local AI client integration without indexing or building",
-        subcommands = ClientPermissionsCommand.class)
+        subcommands = {ClientPermissionsCommand.class, ClientRefreshCommand.class})
 public final class ClientCommand implements Callable<Integer> {
     @Override public Integer call() {
-        System.err.println("Use: quill client permissions status|grant|revoke");
+        System.err.println("Use: quill client refresh or quill client permissions status|grant|revoke");
         return CommandLine.ExitCode.USAGE;
     }
 }

@@ -105,6 +105,7 @@ the router must remain at most 20% of the full catalog, preventing silent contex
 | `quill status --json` | Emit the status as machine-readable JSON |
 | `quill doctor` | Diagnose compiled outputs, index freshness, build integration, and client setup |
 | `quill doctor --json` | Emit the diagnostic report as machine-readable JSON |
+| `quill client refresh` | Refresh local MCP registration and managed guidance without indexing or building |
 | `quill clean` | Remove `.quill`, Quill-managed build integration, and MCP client configuration |
 | `quill workspace init` | Discover and initialize all suitable repositories in a workspace |
 | `quill workspace init --depth N` | Discover repositories up to the requested directory depth |
@@ -209,6 +210,21 @@ quill client permissions revoke --project /path/to/project
 # Apply to an initialized workspace and its recorded configured repositories:
 quill client permissions status --workspace /path/to/workspace
 ```
+
+Update an existing installation's client guidance and local MCP registration independently
+of its index and build outputs:
+
+```bash
+quill client refresh --project /path/to/project
+quill client refresh --workspace /path/to/initialized/workspace
+```
+
+Refresh preserves content outside Quill's managed instruction blocks, other MCP servers,
+and existing tool permissions. It never indexes, builds, grants tool permissions, or changes
+global Codex trust. Workspace refresh uses the recorded configured repositories, not discovery.
+Malformed managed markers, unsupported configuration, and symlinked targets require repair
+before refresh. Unmarked legacy instructions are preserved, not silently deleted.
+Start a fresh client session afterwards; installed files do not attest live activation.
 
 `grant` is explicit consent, so it does not ask another question. It requires an existing
 project-local Quill MCP server and never overrides `ask`/`deny`. `revoke` removes only grants
@@ -550,8 +566,8 @@ args = ["--mcp"]
 cwd = "/absolute/path/to/project"
 ```
 
-When `.codex/config.toml` already exists, `quill init` adds this section
-automatically. A native launch records its executable path; development runs from a
+`quill init` and `quill client refresh` create `.codex/config.toml` when missing,
+or add this section to an existing file. A native launch records its executable path; development runs from a
 JAR fall back to `quill` from `PATH`, keeping the generated configuration binary-only.
 Other settings are preserved, repeated initialization is a no-op, and an existing
 user-owned `mcp_servers.quill` section is never overwritten. A Quill-managed project entry
@@ -559,9 +575,9 @@ whose absolute launcher path no longer exists is repaired when initialization ru
 working native executable. Initialization also refreshes versioned Quill guidance in `AGENTS.md`
 and `CLAUDE.md`, preserving surrounding user content, so both clients follow the current
 change-session directive, phase gate, review, and verification contract. Quill does not create a
-Codex configuration file implicitly.
+global Codex configuration or set project trust implicitly.
 
-`quill doctor` distinguishes outdated managed guidance from malformed marker boundaries. `init`
+`quill doctor` distinguishes outdated managed guidance from malformed marker boundaries. `client refresh` or `init`
 refreshes an intact outdated block. When markers are missing, reversed, or duplicated, `init` and
 `clean` preserve the entire instructions file and report the boundaries that need repair.
 

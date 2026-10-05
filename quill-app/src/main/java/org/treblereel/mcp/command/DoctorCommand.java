@@ -178,26 +178,26 @@ public class DoctorCommand implements Callable<Integer> {
                     "CLAUDE.md contains the current managed Quill guidance"));
             case MISSING -> checks.add(Check.warning("claude_instructions",
                     "CLAUDE.md does not contain managed Quill guidance",
-                    "Run `quill init --project " + normalized + "`"));
+                    "Run `quill client refresh --project " + normalized + "`"));
             case INVALID -> checks.add(Check.warning("claude_instructions",
                     "CLAUDE.md contains an incomplete managed Quill block",
-                    "Repair Quill marker boundaries in CLAUDE.md, then run `quill init`"));
+                    "Repair Quill marker boundaries in CLAUDE.md, then run `quill client refresh`"));
             case OUTDATED -> checks.add(Check.warning("claude_instructions",
                     "CLAUDE.md contains outdated or modified managed Quill guidance",
-                    "Run `quill init --project " + normalized + "` to refresh it"));
+                    "Run `quill client refresh --project " + normalized + "` to refresh it without indexing"));
         }
         switch (ProjectConfiguration.inspectAgentsMd(normalized)) {
             case CURRENT -> checks.add(Check.pass("codex_instructions",
                     "AGENTS.md contains the current managed Quill guidance"));
             case MISSING -> checks.add(Check.warning("codex_instructions",
                     "AGENTS.md does not contain managed Quill guidance",
-                    "Run `quill init --project " + normalized + "`"));
+                    "Run `quill client refresh --project " + normalized + "`"));
             case INVALID -> checks.add(Check.warning("codex_instructions",
                     "AGENTS.md contains an incomplete managed Quill block",
-                    "Repair Quill marker boundaries in AGENTS.md, then run `quill init`"));
+                    "Repair Quill marker boundaries in AGENTS.md, then run `quill client refresh`"));
             case OUTDATED -> checks.add(Check.warning("codex_instructions",
                     "AGENTS.md contains outdated or modified managed Quill guidance",
-                    "Run `quill init --project " + normalized + "` to refresh it"));
+                    "Run `quill client refresh --project " + normalized + "` to refresh it without indexing"));
         }
         if (ClaudeSettingsInstaller.isEnabled(normalized)) {
             checks.add(Check.pass("claude_approval",

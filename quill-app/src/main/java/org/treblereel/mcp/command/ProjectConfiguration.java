@@ -175,6 +175,10 @@ final class ProjectConfiguration {
 
     private static void ensureInstructions(Path file, String managedBlock, String description) {
         try {
+            if (Files.isSymbolicLink(file) || (Files.exists(file) && !Files.isRegularFile(file))) {
+                System.err.println("[quill] Warning: instructions are not a regular file: " + file);
+                return;
+            }
             String content = Files.exists(file) ? Files.readString(file) : "";
             int start = content.indexOf(CLAUDE_BLOCK_START);
             int end = start < 0 ? -1 : content.indexOf(CLAUDE_BLOCK_END, start);
@@ -254,7 +258,7 @@ final class ProjectConfiguration {
         }
     }
 
-    private static boolean validMarkers(String content) {
+    static boolean validMarkers(String content) {
         int start = content.indexOf(CLAUDE_BLOCK_START);
         int end = content.indexOf(CLAUDE_BLOCK_END);
         if (start < 0 && end < 0) return true;

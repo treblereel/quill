@@ -229,7 +229,7 @@ final class CodexConfigInstaller {
         }
     }
 
-    private static boolean definesInlineMcpServers(String content) {
+    static boolean definesInlineMcpServers(String content) {
         boolean beforeFirstTable = true;
         for (String line : content.split("\\R", -1)) {
             String withoutComment = stripComment(line).trim();

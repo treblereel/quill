@@ -1,10 +1,69 @@
 import json
 import unittest
+import subprocess
+import sys
+import time
+import tempfile
+from unittest.mock import patch
 from pathlib import Path
-from quill_cold_start_probe import client_errors, command, failure_category, overview_arguments, summarize
+from quill_cold_start_probe import client_errors, command, failure_category, overview_arguments, summarize, stream_process, timing_summary, observation_receipt, observed_command
 
 
 class ColdStartProbeTest(unittest.TestCase):
+    def test_observer_wraps_effective_launcher_without_changing_model_or_environment(self):
+        config = dict(enabled=True, transport=dict(type='stdio', command='/private/native',
+                      args=['--mcp', '--project', '/private/project'], env={'SECRET': 'PRIVATE'}))
+        with patch('quill_cold_start_probe.subprocess.check_output', return_value=json.dumps(config)) as lookup:
+            argv = observed_command(Path('/private/project'), 'plain task', True, Path('/tmp/trace'))
+        self.assertIn('mcp_servers.quill.command=' + json.dumps(sys.executable), argv)
+        self.assertTrue(any('/private/native' in arg and '--mcp' in arg for arg in argv))
+        self.assertEqual('plain task', argv[-1])
+        self.assertNotIn('PRIVATE', json.dumps(argv))
+        self.assertFalse(any('mcp_servers.quill.env' in arg or 'model=' in arg for arg in argv))
+        self.assertEqual(['mcp', 'get', 'quill', '--json'], lookup.call_args.args[0][-4:])
+
+    def test_streamed_timings_without_commands_or_contents(self):
+        events = [dict(type='item.started', item=dict(id='1', type='command_execution', command='PRIVATE')),
+                  dict(type='item.completed', item=dict(id='1', type='command_execution', aggregated_output='PRIVATE'))]
+        code = 'import sys,time; print(' + repr(json.dumps(events[0])) + ',flush=True); time.sleep(.05); print(' + repr(json.dumps(events[1])) + ',flush=True)'
+        with subprocess.Popen([sys.executable, '-c', code], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, start_new_session=True) as process:
+            _, _, timeout, timeline = stream_process(process, 5, time.monotonic())
+        self.assertFalse(timeout)
+        self.assertEqual('shell', timeline[0]['tool'])
+        self.assertGreater(timeline[0]['event_span_ms'], 20)
+        self.assertNotIn('PRIVATE', json.dumps(timeline))
+
+    def test_stream_timeout_reaps_process(self):
+        with subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(10)'],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                              start_new_session=True) as process:
+            _, _, timed_out, _ = stream_process(process, .1, time.monotonic())
+        self.assertTrue(timed_out)
+        self.assertIsNotNone(process.returncode)
+
+    def test_closed_streams_do_not_disable_process_deadline(self):
+        with subprocess.Popen([sys.executable, '-c',
+                              'import os,time; os.close(1); os.close(2); time.sleep(10)'],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                              start_new_session=True) as process:
+            _, _, timed_out, _ = stream_process(process, .1, time.monotonic())
+        self.assertTrue(timed_out)
+        self.assertIsNotNone(process.returncode)
+
+    def test_parallel_timings_are_union_not_double_counted(self):
+        timeline = [dict(tool='quill:get_overview', started_ms=10, completed_ms=30),
+                    dict(tool='shell', started_ms=20, completed_ms=40)]
+        summary = timing_summary(timeline, 100)
+        self.assertEqual(30, summary['observed_tool_span_union_ms'])
+        self.assertEqual(70, summary['outside_observed_tool_spans_ms'])
+
+    def test_no_trace_is_unknown_not_proof_of_unavailable_model_tools(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = observation_receipt(Path(temporary) / 'absent.jsonl', 0)
+        self.assertFalse(evidence['catalog_delivered_to_client'])
+        self.assertEqual('unknown', evidence['model_visibility'])
+
     def test_semantic_call_before_overview_is_not_overview_first(self):
         stream = [dict(type='item.completed', item=dict(type='mcp_tool_call', server='quill',
                   tool=tool, status='completed', result={'content': []}))

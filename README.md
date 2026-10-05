@@ -167,6 +167,15 @@ project. Missing Quill permissions, client/provider failures, and settings chang
 unrelated shell permission denials are reported separately. These checks use the client's
 configured authentication and may consume model usage.
 
+Codex reports also include streamed tool start/end times (observed event arrival, not model
+reasoning attribution). For troubleshooting, add `--observe-mcp`: this explicitly instrumented
+mode wraps the effective stdio Quill launcher for that invocation only. It forwards RPC bytes
+unchanged and records initialization, catalog delivery and RPC durations, never request/response
+payloads, commands, credentials or source contents. Original launcher arguments, environment,
+working directory, permissions and model remain unchanged; no configuration files are edited.
+Catalog delivery proves receipt by the client transport, not visibility in the model's context.
+Keep instrumented diagnostics separate from ordinary cold-start adoption results.
+
 ## Federated Workspaces
 
 A workspace is a directory containing independent Git repositories that may depend on one

@@ -8,6 +8,10 @@ import os
 import re
 import signal
 import subprocess
+import queue
+import sys
+import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -170,25 +174,136 @@ def client_errors(stdout):
     return errors
 
 
-def run(client, project, prompt, timeout, trust=False):
-    before, start = fingerprints(project), time.monotonic()
-    with subprocess.Popen(command(client, project, prompt, trust), cwd=project,
+def observed_command(project, prompt, trust, trace):
+    argv = command('codex', project, prompt, trust)
+    # Resolve the same trusted configuration layer; do not persist configuration or secrets.
+    config_args = argv[argv.index('-C'): -1]
+    config = json.loads(subprocess.check_output(['codex', *config_args, 'mcp', 'get', 'quill', '--json'], text=True))
+    transport = config.get('transport', {})
+    if not config.get('enabled') or transport.get('type') != 'stdio':
+        raise ValueError('Observation requires an enabled stdio Quill launcher')
+    launcher = [sys.executable, str(Path(__file__).with_name('quill_mcp_observer.py').resolve()),
+                str(trace), transport['command'], *transport.get('args', [])]
+    return argv[:-1] + ['-c', 'mcp_servers.quill.command=' + json.dumps(launcher[0]),
+                       '-c', 'mcp_servers.quill.args=' + json.dumps(launcher[1:])] + argv[-1:]
+
+
+def stream_process(process, timeout, start):
+    events, output, errors, timeline, pending = queue.Queue(), [], [], [], {}
+    def read(stream, channel):
+        try:
+            for line in stream:
+                events.put((channel, line, time.monotonic()))
+        finally:
+            events.put((channel, None, time.monotonic()))
+    threads = [threading.Thread(target=read, args=(process.stdout, 'out'), daemon=True),
+               threading.Thread(target=read, args=(process.stderr, 'err'), daemon=True)]
+    for thread in threads:
+        thread.start()
+    closed, timed_out, killed_at = set(), False, None
+    while len(closed) < 2 or process.poll() is None:
+        now = time.monotonic()
+        if not timed_out and now - start >= timeout:
+            timed_out, killed_at = True, now
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        if timed_out and now - killed_at >= 5:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        try:
+            channel, line, observed = events.get(timeout=0.1)
+        except queue.Empty:
+            continue
+        if line is None:
+            closed.add(channel)
+            continue
+        (output if channel == 'out' else errors).append(line)
+        if channel != 'out':
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        item = event.get('item', {})
+        if not isinstance(item, dict) or item.get('type') not in {'mcp_tool_call', 'command_execution'}:
+            continue
+        identifier = item.get('id')
+        if not isinstance(identifier, str):
+            continue
+        stamp = round((observed - start) * 1000, 3)
+        if event.get('type') == 'item.started' and identifier not in pending:
+            tool = 'shell' if item['type'] == 'command_execution' else item.get('server', '') + ':' + item.get('tool', '')
+            entry = {'tool': tool, 'started_ms': stamp, 'completed_ms': None, 'event_span_ms': None}
+            pending[identifier] = entry
+            timeline.append(entry)
+        if event.get('type') == 'item.completed':
+            entry = pending.pop(identifier, None)
+            if entry is not None:
+                entry.update(completed_ms=stamp, event_span_ms=round(stamp - entry['started_ms'], 3))
+    process.wait()
+    for thread in threads:
+        thread.join(timeout=1)
+    return ''.join(output), ''.join(errors), timed_out, timeline
+
+
+def observation_receipt(trace, start):
+    receipts = [json.loads(line) for line in trace.read_text().splitlines()] if trace.is_file() else []
+    for receipt in receipts:
+        receipt['elapsed_ms'] = round((receipt.pop('monotonic_seconds') - start) * 1000, 3)
+    catalogs = [r for r in receipts if r['event'] == 'response' and r['method'] == 'tools/list'
+                and r['success'] and 'tool_count' in r]
+    return {'scope': 'instrumented original stdio launcher; invocation-only override',
+            'catalog_delivered_to_client': bool(catalogs),
+            'overview_in_delivered_catalog': any(r.get('has_overview') for r in catalogs),
+            'model_visibility': 'unknown', 'receipts': receipts}
+
+
+def timing_summary(timeline, elapsed_ms):
+    spans = sorted((c['started_ms'], c['completed_ms'] if c['completed_ms'] is not None else elapsed_ms)
+                   for c in timeline)
+    busy, until = 0, 0
+    for start, end in spans:
+        busy += max(0, end - max(start, until))
+        until = max(until, end)
+    quill = [c for c in timeline if c['tool'].startswith('quill:')]
+    return {'basis': 'client item.started/item.completed arrival; not model reasoning attribution',
+            'first_tool_started_ms': min((c['started_ms'] for c in timeline), default=None),
+            'first_quill_started_ms': min((c['started_ms'] for c in quill), default=None),
+            'observed_tool_span_union_ms': round(busy, 3),
+            'outside_observed_tool_spans_ms': round(max(0, elapsed_ms - busy), 3),
+            'unfinished_tools': sum(c['completed_ms'] is None for c in timeline)}
+
+
+def run(client, project, prompt, timeout, trust=False, observe_mcp=False):
+    before = fingerprints(project)
+    with tempfile.TemporaryDirectory(prefix='quill-observer-') as temporary:
+        trace = Path(temporary) / 'receipts.jsonl'
+        argv = observed_command(project, prompt, trust, trace) if observe_mcp else command(client, project, prompt, trust)
+        # Exclude configuration lookup from client process timing.
+        start = time.monotonic()
+        return run_process(client, project, timeout, before, start, argv, trace if observe_mcp else None)
+
+
+def run_process(client, project, timeout, before, start, argv, trace):
+    with subprocess.Popen(argv, cwd=project,
                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           text=True, start_new_session=True) as process:
-        timed_out = False
-        try:
-            stdout, stderr = process.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                stdout, stderr = process.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                stdout, stderr = process.communicate()
+        stdout, stderr, timed_out, timeline = stream_process(process, timeout, start)
         result = summarize(client, stdout)
         errors = client_errors(stdout)
+        elapsed_ms = (time.monotonic() - start) * 1000
         result.update(returncode=process.returncode, timeout=timed_out,
+                      tool_timeline=timeline,
+                      timing_summary=timing_summary(timeline, elapsed_ms) if client == 'codex' else None,
+                      mcp_observation=observation_receipt(trace, start) if trace else {
+                          'scope': 'unmodified client launch', 'catalog_delivered_to_client': None,
+                          'model_visibility': 'unknown'},
                       client_errors=errors,
                       failure_category=failure_category(process.returncode, timed_out, " ".join(errors) + stderr),
                       elapsed_seconds=round(time.monotonic() - start, 2),
@@ -209,17 +324,22 @@ def main():
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--trust-project", action="store_true",
                         help="Explicit invocation-only Codex trust; no global writes")
+    parser.add_argument('--observe-mcp', action='store_true',
+                        help='Codex-only diagnostic stdio relay; invocation-only launcher override, no raw payload logs')
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     project = args.project.resolve()
     if not project.is_dir() or args.runs < 1 or args.timeout < 1:
         parser.error("Existing project and positive runs/timeout required")
+    if args.observe_mcp and args.client != 'codex':
+        parser.error('--observe-mcp currently supports Codex only')
     report = {"schema_version": 1, "scope": "fresh headless processes/chats/MCP; existing index and user defaults",
               "client": args.client, "task": args.task, "invocation_trust": args.trust_project,
+              "instrumented_mcp": args.observe_mcp,
               "version": subprocess.check_output([args.client, "--version"], text=True).strip(), "runs": []}
     for index in range(args.runs):
         scope = WORKSPACE_SCOPE if args.task == "workspace" else SCOPE
-        result = run(args.client, project, TASKS[args.task] + scope, args.timeout, args.trust_project)
+        result = run(args.client, project, TASKS[args.task] + scope, args.timeout, args.trust_project, args.observe_mcp)
         if args.task == "usages":
             result["passed"] = result["passed"] and bool(result["semantic_tools_successful"])
         if args.task == "workspace":

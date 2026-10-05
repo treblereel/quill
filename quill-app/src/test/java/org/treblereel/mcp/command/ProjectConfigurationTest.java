@@ -20,18 +20,30 @@ class ProjectConfigurationTest {
 
         ProjectConfiguration.ensureClaudeMd(root);
         String installed = Files.readString(claude);
-        assertEquals(ProjectConfiguration.ClaudeInstructionsState.CURRENT,
+        assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectClaudeMd(root));
-        assertTrue(installed.contains("use ToolSearch to load the relevant Quill tools"));
+        assertTrue(installed.contains("call `get_overview`"));
+        assertTrue(installed.contains("discover only `get_overview`"));
+        assertTrue(installed.contains("do not enumerate or print the entire tool catalog"));
+        assertTrue(installed.contains("single-project or unknown mode"));
+        assertTrue(installed.contains("`retry_with`"));
+        assertTrue(installed.contains("`structuredContent`"));
+        assertTrue(installed.contains("call `change_session` before editing"));
+        assertTrue(installed.contains("`directive.primary_action`"));
+        assertTrue(installed.contains("`phase_gate`"));
+        assertTrue(installed.contains("`review_checklist`"));
+        assertTrue(installed.contains("receipt is verified"));
+        assertTrue(installed.contains("`quick_compile`"));
+        assertTrue(installed.contains("never executes a build"));
         assertEquals(1, occurrences(installed, "<!-- quill:managed:start -->"));
 
         Files.writeString(claude, installed.replace(
-                "use ToolSearch to load the relevant Quill tools", "obsolete instructions"));
+                "call `get_overview`", "obsolete instructions"));
         ProjectConfiguration.ensureClaudeMd(root);
 
         String refreshed = Files.readString(claude);
         assertTrue(refreshed.startsWith("# User instructions\n"));
-        assertTrue(refreshed.contains("use ToolSearch to load the relevant Quill tools"));
+        assertTrue(refreshed.contains("call `get_overview`"));
         assertFalse(refreshed.contains("obsolete instructions"));
         assertEquals(1, occurrences(refreshed, "<!-- quill:managed:start -->"));
     }
@@ -49,11 +61,98 @@ class ProjectConfigurationTest {
         ProjectConfiguration.ensureClaudeMd(root);
         assertTrue(ProjectConfiguration.removeClaudeMd(root));
         assertFalse(Files.exists(claude));
-        assertEquals(ProjectConfiguration.ClaudeInstructionsState.MISSING,
+        assertEquals(ProjectConfiguration.InstructionsState.MISSING,
                 ProjectConfiguration.inspectClaudeMd(root));
+    }
+
+    @Test
+    void managesCodexInstructionsWithoutOverwritingUserContent() throws Exception {
+        Path agents = root.resolve("AGENTS.md");
+        Files.writeString(agents, "# User instructions\n");
+
+        ProjectConfiguration.ensureAgentsMd(root);
+
+        String installed = Files.readString(agents);
+        assertTrue(installed.contains("before editing source or choosing"));
+        assertTrue(installed.contains("Tool discovery is not MCP resource discovery"));
+        assertTrue(installed.startsWith("# User instructions\n"));
+        assertTrue(installed.contains("`mcp__quill__get_overview`"));
+        assertTrue(installed.contains("discover only `mcp__quill__get_overview` by exact"));
+        assertTrue(installed.contains("do not enumerate or print the entire tool catalog"));
+        assertTrue(installed.contains("A repository described as a workspace does not imply"));
+        assertTrue(installed.contains("`WORKSPACE_MODE_REQUIRED`"));
+        assertTrue(installed.contains("`structuredContent`"));
+        assertTrue(installed.contains("`mcp__quill__plan_change`"));
+        assertTrue(installed.contains("`mcp__quill__change_session`"));
+        assertTrue(installed.contains("`directive.primary_action`"));
+        assertTrue(installed.contains("`action_id`"));
+        assertTrue(installed.contains("phase is `complete`"));
+        assertTrue(installed.contains("scope `quick_compile`"));
+        assertTrue(installed.contains("does not execute builds"));
+        assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
+                ProjectConfiguration.inspectAgentsMd(root));
+        assertTrue(ProjectConfiguration.removeAgentsMd(root));
+        assertEquals("# User instructions\n", Files.readString(agents));
+    }
+
+    @Test
+    void detectsAndRefreshesOutdatedManagedInstructions() throws Exception {
+        Path agents = root.resolve("AGENTS.md");
+        Files.writeString(agents, """
+                # User instructions
+
+                <!-- quill:managed:start -->
+                ## Quill MCP
+                Old guidance.
+                <!-- quill:managed:end -->
+                """);
+
+        assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
+                ProjectConfiguration.inspectAgentsMd(root));
+
+        ProjectConfiguration.ensureAgentsMd(root);
+
+        String refreshed = Files.readString(agents);
+        assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
+                ProjectConfiguration.inspectAgentsMd(root));
+        assertTrue(refreshed.contains("# User instructions"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v3 -->"));
+        assertFalse(refreshed.contains("Old guidance."));
     }
 
     private static int occurrences(String value, String token) {
         return value.split(java.util.regex.Pattern.quote(token), -1).length - 1;
+    }
+
+    @Test
+    void malformedBoundariesNeverOverwriteOrDeleteUserText() throws Exception {
+        for (String content : java.util.List.of(
+                "<!-- quill:managed:start -->\nUser tail\n",
+                "<!-- quill:managed:end -->\n<!-- quill:managed:start -->\nUser tail\n",
+                "<!-- quill:managed:start --><!-- quill:managed:start -->"
+                        + "User tail<!-- quill:managed:end -->")) {
+            Path file = root.resolve("AGENTS.md");
+            Files.writeString(file, content);
+            assertEquals(ProjectConfiguration.InstructionsState.INVALID,
+                    ProjectConfiguration.inspectAgentsMd(root));
+            ProjectConfiguration.ensureAgentsMd(root);
+            assertEquals(content, Files.readString(file));
+            assertFalse(ProjectConfiguration.removeAgentsMd(root));
+            assertEquals(content, Files.readString(file));
+        }
+    }
+
+    @Test
+    void versionMarkerCannotAttestModifiedContentOrAnExternalBlock() throws Exception {
+        ProjectConfiguration.ensureClaudeMd(root);
+        Path file = root.resolve("CLAUDE.md");
+        String content = Files.readString(file);
+        Files.writeString(file, content.replace("directive.primary_action", "obsolete"));
+        assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
+                ProjectConfiguration.inspectClaudeMd(root));
+        Files.writeString(file, "<!-- quill:instructions:v2 -->\n"
+                + "<!-- quill:managed:start -->\nOld instructions\n<!-- quill:managed:end -->\n");
+        assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
+                ProjectConfiguration.inspectClaudeMd(root));
     }
 }

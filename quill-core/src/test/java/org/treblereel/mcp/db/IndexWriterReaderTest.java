@@ -18,6 +18,50 @@ class IndexWriterReaderTest {
     @TempDir Path tempDir;
 
     @Test
+    void storesAndReadsKotlinSemanticDeclarations() {
+        Jdbi database = QuillDatabase.create(tempDir.resolve("kotlin.db"));
+        IndexWriter.write(database, List.of(new ClassRecord(
+                        0, "org.acme.Order", "CLASS", "java.lang.Object", List.of(),
+                        "src/main/kotlin/org/acme/Order.kt", 1, false, 20)),
+                List.of(), List.of(), List.of(), Map.of());
+        database.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members
+                  (class_id, kind, name, signature, descriptor, type_name,
+                   parameter_types, modifiers, annotations)
+                VALUES (1, 'METHOD', 'loadJvm', 'loadJvm(int):java.lang.Object',
+                        '(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;',
+                        'java.lang.Object', '["int"]', 'public', '[]')"""));
+        IndexWriter.writeKotlinDeclarations(database, List.of(
+                new KotlinDeclarationRecord(1, "DATA_CLASS", "org.acme.Order",
+                        "org.acme.Order", "", "kotlin_metadata", false, false,
+                        false, false, false, false, false),
+                new KotlinDeclarationRecord(1, "FUNCTION", "load", "loadJvm",
+                        "(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;",
+                        "kotlin_metadata", true, true, true,
+                        false, false, false, false),
+                new KotlinDeclarationRecord(1, "PROPERTY", "state", "getState", "",
+                        "kotlin_metadata", false, false, false,
+                        true, true, false, false)));
+
+        var declarations = IndexReader.findKotlinDeclarations(database, 1);
+
+        assertEquals(3, declarations.size());
+        assertEquals("DATA_CLASS", declarations.get(0).kind());
+        assertTrue(declarations.get(1).isSuspend());
+        assertTrue(declarations.get(1).extension());
+        assertTrue(declarations.get(1).hasDefaultParameters());
+        assertTrue(declarations.get(2).mutable());
+        assertTrue(declarations.get(2).lateinit());
+        var matches = IndexReader.searchSymbols(database, "load", "METHOD", 10, 0);
+        assertEquals(1, matches.size());
+        assertEquals(1, IndexReader.countSymbols(database, "load", "METHOD"));
+        assertEquals("loadJvm", matches.getFirst().symbolName());
+        assertEquals("load", matches.getFirst().semanticName());
+        assertTrue(matches.getFirst().isSuspend());
+        assertTrue(matches.getFirst().hasDefaultParameters());
+    }
+
+    @Test
     void incrementallyUpdatesConfigurationReferencesWithoutReplacingStableRows() {
         Path dbPath = tempDir.resolve("configuration.db");
         Jdbi database = QuillDatabase.create(dbPath);

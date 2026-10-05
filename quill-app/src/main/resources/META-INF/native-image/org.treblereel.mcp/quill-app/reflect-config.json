@@ -1,5 +1,10 @@
 [
   {
+    "name": "org.treblereel.mcp.command.ClaudePermissionStatus$Report",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
     "name": "org.treblereel.mcp.mcp.QuillTools",
     "allPublicMethods": true
   },
@@ -177,6 +182,6 @@
   {"name":"io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$ToolCapabilities","allDeclaredConstructors":true,"methods":[{"name":"listChanged","parameterTypes":[]}]},
   {"name":"io.modelcontextprotocol.spec.McpSchema$TextContent","allDeclaredConstructors":true,"methods":[{"name":"annotations","parameterTypes":[]},{"name":"meta","parameterTypes":[]},{"name":"text","parameterTypes":[]}]},
   {"name":"io.modelcontextprotocol.spec.McpSchema$Tool","allDeclaredConstructors":true,"methods":[{"name":"annotations","parameterTypes":[]},{"name":"description","parameterTypes":[]},{"name":"icons","parameterTypes":[]},{"name":"inputSchema","parameterTypes":[]},{"name":"meta","parameterTypes":[]},{"name":"name","parameterTypes":[]},{"name":"outputSchema","parameterTypes":[]},{"name":"title","parameterTypes":[]}]},
-  {"name":"io.modelcontextprotocol.spec.McpSchema$ToolAnnotations","allDeclaredConstructors":true},
+  {"name":"io.modelcontextprotocol.spec.McpSchema$ToolAnnotations","allDeclaredConstructors":true,"allDeclaredMethods":true},
   {"name":"[Lio.modelcontextprotocol.spec.McpSchema$Tool;"}
 ]

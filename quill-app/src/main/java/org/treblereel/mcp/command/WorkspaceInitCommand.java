@@ -26,8 +26,27 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
             + "configuration while creating indexes")
     boolean indexOnly;
 
+    @Option(names = "--jobs", defaultValue = "4",
+            showDefaultValue = CommandLine.Help.Visibility.ALWAYS,
+            description = "Maximum repositories to process concurrently")
+    int jobs = WorkspaceRepositoryInitializer.DEFAULT_JOBS;
+
+    @Option(names = "--probe-mcp", description = "After initialization, execute the workspace "
+            + ".mcp.json launcher and check MCP connectivity (30s timeout; no AI requests)")
+    boolean probeMcp;
+
+    @Option(names = "--allow-quill-tools", negatable = true,
+            description = "Allow current read-only Quill tools in local Claude permissions; "
+                    + "--no-allow-quill-tools skips the interactive consent question")
+    Boolean allowQuillTools;
+
     @Override
     public Integer call() throws Exception {
+        if (jobs < 1) throw new IllegalArgumentException("--jobs must be at least 1");
+        if (indexOnly && (probeMcp || Boolean.TRUE.equals(allowQuillTools))) {
+            System.err.println("[quill] --probe-mcp/--allow-quill-tools cannot be combined with --index-only");
+            return CommandLine.ExitCode.USAGE;
+        }
         WorkspaceManifest manifest = WorkspaceManifestStore.initialize(
                 workspaceRoot, discoveryDepth);
         System.out.println("Initialized Quill workspace at " + manifest.root());
@@ -41,14 +60,29 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
         try (lock) {
             WorkspaceDiscovery.Result discovery = WorkspaceDiscovery.discover(manifest);
             result = WorkspaceRepositoryInitializer.initializeAll(
-                    discovery, indexOnly, System.out::println);
+                    discovery, indexOnly, jobs, System.out::println);
             WorkspaceClientConfiguration.install(
                     manifest.root(), discovery.repositories(), indexOnly);
+            if (!indexOnly && result.successful()) {
+                ClaudePermissionConsent.configure(allowQuillTools,
+                        WorkspaceClientConfiguration.supportedTargets(
+                                manifest.root(), discovery.repositories()));
+            }
             WorkspaceRepositoryStateStore.write(manifest.root(), discovery.repositories());
         }
         System.out.println("Workspace initialization complete: indexed=" + result.indexed()
+                + ", pending_build=" + result.pendingBuild()
+                + ", metadata_only=" + result.metadataOnly()
                 + ", skipped=" + result.skipped() + ", failed=" + result.failed()
                 + ", unchanged=" + result.unchanged());
-        return result.successful() ? CommandLine.ExitCode.OK : CommandLine.ExitCode.SOFTWARE;
+        if (!result.successful()) return CommandLine.ExitCode.SOFTWARE;
+        McpConnectivityProbe.guidance(indexOnly);
+        if (probeMcp) {
+            DoctorCommand.Check check = McpConnectivityProbe.inspect(manifest.root());
+            System.out.println("[" + check.status().label() + "] " + check.message());
+            if (check.action() != null) System.out.println("Action: " + check.action());
+            if (check.status() == DoctorCommand.Status.ERROR) return CommandLine.ExitCode.SOFTWARE;
+        }
+        return CommandLine.ExitCode.OK;
     }
 }

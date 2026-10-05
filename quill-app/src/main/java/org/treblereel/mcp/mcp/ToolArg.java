@@ -9,4 +9,5 @@ import java.lang.annotation.Target;
 @Target(ElementType.PARAMETER)
 @interface ToolArg {
     String description();
+    String[] allowed() default {};
 }

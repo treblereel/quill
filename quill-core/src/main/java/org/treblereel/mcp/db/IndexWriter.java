@@ -24,7 +24,7 @@ public final class IndexWriter {
             "resource_usages", "configuration_usages", "configuration_definitions",
             "dependencies", "field_accesses", "method_calls", "injection_points", "beans", "class_members",
             "class_annotations",
-            "class_occurrences", "module_classpath", "classes",
+            "class_occurrences", "module_classpath", "kotlin_declarations", "classes",
             "files", "metadata"
     };
 
@@ -986,6 +986,34 @@ public final class IndexWriter {
                         statement.setString(2, entry.visibleModule());
                         statement.setInt(3, entry.distance());
                         statement.setString(4, entry.relation());
+                    });
+        });
+    }
+
+    public static void writeKotlinDeclarations(
+            Jdbi jdbi, List<KotlinDeclarationRecord> declarations) {
+        jdbi.useTransaction(h -> {
+            h.execute("DELETE FROM kotlin_declarations");
+            executeBatch(h,
+                    "INSERT INTO kotlin_declarations (class_id, kind, name, jvm_name, "
+                            + "descriptor, semantic_model, is_suspend, is_extension, "
+                            + "has_default_parameters, is_mutable, is_lateinit, "
+                            + "is_delegated, is_synthetic) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    declarations, (statement, declaration) -> {
+                        statement.setInt(1, declaration.classId());
+                        statement.setString(2, declaration.kind());
+                        statement.setString(3, declaration.name());
+                        statement.setString(4, declaration.jvmName());
+                        statement.setString(5, declaration.descriptor());
+                        statement.setString(6, declaration.semanticModel());
+                        statement.setInt(7, declaration.isSuspend() ? 1 : 0);
+                        statement.setInt(8, declaration.extension() ? 1 : 0);
+                        statement.setInt(9, declaration.hasDefaultParameters() ? 1 : 0);
+                        statement.setInt(10, declaration.mutable() ? 1 : 0);
+                        statement.setInt(11, declaration.lateinit() ? 1 : 0);
+                        statement.setInt(12, declaration.delegated() ? 1 : 0);
+                        statement.setInt(13, declaration.synthetic() ? 1 : 0);
                     });
         });
     }

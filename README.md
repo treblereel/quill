@@ -105,11 +105,14 @@ the router must remain at most 20% of the full catalog, preventing silent contex
 | `quill status --json` | Emit the status as machine-readable JSON |
 | `quill doctor` | Diagnose compiled outputs, index freshness, build integration, and client setup |
 | `quill doctor --json` | Emit the diagnostic report as machine-readable JSON |
+| `quill client refresh` | Refresh local MCP registration and managed guidance without indexing or building |
 | `quill clean` | Remove `.quill`, Quill-managed build integration, and MCP client configuration |
 | `quill workspace init` | Discover and initialize all suitable repositories in a workspace |
 | `quill workspace init --depth N` | Discover repositories up to the requested directory depth |
+| `quill workspace init --jobs N` | Process up to N repositories concurrently (default: 4) |
 | `quill workspace init --index-only` | Initialize workspace indexes without installing integration or MCP configuration |
 | `quill workspace refresh` | Reconcile added/removed repositories and index missing repositories |
+| `quill workspace refresh --jobs N` | Process up to N repositories concurrently (default: 4) |
 | `quill workspace refresh --index-only` | Refresh indexes without installing integration or MCP configuration |
 | `quill workspace status` | Show workspace configuration and per-repository readiness |
 | `quill workspace status --json` | Emit workspace status as machine-readable JSON |
@@ -137,6 +140,42 @@ re-indexing the project. Warnings (for example, missing build integration) keep 
 failed requirements such as missing compiled outputs or an unreadable index return a non-zero
 exit code. Use `quill doctor --json` for a stable, versioned machine-readable report.
 
+Use `quill init --probe-mcp` or `quill workspace init --probe-mcp` to verify the installed
+project/workspace `.mcp.json` stdio transport after initialization. To retry without initializing,
+use `quill doctor --probe-mcp --json` in a Maven/Gradle project. This explicit opt-in **executes
+the configured launcher** with its arguments, environment and working directory, performs MCP `initialize`,
+`tools/list`, and `get_overview`, and terminates the subprocess (30-second total response deadline).
+Only run it for a configuration you trust. It makes no model requests, runs no builds or tests,
+and does not change client trust; starting Quill may refresh derived index state.
+Probe failure returns a non-zero exit code even when indexing succeeded; it does not roll back init.
+`--probe-mcp` cannot be combined with `--index-only`.
+
+A successful transport probe is **not** proof that Codex/Claude activated Quill: it does not
+resolve Codex TOML configuration layers, client permissions, or the current conversation's tool
+catalog. Trust the project in the client and start a fresh session
+(Codex's project-layer trust requirement is documented in
+[Config basics](https://learn.chatgpt.com/docs/config-file/config-basic)). Actual model-driven client
+adoption is a separate, explicit check via `scripts/quill_native_client_probe.py` (see its `--help`).
+For cold-start read-only adoption with normal client tool availability and installed permission
+settings, use `scripts/quill_cold_start_probe.py --help`. It starts fresh headless client/MCP
+processes against an existing index, never installs or grants permissions, and saves only a
+sanitized call sequence and outcomes. `--trust-project` supplies explicit invocation-only Codex
+trust without writing global configuration; use it only after consenting to trust that project.
+The map task checks overview-before-source ordering; usages additionally requires a successful
+semantic query; workspace requires compact overview followed by full details for a selected
+project. Missing Quill permissions, client/provider failures, and settings changes are not successes;
+unrelated shell permission denials are reported separately. These checks use the client's
+configured authentication and may consume model usage.
+
+Codex reports also include streamed tool start/end times (observed event arrival, not model
+reasoning attribution). For troubleshooting, add `--observe-mcp`: this explicitly instrumented
+mode wraps the effective stdio Quill launcher for that invocation only. It forwards RPC bytes
+unchanged and records initialization, catalog delivery and RPC durations, never request/response
+payloads, commands, credentials or source contents. Original launcher arguments, environment,
+working directory, permissions and model remain unchanged; no configuration files are edited.
+Catalog delivery proves receipt by the client transport, not visibility in the model's context.
+Keep instrumented diagnostics separate from ordinary cold-start adoption results.
+
 ## Federated Workspaces
 
 A workspace is a directory containing independent Git repositories that may depend on one
@@ -163,6 +202,56 @@ replaced with a workspace-aware command while unrelated MCP servers are preserve
 for added and removed repositories, and `workspace clear` removes only entries managed for that
 workspace. Use `workspace clear --repositories` when indexes and build integration should also be
 removed.
+
+Both `quill init` and `quill workspace init` offer one interactive consent question to
+let Claude use Quill's current read-only MCP tools without repeated tool-approval prompts.
+For scripts, pass `--allow-quill-tools` explicitly; without a terminal no permissions are
+granted automatically. Use `--no-allow-quill-tools` to skip the question (it does not revoke
+existing permissions). `--allow-quill-tools` cannot be combined with `--index-only`.
+Workspace consent covers the workspace root and its discovered JVM repositories.
+
+Consent adds concrete tool names derived from Quill's read-only contracts to each target's
+`.claude/settings.local.json`, not global or shared permission settings. There is no wildcard
+grant for future tools. Existing rules, including `ask` and `deny`, are preserved and remain
+authoritative. New tools require renewed consent on a later `init`. Ownership is recorded in
+`.claude/quill-permissions.json`; keep that local receipt with the settings, and do not commit
+it. `quill clean` / `workspace clear` remove only permissions Quill added, preserving pre-existing
+rules. Claude's workspace trust and MCP connection approval are separate client checks;
+this option does not bypass them or change Codex permissions.
+
+Manage that choice later without re-indexing, rebuilding, or removing the MCP server:
+
+```bash
+quill client permissions status --project /path/to/project --json
+quill client permissions grant --project /path/to/project
+quill client permissions revoke --project /path/to/project
+# Apply to an initialized workspace and its recorded configured repositories:
+quill client permissions status --workspace /path/to/workspace
+```
+
+Update an existing installation's client guidance and local MCP registration independently
+of its index and build outputs:
+
+```bash
+quill client refresh --project /path/to/project
+quill client refresh --workspace /path/to/initialized/workspace
+```
+
+Refresh preserves content outside Quill's managed instruction blocks, other MCP servers,
+and existing tool permissions. It never indexes, builds, grants tool permissions, or changes
+global Codex trust. Workspace refresh uses the recorded configured repositories, not discovery.
+Malformed managed markers, unsupported configuration, and symlinked targets require repair
+before refresh. Unmarked legacy instructions are preserved, not silently deleted.
+Start a fresh client session afterwards; installed files do not attest live activation.
+
+`grant` is explicit consent, so it does not ask another question. It requires an existing
+project-local Quill MCP server and never overrides `ask`/`deny`. `revoke` removes only grants
+recorded as Quill-owned; pre-existing user allows can still permit tools afterward. Both
+mutations accept `--workspace` too and validate targets before writing. `status` reports
+local allowed/missing/denied/ask tools, ownership and invalid files; it never writes files
+or contacts an AI service. `doctor` includes the same local permission diagnosis separately
+from MCP registration. Neither check attests global/managed policies, hooks, workspace trust
+or a live client's effective permissions.
 
 The MCP server reconciles added and removed repositories while it is running. A newly added
 repository becomes routable immediately; run `workspace refresh` after compiling it to create its
@@ -234,11 +323,13 @@ The router profile returns the same policy in `search_tools.guidance`, including
 - **get_worktree_status** — inspect live branch/HEAD, indexed commit, and paged dirty files with
   structural-change classification
 - **get_symbol_at_position** — resolve the identifier at a one-based Java/Kotlin source position
-  to indexed class/member declarations, with ambiguity and confidence reported explicitly
+  to indexed class/member declarations, with ambiguity and confidence reported explicitly;
+  resolved declarations include a stable `symbol_id`
 - **search_external_symbols** / **get_external_symbol_details** — search and inspect class/member
   declarations indexed from dependency bytecode without mixing them with application symbols
 - **search_symbols** — search class, method, field, and constructor declarations by name or
-  signature, with kind filtering and pagination
+  signature, with kind/language filtering and pagination. Results distinguish source-level and
+  JVM names and include a stable `symbol_id`
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with
   exact overload selection by signature/JVM descriptor, invocation kinds, source-line evidence,
   traversal depth, and call paths; use `scope=cross_class` or `scope=cross_package` to suppress
@@ -291,7 +382,8 @@ does not imply that an executor, reactive stream, or message publication has com
 - **compare_index** — compare the active immutable index with a retained generation, including
   class/member, static dependency, bean, and injection-resolution deltas
 - **get_build_status** — inspect build-result integration, compiled outputs, pending events,
-  index freshness, and the next required action without invoking Maven or Gradle
+  index freshness, and the next required action without invoking Maven or Gradle; build-required
+  responses distinguish `classes_missing` from `classes_stale` and identify stale modules
 - **get_build_problems** — read normalized errors captured from the last Maven or Gradle build,
   including source positions and module filtering, without starting a build
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
@@ -312,9 +404,36 @@ does not imply that an executor, reactive stream, or message publication has com
 - **find_usages** — find bytecode calls, constructor calls, field access, type references,
   injection, inheritance, annotations, and ServiceLoader usages with evidence and pagination
 - **find_symbol_usages** — find exact method, constructor, or field usages by declaration
-  signature/JVM descriptor, including call or read/write evidence and pagination
+  signature/JVM descriptor, including call or read/write evidence and pagination; pass a
+  `symbol_id` as `target` to select an overload without repeating its name or descriptor
 - **get_symbol_details** — inspect hierarchy, annotations, declared members, DI context,
   dependency metrics, implementations, occurrences, and external types for one class
+- **get_context** — assemble a compact change-ready card for up to ten classes: resolution,
+  symbol and DI details, coupling, usages, affected tests, risk, and index freshness
+- **plan_change** — turn an intended change into an ordered, evidence-backed plan with primary
+  files, dependency-review candidates, ranked tests, risk, coverage, and freshness warnings
+- **verify_change** — combine live worktree state, captured build diagnostics, affected tests,
+  and index freshness into `ready`, `needs_build`, `blocked`, or `partial` verification
+  plus a non-executing verification plan that uses a project wrapper when usable, falls back to
+  an installed build tool only when present on `PATH`, and otherwise reports the runner unavailable;
+  its first recommendation compiles production and standard test sources without running tests,
+  and structured `next_actions` tell the external agent how to resolve evidence gaps and re-check
+- **change_session** — return a compact stateless snapshot with a stable session ID, current workflow
+  phase, canonical or dirty-worktree-inferred targets, change plan, verification evidence, safe
+  command recommendations, ordered next actions, and a structured verification receipt that keeps
+  recommended argv separate from observed build evidence. Its evidence-only review checklist
+  identifies required target, coverage, module, and worktree review without claiming human
+  acknowledgement. A phase gate states whether unresolved evidence prevents progress and names the
+  exact transition needed for the current phase. A factual directive selects one primary action,
+  while stable action IDs let clients distinguish repeated guidance from a new requirement;
+  all views preserve the same directive. Primary actions include their evidence snapshot and any
+  external command needed for preparation or retry, even when the corresponding section is omitted;
+  summary detail is the default, while
+  full detail preserves the complete plan/verification parity contract, and `view=auto` returns
+  only the plan before structural edits or verification evidence afterwards. Dirty changes with
+  unresolved contract, target, module, coverage, or pagination evidence enter `review_required`;
+  changes needing only build evidence enter `verification_required`. Stateless snapshots may skip
+  phases when the newly observed evidence already satisfies them
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
   with explicit reporting when compiled test outputs are not indexed
 - **get_type_hierarchy** — inspect paged ancestor and descendant paths, including external
@@ -325,8 +444,27 @@ does not imply that an executor, reactive stream, or message publication has com
   an opaque `next_cursor`.
 - **assess_change_risk** — class blast radius or file-level risk based on file
   criticality, coupling, churn, and bus factor; accepts class names and arbitrary paths
-- **get_overview** — compact project summary by default; set `details=true` for diagnostic
-  samples and per-dimension architecture-hub rankings
+- **get_overview** — existing full overview by default; in workspace mode use
+  `view=compact` for a paginated project map (default `limit=20`, max 50, `offset=0`).
+  The map includes unavailable projects, indexed framework/counts and freshness, and
+  explicit `next_page_request` / per-project `details_request` calls. Counts describe
+  the index, not a complete endpoint or architecture analysis. Compact mode cannot be
+  combined with a project selector or `details=true`; use `project=<name>, view=full`
+  for details. Pagination applies only to compact mode. Set `details=true` for diagnostic
+  samples and per-dimension architecture-hub rankings. Its `capabilities` block advertises
+  supported source languages, stable `symbol_id` chaining, and machine-readable errors
+
+MCP startup instructions report the actual server mode: `workspace` for `--workspace`,
+otherwise `single_project`. A repository called a "workspace" in its documentation does
+not imply workspace server mode. Discover only `get_overview` first, then other tools
+on demand instead of loading the entire catalog. For single-project or unknown mode,
+call overview without arguments. If compact is requested on a single-project server,
+follow its executable `retry_with` request for full overview; no reconfiguration or build
+is needed. Read `structuredContent` even when the text content is empty.
+
+Tool failures use a single structured envelope: `error_code`, `message`, `retryable`, and,
+when the request can be refined, `retry_with`. The former free-form `error` field is not
+emitted by the MCP surface.
 - **list_beans** — filter beans by scope, kind, qualifier (CDI and Spring); supports
   `limit`/`offset`
 - **list_injection_points** — injection resolution status for a bean
@@ -374,6 +512,21 @@ response includes a `debug.trace_id` for correlation. Set `QUILL_DEBUG=1` instea
 more convenient to enable diagnostics without editing MCP arguments, or use
 `--debug-directory /path` to choose where the `.quill/debug` directory is created. Debug logs
 contain local paths and dependency coordinates and should not be committed.
+
+To measure real MCP usage without recording code, queries, arguments, paths, or response
+contents, start the server with `--telemetry` (or set `QUILL_TELEMETRY=1`). Quill appends local
+JSONL measurements to `.quill/telemetry/mcp-tools.jsonl`: tool name, profile, duration, response
+byte count, success/error state, and non-content limitation flags such as stale or truncated.
+Summarize a capture, or compare it with an earlier baseline, using:
+
+```bash
+python3 scripts/quill_ux_report.py .quill/telemetry/mcp-tools.jsonl
+python3 scripts/quill_ux_report.py .quill/telemetry/mcp-tools.jsonl \
+  --baseline /path/to/baseline.jsonl --output target/benchmarks/ux-report.json
+```
+
+Telemetry is disabled by default, never leaves the machine, rotates at 5 MiB, and is best-effort:
+failure to write it never affects an MCP request.
 
 For workspace mode, configure the client command as:
 
@@ -431,13 +584,20 @@ args = ["--mcp"]
 cwd = "/absolute/path/to/project"
 ```
 
-When `.codex/config.toml` already exists, `quill init` adds this section
-automatically. A native launch records its executable path; development runs from a
+`quill init` and `quill client refresh` create `.codex/config.toml` when missing,
+or add this section to an existing file. A native launch records its executable path; development runs from a
 JAR fall back to `quill` from `PATH`, keeping the generated configuration binary-only.
 Other settings are preserved, repeated initialization is a no-op, and an existing
 user-owned `mcp_servers.quill` section is never overwritten. A Quill-managed project entry
 whose absolute launcher path no longer exists is repaired when initialization runs from a
-working native executable. Quill does not create a Codex configuration file implicitly.
+working native executable. Initialization also refreshes versioned Quill guidance in `AGENTS.md`
+and `CLAUDE.md`, preserving surrounding user content, so both clients follow the current
+change-session directive, phase gate, review, and verification contract. Quill does not create a
+global Codex configuration or set project trust implicitly.
+
+`quill doctor` distinguishes outdated managed guidance from malformed marker boundaries. `client refresh` or `init`
+refreshes an intact outdated block. When markers are missing, reversed, or duplicated, `init` and
+`clean` preserve the entire instructions file and report the boundaries that need repair.
 
 Here `cwd` lets Quill discover the project automatically, so `--project` is not
 needed. Project-scoped configuration is loaded only for trusted projects. Check the

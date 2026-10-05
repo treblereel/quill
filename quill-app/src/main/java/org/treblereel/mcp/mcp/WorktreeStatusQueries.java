@@ -21,7 +21,19 @@ final class WorktreeStatusQueries {
 
     String getWorktreeStatus(
             Jdbi jdbi, Path root, String status, int limit, int offset) {
-        WorktreeInspector.Snapshot snapshot = WorktreeSnapshotCache.shared().get(root);
+        return getWorktreeStatus(jdbi, root, status, limit, offset, false);
+    }
+
+    String getFreshWorktreeStatus(
+            Jdbi jdbi, Path root, String status, int limit, int offset) {
+        return getWorktreeStatus(jdbi, root, status, limit, offset, true);
+    }
+
+    private String getWorktreeStatus(
+            Jdbi jdbi, Path root, String status, int limit, int offset, boolean fresh) {
+        WorktreeInspector.Snapshot snapshot = fresh
+                ? WorktreeSnapshotCache.shared().refresh(root)
+                : WorktreeSnapshotCache.shared().get(root);
         MetaEnvelope freshness = MetaEnvelope.from(jdbi, 0, 0);
         String filter = status == null || status.isBlank()
                 ? null : status.strip().toLowerCase(Locale.ROOT);

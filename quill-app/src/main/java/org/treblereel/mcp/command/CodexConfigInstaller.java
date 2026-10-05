@@ -97,6 +97,22 @@ final class CodexConfigInstaller {
         }
     }
 
+    static Result installWorkspace(Path projectRoot, Path workspaceRoot, String binary) {
+        Path config = projectRoot.resolve(".codex/config.toml");
+        if (Files.exists(config)) {
+            return installWorkspaceIfPresent(projectRoot, workspaceRoot, binary);
+        }
+        try {
+            writeAtomically(config, appendWorkspaceBlock("", projectRoot, workspaceRoot, binary));
+            System.err.println("[quill] Created " + config
+                    + " with the workspace-aware Quill MCP server.");
+            return Result.ADDED;
+        } catch (IOException e) {
+            warn(config, e.getMessage());
+            return Result.FAILED;
+        }
+    }
+
     static Result uninstallWorkspaceIfPresent(Path projectRoot, Path workspaceRoot) {
         Path config = projectRoot.resolve(".codex/config.toml");
         if (!Files.isRegularFile(config)) return Result.NOT_PRESENT;
@@ -213,7 +229,7 @@ final class CodexConfigInstaller {
         }
     }
 
-    private static boolean definesInlineMcpServers(String content) {
+    static boolean definesInlineMcpServers(String content) {
         boolean beforeFirstTable = true;
         for (String line : content.split("\\R", -1)) {
             String withoutComment = stripComment(line).trim();

@@ -21,13 +21,16 @@ final class WorkspaceClientConfiguration {
         if (indexOnly) return;
         String binary = QuillLauncher.detect();
         for (Path target : supportedTargets(workspaceRoot, repositories)) {
+            ProjectConfiguration.ensureClaudeMd(target);
+            ProjectConfiguration.ensureAgentsMd(target);
+            ClaudeSettingsInstaller.install(target);
             McpJsonInstaller.Result mcp =
                     McpJsonInstaller.installWorkspace(target, workspaceRoot, binary);
             if (mcp == McpJsonInstaller.Result.UNSUPPORTED) {
                 System.err.println("[quill] Warning: could not update "
                         + target.resolve(".mcp.json") + ": unsupported structure");
             }
-            CodexConfigInstaller.Result codex = CodexConfigInstaller.installWorkspaceIfPresent(
+            CodexConfigInstaller.Result codex = CodexConfigInstaller.installWorkspace(
                     target, workspaceRoot, binary);
             if (codex == CodexConfigInstaller.Result.FAILED) {
                 throw new IOException("Could not update " + target.resolve(".codex/config.toml"));
@@ -56,7 +59,7 @@ final class WorkspaceClientConfiguration {
         }
     }
 
-    private static Set<Path> supportedTargets(Path workspaceRoot,
+    static Set<Path> supportedTargets(Path workspaceRoot,
             List<WorkspaceDiscovery.Repository> repositories) {
         Set<Path> targets = new LinkedHashSet<>();
         targets.add(workspaceRoot.toAbsolutePath().normalize());
@@ -73,6 +76,9 @@ final class WorkspaceClientConfiguration {
 
     private static void uninstallTarget(Path target, Path workspaceRoot) throws IOException {
         McpJsonInstaller.uninstallWorkspace(target, workspaceRoot);
+        ProjectConfiguration.removeClaudeMd(target);
+        ProjectConfiguration.removeAgentsMd(target);
+        ClaudeSettingsInstaller.uninstall(target);
         CodexConfigInstaller.Result codex =
                 CodexConfigInstaller.uninstallWorkspaceIfPresent(target, workspaceRoot);
         if (codex == CodexConfigInstaller.Result.FAILED) {

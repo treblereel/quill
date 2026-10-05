@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "name": "Casehub Engine current UX effectiveness",
+  "project_revision": "acc0e3f080a4b087e2d34a256e9478f36b75fbc9",
+  "tasks": [
+    {
+      "id": "project-orientation",
+      "category": "exploration",
+      "quill_tools": ["get_overview"],
+      "prompt": "Orient a new engineer to this repository using structural evidence. Return the indexed class count, bean count, configuration-definition count, service-descriptor count, dependency-index status, and the highest-ranked architecture hub.",
+      "expected": {
+        "classes": 3217,
+        "beans": 851,
+        "configuration_definitions": 2262,
+        "service_descriptors": 1,
+        "dependency_index": "complete",
+        "top_architecture_hub": "io.casehub.api.model.CaseDefinition"
+      }
+    },
+    {
+      "id": "case-definition-coupling",
+      "category": "dependency-impact",
+      "quill_tools": ["get_dependencies"],
+      "prompt": "Measure the inbound static coupling of io.casehub.api.model.CaseDefinition across production and test bytecode. Return its module, unique fan-in, incoming edge count, and source/generated dependent-class breakdown.",
+      "expected": {
+        "module": "api",
+        "fan_in": 447,
+        "incoming_edges": 4631,
+        "source_dependents": 447,
+        "generated_dependents": 0
+      }
+    },
+    {
+      "id": "config-manager-injection-resolution",
+      "category": "dependency-injection",
+      "quill_tools": ["list_injection_points"],
+      "prompt": "Analyze the configManager field injection in io.casehub.engine.internal.engine.DefaultCaseDefinitionRegistry. Return its resolution status and reason, selected candidate FQCN, confidence, and excluded-candidate count.",
+      "expected": {
+        "resolution": "resolved",
+        "reason": "UNIQUE_CONTEXT_CANDIDATE",
+        "selected_candidate": "io.casehub.engine.internal.config.impl.QuarkusConfigManager",
+        "confidence": "high",
+        "excluded_candidate_count": 2
+      }
+    },
+    {
+      "id": "callable-task-service-descriptor",
+      "category": "runtime-registration",
+      "quill_tools": ["inspect_service_descriptors"],
+      "prompt": "Inspect the ServiceLoader descriptor for io.serverlessworkflow.impl.executors.CallableTaskBuilder. Return its repository path, provider count, ordered provider FQCNs, and whether provider order can affect execution according to static analysis.",
+      "expected": {
+        "descriptor": "flow/src/main/resources/META-INF/services/io.serverlessworkflow.impl.executors.CallableTaskBuilder",
+        "provider_count": 1,
+        "providers": [
+          "io.casehub.engine.flow.CasehubCallableTaskBuilder"
+        ],
+        "order_can_affect_execution": false
+      }
+    },
+    {
+      "id": "root-pom-history-window",
+      "category": "git-history",
+      "quill_tools": ["get_file_history"],
+      "prompt": "Inspect up to 100 commits touching the root pom.xml. Return the commits in the requested window, total indexed commits for that file, distinct author-label count, and sorted author labels. Do not merge identities or infer people.",
+      "expected": {
+        "commits_in_requested_window": 97,
+        "total_file_commits": 97,
+        "distinct_author_labels": 3,
+        "author_labels": [
+          "Dmitrii Tikhomirov",
+          "Mark Proctor",
+          "mdproctor"
+        ]
+      }
+    },
+    {
+      "id": "runtime-bean-producers",
+      "category": "dependency-injection",
+      "quill_tools": ["list_beans"],
+      "prompt": "Inspect io.casehub.engine.internal.quarkus.RuntimeBeans. Return its module, class scope, producer-method count declared by that class, and total bean entries associated with the class.",
+      "expected": {
+        "module": "runtime",
+        "class_scope": "@ApplicationScoped",
+        "producer_method_count": 79,
+        "total_bean_entries": 80
+      }
+    },
+    {
+      "id": "registry-implementation-selection",
+      "category": "type-hierarchy",
+      "quill_tools": ["find_implementations"],
+      "prompt": "Find every compiled implementation of io.casehub.engine.common.spi.CaseDefinitionRegistry. Return implementation count, source/generated counts, sorted modules containing implementations, and whether choosing one depends on application context.",
+      "expected": {
+        "implementation_count": 9,
+        "source_implementations": 9,
+        "generated_implementations": 0,
+        "implementation_modules": [
+          "common-core",
+          "planning",
+          "rest",
+          "runtime",
+          "yaml-cbr"
+        ],
+        "selection_depends_on_application_context": true
+      }
+    },
+    {
+      "id": "registry-impacted-tests",
+      "category": "test-impact",
+      "quill_tools": ["find_impacted_tests"],
+      "prompt": "Assess tests affected by changing io.casehub.engine.internal.engine.DefaultCaseDefinitionRegistry with transitive depth 3. Return the total ranked candidates, indexed test-class count, coverage status, direct depth-one test count, and sorted direct test classes.",
+      "expected": {
+        "ranked_test_candidates": 34,
+        "indexed_test_classes": 1468,
+        "coverage_status": "partial",
+        "direct_test_count": 6,
+        "direct_test_classes": [
+          "io.casehub.engine.internal.engine.CaseDefinitionVocabularyValidationTest",
+          "io.casehub.engine.internal.engine.CaseMetaModelDefinitionPopulationTest",
+          "io.casehub.engine.internal.engine.CbrConfigRegistrationValidationTest",
+          "io.casehub.engine.internal.engine.DefaultCaseDefinitionRegistryGoalWarningTest",
+          "io.casehub.engine.internal.engine.DefaultCaseDefinitionRegistryTest",
+          "io.casehub.engine.internal.engine.DefaultCaseDefinitionRegistryTimeoutTest"
+        ]
+      }
+    },
+    {
+      "id": "actor-state-endpoint-parity",
+      "category": "framework-endpoints",
+      "quill_tools": ["find_framework_endpoints"],
+      "prompt": "Find production HTTP endpoints for /actors/{actorId}/state across supported frameworks. Return endpoint count, sorted frameworks, sorted handler classes, HTTP method, and whether every handler has exactly one direct project call.",
+      "expected": {
+        "endpoint_count": 2,
+        "frameworks": [
+          "jax-rs",
+          "spring"
+        ],
+        "handler_classes": [
+          "io.casehub.actorstate.ActorStateResource",
+          "io.casehub.engine.support.spring.ActorStateController"
+        ],
+        "http_method": "GET",
+        "every_handler_has_one_direct_project_call": true
+      }
+    },
+    {
+      "id": "dynamic-configuration-lookup",
+      "category": "configuration",
+      "quill_tools": ["find_configuration_references"],
+      "prompt": "Inspect configuration access by io.casehub.engine.internal.config.impl.QuarkusConfigManager. Return usage count, definition count, key classification, resolution status, resolution strategy, and whether configuration values are indexed.",
+      "expected": {
+        "usage_count": 1,
+        "definition_count": 0,
+        "key_kind": "dynamic_config_key",
+        "resolution_status": "unknown",
+        "resolution_strategy": "dynamic_programmatic_lookup",
+        "values_indexed": false
+      }
+    },
+    {
+      "id": "module-cycle-check",
+      "category": "architecture",
+      "quill_tools": ["find_cycles"],
+      "prompt": "Check production project modules for dependency cycles using direct project dependencies. Return analyzed edge count, cycle count, and the cycle semantics used.",
+      "expected": {
+        "analyzed_edges": 160,
+        "cycle_count": 0,
+        "cycle_semantics": "strongly_connected_component_of_direct_project_dependencies"
+      }
+    },
+    {
+      "id": "runtime-unused-class-candidates",
+      "category": "dead-code",
+      "quill_tools": ["find_unused_classes"],
+      "prompt": "Find conservative unused production-class candidates in the runtime module, excluding generated and test classes. Return analyzed-class count, candidate count, sorted candidate classes, confidence shared by the candidates, and the result classification.",
+      "expected": {
+        "analyzed_classes": 91,
+        "candidate_count": 2,
+        "candidate_classes": [
+          "io.casehub.engine.internal.work.WorkCdi",
+          "io.casehub.engine.trust.OverlayTrustPropertyModel"
+        ],
+        "confidence": "medium",
+        "classification": "candidates_not_proven_dead_code"
+      }
+    },
+    {
+      "id": "registry-change-risk",
+      "category": "pre-modification",
+      "quill_tools": ["assess_change_risk"],
+      "prompt": "Assess the change risk of io.casehub.engine.internal.engine.DefaultCaseDefinitionRegistry. Return risk score and level, unique fan-in and fan-out, and the source file that would be edited.",
+      "expected": {
+        "risk_score": 4.0,
+        "risk_level": "MEDIUM",
+        "fan_in": 23,
+        "fan_out": 33,
+        "file": "runtime/src/main/java/io/casehub/engine/internal/engine/DefaultCaseDefinitionRegistry.java"
+      }
+    },
+    {
+      "id": "runtime-module-boundaries",
+      "category": "module-architecture",
+      "quill_tools": ["get_module_graph"],
+      "prompt": "Map runtime module visibility to depth 2. Return sorted direct inbound modules, direct outbound modules, transitive inbound modules, and transitive outbound modules.",
+      "expected": {
+        "direct_inbound_modules": [
+          "actor-state",
+          "planning",
+          "queue",
+          "react",
+          "resilience",
+          "testing",
+          "work-adapter"
+        ],
+        "direct_outbound_modules": [
+          "api",
+          "common",
+          "runtime-core",
+          "schema"
+        ],
+        "transitive_inbound_modules": [
+          "work-cloudevent"
+        ],
+        "transitive_outbound_modules": [
+          "common-core"
+        ]
+      }
+    },
+    {
+      "id": "actor-state-bytecode-flow",
+      "category": "execution-flow",
+      "quill_tools": ["get_call_hierarchy", "analyze_execution_order"],
+      "prompt": "Trace the direct bytecode flow of io.casehub.actorstate.ActorStateResource.getActorState(String). Return direct callee FQCN and method, invocation kind, source evidence line, emitted call-event count, whether control flow is straight-line, and async-boundary count.",
+      "expected": {
+        "callee_class": "io.casehub.actorstate.ActorStateAggregator",
+        "callee_method": "forActor",
+        "invocation_kind": "virtual",
+        "evidence_line": 51,
+        "call_event_count": 1,
+        "straight_line": true,
+        "async_boundary_count": 0
+      }
+    }
+  ]
+}

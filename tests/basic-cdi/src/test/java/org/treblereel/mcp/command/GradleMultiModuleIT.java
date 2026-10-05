@@ -105,7 +105,10 @@ class GradleMultiModuleIT {
         Path db = ProjectIndexStore.findDbForHead(springProject);
         assertNotNull(db);
         var jdbi = QuillDatabase.open(db);
-        assertEquals("Spring", IndexReader.getMetadata(jdbi).get("framework"));
+        var metadata = IndexReader.getMetadata(jdbi);
+        assertEquals("Spring", metadata.get("framework"));
+        assertTrue(Integer.parseInt(metadata.get("kotlin_metadata_classes")) > 0);
+        assertNotNull(metadata.get("kotlin_metadata_fallbacks"));
         assertEquals(2, IndexReader.findBeans(jdbi, null).size());
         assertTrue(IndexReader.findAllClasses(jdbi).stream()
                 .allMatch(record -> record.sourceTokens() > 0));
@@ -120,6 +123,27 @@ class GradleMultiModuleIT {
         var serviceBean = IndexReader.findBeanByClassId(jdbi, serviceClass.id()).orElseThrow();
         assertNotNull(IndexReader.findInjectionPoints(jdbi, serviceBean.id())
                 .getFirst().resolvedBeanId());
+        var repository = IndexReader.findKotlinDeclarations(jdbi, serviceClass.id()).stream()
+                .filter(value -> value.name().equals("repository"))
+                .findFirst().orElseThrow();
+        assertTrue(repository.mutable());
+        assertTrue(repository.lateinit());
+
+        var functionsClass = IndexReader.findClassByName(jdbi,
+                "org.treblereel.mcp.fixture.gradlespring.OrderFunctionsKt").orElseThrow();
+        assertTrue(functionsClass.sourceFile().endsWith("OrderFunctions.kt"));
+        var functions = IndexReader.findKotlinDeclarations(jdbi, functionsClass.id());
+        assertEquals("FILE_FACADE", functions.getFirst().kind());
+        assertTrue(functions.stream()
+                .filter(value -> value.name().equals("formatOrder"))
+                .anyMatch(value -> value.hasDefaultParameters()));
+        assertTrue(functions.stream()
+                .filter(value -> value.name().equals("loadOrder"))
+                .anyMatch(value -> value.isSuspend()));
+        int declarationCount = IndexReader.findAllClasses(jdbi).stream()
+                .mapToInt(value -> IndexReader.findKotlinDeclarations(jdbi, value.id()).size())
+                .sum();
+        assertEquals(Integer.toString(declarationCount), metadata.get("kotlin_declarations"));
     }
 
     private static void assumeGradleAvailable() throws Exception {

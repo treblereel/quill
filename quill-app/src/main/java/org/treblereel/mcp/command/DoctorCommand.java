@@ -20,7 +20,7 @@ import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 
-/** Performs project setup and index health checks without building or re-indexing. */
+/** Static project checks by default; explicit MCP probing may refresh derived index state. */
 @Command(name = "doctor", mixinStandardHelpOptions = true,
         description = "Diagnose project integration, compiled outputs, and index freshness")
 public class DoctorCommand implements Callable<Integer> {
@@ -33,6 +33,10 @@ public class DoctorCommand implements Callable<Integer> {
     @Option(names = "--json", description = "Write machine-readable JSON to stdout")
     boolean json;
 
+    @Option(names = "--probe-mcp", description = "Execute the project .mcp.json launcher and check "
+            + "MCP connectivity (30s timeout; no AI requests; may refresh index state)")
+    boolean probeMcp;
+
     @Spec
     CommandSpec spec;
 
@@ -40,6 +44,11 @@ public class DoctorCommand implements Callable<Integer> {
     public Integer call() {
         Path root = ProjectRootFinder.find(projectPath);
         Report report = inspect(root);
+        if (probeMcp) {
+            List<Check> checks = new ArrayList<>(report.checks());
+            checks.add(McpConnectivityProbe.inspect(root));
+            report = new Report(report.projectRoot(), List.copyOf(checks));
+        }
         PrintWriter output = spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out);
         output.println(json ? toJson(report) : toText(report));
         output.flush();
@@ -147,6 +156,15 @@ public class DoctorCommand implements Callable<Integer> {
                     "Project-local MCP configuration detected for " + String.join(" and ", clients)));
         }
         List<String> brokenLaunchers = brokenClientLaunchers(normalized);
+        if (clients.contains("Codex")) {
+            checks.add(Check.info("codex_activation",
+                    "Project configuration is present; live Codex tool activation was not checked",
+                    "Trust this project in Codex and start a fresh session, then confirm get_overview "
+                            + "is callable. Project-local config requires project trust; empty MCP "
+                            + "resources do not prove missing tools. For headless automation, pass "
+                            + "trust with a projects inline-table override (not a quoted dotted key), "
+                            + "or use a trusted user profile or explicit mcp_servers.quill transport overrides."));
+        }
         if (!brokenLaunchers.isEmpty()) {
             checks.add(Check.error("mcp_launcher",
                     "Configured Quill launcher does not exist or is not executable: "
@@ -160,16 +178,68 @@ public class DoctorCommand implements Callable<Integer> {
                     "CLAUDE.md contains the current managed Quill guidance"));
             case MISSING -> checks.add(Check.warning("claude_instructions",
                     "CLAUDE.md does not contain managed Quill guidance",
-                    "Run `quill init --project " + normalized + "`"));
+                    "Run `quill client refresh --project " + normalized + "`"));
             case INVALID -> checks.add(Check.warning("claude_instructions",
                     "CLAUDE.md contains an incomplete managed Quill block",
-                    "Run `quill init --project " + normalized + "` to replace it"));
+                    "Repair Quill marker boundaries in CLAUDE.md, then run `quill client refresh`"));
+            case OUTDATED -> checks.add(Check.warning("claude_instructions",
+                    "CLAUDE.md contains outdated or modified managed Quill guidance",
+                    "Run `quill client refresh --project " + normalized + "` to refresh it without indexing"));
+        }
+        switch (ProjectConfiguration.inspectAgentsMd(normalized)) {
+            case CURRENT -> checks.add(Check.pass("codex_instructions",
+                    "AGENTS.md contains the current managed Quill guidance"));
+            case MISSING -> checks.add(Check.warning("codex_instructions",
+                    "AGENTS.md does not contain managed Quill guidance",
+                    "Run `quill client refresh --project " + normalized + "`"));
+            case INVALID -> checks.add(Check.warning("codex_instructions",
+                    "AGENTS.md contains an incomplete managed Quill block",
+                    "Repair Quill marker boundaries in AGENTS.md, then run `quill client refresh`"));
+            case OUTDATED -> checks.add(Check.warning("codex_instructions",
+                    "AGENTS.md contains outdated or modified managed Quill guidance",
+                    "Run `quill client refresh --project " + normalized + "` to refresh it without indexing"));
+        }
+        if (ClaudeSettingsInstaller.isEnabled(normalized)) {
+            checks.add(Check.pass("claude_approval",
+                    "Claude Code project MCP configuration explicitly enables Quill"));
+        } else {
+            checks.add(Check.warning("claude_approval",
+                    "Claude Code may require interactive approval before starting Quill",
+                    "Run `quill init --project " + normalized + "`"));
+        }
+        if (claudeAlwaysLoads(normalized)) {
+            checks.add(Check.pass("claude_eager_loading",
+                    "Claude Code loads Quill tools eagerly"));
+        } else {
+            checks.add(Check.warning("claude_eager_loading",
+                    "Claude Code may defer Quill tools behind ToolSearch",
+                    "Run `quill init --project " + normalized + "`"));
         }
         String toolProfile = claudeToolProfile(normalized);
         if (toolProfile != null) {
             checks.add(Check.pass("claude_tool_profile", "Claude Code MCP uses the `"
                     + toolProfile + "` Quill tool profile"));
         }
+        ClaudePermissionStatus.Report permissions = ClaudePermissionStatus.inspect(normalized);
+        String permissionStatusCommand = "quill client permissions status --project \"" + normalized + "\"";
+        if (!permissions.valid()) {
+            checks.add(Check.warning("claude_tool_permissions", "Invalid local permission evidence in "
+                    + String.join(", ", permissions.invalid_files()), permissionStatusCommand + " --json"));
+        } else if (!permissions.denied_tools().isEmpty() || !permissions.ask_tools().isEmpty()) {
+            checks.add(Check.warning("claude_tool_permissions", "Local Quill permission policies: denied="
+                    + permissions.denied_tools().size() + ", ask=" + permissions.ask_tools().size()
+                    + "; allow rules do not override them", permissionStatusCommand
+                    + " --json; review existing policies in Claude /permissions"));
+        } else if (!permissions.missing_tools().isEmpty()) {
+            checks.add(Check.info("claude_tool_permissions", "Optional no-prompt Quill grants are missing for "
+                    + permissions.missing_tools().size() + " current tools",
+                    permissions.server_configured()
+                            ? "quill client permissions grant --project \"" + normalized + "\""
+                            : "quill init --project \"" + normalized + "\""));
+        } else {
+            checks.add(Check.pass("claude_tool_permissions", "All current read-only Quill tools have local allow rules"));
+        }
+        checks.add(Check.info("claude_permission_scope", ClaudePermissionStatus.LIMITATION, null));
         return new Report(normalized, List.copyOf(checks));
     }
 
@@ -322,6 +392,17 @@ public class DoctorCommand implements Callable<Integer> {
             return "full";
         } catch (IOException error) {
             return null;
+        }
+    }
+
+    private static boolean claudeAlwaysLoads(Path root) {
+        Path config = root.resolve(".mcp.json");
+        if (!Files.isRegularFile(config)) return false;
+        try {
+            return JSON.readTree(config.toFile()).path("mcpServers").path("quill")
+                    .path("alwaysLoad").asBoolean(false);
+        } catch (IOException error) {
+            return false;
         }
     }
 

@@ -14,6 +14,10 @@ public final class QuillToolQueries {
     private final UsageToolQueries usages = new UsageToolQueries();
     private final SymbolToolQueries symbols = new SymbolToolQueries();
     private final TestImpactQueries testImpact = new TestImpactQueries();
+    private final ContextQueries context = new ContextQueries();
+    private final ChangePlanQueries changePlan = new ChangePlanQueries();
+    private final ChangeVerificationQueries changeVerification = new ChangeVerificationQueries();
+    private final ChangeSessionQueries changeSession = new ChangeSessionQueries();
     private final TypeHierarchyQueries typeHierarchy = new TypeHierarchyQueries();
     private final SymbolSearchQueries symbolSearch = new SymbolSearchQueries();
     private final AnnotatedSymbolQueries annotatedSymbols = new AnnotatedSymbolQueries();
@@ -85,6 +89,24 @@ public final class QuillToolQueries {
                 jdbi, targets, transitive, maxDepth, limit, offset);
     }
 
+    String getContext(Jdbi jdbi, List<String> targets, boolean includeMembers, int limit) {
+        return context.getContext(jdbi, targets, includeMembers, limit);
+    }
+
+    String planChange(Jdbi jdbi, Path projectRoot, List<String> targets,
+            String change, int limit) {
+        return changePlan.planChange(jdbi, projectRoot, targets, change, limit);
+    }
+
+    String verifyChange(Jdbi jdbi, Path projectRoot, List<String> targets, int limit) {
+        return changeVerification.verifyChange(jdbi, projectRoot, targets, limit);
+    }
+
+    String changeSession(Jdbi jdbi, Path projectRoot, List<String> targets,
+            String change, int limit, String detail, String view) {
+        return changeSession.snapshot(jdbi, projectRoot, targets, change, limit, detail, view);
+    }
+
     String getTypeHierarchy(Jdbi jdbi, String target, String direction,
             int maxDepth, int limit, int offset) {
         return typeHierarchy.getTypeHierarchy(
@@ -93,6 +115,11 @@ public final class QuillToolQueries {
 
     String searchSymbols(Jdbi jdbi, String pattern, String kind, int limit, int offset) {
         return symbolSearch.searchSymbols(jdbi, pattern, kind, limit, offset);
+    }
+
+    String searchSymbols(Jdbi jdbi, String pattern, String kind, String language,
+            int limit, int offset) {
+        return symbolSearch.searchSymbols(jdbi, pattern, kind, language, limit, offset);
     }
 
     String findAnnotatedSymbols(Jdbi jdbi, String annotation, String kind,

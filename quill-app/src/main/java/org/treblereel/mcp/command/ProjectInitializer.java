@@ -38,6 +38,7 @@ import org.treblereel.mcp.core.FileInventory;
 import org.treblereel.mcp.core.ExternalBeanScanner;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.JandexScanner;
+import org.treblereel.mcp.core.KotlinMetadataReader;
 import org.treblereel.mcp.core.ModuleClasspathResolver;
 import org.treblereel.mcp.core.ServiceProviderScanner;
 import org.treblereel.mcp.core.SpringResolver;
@@ -57,6 +58,7 @@ import org.treblereel.mcp.model.ExternalBeanRecord;
 import org.treblereel.mcp.model.FieldAccessRecord;
 import org.treblereel.mcp.model.FrameworkEndpointRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 import org.treblereel.mcp.model.MethodCallRecord;
 
@@ -386,7 +388,7 @@ public class ProjectInitializer {
                         scanResult.index(), classNameToSqliteId);
         List<ClassOccurrenceRecord> classOccurrences = ClassOccurrenceScanner.scan(
                 root, classFiles, classDirectoryOwners, classDirectorySourceSets,
-                classNameToSqliteId);
+                classNameToSqliteId, sourceRoots, scanResult.sourceMappings());
 
         Map<String, Integer> sourceFileToClassId = new HashMap<>();
         for (int i = 0; i < classes.size(); i++) {
@@ -627,6 +629,15 @@ public class ProjectInitializer {
                 Integer.toString(scanResult.cacheHits()));
         metadata.put("application_index_cache_shards",
                 Integer.toString(scanResult.cacheShards()));
+        metadata.put("kotlin_metadata_classes",
+                Integer.toString(scanResult.kotlinMetadata().size()));
+        metadata.put("kotlin_metadata_fallbacks", Long.toString(
+                scanResult.kotlinMetadata().values().stream()
+                        .filter(value -> value.status() != KotlinMetadataReader.Status.PARSED)
+                        .count()));
+        List<KotlinDeclarationRecord> kotlinDeclarations = kotlinDeclarations(
+                scanResult.kotlinMetadata(), classNameToSqliteId);
+        metadata.put("kotlin_declarations", Integer.toString(kotlinDeclarations.size()));
         metadata.put("class_occurrences", Integer.toString(classOccurrences.size()));
         metadata.put("module_contexts", Integer.toString(moduleDirectories.size()));
         metadata.put("discovered_module_count",
@@ -687,6 +698,7 @@ public class ProjectInitializer {
                         + writeTimings.rowsUnchanged() + " unchanged.");
             }
             Jdbi stagedIndex = QuillDatabase.openWritable(stagedDb);
+            IndexWriter.writeKotlinDeclarations(stagedIndex, kotlinDeclarations);
             IndexWriter.writeExternalBeans(stagedIndex, externalBeans);
             IndexWriter.writeModuleClasspath(stagedIndex, moduleClasspath);
             long validationStartedAt = System.nanoTime();
@@ -758,6 +770,63 @@ public class ProjectInitializer {
                 + (gitResult.isEmpty() ? "" : ", " + gitResult.commits().size() + " git commits")
                 + depStatus + ".");
         return InitializationResult.success(startedAtNanos);
+    }
+
+    private static List<KotlinDeclarationRecord> kotlinDeclarations(
+            Map<String, KotlinMetadataReader.Result> metadata,
+            Map<String, Integer> classIds) {
+        List<KotlinDeclarationRecord> result = new ArrayList<>();
+        metadata.forEach((className, value) -> {
+            Integer classId = classIds.get(className);
+            if (classId == null || value.status() != KotlinMetadataReader.Status.PARSED) return;
+            String name = value.kotlinName() == null ? className : value.kotlinName();
+            result.add(new KotlinDeclarationRecord(classId, kotlinDeclarationKind(value), name,
+                    className, "", "kotlin_metadata", false, false, false,
+                    false, false, false,
+                    value.kind() == KotlinMetadataReader.Kind.SYNTHETIC));
+            value.functions().forEach(function -> result.add(new KotlinDeclarationRecord(
+                    classId, "FUNCTION", function.name(), function.jvmName(),
+                    function.descriptor() == null ? "" : function.descriptor(),
+                    "kotlin_metadata", function.suspend(), function.extension(),
+                    function.hasDefaultParameters(), false, false, false,
+                    function.synthesized())));
+            value.properties().forEach(property -> {
+                int before = result.size();
+                addPropertyDeclaration(result, classId, property, property.fieldName(),
+                        property.fieldDescriptor());
+                addPropertyDeclaration(result, classId, property, property.getterName(),
+                        property.getterDescriptor());
+                addPropertyDeclaration(result, classId, property, property.setterName(),
+                        property.setterDescriptor());
+                if (result.size() == before) {
+                    addPropertyDeclaration(result, classId, property, null, null);
+                }
+            });
+        });
+        return List.copyOf(result);
+    }
+
+    private static void addPropertyDeclaration(List<KotlinDeclarationRecord> result, int classId,
+            KotlinMetadataReader.Property property, String jvmName, String descriptor) {
+        if (jvmName == null && descriptor != null) return;
+        if (jvmName == null && result.stream().anyMatch(value -> value.classId() == classId
+                && "PROPERTY".equals(value.kind()) && property.name().equals(value.name()))) {
+            return;
+        }
+        result.add(new KotlinDeclarationRecord(
+                classId, "PROPERTY", property.name(), jvmName,
+                descriptor == null ? "" : descriptor,
+                "kotlin_metadata", false, property.extension(), false,
+                property.mutable(), property.lateinit(), property.delegated(), false));
+    }
+
+    private static String kotlinDeclarationKind(KotlinMetadataReader.Result value) {
+        if (value.kind() == KotlinMetadataReader.Kind.CLASS && value.data()) return "DATA_CLASS";
+        if (value.kind() == KotlinMetadataReader.Kind.CLASS && value.value()) return "VALUE_CLASS";
+        if (value.kind() == KotlinMetadataReader.Kind.INTERFACE && value.funInterface()) {
+            return "FUN_INTERFACE";
+        }
+        return value.kind().name();
     }
 
     private static String toJson(Object value) {

@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.core.JvmSourceFiles;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.CoChangeRecord;
@@ -261,10 +262,8 @@ final class TestImpactQueries {
     private static boolean isTestPath(String path) {
         if (path == null) return false;
         String normalized = path.replace('\\', '/');
-        String name = normalized.substring(normalized.lastIndexOf('/') + 1);
         return normalized.contains("/src/test/") || normalized.startsWith("src/test/")
-                || name.endsWith("Test.java") || name.endsWith("Tests.java")
-                || name.endsWith("IT.java") || name.endsWith("Spec.kt");
+                || JvmSourceFiles.isConventionalTestName(normalized);
     }
 
     private static String confidence(Candidate candidate) {

@@ -65,6 +65,8 @@ public final class McpStdioServer {
 
         var server = McpServer.async(transport)
                 .serverInfo("quill", QuillTopCommand.version())
+                .instructions(serverInstructions(profile,
+                        tools instanceof QuillTools quill ? quill.workspaceMode() : null))
                 .capabilities(ServerCapabilities.builder().tools(false).build())
                 .tools(specifications)
                 .requestTimeout(requestTimeout)
@@ -88,6 +90,34 @@ public final class McpStdioServer {
                 responseScheduler.dispose();
             }
         }
+    }
+
+    static String serverInstructions(McpToolProfile profile) {
+        return serverInstructions(profile, null);
+    }
+
+    static String serverInstructions(McpToolProfile profile, Boolean workspaceMode) {
+        String instructions = "Quill supplies read-only code intelligence for indexed JVM projects. "
+                + "Discover only get_overview by exact name first; discover other tools on demand, not the entire catalog. ";
+        instructions += workspaceMode == null
+                ? "Use view=compact only if launch arguments confirm --workspace; otherwise call get_overview without arguments. "
+                : workspaceMode
+                        ? "Server mode: workspace (--workspace). Start with get_overview view=compact, then select a project for full details. "
+                        : "Server mode: single_project (no --workspace). Start with get_overview without arguments, not view=compact. ";
+        instructions += "Follow retry_with on mode errors. Read structuredContent even when text is empty. ";
+        if (profile.router() || profile.includes("change_session")) {
+            instructions += "For a code change, query change_session "
+                + "before editing or choosing a build, then follow directive.primary_action and "
+                + "phase_gate; refresh after edits and external compilation. ";
+        }
+        instructions += "Quill never runs builds "
+                + "or tests. Use source reads for known files and stale/unsupported evidence. "
+                + "Do not infer missing tools from empty resources: this server exposes tools, not resources.";
+        if (profile.router()) {
+            return instructions + " This profile exposes get_overview, search_tools and execute_tool; "
+                    + "discover change_session and other queries with search_tools, then execute_tool.";
+        }
+        return instructions + " If a query is not in this profile, use the available specialized tools.";
     }
 
     private static int positiveEnvironmentValue(String name, int fallback) {

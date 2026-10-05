@@ -17,6 +17,8 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.QuillTopCommand;
+import org.treblereel.mcp.mcp.ProjectRegistry;
+import org.treblereel.mcp.mcp.WorkspaceProjectScope;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 import org.treblereel.mcp.workspace.WorkspaceLock;
 import picocli.CommandLine;
@@ -26,6 +28,40 @@ class WorkspaceCommandTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @TempDir Path workspace;
+
+    @Test
+    void explicitPermissionFlagConfiguresWorkspaceAndRepositoriesReversibly() throws Exception {
+        createCompiledRepository("engine");
+        Captured result = execute("workspace", "init", "--project", workspace.toString(),
+                "--allow-quill-tools");
+        assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
+        for (Path target : java.util.List.of(workspace, workspace.resolve("engine"))) {
+            assertTrue(ClaudeSettingsInstaller.areToolsAllowed(target,
+                    org.treblereel.mcp.mcp.ReadOnlyToolNames.all()));
+        }
+        assertEquals(CommandLine.ExitCode.OK,
+                execute("workspace", "clear", "--project", workspace.toString()).exitCode());
+        assertFalse(Files.exists(workspace.resolve(".claude/settings.local.json")));
+        assertFalse(Files.exists(workspace.resolve("engine/.claude/settings.local.json")));
+    }
+
+    @Test
+    void permissionFlagRejectsIndexOnlyBeforeCreatingWorkspace() {
+        Captured result = execute("workspace", "init", "--project", workspace.toString(),
+                "--index-only", "--allow-quill-tools");
+        assertEquals(CommandLine.ExitCode.USAGE, result.exitCode());
+        assertFalse(Files.exists(workspace.resolve(".claude")));
+        assertFalse(Files.exists(WorkspaceManifestStore.manifest(workspace)));
+    }
+
+    @Test
+    void negativePermissionFlagKeepsNonInteractiveInitializationNonGranting() throws Exception {
+        Captured result = execute("workspace", "init", "--project", workspace.toString(),
+                "--no-allow-quill-tools");
+        assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
+        assertFalse(Files.exists(workspace.resolve(".claude/settings.local.json")));
+        assertFalse(result.stdout().contains("Optional: rerun"));
+    }
 
     @Test
     void initializesIdempotentlyWithoutTouchingRepositoryIndexes() throws Exception {
@@ -52,15 +88,27 @@ class WorkspaceCommandTest {
 
         assertEquals(CommandLine.ExitCode.OK, result.exitCode(),
                 result.stdout() + System.lineSeparator() + result.stderr());
-        assertTrue(result.stdout().contains("indexed=2, skipped=0, failed=0"), result.stdout());
+        assertTrue(result.stdout().contains(
+                "indexed=2, pending_build=0, metadata_only=0, skipped=0, failed=0"),
+                result.stdout());
         for (String name : java.util.List.of("engine", "platform")) {
             Path repository = workspace.resolve(name);
             assertTrue(ProjectIndexStore.findBestAvailableDb(repository) != null);
             assertTrue(Files.isRegularFile(repository.resolve(".mvn/extensions.xml")));
             assertWorkspaceMcp(repository.resolve(".mcp.json"));
+            assertTrue(Files.isRegularFile(repository.resolve(".codex/config.toml")));
+            assertTrue(Files.readString(repository.resolve(".codex/config.toml"))
+                    .contains("\"--workspace\""));
+            assertTrue(Files.readString(repository.resolve("CLAUDE.md"))
+                    .contains("quill:managed:start"));
+            assertTrue(Files.readString(repository.resolve("AGENTS.md"))
+                    .contains("mcp__quill__get_overview"));
+            assertTrue(JSON.readTree(repository.resolve(".claude/settings.json").toFile())
+                    .path("enabledMcpjsonServers").toString().contains("quill"));
             assertFalse(Files.exists(repository.resolve("build-was-invoked")));
         }
         assertWorkspaceMcp(workspace.resolve(".mcp.json"));
+        assertTrue(Files.isRegularFile(workspace.resolve(".codex/config.toml")));
     }
 
     @Test
@@ -107,7 +155,7 @@ class WorkspaceCommandTest {
     }
 
     @Test
-    void initSkipsUnsupportedAndUncompiledRepositories() throws Exception {
+    void initPreparesSupportedUncompiledRepositoriesForTheirFirstBuild() throws Exception {
         Files.createDirectories(workspace.resolve("docs/.git"));
         Path uncompiled = Files.createDirectories(workspace.resolve("uncompiled"));
         Files.createDirectories(uncompiled.resolve(".git"));
@@ -116,8 +164,118 @@ class WorkspaceCommandTest {
         Captured result = execute("workspace", "init", "--project", workspace.toString());
 
         assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
-        assertTrue(result.stdout().contains("indexed=0, skipped=2, failed=0"), result.stdout());
+        assertTrue(result.stdout().contains(
+                "indexed=0, pending_build=1, metadata_only=0, skipped=1, failed=0"),
+                result.stdout());
+        assertTrue(Files.isRegularFile(uncompiled.resolve(".mvn/extensions.xml")));
+        assertWorkspaceMcp(uncompiled.resolve(".mcp.json"));
         assertFalse(Files.exists(uncompiled.resolve(".quill/refs.json")));
+    }
+
+    @Test
+    void successfulBuildMakesPendingRepositoryQueryReady() throws Exception {
+        Path repository = createRepository("engine");
+
+        Captured initialized = execute(
+                "workspace", "init", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, initialized.exitCode(), initialized.stderr());
+        assertTrue(initialized.stdout().contains("pending_build=1"), initialized.stdout());
+        assertTrue(Files.isRegularFile(repository.resolve(".mvn/extensions.xml")));
+        assertFalse(Files.exists(repository.resolve(".quill/refs.json")));
+
+        compileRepository(repository);
+        ProjectRegistry registry = new ProjectRegistry(new WorkspaceProjectScope(workspace));
+        ProjectRegistry.Resolution missingIndex = registry.resolve("engine");
+        assertEquals("index_required", missingIndex.issues().getFirst().code());
+        assertTrue(missingIndex.issues().getFirst().recommendedAction()
+                .contains("quill workspace refresh --project " + workspace));
+
+        Path events = Files.createDirectories(repository.resolve(".quill/build-events"));
+        Files.writeString(events.resolve("maven-test.json"), """
+                {"version":3,"buildTool":"maven","successful":true,
+                 "finishedAt":%d,"captureScope":"exception_chain",
+                 "failureMessagesBase64":[],"diagnosticsBase64":[]}
+                """.formatted(System.currentTimeMillis()));
+
+        ProjectRegistry.Resolution resolution = registry.resolve("engine");
+
+        assertTrue(resolution.errors().isEmpty(), String.join("; ", resolution.errors()));
+        assertEquals(1, resolution.projects().size());
+        assertTrue(ProjectIndexStore.findBestAvailableDb(repository) != null);
+        assertFalse(Files.exists(events));
+    }
+
+    @Test
+    void indexOnlyLeavesPendingRepositoryForExplicitRefresh() throws Exception {
+        Path repository = createRepository("engine");
+
+        Captured initialized = execute("workspace", "init", "--project", workspace.toString(),
+                "--index-only");
+
+        assertEquals(CommandLine.ExitCode.OK, initialized.exitCode(), initialized.stderr());
+        assertTrue(initialized.stdout().contains("pending_build=1"), initialized.stdout());
+        assertTrue(initialized.stdout().contains("run workspace refresh"), initialized.stdout());
+        assertFalse(Files.exists(repository.resolve(".mvn/extensions.xml")));
+        assertFalse(Files.exists(repository.resolve(".mcp.json")));
+        assertFalse(Files.exists(repository.resolve(".quill/refs.json")));
+    }
+
+    @Test
+    void pureParentPomIsMetadataOnlyAndDoesNotInstallBuildIntegration() throws Exception {
+        Path repository = Files.createDirectories(workspace.resolve("parent"));
+        Files.createDirectories(repository.resolve(".git"));
+        Files.writeString(repository.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>parent</artifactId><version>1</version>
+                  <packaging>pom</packaging>
+                </project>
+                """);
+        assertEquals(BuildIntegrationInstaller.Result.INSTALLED,
+                BuildIntegrationInstaller.install(repository));
+        assertTrue(Files.isRegularFile(repository.resolve(".mvn/extensions.xml")));
+
+        Captured initialized = execute(
+                "workspace", "init", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, initialized.exitCode(), initialized.stderr());
+        assertTrue(initialized.stdout().contains("pending_build=0, metadata_only=1"),
+                initialized.stdout());
+        assertFalse(Files.exists(repository.resolve(".mvn/extensions.xml")));
+        assertFalse(Files.exists(repository.resolve(".quill/refs.json")));
+
+        Captured status = execute(
+                "workspace", "status", "--project", workspace.toString(), "--json");
+        var parent = JSON.readTree(status.stdout()).path("repositories").get(0);
+        assertEquals("metadata_only", parent.path("codeExpectation").asText());
+        assertFalse(parent.path("queryReady").asBoolean());
+    }
+
+    @Test
+    void pomAggregatorWithCodeModuleRemainsPendingBuild() throws Exception {
+        Path repository = Files.createDirectories(workspace.resolve("reactor"));
+        Files.createDirectories(repository.resolve(".git"));
+        Files.writeString(repository.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId><artifactId>reactor</artifactId><version>1</version>
+                  <packaging>pom</packaging><modules><module>service</module></modules>
+                </project>
+                """);
+        Path service = Files.createDirectories(repository.resolve("service"));
+        Files.writeString(service.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <parent><groupId>org.acme</groupId><artifactId>reactor</artifactId>
+                    <version>1</version></parent><artifactId>service</artifactId>
+                </project>
+                """);
+
+        Captured initialized = execute(
+                "workspace", "init", "--project", workspace.toString());
+
+        assertEquals(CommandLine.ExitCode.OK, initialized.exitCode(), initialized.stderr());
+        assertTrue(initialized.stdout().contains("pending_build=1, metadata_only=0"),
+                initialized.stdout());
+        assertTrue(Files.isRegularFile(repository.resolve(".mvn/extensions.xml")));
     }
 
     @Test
@@ -140,8 +298,8 @@ class WorkspaceCommandTest {
         assertTrue(repository.path("supported").asBoolean());
         assertTrue(repository.path("compiled").asBoolean());
         assertTrue(repository.path("indexed").asBoolean());
-        assertEquals(24, repository.path("indexSchema").asInt());
-        assertEquals(24, repository.path("currentSchema").asInt());
+        assertEquals(25, repository.path("indexSchema").asInt());
+        assertEquals(25, repository.path("currentSchema").asInt());
         assertEquals("installed", repository.path("buildIntegration").asText());
         assertTrue(repository.path("queryReady").asBoolean());
     }
@@ -150,6 +308,15 @@ class WorkspaceCommandTest {
     void rejectsInvalidDiscoveryDepthWithoutPublishingManifest() {
         Captured result = execute("workspace", "init", "--project", workspace.toString(),
                 "--depth", "0");
+
+        assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+        assertFalse(Files.exists(WorkspaceManifestStore.manifest(workspace)));
+    }
+
+    @Test
+    void rejectsInvalidJobCountWithoutPublishingManifest() {
+        Captured result = execute("workspace", "init", "--project", workspace.toString(),
+                "--jobs", "0");
 
         assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
         assertFalse(Files.exists(WorkspaceManifestStore.manifest(workspace)));
@@ -286,9 +453,14 @@ class WorkspaceCommandTest {
         assertEquals("--workspace", quill.path("args").get(1).asText());
         assertEquals(workspace.toAbsolutePath().normalize().toString(),
                 quill.path("args").get(2).asText());
+        assertTrue(quill.path("alwaysLoad").asBoolean());
     }
 
     private void createCompiledRepository(String name) throws Exception {
+        compileRepository(createRepository(name));
+    }
+
+    private Path createRepository(String name) throws Exception {
         Path repository = Files.createDirectories(workspace.resolve(name));
         Files.createDirectories(repository.resolve(".git"));
         Files.writeString(repository.resolve("pom.xml"), """
@@ -302,6 +474,11 @@ class WorkspaceCommandTest {
         Path source = repository.resolve("src/main/java/org/acme/App.java");
         Files.createDirectories(source.getParent());
         Files.writeString(source, "package org.acme; public final class App {}\n");
+        return repository;
+    }
+
+    private void compileRepository(Path repository) throws Exception {
+        Path source = repository.resolve("src/main/java/org/acme/App.java");
         Path classes = Files.createDirectories(repository.resolve("target/classes"));
         int compilation = ToolProvider.getSystemJavaCompiler().run(
                 null, null, null, "-d", classes.toString(), source.toString());

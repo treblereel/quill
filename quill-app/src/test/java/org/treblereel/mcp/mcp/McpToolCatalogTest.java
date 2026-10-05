@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -27,6 +29,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.diagnostics.DebugTrace;
+import org.treblereel.mcp.diagnostics.UxTelemetry;
 import reactor.core.Disposable;
 import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
@@ -43,6 +46,79 @@ class McpToolCatalogTest {
         workers.dispose();
         responses.dispose();
         DebugTrace.configure(false, tempDir);
+        UxTelemetry.configure(false, tempDir, "full");
+    }
+
+    @Test
+    void queryCatalogAdvertisesExplicitSafetyHintsAcrossProfiles() {
+        for (String profile : List.of("full", "core", "code", "di", "git", "router")) {
+            var catalog = McpToolCatalog.create(new QuillTools(new ProjectRegistry()), workers,
+                    responses, Duration.ofSeconds(1), McpToolProfile.parse(profile));
+            assertFalse(catalog.isEmpty());
+            for (var specification : catalog) {
+                var annotations = specification.tool().annotations();
+                assertEquals(Boolean.TRUE, annotations.readOnlyHint(), specification.tool().name());
+                assertEquals(Boolean.FALSE, annotations.destructiveHint());
+                assertEquals(Boolean.FALSE, annotations.openWorldHint());
+                assertNull(annotations.idempotentHint(), "Live evidence need not be identical");
+            }
+        }
+        assertNull(specification(new BlockingTools(), Duration.ofSeconds(1)).tool().annotations(),
+                "New tools must opt in to read-only rather than inherit an unsafe default");
+    }
+
+    @Test
+    void initializeGuidanceNamesWorkflowAndToolDiscoveryWithoutBuildExecution() {
+        String full = McpStdioServer.serverInstructions(McpToolProfile.full());
+        assertTrue(full.substring(0, 512).contains("change_session"));
+        assertTrue(full.contains("before editing"));
+        assertTrue(full.contains("never runs builds or tests"));
+        assertTrue(full.contains("tools, not resources"));
+        String router = McpStdioServer.serverInstructions(McpToolProfile.parse("router"));
+        assertTrue(router.contains("search_tools"));
+        assertTrue(router.contains("execute_tool"));
+        assertFalse(McpStdioServer.serverInstructions(McpToolProfile.parse("di"))
+                .contains("change_session"), "Do not direct clients to a tool absent from the profile");
+    }
+
+    @Test
+    void startupInstructionsReportActualModeAndAvoidCatalogEnumeration() {
+        String single = McpStdioServer.serverInstructions(McpToolProfile.full(), false);
+        String workspace = McpStdioServer.serverInstructions(McpToolProfile.full(), true);
+        assertTrue(single.substring(0, 512).contains("Server mode: single_project"));
+        assertTrue(single.contains("without arguments, not view=compact"));
+        assertTrue(workspace.substring(0, 512).contains("Server mode: workspace (--workspace)"));
+        assertTrue(workspace.contains("get_overview view=compact"));
+        assertTrue(single.contains("Discover only get_overview by exact name first"));
+        assertTrue(single.contains("Follow retry_with"));
+        assertTrue(single.contains("Read structuredContent even when text is empty"));
+        assertTrue(McpStdioServer.serverInstructions(McpToolProfile.full())
+                .contains("otherwise call get_overview without arguments"));
+    }
+
+    @Test
+    void toolDescriptionsReportActualModeEvenWithoutInitializeInstructions() throws Exception {
+        org.treblereel.mcp.workspace.WorkspaceManifestStore.initialize(tempDir, 1);
+        for (boolean workspace : List.of(false, true)) {
+            ProjectRegistry registry = workspace
+                    ? new ProjectRegistry(new WorkspaceProjectScope(tempDir)) : new ProjectRegistry();
+            for (String profile : List.of("full", "router", "core", "di")) {
+                var catalog = McpToolCatalog.create(new QuillTools(registry), workers, responses,
+                        Duration.ofSeconds(1), McpToolProfile.parse(profile));
+                var overview = catalog.stream().filter(t -> t.tool().name().equals("get_overview"))
+                        .findFirst().orElseThrow().tool().description();
+                assertTrue(overview.startsWith("Server mode: " + (workspace ? "workspace" : "single_project")));
+                assertTrue(overview.contains(workspace ? "with view=compact" : "without arguments, not view=compact"));
+                assertTrue(overview.contains("even for narrow symbol tasks"));
+                if (profile.equals("full")) assertCompactCatalog(catalog);
+                for (var specification : catalog) {
+                    if (Set.of("search_classes", "find_implementations", "find_annotated_symbols")
+                            .contains(specification.tool().name())) {
+                        assertTrue(specification.tool().description().startsWith("After get_overview: "));
+                    }
+                }
+            }
+        }
     }
 
     @Test
@@ -122,6 +198,11 @@ class McpToolCatalogTest {
                 Map.of("target", "OrderService", "limit", 2.5));
         assertTrue(Boolean.TRUE.equals(fractionalInteger.isError()));
         assertTrue(text(fractionalInteger).contains("Expected integer"));
+
+        McpSchema.CallToolResult invalidTarget = call(tools, "validate",
+                Map.of("target", "OtherService"));
+        assertTrue(Boolean.TRUE.equals(invalidTarget.isError()));
+        assertTrue(text(invalidTarget).contains("expected one of"));
         assertEquals(0, tools.invocations);
     }
 
@@ -158,7 +239,8 @@ class McpToolCatalogTest {
 
         assertTrue(Boolean.TRUE.equals(result.isError()));
         JsonNode structured = (JsonNode) result.structuredContent();
-        assertEquals("build_required", structured.path("error").asText());
+        assertFalse(structured.has("error"));
+        assertEquals("BUILD_REQUIRED", structured.path("error_code").asText());
         assertEquals("mcp_client", structured.path("decision_owner").asText());
         assertTrue(!structured.path("build_was_started").asBoolean(true));
     }
@@ -176,6 +258,22 @@ class McpToolCatalogTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> enabled = (Map<String, Object>) properties.get("enabled");
         assertEquals("boolean", enabled.get("type"));
+    }
+
+    @Test
+    void constrainedToolArgumentAdvertisesAllowedValues() {
+        AsyncToolSpecification specification = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1))
+                .stream().filter(candidate -> candidate.tool().name().equals("search_symbols"))
+                .findFirst().orElseThrow();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) specification.tool()
+                .inputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> language = (Map<String, Object>) properties.get("language");
+        assertEquals(java.util.List.of("all", "java", "kotlin"), language.get("enum"));
     }
 
     @Test
@@ -217,8 +315,11 @@ class McpToolCatalogTest {
                         "structured", Map.of("unexpected", true), Map.of()))
                 .block(Duration.ofSeconds(2));
         assertTrue(Boolean.TRUE.equals(invalid.isError()));
+        assertFalse(((JsonNode) invalid.structuredContent()).has("error"));
+        assertEquals("TOOL_INVOCATION_ERROR",
+                ((JsonNode) invalid.structuredContent()).path("error_code").asText());
         assertEquals("Unknown argument: unexpected",
-                ((JsonNode) invalid.structuredContent()).path("error").asText());
+                ((JsonNode) invalid.structuredContent()).path("message").asText());
     }
 
     @Test
@@ -233,16 +334,100 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void uxTelemetryRecordsOnlyContentFreeToolMeasurements() throws Exception {
+        UxTelemetry.configure(true, tempDir, "core");
+        ValidationTools tools = new ValidationTools();
+
+        call(tools, "validate", Map.of("target", "OrderService", "enabled", true));
+        call(tools, "validate", Map.of("target", "missing"));
+
+        String log = Files.readString(UxTelemetry.logFile());
+        String[] lines = log.strip().split("\\R");
+        assertEquals(2, lines.length);
+        JsonNode success = new com.fasterxml.jackson.databind.ObjectMapper().readTree(lines[0]);
+        JsonNode failure = new com.fasterxml.jackson.databind.ObjectMapper().readTree(lines[1]);
+        assertEquals(1, success.path("schema_version").asInt());
+        assertEquals("validate", success.path("tool").asText());
+        assertEquals("core", success.path("tool_profile").asText());
+        assertEquals("ok", success.path("status").asText());
+        assertTrue(success.path("response_bytes").asLong() > 0);
+        assertEquals("error", failure.path("status").asText());
+        assertFalse(log.contains("OrderService"));
+        assertFalse(log.contains("target not found"));
+    }
+
+    @Test
+    void specializedOutputSchemasAdvertiseTheirCompleteTopLevelContracts() {
+        Set<String> errorEnvelope = Set.of(
+                "error_code", "message", "retryable", "retry_with", "_meta");
+        Map<String, Set<String>> expected = Map.of(
+                "get_overview", Set.of(
+                        "capabilities", "project", "problems", "architecture_hubs",
+                        "view", "workspace_root", "revision", "scope", "projects", "next_page_request",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "search_symbols", Set.of(
+                        "pattern", "kind", "language_filter", "symbols",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "get_symbol_details", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "class", "kind", "location", "members",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "get_symbol_at_position", Set.of(
+                        "path", "line", "column", "identifier", "resolution", "confidence",
+                        "selected", "candidates", "limitations"),
+                "find_symbol_usages", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "kind", "usages",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "get_call_hierarchy", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "method", "calls",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "find_method_overrides", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "method", "base_declarations", "overrides",
+                        "showing", "total", "limit", "offset", "has_more", "next_offset"),
+                "analyze_execution_order", Set.of(
+                        "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
+                        "target", "method", "bytecode_sequence", "ordering_analysis"));
+        Map<String, AsyncToolSpecification> catalog = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1)).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        specification -> specification.tool().name(),
+                        specification -> specification));
+
+        expected.forEach((toolName, domainFields) -> {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> properties = (Map<String, Object>) catalog.get(toolName)
+                    .tool().outputSchema().get("properties");
+            Set<String> allFields = new java.util.HashSet<>(domainFields);
+            allFields.addAll(errorEnvelope);
+            assertEquals(allFields, properties.keySet(), toolName);
+            assertFalse(properties.containsKey("error"), toolName);
+            assertEquals("string", ((Map<?, ?>) properties.get("error_code")).get("type"),
+                    toolName);
+            assertEquals("boolean", ((Map<?, ?>) properties.get("retryable")).get("type"),
+                    toolName);
+        });
+    }
+
+    @Test
     void quillCatalogStaysCompact() {
         var tools = McpToolCatalog.create(
                 new QuillTools(new ProjectRegistry()), workers, responses,
                 Duration.ofSeconds(1));
+        assertCompactCatalog(tools);
+    }
+
+    private static void assertCompactCatalog(List<AsyncToolSpecification> tools) {
         int characters = tools.stream()
                 .mapToInt(specification -> specification.tool().description().length()
-                        + specification.tool().inputSchema().toString().length())
+                        + specification.tool().inputSchema().toString().length()
+                        + specification.tool().outputSchema().toString().length())
                 .sum();
         int averageCharacters = characters / tools.size();
-        assertTrue(characters < 22_000 && averageCharacters < 430,
+        assertTrue(characters < 32_000 && averageCharacters < 650,
                 "catalog characters: " + characters + ", average: " + averageCharacters);
     }
 
@@ -260,6 +445,10 @@ class McpToolCatalogTest {
 
         assertTrue(core.size() < full.size() / 2, core::toString);
         assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("get_overview")));
+        assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("get_context")));
+        assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("plan_change")));
+        assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("verify_change")));
+        assertTrue(core.stream().anyMatch(tool -> tool.tool().name().equals("change_session")));
         assertTrue(core.stream().noneMatch(tool -> tool.tool().name().equals("list_beans")));
         assertTrue(combined.stream().anyMatch(tool -> tool.tool().name().equals("list_beans")));
         assertTrue(combined.stream().anyMatch(
@@ -277,6 +466,21 @@ class McpToolCatalogTest {
         assertEquals(Set.of("get_overview", "search_tools", "execute_tool"),
                 router.stream().map(tool -> tool.tool().name())
                         .collect(java.util.stream.Collectors.toSet()));
+        AsyncToolSpecification overview = router.stream()
+                .filter(tool -> tool.tool().name().equals("get_overview"))
+                .findFirst().orElseThrow();
+        assertTrue(((Map<?, ?>) overview.tool().inputSchema().get("properties")).keySet()
+                .containsAll(Set.of("details", "project", "view", "limit", "offset")));
+        McpSchema.CallToolResult compact = overview.callHandler()
+                .apply(null, new McpSchema.CallToolRequest(
+                        "get_overview", Map.of("view", "compact"), Map.of()))
+                .block(Duration.ofSeconds(2));
+        assertTrue(Boolean.TRUE.equals(compact.isError()));
+        assertEquals("WORKSPACE_MODE_REQUIRED", ((JsonNode) compact.structuredContent())
+                .path("error_code").asText());
+        JsonNode compactError = (JsonNode) compact.structuredContent();
+        assertTrue(compactError.path("retryable").asBoolean());
+        assertEquals("full", compactError.path("retry_with").path("arguments").path("view").asText());
         AsyncToolSpecification search = router.stream()
                 .filter(tool -> tool.tool().name().equals("search_tools"))
                 .findFirst().orElseThrow();
@@ -320,6 +524,9 @@ class McpToolCatalogTest {
         assertRouterChoice(router, "framework endpoints", "find_framework_endpoints", "quill");
         assertRouterChoice(router, "affected tests", "find_impacted_tests", "quill");
         assertRouterChoice(router, "implementations", "find_implementations", "quill");
+        assertRouterChoice(router, "plan change", "plan_change", "quill");
+        assertRouterChoice(router, "verify change", "verify_change", "quill");
+        assertRouterChoice(router, "change session", "change_session", "quill");
         assertRouterChoice(router, "build problems", "get_build_problems", "build");
     }
 
@@ -376,7 +583,7 @@ class McpToolCatalogTest {
                 .block(Duration.ofSeconds(2));
         assertTrue(Boolean.TRUE.equals(result.isError()));
         assertEquals("Missing required argument: pattern",
-                ((JsonNode) result.structuredContent()).path("error").asText());
+                ((JsonNode) result.structuredContent()).path("message").asText());
         assertThrows(IllegalArgumentException.class,
                 () -> McpToolProfile.parse("router,git"));
     }
@@ -415,6 +622,26 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void optionalStringArraysHaveArraySchemasAndAreNotRequired() {
+        AsyncToolSpecification verification = McpToolCatalog.create(
+                        new QuillTools(new ProjectRegistry()), workers, responses,
+                        Duration.ofSeconds(1)).stream()
+                .filter(candidate -> candidate.tool().name().equals("verify_change"))
+                .findFirst().orElseThrow();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) verification.tool()
+                .inputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> targets = (Map<String, Object>) properties.get("targets");
+        @SuppressWarnings("unchecked")
+        List<String> required = (List<String>) verification.tool().inputSchema().get("required");
+        assertEquals("array", targets.get("type"));
+        assertEquals(Map.of("type", "string"), targets.get("items"));
+        assertFalse(required.contains("targets"));
+    }
+
+    @Test
     void unconfiguredQuillProjectIsAnMcpToolError() {
         QuillTools tools = new QuillTools(new ProjectRegistry());
         AsyncToolSpecification overview = McpToolCatalog.create(
@@ -429,7 +656,7 @@ class McpToolCatalogTest {
 
         assertTrue(Boolean.TRUE.equals(result.isError()));
         assertTrue(result.content().isEmpty());
-        assertTrue(((JsonNode) result.structuredContent()).path("error").asText()
+        assertTrue(((JsonNode) result.structuredContent()).path("message").asText()
                 .contains("No projects configured"));
     }
 
@@ -537,7 +764,8 @@ class McpToolCatalogTest {
 
         @Tool(description = "Validates arguments")
         public String validate(
-                @ToolArg(description = "Required target") String target,
+                @ToolArg(description = "Required target",
+                        allowed = {"OrderService", "missing"}) String target,
                 @ToolArg(description = "Optional switch") Optional<Boolean> enabled,
                 @ToolArg(description = "Optional limit") Optional<Integer> limit) {
             invocations++;

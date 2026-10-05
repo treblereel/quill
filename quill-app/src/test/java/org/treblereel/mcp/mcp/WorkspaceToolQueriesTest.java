@@ -54,6 +54,99 @@ class WorkspaceToolQueriesTest {
     }
 
     @Test
+    void compactOverviewPagesInventoryAndProvidesFullDetailRequests() throws Exception {
+        JsonNode first = compact(1, 0);
+        assertEquals("compact", first.path("view").asText());
+        assertEquals(2, first.path("total").asInt());
+        assertEquals(1, first.path("showing").asInt());
+        assertTrue(first.path("has_more").asBoolean());
+        assertEquals(1, first.path("next_page_request").path("arguments").path("offset").asInt());
+        JsonNode project = first.path("projects").get(0);
+        assertEquals("engine", project.path("name").asText());
+        assertTrue(project.path("indexed").asBoolean());
+        assertEquals(1, project.path("indexed_classes").asInt());
+        assertEquals("unknown", project.path("framework").asText());
+        assertTrue(project.has("index_freshness"));
+        assertEquals("engine", project.path("details_request").path("arguments").path("project").asText());
+        assertFalse(project.has("architecture_hubs"));
+        JsonNode last = compact(1, 1);
+        assertEquals("platform", last.path("projects").get(0).path("name").asText());
+        assertFalse(last.path("has_more").asBoolean());
+        assertFalse(last.has("next_page_request"));
+        assertTrue(compact(1, Integer.MAX_VALUE).path("projects").isEmpty());
+    }
+
+    @Test
+    void compactOverviewIncludesUnbuiltProjectsWithoutInventingCounts() throws Exception {
+        Path root = Files.createDirectories(workspace.resolve("unbuilt"));
+        Files.createDirectories(root.resolve(".git"));
+        Files.writeString(root.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>test</groupId><artifactId>unbuilt</artifactId><version>1</version></project>");
+        tools = new QuillTools(new ProjectRegistry(new WorkspaceProjectScope(workspace)));
+        JsonNode result = compact(20, 0);
+        assertEquals(3, result.path("total").asInt());
+        JsonNode unbuilt = result.path("projects").get(2);
+        assertEquals("unbuilt", unbuilt.path("name").asText());
+        assertEquals("build_required", unbuilt.path("status").asText());
+        assertFalse(unbuilt.path("indexed").asBoolean());
+        assertFalse(unbuilt.has("indexed_classes"));
+        assertFalse(unbuilt.has("framework"));
+        assertFalse(Files.exists(root.resolve("target")));
+    }
+
+    @Test
+    void compactOverviewRequiresWorkspaceAndRejectsConflictingArguments() throws Exception {
+        QuillTools single = new QuillTools(new ProjectRegistry());
+        JsonNode result = JSON.readTree(single.get_overview(Optional.empty(), Optional.empty(),
+                Optional.of("compact"), Optional.empty(), Optional.empty()));
+        assertEquals("WORKSPACE_MODE_REQUIRED", result.path("error_code").asText());
+        assertTrue(result.path("retryable").asBoolean());
+        assertEquals("single_project", result.path("server_mode").asText());
+        assertEquals("get_overview", result.path("retry_with").path("tool").asText());
+        assertEquals("full", result.path("retry_with").path("arguments").path("view").asText());
+        assertTrue(JSON.readTree(tools.get_overview(Optional.of(true), Optional.empty(),
+                Optional.of("compact"), Optional.empty(), Optional.empty())).has("error"));
+        assertTrue(JSON.readTree(tools.get_overview(Optional.empty(), Optional.of("engine"),
+                Optional.of("compact"), Optional.empty(), Optional.empty())).has("error"));
+        assertTrue(JSON.readTree(tools.get_overview(Optional.empty(), Optional.empty(),
+                Optional.of("full"), Optional.of(1), Optional.empty())).has("error"));
+    }
+
+    private JsonNode compact(int limit, int offset) throws Exception {
+        return JSON.readTree(tools.get_overview(Optional.empty(), Optional.empty(),
+                Optional.of("compact"), Optional.of(limit), Optional.of(offset)));
+    }
+
+    @Test
+    void singleProjectCompactRetryPreservesFullOverviewWithoutReconfiguration() throws Exception {
+        ProjectRegistry singleRegistry = new ProjectRegistry();
+        singleRegistry.register(workspace.resolve("engine"));
+        QuillTools single = new QuillTools(singleRegistry);
+        JsonNode failed = JSON.readTree(single.get_overview(Optional.empty(), Optional.empty(),
+                Optional.of("compact"), Optional.of(20), Optional.of(0)));
+        JsonNode arguments = failed.path("retry_with").path("arguments");
+        assertTrue(failed.path("retryable").asBoolean());
+        assertFalse(arguments.has("limit"));
+        assertFalse(arguments.has("offset"));
+        JsonNode retried = JSON.readTree(single.get_overview(Optional.empty(), Optional.empty(),
+                Optional.of(arguments.path("view").asText()), Optional.empty(), Optional.empty()));
+        assertTrue(retried.has("architecture_hubs"));
+        assertEquals(1, retried.path("project").path("classes").asInt());
+        assertFalse(retried.has("error_code"));
+        assertFalse(single.workspaceMode());
+        assertTrue(tools.workspaceMode());
+    }
+
+    @Test
+    void legacyOverviewStillReturnsFullProjectEvidence() throws Exception {
+        JsonNode legacy = JSON.readTree(tools.get_overview(Optional.of(false), Optional.empty()));
+        JsonNode explicit = JSON.readTree(tools.get_overview(Optional.of(false), Optional.empty(),
+                Optional.of("full"), Optional.empty(), Optional.empty()));
+        assertEquals(legacy, explicit);
+        assertEquals(2, legacy.path("projects").size());
+        assertTrue(legacy.path("projects").get(0).path("data").has("architecture_hubs"));
+    }
+
+    @Test
     void listsIndexedRepositoriesAndModuleCoordinates() throws Exception {
         JsonNode result = JSON.readTree(tools.list_workspace_repositories(
                 Optional.of(true), Optional.empty(), Optional.empty()));
@@ -466,14 +559,15 @@ class WorkspaceToolQueriesTest {
                 "io.casehub.engine.EngineService", Optional.of("both"), Optional.of(5),
                 Optional.of(20), Optional.empty(), Optional.of("platform")));
         JsonNode overrides = JSON.readTree(tools.find_method_overrides(
-                "io.casehub.engine.EngineService", "execute", Optional.empty(),
+                "io.casehub.engine.EngineService", Optional.of("execute"), Optional.empty(),
                 Optional.of(true), Optional.of(20), Optional.empty(),
                 Optional.of("platform")));
         JsonNode details = JSON.readTree(tools.get_symbol_details(
                 "io.casehub.engine.EngineService", Optional.of(true), Optional.empty(),
                 Optional.of(20), Optional.empty(), Optional.of("platform")));
         JsonNode symbolUsages = JSON.readTree(tools.find_symbol_usages(
-                "io.casehub.engine.EngineService", Optional.of("execute"), "method",
+                "io.casehub.engine.EngineService", Optional.of("execute"),
+                Optional.of("method"),
                 Optional.empty(), Optional.empty(), Optional.of(20), Optional.empty(),
                 Optional.of("platform")));
         JsonNode calls = JSON.readTree(tools.get_call_hierarchy(
@@ -541,6 +635,25 @@ class WorkspaceToolQueriesTest {
                 .path("provider").path("repository").asText());
         assertEquals("build_required", result.path("workspace_usage")
                 .path("provider_warnings").get(0).path("status").asText());
+    }
+
+    @Test
+    void routesSourceOnlyKotlinProviderWhenClassIsAbsentLocally() throws Exception {
+        Path source = workspace.resolve(
+                "engine/src/main/kotlin/io/casehub/engine/KotlinService.kt");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package io.casehub.engine\nclass KotlinService");
+
+        JsonNode result = JSON.readTree(tools.get_dependencies(
+                "io.casehub.engine.KotlinService", Optional.of("outbound"), Optional.of(1),
+                Optional.of(true), Optional.of(20), Optional.empty(), Optional.empty(),
+                Optional.of("platform")));
+
+        assertFalse(result.has("error"), result.toString());
+        assertEquals("workspace_provider", result.path("origin").asText());
+        assertEquals("src/main/kotlin/io/casehub/engine/KotlinService.kt",
+                result.path("workspace_traversal").path("provider")
+                        .path("source_file").asText(), result.toString());
     }
 
     private void removePlatformDependencyClass() {

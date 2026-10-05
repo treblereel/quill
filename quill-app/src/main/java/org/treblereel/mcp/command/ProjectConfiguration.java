@@ -8,36 +8,131 @@ import org.treblereel.mcp.QuillLauncher;
 /** Owns the reversible project configuration installed around an index generation. */
 final class ProjectConfiguration {
 
-    enum ClaudeInstructionsState { CURRENT, MISSING, INVALID }
+    enum InstructionsState { CURRENT, MISSING, OUTDATED, INVALID }
 
     private static final String CLAUDE_BLOCK_START = "<!-- quill:managed:start -->";
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
     private static final String QUILL_CLAUDE_MD = """
             <!-- quill:managed:start -->
+            <!-- quill:instructions:v3 -->
             ## Quill — Codebase Intelligence (MCP)
 
-            Before broad code search, dependency or impact analysis, or running a large test suite,
-            use ToolSearch to load the relevant Quill tools. Prefer Quill for project-wide semantic
+            At the beginning of a coding or code-analysis task, discover only `get_overview`
+            by exact name, then call `get_overview`. Discover other Quill tools on demand by
+            name or task; do not enumerate or print the entire tool catalog.
+            Use `view=compact` only when server startup instructions or launch arguments
+            confirm `--workspace` mode. A repository described as a workspace does not imply
+            that server mode. In single-project or unknown mode, omit all overview arguments.
+            If compact returns `WORKSPACE_MODE_REQUIRED`, follow its `retry_with` request for
+            a full overview; do not infer that the index is missing or reconfigure the server.
+            Follow `next_page_request` to cover a compact inventory; use `project=<name>` with
+            `view=full` for detailed evidence. Read tool data from `structuredContent` when
+            present, even if text content is empty; do not repeat a successful call for that reason.
+            Before broad
+            code search, dependency or impact analysis, or running a large test suite, prefer Quill
+            for project-wide semantic
             questions: implementations, annotations, endpoints, DI, dependency graphs, affected tests,
             build problems, generated code, Git history, and change risk.
 
             Use `rg` and direct source reads for an exact literal, a known file, or one concrete
             occurrence. Do not query both by default. Verify Quill results in source when the index
             reports stale, partial, unknown, or unsupported evidence.
+
+            For a code change, call `change_session` before editing source or choosing a build.
+            This is the required first workflow step, not a suggestion to wait for a user reminder.
+            The call returns one stateless snapshot of the plan,
+            verification evidence, and ordered next actions; repeat it with the same targets and
+            change description to refresh the snapshot, or omit targets after editing to infer them
+            from dirty JVM sources. Use `plan_change` or `verify_change` when only that focused view
+            is needed. Keep the default `view=auto` and summary detail so only the current phase is
+            returned; request another view or full detail only to inspect omitted evidence. When
+            acting on a snapshot, follow `directive.primary_action` first. Treat `phase_gate`
+            required evidence and required `review_checklist` items as blockers; advisory checklist
+            items are prompts to inspect evidence, not proof of human review. Reuse `action_id` to
+            recognize unchanged guidance after refreshing the same session. Views project evidence
+            and preserve the same directive. Inspect its `evidence_snapshot`; use its
+            `preparation_command` to compile stale test evidence or its `retry_command` after fixing
+            diagnostics, then refresh the session. Incomplete test evidence alone does not require
+            test execution. When build evidence is
+            missing or stale, prefer the
+            `verification_plan` command whose scope is `quick_compile`: run its exact `argv` from
+            `working_directory` in the external shell, then verify again. This compiles production
+            and standard test sources without running tests. Treat `focused` and `module_fallback` as
+            separate test recommendations; run them only when the task or user requires tests. Quill
+            recommends commands but never executes a build or persists change-session state. Report
+            completion only when the phase is `complete`, its gate is satisfied, and the verification
+            receipt is verified.
+            <!-- quill:managed:end -->
+            """;
+    private static final String QUILL_AGENTS_MD = """
+            <!-- quill:managed:start -->
+            <!-- quill:instructions:v3 -->
+            ## Quill MCP
+
+            Quill is the primary code-intelligence tool for this repository. At the beginning of a
+            coding or code-analysis task, discover only `mcp__quill__get_overview` by exact
+            name and call it first. Discover other Quill tools on demand by name or task;
+            do not enumerate or print the entire tool catalog.
+            Use `view=compact` only when server startup instructions or launch arguments
+            confirm `--workspace` mode. A repository described as a workspace does not imply
+            that server mode. In single-project or unknown mode, omit all overview arguments.
+            If compact returns `WORKSPACE_MODE_REQUIRED`, follow its `retry_with` request for
+            a full overview; do not infer that the index is missing or reconfigure the server.
+            Follow `next_page_request` to cover a compact inventory; use `project=<name>` with
+            `view=full` for detailed evidence. Read tool data from `structuredContent` when
+            present, even if text content is empty; do not repeat a successful call for that reason.
+
+            Use Quill before broad filesystem searches for symbols, implementations, usages, call
+            and type hierarchies, dependencies, architecture, framework endpoints, dependency
+            injection, affected tests, build diagnostics, Git history, and change risk. Quill tools
+            may be deferred and absent from the initially displayed tool list; search the complete
+            tool catalog by exact name or task before concluding that Quill is unavailable.
+            Tool discovery is not MCP resource discovery: empty resources/templates do not mean
+            missing tools. Use the client's tool-search capability when available. If tools are
+            genuinely unavailable, report that limitation and the client/configuration context;
+            do not claim the server is unconfigured from resource-list results alone.
+
+            Use `rg` and direct source reads for exact literals, known files, and verification when
+            Quill reports stale, partial, unknown, or unsupported evidence.
+
+            For a code change, call `mcp__quill__change_session` before editing source or choosing
+            a build. This is the required first workflow step; do not wait for a user reminder.
+            The call returns one stateless snapshot of the
+            plan, verification evidence, and ordered next actions; repeat it with the same targets
+            and change description to refresh the snapshot, or omit targets after editing to infer
+            them from dirty JVM sources. Use `mcp__quill__plan_change` or `mcp__quill__verify_change`
+            for a focused view. Keep the default `view=auto` and summary detail so only the current
+            phase is returned; request another view or full detail only to inspect omitted evidence.
+            Follow `directive.primary_action` first. Treat `phase_gate` required evidence and required
+            `review_checklist` items as blockers; advisory checklist items request inspection and do
+            not attest human review. Use `action_id` to recognize unchanged guidance after refreshing
+            the same stateless session. Views preserve the directive. Inspect its `evidence_snapshot`
+            and run its `preparation_command` for stale test evidence or its `retry_command` after
+            repairing diagnostics, then refresh the session. Incomplete test evidence alone does not
+            require test execution. If build evidence is missing or stale,
+            prefer the `verification_plan` command with scope `quick_compile`: run its exact `argv`
+            from `working_directory` using the terminal, then verify again. It compiles production
+            and standard test sources without running tests. Commands with scope `focused` or
+            `module_fallback` are separate test recommendations; run them only when the task or user
+            requires tests. Quill recommends commands but does not execute builds or persist
+            change-session state. Report completion only when the phase is `complete`, its gate is
+            satisfied, and the verification receipt is verified.
             <!-- quill:managed:end -->
             """;
 
     private ProjectConfiguration() {}
 
-    static void prepareForIndex(Path root, boolean indexOnly) {
-        if (indexOnly) return;
+    static BuildIntegrationInstaller.Result prepareForIndex(Path root, boolean indexOnly) {
+        if (indexOnly) return BuildIntegrationInstaller.Result.NOT_FOUND;
         ensureGitignore(root);
-        BuildIntegrationInstaller.install(root);
+        return BuildIntegrationInstaller.install(root);
     }
 
     static void finishInitialization(Path root, boolean indexOnly) {
         if (!indexOnly) {
             ensureClaudeMd(root);
+            ensureAgentsMd(root);
+            ClaudeSettingsInstaller.install(root);
             ensureMcpJson(root);
         }
         ensureCodexConfig(root, indexOnly);
@@ -69,56 +164,107 @@ final class ProjectConfiguration {
     }
 
     static void ensureClaudeMd(Path root) {
-        Path claudeMd = root.resolve("CLAUDE.md");
+        ensureInstructions(root.resolve("CLAUDE.md"), QUILL_CLAUDE_MD,
+                "CLAUDE.md with Quill tool instructions");
+    }
+
+    static void ensureAgentsMd(Path root) {
+        ensureInstructions(root.resolve("AGENTS.md"), QUILL_AGENTS_MD,
+                "AGENTS.md with Quill tool instructions");
+    }
+
+    private static void ensureInstructions(Path file, String managedBlock, String description) {
         try {
-            String content = Files.exists(claudeMd) ? Files.readString(claudeMd) : "";
+            if (Files.isSymbolicLink(file) || (Files.exists(file) && !Files.isRegularFile(file))) {
+                System.err.println("[quill] Warning: instructions are not a regular file: " + file);
+                return;
+            }
+            String content = Files.exists(file) ? Files.readString(file) : "";
             int start = content.indexOf(CLAUDE_BLOCK_START);
             int end = start < 0 ? -1 : content.indexOf(CLAUDE_BLOCK_END, start);
+            if (!validMarkers(content)) {
+                System.err.println("[quill] Warning: malformed Quill markers in " + file
+                        + "; repair the marker boundaries before refreshing instructions.");
+                return;
+            }
             String updated;
             if (start >= 0) {
-                int after = end < 0 ? content.length() : end + CLAUDE_BLOCK_END.length();
-                updated = content.substring(0, start) + QUILL_CLAUDE_MD.strip()
+                int after = end + CLAUDE_BLOCK_END.length();
+                updated = content.substring(0, start) + managedBlock.strip()
                         + content.substring(after);
             } else {
                 String separator = content.isEmpty() || content.endsWith("\n") ? "" : "\n";
                 String gap = content.isEmpty() ? "" : "\n";
-                updated = content + separator + gap + QUILL_CLAUDE_MD.strip() + "\n";
+                updated = content + separator + gap + managedBlock.strip() + "\n";
             }
-            Files.writeString(claudeMd, updated);
-            System.err.println("[quill] Updated CLAUDE.md with Quill tool instructions.");
+            if (content.equals(updated)) return;
+            Files.writeString(file, updated);
+            System.err.println("[quill] Updated " + description + ".");
         } catch (IOException error) {
-            System.err.println("[quill] Warning: could not update CLAUDE.md: " + error.getMessage());
+            System.err.println("[quill] Warning: could not update " + file + ": "
+                    + error.getMessage());
         }
     }
 
     static boolean removeClaudeMd(Path root) throws IOException {
-        Path claudeMd = root.resolve("CLAUDE.md");
-        if (!Files.isRegularFile(claudeMd)) return false;
-        String content = Files.readString(claudeMd);
+        return removeInstructions(root.resolve("CLAUDE.md"));
+    }
+
+    static boolean removeAgentsMd(Path root) throws IOException {
+        return removeInstructions(root.resolve("AGENTS.md"));
+    }
+
+    private static boolean removeInstructions(Path file) throws IOException {
+        if (!Files.isRegularFile(file)) return false;
+        String content = Files.readString(file);
+        if (!validMarkers(content)) {
+            System.err.println("[quill] Warning: malformed Quill markers in " + file
+                    + "; instructions were preserved.");
+            return false;
+        }
         int start = content.indexOf(CLAUDE_BLOCK_START);
         if (start < 0) return false;
         int end = content.indexOf(CLAUDE_BLOCK_END, start);
-        int after = end < 0 ? content.length() : end + CLAUDE_BLOCK_END.length();
+        int after = end + CLAUDE_BLOCK_END.length();
         String updated = (content.substring(0, start) + content.substring(after))
                 .replaceFirst("\\s+$", "");
-        if (updated.isBlank()) Files.delete(claudeMd);
-        else Files.writeString(claudeMd, updated + "\n");
+        if (updated.isBlank()) Files.delete(file);
+        else Files.writeString(file, updated + "\n");
         return true;
     }
 
-    static ClaudeInstructionsState inspectClaudeMd(Path root) {
-        Path claudeMd = root.resolve("CLAUDE.md");
-        if (!Files.isRegularFile(claudeMd)) return ClaudeInstructionsState.MISSING;
+    static InstructionsState inspectClaudeMd(Path root) {
+        return inspectInstructions(root.resolve("CLAUDE.md"), QUILL_CLAUDE_MD);
+    }
+
+    static InstructionsState inspectAgentsMd(Path root) {
+        return inspectInstructions(root.resolve("AGENTS.md"), QUILL_AGENTS_MD);
+    }
+
+    private static InstructionsState inspectInstructions(Path file, String expected) {
+        if (!Files.isRegularFile(file)) return InstructionsState.MISSING;
         try {
-            String content = Files.readString(claudeMd);
+            String content = Files.readString(file);
             boolean start = content.contains(CLAUDE_BLOCK_START);
             boolean end = content.contains(CLAUDE_BLOCK_END);
-            if (!start && !end) return ClaudeInstructionsState.MISSING;
-            return start && end ? ClaudeInstructionsState.CURRENT
-                    : ClaudeInstructionsState.INVALID;
+            if (!start && !end) return InstructionsState.MISSING;
+            if (!validMarkers(content)) return InstructionsState.INVALID;
+            String block = content.substring(content.indexOf(CLAUDE_BLOCK_START),
+                    content.indexOf(CLAUDE_BLOCK_END) + CLAUDE_BLOCK_END.length());
+            return block.replace("\r\n", "\n").equals(expected.strip())
+                    ? InstructionsState.CURRENT : InstructionsState.OUTDATED;
         } catch (IOException error) {
-            return ClaudeInstructionsState.INVALID;
+            return InstructionsState.INVALID;
         }
+    }
+
+    static boolean validMarkers(String content) {
+        int start = content.indexOf(CLAUDE_BLOCK_START);
+        int end = content.indexOf(CLAUDE_BLOCK_END);
+        if (start < 0 && end < 0) return true;
+        return start >= 0 && end > start
+                && content.indexOf(CLAUDE_BLOCK_START, start + CLAUDE_BLOCK_START.length()) < 0
+                && content.indexOf(CLAUDE_BLOCK_END, end + CLAUDE_BLOCK_END.length()) < 0;
     }
 
     private static void ensureGitignore(Path root) {

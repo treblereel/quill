@@ -12,6 +12,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.command.CompiledOutputInspector;
 import org.treblereel.mcp.command.ProjectIndexStore;
 import org.treblereel.mcp.command.ProjectInitializer;
 import org.treblereel.mcp.core.BuildSystem;
@@ -36,7 +37,19 @@ public class ProjectRegistry {
             String buildSystem,
             String message,
             String recommendedAction,
-            boolean buildWasStarted) {
+            boolean buildWasStarted,
+            String buildReason,
+            List<String> staleModules) {
+
+        public ProjectIssue(String project, Path projectRoot, String code, String buildSystem,
+                String message, String recommendedAction, boolean buildWasStarted) {
+            this(project, projectRoot, code, buildSystem, message, recommendedAction,
+                    buildWasStarted, null, List.of());
+        }
+
+        public ProjectIssue {
+            staleModules = staleModules == null ? List.of() : List.copyOf(staleModules);
+        }
 
         String legacyMessage() {
             return "Project '" + project + "': " + message;
@@ -179,7 +192,11 @@ public class ProjectRegistry {
         return new ProjectIssue(project.name(), root, "index_required",
                 buildSystem.name().toLowerCase(java.util.Locale.ROOT),
                 "Compiled classes are available, but no usable Quill index was found",
-                "Run quill init for this project, then retry the MCP request", false);
+                scope instanceof WorkspaceProjectScope workspace
+                        ? "Run quill workspace refresh --project " + workspace.root()
+                                + ", then retry the MCP request"
+                        : "Run quill init for this project, then retry the MCP request",
+                false);
     }
 
     private ProjectIssue buildRequiredIssue(ProjectScope.Project project) {
@@ -199,7 +216,6 @@ public class ProjectRegistry {
     private static ProjectIssue buildRequiredIssueUncached(
             ProjectScope.Project project, BuildSystem buildSystem) {
         Path root = project.root().toAbsolutePath().normalize();
-        if (!ProjectInitializer.findMainClassesDirs(root).isEmpty()) return null;
         if (ProjectCodeExpectation.inspect(root, buildSystem)
                 == ProjectCodeExpectation.State.METADATA_ONLY) {
             return new ProjectIssue(project.name(), root, "metadata_only",
@@ -207,13 +223,19 @@ public class ProjectRegistry {
                     "Build metadata does not declare JVM code that should produce main classes",
                     "No build or Quill code index is required unless JVM modules are added", false);
         }
+        CompiledOutputInspector.Report compiled = CompiledOutputInspector.inspect(root);
+        if (compiled.state() == CompiledOutputInspector.State.FRESH) return null;
         String action = buildSystem == BuildSystem.MAVEN
                 ? "Decide whether to run the project's Maven compile/package command, then retry"
                 : "Decide whether to run the project's Gradle classes/build command, then retry";
+        boolean stale = compiled.state() == CompiledOutputInspector.State.STALE;
+        String reason = stale ? "classes_stale" : "classes_missing";
+        String message = stale
+                ? "Compiled main classes are older than project build inputs"
+                : "No compiled main classes were found; Quill did not start a build";
         return new ProjectIssue(project.name(), root, "build_required",
-                buildSystem.name().toLowerCase(java.util.Locale.ROOT),
-                "No compiled main classes were found; Quill did not start a build",
-                action, false);
+                buildSystem.name().toLowerCase(java.util.Locale.ROOT), message,
+                action, false, reason, compiled.staleModules());
     }
 
     private static String buildSystem(Path root) {

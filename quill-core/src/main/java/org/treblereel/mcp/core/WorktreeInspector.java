@@ -81,6 +81,7 @@ public final class WorktreeInspector {
                 String projectPath = projectPrefix.isEmpty()
                         ? repositoryPath : repositoryPath.substring(projectPrefix.length());
                 if (projectPath.equals(".quill") || projectPath.startsWith(".quill/")) continue;
+                if (isQuillGeneratedBuildArtifact(projectPath)) continue;
                 if (isManagedBuildIntegrationOnly(repository, repositoryRoot, repositoryPath)) {
                     continue;
                 }
@@ -102,6 +103,19 @@ public final class WorktreeInspector {
 
     private static void putAll(Map<String, String> target, Iterable<String> paths, String status) {
         for (String path : paths) target.put(path, status);
+    }
+
+    private static boolean isQuillGeneratedBuildArtifact(String projectPath) {
+        String normalized = projectPath.replace('\\', '/');
+        int separator = normalized.lastIndexOf('/');
+        if (separator < 0) return false;
+        String directory = normalized.substring(0, separator);
+        String name = normalized.substring(separator + 1);
+        boolean generatedDirectory = directory.equals("target") || directory.endsWith("/target")
+                || directory.equals("build") || directory.endsWith("/build");
+        return generatedDirectory && (name.equals("quill-classpath.txt")
+                || name.equals("quill-test-classpath.txt")
+                || name.equals("quill-classpath.sha256"));
     }
 
     private static boolean isManagedBuildIntegrationOnly(

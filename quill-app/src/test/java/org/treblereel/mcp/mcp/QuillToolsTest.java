@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.eclipse.jgit.api.Git;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.statement.SqlLogger;
@@ -189,7 +190,8 @@ class QuillToolsTest {
         JsonNode result = JSON.readTree(new QuillTools().getBeans(
                 jdbi, "PaymentServ", null, null, null, null));
 
-        assertEquals("Class not found", result.get("error").asText());
+        assertEquals("CLASS_NOT_FOUND", result.path("error_code").asText());
+        assertEquals("Class not found", result.path("message").asText());
         assertTrue(result.get("candidates").toString().contains("PaymentService"));
     }
 
@@ -318,7 +320,7 @@ class QuillToolsTest {
 
         assertEquals(1, matching.path("total").asInt());
         assertEquals(0, excluded.path("total").asInt());
-        assertTrue(invalid.path("error").asText().startsWith("Invalid usage_kind"));
+        assertTrue(invalid.path("message").asText().startsWith("Invalid usage_kind"));
     }
 
     @Test
@@ -351,6 +353,12 @@ class QuillToolsTest {
                 jdbi, "OrderService", true, "method", 10, 0));
 
         assertEquals("org.acme.OrderService", first.path("class").asText());
+        assertEquals("java", first.path("language").asText());
+        assertEquals("OrderService", first.path("source_name").asText());
+        assertEquals("org.acme.OrderService", first.path("jvm_name").asText());
+        assertTrue(first.path("symbol_id").asText().startsWith("quill:symbol:v2:"));
+        assertEquals("src/main/java/org/acme/OrderService.java",
+                first.path("location").path("path").asText());
         assertEquals("@ApplicationScoped", first.path("bean").path("scope").asText());
         assertEquals(1, first.path("dependency_metrics").path("fan_out").asInt());
         assertEquals("jakarta.enterprise.context.ApplicationScoped",
@@ -358,6 +366,13 @@ class QuillToolsTest {
         assertEquals(2, first.path("total").asInt());
         assertTrue(first.path("has_more").asBoolean());
         assertEquals("createOrder", methods.path("members").get(0).path("name").asText());
+        assertEquals("java", methods.path("members").get(0).path("language").asText());
+        assertEquals("createOrder",
+                methods.path("members").get(0).path("source_name").asText());
+        assertEquals("createOrder",
+                methods.path("members").get(0).path("jvm_name").asText());
+        assertTrue(methods.path("members").get(0).path("symbol_id").asText()
+                .startsWith("quill:symbol:v2:"));
         assertEquals("java.lang.String",
                 methods.path("members").get(0).path("parameters").get(0).asText());
     }
@@ -372,7 +387,427 @@ class QuillToolsTest {
 
         assertFalse(compact.path("members_included").asBoolean());
         assertFalse(compact.has("members"));
-        assertTrue(invalid.path("error").asText().startsWith("Invalid member_kind"));
+        assertTrue(invalid.path("message").asText().startsWith("Invalid member_kind"));
+    }
+
+    @Test
+    void getContextComposesCompactEvidenceAndKeepsPartialResults() throws Exception {
+        QuillTools tools = new QuillTools();
+
+        JsonNode result = JSON.readTree(tools.getContext(
+                jdbi, List.of("OrderService", "MissingService"), false, 5));
+
+        assertEquals(1, result.path("resolved_target_count").asInt());
+        assertEquals(1, result.path("unresolved_target_count").asInt());
+        assertFalse(result.path("answer_complete").asBoolean());
+        JsonNode context = result.path("contexts").get(0);
+        assertEquals("org.acme.OrderService",
+                context.path("resolution").path("class").asText());
+        assertEquals("org.acme.OrderService", context.path("symbol").path("class").asText());
+        assertFalse(context.path("symbol").path("members_included").asBoolean());
+        assertEquals(1, context.path("coupling").path("fan_out").asInt());
+        assertTrue(context.path("usages").has("usages"));
+        assertTrue(context.path("risk").has("risk_score"));
+        assertFalse(context.path("risk").has("_meta"));
+        assertTrue(result.has("impacted_tests"));
+        assertEquals("MissingService",
+                result.path("unresolved_targets").get(0).path("target").asText());
+        assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());
+    }
+
+    @Test
+    void getContextValidatesTargetCount() throws Exception {
+        QuillTools tools = new QuillTools();
+        JsonNode empty = JSON.readTree(tools.getContext(jdbi, List.of(), false, 10));
+        JsonNode tooMany = JSON.readTree(tools.getContext(jdbi, List.of(
+                "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"),
+                false, 10));
+
+        assertEquals("At least one target is required", empty.path("message").asText());
+        assertEquals("At most 10 targets are allowed", tooMany.path("message").asText());
+    }
+
+    @Test
+    void planChangeSeparatesPrimaryEditsFromDependencyReview() throws Exception {
+        QuillTools tools = new QuillTools();
+        writeMinimalPom();
+
+        JsonNode result = JSON.readTree(tools.planChange(jdbi, tempDir,
+                List.of("StripePaymentService"), "Add idempotent payment retries", 10));
+
+        assertEquals("Add idempotent payment retries", result.path("change").asText());
+        assertEquals("partial", result.path("plan_status").asText());
+        assertFalse(result.path("answer_complete").asBoolean());
+        JsonNode primary = result.path("primary_changes").get(0);
+        assertEquals("org.acme.StripePaymentService", primary.path("class").asText());
+        assertEquals("src/main/java/org/acme/StripePaymentService.java",
+                primary.path("file").asText());
+        JsonNode dependent = result.path("dependency_review").get(0);
+        assertEquals("org.acme.OrderService", dependent.path("class").asText());
+        assertEquals("injection", dependent.path("usage_kind").asText());
+        assertEquals("review", dependent.path("action").asText());
+        assertTrue(result.path("warnings").valueStream()
+                .anyMatch(warning -> warning.path("code").asText()
+                        .equals("INCOMPLETE_TEST_COVERAGE")));
+        assertEquals(5, result.path("sequence").size());
+        assertEquals("maven", result.path("verification_plan")
+                .path("build_system").asText());
+        assertTrue(result.path("verification_plan").path("runner").has("available"));
+        assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());
+    }
+
+    @Test
+    void planChangeRequiresDescription() throws Exception {
+        JsonNode result = JSON.readTree(new QuillTools().planChange(
+                jdbi, tempDir, List.of("OrderService"), "  ", 10));
+
+        assertEquals("A non-empty change description is required",
+                result.path("message").asText());
+    }
+
+    @Test
+    void verifyChangeBlocksOnCapturedBuildFailure() throws Exception {
+        writeMinimalPom();
+        Path state = tempDir.resolve(".quill/build-state.json");
+        Files.createDirectories(state.getParent());
+        Files.writeString(state, """
+                {
+                  "buildTool": "maven",
+                  "finishedAt": 1791067200000,
+                  "successful": false,
+                  "captureScope": "task_output",
+                  "diagnostics": [
+                    "src/main/java/org/acme/OrderService.java:10:5: incompatible types"
+                  ],
+                  "failureMessages": []
+                }
+                """);
+
+        JsonNode result = JSON.readTree(new QuillTools().verifyChange(
+                jdbi, tempDir, List.of("OrderService"), 10));
+
+        assertEquals("blocked", result.path("verdict").asText());
+        assertFalse(result.path("verified").asBoolean());
+        assertEquals("failed", result.path("diagnostics").path("build_status").asText());
+        assertEquals(1, result.path("diagnostics").path("total").asInt());
+        assertEquals("BUILD_FAILED", result.path("blockers").get(0).path("code").asText());
+        assertEquals("fix_diagnostics",
+                result.path("next_actions").get(0).path("action").asText());
+        assertEquals("run_external_command",
+                result.path("next_actions").get(1).path("action").asText());
+        assertEquals("quick_compile",
+                result.path("next_actions").get(1).path("command_scope").asText());
+        assertFalse(result.path("next_actions").get(1).path("executed_by_quill").asBoolean());
+        assertEquals("verify_change",
+                findAction(result, "call_tool").path("tool").asText());
+        assertFalse(result.path("build").path("build_was_started").asBoolean());
+        assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());
+    }
+
+    @Test
+    void verifyChangeRequiresBuildEvidenceWhenNoBuildWasCaptured() throws Exception {
+        writeMinimalPom();
+        JsonNode result = JSON.readTree(new QuillTools().verifyChange(
+                jdbi, tempDir, List.of("OrderService"), 10));
+
+        assertEquals("needs_build", result.path("verdict").asText());
+        assertEquals("unknown", result.path("diagnostics").path("build_status").asText());
+        assertTrue(result.path("blockers").valueStream()
+                .anyMatch(blocker -> blocker.path("code").asText()
+                        .equals("BUILD_EVIDENCE_REQUIRED")));
+        assertEquals("run_external_command",
+                result.path("next_actions").get(0).path("action").asText());
+        assertEquals("quick_compile",
+                result.path("next_actions").get(0).path("command_scope").asText());
+        assertEquals("verify_change",
+                findAction(result, "call_tool").path("tool").asText());
+    }
+
+    @Test
+    void verifyChangeInfersTargetsFromDirtyJvmSources() throws Exception {
+        writeMinimalPom();
+        Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; class OrderService {}\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            Files.writeString(source, "package org.acme; class OrderService { void changed() {} }\n");
+
+            JsonNode result = JSON.readTree(new QuillTools().verifyChange(
+                    jdbi, tempDir, List.of(), 10));
+
+            assertEquals("dirty_worktree", result.path("target_source").asText());
+            assertEquals(1, result.path("inferred_target_count").asInt());
+            assertFalse(result.path("target_inference_truncated").asBoolean());
+            assertEquals("src/main/java/org/acme/OrderService.java",
+                    result.path("requested_targets").get(0).asText());
+            assertEquals(1, result.path("resolved_target_count").asInt());
+        }
+    }
+
+    @Test
+    void changeSessionSeesAnEditImmediatelyAfterAPlannedSnapshot() throws Exception {
+        writeMinimalPom();
+        Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; class OrderService {}\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            QuillTools tools = new QuillTools();
+            JsonNode planned = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                    List.of("OrderService"), "Add a method", 10));
+
+            Files.writeString(source,
+                    "package org.acme; class OrderService { void changed() {} }\n");
+            JsonNode changed = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                    List.of("OrderService"), "Add a method", 10));
+
+            assertEquals("planned", planned.path("phase").asText());
+            assertEquals("ready", planned.path("phase_gate").path("status").asText());
+            assertTrue(planned.path("phase_gate")
+                    .path("can_proceed_without_resolution").asBoolean());
+            assertEquals("review_required", changed.path("phase").asText());
+            assertEquals("action_required",
+                    changed.path("phase_gate").path("status").asText());
+            assertFalse(changed.path("phase_gate")
+                    .path("can_proceed_without_resolution").asBoolean());
+            assertEquals("test_coverage", changed.path("phase_gate")
+                    .path("required_evidence").get(0).path("id").asText());
+            assertTrue(changed.path("verification").path("worktree")
+                    .path("structural_dirty").asBoolean());
+            assertEquals("INCOMPLETE_TEST_COVERAGE",
+                    changed.path("next_actions").get(0).path("reason").asText());
+
+            Path state = tempDir.resolve(".quill/build-state.json");
+            Files.createDirectories(state.getParent());
+            Files.writeString(state, """
+                    {"buildTool":"maven","finishedAt":%d,"successful":false,
+                     "captureScope":"task_output","diagnostics":["compile error"],
+                     "failureMessages":[]}
+                    """.formatted(System.currentTimeMillis()));
+            JsonNode blocked = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                    List.of("OrderService"), "Add a method", 10));
+            assertEquals("blocked", blocked.path("phase").asText());
+            assertEquals("fix_diagnostics_and_rebuild",
+                    blocked.path("phase_gate").path("transition").asText());
+            assertEquals("BUILD_FAILED", blocked.path("phase_gate")
+                    .path("required_evidence").get(0).path("reason_code").asText());
+            assertFalse(blocked.path("verification_receipt").path("verified").asBoolean());
+            assertTrue(blocked.path("verification_receipt").path("reason_codes").valueStream()
+                    .anyMatch(reason -> reason.asText().equals("FAILED_BUILD_EVENT")));
+        }
+    }
+
+    @Test
+    void changeSessionReturnsStableStatelessWorkflowSnapshot() throws Exception {
+        writeMinimalPom();
+        QuillTools tools = new QuillTools();
+
+        JsonNode first = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                List.of("OrderService"), "Add retry support", 10));
+        JsonNode second = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                List.of("org.acme.OrderService"), "Add retry support", 10));
+
+        assertEquals(1, first.path("schema_version").asInt());
+        assertEquals("stateless_snapshot", first.path("state_model").asText());
+        assertEquals("full", first.path("detail").asText());
+        assertEquals("explicit", first.path("target_source").asText());
+        assertEquals("planned", first.path("phase").asText());
+        assertEquals("apply_structural_change",
+                first.path("phase_gate").path("transition").asText());
+        assertEquals(first.path("session_id").asText(), second.path("session_id").asText());
+        assertEquals(first.path("next_actions").get(0).path("action_id").asText(),
+                second.path("next_actions").get(0).path("action_id").asText());
+        assertEquals("org.acme.OrderService", first.path("targets").get(0).asText());
+        assertEquals("org.acme.OrderService",
+                first.path("plan").path("primary_changes").get(0).path("class").asText());
+        assertEquals("needs_build",
+                first.path("verification").path("verdict").asText());
+        assertTrue(first.path("verification_plan").path("commands").isArray());
+        assertEquals("required", first.path("review_checklist").path("status").asText());
+        assertEquals("evidence_only", first.path("review_checklist")
+                .path("acknowledgement_model").asText());
+        assertEquals(first.path("session_id").asText(),
+                first.path("verification_receipt").path("session_id").asText());
+        assertEquals("not_captured", first.path("verification_receipt")
+                .path("recommendation").path("command_attestation").asText());
+        assertFalse(first.path("verification_receipt").path("verified").asBoolean());
+        assertTrue(first.path("next_actions").get(0).path("action").isTextual());
+        assertEquals(first.path("next_actions").get(0).path("action_id").asText(),
+                first.path("directive").path("primary_action").path("action_id").asText());
+        assertEquals("planned", first.path("directive").path("status").asText());
+        assertEquals(first.path("next_actions").size(), first.path("next_actions").valueStream()
+                .map(action -> action.path("action_id").asText()).distinct().count());
+    }
+
+    @Test
+    void changeSessionSummaryOmitsHeavyEvidenceAndKeepsQuickCompile() throws Exception {
+        writeMinimalPom();
+
+        JsonNode result = JSON.readTree(new ChangeSessionQueries().snapshot(
+                jdbi, tempDir, List.of("OrderService"), "Add retry support", 10, "summary"));
+
+        assertEquals("summary", result.path("detail").asText());
+        assertFalse(result.path("plan").path("primary_changes").get(0)
+                .has("member_contracts"));
+        assertFalse(result.path("verification").path("worktree").has("changes"));
+        assertTrue(result.path("verification_plan").path("commands").valueStream()
+                .allMatch(command -> command.path("scope").asText().equals("quick_compile")));
+        assertTrue(result.path("verification_plan").path("other_command_scopes").isArray());
+        assertTrue(result.path("omitted_sections").isArray());
+    }
+
+    @Test
+    void changeSessionAutoViewFocusesOnPlanBeforeStructuralEdits() throws Exception {
+        writeMinimalPom();
+
+        JsonNode result = JSON.readTree(new ChangeSessionQueries().snapshot(
+                jdbi, tempDir, List.of("OrderService"), "Add retry support", 10,
+                "summary", "auto"));
+
+        assertEquals("planned", result.path("phase").asText());
+        assertEquals("plan", result.path("view").asText());
+        assertTrue(result.has("plan"));
+        assertTrue(result.has("phase_gate"));
+        assertFalse(result.has("verification"));
+        assertFalse(result.has("verification_plan"));
+        assertFalse(result.has("verification_receipt"));
+        assertFalse(result.has("review_checklist"));
+        assertTrue(result.path("omitted_sections").valueStream()
+                .anyMatch(item -> item.asText().equals("verification_receipt")));
+        assertEquals("inspect_primary",
+                result.path("next_actions").get(0).path("action").asText());
+        assertFalse(result.path("next_actions").get(0).path("action_id").asText().isBlank());
+        assertEquals("inspect_primary", result.path("directive")
+                .path("primary_action").path("action").asText());
+    }
+
+    @Test
+    void changeSessionViewsPreservePhaseDirectiveAndExposePrimaryEvidence() throws Exception {
+        writeMinimalPom();
+        Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; class OrderService {}\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            for (boolean dirty : List.of(false, true)) {
+                if (dirty) Files.writeString(source,
+                        "package org.acme; class OrderService { void changed() {} }\n");
+                JsonNode baseline = null;
+                for (String view : List.of("auto", "plan", "verification", "all")) {
+                    JsonNode result = JSON.readTree(new ChangeSessionQueries().snapshot(
+                            jdbi, tempDir, List.of("OrderService"), "Add retry support", 10,
+                            "summary", view));
+                    if (baseline == null) baseline = result;
+                    assertEquals(baseline.path("directive"), result.path("directive"));
+                    assertEquals(baseline.path("phase_gate"), result.path("phase_gate"));
+                    assertTrue(result.path("directive").path("primary_action")
+                            .has("evidence_snapshot"));
+                    assertEquals(dirty ? "inspect_test_evidence" : "inspect_primary",
+                            result.path("directive").path("primary_action").path("action").asText());
+                }
+            }
+        }
+    }
+
+    @Test
+    void changeSessionInfersTargetsFromDirtyJvmSources() throws Exception {
+        writeMinimalPom();
+        Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; class OrderService {}\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            Files.writeString(source,
+                    "package org.acme; class OrderService { void changed() {} }\n");
+
+            JsonNode result = JSON.readTree(new QuillTools().changeSession(
+                    jdbi, tempDir, List.of(), "Add retry support", 10));
+
+            assertEquals("dirty_worktree", result.path("target_source").asText());
+            assertEquals("src/main/java/org/acme/OrderService.java",
+                    result.path("requested_targets").get(0).asText());
+            assertEquals("org.acme.OrderService", result.path("targets").get(0).asText());
+            assertEquals("review_required", result.path("phase").asText());
+
+            JsonNode auto = JSON.readTree(new ChangeSessionQueries().snapshot(
+                    jdbi, tempDir, List.of(), "Add retry support", 10,
+                    "summary", "auto"));
+            assertEquals("verification", auto.path("view").asText());
+            assertFalse(auto.has("plan"));
+            assertTrue(auto.has("verification"));
+            assertTrue(auto.has("verification_plan"));
+            assertTrue(auto.has("review_checklist"));
+            assertTrue(auto.has("verification_receipt"));
+        }
+    }
+
+    @Test
+    void changeSessionUsesVerificationPhaseWhenOnlyBuildEvidenceIsMissing() {
+        ObjectNode verification = JSON.createObjectNode();
+        verification.put("verdict", "needs_build");
+        verification.putObject("worktree").put("structural_dirty", true);
+        verification.putArray("blockers").addObject()
+                .put("code", "BUILD_EVIDENCE_REQUIRED");
+
+        assertEquals("verification_required", ChangeSessionQueries.phase(verification));
+        ObjectNode checklist = JSON.createObjectNode();
+        checklist.putArray("items");
+        JsonNode gate = ChangeSessionQueries.phaseGate("verification_required", checklist);
+        assertEquals("capture_successful_build", gate.path("transition").asText());
+        assertEquals("BUILD_EVIDENCE_REQUIRED", gate.path("required_evidence")
+                .get(0).path("reason_code").asText());
+        assertFalse(gate.path("can_proceed_without_resolution").asBoolean());
+    }
+
+    private void writeMinimalPom() throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId>
+                  <artifactId>verification-fixture</artifactId>
+                  <version>1</version>
+                </project>
+                """);
+    }
+
+    private static JsonNode findAction(JsonNode result, String action) {
+        return result.path("next_actions").valueStream()
+                .filter(candidate -> action.equals(candidate.path("action").asText()))
+                .findFirst().orElseThrow();
+    }
+
+    @Test
+    void getSymbolDetailsIncludesKotlinSemanticDeclarations() throws Exception {
+        IndexWriter.writeKotlinDeclarations(jdbi, List.of(
+                new KotlinDeclarationRecord(1, "CLASS", "org.acme.OrderService",
+                        "org.acme.OrderService", "", "kotlin_metadata",
+                        false, false, false, false, false, false, false),
+                new KotlinDeclarationRecord(1, "FUNCTION", "createOrder", "createOrder",
+                        "(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;",
+                        "kotlin_metadata", true, true, true,
+                        false, false, false, false)));
+
+        JsonNode result = JSON.readTree(new QuillTools().getSymbolDetails(
+                jdbi, "OrderService", false, null, 10, 0));
+
+        assertEquals("kotlin", result.path("language").asText());
+        assertEquals("OrderService", result.path("source_name").asText());
+        assertTrue(result.path("symbol_id").asText().startsWith("quill:symbol:v2:"));
+        assertEquals("kotlin_metadata", result.path("semantic_model").asText());
+        JsonNode function = result.path("kotlin_declarations").get(1);
+        assertEquals("function", function.path("kind").asText());
+        assertTrue(function.path("suspend").asBoolean());
+        assertTrue(function.path("extension").asBoolean());
+        assertTrue(function.path("default_parameters").asBoolean());
     }
 
     @Test
@@ -429,7 +864,7 @@ class QuillToolsTest {
         assertFalse(result.path("compiled_test_outputs_indexed").asBoolean());
         assertTrue(result.path("limitations").get(0).asText()
                 .contains("No compiled test classes"));
-        assertEquals("At least one target is required", invalid.path("error").asText());
+        assertEquals("At least one target is required", invalid.path("message").asText());
     }
 
     @Test
@@ -480,7 +915,7 @@ class QuillToolsTest {
         assertEquals("descendants", page.path("direction").asText());
         assertEquals(1, page.path("showing").asInt());
         assertEquals(1, page.path("total").asInt());
-        assertTrue(invalid.path("error").asText().contains("Invalid direction"));
+        assertTrue(invalid.path("message").asText().contains("Invalid direction"));
     }
 
     @Test
@@ -497,6 +932,14 @@ class QuillToolsTest {
                            (1, 'FIELD', 'orderRepository',
                             'orderRepository:org.acme.OrderRepository',
                             'org.acme.OrderRepository', '[]', 'private', '[]')""");
+            handle.execute("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model,
+                       is_suspend, has_default_parameters)
+                    VALUES (1, 'FUNCTION', 'createKotlinOrder', 'createOrder', '',
+                            'kotlin_metadata', 1, 1),
+                           (1, 'PROPERTY', 'orders', 'orderRepository', '',
+                            'kotlin_metadata', 0, 0)""");
         });
 
         QuillTools tools = new QuillTools();
@@ -508,11 +951,67 @@ class QuillToolsTest {
         assertEquals(1, result.path("total").asInt());
         JsonNode symbol = result.path("symbols").get(0);
         assertEquals("method", symbol.path("kind").asText());
+        assertEquals("kotlin", symbol.path("language").asText());
+        assertEquals("createKotlinOrder", symbol.path("source_name").asText());
+        assertEquals("createOrder", symbol.path("jvm_name").asText());
+        assertTrue(symbol.path("symbol_id").asText().startsWith("quill:symbol:v2:"));
+        assertEquals("src/main/java/org/acme/OrderService.java",
+                symbol.path("location").path("path").asText());
         assertEquals("createOrder", symbol.path("name").asText());
         assertEquals("org.acme.OrderService", symbol.path("declaring_class").asText());
         assertEquals("org.acme.Order", symbol.path("type").asText());
         assertTrue(symbol.path("annotations").toString().contains("Transactional"));
-        assertTrue(invalid.path("error").asText().contains("Invalid kind"));
+        JsonNode kotlinResult = JSON.readTree(tools.searchSymbols(
+                jdbi, "createKotlinOrder", "method", 10, 0));
+        JsonNode kotlinOnly = JSON.readTree(tools.searchSymbols(
+                jdbi, "order", null, "kotlin", 10, 0));
+        JsonNode invalidLanguage = JSON.readTree(tools.searchSymbols(
+                jdbi, "order", null, "scala", 10, 0));
+        JsonNode property = JSON.readTree(tools.searchSymbols(
+                jdbi, "orders", "field", "kotlin", 10, 0))
+                .path("symbols").get(0);
+        JsonNode kotlinSymbol = kotlinResult.path("symbols").get(0);
+        assertEquals("createOrder", kotlinSymbol.path("name").asText());
+        assertEquals("kotlin", kotlinSymbol.path("language").asText());
+        assertEquals("createKotlinOrder", kotlinSymbol.path("source_name").asText());
+        assertEquals("createOrder", kotlinSymbol.path("jvm_name").asText());
+        assertEquals("function", kotlinSymbol.path("kotlin_kind").asText());
+        assertEquals("createKotlinOrder", kotlinSymbol.path("kotlin_name").asText());
+        assertTrue(kotlinSymbol.path("suspend").asBoolean());
+        assertTrue(kotlinSymbol.path("default_parameters").asBoolean());
+        assertTrue(kotlinOnly.path("symbols").valueStream()
+                .allMatch(value -> value.path("language").asText().equals("kotlin")));
+        assertFalse(invalidLanguage.has("error"));
+        assertEquals("INVALID_ARGUMENT", invalidLanguage.path("error_code").asText());
+        assertTrue(invalidLanguage.path("message").asText().contains("Invalid language"));
+        assertFalse(invalidLanguage.path("retryable").asBoolean());
+        assertEquals("orders", property.path("source_name").asText());
+        assertEquals("property", property.path("source_kind").asText());
+        assertEquals("property_field", property.path("jvm_role").asText());
+        assertTrue(invalid.path("message").asText().contains("Invalid kind"));
+    }
+
+    @Test
+    void searchSymbolsDoesNotReportUnknownDeclarationLineAsZero() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("UPDATE classes SET source_line = 0 WHERE id = 1");
+            handle.execute("""
+                    INSERT INTO class_members
+                      (class_id, kind, name, signature, type_name, parameter_types,
+                       modifiers, annotations)
+                    VALUES (1, 'FIELD', 'orderRepository',
+                            'orderRepository:org.acme.OrderRepository',
+                            'org.acme.OrderRepository', '[]', 'private', '[]')""");
+        });
+
+        JsonNode symbol = JSON.readTree(new QuillTools().searchSymbols(
+                jdbi, "orderRepository", "field", 10, 0)).path("symbols").get(0);
+
+        assertEquals("src/main/java/org/acme/OrderService.java",
+                symbol.path("source").asText());
+        assertEquals("src/main/java/org/acme/OrderService.java",
+                symbol.path("location").path("path").asText());
+        assertTrue(symbol.path("location").path("line").isNull());
     }
 
     @Test
@@ -525,7 +1024,7 @@ class QuillToolsTest {
         assertEquals(2, page.path("showing").asInt());
         assertEquals(1, page.path("offset").asInt());
         assertTrue(page.path("has_more").asBoolean());
-        assertTrue(blank.path("error").asText().contains("must not be blank"));
+        assertTrue(blank.path("message").asText().contains("must not be blank"));
     }
 
     @Test
@@ -533,11 +1032,12 @@ class QuillToolsTest {
         jdbi.useHandle(handle -> {
             handle.execute("""
                     INSERT INTO class_members
-                      (class_id, kind, name, signature, type_name, parameter_types,
-                       modifiers, annotations)
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
                     VALUES (1, 'METHOD', 'createOrder',
                             'createOrder(java.lang.String):org.acme.Order',
-                            'org.acme.Order', '["java.lang.String"]', 'public', '[]')""");
+                            '(Ljava/lang/String;)Lorg/acme/Order;', 'org.acme.Order',
+                            '["java.lang.String"]', 'public', '[]')""");
             handle.execute("""
                     INSERT INTO method_calls
                       (from_class_id, from_method, from_descriptor,
@@ -549,6 +1049,13 @@ class QuillToolsTest {
                             '(Ljava/lang/String;)Lorg/acme/Order;', 'virtual', 1, '[42]'),
                            (4, 'audit', '(Lorg/acme/Order;)V', 2, 'notify',
                             '()V', 'interface', 1, '[17]')""");
+            handle.execute("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model,
+                       is_suspend)
+                    VALUES (1, 'FUNCTION', 'createKotlinOrder', 'createOrder',
+                            '(Ljava/lang/String;)Lorg/acme/Order;',
+                            'kotlin_metadata', 1)""");
         });
 
         QuillTools tools = new QuillTools();
@@ -558,6 +1065,10 @@ class QuillToolsTest {
                 jdbi, "OrderService", null, "sideways", 10, 0));
         JsonNode transitive = JSON.readTree(tools.getCallHierarchy(
                 jdbi, "OrderService", "createOrder", "outbound", true, 2, 10, 0));
+        JsonNode kotlinResult = JSON.readTree(tools.getCallHierarchy(
+                jdbi, "OrderService", "createKotlinOrder", "both", 10, 0));
+        JsonNode byId = JSON.readTree(tools.getCallHierarchy(
+                jdbi, kotlinResult.path("symbol_id").asText(), null, "both", 10, 0));
 
         assertEquals(2, result.path("total").asInt());
         assertTrue(result.path("declared_method_found").asBoolean());
@@ -573,7 +1084,7 @@ class QuillToolsTest {
                 .map(JsonNode::asInt).toList());
         assertEquals("org.acme.Order", outbound.path("callee").path("parameters")
                 .get(0).asText());
-        assertTrue(invalid.path("error").asText().contains("Invalid direction"));
+        assertTrue(invalid.path("message").asText().contains("Invalid direction"));
         assertEquals(2, transitive.path("total").asInt());
         assertFalse(transitive.path("direct_only").asBoolean());
         assertEquals(2, transitive.path("max_depth").asInt());
@@ -583,6 +1094,13 @@ class QuillToolsTest {
         assertEquals(2, indirect.path("depth").asInt());
         assertEquals("outbound", indirect.path("traversal_direction").asText());
         assertEquals(3, indirect.path("path").size());
+        assertEquals(2, kotlinResult.path("total").asInt(), kotlinResult.toPrettyString());
+        assertEquals("kotlin", kotlinResult.path("language").asText());
+        assertEquals("createKotlinOrder", kotlinResult.path("kotlin_name").asText());
+        assertEquals("createOrder", kotlinResult.path("jvm_name").asText());
+        assertEquals(kotlinResult.path("symbol_id").asText(),
+                byId.path("symbol_id").asText());
+        assertTrue(kotlinResult.path("suspend").asBoolean());
     }
 
     @Test
@@ -612,8 +1130,14 @@ class QuillToolsTest {
         JsonNode ambiguous = JSON.readTree(queries.getCallHierarchy(
                 jdbi, "OrderService", "process", null,
                 "inbound", false, 1, 10, 0));
-        assertTrue(ambiguous.path("error").asText().startsWith("Ambiguous method"));
+        assertTrue(ambiguous.path("message").asText().startsWith("Ambiguous method"));
         assertEquals(2, ambiguous.path("candidates").size());
+        String candidateId = ambiguous.path("candidates").get(0).path("symbol_id").asText();
+        assertTrue(candidateId.startsWith("quill:symbol:v2:"));
+        JsonNode byId = JSON.readTree(queries.getCallHierarchy(
+                jdbi, candidateId, null, null, "inbound", false, 1, 10, 0));
+        assertFalse(byId.has("error"));
+        assertEquals(candidateId, byId.path("symbol_id").asText());
 
         JsonNode exact = JSON.readTree(queries.getCallHierarchy(
                 jdbi, "OrderService", "process", "(I)V",
@@ -627,7 +1151,7 @@ class QuillToolsTest {
         JsonNode missing = JSON.readTree(queries.getCallHierarchy(
                 jdbi, "OrderService", "process", "(J)V",
                 "inbound", false, 1, 10, 0));
-        assertEquals("Method not found", missing.path("error").asText());
+        assertEquals("Method not found", missing.path("message").asText());
         assertEquals(2, missing.path("candidates").size());
     }
 
@@ -717,6 +1241,12 @@ class QuillToolsTest {
                             '[20]', '[4]'),
                            (1, 'run', '()V', 4, 'dispatchBatch', '()V', 'virtual', 1,
                             '[21]', '[9]')""");
+            handle.execute("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model,
+                       is_suspend)
+                    VALUES (1, 'FUNCTION', 'executeOrders', 'run', '()V',
+                            'kotlin_metadata', 1)""");
         });
 
         JsonNode result = JSON.readTree(new QuillToolQueries()
@@ -730,15 +1260,25 @@ class QuillToolsTest {
         assertEquals("proven_on_normal_completion", result.path("persist_before_dispatch")
                 .path("runtime_order_status").asText());
         assertTrue(result.path("control_flow").path("straight_line").asBoolean());
+        JsonNode byId = JSON.readTree(new QuillToolQueries().analyzeExecutionOrder(
+                jdbi, result.path("symbol_id").asText(), null, null));
+        assertEquals(result.path("symbol_id").asText(), byId.path("symbol_id").asText());
 
         JsonNode custom = JSON.readTree(new QuillToolQueries().analyzeExecutionOrder(
                 jdbi, "OrderService", "run", null,
                 Set.of("persistplan"), Set.of("dispatchbatch")));
+        JsonNode kotlin = JSON.readTree(new QuillToolQueries()
+                .analyzeExecutionOrder(jdbi, "OrderService", "executeOrders", null));
         assertEquals("proven", custom.path("ordering_analysis")
                 .path("instruction_order_status").asText());
         assertEquals(List.of("persistplan"), custom.path("ordering_analysis")
                 .path("before_terms").valueStream().map(JsonNode::asText).toList());
         assertFalse(custom.has("persist_before_dispatch"));
+        assertEquals(2, kotlin.path("event_count").asInt());
+        assertEquals("kotlin", kotlin.path("language").asText());
+        assertEquals("executeOrders", kotlin.path("kotlin_name").asText());
+        assertEquals("run", kotlin.path("jvm_name").asText());
+        assertTrue(kotlin.path("suspend").asBoolean());
     }
 
     @Test
@@ -922,13 +1462,31 @@ class QuillToolsTest {
                             'read_instance', 2, '[41,44]'),
                            (4, 'write', '()V', 1, 'status', 'Ljava/lang/String;',
                             'write_instance', 1, '[22]')""");
+            handle.execute("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model,
+                       has_default_parameters)
+                    VALUES (1, 'FUNCTION', 'submitOrder', 'submit',
+                            '(Ljava/lang/String;)V', 'kotlin_metadata', 1)""");
         });
 
         QuillToolQueries queries = new QuillToolQueries();
         JsonNode ambiguous = JSON.readTree(queries.findSymbolUsages(
                 jdbi, "OrderService", "submit", "method", null, "all", 10, 0));
-        assertEquals("Ambiguous symbol", ambiguous.path("error").asText());
+        assertFalse(ambiguous.has("error"));
+        assertEquals("AMBIGUOUS_SYMBOL", ambiguous.path("error_code").asText());
+        assertEquals("Ambiguous symbol", ambiguous.path("message").asText());
+        assertTrue(ambiguous.path("retryable").asBoolean());
+        assertTrue(ambiguous.path("retry_with").path("signature").asText()
+                .contains("descriptor"));
         assertEquals(2, ambiguous.path("candidates").size());
+        String candidateId = ambiguous.path("candidates").get(0).path("symbol_id").asText();
+        assertTrue(candidateId.startsWith("quill:symbol:v2:"));
+
+        JsonNode selectedById = JSON.readTree(queries.findSymbolUsages(
+                jdbi, candidateId, null, null, null, "all", 10, 0));
+        assertFalse(selectedById.has("error"));
+        assertEquals(candidateId, selectedById.path("symbol_id").asText());
 
         JsonNode method = JSON.readTree(queries.findSymbolUsages(
                 jdbi, "OrderService", "submit", "method", "(Ljava/lang/String;)V",
@@ -939,6 +1497,22 @@ class QuillToolsTest {
                 .path("evidence_lines").valueStream().map(JsonNode::asInt).toList());
         assertEquals("org.acme.StripePaymentService",
                 method.path("usages").get(0).path("caller").path("class").asText());
+        assertTrue(method.path("symbol_id").asText().startsWith("quill:symbol:v2:"));
+
+        JsonNode kotlinMethod = JSON.readTree(queries.findSymbolUsages(
+                jdbi, "OrderService", "submitOrder", "method", null,
+                "all", 10, 0));
+        assertEquals(1, kotlinMethod.path("total").asInt());
+        assertEquals("kotlin", kotlinMethod.path("language").asText());
+        assertEquals("submitOrder", kotlinMethod.path("kotlin_name").asText());
+        assertEquals("submit", kotlinMethod.path("jvm_name").asText());
+        assertTrue(kotlinMethod.path("default_parameters").asBoolean());
+        JsonNode byId = JSON.readTree(queries.findSymbolUsages(
+                jdbi, kotlinMethod.path("symbol_id").asText(), null, null, null,
+                "all", 10, 0));
+        assertEquals(kotlinMethod.path("symbol_id").asText(),
+                byId.path("symbol_id").asText());
+        assertEquals(1, byId.path("total").asInt());
 
         JsonNode constructor = JSON.readTree(queries.findSymbolUsages(
                 jdbi, "OrderService", null, "constructor",
@@ -955,6 +1529,54 @@ class QuillToolsTest {
     }
 
     @Test
+    void staleSymbolIdsFailClosedAndReturnCurrentCandidates() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members
+                  (class_id, kind, name, signature, descriptor, type_name,
+                   parameter_types, modifiers, annotations)
+                VALUES (1, 'METHOD', 'submit', 'submit(int):void', '(I)V', 'void',
+                        '["int"]', 'public', '[]')"""));
+        QuillToolQueries queries = new QuillToolQueries();
+
+        JsonNode missingClass = JSON.readTree(queries.findSymbolUsages(
+                jdbi, SymbolContract.id("org.acme.RemovedService", "METHOD",
+                        "submit", "(I)V"),
+                null, null, null, "all", 10, 0));
+        assertEquals("CLASS_NOT_FOUND", missingClass.path("error_code").asText());
+
+        JsonNode removedMember = JSON.readTree(queries.findSymbolUsages(
+                jdbi, SymbolContract.id("org.acme.OrderService", "METHOD",
+                        "removed", "()V"),
+                null, null, null, "all", 10, 0));
+        assertEquals("SYMBOL_NOT_FOUND", removedMember.path("error_code").asText());
+        assertFalse(removedMember.has("symbol_id"));
+
+        String staleDescriptor = SymbolContract.id(
+                "org.acme.OrderService", "METHOD", "submit", "(J)V");
+        JsonNode changedUsage = JSON.readTree(queries.findSymbolUsages(
+                jdbi, staleDescriptor, null, null, null, "all", 10, 0));
+        assertEquals("SYMBOL_NOT_FOUND", changedUsage.path("error_code").asText());
+        assertEquals("(I)V", changedUsage.path("candidates").get(0)
+                .path("descriptor").asText());
+        assertNotEquals(staleDescriptor, changedUsage.path("candidates").get(0)
+                .path("symbol_id").asText());
+
+        JsonNode changedHierarchy = JSON.readTree(queries.getCallHierarchy(
+                jdbi, staleDescriptor, null, null,
+                "both", false, 1, 10, 0));
+        assertEquals("METHOD_NOT_FOUND", changedHierarchy.path("error_code").asText());
+        assertEquals("(I)V", changedHierarchy.path("candidates").get(0)
+                .path("descriptor").asText());
+
+        JsonNode futureVersion = JSON.readTree(queries.findSymbolUsages(
+                jdbi, "quill:symbol:v3:anything", null, null, null,
+                "all", 10, 0));
+        assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION",
+                futureVersion.path("error_code").asText());
+        assertFalse(futureVersion.has("error"));
+    }
+
+    @Test
     void findMethodOverridesHandlesOverloadsAndTransitiveDescendants() throws Exception {
         jdbi.useHandle(handle -> {
             handle.execute("""
@@ -967,23 +1589,32 @@ class QuillToolsTest {
                             0, 50, 'source', 'current', '.', 'main')""");
             handle.execute("""
                     INSERT INTO class_members
-                      (class_id, kind, name, signature, type_name, parameter_types,
-                       modifiers, annotations)
+                      (class_id, kind, name, signature, descriptor, type_name,
+                       parameter_types, modifiers, annotations)
                     VALUES (2, 'METHOD', 'processPayment',
-                            'processPayment(double):void', 'void', '["double"]',
+                            'processPayment(double):void', '(D)V', 'void', '["double"]',
                             'public abstract', '[]'),
                            (2, 'METHOD', 'processPayment',
-                            'processPayment(java.lang.String):void', 'void',
+                            'processPayment(java.lang.String):void',
+                            '(Ljava/lang/String;)V', 'void',
                             '["java.lang.String"]', 'public abstract', '[]'),
                            (3, 'METHOD', 'processPayment',
-                            'processPayment(double):void', 'void', '["double"]',
+                            'processPayment(double):void', '(D)V', 'void', '["double"]',
                             'public', '[]'),
                            (5, 'METHOD', 'processPayment',
-                            'processPayment(double):void', 'void', '["double"]',
+                            'processPayment(double):void', '(D)V', 'void', '["double"]',
                             'public final', '[]'),
                            (5, 'METHOD', 'processPayment',
-                            'processPayment(java.lang.String):void', 'void',
+                            'processPayment(java.lang.String):void',
+                            '(Ljava/lang/String;)V', 'void',
                             '["java.lang.String"]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model)
+                    VALUES (2, 'FUNCTION', 'processKotlinPayment', 'processPayment',
+                            '(D)V', 'kotlin_metadata'),
+                           (2, 'FUNCTION', 'processKotlinPayment', 'processPayment',
+                            '(Ljava/lang/String;)V', 'kotlin_metadata')""");
         });
 
         QuillTools tools = new QuillTools();
@@ -994,6 +1625,8 @@ class QuillToolsTest {
         JsonNode overload = JSON.readTree(tools.findMethodOverrides(
                 jdbi, "PaymentService", "processPayment",
                 "processPayment(java.lang.String):void", true, 10, 0));
+        JsonNode kotlin = JSON.readTree(tools.findMethodOverrides(
+                jdbi, "PaymentService", "processKotlinPayment", null, true, 10, 0));
 
         assertEquals(3, all.path("total").asInt());
         assertEquals(2, all.path("base_declarations").size());
@@ -1005,6 +1638,17 @@ class QuillToolsTest {
         assertEquals(1, overload.path("total").asInt());
         assertEquals("processPayment(java.lang.String):void",
                 overload.path("overrides").get(0).path("base_signature").asText());
+        assertEquals(3, kotlin.path("total").asInt());
+        assertEquals("kotlin", kotlin.path("language").asText());
+        assertEquals("processKotlinPayment", kotlin.path("kotlin_name").asText());
+        assertEquals(List.of("processPayment"), kotlin.path("jvm_names").valueStream()
+                .map(JsonNode::asText).toList());
+        String symbolId = kotlin.path("base_declarations").get(0)
+                .path("symbol_id").asText();
+        JsonNode byId = JSON.readTree(tools.findMethodOverrides(
+                jdbi, symbolId, null, null, true, 10, 0));
+        assertEquals(symbolId,
+                byId.path("base_declarations").get(0).path("symbol_id").asText());
     }
 
     @Test
@@ -1020,7 +1664,7 @@ class QuillToolsTest {
         JsonNode result = JSON.readTree(new QuillTools().findMethodOverrides(
                 jdbi, "PaymentService", "processPayment", "missing()", true, 10, 0));
 
-        assertEquals("Method signature not found", result.path("error").asText());
+        assertEquals("Method signature not found", result.path("message").asText());
         assertEquals("processPayment(double):void", result.path("candidates").get(0).asText());
     }
 
@@ -1487,11 +2131,11 @@ class QuillToolsTest {
         assertEquals("Invalid scope: expected package or module", JSON.readTree(
                 queries.findArchitectureViolations(jdbi, "class", "org.acme",
                         List.of("org.persistence"), List.of(), false, false, 10, 0))
-                .path("error").asText());
+                .path("message").asText());
         assertEquals("At least one forbidden pattern is required", JSON.readTree(
                 queries.findArchitectureViolations(jdbi, "package", "org.acme",
                         List.of(), List.of(), false, false, 10, 0))
-                .path("error").asText());
+                .path("message").asText());
     }
 
     @Test
@@ -1561,7 +2205,7 @@ class QuillToolsTest {
     void findCyclesRejectsUnknownScope() throws Exception {
         JsonNode result = JSON.readTree(new QuillTools().findCycles(
                 jdbi, "package", null, false, false, 20, 0));
-        assertEquals("Invalid scope: expected class or module", result.path("error").asText());
+        assertEquals("Invalid scope: expected class or module", result.path("message").asText());
     }
 
     @Test
@@ -1657,9 +2301,26 @@ class QuillToolsTest {
         assertEquals(1, result.path("compiled_outputs").path("count").asInt());
         assertEquals("missing", result.path("integration").path("state").asText());
         assertEquals("integration_required", result.path("status").asText());
+        assertEquals("fresh", result.path("compiled_outputs").path("status").asText());
+        assertTrue(result.path("build_reason").isNull());
         assertTrue(result.path("action_required").asBoolean());
         assertFalse(result.path("build_was_started").asBoolean());
         assertEquals(0, result.path("build_events").path("pending").asInt());
+
+        Path source = tempDir.resolve("src/main/java/org/acme/Sample.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; public final class Sample {}\n");
+        long now = System.currentTimeMillis();
+        Files.setLastModifiedTime(classes.resolve("Sample.class"),
+                java.nio.file.attribute.FileTime.fromMillis(now - 2_000));
+        Files.setLastModifiedTime(source,
+                java.nio.file.attribute.FileTime.fromMillis(now + 2_000));
+
+        JsonNode stale = JSON.readTree(new QuillTools().getBuildStatus(jdbi, tempDir));
+        assertEquals("build_required", stale.path("status").asText());
+        assertEquals("classes_stale", stale.path("build_reason").asText());
+        assertEquals("stale", stale.path("compiled_outputs").path("status").asText());
+        assertEquals(".", stale.path("compiled_outputs").path("stale_modules").get(0).asText());
     }
 
     @Test
@@ -1867,7 +2528,7 @@ class QuillToolsTest {
 
         JsonNode invalid = JSON.readTree(new QuillTools().getDependencies(
                 jdbi, "OrderService", "both", 2, true, 1, 0, cursor));
-        assertEquals("Invalid or expired dependency cursor", invalid.get("error").asText());
+        assertEquals("Invalid or expired dependency cursor", invalid.path("message").asText());
     }
 
     private static String relationClass(JsonNode page) {
@@ -2038,6 +2699,17 @@ class QuillToolsTest {
 
         JsonNode project = root.get("project");
         assertNotNull(project);
+        JsonNode capabilities = root.path("capabilities");
+        assertEquals(1, capabilities.path("contract_version").asInt());
+        assertEquals(List.of("java", "kotlin"), capabilities.path("supported_languages")
+                .valueStream().map(JsonNode::asText).toList());
+        assertTrue(capabilities.path("stable_symbol_ids").asBoolean());
+        assertEquals(2, capabilities.path("symbol_id_version").asInt());
+        assertEquals("project", capabilities.path("symbol_id_scope").asText());
+        assertTrue(capabilities.path("workspace_symbol_ids_require_project").asBoolean());
+        assertTrue(capabilities.path("machine_readable_errors").asBoolean());
+        assertTrue(capabilities.path("symbol_id_consumers").toString()
+                .contains("find_symbol_usages"));
         assertEquals(4, project.get("classes").asInt());
         assertEquals(3, project.get("beans").asInt());
         assertEquals("degraded", project.get("dependency_index").asText());
@@ -2365,7 +3037,7 @@ class QuillToolsTest {
         assertEquals(2, history.path("commits").size());
 
         JsonNode missingClass = JSON.readTree(tools.getRisk(historyDb, "example.Deleted"));
-        assertEquals("Class not found", missingClass.path("error").asText());
+        assertEquals("Class not found", missingClass.path("message").asText());
         assertTrue(missingClass.path("candidates").toString().contains("Deleted.java"));
         assertTrue(missingClass.path("candidates").toString().contains("historical"));
         assertEquals(1, missingClass.path("candidates").size());

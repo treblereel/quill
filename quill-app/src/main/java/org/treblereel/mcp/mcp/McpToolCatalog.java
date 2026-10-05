@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
 import org.treblereel.mcp.diagnostics.DebugTrace;
+import org.treblereel.mcp.diagnostics.UxTelemetry;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
 
@@ -80,14 +81,25 @@ final class McpToolCatalog {
         Tool annotation = method.getAnnotation(Tool.class);
         McpSchema.Tool.Builder toolBuilder =
                 McpSchema.Tool.builder(method.getName(), inputSchema(method))
-                        .description(annotation.description());
-        if (annotation.structured()) toolBuilder.outputSchema(OBJECT_OUTPUT_SCHEMA);
+                        .description(description(tools, method, annotation));
+        if (annotation.readOnly()) {
+            // Queries may refresh derived caches/telemetry, but never edit source/configuration,
+            // execute builds, or contact open-ended external services.
+            toolBuilder.annotations(McpSchema.ToolAnnotations.builder()
+                    .readOnlyHint(true).destructiveHint(false).openWorldHint(false).build());
+        }
+        if (annotation.structured()) {
+            toolBuilder.outputSchema(annotation.output().isBlank()
+                    ? OBJECT_OUTPUT_SCHEMA
+                    : ToolOutputSchemas.schema(annotation.output()));
+        }
         McpSchema.Tool tool = toolBuilder.build();
 
         return AsyncToolSpecification.builder()
                 .tool(tool)
-                .callHandler((exchange, request) -> Mono
-                        .fromCallable(() -> invoke(tools, method, request.arguments()))
+                .callHandler((exchange, request) -> {
+                    long started = System.nanoTime();
+                    return Mono.fromCallable(() -> invoke(tools, method, request.arguments()))
                         .subscribeOn(toolScheduler)
                         .timeout(requestTimeout)
                         .onErrorResume(RejectedExecutionException.class,
@@ -101,8 +113,39 @@ final class McpToolCatalog {
                         // The SDK stdio transport uses a unicast outbound sink whose concurrent
                         // tryEmitNext calls may fail. Serialize completion signals while keeping
                         // the actual tool work parallel.
-                        .publishOn(responseScheduler))
+                        .map(result -> {
+                            UxTelemetry.record(method.getName(), routedTool(method, request.arguments()),
+                                    (System.nanoTime() - started) / 1_000_000L, result);
+                            return result;
+                        })
+                        .publishOn(responseScheduler);
+                })
                 .build();
+    }
+
+    private static String description(Object tools, Method method, Tool annotation) {
+        Boolean workspace = tools instanceof QuillTools quill ? quill.workspaceMode()
+                : tools instanceof RouterTools router ? router.workspaceMode() : null;
+        if (workspace == null) return annotation.description();
+        // Some clients surface only tools/list, not initialize.instructions. Keep the actual
+        // mode and first request in the advertised tool itself instead of relying on startup text.
+        if (method.getName().equals("get_overview")) {
+            String mode = workspace
+                    ? "Server mode: workspace (--workspace). First call with view=compact (limit<=50); then project=<name> with view=full. "
+                    : "Server mode: single_project. Call without arguments, not view=compact. ";
+            return mode + "Start here even for narrow symbol tasks. Index freshness and frameworks; use change_session before edits.";
+        }
+        return switch (method.getName()) {
+            case "search_classes", "find_implementations", "find_annotated_symbols" ->
+                    "After get_overview: " + annotation.description();
+            default -> annotation.description();
+        };
+    }
+
+    private static String routedTool(Method method, Map<String, Object> arguments) {
+        if (!"execute_tool".equals(method.getName()) || arguments == null) return null;
+        Object value = arguments.get("name");
+        return value instanceof String name ? name : null;
     }
 
     static Map<String, Object> inputSchema(Method method) {
@@ -117,8 +160,13 @@ final class McpToolCatalog {
                 property.put("additionalProperties", true);
             }
             ToolArg arg = parameter.getAnnotation(ToolArg.class);
-            if (arg != null && !SELF_DESCRIBING_ARGUMENTS.contains(parameter.getName())) {
-                property.put("description", arg.description());
+            if (arg != null) {
+                if (!SELF_DESCRIBING_ARGUMENTS.contains(parameter.getName())) {
+                    property.put("description", arg.description());
+                }
+                if (arg.allowed().length > 0) {
+                    property.put("enum", List.of(arg.allowed()));
+                }
             }
             properties.put(parameter.getName(), property);
             if (!isOptional(parameter.getParameterizedType())) required.add(parameter.getName());
@@ -177,6 +225,15 @@ final class McpToolCatalog {
                         return new Invocation(
                                 "Missing required argument: " + parameter.getName(), true);
                     }
+                }
+                ToolArg arg = parameter.getAnnotation(ToolArg.class);
+                if (value != null && arg != null && arg.allowed().length > 0
+                        && (!(value instanceof String string)
+                                || !List.of(arg.allowed()).contains(string))) {
+                    return new Invocation("Invalid argument " + parameter.getName()
+                            + ": expected one of " + String.join(", ", arg.allowed()), true);
+                }
+                if (!isOptional(parameter.getParameterizedType())) {
                     values[i] = convert(value, parameter.getType());
                 }
             }
@@ -208,11 +265,34 @@ final class McpToolCatalog {
     private static Object structuredContent(String text, boolean error) {
         try {
             var parsed = JSON.readTree(text);
-            if (parsed != null && parsed.isObject()) return parsed;
+            if (parsed instanceof com.fasterxml.jackson.databind.node.ObjectNode object) {
+                return normalizeErrorEnvelope(object);
+            }
         } catch (Exception ignored) {
             // Catalog-generated failures are converted to a stable structured envelope.
         }
-        return JSON.createObjectNode().put(error ? "error" : "result", text);
+        if (!error) return JSON.createObjectNode().put("result", text);
+        var envelope = JSON.createObjectNode();
+        envelope.put("error_code", "TOOL_INVOCATION_ERROR");
+        envelope.put("message", text);
+        envelope.put("retryable", text.contains("retry"));
+        return envelope;
+    }
+
+    private static Object normalizeErrorEnvelope(
+            com.fasterxml.jackson.databind.node.ObjectNode object) {
+        if (!object.has("error")) return object;
+        String legacy = object.path("error").asText("Tool failed");
+        if (!object.has("error_code")) {
+            String code = legacy.matches("[a-z][a-z0-9_]*")
+                    ? legacy.toUpperCase(java.util.Locale.ROOT)
+                    : "TOOL_ERROR";
+            object.put("error_code", code);
+        }
+        if (!object.has("message")) object.put("message", legacy);
+        if (!object.has("retryable")) object.put("retryable", false);
+        object.remove("error");
+        return object;
     }
 
     private static Object convertOptional(Object value, Class<?> targetType) {
@@ -261,11 +341,17 @@ final class McpToolCatalog {
 
     private static Class<?> optionalArgument(Type type) {
         Type argument = ((ParameterizedType) type).getActualTypeArguments()[0];
-        return argument instanceof Class<?> cls ? cls : String.class;
+        if (argument instanceof Class<?> cls) return cls;
+        if (argument instanceof ParameterizedType parameterized
+                && parameterized.getRawType() instanceof Class<?> raw) return raw;
+        return String.class;
     }
 
     private static String jsonType(Type type) {
         if (type instanceof ParameterizedType parameterized) {
+            if (parameterized.getRawType() == Optional.class) {
+                return jsonType(parameterized.getActualTypeArguments()[0]);
+            }
             if (parameterized.getRawType() == List.class) return "array";
             if (parameterized.getRawType() == Map.class) return "object";
         }
@@ -280,7 +366,8 @@ final class McpToolCatalog {
     private static boolean isToolError(String text) {
         if (text == null || text.isBlank() || text.charAt(0) != '{') return false;
         try {
-            return JSON.readTree(text).has("error");
+            var parsed = JSON.readTree(text);
+            return parsed.has("error_code") || parsed.has("error");
         } catch (Exception ignored) {
             return false;
         }

@@ -26,6 +26,12 @@ NUMERIC_FIELDS = (
     "quill_bypass_count",
 )
 
+UX_LATENCY_FIELDS = (
+    "time_to_first_tool_ms",
+    "time_to_first_quill_ms",
+    "time_to_first_successful_quill_ms",
+)
+
 
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -152,10 +158,17 @@ def score_run(suite: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
     totals["uncached_tokens"] = (totals["input_tokens"]
                                  - totals["cached_input_tokens"]
                                  + totals["output_tokens"])
+    ux_latency = {}
+    for field in UX_LATENCY_FIELDS:
+        values = [task.get(field) for task in actual_tasks.values()
+                  if isinstance(task.get(field), (int, float))]
+        ux_latency[field] = ({"observations": len(values), **distribution(values)}
+                             if values else None)
     return {
         "mode": run.get("mode", "unspecified"),
         "task_count": len(expected_tasks),
         "totals": totals,
+        "ux_latency": ux_latency,
         "tasks": task_scores,
     }
 
@@ -212,6 +225,15 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[max(0, math.ceil(len(ordered) * fraction) - 1)]
 
 
+def distribution(values: list[float]) -> dict[str, float]:
+    return {
+        "median": round(median(values), 4),
+        "p95": round(percentile(values, 0.95), 4),
+        "min": round(min(values), 4),
+        "max": round(max(values), 4),
+    }
+
+
 def summarize_runs(scores: list[dict[str, Any]]) -> dict[str, Any]:
     fields = ("fact_accuracy", "task_completion_rate", "duration_seconds",
               "total_tokens", "uncached_tokens", "model_requests", "requests",
@@ -226,6 +248,12 @@ def summarize_runs(scores: list[dict[str, Any]]) -> dict[str, Any]:
             "min": round(min(values), 4),
             "max": round(max(values), 4),
         }
+    summary["ux_latency"] = {}
+    for field in UX_LATENCY_FIELDS:
+        values = [score["ux_latency"][field]["median"] for score in scores
+                  if score["ux_latency"].get(field) is not None]
+        summary["ux_latency"][field] = (
+            {"runs": len(values), **distribution(values)} if values else None)
     return summary
 
 
@@ -270,6 +298,11 @@ def print_report(report: dict[str, Any]) -> None:
                   f"{metrics['source_fallback_count']['median']:>8.1f}  "
                   f"{metrics['source_first_count']['median']:>12.1f}  "
                   f"{metrics['quill_bypass_count']['median']:>6.1f}")
+        latency = report["with_quill"]["summary"]["ux_latency"]
+        first = latency.get("time_to_first_successful_quill_ms")
+        if first is not None:
+            print("time to first successful Quill result: "
+                  f"median {first['median']:.1f} ms, p95 {first['p95']:.1f} ms")
         return
     print("mode           accuracy  complete  seconds  tokens  uncached  model req  tools  manual  fallback  source-first  bypass  wrong  missing")
     for key in ("with_quill", "without_quill"):
@@ -283,6 +316,11 @@ def print_report(report: dict[str, Any]) -> None:
               f"{totals['source_first_count']:>12.0f}  "
               f"{totals['quill_bypass_count']:>6.0f}  "
               f"{totals['incorrect_facts']:>5.0f}  {totals['missing_facts']:>7.0f}")
+    first = report["with_quill"]["ux_latency"].get(
+        "time_to_first_successful_quill_ms")
+    if first is not None:
+        print("time to first successful Quill result: "
+              f"median {first['median']:.1f} ms, p95 {first['p95']:.1f} ms")
 
 
 def main() -> int:

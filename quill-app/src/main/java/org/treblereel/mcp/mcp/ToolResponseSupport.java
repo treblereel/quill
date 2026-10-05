@@ -120,7 +120,23 @@ final class ToolResponseSupport {
     }
 
     static String errorResponse(String message) {
-        return JSON.createObjectNode().put("error", message).toString();
+        return errorResponse("INVALID_ARGUMENT", message);
+    }
+
+    static String errorResponse(String code, String message) {
+        return appendError(JSON.createObjectNode(), code, message).toString();
+    }
+
+    static ObjectNode appendError(ObjectNode root, String code, String message) {
+        root.put("error_code", code);
+        root.put("message", message);
+        root.put("retryable", false);
+        return root;
+    }
+
+    static void appendRetryWith(ObjectNode root, String argument, String guidance) {
+        root.put("retryable", true);
+        root.putObject("retry_with").put(argument, guidance);
     }
 
     static String classLookupError(

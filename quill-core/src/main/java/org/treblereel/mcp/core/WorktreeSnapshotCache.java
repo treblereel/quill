@@ -74,6 +74,14 @@ public final class WorktreeSnapshotCache {
         }).snapshot();
     }
 
+    /** Refreshes synchronously for correctness-sensitive workflow gates. */
+    public WorktreeInspector.Snapshot refresh(Path projectRoot) {
+        Path key = projectRoot.toAbsolutePath().normalize();
+        WorktreeInspector.Snapshot snapshot = inspector.apply(key);
+        entries.put(key, new Entry(snapshot, clock.getAsLong() + ttlNanos));
+        return snapshot;
+    }
+
     private void refreshAsync(Path key, Entry stale) {
         if (!stale.refreshing().compareAndSet(false, true)) return;
         try {

@@ -6,6 +6,7 @@ import subprocess
 from quill_agent_benchmark import (ResponsesClient, SourceTools, json_type, parse_final_json,
                                    quill_outcome_flags, run_agent, selected_quill_tools,
                                    source_fallbacks, tool_usage_diagnostics)
+from quill_agent_benchmark import managed_guidance
 
 
 class FakeResponses:
@@ -36,6 +37,49 @@ class FakeResponses:
 
 
 class QuillAgentBenchmarkTest(unittest.TestCase):
+
+    def test_action_mode_is_explicit_and_read_only_default_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / "A.java").write_text("class A {}\n")
+            for action_mode in (False, True):
+                transport = FakeResponses()
+                run_agent(ResponsesClient("unused", "https://example.invalid", 1, transport),
+                          {"id": "one", "prompt": "answer", "expected": {"answer": 42}},
+                          "with_quill", "test-model", "medium", SourceTools(project, 1000), None,
+                          action_instructions="Bounded writes permitted" if action_mode else "",
+                          extra_tools=[{"type": "function", "name": "bounded_edit"}]
+                          if action_mode else None)
+                payload = transport.payloads[0]
+                self.assertEqual(action_mode, "Bounded writes permitted" in payload["instructions"])
+                self.assertEqual(not action_mode, "Do not modify files or run builds" in
+                                 payload["instructions"])
+                self.assertEqual(action_mode, any(tool["name"] == "bounded_edit"
+                                                 for tool in payload["tools"]))
+
+    def test_installed_guidance_is_injected_only_in_quill_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / "A.java").write_text("class A {}\n", encoding="utf-8")
+            for mode in ("with_quill", "without_quill"):
+                transport = FakeResponses()
+                result = run_agent(ResponsesClient("unused", "https://example.invalid", 1, transport),
+                                   {"id": "one", "prompt": "answer", "expected": {"answer": 42}},
+                                   mode, "test-model", "medium", SourceTools(project, 1000), None,
+                                   guidance="Follow directive.primary_action")
+                self.assertEqual(mode == "with_quill", result["installed_guidance_used"])
+                self.assertEqual(mode == "with_quill",
+                                 "Follow directive.primary_action" in transport.payloads[0]["instructions"])
+
+    def test_guidance_loader_excludes_surrounding_user_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "AGENTS.md"
+            block = "<!-- quill:managed:start -->\nQuill rules\n<!-- quill:managed:end -->"
+            path.write_text("User rules\n" + block + "\nUser tail", encoding="utf-8")
+            self.assertEqual(block, managed_guidance(path))
+            path.write_text("<!-- quill:managed:start -->\nUser tail", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                managed_guidance(path)
 
     def test_collects_real_per_response_usage_and_tool_counts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -203,8 +247,10 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
 
     def test_reports_source_first_and_quill_bypass_separately(self):
         trace = [
-            {"round": 1, "tool": "source_search", "provider": "source"},
-            {"round": 2, "tool": "read_file", "provider": "source"},
+            {"round": 1, "tool": "source_search", "provider": "source",
+             "elapsed_since_task_start_ms": 12},
+            {"round": 2, "tool": "read_file", "provider": "source",
+             "elapsed_since_task_start_ms": 20},
         ]
 
         diagnostics = tool_usage_diagnostics(trace, quill_advertised=True)
@@ -212,11 +258,15 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
         self.assertEqual(2, diagnostics["source_first_count"])
         self.assertEqual(0, diagnostics["quill_call_count"])
         self.assertTrue(diagnostics["quill_bypassed"])
+        self.assertEqual(12, diagnostics["time_to_first_tool_ms"])
+        self.assertIsNone(diagnostics["time_to_first_quill_ms"])
 
     def test_source_before_quill_is_source_first_but_not_bypass(self):
         trace = [
-            {"round": 1, "tool": "source_search", "provider": "source"},
-            {"round": 2, "tool": "quill_get_dependencies", "provider": "quill"},
+            {"round": 1, "tool": "source_search", "provider": "source",
+             "elapsed_since_task_start_ms": 10},
+            {"round": 2, "tool": "quill_get_dependencies", "provider": "quill",
+             "elapsed_since_task_start_ms": 25, "status": "ok"},
             {"round": 3, "tool": "read_file", "provider": "source"},
         ]
 
@@ -224,6 +274,8 @@ class QuillAgentBenchmarkTest(unittest.TestCase):
 
         self.assertEqual(1, diagnostics["source_first_count"])
         self.assertFalse(diagnostics["quill_bypassed"])
+        self.assertEqual(25, diagnostics["time_to_first_quill_ms"])
+        self.assertEqual(25, diagnostics["time_to_first_successful_quill_ms"])
 
 
 if __name__ == "__main__":

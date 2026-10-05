@@ -7,12 +7,14 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.Callable;
 import org.treblereel.mcp.command.CleanCommand;
+import org.treblereel.mcp.command.ClientCommand;
 import org.treblereel.mcp.command.DoctorCommand;
 import org.treblereel.mcp.command.InitCommand;
 import org.treblereel.mcp.command.StatusCommand;
 import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.command.WorkspaceCommand;
 import org.treblereel.mcp.diagnostics.DebugTrace;
+import org.treblereel.mcp.diagnostics.UxTelemetry;
 import org.treblereel.mcp.mcp.ProjectRegistry;
 import org.treblereel.mcp.mcp.WorkspaceProjectScope;
 import org.treblereel.mcp.mcp.McpStdioServer;
@@ -26,7 +28,7 @@ import picocli.CommandLine.Option;
 @Command(name = "quill", mixinStandardHelpOptions = true,
         versionProvider = QuillTopCommand.VersionProvider.class,
         subcommands = {InitCommand.class, UpdateCommand.class, StatusCommand.class,
-                DoctorCommand.class, CleanCommand.class, WorkspaceCommand.class})
+                DoctorCommand.class, CleanCommand.class, WorkspaceCommand.class, ClientCommand.class})
 public class QuillTopCommand implements Callable<Integer> {
 
     @Option(names = "--mcp", description = "Start an MCP server (stdio transport)")
@@ -47,6 +49,9 @@ public class QuillTopCommand implements Callable<Integer> {
 
     @Option(names = "--debug-directory", description = "Root directory for .quill/debug (defaults to the served workspace or project)")
     Path debugDirectory;
+
+    @Option(names = "--telemetry", description = "Record local, content-free MCP UX metrics in .quill/telemetry")
+    boolean telemetry;
 
     public static void main(String[] args) {
         CommandLine commandLine = new CommandLine(new QuillTopCommand());
@@ -97,6 +102,8 @@ public class QuillTopCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         if (mcp) {
             DebugTrace.configure(debug || debugEnvironmentEnabled(), diagnosticRoot());
+            UxTelemetry.configure(telemetry || telemetryEnvironmentEnabled(), diagnosticRoot(),
+                    toolProfiles);
             ProjectRegistry registry;
             WorkspaceLock workspaceLock = null;
             if (workspace != null) {
@@ -125,7 +132,7 @@ public class QuillTopCommand implements Callable<Integer> {
             }
             return CommandLine.ExitCode.OK;
         }
-        System.err.println("Use a subcommand (init, update, status, doctor, clean)"
+        System.err.println("Use a subcommand (init, update, status, doctor, clean, workspace, client)"
                 + " or --mcp to start the MCP server.");
         System.err.println("Run 'quill --help' for more information.");
         return CommandLine.ExitCode.USAGE;
@@ -140,6 +147,12 @@ public class QuillTopCommand implements Callable<Integer> {
 
     private static boolean debugEnvironmentEnabled() {
         String value = System.getenv("QUILL_DEBUG");
+        return value != null && (value.equals("1") || value.equalsIgnoreCase("true")
+                || value.equalsIgnoreCase("yes"));
+    }
+
+    private static boolean telemetryEnvironmentEnabled() {
+        String value = System.getenv("QUILL_TELEMETRY");
         return value != null && (value.equals("1") || value.equalsIgnoreCase("true")
                 || value.equalsIgnoreCase("yes"));
     }

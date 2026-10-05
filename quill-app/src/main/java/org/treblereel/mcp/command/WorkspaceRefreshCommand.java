@@ -23,8 +23,14 @@ public final class WorkspaceRefreshCommand implements Callable<Integer> {
             + "configuration while creating missing indexes")
     boolean indexOnly;
 
+    @Option(names = "--jobs", defaultValue = "4",
+            showDefaultValue = CommandLine.Help.Visibility.ALWAYS,
+            description = "Maximum repositories to process concurrently")
+    int jobs = WorkspaceRepositoryInitializer.DEFAULT_JOBS;
+
     @Override
     public Integer call() throws Exception {
+        if (jobs < 1) throw new IllegalArgumentException("--jobs must be at least 1");
         WorkspaceManifest manifest = WorkspaceManifestStore.read(workspaceRoot);
         WorkspaceLock lock = WorkspaceLock.tryAcquire(manifest.root());
         if (lock == null) {
@@ -49,7 +55,7 @@ public final class WorkspaceRefreshCommand implements Callable<Integer> {
             removed = previousPaths.stream().filter(path -> !currentPaths.contains(path)).toList()
                     .size();
             result = WorkspaceRepositoryInitializer.initializeMissing(
-                    discovery, indexOnly, System.out::println);
+                    discovery, indexOnly, jobs, System.out::println);
             if (!indexOnly) {
                 WorkspaceClientConfiguration.uninstallRemoved(
                         manifest.root(), previous, discovery.repositories());
@@ -65,8 +71,11 @@ public final class WorkspaceRefreshCommand implements Callable<Integer> {
         discovery.diagnostics().forEach(diagnostic ->
                 System.err.println("[quill] Warning: " + diagnostic));
         System.out.println("Workspace refresh complete: added=" + added + ", removed=" + removed
-                + ", indexed=" + result.indexed() + ", skipped=" + result.skipped()
-                + ", unchanged=" + result.unchanged() + ", failed=" + result.failed());
+                + ", indexed=" + result.indexed()
+                + ", pending_build=" + result.pendingBuild()
+                + ", metadata_only=" + result.metadataOnly()
+                + ", skipped=" + result.skipped() + ", unchanged=" + result.unchanged()
+                + ", failed=" + result.failed());
         return result.successful() ? CommandLine.ExitCode.OK : CommandLine.ExitCode.SOFTWARE;
     }
 }

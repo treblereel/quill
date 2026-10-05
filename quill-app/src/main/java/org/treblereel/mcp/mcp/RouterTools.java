@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -21,16 +22,23 @@ final class RouterTools {
         this.tools = tools;
     }
 
-    @Tool(structured = true,
-            description = "Summarize indexed projects before choosing a specialized tool.")
+    boolean workspaceMode() {
+        return tools.workspaceMode();
+    }
+
+    @Tool(readOnly = true, structured = true,
+            description = "Start here. Omit arguments for single-project or unknown server mode. Only --workspace servers support view=compact; follow retry_with on mode errors.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings")
                     Optional<Boolean> details,
-            @ToolArg(description = "Project to query; omit for all") Optional<String> project) {
-        return tools.get_overview(details, project);
+            @ToolArg(description = "Project to query; omit for all") Optional<String> project,
+            @ToolArg(description = "full (default) or compact (workspace map)", allowed = {"full", "compact"}) Optional<String> view,
+            @ToolArg(description = "Compact page size (default 20, max 50)") Optional<Integer> limit,
+            @ToolArg(description = "Compact offset (default 0)") Optional<Integer> offset) {
+        return tools.get_overview(details, project, view, limit, offset);
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Search Quill's hidden tool catalog by name, purpose, or argument.")
     public String search_tools(
             @ToolArg(description = "Words to match against tool names, descriptions, and arguments")
@@ -41,7 +49,8 @@ final class RouterTools {
                     .filter(term -> !term.isBlank()).toArray(String[]::new);
             int pageSize = Math.max(1, Math.min(30, limit.orElse(10)));
             List<Method> catalog = Arrays.stream(QuillTools.class.getDeclaredMethods())
-                    .filter(method -> method.isAnnotationPresent(Tool.class)).toList();
+                    .filter(method -> method.isAnnotationPresent(Tool.class))
+                    .filter(method -> method.getAnnotation(Tool.class).readOnly()).toList();
             List<Candidate> matches = catalog.stream()
                     .map(method -> new Candidate(method, score(method, terms)))
                     .filter(candidate -> candidate.score() > 0)
@@ -87,7 +96,7 @@ final class RouterTools {
         }
     }
 
-    @Tool(structured = true,
+    @Tool(readOnly = true, structured = true,
             description = "Invoke one hidden Quill tool using its name and JSON arguments.")
     public String execute_tool(
             @ToolArg(description = "Exact tool name returned by search_tools") String name,
@@ -96,6 +105,7 @@ final class RouterTools {
         try (DebugTrace.Trace trace = DebugTrace.start("router_execute")) {
             Method method = Arrays.stream(QuillTools.class.getDeclaredMethods())
                     .filter(candidate -> candidate.isAnnotationPresent(Tool.class))
+                    .filter(candidate -> candidate.getAnnotation(Tool.class).readOnly())
                     .filter(candidate -> candidate.getName().equals(name))
                     .findFirst().orElse(null);
             if (method == null) {
@@ -110,8 +120,11 @@ final class RouterTools {
             trace.event("tool_completed", Map.of("tool", name, "is_error", invocation.error()));
             if (!invocation.error()) return invocation.text();
             try {
-                if (invocation.text() != null && JSON.readTree(invocation.text()).has("error")) {
-                    return invocation.text();
+                if (invocation.text() != null) {
+                    JsonNode payload = JSON.readTree(invocation.text());
+                    if (payload.has("error_code") || payload.has("error")) {
+                        return invocation.text();
+                    }
                 }
             } catch (Exception ignored) {
                 // Convert catalog validation and invocation failures to structured errors.
@@ -169,7 +182,8 @@ final class RouterTools {
         private static final java.util.Set<String> QUILL = java.util.Set.of(
                 "dependency", "dependencies", "graph", "call", "injection", "bean",
                 "history", "risk", "generated", "override", "implementation",
-                "annotation", "endpoint", "impact", "symbol", "module");
+                "annotation", "endpoint", "impact", "symbol", "module", "context",
+                "plan", "change", "verify", "verification");
         private static final java.util.Set<String> BUILD = java.util.Set.of(
                 "build", "compile", "compiler", "maven", "gradle", "failure", "error",
                 "problem");

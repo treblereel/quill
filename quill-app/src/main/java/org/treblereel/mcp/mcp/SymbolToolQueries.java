@@ -20,6 +20,7 @@ import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Builds a compact, evidence-backed card for one indexed class. */
 final class SymbolToolQueries {
@@ -31,11 +32,14 @@ final class SymbolToolQueries {
             String memberKind, int memberLimit, int memberOffset) {
         String normalizedKind = normalizeMemberKind(memberKind);
         if (normalizedKind != null && !MEMBER_KINDS.contains(normalizedKind)) {
-            return errorResponse("Invalid member_kind: expected field, constructor, or method");
+            return errorResponse("INVALID_ARGUMENT",
+                    "Invalid member_kind: expected field, constructor, or method");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
+        List<KotlinDeclarationRecord> kotlinDeclarations =
+                IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
         ObjectNode root = JSON.createObjectNode();
         root.put("class", cls.className());
@@ -47,6 +51,7 @@ final class SymbolToolQueries {
         root.put("origin", cls.origin());
         root.put("lifecycle", cls.lifecycle());
         root.put("source_tokens", cls.sourceTokens());
+        SymbolContract.appendClass(root, cls, kotlinDeclarations);
         appendContext(root, cls);
 
         List<ClassAnnotationRecord> annotations = IndexReader.findClassAnnotations(jdbi, cls.id());
@@ -56,6 +61,7 @@ final class SymbolToolQueries {
         root.set("meta_annotations", JSON.valueToTree(annotations.stream()
                 .filter(annotation -> !annotation.direct())
                 .map(ClassAnnotationRecord::annotationName).distinct().sorted().toList()));
+        appendKotlinDeclarations(root, kotlinDeclarations);
 
         ObjectNode dependencyMetrics = root.putObject("dependency_metrics");
         dependencyMetrics.put("fan_in", IndexReader.countDependents(jdbi, cls.id()));
@@ -97,6 +103,7 @@ final class SymbolToolQueries {
             node.set("parameters", JSON.valueToTree(member.parameterTypes()));
             node.put("modifiers", member.modifiers());
             node.set("annotations", JSON.valueToTree(member.annotations()));
+            SymbolContract.appendMember(node, cls, member, kotlinDeclarations);
             ArrayNode details = node.putArray("annotation_details");
             member.annotationDetails().forEach(annotation -> {
                 ObjectNode detail = details.addObject();
@@ -112,6 +119,31 @@ final class SymbolToolQueries {
         appendPage(root, page.size(), members.size(), memberLimit, memberOffset);
         appendMeta(root, jdbi, cls.sourceTokens());
         return root.toString();
+    }
+
+    private static void appendKotlinDeclarations(
+            ObjectNode root, List<KotlinDeclarationRecord> declarations) {
+        if (declarations.isEmpty()) return;
+        root.put("language", "kotlin");
+        root.put("semantic_model", declarations.getFirst().semanticModel());
+        ArrayNode values = root.putArray("kotlin_declarations");
+        for (KotlinDeclarationRecord declaration : declarations) {
+            ObjectNode node = values.addObject();
+            node.put("kind", declaration.kind().toLowerCase(Locale.ROOT));
+            node.put("name", declaration.name());
+            if (declaration.jvmName() == null) node.putNull("jvm_name");
+            else node.put("jvm_name", declaration.jvmName());
+            if (!declaration.descriptor().isBlank()) {
+                node.put("descriptor", declaration.descriptor());
+            }
+            if (declaration.isSuspend()) node.put("suspend", true);
+            if (declaration.extension()) node.put("extension", true);
+            if (declaration.hasDefaultParameters()) node.put("default_parameters", true);
+            if (declaration.mutable()) node.put("mutable", true);
+            if (declaration.lateinit()) node.put("lateinit", true);
+            if (declaration.delegated()) node.put("delegated", true);
+            if (declaration.synthetic()) node.put("synthetic", true);
+        }
     }
 
     private static void appendBean(ObjectNode node, BeanRecord bean) {

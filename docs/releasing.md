@@ -29,12 +29,7 @@ new version rather than rerunning a version that Central already accepted.
 
 ## Prepare a Quill release from GitHub Actions
 
-Add a repository secret named `RELEASE_TOKEN`. Use a fine-grained personal access token or
-GitHub App token that can write repository contents and whose pushes are allowed to trigger
-workflows. If the default branch is protected, allow that identity to push the Maven release
-commits and tag.
-
-Then open **Actions → Prepare Release → Run workflow**, select the default branch, and enter:
+Open **Actions → Prepare Release → Run workflow**, select the default branch, and enter:
 
 - the release version without a `v` prefix, for example `0.1.0`;
 - the next development version ending in `-SNAPSHOT`, for example `0.2.0-SNAPSHOT`.
@@ -43,10 +38,11 @@ Then open **Actions → Prepare Release → Run workflow**, select the default b
 The preparation workflow runs the complete JVM verification through Maven Release Plugin,
 commits the release versions, creates and pushes `v<version>`, and commits the next development
 versions. It also commits the selected extension version to the root
-`quill.maven.extension.version` property. The pushed tag starts the existing Release workflow,
-which first resolves that exact extension from Maven Central and stops if it is unavailable.
-A dedicated `RELEASE_TOKEN` is required because tags pushed with the workflow's default
-`GITHUB_TOKEN` do not start another workflow run.
+`quill.maven.extension.version` property. The workflow pushes those commits and the tag with
+its scoped `GITHUB_TOKEN`, then explicitly dispatches the Release workflow on the new tag.
+The Release workflow first resolves that exact extension from Maven Central and stops if it is
+unavailable. No personal access token or repository secret is required. If the default branch
+is protected, allow GitHub Actions to push the Maven release commits and tag.
 
 The Quill release workflow does not run `release:perform` and does not deploy Maven artifacts.
 Maven Central publication is confined to the standalone extension workflow. The GitHub release

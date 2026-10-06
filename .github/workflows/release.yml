@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -13,7 +14,19 @@ permissions:
   contents: read
 
 jobs:
+  validate-ref:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a version tag
+        run: |
+          if [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
+            echo "Release must run against a v-prefixed tag, got ${GITHUB_REF}" >&2
+            exit 1
+          fi
+
   maven-extension:
+    needs: validate-ref
     name: Verify Maven extension
     runs-on: ubuntu-latest
     timeout-minutes: 10

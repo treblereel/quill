@@ -354,3 +354,27 @@ took 61 seconds with 2.81 GB peak build RSS. The background-warmed native MCP qu
 returned the changed descriptor with `analysis_reused: true` in 18.7 ms. This checks
 reuse after a four-second allowance for event delivery and analysis; it does not
 measure save-to-warmup completion latency.
+
+## Deep inferred return-type chains
+
+A forward chain of 500 Kotlin functions across 500 files reproduces
+`StackOverflowError` with Java 17.0.2 on this macOS arm64 host. The default JVM stack
+and explicit 1, 2 and 4 MiB stacks fail; an 8 MiB stack resolves the terminal call's
+`(I)I` descriptor (2.42 seconds for one cold worker probe). This is a stress-case
+measurement, not a general latency or supported-depth guarantee.
+
+The production worker now starts with `-Xss8m`, retaining the 512 MiB heap cap and
+30-second request timeout. This reserves more stack space per JVM thread; it does
+not add compiler code to the native executable. Arbitrarily deep inference can still
+exhaust the stack. The worker flushes an unavailable response with
+`reason: StackOverflowError`, then exits. The parent immediately reaps that process,
+so the next query starts fresh even if child shutdown races the flushed response.
+
+Regression tests run actual compiler subprocesses: the 500-file chain resolves,
+reuses FIR, and invalidates to `(I)Z` when the terminal function changes to Boolean.
+A deliberately small 256 KiB stack exercises fallback and clean exit, followed by
+a fresh 8 MiB worker resolving the same sources. A parent-client test covers an
+exhausted child that remains alive after flushing its response.
+
+The stage benchmark now uses the production stack setting and can reproduce the
+inferred-return workload with `--files 500 --functions-per-file 1 --inferred-return-types`.

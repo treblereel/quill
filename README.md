@@ -748,7 +748,9 @@ Gradle-specific repository credentials are not imported. Quill system properties
 these runtime settings. Maven settings profiles and global settings are not merged.
 With a prepared cache, initialization and queries work offline.
 Analysis reuses one child JVM per MCP session with a 512 MiB heap limit and a
-30-second timeout. Requests are serialized. The worker retains one active module/source-set
+30-second timeout. Its JVM thread stack is 8 MiB to support deep inferred return-type
+chains. Stack exhaustion returns an unavailable result and discards the worker before
+the next query. Requests are serialized. The worker retains one active module/source-set
 FIR snapshot and reuses it for different source positions while compiler inputs match.
 Content fingerprints cover Kotlin/Java sources, ordered classpaths, compiled outputs and
 the selected JDK. Changed inputs dispose the snapshot and rebuild the module frontend;

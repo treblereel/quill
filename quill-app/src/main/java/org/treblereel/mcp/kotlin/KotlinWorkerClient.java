@@ -97,7 +97,9 @@ public final class KotlinWorkerClient implements AutoCloseable {
                     throw new IOException("Invalid worker response");
                 return result;
             });
-            return pending.get(timeoutNanos, TimeUnit.NANOSECONDS);
+            JsonNode result = pending.get(timeoutNanos, TimeUnit.NANOSECONDS);
+            if (result.path("reason").asText().equals("StackOverflowError")) stop();
+            return result;
         } catch (TimeoutException timeout) {
             stop(); return status("timeout");
         } catch (InterruptedException interrupted) {

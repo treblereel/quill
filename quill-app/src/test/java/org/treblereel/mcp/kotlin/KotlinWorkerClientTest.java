@@ -53,6 +53,18 @@ class KotlinWorkerClientTest {
             assertEquals("resolved", worker.query(request("ok")).path("status").asText());
         }
     }
+    @Test void exhaustedCompilerIsReapedBeforeTheVeryNextRequest() {
+        try (var worker = new KotlinWorkerClient(this::command, () -> "same", Duration.ofSeconds(5))) {
+            var failed = worker.query(request("stack_overflow"));
+            assertEquals("unavailable", failed.path("status").asText());
+            assertEquals("StackOverflowError", failed.path("reason").asText());
+            long pid = failed.path("pid").asLong(); assertTrue(pid > 0);
+            assertFalse(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
+            var next = worker.query(request("ok"));
+            assertEquals("resolved", next.path("status").asText());
+            assertNotEquals(pid, next.path("pid").asLong());
+        }
+    }
     @Test void timeoutAndInterruptionDiscardTheOldProtocolStream() throws Exception {
         try (var worker = new KotlinWorkerClient(this::command, () -> "same", Duration.ofSeconds(1))) {
             assertEquals("resolved", worker.query(request("ok")).path("status").asText());
@@ -156,6 +168,14 @@ class KotlinWorkerClientTest {
                 if (mode.equals("oversize")) { output.writeInt(1024 * 1024 + 1); output.flush(); continue; }
                 if (mode.equals("zero")) { output.writeInt(0); output.flush(); continue; }
                 if (mode.equals("truncated")) { output.writeInt(100); output.write(1); output.flush(); return; }
+                if (mode.equals("stack_overflow")) {
+                    byte[] response = JSON.writeValueAsBytes(JSON.createObjectNode().put("status", "unavailable")
+                            .put("backend", "kotlin_k2_fir").put("reason", "StackOverflowError")
+                            .put("pid", ProcessHandle.current().pid()));
+                    output.writeInt(response.length); output.write(response); output.flush();
+                    // Simulate the race between the flushed response and child shutdown.
+                    Thread.sleep(60_000); return;
+                }
                 byte[] bytes = mode.equals("malformed") ? new byte[]{'!'} : JSON.writeValueAsBytes(JSON.createObjectNode()
                         .put("status", "resolved").put("backend", mode.equals("wrong_backend") ? "other" : "kotlin_k2_fir")
                         .put("pid", ProcessHandle.current().pid()).put("echo", mode));

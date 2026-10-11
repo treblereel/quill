@@ -87,9 +87,12 @@ def benchmark(args, files: int, stdlib: Path) -> dict:
         for index in range(files):
             source = module / f"Source{index:05d}.kt"
             # Cross-file references require the complete module to be available.
+            return_type = "" if args.inferred_return_types else ": Int"
             source.write_text("package probe\n" + "\n".join(
-                f"fun f{index}_{fn}(x: Int): Int = " +
-                (f"f{index - 1}_0(x) + {fn}" if index else f"x + {fn}")
+                f"fun f{index}_{fn}(x: Int){return_type} = " +
+                ((f"f{index + 1}_0(x) + {fn}" if index < files - 1 else f"x + {fn}")
+                 if args.inferred_return_types else
+                 (f"f{index - 1}_0(x) + {fn}" if index else f"x + {fn}"))
                 for fn in range(args.functions_per_file)), encoding="utf-8")
             sources.append(str(source))
         definitions = module / "Definitions.kt"
@@ -105,7 +108,7 @@ def benchmark(args, files: int, stdlib: Path) -> dict:
         if args.java_home:
             environment["JAVA_HOME"] = str(args.java_home.resolve())
         with tempfile.TemporaryFile() as stderr:
-            worker = subprocess.Popen([java, "-Xmx512m", "-jar", str(args.worker.resolve()), "--serve"],
+            worker = subprocess.Popen([java, "-Xmx512m", "-Xss8m", "-jar", str(args.worker.resolve()), "--serve"],
                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr, env=environment)
             try:
                 cold = query(worker, request, args.timeout)
@@ -130,6 +133,7 @@ def benchmark(args, files: int, stdlib: Path) -> dict:
                     unchanged.append(result)
                 return {"generated_files": files, "total_sources": files + 2,
                         "functions_per_generated_file": args.functions_per_file,
+                        "inferred_return_types": args.inferred_return_types,
                         "cold": cold, "changed": summarize(changed), "unchanged": summarize(unchanged)}
             except Exception:
                 worker.kill()
@@ -155,6 +159,8 @@ def main() -> None:
     parser.add_argument("--stdlib", type=Path)
     parser.add_argument("--files", type=positive, nargs="+", default=[10, 100, 500])
     parser.add_argument("--functions-per-file", type=positive, default=5)
+    parser.add_argument("--inferred-return-types", action="store_true",
+                        help="Stress forward cross-file return-type inference rather than explicit Int returns")
     parser.add_argument("--samples", type=positive, default=10)
     parser.add_argument("--timeout", type=positive, default=30)
     parser.add_argument("--output", type=Path)

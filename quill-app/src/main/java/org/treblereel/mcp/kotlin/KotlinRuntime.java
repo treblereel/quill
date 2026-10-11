@@ -74,7 +74,7 @@ public final class KotlinRuntime {
         if (files.isEmpty()) throw new IOException("K2 runtime is missing or damaged; run quill init");
         return List.of(javaExecutable(), "-Xmx512m", "-cp",
                 String.join(File.pathSeparator, files.stream().map(Path::toString).toList()),
-                "org.treblereel.mcp.kotlin.SemanticWorker");
+                "-Xss8m", "org.treblereel.mcp.kotlin.SemanticWorker");
     }
 
     static String javaExecutable() {

@@ -29,18 +29,21 @@ public final class SemanticWorker {
             byte[] bytes = input.readNBytes(size);
             if (bytes.length != size) throw new java.io.EOFException("Truncated request frame");
             // Malformed JSON is a protocol failure: terminate rather than lose synchronization.
-            byte[] response = JSON.writeValueAsBytes(safelyAnalyze(JSON.readTree(bytes)));
+            ObjectNode result = safelyAnalyze(JSON.readTree(bytes));
+            byte[] response = JSON.writeValueAsBytes(result);
             if (response.length > 1024 * 1024) throw new java.io.IOException("Response frame too large");
             output.writeInt(response.length);
             output.write(response);
             output.flush();
+            // Compiler state after stack exhaustion is not reusable. Flush fallback before exiting.
+            if (result.path("reason").asText().equals("StackOverflowError")) return;
         }
     }
 
     private static ObjectNode safelyAnalyze(JsonNode request) {
         ObjectNode result;
         try { result = analyze(request); }
-        catch (Exception | LinkageError failure) {
+        catch (Exception | LinkageError | StackOverflowError failure) {
             K2Analyzer.clear();
             failure.printStackTrace(System.err);
             result = K2Analyzer.response("unavailable").put("reason", failure.getClass().getSimpleName());

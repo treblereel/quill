@@ -120,7 +120,8 @@ class KotlinSemanticQueriesTest {
         var command = KotlinRuntime.workerCommand();
         assertEquals("-cp", command.get(2)); assertTrue(command.get(3).contains("runtime with spaces"));
         assertNotEquals(System.getProperty("java.class.path"), command.get(3));
-        assertEquals("org.treblereel.mcp.kotlin.SemanticWorker", command.get(4));
+        assertTrue(command.contains("-Xss8m"));
+        assertEquals("org.treblereel.mcp.kotlin.SemanticWorker", command.get(command.size() - 1));
     }
 
     @Test void gradleProjectUsesSameRuntimeAndMissingRuntimeNeverDownloads() throws Exception {

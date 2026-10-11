@@ -61,6 +61,7 @@ class KotlinRuntimeTest {
         assertEquals(files, KotlinRuntime.prepare());
         assertEquals(files, KotlinRuntime.available());
         assertTrue(KotlinRuntime.workerCommand().get(3).contains("runtime with spaces"));
+        assertTrue(KotlinRuntime.workerCommand().contains("-Xss8m"));
     }
 
     private Path isolatedHomeWithoutMavenSettings() throws Exception {

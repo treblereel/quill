@@ -710,9 +710,18 @@ named arguments; JVM receivers and Continuation are excluded from source arity.
 Navigation binds trailing lambdas to the last parameter when its JVM function type is
 known, accepts backtick parameter names, and checks mixed named/positional arguments
 against declaration order. SAM conversions and generic argument expressions remain conservative.
-This is metadata and lexical analysis: receiver types, local shadowing, generic overloads,
-full overload type inference and coroutine source mapping still need
-a Kotlin semantic backend. Kotlin position results therefore have at most medium confidence.
+Without a semantic worker, position results use metadata and lexical evidence and have at
+most medium confidence. An optional compiler worker resolves overloads, receiver members,
+generic functions and local shadowing, and exposes its status in `semantic_analysis`.
+Build it with `./mvnw -P kotlin-semantic -pl quill-kotlin-semantic package`, then start Quill
+with `-Dquill.kotlin.semantic.worker=/absolute/path/quill-kotlin-semantic-0.1-SNAPSHOT-all.jar`.
+The worker uses the descriptor frontend at language level 1.9, analyzes sources without
+executing build scripts or loading project compiler plugins, and needs captured module
+classpath files plus Java on the host. It runs in a separate JVM with a 30-second timeout;
+missing dependencies, unsupported syntax and analysis errors keep the lexical fallback.
+Kotlin 2.x-specific semantics require a future K2 backend. Script sources are not analyzed.
+Compiler-confirmed indexed targets have high confidence; local targets suppress unrelated
+indexed matches. A resolved target absent from the index reports `semantic_target_not_indexed`.
 
 Quill locates the root through `settings.gradle[.kts]`, runs `gradlew` when present,
 and injects a temporary init script to export the evaluated Java project directories,

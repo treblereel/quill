@@ -49,22 +49,42 @@ final class PositionSymbolQueries {
         String identifier = located.value();
 
         boolean kotlin = normalized.endsWith(".kt") || normalized.endsWith(".kts");
+        int lineOffset = 0;
+        for (int i = 0; i < line - 1; i++) lineOffset += lines.get(i).length() + 1;
+        var semantic = kotlin ? KotlinSemanticQueries.resolve(jdbi, root, file, lineOffset + located.start()) : null;
+        boolean compilerResolved = semantic != null && semantic.path("status").asText().equals("resolved");
+        boolean compilerLocal = semantic != null && java.util.Set.of("local", "unresolved").contains(semantic.path("status").asText());
         String imported = kotlin ? importedName(code, identifier) : null;
         String lookupName = imported == null ? identifier : imported.substring(imported.lastIndexOf('.') + 1);
+        if (compilerResolved && semantic.path("name").isTextual()) {
+            lookupName = semantic.path("name").asText();
+            if (semantic.path("kind").asText().equals("CONSTRUCTOR")) {
+                String owner = semantic.path("owner").asText();
+                lookupName = owner.substring(Math.max(owner.lastIndexOf('.'), owner.lastIndexOf('$')) + 1);
+            }
+        }
         List<Candidate> candidates = declarations(jdbi, lookupName, normalized);
         if (kotlin) candidates = sourceCallables(jdbi, logicalProperties(jdbi, candidates, lookupName));
-        if (imported != null) {
+        if (compilerLocal) candidates = List.of();
+        if (imported != null && !compilerResolved) {
             String qualified = imported;
+            String importedMember = lookupName;
             candidates = candidates.stream().filter(candidate -> candidate.className().replace('$', '.').equals(qualified)
-                    || (candidate.className().replace('$', '.') + "." + lookupName).equals(qualified)
+                    || (candidate.className().replace('$', '.') + "." + importedMember).equals(qualified)
                     || qualified.equals(candidate.className().substring(0,
-                            candidate.className().lastIndexOf('.') + 1) + lookupName)
+                            candidate.className().lastIndexOf('.') + 1) + importedMember)
                         && topLevel(jdbi, candidate.className()))
                     .toList();
         }
+        if (compilerResolved) candidates = candidates.stream().filter(candidate ->
+                candidate.className().equals(semantic.path("owner").asText())
+                        && candidate.kind().equals(semantic.path("kind").asText())
+                        && (!semantic.has("descriptor") || java.util.Objects.equals(candidate.descriptor(), semantic.path("descriptor").asText()))
+                        && (!semantic.has("source_file") || candidate.sourceFile() != null
+                            && root.resolve(candidate.sourceFile()).toAbsolutePath().normalize()
+                                .equals(Path.of(semantic.path("source_file").asText()).toAbsolutePath().normalize())))
+                .toList();
         List<EnclosingClass> enclosing = enclosingClasses(jdbi, normalized, line);
-        int lineOffset = 0;
-        for (int i = 0; i < line - 1; i++) lineOffset += lines.get(i).length() + 1;
         String suffix = source.substring(lineOffset + located.end()).stripLeading();
         SourceContext sourceContext = sourceContext(sourceLine, located);
         if (kotlin && (suffix.startsWith("(") || suffix.startsWith("{")
@@ -77,7 +97,8 @@ final class PositionSymbolQueries {
         final SourceContext context = sourceContext;
         String enclosingClass = kotlin || enclosing.isEmpty() ? null : enclosing.getFirst().className();
         List<RankedCandidate> ranked = candidates.stream()
-                .map(candidate -> rank(candidate, context, enclosingClass, kotlin))
+                .map(candidate -> compilerResolved ? new RankedCandidate(candidate, 1000, List.of("compiler_semantic_match"))
+                        : rank(candidate, context, enclosingClass, kotlin))
                 .sorted(Comparator.comparingInt(RankedCandidate::score).reversed()
                         .thenComparing(value -> value.candidate().className())
                         .thenComparing(value -> value.candidate().kind()))
@@ -99,10 +120,14 @@ final class PositionSymbolQueries {
         result.put("context", sourceContext.kind().name().toLowerCase());
         if (sourceContext.argumentCount() == null) result.putNull("argument_count");
         else result.put("argument_count", sourceContext.argumentCount());
-        result.put("resolution", noApplicable ? "no_applicable_candidate" : decisive ? "resolved"
+        result.put("resolution", compilerLocal ? semantic.path("status").asText().equals("local") ? "local_symbol" : "unresolved"
+                : compilerResolved && candidates.isEmpty() ? "semantic_target_not_indexed"
+                : noApplicable ? "no_applicable_candidate" : decisive ? "resolved"
                 : candidates.isEmpty() ? "enclosing_class_fallback" : "ambiguous");
-        result.put("confidence", noApplicable ? "low" : decisive && selected.score() >= 100 && !kotlin ? "high"
+        result.put("confidence", compilerLocal || compilerResolved && decisive ? "high"
+                : noApplicable ? "low" : decisive && selected.score() >= 100 && !kotlin ? "high"
                 : decisive ? "medium" : candidates.isEmpty() && !enclosing.isEmpty() ? "low" : "medium");
+        if (semantic != null) result.set("semantic_analysis", semantic);
         if (decisive) {
             ObjectNode selectedNode = result.putObject("selected");
             addCandidate(selectedNode, selected);

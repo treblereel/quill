@@ -31,3 +31,8 @@ fun argumentNavigation(optional: Int = 1, `odd name`: String = "ok", block: () -
 fun argumentNavigationCaller(): String = argumentNavigation(optional = 2, "value") { "lambda" }
 fun argumentNavigationEscapedCaller(): String = argumentNavigation(`odd name` = "value") { "lambda" }
 fun argumentNavigationBareCaller(): String = argumentNavigation { "lambda" }
+
+fun typedNavigation(value: Int): Int = value
+fun typedNavigation(value: String): String = value
+fun <T> genericNavigation(value: T): T = value
+class TypedReceiver { fun typedNavigation(value: Long): Long = value }

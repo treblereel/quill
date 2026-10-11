@@ -262,6 +262,10 @@
 
     <profiles>
         <profile>
+            <id>kotlin-semantic</id>
+            <modules><module>quill-kotlin-semantic</module></modules>
+        </profile>
+        <profile>
             <id>native</id>
             <properties>
                 <native.tests.required>true</native.tests.required>

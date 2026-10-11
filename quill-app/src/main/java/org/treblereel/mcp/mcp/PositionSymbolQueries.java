@@ -63,12 +63,16 @@ final class PositionSymbolQueries {
                     .toList();
         }
         List<EnclosingClass> enclosing = enclosingClasses(jdbi, normalized, line);
-        SourceContext sourceContext = sourceContext(sourceLine, located);
         int lineOffset = 0;
         for (int i = 0; i < line - 1; i++) lineOffset += lines.get(i).length() + 1;
+        String suffix = source.substring(lineOffset + located.end()).stripLeading();
+        SourceContext sourceContext = sourceContext(sourceLine, located);
+        if (kotlin && (suffix.startsWith("(") || suffix.startsWith("{")
+                || suffix.matches("(?s)^[\\p{L}_$][\\p{L}\\p{N}_$]*@\\s*\\{.*"))) {
+            sourceContext = new SourceContext(ContextKind.METHOD_CALL, arguments(suffix));
+        }
         if (sourceContext.kind() == ContextKind.METHOD_CALL || sourceContext.kind() == ContextKind.CONSTRUCTOR_CALL) {
-            sourceContext = new SourceContext(sourceContext.kind(),
-                    arguments(source.substring(lineOffset + located.end()).stripLeading()));
+            sourceContext = new SourceContext(sourceContext.kind(), arguments(suffix));
         }
         final SourceContext context = sourceContext;
         String enclosingClass = kotlin || enclosing.isEmpty() ? null : enclosing.getFirst().className();
@@ -295,13 +299,18 @@ final class PositionSymbolQueries {
     }
 
     private static List<Argument> arguments(String after) {
-        if (!after.startsWith("(")) return null;
         String masked = KotlinSourceText.codeWithLiteralMarkers(after);
+        if (!after.startsWith("(")) return trailingLambda(masked, List.of());
         int parentheses = 0, brackets = 0, braces = 0, start = 1;
         List<Argument> result = new ArrayList<>();
         for (int i = 0; i < masked.length(); i++) {
             char c = masked.charAt(i);
-            if (c == '<' || c == '`') return null; // Keep unsupported syntax conservative.
+            if (c == '`') {
+                int end = masked.indexOf('`', i + 1);
+                if (end < 0 || masked.substring(i + 1, end).contains("\n")) return null;
+                i = end; continue;
+            }
+            if (c == '<' && braces == 0) return null; // Generic argument expressions remain conservative.
             if (c == '[') brackets++;
             if (c == ']') brackets--;
             if (c == '{') braces++;
@@ -309,14 +318,15 @@ final class PositionSymbolQueries {
             if (c == '(') parentheses++;
             else if (c == ')' && --parentheses == 0) {
                 if (brackets != 0 || braces != 0) return null;
-                // Trailing lambdas require parameter type information; do not reject a valid call by arity.
-                if (masked.substring(i + 1).stripLeading().startsWith("{")) return null;
                 String tail = masked.substring(start, i).strip();
                 if (!tail.isEmpty()) {
                     var argument = argument(tail);
                     if (argument == null) return null;
                     result.add(argument);
                 }
+                String suffix = masked.substring(i + 1).stripLeading();
+                if (suffix.startsWith("{") || suffix.matches("(?s)^[\\p{L}_$][\\p{L}\\p{N}_$]*@\\s*\\{.*"))
+                    return trailingLambda(suffix, result);
                 return List.copyOf(result);
             } else if (c == ',' && parentheses == 1 && brackets == 0 && braces == 0) {
                 String segment = masked.substring(start, i).strip();
@@ -331,27 +341,63 @@ final class PositionSymbolQueries {
     }
 
     private static Argument argument(String text) {
-        var named = java.util.regex.Pattern.compile("^([\\p{L}_$][\\p{L}\\p{N}_$]*)\\s*=(?!=)\\s*([\\s\\S]*)$").matcher(text);
+        var named = java.util.regex.Pattern.compile("^(`[^`\\r\\n]+`|[\\p{L}_$][\\p{L}\\p{N}_$]*)\\s*=(?!=)\\s*([\\s\\S]*)$").matcher(text);
         if (named.matches()) {
             String value = named.group(2).strip();
-            return value.isEmpty() || value.equals("*") ? null : new Argument(named.group(1), value.startsWith("*"));
+            return value.isEmpty() || value.equals("*") ? null : new Argument(named.group(1).replace("`", ""), value.startsWith("*"), false);
         }
-        return text.equals("*") ? null : new Argument(null, text.startsWith("*"));
+        return text.equals("*") ? null : new Argument(null, text.startsWith("*"), false);
     }
 
-    private static Applicability applicable(List<KotlinValueParameter> parameters, List<Argument> arguments) {
+    private static List<Argument> trailingLambda(String text, List<Argument> prefix) {
+        String body = text.replaceFirst("^[\\p{L}_$][\\p{L}\\p{N}_$]*@\\s*", "");
+        if (!body.startsWith("{")) return null;
+        int depth = 0;
+        for (int i = 0; i < body.length(); i++) {
+            char c = body.charAt(i);
+            if (c == '`') {
+                int end = body.indexOf('`', i + 1);
+                if (end < 0) return null;
+                i = end; continue;
+            }
+            if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) {
+                if (body.substring(i + 1).stripLeading().startsWith("{")) return null;
+                var result = new ArrayList<>(prefix);
+                result.add(new Argument(null, false, true));
+                return List.copyOf(result);
+            }
+        }
+        return null;
+    }
+
+    private static Applicability applicable(Candidate candidate, List<Argument> arguments) {
+        List<KotlinValueParameter> parameters = candidate.valueParameters();
         if (parameters == null || arguments == null) return Applicability.UNKNOWN;
         boolean[] supplied = new boolean[parameters.size()];
-        int position = 0; boolean named = false;
+        int position = 0; boolean namedOnly = false;
         for (var argument : arguments) {
             int index;
-            if (argument.name() != null) {
-                named = true; index = -1;
+            if (argument.trailingLambda()) {
+                index = parameters.size() - 1;
+                if (index < 0 || supplied[index]) return Applicability.NO_MATCH;
+                // SAM and generic function types need semantic evidence; never reject them by JVM shape.
+                try {
+                    var types = org.objectweb.asm.Type.getArgumentTypes(candidate.descriptor());
+                    int last = types.length - 1;
+                    if (last >= 0 && types[last].getDescriptor().equals("Lkotlin/coroutines/Continuation;")) last--;
+                    if (last < 0 || !types[last].getDescriptor().matches("Lkotlin/jvm/functions/Function[0-9]+;"))
+                        return Applicability.UNKNOWN;
+                } catch (IllegalArgumentException invalid) { return Applicability.UNKNOWN; }
+            } else if (argument.name() != null) {
+                index = -1;
                 for (int i = 0; i < parameters.size(); i++)
                     if (parameters.get(i).name().equals(argument.name())) { index = i; break; }
                 if (index < 0 || supplied[index]) return Applicability.NO_MATCH;
+                if (index != position || parameters.get(index).vararg()) namedOnly = true;
+                else position++;
             } else {
-                if (named) return Applicability.UNKNOWN;
+                if (namedOnly) return Applicability.NO_MATCH;
                 index = position;
                 if (index >= parameters.size()) return Applicability.NO_MATCH;
                 if (!parameters.get(index).vararg()) position++;
@@ -399,7 +445,7 @@ final class PositionSymbolQueries {
             case IDENTIFIER -> { }
         }
         Applicability applicability = kotlin && (candidate.kind().equals("METHOD") || candidate.kind().equals("CONSTRUCTOR"))
-                ? applicable(candidate.valueParameters(), context.arguments()) : Applicability.UNKNOWN;
+                ? applicable(candidate, context.arguments()) : Applicability.UNKNOWN;
         if (applicability == Applicability.NO_MATCH) {
             score -= 150;
             reasons.add("arguments_not_applicable");
@@ -471,7 +517,7 @@ final class PositionSymbolQueries {
 
     private record Identifier(String value, int start, int end) {}
     private enum ContextKind { CONSTRUCTOR_CALL, METHOD_CALL, MEMBER_ACCESS, IDENTIFIER }
-    private record Argument(String name, boolean spread) {}
+    private record Argument(String name, boolean spread, boolean trailingLambda) {}
     private enum Applicability { MATCH, NO_MATCH, UNKNOWN }
     private record SourceContext(ContextKind kind, List<Argument> arguments) {
         Integer argumentCount() { return arguments == null ? null : arguments.size(); }

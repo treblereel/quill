@@ -155,4 +155,15 @@ class KotlinQueryIT {
         }
     }
 
+    @Test void realCompilerArgumentsSupportLambdasEscapedNamesAndOrderedMixing() throws Exception {
+        for (String expression : java.util.List.of("argumentNavigation { \"ok\" }", "argumentNavigation(optional = 2, \"value\") { \"ok\" }",
+                "argumentNavigation(`odd name` = \"value\") { \"ok\" }", "argumentNavigation(2, `odd name` = \"value\", block = { \"ok\" })")) {
+            var result = livePosition(expression, "argumentNavigation");
+            assertEquals("resolved", result.path("resolution").asText(), result.toPrettyString());
+            assertTrue(result.path("selected").path("ranking_reasons").toString().contains("metadata_arguments_match"));
+        }
+        assertFalse(livePosition("argumentNavigation(`odd name` = \"value\", 2) { \"ok\" }", "argumentNavigation").has("selected"));
+        assertFalse(livePosition("argumentNavigation(block = { \"ok\" }) { \"again\" }", "argumentNavigation").has("selected"));
+    }
+
 }

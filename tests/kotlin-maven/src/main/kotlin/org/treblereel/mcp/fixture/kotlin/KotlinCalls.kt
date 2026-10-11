@@ -26,3 +26,8 @@ class ParameterOuter { inner class Child(val count: Int = 1) }
 @JvmOverloads
 fun overloadNavigation(optional: Int = 1, required: String, suffix: String = "!"): String = "$optional-$required$suffix"
 class OverloadConstructor @JvmOverloads constructor(val count: Int = 1, val label: String = "ok")
+
+fun argumentNavigation(optional: Int = 1, `odd name`: String = "ok", block: () -> String): String = "$optional-${`odd name`}-${block()}"
+fun argumentNavigationCaller(): String = argumentNavigation(optional = 2, "value") { "lambda" }
+fun argumentNavigationEscapedCaller(): String = argumentNavigation(`odd name` = "value") { "lambda" }
+fun argumentNavigationBareCaller(): String = argumentNavigation { "lambda" }

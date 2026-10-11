@@ -707,8 +707,9 @@ navigation retains physical JVM overloads.
 Callable metadata preserves source parameter names, default-value and vararg flags,
 including constructors. Navigation uses this evidence to check required arguments and
 named arguments; JVM receivers and Continuation are excluded from source arity.
-Trailing lambdas, backtick argument names, and mixed positional arguments after named
-arguments conservatively fall back to heuristics.
+Navigation binds trailing lambdas to the last parameter when its JVM function type is
+known, accepts backtick parameter names, and checks mixed named/positional arguments
+against declaration order. SAM conversions and generic argument expressions remain conservative.
 This is metadata and lexical analysis: receiver types, local shadowing, generic overloads,
 full overload type inference and coroutine source mapping still need
 a Kotlin semantic backend. Kotlin position results therefore have at most medium confidence.

@@ -315,7 +315,7 @@ class KotlinQueryRegressionTest {
         assertTrue(position("fun run() = f(*values, tail = 4)", "f(").has("selected"));
         assertFalse(position("fun run() = f(1, 2, 3)", "f(").has("selected"));
         assertFalse(position("fun run() = f(*values, tail = *other)", "f(").has("selected"));
-        assertTrue(position("fun run() = f(1) { work() }", "f(").path("argument_count").isNull());
+        assertEquals(2, position("fun run() = f(1) { work() }", "f(").path("argument_count").asInt());
     }
 
     @Test void constructorsUseSourceParametersInsteadOfHiddenJvmReceiver() throws Exception {
@@ -436,6 +436,56 @@ class KotlinQueryRegressionTest {
         call(1, "f", "(J)V", 1, "f", "()V", 0);
         assertTrue(KotlinUsageNormalizer.sourceTarget(db, 1, "f", "()V").isEmpty());
         assertEquals(3, position("fun run() = f()", "f(").path("candidate_count").asInt());
+    }
+
+    private void lambdaFunction(String descriptor, String parametersJson) {
+        member(1, "METHOD", "action", descriptor, "[]");
+        declaration(1, "FUNCTION", "action", "action", descriptor, false, false, true);
+        parameters(1, "FUNCTION", "action", descriptor, parametersJson);
+    }
+
+    @Test void trailingLambdaBindsLastParameterAndCountsWithoutParentheses() throws Exception {
+        lambdaFunction("(ILkotlin/jvm/functions/Function0;)V",
+                "[{\"name\":\"optional\",\"hasDefault\":true,\"vararg\":false},{\"name\":\"body\",\"hasDefault\":false,\"vararg\":false}]");
+        for (String expression : List.of("action { nested { 1 }; \"},(\" }", "action() { 1 }", "action(1) label@ { 1 }",
+                "action(optional = 1) /* comment */ { 1 }", "action\n{ 1 }")) {
+            var result = position("fun run() = " + expression, "action");
+            assertEquals("resolved", result.path("resolution").asText(), result.toPrettyString());
+            assertTrue(result.path("selected").path("ranking_reasons").toString().contains("metadata_arguments_match"));
+        }
+        assertEquals(1, position("fun run() = action { 1 }", "action").path("argument_count").asInt());
+        assertFalse(position("fun run() = action(body = { 1 }) { 2 }", "action").has("selected"));
+        assertFalse(position("fun run() = action()", "action").has("selected"));
+        assertTrue(position("fun run() = action { nested { 1 }", "action").path("argument_count").isNull());
+        assertTrue(position("fun run() = action {} {}", "action").path("argument_count").isNull());
+    }
+
+    @Test void escapedNamedArgumentsDoNotSplitOnPunctuationOrKeyword() throws Exception {
+        lambdaFunction("(II)V", "[{\"name\":\"when\",\"hasDefault\":false,\"vararg\":false},{\"name\":\"a,b=(x)\",\"hasDefault\":false,\"vararg\":false}]");
+        assertTrue(position("fun run() = action(`when` = 1, `a,b=(x)` = 2)", "action").has("selected"));
+        assertTrue(position("fun run() = action(`a,b=(x)` = 2, `when` = 1)", "action").has("selected"));
+        assertFalse(position("fun run() = action(`when` = 1, `when` = 2)", "action").has("selected"));
+        assertFalse(position("fun run() = action(`unknown` = 1, `a,b=(x)` = 2)", "action").has("selected"));
+        assertTrue(position("fun run() = action(`when = 1)", "action").path("argument_count").isNull());
+    }
+
+    @Test void mixedArgumentsRequireUnbrokenDeclarationOrder() throws Exception {
+        lambdaFunction("(III)V", "[{\"name\":\"first\",\"hasDefault\":false,\"vararg\":false},{\"name\":\"second\",\"hasDefault\":false,\"vararg\":false},{\"name\":\"third\",\"hasDefault\":false,\"vararg\":false}]");
+        for (String args : List.of("first = 1, 2, 3", "1, second = 2, 3", "first = 1, second = 2, 3", "third = 3, first = 1, second = 2"))
+            assertTrue(position("fun run() = action(" + args + ")", "action").has("selected"), args);
+        for (String args : List.of("second = 2, 1, third = 3", "1, third = 3, 2", "first = 1, first = 2, 3"))
+            assertFalse(position("fun run() = action(" + args + ")", "action").has("selected"), args);
+    }
+
+    @Test void lambdaAfterVarargAndDefaultLambdaBindsLastSlot() throws Exception {
+        lambdaFunction("([ILkotlin/jvm/functions/Function0;)V", "[{\"name\":\"values\",\"hasDefault\":false,\"vararg\":true},{\"name\":\"body\",\"hasDefault\":false,\"vararg\":false}]");
+        assertTrue(position("fun run() = action(1, 2, *values) { 1 }", "action").has("selected"));
+        assertTrue(position("fun run() = action(values = values) { 1 }", "action").has("selected"));
+        assertFalse(position("fun run() = action(values = values, 1) { 1 }", "action").has("selected"));
+        db.useHandle(h -> { h.execute("DELETE FROM class_members"); h.execute("DELETE FROM kotlin_declarations WHERE kind='FUNCTION'"); });
+        lambdaFunction("(Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)V", "[{\"name\":\"first\",\"hasDefault\":true,\"vararg\":false},{\"name\":\"last\",\"hasDefault\":false,\"vararg\":false}]");
+        assertTrue(position("fun run() = action { 1 }", "action").has("selected"));
+        assertFalse(position("fun run() = action(last = {}) {}", "action").has("selected"));
     }
 
 }

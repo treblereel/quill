@@ -169,4 +169,126 @@ class KotlinSemanticQueriesTest {
             assertEquals(warmResult.get().path("analysis_generation"), next.path("analysis_generation"));
         }
     }
+
+    @Test void startupCoordinatorBuildsRealFirBeforeAnyForegroundQuery() throws Exception {
+        Path file = temp.resolve("src/main/kotlin/Caller.kt"); Files.createDirectories(file.getParent());
+        String source = "package probe\nfun pick() = 1\nfun run() = pick()"; Files.writeString(file, source);
+        var request = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()
+                .put("module", temp.toString()).put("source_set", "main").put("file", file.toString());
+        request.putArray("sources").add(file.toString()); request.putArray("classpath").add(
+                Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString());
+        var warmed = new java.util.concurrent.CountDownLatch(1);
+        var backgroundResult = new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.JsonNode>();
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            var result = org.treblereel.mcp.kotlin.KotlinWorkerClient.shared().query(r);
+            if (r.path("offset").asInt() == -1) { backgroundResult.set(result); warmed.countDown(); }
+            return result;
+        }, java.time.Duration.ofMillis(150))) {
+            java.util.function.Supplier<com.fasterxml.jackson.databind.JsonNode> background = () -> request.deepCopy().put("offset", -1);
+            assertTrue(coordinator.prewarm("main", background));
+            assertTrue(warmed.await(15, java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals("unresolved", backgroundResult.get().path("status").asText());
+            assertFalse(backgroundResult.get().path("analysis_reused").asBoolean());
+            var first = coordinator.query("main", () -> request.deepCopy().put("offset", source.lastIndexOf("pick()")), background);
+            assertEquals("()I", first.path("descriptor").asText(), first.toString());
+            assertTrue(first.path("analysis_reused").asBoolean());
+            assertEquals(backgroundResult.get().path("analysis_generation"), first.path("analysis_generation"));
+        }
+    }
+
+    private org.jdbi.v3.core.Jdbi startupIndex(String buildMarker, String module, String sourceSet) throws Exception {
+        var db = QuillDatabase.create(temp.resolve("startup.db"));
+        Path directory = module.equals(".") ? temp : temp.resolve(module);
+        Files.createDirectories(directory);
+        Files.writeString(directory.resolve(buildMarker), "// fixture");
+        Path file = directory.resolve("src/" + sourceSet + "/kotlin/Caller.kt"); Files.createDirectories(file.getParent());
+        Files.writeString(file, "fun pick() = 1\nfun run() = pick()");
+        Path captured = directory.resolve(buildMarker.startsWith("pom") ? "target/quill-classpath.txt" : "build/quill-classpath.txt");
+        Files.createDirectories(captured.getParent()); Files.writeString(captured,
+                Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString());
+        addStartupFile(db, temp.relativize(file).toString().replace('\\', '/'), module, sourceSet, "current");
+        return db;
+    }
+
+    private void addStartupFile(org.jdbi.v3.core.Jdbi db, String path, String module, String set, String lifecycle) {
+        db.useHandle(h -> h.execute("INSERT INTO files(project_path,repository_path,kind,origin,lifecycle,module,source_set) VALUES(?,?,'kotlin','source',?,?,?)",
+                path, path, lifecycle, module, set));
+    }
+
+    @Test void soleGradleMainModuleIsScheduledButSecondStartupDoesNotDisplaceIt() throws Exception {
+        var db = startupIndex("build.gradle.kts", ".", "main");
+        var projects = List.of(new ProjectRegistry.ProjectEntry("gradle", temp, db));
+        assertTrue(KotlinSemanticQueries.prewarm(projects));
+        assertFalse(KotlinSemanticQueries.prewarm(projects));
+        Path file = temp.resolve("src/main/kotlin/Caller.kt");
+        var first = KotlinSemanticQueries.resolve(db, temp, file, Files.readString(file).lastIndexOf("pick()"));
+        assertEquals("resolved", first.path("status").asText(), first.toString()); assertEquals("()I", first.path("descriptor").asText());
+    }
+
+    @Test void ambiguousModulesAndProjectsAreNotSpeculativelyWarmed() throws Exception {
+        var db = startupIndex("pom.xml", ".", "main");
+        addStartupFile(db, "other/src/main/kotlin/Other.kt", "other", "main", "current");
+        assertFalse(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("multi", temp, db))));
+        db.useHandle(h -> h.execute("DELETE FROM files WHERE module = 'other'"));
+        assertFalse(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("a", temp, db),
+                new ProjectRegistry.ProjectEntry("b", temp, db))));
+    }
+
+    @Test void testOnlyDeletedAndScriptFilesDoNotSelectAStartupModule() throws Exception {
+        var db = startupIndex("pom.xml", ".", "test");
+        addStartupFile(db, "src/main/kotlin/Deleted.kt", ".", "main", "deleted");
+        addStartupFile(db, "build.gradle.kts", ".", "main", "current");
+        assertFalse(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("ignored", temp, db))));
+        assertFalse(KotlinSemanticQueries.prewarm(List.of()));
+    }
+
+    @Test void soleMavenSubmoduleIsSelectedAlongsideJavaOnlyModules() throws Exception {
+        var db = startupIndex("pom.xml", "app", "main");
+        db.useHandle(h -> h.execute("INSERT INTO files(project_path,repository_path,kind,origin,lifecycle,module,source_set) "
+                + "VALUES('src/main/java/JavaOnly.java','src/main/java/JavaOnly.java','java','source','current','.','main')"));
+        assertTrue(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("maven", temp, db))));
+        Path file = temp.resolve("app/src/main/kotlin/Caller.kt");
+        assertEquals("()I", KotlinSemanticQueries.resolve(db, temp, file, Files.readString(file).lastIndexOf("pick()")).path("descriptor").asText());
+    }
+
+    @Test void indexedAnchorOutsideProjectCannotSelectAStartupModule() throws Exception {
+        var db = startupIndex("pom.xml", ".", "main");
+        db.useHandle(h -> h.execute("UPDATE files SET repository_path = '../src/main/kotlin/Caller.kt'"));
+        Path restrictedRoot = temp.resolve("project"); Files.createDirectories(restrictedRoot);
+        assertFalse(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("restricted", restrictedRoot, db))));
+    }
+
+    @Test void missingRuntimeSourceAndClasspathSkipStartupWithoutDownloading() throws Exception {
+        var db = startupIndex("pom.xml", ".", "main");
+        var projects = List.of(new ProjectRegistry.ProjectEntry("missing", temp, db));
+        System.setProperty("quill.kotlin.cache", temp.resolve("missing runtime").toString());
+        assertFalse(KotlinSemanticQueries.prewarm(projects)); assertFalse(Files.exists(temp.resolve("missing runtime")));
+        System.setProperty("quill.kotlin.cache", temp.resolve("runtime with spaces").toString());
+        Files.delete(temp.resolve("target/quill-classpath.txt")); assertFalse(KotlinSemanticQueries.prewarm(projects));
+        Files.delete(temp.resolve("src/main/kotlin/Caller.kt")); assertFalse(KotlinSemanticQueries.prewarm(projects));
+    }
+
+    @Test void cancelledStartupCannotWarmAfterLateRegistryResolution() throws Exception {
+        var db = startupIndex("pom.xml", ".", "main");
+        var entered = new java.util.concurrent.CountDownLatch(1); var release = new java.util.concurrent.CountDownLatch(1);
+        var finished = new java.util.concurrent.CountDownLatch(1);
+        var registry = new ProjectRegistry() {
+            @Override public List<ProjectEntry> initialized() {
+                entered.countDown();
+                // Model a registry operation which completes after cancellation, despite interruption.
+                while (release.getCount() != 0) {
+                    try { release.await(); } catch (InterruptedException ignored) { }
+                }
+                finished.countDown(); return List.of(new ProjectEntry("late", temp, db));
+            }
+        };
+        Runnable cancel = KotlinSemanticQueries.startWarmup(registry);
+        try {
+            assertTrue(entered.await(8, java.util.concurrent.TimeUnit.SECONDS)); cancel.run();
+            KotlinSemanticQueries.closeWarmup(); release.countDown();
+            assertTrue(finished.await(8, java.util.concurrent.TimeUnit.SECONDS));
+            // A direct startup must still be able to select the module after the cancelled task.
+            assertTrue(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("explicit", temp, db))));
+        } finally { cancel.run(); release.countDown(); }
+    }
 }

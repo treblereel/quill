@@ -33,6 +33,26 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
         this.debounceMillis = debounce.toMillis();
     }
 
+    boolean prewarm(String key, Supplier<JsonNode> background) {
+        synchronized (state) {
+            // Startup must never displace a module already selected by a real query.
+            if (closed || active != null) return false;
+            activate(key); provider = background;
+            long owner = epoch, version = revision;
+            pending = scheduler.schedule(() -> warm(owner, version), 0, TimeUnit.MILLISECONDS);
+            return true;
+        }
+    }
+
+    // Called with state held; both startup and foreground share the same subscriptions.
+    private void activate(String key) {
+        cancelPending();
+        if (watcher != null) watcher.close();
+        active = key; epoch++; revision = 0;
+        try { watcher = new InputsWatcher(epoch); }
+        catch (IOException | UnsupportedOperationException unsupported) { watcher = null; }
+    }
+
     JsonNode query(String key, Supplier<JsonNode> foreground, Supplier<JsonNode> background) {
         boolean acquired = false;
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
@@ -41,13 +61,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
             if (!acquired) return status("timeout");
             synchronized (state) {
                 if (closed) return status("unavailable");
-                if (!key.equals(active)) {
-                    cancelPending();
-                    if (watcher != null) watcher.close();
-                    active = key; epoch++; revision = 0;
-                    try { watcher = new InputsWatcher(epoch); }
-                    catch (IOException | UnsupportedOperationException unsupported) { watcher = null; }
-                }
+                if (!key.equals(active)) activate(key);
                 provider = background;
             }
             // A query takes over a queued debounce; an already running warmup holds

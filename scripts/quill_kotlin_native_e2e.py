@@ -194,6 +194,17 @@ def main() -> None:
                         assert ready["semantic_analysis"]["analysis_reused"] is True, ready
                         assert ready["semantic_analysis"]["analysis_generation"] > generation, ready
                         report["mcp"][mode]["background_warmed_query"] = {"result": ready, "metrics": timing}
+            # A fresh MCP session warms the sole indexed Kotlin main module without
+            # any semantic query. This checks reuse after an allowance, not readiness time.
+            with WorkflowClient(command, project, 60) as client:
+                time.sleep(5)
+                first, timing = client.call("get_symbol_at_position", {
+                    "path": "src/main/kotlin/NativeProbe.kt", "line": 2, "column": 21})
+                assert first["confidence"] == "high", first
+                assert first["selected"]["jvm_descriptor"] == "(I)I", first
+                assert first["semantic_analysis"]["analysis_reused"] is True, first
+                report["mcp"]["startup_warmed_first_query"] = {"result": first, "metrics": timing,
+                                                               "readiness_allowance_seconds": 5}
             semantic = report["mcp"]["prepared_k2"]["result"]
             assert semantic["confidence"] == "high", semantic
             assert semantic["semantic_analysis"]["status"] == "resolved", semantic

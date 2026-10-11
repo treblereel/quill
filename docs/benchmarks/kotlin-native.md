@@ -429,3 +429,40 @@ and local Maven artifacts. Set `-Dquill.kotlin.cache` to isolate worker/manifest
 The report records raw samples and compiler stages. A small smoke workload additionally
 checks the report's watcher implementation field; invalid count arguments are rejected
 before creating the fixture.
+
+## Warming the first query at MCP startup
+
+MCP now starts a cancellable background task after creating the server. Available
+indexes select a module only when there is exactly one current Kotlin main module
+across the configured projects. Its captured classpath and prepared runtime must
+exist; startup does not invoke Maven/Gradle or download dependencies. Test-only,
+deleted and script entries do not select a module. Ambiguous projects/modules retain
+on-demand startup. A real query which already selected a module prevents late startup
+from replacing it.
+
+Startup uses the existing one-snapshot coordinator and worker. A query waits behind
+an active startup warmup, then recollects compiler inputs. EOF cancels registry work
+before closing the coordinator and worker; even late registry completion cannot
+reopen them. A failed warmup retains foreground recovery. Startup establishes the
+same filesystem subscriptions as a semantic query, so later saves can warm FIR
+without waiting for the first query.
+
+The native executable is **67,266,232 bytes**, up **16,528 bytes (0.025%)** over
+the previous background-warmup executable. This includes the stack/recovery changes
+above. Native generation took 55.6 seconds with 2.81 GB peak RSS on the same host.
+
+On Java 17.0.2, all 20 native standalone semantic cases passed, together with native
+MCP freshness/reuse and background-warmup checks. A fresh MCP session received no
+semantic request for five seconds, then its first position query returned the correct
+`(I)I` descriptor with high confidence and `analysis_reused: true` in **53.4 ms**.
+The immediate first query in another session took 2,253 ms. These are individual
+smoke samples with a readiness allowance, not a cold-start latency distribution or
+a guarantee that immediate first queries are warm. Changed-source and unchanged-source
+medians in that small fixture were 109.7 ms and 4.0 ms.
+
+Validation passed 702 unit tests and 28 focused integration tests. Added cases cover
+asynchronous startup, a blocked first query, fresh input recollection, late/duplicate
+startup, failure recovery, missing cache/classpath/source, Java-only and test-only
+modules, Maven submodules, Gradle roots, multiple modules/projects, script/deleted
+entries, out-of-root indexed anchors, cancellation with late registry resolution,
+and real compiler FIR reuse before any foreground query.

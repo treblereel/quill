@@ -31,6 +31,47 @@ class KotlinWarmupCoordinatorTest {
         try { assertTrue(latch.await(8, TimeUnit.SECONDS), "Expected worker operation did not run"); }
         catch (InterruptedException interrupted) { throw new AssertionError(interrupted); }
     }
+    @Test void startupIsAsyncAndFirstQueryWaitsThenRecollectsInputs() throws Exception {
+        var request = request(); var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+        var version = new AtomicInteger(); var caller = Thread.currentThread();
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1) {
+                assertNotSame(caller, Thread.currentThread()); entered.countDown(); await(release);
+            }
+            return result(r);
+        }, Duration.ofHours(1))) {
+            Supplier<JsonNode> input = () -> request.deepCopy().put("version", version.get());
+            assertTrue(coordinator.prewarm("main", () -> ((ObjectNode) input.get()).put("offset", -1)));
+            await(entered); assertFalse(coordinator.prewarm("other", input));
+            var pool = Executors.newSingleThreadExecutor();
+            try {
+                var answer = pool.submit(() -> coordinator.query("main", input, input));
+                assertThrows(TimeoutException.class, () -> answer.get(100, TimeUnit.MILLISECONDS));
+                version.set(2); release.countDown();
+                assertEquals(2, answer.get(8, TimeUnit.SECONDS).path("version").asInt());
+            } finally { release.countDown(); pool.shutdownNow(); }
+        }
+    }
+    @Test void lateStartupAndClosedCoordinatorCannotDisplaceForegroundOrReadInputs() throws Exception {
+        var request = request(); var calls = new AtomicInteger();
+        var coordinator = new KotlinWarmupCoordinator(r -> { calls.incrementAndGet(); return result(r); }, Duration.ZERO);
+        try {
+            coordinator.query("chosen", () -> request, () -> request);
+            Supplier<JsonNode> forbidden = () -> { fail("Startup must not read input after foreground selection/close"); return request; };
+            assertFalse(coordinator.prewarm("startup", forbidden)); assertEquals(1, calls.get());
+            coordinator.close(); assertFalse(coordinator.prewarm("startup", forbidden)); assertEquals(1, calls.get());
+        } finally { coordinator.close(); }
+    }
+    @Test void failedStartupLeavesTheFirstQueryUsable() throws Exception {
+        var request = request(); var entered = new CountDownLatch(1);
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1) { entered.countDown(); throw new IllegalStateException("cold failure"); }
+            return result(r);
+        }, Duration.ZERO)) {
+            assertTrue(coordinator.prewarm("main", () -> request.deepCopy().put("offset", -1))); await(entered);
+            assertEquals("resolved", coordinator.query("main", () -> request, () -> request).path("status").asText());
+        }
+    }
     @Test void foregroundWaitsForRunningWarmupAndRecollectsCurrentInputs() throws Exception {
         var request = request(); var version = new AtomicInteger();
         var entered = new CountDownLatch(1); var release = new CountDownLatch(1);

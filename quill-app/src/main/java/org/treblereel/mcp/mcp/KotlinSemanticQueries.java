@@ -27,11 +27,52 @@ final class KotlinSemanticQueries {
         if (warmup != null) { warmup.close(); warmup = null; }
     }
 
+    static Runnable startWarmup(ProjectRegistry registry) {
+        var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        var thread = new Thread(() -> {
+            try {
+                var projects = registry.initialized();
+                synchronized (KotlinSemanticQueries.class) {
+                    // Closing MCP prevents a late registry resolution from reopening the worker.
+                    if (!cancelled.get()) prewarm(projects);
+                }
+            } catch (RuntimeException unavailable) { /* Foreground retains normal preparation/fallback. */ }
+        }, "quill-k2-startup");
+        thread.setDaemon(true); thread.start();
+        return () -> { cancelled.set(true); thread.interrupt(); };
+    }
+
+    static synchronized boolean prewarm(List<ProjectRegistry.ProjectEntry> projects) {
+        if (warmup != null) return false;
+        ProjectRegistry.ProjectEntry selected = null; Path file = null;
+        for (var project : projects) {
+            List<String> modules = project.jdbi().withHandle(handle -> handle.createQuery("""
+                    SELECT MIN(repository_path) FROM files
+                    WHERE kind = 'kotlin' AND lifecycle = 'current' AND source_set = 'main'
+                      AND repository_path LIKE '%.kt'
+                    GROUP BY module LIMIT 2
+                    """).mapTo(String.class).list());
+            if (modules.isEmpty()) continue;
+            if (selected != null || modules.size() != 1) return false;
+            selected = project; file = project.root().resolve(modules.getFirst()).toAbsolutePath().normalize();
+        }
+        if (selected == null || !Files.isRegularFile(file)) return false;
+        final var project = selected; final Path anchor = file;
+        JsonNode initial = prepare(project.jdbi(), project.root(), anchor, -1, true);
+        if (!initial.has("sources") || org.treblereel.mcp.kotlin.KotlinRuntime.available().isEmpty()) return false;
+        return warmup().prewarm(key(project.root(), initial),
+                () -> prepare(project.jdbi(), project.root(), anchor, -1, true));
+    }
+
+    private static String key(Path root, JsonNode request) {
+        return root.toAbsolutePath().normalize() + ":" + request.path("module").asText()
+                + ":" + request.path("source_set").asText();
+    }
+
     static JsonNode resolve(Jdbi db, Path root, Path file, int offset) {
         JsonNode initial = prepare(db, root, file, offset, false);
         if (!initial.has("sources")) return initial;
-        return warmup().query(root.toAbsolutePath().normalize() + ":" + initial.path("module").asText()
-                        + ":" + initial.path("source_set").asText(),
+        return warmup().query(key(root, initial),
                 () -> prepare(db, root, file, offset, false), () -> prepare(db, root, file, -1, true));
     }
 

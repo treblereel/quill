@@ -32,23 +32,18 @@ public final class McpStdioServer {
     public static void start(ProjectRegistry registry, InputStream input, OutputStream output,
             McpToolProfile profile) {
         registry.prewarm();
-        start(new QuillTools(registry), QuillTools.class, input, output,
+        startServer(new QuillTools(registry), QuillTools.class, input, output,
                 positiveEnvironmentDuration(
-                        "QUILL_MCP_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT), profile);
-    }
-
-    private static void start(Object tools, Class<?> toolType, InputStream input,
-            OutputStream output, Duration requestTimeout, McpToolProfile profile) {
-        startServer(tools, toolType, input, output, requestTimeout, profile);
+                        "QUILL_MCP_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT), profile, registry);
     }
 
     static void start(Object tools, Class<?> toolType, InputStream input, OutputStream output,
             Duration requestTimeout) {
-        startServer(tools, toolType, input, output, requestTimeout, McpToolProfile.full());
+        startServer(tools, toolType, input, output, requestTimeout, McpToolProfile.full(), null);
     }
 
     private static void startServer(Object tools, Class<?> toolType, InputStream input,
-            OutputStream output, Duration requestTimeout, McpToolProfile profile) {
+            OutputStream output, Duration requestTimeout, McpToolProfile profile, ProjectRegistry registry) {
         CountDownLatch eof = new CountDownLatch(1);
         InputStream serverInput = new EofAwareInputStream(input, eof);
         var mapper = new JacksonMcpJsonMapper(new ObjectMapper());
@@ -76,11 +71,13 @@ public final class McpStdioServer {
                 // unused libraries and their transitive native-image metadata.
                 .validateToolInputs(false)
                 .build();
+        Runnable stopStartup = registry == null ? () -> {} : KotlinSemanticQueries.startWarmup(registry);
         try {
             eof.await();
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         } finally {
+            stopStartup.run();
             try {
                 // Cancelling the worker scheduler first interrupts active blocking tool calls and
                 // prevents an abandoned client from keeping the stdio process alive indefinitely.

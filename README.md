@@ -759,7 +759,12 @@ inputs change. Inputs are checked before and after analysis; races report `input
 and retain the metadata fallback. `semantic_analysis.analysis_reused` and the worker-local
 `analysis_generation` expose whether a frontend rebuild occurred. This is module snapshot
 reuse; source changes still trigger a full module analysis.
-After the first semantic query, Quill watches the most recently used module/source set
+At MCP startup, Quill asynchronously warms the main source set when the available
+indexes identify exactly one Kotlin main module across the selected projects and its
+captured classpath and cached runtime are available. Startup never downloads dependencies
+and does not replace a module already selected by a query. Multiple Kotlin main modules
+retain on-demand startup. A first query waits if its startup warmup is still running.
+After startup warmup or the first semantic query, Quill watches the most recently used module/source set
 and its captured classpath/compiled outputs. Filesystem events are coalesced for 150 ms
 before rebuilding FIR in the background. Position queries wait for an active warmup,
 recollect current inputs and retry if changes raced analysis. A query arriving during
@@ -768,8 +773,9 @@ MCP shutdown cancels background work and closes the watcher. Event delivery late
 depends on the filesystem/platform; unavailable watching retains foreground analysis.
 Runtime checksums are validated when the worker starts, with file
 attributes checked between requests. Crashes, timeouts and runtime changes discard the
-worker; the next request starts a fresh process. MCP shutdown terminates it. The first
-K2 request still pays JVM/compiler startup; subsequent requests reuse loaded compiler classes and unchanged module FIR.
+worker; the next request starts a fresh process. MCP shutdown terminates it. When startup
+warmup is unavailable or incomplete, the first K2 request still pays or waits for
+JVM/compiler startup; subsequent requests reuse loaded compiler classes and unchanged module FIR.
 It reads captured module classpaths and a JDK (`JAVA_HOME`, or the JVM's `java.home`),
 without executing build scripts or loading project compiler plugins. Missing dependencies,
 unsupported syntax and analysis errors keep the metadata/lexical fallback, whose confidence

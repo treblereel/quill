@@ -724,11 +724,29 @@ its field/getter/setter bindings; suspend return types remain source return type
 Missing or invalid type evidence is omitted rather than inferred from erased JVM types.
 The index schema is v28 and requires reindexing older generations.
 
-Every Quill distribution includes the K2 FIR frontend from Kotlin 2.4.21 at language
+Quill uses the K2 FIR frontend from Kotlin 2.4.21 at language
 level 2.4. Kotlin position queries automatically resolve overloads, receiver members,
 generic functions and local shadowing, exposing the result in `semantic_analysis`.
-No separate worker JAR or system property is required. Native Quill starts the same
-executable in a hidden analysis mode; JVM Quill starts Java with its bundled classpath.
+Every distribution embeds a small worker JAR. On Kotlin projects, `quill init` prepares
+its compiler dependencies using embedded Maven Resolver, for both Maven and Gradle.
+Compiler resolution does not run either build tool or change the project's compiler version.
+Native and JVM Quill run this worker with Java 17 or newer (`JAVA_HOME`, then
+`java.home`, then `java` on PATH). The compiler is not linked into the native executable.
+The shared runtime manifest is stored under `~/.quill/kotlin`; artifacts use the Maven
+local repository. Concurrent initialization is locked and incomplete manifests are not published.
+`--index-only` skips runtime installation. Resolution failures preserve indexing and
+print a warning; missing/damaged runtimes report `runtime_missing` during queries.
+Queries never download dependencies: run `quill init` again to prepare missing runtime files.
+Corrupted Maven artifacts must be removed from the configured local repository before
+re-running initialization; invalid checksums are rejected.
+
+The resolver reads `~/.m2/settings.xml` for the local repository, mirrors, plaintext
+server credentials, active proxies and offline mode. Encrypted Maven passwords and
+Gradle-specific repository credentials are not imported. Quill system properties
+`quill.kotlin.cache`, `quill.kotlin.localRepository`, `quill.kotlin.settings`,
+`quill.kotlin.repository` (default Maven Central), and `quill.kotlin.offline` override
+these runtime settings. Maven settings profiles and global settings are not merged.
+With a prepared cache, initialization and queries work offline.
 Analysis runs in a child process with a 512 MiB heap limit and a 30-second timeout.
 It reads captured module classpaths and a JDK (`JAVA_HOME`, or the JVM's `java.home`),
 without executing build scripts or loading project compiler plugins. Missing dependencies,
@@ -739,7 +757,7 @@ IR lowering/code generation. Script sources are not analyzed. Project compiler p
 custom language/experimental feature flags are not imported; such projects may fall back.
 Compiler-confirmed indexed targets have high confidence; local targets suppress unrelated
 indexed matches. A resolved target absent from the index reports `semantic_target_not_indexed`.
-Measured native size and runtime costs are recorded in
+The earlier fully embedded compiler's native size and runtime costs are recorded in
 [the Kotlin footprint benchmark](docs/benchmarks/kotlin-native.md).
 
 Quill locates the root through `settings.gradle[.kts]`, runs `gradlew` when present,

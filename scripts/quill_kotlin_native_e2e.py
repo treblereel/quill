@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test bundled native K2 without a worker JAR and measure native distribution cost."""
+"""Test K2 runtime preparation and semantic analysis through the native/JVM distribution."""
 from __future__ import annotations
 
 import argparse
@@ -29,9 +29,13 @@ def main() -> None:
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--java-jar", type=Path, help="Run the same checks against the JVM distribution")
+    parser.add_argument("--worker-java-home", type=Path, help="JAVA_HOME for the external worker (e.g. JDK 17)")
     parser.add_argument("--agent-output", type=Path, help="Collect GraalVM metadata with --java-jar")
     parser.add_argument("--fixture", type=Path, help="Compiled tests/kotlin-maven fixture for native MCP checks")
     args = parser.parse_args()
+    import atexit
+    runtime_cache = Path(tempfile.mkdtemp(prefix="quill K2 cache "))
+    atexit.register(shutil.rmtree, runtime_cache, ignore_errors=True)
     if args.agent_output and not args.java_jar:
         parser.error("--agent-output requires --java-jar")
     binary = (args.java_jar or args.quill).resolve(strict=True)
@@ -41,6 +45,11 @@ def main() -> None:
         if args.agent_output:
             command += [f"-agentlib:native-image-agent=config-merge-dir={args.agent_output.resolve()}"]
         command += ["-Xmx512m", "-jar", str(binary)]
+        command.insert(command.index("-jar"), f"-Dquill.kotlin.cache={runtime_cache}")
+    else:
+        command += [f"-Dquill.kotlin.cache={runtime_cache}"]
+    if args.worker_java_home:
+        os.environ["JAVA_HOME"] = str(args.worker_java_home.resolve(strict=True))
     pom = ET.parse(Path(__file__).resolve().parents[1] / "pom.xml")
     version = pom.findtext("{*}properties/{*}kotlin.version")
     stdlib = (args.stdlib or Path.home() / f".m2/repository/org/jetbrains/kotlin/kotlin-stdlib/{version}/kotlin-stdlib-{version}.jar").resolve(strict=True)
@@ -68,6 +77,25 @@ def main() -> None:
     ]
     report = {"binary_bytes": binary.stat().st_size, "cases": []}
     with tempfile.TemporaryDirectory(prefix="quill native K2 ") as directory:
+        fixture = args.fixture or Path(__file__).resolve().parents[1] / "tests/kotlin-maven"
+        project = Path(directory) / "initialization"
+        project.mkdir()
+        for path in ("src", "target/classes"):
+            shutil.copytree(fixture / path, project / path)
+        shutil.copyfile(fixture / "pom.xml", project / "pom.xml")
+        before = {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()}
+        initialization, elapsed = run(command + ["init", "--no-allow-quill-tools", "--project", str(project)])
+        assert "runtime ready" in initialization.stderr, initialization.stderr
+        report["runtime_preparation_seconds"] = elapsed
+        for path, data in before.items():
+            assert (project / path).read_bytes() == data, path
+        # Gradle uses the same runtime even when its build script cannot be configured.
+        (project / "pom.xml").unlink()
+        (project / "build.gradle.kts").write_text('// compiler resolution must not depend on this script\nthrow GradleException("configuration unavailable")\n')
+        shutil.copytree(project / "target/classes", project / "build/classes/kotlin/main")
+        gradle_init, elapsed = run(command + ["init", "--no-allow-quill-tools", "--project", str(project)])
+        assert "runtime ready" in gradle_init.stderr, gradle_init.stderr
+        report["gradle_runtime_preparation_seconds"] = elapsed
         file = Path(directory) / "Probe.kt"
         java_root = Path(directory) / "java"
         java_file = java_root / "probe/JavaReceiver.java"
@@ -115,7 +143,7 @@ def main() -> None:
             subprocess.run(command + ["init", "--index-only", "--project", str(project)],
                            capture_output=True, text=True, timeout=90, check=True)
             report["mcp"] = {}
-            for mode in ("metadata_fallback", "bundled_k2"):
+            for mode in ("metadata_fallback", "prepared_k2"):
                 if mode == "metadata_fallback":
                     captured.unlink()
                 else:
@@ -124,7 +152,7 @@ def main() -> None:
                     result, metrics = client.call("get_symbol_at_position", {
                         "path": "src/main/kotlin/NativeProbe.kt", "line": 2, "column": 21})
                     report["mcp"][mode] = {"result": result, "metrics": metrics}
-            semantic = report["mcp"]["bundled_k2"]["result"]
+            semantic = report["mcp"]["prepared_k2"]["result"]
             assert semantic["confidence"] == "high", semantic
             assert semantic["semantic_analysis"]["status"] == "resolved", semantic
             assert semantic["selected"]["jvm_descriptor"] == "(I)I", semantic

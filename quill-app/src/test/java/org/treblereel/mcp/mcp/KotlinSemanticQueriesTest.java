@@ -5,11 +5,30 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.parallel.ResourceLock;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.kotlin.KotlinRuntime;
 
+@ResourceLock("SYSTEM_PROPERTIES")
 class KotlinSemanticQueriesTest {
     @TempDir Path temp;
+    String previousCache, previousOffline;
+
+    @BeforeEach void prepareRuntime() throws Exception {
+        previousCache = System.getProperty("quill.kotlin.cache");
+        previousOffline = System.getProperty("quill.kotlin.offline");
+        System.setProperty("quill.kotlin.cache", temp.resolve("runtime with spaces").toString());
+        System.setProperty("quill.kotlin.offline", "true");
+        KotlinRuntime.prepare();
+    }
+
+    @AfterEach void restoreProperties() {
+        if (previousCache == null) System.clearProperty("quill.kotlin.cache"); else System.setProperty("quill.kotlin.cache", previousCache);
+        if (previousOffline == null) System.clearProperty("quill.kotlin.offline"); else System.setProperty("quill.kotlin.offline", previousOffline);
+    }
 
     @Test void missingProjectEvidenceKeepsFallbackWithoutExecutingBuilds() throws Exception {
         var db = QuillDatabase.create(temp.resolve("index.db"));
@@ -44,7 +63,7 @@ class KotlinSemanticQueriesTest {
         assertFalse(Files.exists(temp.resolve("target/test-classes")));
     }
 
-    @Test void bundledK2RunsAutomaticallyWithoutWorkerJarConfiguration() throws Exception {
+    @Test void preparedK2RunsWithoutChangingOrBuildingTheProject() throws Exception {
         var db = QuillDatabase.create(temp.resolve("index.db"));
         Path file = temp.resolve("src/main/kotlin/Example.kt"); Files.createDirectories(file.getParent());
         String source = "package probe\nfun pick(x: Int) = x\nfun run() = pick(1)";
@@ -59,11 +78,26 @@ class KotlinSemanticQueriesTest {
         assertFalse(Files.exists(temp.resolve("target/classes")));
     }
 
-    @Test void nativeWorkerUsesSameExecutableAndJvmWorkerUsesBundledClasspath() {
-        assertEquals(List.of("/tmp/quill with spaces", "-Xmx512m", "--kotlin-semantic-worker"),
-                KotlinSemanticQueries.workerCommand("/tmp/quill with spaces"));
-        var command = KotlinSemanticQueries.workerCommand(null);
-        assertEquals("-cp", command.get(2)); assertEquals(System.getProperty("java.class.path"), command.get(3));
+    @Test void nativeAndJvmUseThePreparedRuntime() throws Exception {
+        var command = KotlinRuntime.workerCommand();
+        assertEquals("-cp", command.get(2)); assertTrue(command.get(3).contains("runtime with spaces"));
+        assertNotEquals(System.getProperty("java.class.path"), command.get(3));
         assertEquals("org.treblereel.mcp.kotlin.SemanticWorker", command.get(4));
+    }
+
+    @Test void gradleProjectUsesSameRuntimeAndMissingRuntimeNeverDownloads() throws Exception {
+        var db = QuillDatabase.create(temp.resolve("index.db"));
+        Files.writeString(temp.resolve("build.gradle.kts"), "// Quill must not execute this script");
+        Path file = temp.resolve("src/main/kotlin/Example.kt"); Files.createDirectories(file.getParent());
+        String source = "package probe\nfun pick(x: Int) = x\nfun run() = pick(1)";
+        Files.writeString(file, source);
+        Files.createDirectories(temp.resolve("build"));
+        Path stdlib = Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        Files.writeString(temp.resolve("build/quill-classpath.txt"), stdlib.toString());
+        assertEquals("resolved", KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick(")).path("status").asText());
+        System.setProperty("quill.kotlin.cache", temp.resolve("absent runtime").toString());
+        assertEquals("runtime_missing", KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick(")).path("status").asText());
+        assertFalse(Files.exists(temp.resolve("absent runtime")));
+        assertFalse(Files.exists(temp.resolve("build/classes")));
     }
 }

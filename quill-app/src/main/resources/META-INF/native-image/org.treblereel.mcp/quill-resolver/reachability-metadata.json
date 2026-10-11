@@ -1,0 +1,1962 @@
+{
+  "reflection": [
+    {
+      "type": "apple.security.AppleProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "boolean[]",
+      "jniAccessible": true
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.ext.Java7SupportImpl",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.AESCipher$General",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.ARCFOURCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.ChaCha20Cipher$ChaCha20Poly1305",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DESCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DESedeCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DHParameters",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.GaloisCounterMode$AESGCM",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.HKDFKeyDerivation$HKDFSHA384",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "javax.crypto.KDFParameters"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.HmacCore$HmacSHA384",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.TlsMasterSecretGenerator",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "groovy.lang.Closure"
+    },
+    {
+      "type": "io.micrometer.context.ContextRegistry"
+    },
+    {
+      "type": "io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapperSupplier"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$Annotated"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$Annotations"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$CallToolRequest",
+      "methods": [
+        {
+          "name": "fromJson",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.util.Map",
+            "java.util.Map"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$CallToolResult",
+      "methods": [
+        {
+          "name": "content",
+          "parameterTypes": []
+        },
+        {
+          "name": "isError",
+          "parameterTypes": []
+        },
+        {
+          "name": "meta",
+          "parameterTypes": []
+        },
+        {
+          "name": "structuredContent",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ClientCapabilities",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.util.Map",
+            "io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$RootCapabilities",
+            "io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Sampling",
+            "io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Elicitation"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Elicitation"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Elicitation$Form"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Elicitation$Url"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$RootCapabilities"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ClientCapabilities$Sampling"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$Content"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$Icon"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$Identifier"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$Implementation",
+      "methods": [
+        {
+          "name": "description",
+          "parameterTypes": []
+        },
+        {
+          "name": "fromJson",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.util.List",
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "icons",
+          "parameterTypes": []
+        },
+        {
+          "name": "name",
+          "parameterTypes": []
+        },
+        {
+          "name": "title",
+          "parameterTypes": []
+        },
+        {
+          "name": "version",
+          "parameterTypes": []
+        },
+        {
+          "name": "websiteUrl",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$InitializeRequest",
+      "methods": [
+        {
+          "name": "fromJson",
+          "parameterTypes": [
+            "java.lang.String",
+            "io.modelcontextprotocol.spec.McpSchema$ClientCapabilities",
+            "io.modelcontextprotocol.spec.McpSchema$Implementation",
+            "java.util.Map"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$InitializeResult",
+      "methods": [
+        {
+          "name": "capabilities",
+          "parameterTypes": []
+        },
+        {
+          "name": "instructions",
+          "parameterTypes": []
+        },
+        {
+          "name": "meta",
+          "parameterTypes": []
+        },
+        {
+          "name": "protocolVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "serverInfo",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$JSONRPCMessage"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$JSONRPCNotification",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$JSONRPCRequest",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.Object",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$JSONRPCResponse",
+      "methods": [
+        {
+          "name": "error",
+          "parameterTypes": []
+        },
+        {
+          "name": "id",
+          "parameterTypes": []
+        },
+        {
+          "name": "jsonrpc",
+          "parameterTypes": []
+        },
+        {
+          "name": "result",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$JSONRPCResponse$JSONRPCError"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$Meta"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$Request"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$Result"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ServerCapabilities",
+      "methods": [
+        {
+          "name": "completions",
+          "parameterTypes": []
+        },
+        {
+          "name": "experimental",
+          "parameterTypes": []
+        },
+        {
+          "name": "logging",
+          "parameterTypes": []
+        },
+        {
+          "name": "prompts",
+          "parameterTypes": []
+        },
+        {
+          "name": "resources",
+          "parameterTypes": []
+        },
+        {
+          "name": "tools",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$CompletionCapabilities"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$LoggingCapabilities"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$PromptCapabilities"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$ResourceCapabilities"
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$ServerCapabilities$ToolCapabilities",
+      "methods": [
+        {
+          "name": "listChanged",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.spec.McpSchema$TextContent",
+      "methods": [
+        {
+          "name": "annotations",
+          "parameterTypes": []
+        },
+        {
+          "name": "meta",
+          "parameterTypes": []
+        },
+        {
+          "name": "text",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.io.Serializable"
+    },
+    {
+      "type": "java.lang.Boolean",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getBoolean",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Class",
+      "methods": [
+        {
+          "name": "getRecordComponents",
+          "parameterTypes": []
+        },
+        {
+          "name": "isRecord",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Comparable"
+    },
+    {
+      "type": "java.lang.Double"
+    },
+    {
+      "type": "java.lang.Iterable"
+    },
+    {
+      "type": "java.lang.Number"
+    },
+    {
+      "type": "java.lang.Object"
+    },
+    {
+      "type": "java.lang.Object[]"
+    },
+    {
+      "type": "java.lang.Record"
+    },
+    {
+      "type": "java.lang.String"
+    },
+    {
+      "type": "java.lang.Throwable",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "toString",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.constant.Constable"
+    },
+    {
+      "type": "java.lang.constant.ConstantDesc"
+    },
+    {
+      "type": "java.lang.reflect.RecordComponent",
+      "methods": [
+        {
+          "name": "getName",
+          "parameterTypes": []
+        },
+        {
+          "name": "getType",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.file.Path"
+    },
+    {
+      "type": "java.nio.file.Paths",
+      "methods": [
+        {
+          "name": "get",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String[]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.security.AlgorithmParametersSpi"
+    },
+    {
+      "type": "java.security.KeyStoreSpi"
+    },
+    {
+      "type": "java.security.interfaces.ECPrivateKey"
+    },
+    {
+      "type": "java.security.interfaces.ECPublicKey"
+    },
+    {
+      "type": "java.sql.Connection"
+    },
+    {
+      "type": "java.sql.Driver"
+    },
+    {
+      "type": "java.sql.DriverManager"
+    },
+    {
+      "type": "java.sql.Time"
+    },
+    {
+      "type": "java.sql.Timestamp"
+    },
+    {
+      "type": "java.time.Duration"
+    },
+    {
+      "type": "java.time.Instant"
+    },
+    {
+      "type": "java.time.LocalDate"
+    },
+    {
+      "type": "java.time.LocalDateTime"
+    },
+    {
+      "type": "java.time.LocalTime"
+    },
+    {
+      "type": "java.time.MonthDay"
+    },
+    {
+      "type": "java.time.OffsetDateTime"
+    },
+    {
+      "type": "java.time.OffsetTime"
+    },
+    {
+      "type": "java.time.Period"
+    },
+    {
+      "type": "java.time.Year"
+    },
+    {
+      "type": "java.time.YearMonth"
+    },
+    {
+      "type": "java.time.ZoneId"
+    },
+    {
+      "type": "java.time.ZoneOffset"
+    },
+    {
+      "type": "java.time.ZonedDateTime"
+    },
+    {
+      "type": "java.util.AbstractCollection"
+    },
+    {
+      "type": "java.util.AbstractMap"
+    },
+    {
+      "type": "java.util.Collection"
+    },
+    {
+      "type": "java.util.ImmutableCollections$AbstractImmutableCollection"
+    },
+    {
+      "type": "java.util.ImmutableCollections$AbstractImmutableList"
+    },
+    {
+      "type": "java.util.ImmutableCollections$AbstractImmutableMap"
+    },
+    {
+      "type": "java.util.ImmutableCollections$List12"
+    },
+    {
+      "type": "java.util.ImmutableCollections$ListN"
+    },
+    {
+      "type": "java.util.ImmutableCollections$MapN"
+    },
+    {
+      "type": "java.util.List"
+    },
+    {
+      "type": "java.util.Map"
+    },
+    {
+      "type": "java.util.RandomAccess"
+    },
+    {
+      "type": "java.util.stream.Collectors",
+      "methods": [
+        {
+          "name": "toUnmodifiableSet",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "jdk.jfr.FlightRecorder",
+      "methods": [
+        {
+          "name": "isAvailable",
+          "parameterTypes": []
+        },
+        {
+          "name": "register",
+          "parameterTypes": [
+            "java.lang.Class"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "kotlin.reflect.jvm.internal.ReflectionFactoryImpl"
+    },
+    {
+      "type": "kotlinx.metadata.jvm.internal.JvmMetadataExtensions"
+    },
+    {
+      "type": "org.apache.maven.model.Build",
+      "methods": [
+        {
+          "name": "getOutputDirectory",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.model.BuildBase",
+      "methods": [
+        {
+          "name": "getDirectory",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.model.Model",
+      "methods": [
+        {
+          "name": "getArtifactId",
+          "parameterTypes": []
+        },
+        {
+          "name": "getBuild",
+          "parameterTypes": []
+        },
+        {
+          "name": "getDescription",
+          "parameterTypes": []
+        },
+        {
+          "name": "getGroupId",
+          "parameterTypes": []
+        },
+        {
+          "name": "getName",
+          "parameterTypes": []
+        },
+        {
+          "name": "getOrganization",
+          "parameterTypes": []
+        },
+        {
+          "name": "getParent",
+          "parameterTypes": []
+        },
+        {
+          "name": "getUrl",
+          "parameterTypes": []
+        },
+        {
+          "name": "getVersion",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.model.Organization",
+      "methods": [
+        {
+          "name": "getName",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.model.Parent",
+      "methods": [
+        {
+          "name": "getVersion",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jboss.jandex.AnnotationInstance[]"
+    },
+    {
+      "type": "org.jboss.jandex.ClassInfo[]"
+    },
+    {
+      "type": "org.jdbi.v3.core.Handles",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.core.argument.Arguments",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "org.jdbi.v3.core.config.ConfigRegistry"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.core.argument.internal.strategies.LoggableBinderArgument"
+    },
+    {
+      "type": "org.jdbi.v3.core.array.SqlArrayTypes",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.core.collector.JdbiCollectors",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.core.config.internal.ConfigCaches",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.core.internal.CopyOnWriteHashMap"
+    },
+    {
+      "type": "org.jdbi.v3.core.mapper.ColumnMappers",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.core.mapper.Mappers",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.core.mapper.RowMappers",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.core.mapper.reflect.internal.PojoTypes",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.core.qualifier.Qualifiers",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.core.statement.SqlStatements",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.jdbi.v3.meta.Legacy"
+    },
+    {
+      "type": "org.slf4j.Logger"
+    },
+    {
+      "type": "org.slf4j.nop.NOPServiceProvider"
+    },
+    {
+      "type": "org.sqlite.BusyHandler",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "callback",
+          "parameterTypes": [
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.sqlite.Collation",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "xCompare",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.sqlite.Function",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "args"
+        },
+        {
+          "name": "context"
+        },
+        {
+          "name": "value"
+        }
+      ],
+      "methods": [
+        {
+          "name": "xFunc",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.sqlite.Function$Aggregate",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "clone",
+          "parameterTypes": []
+        },
+        {
+          "name": "xFinal",
+          "parameterTypes": []
+        },
+        {
+          "name": "xStep",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.sqlite.Function$Window",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "xInverse",
+          "parameterTypes": []
+        },
+        {
+          "name": "xValue",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.sqlite.JDBC"
+    },
+    {
+      "type": "org.sqlite.ProgressHandler",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "progress",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.sqlite.core.DB",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "onCommit",
+          "parameterTypes": [
+            "boolean"
+          ]
+        },
+        {
+          "name": "onUpdate",
+          "parameterTypes": [
+            "int",
+            "java.lang.String",
+            "java.lang.String",
+            "long"
+          ]
+        },
+        {
+          "name": "throwex",
+          "parameterTypes": []
+        },
+        {
+          "name": "throwex",
+          "parameterTypes": [
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.sqlite.core.DB$ProgressObserver",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "progress",
+          "parameterTypes": [
+            "int",
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.sqlite.core.NativeDB",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "busyHandler"
+        },
+        {
+          "name": "commitListener"
+        },
+        {
+          "name": "pointer"
+        },
+        {
+          "name": "progressHandler"
+        },
+        {
+          "name": "updateListener"
+        }
+      ],
+      "methods": [
+        {
+          "name": "stringToUtf8ByteArray",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "throwex",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.QuillTopCommand",
+      "fields": [
+        {
+          "name": "debug"
+        },
+        {
+          "name": "debugDirectory"
+        },
+        {
+          "name": "kotlinSemanticWorker"
+        },
+        {
+          "name": "mcp"
+        },
+        {
+          "name": "projects"
+        },
+        {
+          "name": "telemetry"
+        },
+        {
+          "name": "toolProfiles"
+        },
+        {
+          "name": "workspace"
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.QuillTopCommand$VersionProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.command.CleanCommand"
+    },
+    {
+      "type": "org.treblereel.mcp.command.ClientCommand"
+    },
+    {
+      "type": "org.treblereel.mcp.command.ClientPermissionsCommand"
+    },
+    {
+      "type": "org.treblereel.mcp.command.ClientPermissionsCommand$Grant",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.command.ClientPermissionsCommand$Operation",
+      "fields": [
+        {
+          "name": "spec"
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.command.ClientPermissionsCommand$Revoke",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.command.ClientPermissionsCommand$Status",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.command.ClientRefreshCommand",
+      "fields": [
+        {
+          "name": "spec"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.command.DoctorCommand",
+      "fields": [
+        {
+          "name": "spec"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.command.InitCommand",
+      "fields": [
+        {
+          "name": "allowQuillTools"
+        },
+        {
+          "name": "indexOnly"
+        },
+        {
+          "name": "probeMcp"
+        },
+        {
+          "name": "projectPath"
+        },
+        {
+          "name": "timings"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.command.StatusCommand"
+    },
+    {
+      "type": "org.treblereel.mcp.command.UpdateCommand"
+    },
+    {
+      "type": "org.treblereel.mcp.command.WorkspaceClearCommand"
+    },
+    {
+      "type": "org.treblereel.mcp.command.WorkspaceCommand"
+    },
+    {
+      "type": "org.treblereel.mcp.command.WorkspaceInitCommand"
+    },
+    {
+      "type": "org.treblereel.mcp.command.WorkspaceRefreshCommand"
+    },
+    {
+      "type": "org.treblereel.mcp.command.WorkspaceStatusCommand"
+    },
+    {
+      "type": "org.treblereel.mcp.core.KotlinSourceDebug$Coroutine",
+      "methods": [
+        {
+          "name": "className",
+          "parameterTypes": []
+        },
+        {
+          "name": "file",
+          "parameterTypes": []
+        },
+        {
+          "name": "method",
+          "parameterTypes": []
+        },
+        {
+          "name": "nextLines",
+          "parameterTypes": []
+        },
+        {
+          "name": "suspensionLines",
+          "parameterTypes": []
+        },
+        {
+          "name": "version",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.core.KotlinSourceDebug$Info",
+      "methods": [
+        {
+          "name": "className",
+          "parameterTypes": []
+        },
+        {
+          "name": "coroutine",
+          "parameterTypes": []
+        },
+        {
+          "name": "malformedSmap",
+          "parameterTypes": []
+        },
+        {
+          "name": "mappings",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.core.KotlinSourceDebug$Mapping",
+      "methods": [
+        {
+          "name": "file",
+          "parameterTypes": []
+        },
+        {
+          "name": "increment",
+          "parameterTypes": []
+        },
+        {
+          "name": "input",
+          "parameterTypes": []
+        },
+        {
+          "name": "output",
+          "parameterTypes": []
+        },
+        {
+          "name": "path",
+          "parameterTypes": []
+        },
+        {
+          "name": "repeat",
+          "parameterTypes": []
+        },
+        {
+          "name": "stratum",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.core.KotlinSourceDebug$Mapping[]"
+    },
+    {
+      "type": "org.treblereel.mcp.mcp.QuillTools",
+      "methods": [
+        {
+          "name": "get_symbol_at_position",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.Integer",
+            "java.lang.Integer",
+            "java.util.Optional"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.model.KotlinDeclarationTypes",
+      "methods": [
+        {
+          "name": "contextReceivers",
+          "parameterTypes": []
+        },
+        {
+          "name": "parameters",
+          "parameterTypes": []
+        },
+        {
+          "name": "receiver",
+          "parameterTypes": []
+        },
+        {
+          "name": "result",
+          "parameterTypes": []
+        },
+        {
+          "name": "typeParameters",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.model.KotlinDeclarationTypes$Parameter",
+      "methods": [
+        {
+          "name": "name",
+          "parameterTypes": []
+        },
+        {
+          "name": "type",
+          "parameterTypes": []
+        },
+        {
+          "name": "varargElement",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.model.KotlinDeclarationTypes$Parameter[]"
+    },
+    {
+      "type": "org.treblereel.mcp.model.KotlinDeclarationTypes$Projection",
+      "methods": [
+        {
+          "name": "type",
+          "parameterTypes": []
+        },
+        {
+          "name": "variance",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.model.KotlinDeclarationTypes$Projection[]"
+    },
+    {
+      "type": "org.treblereel.mcp.model.KotlinDeclarationTypes$Type",
+      "methods": [
+        {
+          "name": "abbreviated",
+          "parameterTypes": []
+        },
+        {
+          "name": "arguments",
+          "parameterTypes": []
+        },
+        {
+          "name": "classifier",
+          "parameterTypes": []
+        },
+        {
+          "name": "classifierKind",
+          "parameterTypes": []
+        },
+        {
+          "name": "definitelyNonNull",
+          "parameterTypes": []
+        },
+        {
+          "name": "flexibilityId",
+          "parameterTypes": []
+        },
+        {
+          "name": "flexibleUpper",
+          "parameterTypes": []
+        },
+        {
+          "name": "nullable",
+          "parameterTypes": []
+        },
+        {
+          "name": "outer",
+          "parameterTypes": []
+        },
+        {
+          "name": "suspend",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.model.KotlinDeclarationTypes$TypeParameter",
+      "methods": [
+        {
+          "name": "bounds",
+          "parameterTypes": []
+        },
+        {
+          "name": "id",
+          "parameterTypes": []
+        },
+        {
+          "name": "name",
+          "parameterTypes": []
+        },
+        {
+          "name": "reified",
+          "parameterTypes": []
+        },
+        {
+          "name": "variance",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.treblereel.mcp.model.KotlinDeclarationTypes$TypeParameter[]"
+    },
+    {
+      "type": "org.treblereel.mcp.model.KotlinDeclarationTypes$Type[]"
+    },
+    {
+      "type": "org.treblereel.mcp.model.KotlinValueParameter",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "boolean",
+            "boolean"
+          ]
+        },
+        {
+          "name": "hasDefault",
+          "parameterTypes": []
+        },
+        {
+          "name": "name",
+          "parameterTypes": []
+        },
+        {
+          "name": "vararg",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "picocli.CommandLine$AutoHelpMixin",
+      "fields": [
+        {
+          "name": "helpRequested"
+        },
+        {
+          "name": "versionRequested"
+        }
+      ]
+    },
+    {
+      "type": "reactor.core.publisher.FlatMapTracker"
+    },
+    {
+      "type": "reactor.core.publisher.FluxFlatMap$FlatMapInner"
+    },
+    {
+      "type": "reactor.core.publisher.FluxFlatMap$FlatMapMain"
+    },
+    {
+      "type": "reactor.core.publisher.FluxOnErrorReturn$ReturnSubscriber"
+    },
+    {
+      "type": "reactor.core.publisher.FluxPublishOn$PublishOnConditionalSubscriber"
+    },
+    {
+      "type": "reactor.core.publisher.FluxReplay"
+    },
+    {
+      "type": "reactor.core.publisher.FluxSubscribeOnCallable$CallableSubscribeOnSubscription"
+    },
+    {
+      "type": "reactor.core.publisher.FluxTimeout$TimeoutMainSubscriber"
+    },
+    {
+      "type": "reactor.core.publisher.FluxTimeout$TimeoutTimeoutSubscriber"
+    },
+    {
+      "type": "reactor.core.publisher.LambdaMonoSubscriber"
+    },
+    {
+      "type": "reactor.core.publisher.LambdaSubscriber"
+    },
+    {
+      "type": "reactor.core.publisher.MonoDelay$MonoDelayRunnable"
+    },
+    {
+      "type": "reactor.core.publisher.MonoFlatMap$FlatMapMain"
+    },
+    {
+      "type": "reactor.core.publisher.MonoIgnoreThen$ThenIgnoreMain"
+    },
+    {
+      "type": "reactor.core.publisher.MonoPublishOn$PublishOnSubscriber"
+    },
+    {
+      "type": "reactor.core.publisher.MonoZip$ZipCoordinator"
+    },
+    {
+      "type": "reactor.core.publisher.MonoZip$ZipInner"
+    },
+    {
+      "type": "reactor.core.publisher.Operators$MonoInnerProducerBase"
+    },
+    {
+      "type": "reactor.core.publisher.Operators$MultiSubscriptionSubscriber"
+    },
+    {
+      "type": "reactor.core.publisher.Operators$ScalarSubscription"
+    },
+    {
+      "type": "reactor.core.publisher.SinkEmptyMulticast"
+    },
+    {
+      "type": "reactor.core.publisher.SinkManyUnicast"
+    },
+    {
+      "type": "reactor.core.publisher.SinksSpecs$AbstractSerializedSink"
+    },
+    {
+      "type": "reactor.core.scheduler.BoundedElasticScheduler"
+    },
+    {
+      "type": "reactor.core.scheduler.BoundedElasticScheduler$BoundedServices"
+    },
+    {
+      "type": "reactor.core.scheduler.BoundedElasticScheduler$BoundedState"
+    },
+    {
+      "type": "reactor.core.scheduler.DelegateServiceScheduler"
+    },
+    {
+      "type": "reactor.core.scheduler.ParallelScheduler"
+    },
+    {
+      "type": "reactor.core.scheduler.SchedulerTask"
+    },
+    {
+      "type": "reactor.core.scheduler.SingleScheduler"
+    },
+    {
+      "type": "reactor.core.scheduler.WorkerTask"
+    },
+    {
+      "type": "reactor.util.concurrent.SpscArrayQueueConsumer"
+    },
+    {
+      "type": "reactor.util.concurrent.SpscArrayQueueProducer"
+    },
+    {
+      "type": "reactor.util.concurrent.SpscLinkedArrayQueue"
+    },
+    {
+      "type": "sun.security.pkcs12.PKCS12KeyStore",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.pkcs12.PKCS12KeyStore$DualFormatPKCS12",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.DSA$SHA224withDSA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.DSA$SHA256withDSA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.MD5",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.NativePRNG",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.security.SecureRandomParameters"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA2$SHA224",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA2$SHA256",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA5$SHA384",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA5$SHA512",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.X509Factory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.certpath.PKIXCertPathValidator",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.rsa.PSSParameters",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.rsa.RSAKeyFactory$Legacy",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.rsa.RSAPSSSignature",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.rsa.RSASignature$SHA224withRSA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.ssl.KeyManagerFactoryImpl$SunX509",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.ssl.SSLContextImpl$DefaultSSLContext",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.ssl.TrustManagerFactoryImpl$PKIXFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.AuthorityInfoAccessExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.AuthorityKeyIdentifierExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.BasicConstraintsExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.CRLDistributionPointsExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.CertificatePoliciesExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.ExtendedKeyUsageExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.KeyUsageExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.NetscapeCertTypeExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.PrivateKeyUsageExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.SubjectAlternativeNameExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.SubjectKeyIdentifierExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.text.resources.BreakIteratorInfo"
+    },
+    {
+      "type": "sun.text.resources.BreakIteratorResources"
+    },
+    {
+      "type": "sun.text.resources.BreakIteratorResources_en"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en_US"
+    },
+    {
+      "type": "sun.util.resources.cldr.CalendarData"
+    },
+    {
+      "type": "sun.util.resources.cldr.TimeZoneNames"
+    },
+    {
+      "type": "sun.util.resources.cldr.TimeZoneNames_en"
+    },
+    {
+      "type": "sun.util.resources.cldr.TimeZoneNames_en_US"
+    },
+    {
+      "type": {
+        "proxy": [
+          "org.jdbi.v3.meta.Legacy"
+        ]
+      }
+    }
+  ],
+  "resources": [
+    {
+      "glob": "META-INF/maven/org.xerial/sqlite-jdbc/pom.properties"
+    },
+    {
+      "glob": "META-INF/services/io.modelcontextprotocol.json.McpJsonMapperSupplier"
+    },
+    {
+      "glob": "META-INF/services/java.net.spi.InetAddressResolverProvider"
+    },
+    {
+      "glob": "META-INF/services/java.net.spi.URLStreamHandlerProvider"
+    },
+    {
+      "glob": "META-INF/services/java.sql.Driver"
+    },
+    {
+      "glob": "META-INF/services/kotlinx.metadata.internal.extensions.MetadataExtensions"
+    },
+    {
+      "glob": "META-INF/services/org.slf4j.spi.SLF4JServiceProvider"
+    },
+    {
+      "glob": "com/knuddels/jtokkit/cl100k_base.tiktoken"
+    },
+    {
+      "glob": "kotlin-worker/worker.jar"
+    },
+    {
+      "glob": "mozilla/public-suffix-list.txt"
+    },
+    {
+      "glob": "org/apache/maven/model/pom-4.0.0.xml"
+    },
+    {
+      "glob": "org/sqlite/native/Mac/aarch64/libsqlitejdbc.dylib"
+    },
+    {
+      "glob": "quill.properties"
+    },
+    {
+      "module": "java.base",
+      "glob": "jdk/internal/icu/impl/data/icudt76b/nfc.nrm"
+    },
+    {
+      "module": "java.base",
+      "glob": "jdk/internal/icu/impl/data/icudt76b/nfkc.nrm"
+    },
+    {
+      "module": "java.base",
+      "glob": "jdk/internal/icu/impl/data/icudt76b/uprops.icu"
+    },
+    {
+      "module": "java.base",
+      "glob": "sun/net/idn/uidna.spp"
+    },
+    {
+      "module": "java.base",
+      "glob": "sun/text/resources/LineBreakIteratorData"
+    },
+    {
+      "module": "jdk.jfr",
+      "glob": "jdk/jfr/internal/types/metadata.bin"
+    }
+  ]
+}

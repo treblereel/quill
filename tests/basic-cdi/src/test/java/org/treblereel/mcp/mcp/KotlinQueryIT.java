@@ -50,6 +50,7 @@ class KotlinQueryIT {
         Path source = project.resolve("src/main/java/org/treblereel/mcp/fixture/kotlin/Caller.java");
         Files.createDirectories(source.getParent()); Files.move(caller, source);
         assertTrue(ProjectInitializer.initialize(project, true));
+        org.treblereel.mcp.kotlin.KotlinRuntime.prepare();
         db = QuillDatabase.open(ProjectIndexStore.findDbForHead(project));
     }
 

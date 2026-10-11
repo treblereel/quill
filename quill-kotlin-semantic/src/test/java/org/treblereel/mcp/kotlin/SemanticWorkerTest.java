@@ -10,6 +10,13 @@ import org.junit.jupiter.api.io.TempDir;
 
 class SemanticWorkerTest {
     @TempDir Path temp;
+    @Test void workerBytecodeRunsOnJava17() throws Exception {
+        try (var input = new java.io.DataInputStream(SemanticWorker.class.getResourceAsStream("SemanticWorker.class"))) {
+            assertEquals(0xCAFEBABE, input.readInt());
+            input.readUnsignedShort();
+            assertEquals(61, input.readUnsignedShort());
+        }
+    }
     private JsonNode resolve(String source, String token) throws Exception {
         Path file = temp.resolve("Probe.kt"); Files.writeString(file, source);
         var request = new ObjectMapper().createObjectNode();

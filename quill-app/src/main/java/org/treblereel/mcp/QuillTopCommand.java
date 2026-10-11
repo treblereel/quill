@@ -104,8 +104,8 @@ public class QuillTopCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         if (kotlinSemanticWorker) {
-            org.treblereel.mcp.kotlin.SemanticWorker.main(new String[0]);
-            return CommandLine.ExitCode.OK;
+            return new ProcessBuilder(org.treblereel.mcp.kotlin.KotlinRuntime.workerCommand())
+                    .inheritIO().start().waitFor();
         }
         if (mcp) {
             DebugTrace.configure(debug || debugEnvironmentEnabled(), diagnosticRoot());

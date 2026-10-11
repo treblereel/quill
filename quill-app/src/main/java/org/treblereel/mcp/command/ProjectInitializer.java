@@ -643,6 +643,17 @@ public class ProjectInitializer {
         List<KotlinDeclarationRecord> kotlinDeclarations = kotlinDeclarations(
                 scanResult.kotlinMetadata(), classNameToSqliteId);
         metadata.put("kotlin_declarations", Integer.toString(kotlinDeclarations.size()));
+        if (!indexOnly && (!kotlinDeclarations.isEmpty() || inventory.files().stream()
+                .anyMatch(file -> file.kind().equals("kotlin") && file.lifecycle().equals("current")))) {
+            try {
+                org.treblereel.mcp.kotlin.KotlinRuntime.prepare();
+                System.err.println("[quill] K2 " + org.treblereel.mcp.kotlin.KotlinRuntime.version() + " runtime ready");
+            } catch (IOException failure) {
+                System.err.println("[quill] K2 runtime unavailable; Kotlin metadata analysis remains available. "
+                        + failure.getMessage());
+            }
+            timings.finish("kotlin_runtime");
+        }
         metadata.put("class_occurrences", Integer.toString(classOccurrences.size()));
         metadata.put("module_contexts", Integer.toString(moduleDirectories.size()));
         metadata.put("discovered_module_count",

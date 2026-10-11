@@ -13,7 +13,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.IndexReader;
 
-/** Bundled K2 analysis in a bounded child process, using the same executable in native mode. */
+/** K2 analysis in a bounded JVM child process; runtime preparation belongs to init. */
 final class KotlinSemanticQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -71,7 +71,10 @@ final class KotlinSemanticQueries {
             entries.forEach(classpath::add);
             scratch = Files.createTempDirectory("quill-kotlin-semantic-");
             Path output = scratch.resolve("response.json");
-            process = new ProcessBuilder(workerCommand(org.treblereel.mcp.QuillLauncher.detect())).redirectOutput(output.toFile())
+            List<String> worker;
+            try { worker = org.treblereel.mcp.kotlin.KotlinRuntime.workerCommand(); }
+            catch (java.io.IOException missing) { return status("runtime_missing"); }
+            process = new ProcessBuilder(worker).redirectOutput(output.toFile())
                     .redirectError(scratch.resolve("stderr.txt").toFile()).start();
             try (var input = process.getOutputStream()) { JSON.writeValue(input, request); }
             if (!process.waitFor(30, TimeUnit.SECONDS)) {
@@ -91,13 +94,6 @@ final class KotlinSemanticQueries {
                 for (var path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
             } catch (Exception ignored) { /* Temporary files are never project files. */ }
         }
-    }
-
-    static List<String> workerCommand(String nativeLauncher) {
-        if (nativeLauncher != null) return List.of(nativeLauncher, "-Xmx512m", "--kotlin-semantic-worker");
-        return List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                "-Xmx512m", "-cp", System.getProperty("java.class.path"),
-                "org.treblereel.mcp.kotlin.SemanticWorker");
     }
 
     private static JsonNode status(String status) { return JSON.createObjectNode().put("status", status); }

@@ -2,6 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>org.treblereel.mcp</groupId><artifactId>quill</artifactId><version>0.1-SNAPSHOT</version></parent>
   <artifactId>quill-kotlin-semantic</artifactId>
+  <properties><maven.compiler.release>17</maven.compiler.release></properties>
   <dependencies>
     <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-compiler-embeddable</artifactId><version>${kotlin.version}</version></dependency>
     <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>${kotlin.version}</version></dependency>
@@ -10,6 +11,10 @@
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-engine</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build><plugins>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version>
+      <executions><execution><id>default-jar</id><phase>process-classes</phase><goals><goal>jar</goal></goals></execution></executions>
+    </plugin>
     <plugin>
       <groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-maven-plugin</artifactId><version>${kotlin.version}</version>
       <executions><execution><id>kotlin-compile</id><phase>process-sources</phase><goals><goal>compile</goal></goals></execution></executions>

@@ -47,6 +47,7 @@ public final class ClassOccurrenceScanner {
                 .collect(java.util.stream.Collectors.toMap(
                         entry -> entry.getKey().toAbsolutePath().normalize(),
                         Map.Entry::getValue));
+        Map<Path, Map<String, List<Path>>> sourceInventories = new java.util.HashMap<>();
         List<ClassOccurrenceRecord> result = new ArrayList<>();
         for (ClassFileSnapshot.Entry entry : snapshot.entries()) {
             Path output = entry.classesDirectory().toAbsolutePath().normalize();
@@ -56,10 +57,11 @@ public final class ClassOccurrenceScanner {
             if (classId == null) continue;
             Path owner = normalizedOwners.getOrDefault(output, root);
             String sourceSet = normalizedSourceSets.getOrDefault(output, sourceSet(output, owner));
-            List<Path> ownerSourceRoots = sourceRoots.stream()
-                    .filter(sourceRoot -> sourceRoot.toAbsolutePath().normalize().startsWith(owner))
-                    .toList();
-            Path source = BytecodeSourceMapper.source(entry, ownerSourceRoots);
+            var inventory = sourceInventories.computeIfAbsent(owner, module ->
+                    BytecodeSourceMapper.sourcesByRelativePath(sourceRoots.stream()
+                            .filter(sourceRoot -> sourceRoot.toAbsolutePath().normalize().startsWith(module))
+                            .toList()));
+            Path source = BytecodeSourceMapper.source(entry, inventory);
             if (source == null) source = sourceMappings.get(className);
             if (source == null) source = findSource(owner, sourceSet, className);
             result.add(new ClassOccurrenceRecord(

@@ -26,7 +26,7 @@ import org.treblereel.mcp.model.KotlinDeclarationRecord;
 final class SymbolUsageQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final Set<String> KINDS = Set.of("METHOD", "CONSTRUCTOR", "FIELD");
+    private static final Set<String> KINDS = Set.of("METHOD", "CONSTRUCTOR", "FIELD", "PROPERTY");
     private static final Set<String> ACCESS_MODES = Set.of("ALL", "READ", "WRITE");
 
     String findSymbolUsages(Jdbi jdbi, String target, String name, String kind,
@@ -34,7 +34,6 @@ final class SymbolUsageQueries {
         try {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
             if (reference != null) {
-                target = reference.resolutionTarget();
                 name = reference.jvmName();
                 kind = reference.kind();
                 signature = reference.descriptor();
@@ -45,7 +44,7 @@ final class SymbolUsageQueries {
         String normalizedKind = kind == null ? "" : kind.strip().toUpperCase(Locale.ROOT);
         if (!KINDS.contains(normalizedKind)) {
             return errorResponse("INVALID_ARGUMENT",
-                    "Invalid kind: expected method, constructor, or field");
+                    "Invalid kind: expected method, constructor, field, or property");
         }
         String normalizedAccess = access == null
                 ? "ALL" : access.strip().toUpperCase(Locale.ROOT);
@@ -53,14 +52,18 @@ final class SymbolUsageQueries {
             return errorResponse("INVALID_ARGUMENT",
                     "Invalid access: expected all, read, or write");
         }
-        if (!"FIELD".equals(normalizedKind) && !"ALL".equals(normalizedAccess)) {
-            return errorResponse("INVALID_ARGUMENT", "The access filter applies only to fields");
+        if (!Set.of("FIELD", "PROPERTY").contains(normalizedKind) && !"ALL".equals(normalizedAccess)) {
+            return errorResponse("INVALID_ARGUMENT", "The access filter applies only to fields or properties");
         }
         String requestedName = name;
         String requestedSignature = signature;
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
         if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
         ClassRecord cls = lookup.cls();
+        if ("PROPERTY".equals(normalizedKind)) {
+            return propertyUsages(jdbi, cls, requestedName, requestedSignature,
+                    normalizedAccess, limit, offset);
+        }
         List<KotlinDeclarationRecord> kotlinDeclarations =
                 IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
@@ -115,15 +118,20 @@ final class SymbolUsageQueries {
     private String methodUsages(Jdbi jdbi, ClassRecord cls, ClassMemberRecord selected,
             KotlinDeclarationRecord kotlinDeclaration, int limit, int offset) {
         String bytecodeName = "CONSTRUCTOR".equals(selected.kind()) ? "<init>" : selected.name();
-        List<MethodCallView> usages = IndexReader.findExactMethodUsages(
-                jdbi, cls.id(), bytecodeName, selected.descriptor(), limit, offset);
-        int total = IndexReader.countExactMethodUsages(
+        boolean kotlin = !IndexReader.findKotlinDeclarations(jdbi, cls.id()).isEmpty();
+        var normalized = kotlin ? KotlinUsageNormalizer.inbound(jdbi, cls.id(), bytecodeName, selected.descriptor())
+                : new KotlinUsageNormalizer.Result(IndexReader.findExactMethodUsages(jdbi, cls.id(),
+                    bytecodeName, selected.descriptor(), limit, offset).stream()
+                    .map(call -> new KotlinUsageNormalizer.Usage(call, List.of(call))).toList(), false);
+        var page = kotlin ? normalized.usages().stream().skip(offset).limit(limit).toList() : normalized.usages();
+        int total = kotlin ? normalized.usages().size() : IndexReader.countExactMethodUsages(
                 jdbi, cls.id(), bytecodeName, selected.descriptor());
         ObjectNode root = base(cls, selected, kotlinDeclaration);
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
-        for (MethodCallView usage : usages) {
+        for (var resolved : page) {
+            MethodCallView usage = resolved.call();
             ObjectNode node = values.addObject();
             appendCaller(node, usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
                     usage.fromSource(), usage.fromSourceLine(), usage.fromOrigin(),
@@ -132,12 +140,92 @@ final class SymbolUsageQueries {
             node.put("invocation_kind", usage.invocationKind());
             node.put("occurrence_count", usage.occurrenceCount());
             node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
+            appendPath(node, resolved);
             if (countedClasses.add(usage.fromClassId())) naiveTokens += usage.fromSourceTokens();
         }
         limitations(root).add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
-        appendPage(root, usages.size(), total, limit, offset);
+        root.put("normalization_truncated", normalized.truncated());
+        root.put("answer_complete", !normalized.truncated());
+        appendPage(root, page.size(), total, limit, offset);
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
+    }
+
+    private String propertyUsages(Jdbi jdbi, ClassRecord cls, String name, String signature,
+            String access, int limit, int offset) {
+        var matches = KotlinProperties.list(jdbi, cls).stream()
+                .filter(property -> property.name().equals(name))
+                .filter(property -> signature == null || signature.isBlank()
+                        || property.descriptor().equals(signature)).toList();
+        if (matches.size() != 1) {
+            ObjectNode error = JSON.createObjectNode();
+            appendError(error, matches.isEmpty() ? "SYMBOL_NOT_FOUND" : "AMBIGUOUS_SYMBOL",
+                    matches.isEmpty() ? "Property not found" : "Ambiguous property");
+            var candidates = error.putArray("candidates");
+            matches.forEach(property -> property.append(candidates.addObject()));
+            appendMeta(error, jdbi, 0);
+            return error.toString();
+        }
+        var property = matches.getFirst();
+        ObjectNode root = JSON.createObjectNode();
+        property.append(root); root.put("target", cls.className()); root.put("access", access.toLowerCase(Locale.ROOT));
+        var usages = new java.util.ArrayList<ObjectNode>();
+        boolean truncated = false;
+        for (var binding : property.bindings()) {
+            if (binding.field()) {
+                for (var usage : IndexReader.findExactFieldUsages(jdbi, binding.owner().id(),
+                        binding.name(), binding.descriptor(), "ALL".equals(access) ? null
+                            : access.toLowerCase(Locale.ROOT), Integer.MAX_VALUE, 0)) {
+                    var node = JSON.createObjectNode();
+                    appendCaller(node, usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
+                            usage.fromSource(), usage.fromSourceLine(), usage.fromOrigin(), usage.fromModule());
+                    node.put("usage_kind", usage.accessKind().startsWith("read_") ? "read" : "write");
+                    node.put("access_kind", usage.accessKind());
+                    node.put("jvm_member", binding.name()); node.put("occurrence_count", usage.occurrenceCount());
+                    node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
+                    // Internal accessor field access is implementation evidence, not another source usage.
+                    boolean accessor = property.bindings().stream().anyMatch(other -> !other.field()
+                            && other.owner().className().equals(usage.fromClass())
+                            && other.name().equals(usage.fromMethod())
+                            && other.descriptor().equals(usage.fromDescriptor()));
+                    if (!accessor) usages.add(node);
+                }
+            } else if ("ALL".equals(access) || binding.write() == "WRITE".equals(access)) {
+                var result = KotlinUsageNormalizer.inbound(jdbi, binding.owner().id(), binding.name(), binding.descriptor());
+                truncated |= result.truncated();
+                for (var resolved : result.usages()) {
+                    var usage = resolved.call(); var node = JSON.createObjectNode();
+                    appendCaller(node, usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
+                            usage.fromSource(), usage.fromSourceLine(), usage.fromOrigin(), usage.fromModule());
+                    node.put("usage_kind", binding.write() ? "write" : "read");
+                    node.put("access_kind", binding.write() ? "setter_call" : "getter_call");
+                    node.put("jvm_member", binding.name()); node.put("occurrence_count", usage.occurrenceCount());
+                    node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
+                    appendPath(node, resolved); usages.add(node);
+                }
+            }
+        }
+        usages.sort(java.util.Comparator.comparing(ObjectNode::toString));
+        var page = usages.stream().skip(offset).limit(limit).toList();
+        root.set("usages", JSON.valueToTree(page)); root.put("normalization_truncated", truncated);
+        root.put("answer_complete", !truncated);
+        limitations(root); appendPage(root, page.size(), usages.size(), limit, offset);
+        appendMeta(root, jdbi, cls.sourceTokens());
+        return root.toString();
+    }
+
+    static void appendPath(ObjectNode node, KotlinUsageNormalizer.Usage resolved) {
+        if (resolved.path().size() <= 1) return;
+        node.put("normalized", true);
+        var path = node.putArray("bytecode_path");
+        for (var edge : resolved.path()) {
+            var item = path.addObject();
+            item.put("caller_class", edge.fromClass()); item.put("caller_method", edge.fromMethod());
+            item.put("caller_descriptor", edge.fromDescriptor());
+            item.put("callee_class", edge.toClass()); item.put("callee_method", edge.toMethod());
+            item.put("callee_descriptor", edge.toDescriptor());
+            item.set("evidence_lines", JSON.valueToTree(edge.evidenceLines()));
+        }
     }
 
     private String fieldUsages(Jdbi jdbi, ClassRecord cls, ClassMemberRecord selected,

@@ -36,9 +36,18 @@ final class ClassTargetResolver {
                     List.of(), List.of());
         }
         try {
-            String requested = target;
-            target = SymbolContract.parse(requested)
-                    .map(SymbolContract.Reference::resolutionTarget).orElse(requested);
+            var reference = SymbolContract.parse(target);
+            if (reference.isPresent()) {
+                var identity = reference.get();
+                var matches = IndexReader.findClassesByName(jdbi, identity.className()).stream()
+                        .filter(cls -> identity.sourceFile() == null || identity.sourceFile().isBlank()
+                                || identity.sourceFile().equals(cls.sourceFile())).toList();
+                if (matches.size() == 1) return Lookup.found(matches.getFirst());
+                if (matches.size() > 1) return Lookup.error("AMBIGUOUS_CLASS", "Ambiguous class context",
+                        matches, List.of());
+                return Lookup.error("CLASS_NOT_FOUND", "Symbol owner is not present in the current index",
+                        List.of(), List.of());
+            }
         } catch (SymbolContract.ParseException error) {
             return Lookup.error(error.errorCode(), error.getMessage(),
                     List.of(), List.of());

@@ -184,14 +184,14 @@ public final class QuillTools {
     }
 
     @Tool(readOnly = true, structured = true, output = "symbol_usages",
-            description = "Find exact method, constructor, or field usages.")
+            description = "Find member/property usages.")
     public String find_symbol_usages(
             @ToolArg(description = "Class, path, or symbol_id") String target,
-            @ToolArg(description = "Member name; omit for symbol_id or constructor") Optional<String> name,
+            @ToolArg(description = "Member; optional for IDs/constructors") Optional<String> name,
             @ToolArg(description = "Kind; omit for symbol_id",
-                    allowed = {"method", "constructor", "field"}) Optional<String> kind,
-            @ToolArg(description = "Exact source signature or JVM descriptor; required when overloaded") Optional<String> signature,
-            @ToolArg(description = "Field access",
+                    allowed = {"method", "constructor", "field", "property"}) Optional<String> kind,
+            @ToolArg(description = "Signature/descriptor for overloads") Optional<String> signature,
+            @ToolArg(description = "Read/write filter",
                     allowed = {"all", "read", "write"}) Optional<String> access,
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
@@ -316,7 +316,7 @@ public final class QuillTools {
     public String search_symbols(
             @ToolArg(description = "Name or signature pattern; * is a wildcard") String pattern,
             @ToolArg(description = "Symbol kind", allowed = {"all", "class", "interface",
-                    "annotation", "enum", "record", "field", "constructor", "method"}) Optional<String> kind,
+                    "annotation", "enum", "record", "field", "constructor", "method", "property"}) Optional<String> kind,
             @ToolArg(description = "Language",
                     allowed = {"all", "java", "kotlin"}) Optional<String> language,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,

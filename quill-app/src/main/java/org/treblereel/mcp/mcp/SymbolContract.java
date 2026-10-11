@@ -19,7 +19,7 @@ final class SymbolContract {
     private static final Set<String> TYPE_KINDS = Set.of(
             "CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD");
     private static final Set<String> MEMBER_KINDS = Set.of(
-            "FIELD", "CONSTRUCTOR", "METHOD");
+            "FIELD", "CONSTRUCTOR", "METHOD", "PROPERTY");
 
     private SymbolContract() {}
 
@@ -58,6 +58,17 @@ final class SymbolContract {
             node.put("source_kind", declaration.kind().toLowerCase(Locale.ROOT));
             node.put("jvm_role", jvmRole(
                     declaration.kind(), member.kind(), member.descriptor()));
+            if ("PROPERTY".equals(declaration.kind()) && !(declaration.delegated() && member.kind().equals("FIELD"))) {
+                String descriptor = member.descriptor();
+                if (!descriptor.startsWith("(")) descriptor = "()" + descriptor;
+                else if (descriptor.endsWith(")V")) {
+                    var parameters = org.objectweb.asm.Type.getArgumentTypes(descriptor);
+                    if (parameters.length > 0) descriptor = org.objectweb.asm.Type.getMethodDescriptor(
+                            parameters[parameters.length - 1],
+                            java.util.Arrays.copyOf(parameters, parameters.length - 1));
+                }
+                node.put("property_symbol_id", id(cls, "PROPERTY", declaration.name(), descriptor));
+            }
         }
         appendLocation(node, cls.sourceFile(), cls.sourceLine());
     }
@@ -120,7 +131,7 @@ final class SymbolContract {
             String sourceFile = decode(parts[4]);
             if (className.isBlank() || jvmName.isBlank()
                     || (!TYPE_KINDS.contains(kind) && !MEMBER_KINDS.contains(kind))
-                    || (MEMBER_KINDS.contains(kind) && descriptor.isBlank())) {
+                    || (MEMBER_KINDS.contains(kind) && !"PROPERTY".equals(kind) && descriptor.isBlank())) {
                 throw malformed(null);
             }
             return Optional.of(new Reference(

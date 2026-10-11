@@ -52,6 +52,10 @@ final class SymbolToolQueries {
         root.put("lifecycle", cls.lifecycle());
         root.put("source_tokens", cls.sourceTokens());
         SymbolContract.appendClass(root, cls, kotlinDeclarations);
+        if (!kotlinDeclarations.isEmpty()) {
+            var properties = root.putArray("properties");
+            KotlinProperties.list(jdbi, cls).forEach(property -> property.append(properties.addObject()));
+        }
         appendContext(root, cls);
 
         List<ClassAnnotationRecord> annotations = IndexReader.findClassAnnotations(jdbi, cls.id());

@@ -20,7 +20,7 @@ final class SymbolSearchQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> KINDS = Set.of(
             "CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD",
-            "FIELD", "CONSTRUCTOR", "METHOD");
+            "FIELD", "CONSTRUCTOR", "METHOD", "PROPERTY");
 
     String searchSymbols(Jdbi jdbi, String pattern, String kind, int limit, int offset) {
         return searchSymbols(jdbi, pattern, kind, null, limit, offset);
@@ -34,7 +34,7 @@ final class SymbolSearchQueries {
         String normalizedKind = normalizeKind(kind);
         if (normalizedKind != null && !KINDS.contains(normalizedKind)) {
             return errorResponse("INVALID_ARGUMENT", "Invalid kind: expected class, interface, annotation, enum, "
-                    + "record, field, constructor, method, or all");
+                    + "record, field, constructor, method, property, or all");
         }
         String normalizedLanguage = language == null || language.isBlank()
                 || "all".equalsIgnoreCase(language) ? null
@@ -42,6 +42,29 @@ final class SymbolSearchQueries {
         if (normalizedLanguage != null
                 && !Set.of("java", "kotlin").contains(normalizedLanguage)) {
             return errorResponse("INVALID_ARGUMENT", "Invalid language: expected java, kotlin, or all");
+        }
+        if ("PROPERTY".equals(normalizedKind)) {
+            String expression = java.util.Arrays.stream(pattern.trim().split("\\*", -1))
+                    .map(java.util.regex.Pattern::quote).collect(java.util.stream.Collectors.joining(".*"));
+            var matcher = java.util.regex.Pattern.compile(expression, java.util.regex.Pattern.CASE_INSENSITIVE);
+            var properties = "java".equals(normalizedLanguage) ? java.util.List.<KotlinProperties.Property>of()
+                    : IndexReader.findAllClasses(jdbi).stream()
+                        .filter(cls -> "current".equals(cls.lifecycle()) && !"orphan_output".equals(cls.origin()))
+                        .flatMap(cls -> KotlinProperties.list(jdbi, cls).stream())
+                        .filter(property -> matcher.matcher(property.name()).find())
+                        .sorted(java.util.Comparator.comparing(KotlinProperties.Property::name)
+                            .thenComparing(property -> property.owner().className())
+                            .thenComparing(KotlinProperties.Property::descriptor)).toList();
+            ObjectNode root = JSON.createObjectNode();
+            root.put("pattern", pattern.trim()); root.put("kind", "property");
+            if (normalizedLanguage == null) root.putNull("language_filter");
+            else root.put("language_filter", normalizedLanguage);
+            var page = properties.stream().skip(offset).limit(limit).toList();
+            var symbols = root.putArray("symbols");
+            page.forEach(property -> property.append(symbols.addObject()));
+            appendPage(root, page.size(), properties.size(), limit, offset);
+            appendMeta(root, jdbi, 0);
+            return root.toString();
         }
         var matches = IndexReader.searchSymbols(
                 jdbi, pattern.trim(), normalizedKind, normalizedLanguage, limit, offset);

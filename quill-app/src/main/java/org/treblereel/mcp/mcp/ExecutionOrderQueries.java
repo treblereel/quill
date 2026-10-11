@@ -47,7 +47,6 @@ final class ExecutionOrderQueries {
                     return errorResponse("INVALID_SYMBOL_KIND",
                             "symbol_id must identify a method or constructor");
                 }
-                target = reference.resolutionTarget();
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }

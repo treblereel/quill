@@ -327,7 +327,7 @@ The router profile returns the same policy in `search_tools.guidance`, including
   resolved declarations include a stable `symbol_id`
 - **search_external_symbols** / **get_external_symbol_details** — search and inspect class/member
   declarations indexed from dependency bytecode without mixing them with application symbols
-- **search_symbols** — search class, method, field, and constructor declarations by name or
+- **search_symbols** — search class, method, field, constructor, and Kotlin property declarations by name or
   signature, with kind/language filtering and pagination. Results distinguish source-level and
   JVM names and include a stable `symbol_id`
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with
@@ -403,7 +403,7 @@ does not imply that an executor, reactive stream, or message publication has com
   generated occurrences grouped by module and evidence about reactor-discovery completeness
 - **find_usages** — find bytecode calls, constructor calls, field access, type references,
   injection, inheritance, annotations, and ServiceLoader usages with evidence and pagination
-- **find_symbol_usages** — find exact method, constructor, or field usages by declaration
+- **find_symbol_usages** — find method, constructor, field, or Kotlin property usages by declaration
   signature/JVM descriptor, including call or read/write evidence and pagination; pass a
   `symbol_id` as `target` to select an overload without repeating its name or descriptor
 - **get_symbol_details** — inspect hierarchy, annotations, declared members, DI context,
@@ -684,6 +684,26 @@ JVM class loading.
 Both Groovy and Kotlin DSL projects are supported, including multi-project builds.
 Java and Kotlin/JVM main sources are mapped back from compiled classes, inventoried,
 and token-counted; common KSP-generated Kotlin sources are included as generated input.
+
+Kotlin source mapping uses the declared package and the bytecode `SourceFile` attribute,
+including files whose directory layout does not mirror the package. Duplicate candidates
+are scoped to the module and conventional main/test source set; unresolved duplicates
+are left unmapped.
+
+Use `search_symbols(kind="property")` to find logical Kotlin properties, and pass their
+`symbol_id` to `find_symbol_usages` with `access="read"`, `"write"`, or `"all"`. Property
+usages combine backing-field access and accessor calls; delegated storage is excluded.
+Method usages expand recognized default-argument, constructor, multifile, companion,
+`@JvmStatic`, `@JvmOverloads`, and bridge forwarding. Normalized usages retain their
+`bytecode_path`; call hierarchy exposes `source_callers` alongside physical JVM edges.
+A bounded normalization reports `normalization_truncated` and an incomplete answer.
+
+Position navigation recognizes Kotlin constructor calls, backtick names, explicit import
+aliases, logical properties, and source parameter counts for suspend/extension functions.
+This is metadata and lexical analysis: receiver types, local shadowing, generic overloads,
+required versus optional default arguments, and full coroutine source mapping still need
+a Kotlin semantic backend. Kotlin position results therefore have at most medium confidence.
+
 Quill locates the root through `settings.gradle[.kts]`, runs `gradlew` when present,
 and injects a temporary init script to export the evaluated Java project directories,
 main source-set outputs, and `runtimeClasspath`. This respects dynamic settings and

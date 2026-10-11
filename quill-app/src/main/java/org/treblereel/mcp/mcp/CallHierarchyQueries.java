@@ -52,7 +52,6 @@ final class CallHierarchyQueries {
                     return errorResponse("INVALID_SYMBOL_KIND",
                             "symbol_id must identify a method or constructor");
                 }
-                target = reference.resolutionTarget();
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
@@ -151,6 +150,21 @@ final class CallHierarchyQueries {
             }
         }
         root.put("direction", normalizedDirection);
+        if (selected != null && !kotlinDeclarations.isEmpty() && !normalizedDirection.equals("outbound")) {
+            var sourceCallers = KotlinUsageNormalizer.inbound(jdbi, cls.id(), bytecodeMethod, descriptor);
+            root.put("source_caller_count", sourceCallers.usages().size());
+            root.put("source_caller_normalization_truncated", sourceCallers.truncated());
+            var callers = root.putArray("source_callers");
+            for (var usage : sourceCallers.usages().stream().skip(offset).limit(limit).toList()) {
+                var caller = callers.addObject();
+                var call = usage.call();
+                appendEndpoint(caller.putObject("caller"), call.fromClass(), call.fromMethod(), call.fromDescriptor(),
+                        call.fromSource(), call.fromSourceLine(), call.fromOrigin(), call.fromModule());
+                caller.put("occurrence_count", call.occurrenceCount());
+                caller.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
+                SymbolUsageQueries.appendPath(caller, usage);
+            }
+        }
         root.put("direct_only", !transitive);
         root.put("transitive", transitive);
         root.put("max_depth", transitive ? maxDepth : 1);

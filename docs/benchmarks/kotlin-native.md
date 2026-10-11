@@ -378,3 +378,54 @@ exhausted child that remains alive after flushing its response.
 
 The stage benchmark now uses the production stack setting and can reproduce the
 inferred-return workload with `--files 500 --functions-per-file 1 --inferred-return-types`.
+
+## Save-to-background-ready latency
+
+The reproducible `scripts/QuillKotlinWarmupBenchmark.java` runs the production
+coordinator, filesystem watcher and external K2 worker in a JVM parent. It observes
+background completion directly; no foreground query is issued after saving until
+that completion. The following query must return the expected Int/Boolean descriptor,
+reuse FIR, and match the observed background generation. These are JVM coordinator
+measurements on macOS arm64/GraalVM 25.0.1, excluding MCP transport and indexing;
+they are not native end-to-end latency guarantees.
+
+Each generated file has one explicitly typed function; two extra files contain an
+inferred `pick` declaration and its caller. Each row contains 20 closed-loop samples.
+The next save starts immediately after the previous warmed query; the five-save
+burst uses 20 ms intervals. Save-to-ready starts after the final write completes.
+P95 uses nearest rank; median averages the two middle samples. All 120 cycles
+verified fresh descriptors and FIR reuse, observing one background attempt per cycle.
+
+| Sources | Saves per burst | Save → ready median / p95 (ms) | Warmed query median / p95 (ms) | Frontend median (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| 12 | 1 | 1997 / 2014 | 3.2 / 7.0 | 42.0 |
+| 12 | 5 | 1884 / 1932 | 3.1 / 7.8 | 32.2 |
+| 102 | 1 | 1979 / 2043 | 9.2 / 14.9 | 81.8 |
+| 102 | 5 | 1883 / 1943 | 6.4 / 20.2 | 64.4 |
+| 502 | 1 | 1973 / 2032 | 23.4 / 43.8 | 153.4 |
+| 502 | 5 | 1846 / 2152 | 25.6 / 48.2 | 111.2 |
+
+The host uses `sun.nio.fs.PollingWatchService`. OpenJDK's
+[implementation](https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/sun/nio/fs/PollingWatchService.java)
+polls every two seconds. These closed-loop saves generally happen just after a poll,
+so the next event approaches that interval. The frontend is substantially shorter;
+event delivery plus scheduling dominates this workload. Arbitrarily timed user saves
+can have a different phase, and Linux/Windows watchers need separate measurements.
+Reducing the 150 ms debounce alone would leave most of this macOS delay intact.
+
+Reproduce from the repository root after building the app all.jar:
+
+```bash
+quill_bench_classes=$(mktemp -d)
+javac --release 21 -cp quill-app/target/quill-app-0.1-SNAPSHOT-all.jar \
+  -d "$quill_bench_classes" scripts/QuillKotlinWarmupBenchmark.java
+java --enable-native-access=ALL-UNNAMED \
+  -cp "$quill_bench_classes:quill-app/target/quill-app-0.1-SNAPSHOT-all.jar" \
+  org.treblereel.mcp.mcp.QuillKotlinWarmupBenchmark 500 20 /tmp/quill-warmup-latency.json
+```
+
+The benchmark uses normal runtime preparation; it can reuse a prepared shared cache
+and local Maven artifacts. Set `-Dquill.kotlin.cache` to isolate worker/manifest files.
+The report records raw samples and compiler stages. A small smoke workload additionally
+checks the report's watcher implementation field; invalid count arguments are rejected
+before creating the fixture.

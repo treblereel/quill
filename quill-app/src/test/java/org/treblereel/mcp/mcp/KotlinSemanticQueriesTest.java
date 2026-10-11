@@ -26,6 +26,7 @@ class KotlinSemanticQueriesTest {
     }
 
     @AfterEach void restoreProperties() {
+        org.treblereel.mcp.kotlin.KotlinWorkerClient.shared().close();
         if (previousCache == null) System.clearProperty("quill.kotlin.cache"); else System.setProperty("quill.kotlin.cache", previousCache);
         if (previousOffline == null) System.clearProperty("quill.kotlin.offline"); else System.setProperty("quill.kotlin.offline", previousOffline);
     }
@@ -76,6 +77,30 @@ class KotlinSemanticQueriesTest {
         assertEquals("kotlin_k2_fir", result.path("backend").asText());
         assertEquals("(I)I", result.path("descriptor").asText());
         assertFalse(Files.exists(temp.resolve("target/classes")));
+        var timings = new java.util.ArrayList<Double>();
+        for (int i = 0; i < 12; i++) {
+            String changed = source.replace("pick(1)", i % 2 == 0 ? "pick(2)" : "pick(3)");
+            Files.writeString(file, changed);
+            long started = System.nanoTime();
+            var warm = KotlinSemanticQueries.resolve(db, temp, file, changed.lastIndexOf("pick("));
+            timings.add((System.nanoTime() - started) / 1_000_000.0);
+            assertEquals("(I)I", warm.path("descriptor").asText(), warm.toString());
+        }
+        timings.sort(Double::compareTo);
+        System.out.println("K2 repeated fresh-source analysis median_ms=" + timings.get(6));
+        Path other = temp.resolve("another-project");
+        Path otherFile = other.resolve("src/main/kotlin/Example.kt");
+        Files.createDirectories(otherFile.getParent());
+        Files.writeString(other.resolve("pom.xml"), "<project/>");
+        Files.createDirectories(other.resolve("target"));
+        Files.writeString(other.resolve("target/quill-classpath.txt"), stdlib.toString());
+        String otherSource = "package other\nfun pick(x: String) = x\nfun run() = pick(\"s\")";
+        Files.writeString(otherFile, otherSource);
+        var otherResult = KotlinSemanticQueries.resolve(db, other, otherFile, otherSource.lastIndexOf("pick("));
+        assertEquals("other.ExampleKt", otherResult.path("owner").asText(), otherResult.toString());
+        assertEquals("(Ljava/lang/String;)Ljava/lang/String;", otherResult.path("descriptor").asText());
+        assertEquals("probe.ExampleKt", KotlinSemanticQueries.resolve(db, temp, file,
+                source.lastIndexOf("pick(")).path("owner").asText());
     }
 
     @Test void nativeAndJvmUseThePreparedRuntime() throws Exception {

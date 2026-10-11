@@ -8,13 +8,42 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public final class SemanticWorker {
     private static final ObjectMapper JSON = new ObjectMapper();
     public static void main(String[] args) throws Exception {
+        if (args.length == 1 && args[0].equals("--serve")) {
+            serve(System.in, System.out);
+            return;
+        }
+        JSON.writeValue(System.out, safelyAnalyze(JSON.readTree(System.in)));
+    }
+
+    // Length-prefixed UTF-8 JSON keeps multiline paths and compiler diagnostics out of framing.
+    static void serve(java.io.InputStream source, java.io.OutputStream target) throws Exception {
+        var input = new java.io.DataInputStream(source);
+        var output = new java.io.DataOutputStream(target);
+        while (true) {
+            int first = input.read();
+            if (first == -1) return;
+            int size = (first << 24) | (input.readUnsignedByte() << 16)
+                    | (input.readUnsignedByte() << 8) | input.readUnsignedByte();
+            if (size <= 0 || size > 1024 * 1024) throw new java.io.IOException("Invalid request frame");
+            byte[] bytes = input.readNBytes(size);
+            if (bytes.length != size) throw new java.io.EOFException("Truncated request frame");
+            // Malformed JSON is a protocol failure: terminate rather than lose synchronization.
+            byte[] response = JSON.writeValueAsBytes(safelyAnalyze(JSON.readTree(bytes)));
+            if (response.length > 1024 * 1024) throw new java.io.IOException("Response frame too large");
+            output.writeInt(response.length);
+            output.write(response);
+            output.flush();
+        }
+    }
+
+    private static ObjectNode safelyAnalyze(JsonNode request) {
         ObjectNode result;
-        try { result = analyze(JSON.readTree(System.in)); }
+        try { result = analyze(request); }
         catch (Exception | LinkageError failure) {
             failure.printStackTrace(System.err);
             result = K2Analyzer.response("unavailable").put("reason", failure.getClass().getSimpleName());
         }
-        JSON.writeValue(System.out, result);
+        return result;
     }
 
     static ObjectNode analyze(JsonNode request) { return K2Analyzer.analyze(request); }

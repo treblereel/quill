@@ -88,6 +88,7 @@ public final class McpStdioServer {
                 server.closeGracefully().block(SHUTDOWN_TIMEOUT);
             } finally {
                 responseScheduler.dispose();
+                org.treblereel.mcp.kotlin.KotlinWorkerClient.shared().close();
             }
         }
     }

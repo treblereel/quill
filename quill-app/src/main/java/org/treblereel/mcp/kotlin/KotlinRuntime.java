@@ -62,6 +62,13 @@ public final class KotlinRuntime {
         catch (IOException | RuntimeException failure) { return List.of(); }
     }
 
+    static String workerIdentity() throws IOException {
+        Path manifest = directory(cacheRoot()).resolve("classpath.properties");
+        var attributes = Files.readAttributes(manifest, java.nio.file.attribute.BasicFileAttributes.class);
+        return manifest.toAbsolutePath() + ":" + attributes.lastModifiedTime() + ":" + attributes.size()
+                + ":" + attributes.fileKey() + ":" + javaExecutable();
+    }
+
     public static List<String> workerCommand() throws IOException {
         List<Path> files = available();
         if (files.isEmpty()) throw new IOException("K2 runtime is missing or damaged; run quill init");

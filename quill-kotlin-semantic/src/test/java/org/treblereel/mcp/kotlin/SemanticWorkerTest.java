@@ -17,6 +17,33 @@ class SemanticWorkerTest {
             assertEquals(61, input.readUnsignedShort());
         }
     }
+    @Test void persistentProtocolHandlesMultipleRequestsAndCleanEof() throws Exception {
+        var source = new java.io.ByteArrayOutputStream();
+        var frames = new java.io.DataOutputStream(source);
+        byte[] request = "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        for (int i = 0; i < 2; i++) { frames.writeInt(request.length); frames.write(request); }
+        var target = new java.io.ByteArrayOutputStream();
+        SemanticWorker.serve(new java.io.ByteArrayInputStream(source.toByteArray()), target);
+        var responses = new java.io.DataInputStream(new java.io.ByteArrayInputStream(target.toByteArray()));
+        for (int i = 0; i < 2; i++) {
+            var response = new ObjectMapper().readTree(responses.readNBytes(responses.readInt()));
+            assertEquals("kotlin_k2_fir", response.path("backend").asText());
+        }
+        assertEquals(-1, responses.read());
+        SemanticWorker.serve(java.io.InputStream.nullInputStream(), java.io.OutputStream.nullOutputStream());
+    }
+    @Test void persistentProtocolRejectsInvalidLengthsTruncationAndMalformedJson() throws Exception {
+        for (int size : new int[]{-1, 0, 1024 * 1024 + 1, 100}) {
+            var bytes = new java.io.ByteArrayOutputStream();
+            new java.io.DataOutputStream(bytes).writeInt(size);
+            assertThrows(java.io.IOException.class, () -> SemanticWorker.serve(
+                    new java.io.ByteArrayInputStream(bytes.toByteArray()), java.io.OutputStream.nullOutputStream()));
+        }
+        assertThrows(java.io.EOFException.class, () -> SemanticWorker.serve(
+                new java.io.ByteArrayInputStream(new byte[]{0}), java.io.OutputStream.nullOutputStream()));
+        assertThrows(java.io.IOException.class, () -> SemanticWorker.serve(
+                new java.io.ByteArrayInputStream(new byte[]{0, 0, 0, 1, '!'}), java.io.OutputStream.nullOutputStream()));
+    }
     private JsonNode resolve(String source, String token) throws Exception {
         Path file = temp.resolve("Probe.kt"); Files.writeString(file, source);
         var request = new ObjectMapper().createObjectNode();

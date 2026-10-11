@@ -115,8 +115,8 @@ initialization, metadata fallback and high-confidence compiler resolution throug
 Warm `--version` startup had an 18.28 ms median. The 20 fresh JVM worker invocations had
 a 1.287-second median; the fixture's compiler-backed MCP request took 1.835 seconds.
 These are small smoke probes run alongside integration verification, not controlled
-throughput measurements. Unlike the embedded compiler, this implementation pays JVM
-startup for each request; a reusable worker would need a separate lifecycle design.
+throughput measurements. This initial external-worker implementation started a JVM
+for every request. The persistent-worker measurements below supersede that lifecycle.
 
 Validation also passed 654 unit tests and 28 integration tests. New coverage includes
 transitive runtime resolution, offline misses and reuse, thread/process locking,
@@ -135,3 +135,55 @@ python3 scripts/quill_kotlin_native_e2e.py \
   --worker-java-home /path/to/jdk17 \
   --output /tmp/quill-kotlin-resolver-native.json
 ```
+
+
+## Persistent K2 worker
+
+Quill now reuses one compiler JVM for an MCP session. Requests use bounded,
+length-prefixed JSON frames and are serialized. Analysis still rebuilds FIR from
+current source files and captured classpaths on every request; analysis results are
+not cached. Runtime hashes are verified on worker startup, while file attributes and
+the manifest identity are checked between requests. Changed/missing runtime files,
+crashes, malformed responses, timeout and cancellation discard the process. A following
+request starts a fresh worker; MCP EOF/shutdown kills and reaps it.
+
+The native executable is **67,199,992 bytes**, an increase of **16,544 bytes (0.025%)**
+over the initial external-worker build. Native compilation took 83 seconds with
+2.86 GB peak build RSS on the same macOS ARM64/GraalVM 25.0.1 host.
+
+An additional native MCP probe used the compiled Kotlin Maven fixture with five
+source files plus a generated caller. Each Java version had its own MCP session:
+one cold query, 20 requests alternating the caller's Int/String overload, then 20
+queries against unchanged source. All descriptors were verified. The child PID stayed
+the same across all 41 requests and no child remained after MCP shutdown.
+
+| Worker JVM | Cold MCP query | Changed-source median / p95 | Unchanged-source median | Worker RSS after cold / after 40 warm queries |
+| --- | ---: | ---: | ---: | ---: |
+| Zulu 17.0.16 | 3,036 ms | 203 / 393 ms | 220 ms | 253 / 504 MB |
+| GraalVM 25.0.1 | 2,805 ms | 118 / 216 ms | 94 ms | 302 / 577 MB |
+
+These are local smoke measurements, not latency guarantees. An earlier repetition
+measured changed-source medians of 113 ms on Java 17 and 120 ms on Java 25, with
+cold queries of 1,695/1,792 ms and worker RSS after 40 queries of 626/452 MB.
+Another full native E2E
+run on Java 17 measured a changed-source median of 357 ms and p95 of 570 ms; other
+host workloads were active. The small single-source JVM unit probe measured a median
+of 22 ms. These different workloads should not be compared as identical benchmarks.
+A repeat of the full E2E probe measured 180 ms for changed-source queries and 99 ms
+for unchanged-source queries. The reproducible E2E script now reports both changed- and unchanged-source samples
+from a single MCP session, in addition to the standalone worker correctness probes.
+
+The 512 MiB limit applies to the JVM heap, not total RSS. Keeping compiler classes,
+JDK/JAR infrastructure and JIT state alive trades resident memory for warm latency.
+The first semantic request still pays JVM/compiler startup. Rebuilding FIR for a full
+module remains the main analysis work; this change does not claim incremental FIR
+reuse or eliminate the cold query.
+
+Validation: 664 unit tests, 28 focused integration tests, 20 native standalone semantic
+cases, and the repeated native MCP probes on Java 17 and 25 passed. New cases cover
+multiple framed requests, clean EOF, partial/invalid frames, oversized request/response,
+malformed JSON, wrong backend, crashes, timeout, interruption, concurrent callers,
+stderr flooding, changed/deleted runtime artifacts, runtime selection changes,
+source edits, project switches, shutdown during a blocked read, and shutdown racing
+with cold runtime preparation. Existing
+single-request worker behavior and Java 17 bytecode compatibility are preserved.

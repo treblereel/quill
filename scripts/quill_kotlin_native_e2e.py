@@ -152,6 +152,29 @@ def main() -> None:
                     result, metrics = client.call("get_symbol_at_position", {
                         "path": "src/main/kotlin/NativeProbe.kt", "line": 2, "column": 21})
                     report["mcp"][mode] = {"result": result, "metrics": metrics}
+                    if mode == "prepared_k2":
+                        samples = []
+                        for i in range(20):
+                            argument = '"changed"' if i % 2 else str(i)
+                            caller.write_text("package org.treblereel.mcp.fixture.kotlin\n"
+                                              f"fun nativeProbe() = typedNavigation({argument})\n")
+                            warm, timing = client.call("get_symbol_at_position", {
+                                "path": "src/main/kotlin/NativeProbe.kt", "line": 2, "column": 21})
+                            expected = "(Ljava/lang/String;)Ljava/lang/String;" if i % 2 else "(I)I"
+                            assert warm["selected"]["jvm_descriptor"] == expected, warm
+                            assert warm["semantic_analysis"]["status"] == "resolved", warm
+                            samples.append(timing["latency_ms"])
+                        report["mcp"][mode]["warm_fresh_source_latency_ms"] = samples
+                        report["mcp"][mode]["warm_fresh_source_median_ms"] = statistics.median(samples)
+                        report["mcp"][mode]["warm_fresh_source_p95_ms"] = sorted(samples)[18]
+                        unchanged = []
+                        for _ in range(20):
+                            warm, timing = client.call("get_symbol_at_position", {
+                                "path": "src/main/kotlin/NativeProbe.kt", "line": 2, "column": 21})
+                            assert warm["selected"]["jvm_descriptor"] == "(Ljava/lang/String;)Ljava/lang/String;", warm
+                            unchanged.append(timing["latency_ms"])
+                        report["mcp"][mode]["warm_unchanged_source_latency_ms"] = unchanged
+                        report["mcp"][mode]["warm_unchanged_source_median_ms"] = statistics.median(unchanged)
             semantic = report["mcp"]["prepared_k2"]["result"]
             assert semantic["confidence"] == "high", semantic
             assert semantic["semantic_analysis"]["status"] == "resolved", semantic

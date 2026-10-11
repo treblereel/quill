@@ -5,10 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.IndexReader;
@@ -19,8 +17,6 @@ final class KotlinSemanticQueries {
 
     static JsonNode resolve(Jdbi db, Path root, Path file, int offset) {
         if (file.toString().endsWith(".kts")) return status("unavailable");
-        Path scratch = null;
-        Process process = null;
         try {
             root = root.toAbsolutePath().normalize();
             file = file.toAbsolutePath().normalize();
@@ -69,31 +65,8 @@ final class KotlinSemanticQueries {
             }
             if (test && Files.isDirectory(module.resolve("target/test-classes"))) entries.add(module.resolve("target/test-classes").toString());
             entries.forEach(classpath::add);
-            scratch = Files.createTempDirectory("quill-kotlin-semantic-");
-            Path output = scratch.resolve("response.json");
-            List<String> worker;
-            try { worker = org.treblereel.mcp.kotlin.KotlinRuntime.workerCommand(); }
-            catch (java.io.IOException missing) { return status("runtime_missing"); }
-            process = new ProcessBuilder(worker).redirectOutput(output.toFile())
-                    .redirectError(scratch.resolve("stderr.txt").toFile()).start();
-            try (var input = process.getOutputStream()) { JSON.writeValue(input, request); }
-            if (!process.waitFor(30, TimeUnit.SECONDS)) {
-                process.destroyForcibly(); process.waitFor(5, TimeUnit.SECONDS); return status("timeout");
-            }
-            if (process.exitValue() != 0 || !Files.isRegularFile(output) || Files.size(output) > 1024 * 1024) return status("worker_failed");
-            JsonNode response = JSON.readTree(output.toFile());
-            if (response == null || !response.isObject() || !response.path("status").isTextual()
-                    || !response.path("backend").asText().equals("kotlin_k2_fir")) return status("worker_failed");
-            return response;
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt(); return status("interrupted");
-        } catch (Exception failure) { return status(process == null ? "unavailable" : "worker_failed"); }
-        finally {
-            if (process != null && process.isAlive()) process.destroyForcibly();
-            if (scratch != null) try (var paths = Files.walk(scratch)) {
-                for (var path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
-            } catch (Exception ignored) { /* Temporary files are never project files. */ }
-        }
+            return org.treblereel.mcp.kotlin.KotlinWorkerClient.shared().query(request);
+        } catch (Exception failure) { return status("unavailable"); }
     }
 
     private static JsonNode status(String status) { return JSON.createObjectNode().put("status", status); }

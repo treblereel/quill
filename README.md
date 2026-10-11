@@ -747,7 +747,12 @@ Gradle-specific repository credentials are not imported. Quill system properties
 `quill.kotlin.repository` (default Maven Central), and `quill.kotlin.offline` override
 these runtime settings. Maven settings profiles and global settings are not merged.
 With a prepared cache, initialization and queries work offline.
-Analysis runs in a child process with a 512 MiB heap limit and a 30-second timeout.
+Analysis reuses one child JVM per MCP session with a 512 MiB heap limit and a
+30-second timeout. Requests are serialized; each analysis rereads source files and
+module classpaths. Runtime checksums are validated when the worker starts, with file
+attributes checked between requests. Crashes, timeouts and runtime changes discard the
+worker; the next request starts a fresh process. MCP shutdown terminates it. The first
+K2 request still pays JVM/compiler startup; subsequent requests reuse loaded compiler classes.
 It reads captured module classpaths and a JDK (`JAVA_HOME`, or the JVM's `java.home`),
 without executing build scripts or loading project compiler plugins. Missing dependencies,
 unsupported syntax and analysis errors keep the metadata/lexical fallback, whose confidence

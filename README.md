@@ -771,6 +771,10 @@ recollect current inputs and retry if changes raced analysis. A query arriving d
 the debounce takes over the pending analysis. Module switches replace the subscriptions;
 MCP shutdown cancels background work and closes the watcher. Event delivery latency
 depends on the filesystem/platform; unavailable watching retains foreground analysis.
+For JDK polling watch providers (including macOS), Quill checks relevant directory-entry
+metadata every 100 ms instead of waiting for the provider's two-second poll. Native
+watch providers retain their event mechanism. These checks do not hash file contents;
+the worker still verifies input contents before and after analysis.
 Runtime checksums are validated when the worker starts, with file
 attributes checked between requests. Crashes, timeouts and runtime changes discard the
 worker; the next request starts a fresh process. MCP shutdown terminates it. When startup

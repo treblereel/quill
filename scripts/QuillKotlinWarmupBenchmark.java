@@ -18,7 +18,7 @@ import org.treblereel.mcp.kotlin.KotlinWorkerClient;
  */
 public final class QuillKotlinWarmupBenchmark {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private record Completion(long finished, JsonNode result) {}
+    private record Completion(long started, long finished, JsonNode result) {}
 
     public static void main(String[] args) throws Exception {
         if (args.length != 3) throw new IllegalArgumentException("Expected files, samples, output.json");
@@ -53,15 +53,24 @@ public final class QuillKotlinWarmupBenchmark {
                 .put("os", System.getProperty("os.name")).put("sources", sources.size()).put("samples_per_mode", samples);
         try (var service = FileSystems.getDefault().newWatchService()) {
             report.put("watch_service", service.getClass().getName());
+            report.put("input_detection", service.getClass().getName().endsWith(".PollingWatchService")
+                    ? "metadata_poll_100ms" : "system_watch_service");
         }
         var modes = report.putArray("modes");
         try (var coordinator = new KotlinWarmupCoordinator(request -> {
+            long started = System.nanoTime();
             JsonNode result = KotlinWorkerClient.shared().query(request);
-            if (request.path("offset").asInt() == -1) completions.add(new Completion(System.nanoTime(), result));
+            if (request.path("offset").asInt() == -1) completions.add(new Completion(started, System.nanoTime(), result));
             return result;
         }, Duration.ofMillis(150))) {
             JsonNode current = coordinator.query(module.toString(), foreground, background);
             verify(current, "()I", false);
+            report.put("watched_directories", coordinator.watchedDirectories().size());
+            var os = (com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            long idleStarted = System.nanoTime(), cpuStarted = os.getProcessCpuTime();
+            Thread.sleep(2000);
+            report.put("startup_idle_observation_ms", (System.nanoTime() - idleStarted) / 1_000_000.0)
+                    .put("startup_idle_parent_cpu_ms", (os.getProcessCpuTime() - cpuStarted) / 1_000_000.0);
             boolean booleanResult = false;
             for (int saves : new int[]{1, 5}) {
                 var mode = modes.addObject().put("saves_per_burst", saves).put("interval_ms", saves == 1 ? 0 : 20);
@@ -96,6 +105,8 @@ public final class QuillKotlinWarmupBenchmark {
                         throw new IllegalStateException("Query did not reuse the completed background generation");
                     warmTimes.add(elapsed); queryTimes.add(query);
                     var observation = observations.addObject().put("save_to_ready_ms", elapsed)
+                            .put("save_to_analysis_start_ms", (completed.started - lastSave) / 1_000_000.0)
+                            .put("analysis_roundtrip_ms", (completed.finished - completed.started) / 1_000_000.0)
                             .put("first_save_to_ready_ms", (completed.finished - firstSave) / 1_000_000.0)
                             .put("query_ms", query).put("observed_background_attempts", attempts)
                             .put("analysis_generation", current.path("analysis_generation").asLong());
@@ -106,6 +117,10 @@ public final class QuillKotlinWarmupBenchmark {
                 mode.put("save_to_ready_median_ms", percentile(warmTimes, .5)).put("save_to_ready_p95_ms", percentile(warmTimes, .95))
                         .put("query_median_ms", percentile(queryTimes, .5)).put("query_p95_ms", percentile(queryTimes, .95));
             }
+            idleStarted = System.nanoTime(); cpuStarted = os.getProcessCpuTime();
+            Thread.sleep(2000);
+            report.put("steady_idle_observation_ms", (System.nanoTime() - idleStarted) / 1_000_000.0)
+                    .put("steady_idle_parent_cpu_ms", (os.getProcessCpuTime() - cpuStarted) / 1_000_000.0);
             Files.writeString(Path.of(args[2]), JSON.writerWithDefaultPrettyPrinter().writeValueAsString(report) + "\n");
         } finally {
             KotlinWorkerClient.shared().close();

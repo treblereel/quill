@@ -138,16 +138,28 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
     }
     private static JsonNode status(String value) { return JSON.createObjectNode().put("status", value); }
 
+    Set<Path> watchedDirectories() {
+        synchronized (state) {
+            if (watcher == null) return Set.of();
+            return watcher.polling != null ? watcher.polling.directories() : Set.copyOf(watcher.directories.values());
+        }
+    }
+
     private final class InputsWatcher implements AutoCloseable {
         private final WatchService service = FileSystems.getDefault().newWatchService();
+        private final KotlinPollingWatcher polling = service.getClass().getName().endsWith(".PollingWatchService")
+                ? new KotlinPollingWatcher() : null;
+        private final Thread listener;
+        private volatile boolean stopped;
         private final Map<WatchKey, Path> directories = new ConcurrentHashMap<>();
         private volatile Set<Path> trees = Set.of(), files = Set.of();
+        private volatile Set<Path> fileAncestors = Set.of();
         private volatile boolean refresh = true;
         private String signature;
         private final long ownerEpoch;
         InputsWatcher(long epoch) throws IOException {
             ownerEpoch = epoch;
-            var thread = new Thread(this::listen, "quill-k2-input-watch"); thread.setDaemon(true); thread.start();
+            listener = new Thread(this::listen, "quill-k2-input-watch"); listener.setDaemon(true); listener.start();
         }
         void configure(JsonNode request) {
             if (!request.has("sources")) return;
@@ -179,6 +191,11 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
             for (Path path : List.copyOf(recursive)) addReal(recursive, path);
             for (Path path : List.copyOf(exact)) addReal(exact, path);
             trees = Set.copyOf(recursive); files = Set.copyOf(exact);
+            var ancestors = new HashSet<Path>();
+            for (Path path : exact) {
+                for (Path parent = path.getParent(); parent != null; parent = parent.getParent()) ancestors.add(parent);
+            }
+            fileAncestors = Set.copyOf(ancestors);
             Set<Path> desired = new HashSet<>();
             for (Path path : recursive) {
                 parents(desired, path, module);
@@ -192,6 +209,10 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
             for (Path path : exact) parents(desired, path.getParent(), module);
             Set<Path> canonical = new HashSet<>();
             for (Path path : desired) { try { canonical.add(path.toRealPath()); } catch (IOException ignored) { } }
+            if (polling != null) {
+                polling.configure(canonical, this::relevant);
+                return;
+            }
             directories.forEach((key, path) -> { if (!canonical.contains(path)) { key.cancel(); directories.remove(key); } });
             Set<Path> registered = new HashSet<>(directories.values());
             for (Path path : canonical) {
@@ -211,24 +232,33 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
             }
         }
         private void parents(Set<Path> values, Path path, Path module) {
+            Path canonicalModule;
+            try { canonicalModule = module.toRealPath(); } catch (IOException missing) { canonicalModule = module; }
             for (Path current = path; current != null; current = current.getParent()) {
                 if (Files.isDirectory(current)) values.add(current.toAbsolutePath().normalize());
                 // Only ancestors inside the module are needed to catch creation of missing trees.
-                if (!current.startsWith(module)) {
+                if (!current.startsWith(module) && !current.startsWith(canonicalModule)) {
                     if (!Files.isDirectory(current)) continue;
                     Path parent = current.getParent();
                     if (parent != null && Files.isDirectory(parent)) values.add(parent.toAbsolutePath().normalize());
                     break;
                 }
-                if (current.equals(module)) break;
+                if (current.equals(module) || current.equals(canonicalModule)) break;
             }
         }
         private boolean relevant(Path path) {
             return files.contains(path) || trees.stream().anyMatch(root -> path.startsWith(root) || root.startsWith(path))
-                    || files.stream().anyMatch(file -> file.startsWith(path));
+                    || fileAncestors.contains(path);
         }
         private void listen() {
             try {
+                if (polling != null) {
+                    while (!stopped) {
+                        Thread.sleep(KotlinPollingWatcher.INTERVAL_MILLIS);
+                        if (polling.poll()) { refresh = true; changed(ownerEpoch); }
+                    }
+                    return;
+                }
                 while (true) {
                     WatchKey key = service.take(); Path directory = directories.get(key);
                     boolean dirty = false;
@@ -245,6 +275,8 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
             catch (ClosedWatchServiceException closed) { }
         }
         @Override public void close() {
+            stopped = true;
+            listener.interrupt();
             try { service.close(); } catch (IOException ignored) { }
             directories.clear();
         }

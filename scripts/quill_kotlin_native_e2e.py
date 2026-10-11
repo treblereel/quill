@@ -187,13 +187,14 @@ def main() -> None:
                                           "fun nativeProbe() = typedNavigation(42)\n")
                         # Allow filesystem delivery (polling on some platforms), debounce and
                         # frontend work to finish without sending any intervening MCP query.
-                        time.sleep(4)
+                        time.sleep(1)
                         ready, timing = client.call("get_symbol_at_position", {
                             "path": "src/main/kotlin/NativeProbe.kt", "line": 2, "column": 21})
                         assert ready["selected"]["jvm_descriptor"] == "(I)I", ready
                         assert ready["semantic_analysis"]["analysis_reused"] is True, ready
                         assert ready["semantic_analysis"]["analysis_generation"] > generation, ready
-                        report["mcp"][mode]["background_warmed_query"] = {"result": ready, "metrics": timing}
+                        report["mcp"][mode]["background_warmed_query"] = {
+                            "result": ready, "metrics": timing, "idle_allowance_seconds": 1}
             # A fresh MCP session warms the sole indexed Kotlin main module without
             # any semantic query. This checks reuse after an allowance, not readiness time.
             with WorkflowClient(command, project, 60) as client:

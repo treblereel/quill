@@ -379,7 +379,7 @@ exhausted child that remains alive after flushing its response.
 The stage benchmark now uses the production stack setting and can reproduce the
 inferred-return workload with `--files 500 --functions-per-file 1 --inferred-return-types`.
 
-## Save-to-background-ready latency
+## Save-to-background-ready latency before accelerated polling
 
 The reproducible `scripts/QuillKotlinWarmupBenchmark.java` runs the production
 coordinator, filesystem watcher and external K2 worker in a JVM parent. It observes
@@ -413,7 +413,9 @@ event delivery plus scheduling dominates this workload. Arbitrarily timed user s
 can have a different phase, and Linux/Windows watchers need separate measurements.
 Reducing the 150 ms debounce alone would leave most of this macOS delay intact.
 
-Reproduce from the repository root after building the app all.jar:
+Run the benchmark from the repository root after building the app all.jar. The table
+above is the historical baseline; the current implementation uses accelerated polling
+on this host and produces the results in the following section.
 
 ```bash
 quill_bench_classes=$(mktemp -d)
@@ -429,6 +431,79 @@ and local Maven artifacts. Set `-Dquill.kotlin.cache` to isolate worker/manifest
 The report records raw samples and compiler stages. A small smoke workload additionally
 checks the report's watcher implementation field; invalid count arguments are rejected
 before creating the fixture.
+
+## Accelerated detection for polling providers
+
+Quill retains system events for native WatchService providers. For the JDK's
+`PollingWatchService`, it instead snapshots relevant directory-entry metadata with
+100 ms between scans. The existing 150 ms debounce and one active module/source-set
+remain unchanged. This avoids an additional native bridge or runtime dependency.
+It is accelerated polling, not macOS FSEvents.
+
+Snapshots compare modification time, size, file identity (when provided by the
+filesystem), directory and symlink flags. They cover the same canonical input
+directories and ancestors as the existing watcher, including future output trees,
+external classpath entries and symlink targets. Reconfiguration preserves existing
+baselines so a save is not silently acknowledged. Losing directory visibility and
+recovering each notify once; module switches remove old subscriptions and shutdown
+interrupts the polling thread.
+Canonical aliases of a module (such as `/var` and `/private/var` on macOS) stop at
+the same module boundary, avoiding subscriptions to their shared temporary parent.
+Exact-file ancestor filtering uses a set rather than scanning the source list for
+each directory entry.
+
+Each scan lists subscribed directories and reads relevant entry attributes; it does
+not hash source or JAR contents. Scan cost grows with subscribed inputs, and a scan
+adds to the 100 ms sleep, so this is not a delivery deadline. In-place writes which
+preserve identity, size and modification time can escape metadata detection. The
+foreground worker still checks content fingerprints before and after analysis.
+Atomic replacement with preserved size/time is detected through file identity on
+the tested filesystem.
+
+Regression tests cover atomic saves, preserved-size/time replacement, deletion and
+recreation, future trees, irrelevant siblings, reconfiguration during a save, removal
+of subscriptions, lost visibility/recovery, symlink target edits, save bursts, and a
+query waiting while another save occurs during warmup. Native MCP E2E verifies FIR
+reuse after a one-second allowance following a source save; this is an allowance
+test, not a measured native save-to-ready distribution.
+
+The benchmark additionally records save-to-analysis-start (including detection,
+debounce and input preparation), worker roundtrip, subscription count, and aggregate
+parent CPU time during two-second idle observations after startup and after the
+analysis cycles. The CPU observations exclude the external K2
+process but includes all parent JVM activity; it is not isolated watcher CPU cost.
+
+On the same macOS arm64/GraalVM 25.0.1 host, the current implementation produced
+the following 20 samples per row (one explicitly typed function per generated file,
+plus Definitions/Caller). All 120 cycles verified fresh descriptors and FIR reuse,
+with one observed background attempt per cycle. Each module subscribed to seven
+canonical directories. These are JVM coordinator measurements, excluding native MCP
+transport and indexing, with the worker also running GraalVM 25.0.1.
+
+| Sources | Saves per burst | Save → ready median / p95 (ms) | Warmed query median / p95 (ms) | Save → analysis start median (ms) | Frontend median (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 12 | 1 | 237 / 317 | 3.7 / 5.1 | 186 | 38.3 |
+| 12 | 5 | 215 / 298 | 2.7 / 5.7 | 185 | 24.7 |
+| 102 | 1 | 296 / 434 | 6.3 / 13.7 | 238 | 50.8 |
+| 102 | 5 | 216 / 308 | 4.7 / 6.4 | 172 | 36.3 |
+| 502 | 1 | 402 / 512 | 20.4 / 28.0 | 258 | 140.3 |
+| 502 | 5 | 398 / 421 | 15.9 / 27.9 | 302 | 71.5 |
+
+Aggregate parent CPU during the two-second idle observations after the analysis
+cycles was 30.5, 17.7 and 130.5 ms for 12, 102 and 502 sources, respectively
+(approximately 1.5%, 0.9% and 6.5% of one core over that observation). These are single
+short observations, include other JVM activity, and do not establish long-term CPU
+usage. Faster polling is a latency/CPU tradeoff; native macOS events would require a
+separate bridge compatible with both the JVM distribution and native image.
+
+The native executable is 67,266,264 bytes, compared with 67,266,232 bytes before
+this change. No new runtime dependency or native bridge is bundled.
+Validation passed the full 712 unit tests before the canonical-boundary correction,
+then all 33 affected tests after it (including the added boundary regression), plus
+20 native K2 cases with Java 17.0.2 and native MCP freshness/reuse checks. After a
+one-second allowance following a save, the native warmed query reused FIR and took
+5.9 ms in that smoke run. Scoped Quill verification completed with a satisfied gate
+and verified receipt after the successful build and index refresh.
 
 ## Warming the first query at MCP startup
 

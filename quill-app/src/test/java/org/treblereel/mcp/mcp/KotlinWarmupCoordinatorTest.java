@@ -207,4 +207,80 @@ class KotlinWarmupCoordinatorTest {
             Files.createDirectories(output); Files.writeString(binary, "after"); await(restored);
         }
     }
+
+    @Test void atomicSaveAndBurstReachBackgroundWithoutAForegroundQuery() throws Exception {
+        var request = request(); Path source = Path.of(request.path("file").asText());
+        var events = new LinkedBlockingQueue<String>();
+        Supplier<JsonNode> background = () -> {
+            try { return request.deepCopy().put("offset", -1).put("text", Files.readString(source)); }
+            catch (Exception failure) { throw new IllegalStateException(failure); }
+        };
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1) events.add(r.path("text").asText());
+            return result(r);
+        }, Duration.ofMillis(150))) {
+            coordinator.query("main", () -> request, background);
+            Path staged = source.resolveSibling(".Caller.kt.save");
+            Files.writeString(staged, "fun run() = true");
+            Files.move(staged, source, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            assertEquals("fun run() = true", events.poll(8, TimeUnit.SECONDS));
+            for (int i = 0; i < 5; i++) { Files.writeString(source, "fun run() = " + i); Thread.sleep(20); }
+            assertEquals("fun run() = 4", events.poll(8, TimeUnit.SECONDS));
+            assertNull(events.poll(400, TimeUnit.MILLISECONDS), "Burst should coalesce into one warmup");
+        }
+    }
+
+    @Test void filesystemSaveDuringWarmupIsReanalyzedAndWaitingQueryUsesLatestInputs() throws Exception {
+        var request = request(); Path source = Path.of(request.path("file").asText());
+        var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+        var readLatest = new CountDownLatch(1);
+        Supplier<JsonNode> input = () -> {
+            try {
+                String text = Files.readString(source);
+                if (text.contains("true")) readLatest.countDown();
+                return request.deepCopy().put("text", text);
+            } catch (Exception failure) { throw new IllegalStateException(failure); }
+        };
+        Supplier<JsonNode> background = () -> ((ObjectNode) input.get()).put("offset", -1);
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1 && r.path("text").asText().contains("= 2")) {
+                entered.countDown(); await(release);
+            }
+            return JSON.createObjectNode().put("status", "resolved").put("text", r.path("text").asText());
+        }, Duration.ofMillis(100))) {
+            coordinator.query("main", input, background);
+            Files.writeString(source, "fun run() = 2"); await(entered);
+            var pool = Executors.newSingleThreadExecutor();
+            try {
+                var answer = pool.submit(() -> coordinator.query("main", input, background));
+                assertThrows(TimeoutException.class, () -> answer.get(100, TimeUnit.MILLISECONDS));
+                Files.writeString(source, "fun run() = true"); release.countDown();
+                assertEquals("fun run() = true", answer.get(8, TimeUnit.SECONDS).path("text").asText());
+                await(readLatest);
+            } finally { release.countDown(); pool.shutdownNow(); }
+        }
+    }
+
+    @Test void symlinkedSourceTargetChangesTriggerWarmup() throws Exception {
+        var request = request(); Path source = Path.of(request.path("file").asText());
+        Path target = external.resolve("Caller.kt"); Files.move(source, target); Files.createSymbolicLink(source, target);
+        var warmed = new CountDownLatch(1);
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1) warmed.countDown(); return result(r);
+        }, Duration.ofMillis(100))) {
+            coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
+            Files.writeString(target, "fun run() = true"); await(warmed);
+        }
+    }
+
+    @Test void canonicalModuleAliasesDoNotSubscribeToSharedTemporaryParent() throws Exception {
+        var request = request();
+        try (var coordinator = new KotlinWarmupCoordinator(this::result, Duration.ZERO)) {
+            coordinator.query("main", () -> request, () -> request);
+            Path canonical = temp.toRealPath();
+            assertFalse(coordinator.watchedDirectories().isEmpty());
+            assertTrue(coordinator.watchedDirectories().stream().allMatch(path -> path.startsWith(canonical)),
+                    () -> "Unexpected subscriptions outside the module: " + coordinator.watchedDirectories());
+        }
+    }
 }

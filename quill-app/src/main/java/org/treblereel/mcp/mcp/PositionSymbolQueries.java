@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Locale;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.KotlinSourceText;
+import org.treblereel.mcp.model.KotlinValueParameter;
+import org.treblereel.mcp.db.IndexReader;
 
 /** Resolves the identifier under a live source position against indexed declarations. */
 final class PositionSymbolQueries {
@@ -66,7 +68,7 @@ final class PositionSymbolQueries {
         for (int i = 0; i < line - 1; i++) lineOffset += lines.get(i).length() + 1;
         if (sourceContext.kind() == ContextKind.METHOD_CALL || sourceContext.kind() == ContextKind.CONSTRUCTOR_CALL) {
             sourceContext = new SourceContext(sourceContext.kind(),
-                    argumentCount(source.substring(lineOffset + located.end()).stripLeading()));
+                    arguments(source.substring(lineOffset + located.end()).stripLeading()));
         }
         final SourceContext context = sourceContext;
         String enclosingClass = kotlin || enclosing.isEmpty() ? null : enclosing.getFirst().className();
@@ -77,7 +79,13 @@ final class PositionSymbolQueries {
                         .thenComparing(value -> value.candidate().kind()))
                 .toList();
         RankedCandidate selected = ranked.isEmpty() ? null : ranked.getFirst();
+        var callables = ranked.stream().filter(value -> value.candidate().kind().equals("METHOD")
+                || value.candidate().kind().equals("CONSTRUCTOR")).toList();
+        boolean noApplicable = kotlin && sourceContext.kind() == ContextKind.METHOD_CALL && !callables.isEmpty()
+                && callables.stream().allMatch(value -> value.reasons().contains("arguments_not_applicable"));
         boolean decisive = selected != null
+                && !selected.reasons().contains("arguments_not_applicable")
+                && (!kotlin || sourceContext.kind() != ContextKind.METHOD_CALL || !selected.candidate().kind().equals("CLASS"))
                 && (ranked.size() == 1 || selected.score() > ranked.get(1).score());
         ObjectNode result = JSON.createObjectNode();
         result.put("path", normalized);
@@ -87,9 +95,9 @@ final class PositionSymbolQueries {
         result.put("context", sourceContext.kind().name().toLowerCase());
         if (sourceContext.argumentCount() == null) result.putNull("argument_count");
         else result.put("argument_count", sourceContext.argumentCount());
-        result.put("resolution", decisive ? "resolved"
+        result.put("resolution", noApplicable ? "no_applicable_candidate" : decisive ? "resolved"
                 : candidates.isEmpty() ? "enclosing_class_fallback" : "ambiguous");
-        result.put("confidence", decisive && selected.score() >= 100 && !kotlin ? "high"
+        result.put("confidence", noApplicable ? "low" : decisive && selected.score() >= 100 && !kotlin ? "high"
                 : decisive ? "medium" : candidates.isEmpty() && !enclosing.isEmpty() ? "low" : "medium");
         if (decisive) {
             ObjectNode selectedNode = result.putObject("selected");
@@ -120,6 +128,7 @@ final class PositionSymbolQueries {
                                c.source_file, c.source_line,
                                NULL AS semantic_kind, NULL AS semantic_name,
                                0 AS is_suspend, 0 AS is_extension, 0 AS has_defaults,
+                               NULL AS value_parameters,
                                CASE WHEN c.source_file = :path OR f.project_path = :path
                                           OR f.repository_path = :path THEN 1 ELSE 0 END AS same_file
                         FROM classes c LEFT JOIN files f ON f.id = c.file_id
@@ -135,12 +144,15 @@ final class PositionSymbolQueries {
                                COALESCE(kd.is_suspend, 0) AS is_suspend,
                                COALESCE(kd.is_extension, 0) AS is_extension,
                                COALESCE(kd.has_default_parameters, 0) AS has_defaults,
+                               kd.value_parameters,
                                CASE WHEN c.source_file = :path OR f.project_path = :path
                                           OR f.repository_path = :path THEN 1 ELSE 0 END AS same_file
                         FROM class_members m JOIN classes c ON c.id = m.class_id
                         LEFT JOIN files f ON f.id = c.file_id
                         LEFT JOIN kotlin_declarations kd ON kd.class_id = m.class_id
-                          AND ((kd.kind = 'FUNCTION' AND kd.jvm_name = m.name
+                          AND ((kd.kind = 'CONSTRUCTOR' AND m.kind = 'CONSTRUCTOR'
+                                AND kd.jvm_name = '<init>' AND kd.descriptor = m.descriptor)
+                               OR (kd.kind = 'FUNCTION' AND kd.jvm_name = m.name
                                 AND kd.descriptor = m.descriptor)
                                OR (kd.kind = 'PROPERTY' AND kd.jvm_name = m.name
                                    AND (kd.descriptor = '' OR kd.descriptor = m.descriptor)))
@@ -155,11 +167,13 @@ final class PositionSymbolQueries {
                         row.getString("member_name"), row.getString("signature"),
                         row.getString("descriptor"),
                         sourceParameterCount(row.getString("parameter_types"),
-                                row.getInt("is_suspend") == 1, row.getInt("is_extension") == 1),
+                                row.getInt("is_suspend") == 1, row.getInt("is_extension") == 1,
+                                row.getString("value_parameters")),
                         row.getString("source_file"), row.getInt("source_line"),
                         row.getInt("same_file") == 1,
                         row.getString("semantic_kind"), row.getString("semantic_name"),
-                        row.getInt("has_defaults") == 1))
+                        row.getInt("has_defaults") == 1,
+                        IndexReader.kotlinParametersFromJson(row.getString("value_parameters"))))
                 .list());
     }
 
@@ -199,7 +213,7 @@ final class PositionSymbolQueries {
                     if (!property.name().equals(name)) continue;
                     result.put(property.symbolId(), new Candidate(owner.className(), "PROPERTY", name,
                             null, property.descriptor(), null, owner.sourceFile(), owner.sourceLine(),
-                            candidate.sameFile(), "PROPERTY", name, false));
+                            candidate.sameFile(), "PROPERTY", name, false, null));
                 }
             }
         }
@@ -251,7 +265,7 @@ final class PositionSymbolQueries {
         String before = line.substring(0, identifier.start()).stripTrailing();
         String after = line.substring(identifier.end()).stripLeading();
         boolean call = after.startsWith("(");
-        Integer arguments = call ? argumentCount(after) : null;
+        List<Argument> arguments = call ? arguments(after) : null;
         if (before.matches("(?s).*\\bnew\\s*$")) {
             return new SourceContext(ContextKind.CONSTRUCTOR_CALL, arguments);
         }
@@ -260,28 +274,75 @@ final class PositionSymbolQueries {
         return new SourceContext(ContextKind.IDENTIFIER, null);
     }
 
-    private static Integer argumentCount(String after) {
+    private static List<Argument> arguments(String after) {
         if (!after.startsWith("(")) return null;
         String masked = KotlinSourceText.codeWithLiteralMarkers(after);
-        int parentheses = 0, brackets = 0, braces = 0, commas = 0;
-        boolean content = false;
+        int parentheses = 0, brackets = 0, braces = 0, start = 1;
+        List<Argument> result = new ArrayList<>();
         for (int i = 0; i < masked.length(); i++) {
             char c = masked.charAt(i);
-            if (c == '<') return null; // Generic arguments/comparisons need a syntax-aware backend.
+            if (c == '<' || c == '`') return null; // Keep unsupported syntax conservative.
             if (c == '[') brackets++;
             if (c == ']') brackets--;
             if (c == '{') braces++;
             if (c == '}') braces--;
-            if (c == '(') {
-                if (++parentheses > 1) content = true;
-            } else if (c == ')') {
-                if (--parentheses == 0) return content ? commas + 1 : commas;
+            if (c == '(') parentheses++;
+            else if (c == ')' && --parentheses == 0) {
+                if (brackets != 0 || braces != 0) return null;
+                // Trailing lambdas require parameter type information; do not reject a valid call by arity.
+                if (masked.substring(i + 1).stripLeading().startsWith("{")) return null;
+                String tail = masked.substring(start, i).strip();
+                if (!tail.isEmpty()) {
+                    var argument = argument(tail);
+                    if (argument == null) return null;
+                    result.add(argument);
+                }
+                return List.copyOf(result);
             } else if (c == ',' && parentheses == 1 && brackets == 0 && braces == 0) {
-                if (content) commas++;
-                content = false;
-            } else if (!Character.isWhitespace(c)) content = true;
+                String segment = masked.substring(start, i).strip();
+                if (segment.isEmpty()) return null;
+                var argument = argument(segment);
+                if (argument == null) return null;
+                result.add(argument); start = i + 1;
+            }
+            if (parentheses < 0 || brackets < 0 || braces < 0) return null;
         }
         return null;
+    }
+
+    private static Argument argument(String text) {
+        var named = java.util.regex.Pattern.compile("^([\\p{L}_$][\\p{L}\\p{N}_$]*)\\s*=(?!=)\\s*([\\s\\S]*)$").matcher(text);
+        if (named.matches()) {
+            String value = named.group(2).strip();
+            return value.isEmpty() || value.equals("*") ? null : new Argument(named.group(1), value.startsWith("*"));
+        }
+        return text.equals("*") ? null : new Argument(null, text.startsWith("*"));
+    }
+
+    private static Applicability applicable(List<KotlinValueParameter> parameters, List<Argument> arguments) {
+        if (parameters == null || arguments == null) return Applicability.UNKNOWN;
+        boolean[] supplied = new boolean[parameters.size()];
+        int position = 0; boolean named = false;
+        for (var argument : arguments) {
+            int index;
+            if (argument.name() != null) {
+                named = true; index = -1;
+                for (int i = 0; i < parameters.size(); i++)
+                    if (parameters.get(i).name().equals(argument.name())) { index = i; break; }
+                if (index < 0 || supplied[index]) return Applicability.NO_MATCH;
+            } else {
+                if (named) return Applicability.UNKNOWN;
+                index = position;
+                if (index >= parameters.size()) return Applicability.NO_MATCH;
+                if (!parameters.get(index).vararg()) position++;
+            }
+            if (argument.spread() && !parameters.get(index).vararg()) return Applicability.NO_MATCH;
+            supplied[index] = true;
+        }
+        for (int i = 0; i < parameters.size(); i++)
+            if (!supplied[i] && !parameters.get(i).hasDefault() && !parameters.get(i).vararg())
+                return Applicability.NO_MATCH;
+        return Applicability.MATCH;
     }
 
     private static RankedCandidate rank(
@@ -317,18 +378,24 @@ final class PositionSymbolQueries {
             }
             case IDENTIFIER -> { }
         }
-        if (context.argumentCount() != null && candidate.parameterCount() != null) {
+        Applicability applicability = kotlin && (candidate.kind().equals("METHOD") || candidate.kind().equals("CONSTRUCTOR"))
+                ? applicable(candidate.valueParameters(), context.arguments()) : Applicability.UNKNOWN;
+        if (applicability == Applicability.NO_MATCH) {
+            score -= 150;
+            reasons.add("arguments_not_applicable");
+        } else if (applicability == Applicability.MATCH) {
+            score += 30;
+            reasons.add("metadata_arguments_match");
+        } else if (context.argumentCount() != null && candidate.parameterCount() != null) {
             if (context.argumentCount().equals(candidate.parameterCount())) {
                 score += 30;
                 reasons.add("argument_count_match");
+            } else if (candidate.hasDefaults() && context.argumentCount() < candidate.parameterCount()) {
+                score += 10;
+                reasons.add("default_arguments_possible");
             } else {
-                if (candidate.hasDefaults() && context.argumentCount() < candidate.parameterCount()) {
-                    score += 10;
-                    reasons.add("default_arguments_possible");
-                } else {
-                    score -= 20;
-                    reasons.add("argument_count_mismatch");
-                }
+                score -= 20;
+                reasons.add("argument_count_mismatch");
             }
         }
         return new RankedCandidate(candidate, score, List.copyOf(reasons));
@@ -344,7 +411,9 @@ final class PositionSymbolQueries {
         }
     }
 
-    private static Integer sourceParameterCount(String json, boolean suspend, boolean extension) {
+    private static Integer sourceParameterCount(String json, boolean suspend, boolean extension, String metadata) {
+        var parameters = IndexReader.kotlinParametersFromJson(metadata);
+        if (parameters != null) return parameters.size();
         Integer count = parameterCount(json);
         return count == null ? null : Math.max(0, count - (suspend ? 1 : 0) - (extension ? 1 : 0));
     }
@@ -365,6 +434,11 @@ final class PositionSymbolQueries {
             item.put("kotlin_name", candidate.semanticName());
         }
         if (candidate.parameterCount() != null) item.put("parameter_count", candidate.parameterCount());
+        if (candidate.valueParameters() != null) {
+            item.set("value_parameters", JSON.valueToTree(candidate.valueParameters()));
+            item.put("required_parameter_count", candidate.valueParameters().stream()
+                    .filter(parameter -> !parameter.hasDefault() && !parameter.vararg()).count());
+        }
         if (candidate.sourceFile() != null) item.put("source_file", candidate.sourceFile());
         item.put("same_file", candidate.sameFile());
         item.put("score", ranked.score());
@@ -377,11 +451,15 @@ final class PositionSymbolQueries {
 
     private record Identifier(String value, int start, int end) {}
     private enum ContextKind { CONSTRUCTOR_CALL, METHOD_CALL, MEMBER_ACCESS, IDENTIFIER }
-    private record SourceContext(ContextKind kind, Integer argumentCount) {}
+    private record Argument(String name, boolean spread) {}
+    private enum Applicability { MATCH, NO_MATCH, UNKNOWN }
+    private record SourceContext(ContextKind kind, List<Argument> arguments) {
+        Integer argumentCount() { return arguments == null ? null : arguments.size(); }
+    }
     private record Candidate(String className, String kind, String memberName,
             String signature, String descriptor, Integer parameterCount, String sourceFile,
             int sourceLine, boolean sameFile,
-            String semanticKind, String semanticName, boolean hasDefaults) {}
+            String semanticKind, String semanticName, boolean hasDefaults, List<KotlinValueParameter> valueParameters) {}
     private record RankedCandidate(Candidate candidate, int score, List<String> reasons) {}
     private record EnclosingClass(String className, int sourceLine) {}
 }

@@ -46,7 +46,7 @@ final class KotlinUsageNormalizer {
         var target = IndexReader.findKotlinDeclarations(jdbi, call.toClassId());
         if (source.isEmpty() || target.isEmpty()) return false;
         // A real source function must never be collapsed just because it forwards a call.
-        if (source.stream().anyMatch(value -> ("FUNCTION".equals(value.kind()) || "PROPERTY".equals(value.kind()))
+        if (source.stream().anyMatch(value -> ("FUNCTION".equals(value.kind()) || "PROPERTY".equals(value.kind()) || "CONSTRUCTOR".equals(value.kind()))
                 && call.fromMethod().equals(value.jvmName())
                 && call.fromDescriptor().equals(value.descriptor()))) return false;
         if (call.toMethod().equals(call.fromMethod() + "$default")
@@ -64,7 +64,7 @@ final class KotlinUsageNormalizer {
             }
         }
         boolean constructor = "<init>".equals(call.toMethod());
-        var declaration = target.stream().filter(value -> ("FUNCTION".equals(value.kind()) || "PROPERTY".equals(value.kind()))
+        var declaration = target.stream().filter(value -> ("FUNCTION".equals(value.kind()) || "PROPERTY".equals(value.kind()) || "CONSTRUCTOR".equals(value.kind()))
                 && call.toMethod().equals(value.jvmName())
                 && call.toDescriptor().equals(value.descriptor())).findFirst();
         boolean targetOverload = declaration.isEmpty()
@@ -87,8 +87,11 @@ final class KotlinUsageNormalizer {
             int receiver = !constructor && from.length > 0
                     && from[0].getDescriptor().equals("L" + call.toClass().replace('.', '/') + ";")
                     && !call.invocationKind().equals("static") ? 1 : 0;
-            int valueParameters = to.length - (!constructor && declaration.get().isSuspend() ? 1 : 0)
-                    - (!constructor && declaration.get().extension() ? 1 : 0);
+            if (constructor && declaration.isPresent() && !declaration.get().hasDefaultParameters()) return false;
+            int valueParameters = declaration.isPresent() && declaration.get().valueParameters() != null
+                    ? declaration.get().valueParameters().size()
+                    : to.length - (!constructor && declaration.get().isSuspend() ? 1 : 0)
+                        - (!constructor && declaration.get().extension() ? 1 : 0);
             int masks = (valueParameters + 31) / 32;
             if (from.length != receiver + to.length + masks + 1) return false;
             for (int i = 0; i < to.length; i++) if (!from[receiver + i].equals(to[i])) return false;

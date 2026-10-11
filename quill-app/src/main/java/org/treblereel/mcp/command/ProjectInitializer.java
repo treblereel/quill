@@ -789,7 +789,13 @@ public class ProjectInitializer {
                     function.descriptor() == null ? "" : function.descriptor(),
                     "kotlin_metadata", function.suspend(), function.extension(),
                     function.hasDefaultParameters(), false, false, false,
-                    function.synthesized())));
+                    function.synthesized(), function.valueParameters())));
+            value.constructors().forEach(constructor -> result.add(new KotlinDeclarationRecord(
+                    classId, "CONSTRUCTOR", name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1), "<init>",
+                    constructor.descriptor() == null ? "" : constructor.descriptor(),
+                    "kotlin_metadata", false, false,
+                    constructor.valueParameters().stream().anyMatch(parameter -> parameter.hasDefault()),
+                    false, false, false, false, constructor.valueParameters())));
             value.properties().forEach(property -> {
                 int before = result.size();
                 addPropertyDeclaration(result, classId, property, property.fieldName(),

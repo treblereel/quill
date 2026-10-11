@@ -282,4 +282,76 @@ class KotlinQueryRegressionTest {
         assertEquals(4, result.usages().getFirst().path().size());
     }
 
+    private void parameters(int owner, String kind, String jvm, String descriptor, String json) {
+        db.useHandle(h -> h.createUpdate("UPDATE kotlin_declarations SET value_parameters=:json WHERE class_id=:id AND kind=:kind AND jvm_name=:name AND descriptor=:desc")
+                .bind("json", json).bind("id", owner).bind("kind", kind).bind("name", jvm).bind("desc", descriptor).execute());
+    }
+
+    @Test void requiredParametersAfterDefaultsNeedNamedArgumentsWhenSkipped() throws Exception {
+        String desc = "(II)V";
+        member(1, "METHOD", "f", desc, "[\"int\",\"int\"]");
+        declaration(1, "FUNCTION", "f", "f", desc, false, false, true);
+        parameters(1, "FUNCTION", "f", desc, "[{\"name\":\"optional\",\"hasDefault\":true,\"vararg\":false},{\"name\":\"required\",\"hasDefault\":false,\"vararg\":false}]");
+        assertFalse(position("fun run() = f()", "f(").has("selected"));
+        assertEquals("no_applicable_candidate", position("fun run() = f()", "f(").path("resolution").asText());
+        assertEquals("low", position("fun run() = f()", "f(").path("confidence").asText());
+        assertFalse(position("fun run() = f(1)", "f(").has("selected"));
+        assertTrue(position("fun run() = f(required = 1)", "f(").has("selected"));
+        assertTrue(position("fun run() = f(1, required = 2)", "f(").has("selected"));
+        assertTrue(position("fun run() = f(required = 2, optional = 1)", "f(").has("selected"));
+        assertFalse(position("fun run() = f(unknown = 1)", "f(").has("selected"));
+        assertFalse(position("fun run() = f(required = 1, required = 2)", "f(").has("selected"));
+        assertFalse(position("fun run() = f(1, 2, 3)", "f(").has("selected"));
+        assertEquals(1, position("fun run() = f(required = 1)", "f(").path("selected").path("required_parameter_count").asInt());
+    }
+
+    @Test void varargsAllowEmptyMultipleAndSpreadButNonLastVarargNeedsNamedSuffix() throws Exception {
+        String desc = "([II)V";
+        member(1, "METHOD", "f", desc, "[\"int[]\",\"int\"]");
+        declaration(1, "FUNCTION", "f", "f", desc, false, false, false);
+        parameters(1, "FUNCTION", "f", desc, "[{\"name\":\"values\",\"hasDefault\":false,\"vararg\":true},{\"name\":\"tail\",\"hasDefault\":false,\"vararg\":false}]");
+        assertTrue(position("fun run() = f(tail = 1)", "f(").has("selected"));
+        assertTrue(position("fun run() = f(1, 2, 3, tail = 4)", "f(").has("selected"));
+        assertTrue(position("fun run() = f(*values, tail = 4)", "f(").has("selected"));
+        assertFalse(position("fun run() = f(1, 2, 3)", "f(").has("selected"));
+        assertFalse(position("fun run() = f(*values, tail = *other)", "f(").has("selected"));
+        assertTrue(position("fun run() = f(1) { work() }", "f(").path("argument_count").isNull());
+    }
+
+    @Test void constructorsUseSourceParametersInsteadOfHiddenJvmReceiver() throws Exception {
+        String desc = "(Lacme/Outer;I)V";
+        member(1, "CONSTRUCTOR", "Owner", desc, "[\"acme.Outer\",\"int\"]");
+        declaration(1, "CONSTRUCTOR", "<init>", "<init>", desc, false, false, true);
+        parameters(1, "CONSTRUCTOR", "<init>", desc, "[{\"name\":\"count\",\"hasDefault\":true,\"vararg\":false}]");
+        var selected = position("fun run() = outer.Owner()", "Owner(").path("selected");
+        assertEquals("CONSTRUCTOR", selected.path("kind").asText());
+        assertEquals(1, selected.path("parameter_count").asInt());
+        assertTrue(position("fun run() = outer.Owner(count = 1)", "Owner(").has("selected"));
+        assertFalse(position("fun run() = outer.Owner(1, 2)", "Owner(").has("selected"));
+    }
+
+    @Test void twoApplicableDefaultOverloadsRemainAmbiguousWithoutTypeInference() throws Exception {
+        for (String desc : List.of("(I)V", "(Ljava/lang/String;)V")) {
+            member(1, "METHOD", "f", desc, "[\"parameter\"]");
+            declaration(1, "FUNCTION", "f", "f", desc, false, false, true);
+            parameters(1, "FUNCTION", "f", desc, "[{\"name\":\"value\",\"hasDefault\":true,\"vararg\":false}]");
+        }
+        var result = position("fun run() = f()", "f(");
+        assertEquals("ambiguous", result.path("resolution").asText());
+        assertFalse(result.has("selected"));
+        assertEquals(2, result.path("candidate_count").asInt());
+    }
+
+    @Test void defaultConstructorMaskCountExcludesHiddenOuterParameterAt32Boundary() {
+        String original = "(Lacme/Outer;" + "I".repeat(32) + ")V";
+        String bridge = "(Lacme/Outer;" + "I".repeat(32) + "ILkotlin/jvm/internal/DefaultConstructorMarker;)V";
+        declaration(1, "CONSTRUCTOR", "<init>", "<init>", original, false, false, true);
+        var values = new java.util.ArrayList<org.treblereel.mcp.model.KotlinValueParameter>();
+        for (int i=0; i<32; i++) values.add(new org.treblereel.mcp.model.KotlinValueParameter("p"+i, true, false));
+        parameters(1, "CONSTRUCTOR", "<init>", original, JSON.valueToTree(values).toString());
+        call(1, "<init>", bridge, 1, "<init>", original, 0);
+        call(2, "run", "()V", 1, "<init>", bridge, 3);
+        assertEquals("run", KotlinUsageNormalizer.inbound(db, 1, "<init>", original).usages().getFirst().call().fromMethod());
+    }
+
 }

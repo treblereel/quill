@@ -18,3 +18,7 @@ class StaticShapes {
         fun welcome(name: String = "world"): String = "Welcome, $name"
     }
 }
+
+fun parameterShapes(optional: Int = 1, vararg values: String, required: String): String = required
+class ParameterShapes(val optional: Int = 1, val required: String)
+class ParameterOuter { inner class Child(val count: Int = 1) }

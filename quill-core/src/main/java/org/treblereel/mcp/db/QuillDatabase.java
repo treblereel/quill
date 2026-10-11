@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 25;
+    static final int SCHEMA_VERSION = 26;
 
     private QuillDatabase() {}
 
@@ -118,6 +118,7 @@ public final class QuillDatabase {
                     is_lateinit INTEGER NOT NULL DEFAULT 0,
                     is_delegated INTEGER NOT NULL DEFAULT 0,
                     is_synthetic INTEGER NOT NULL DEFAULT 0,
+                    value_parameters TEXT,
                     UNIQUE(class_id, kind, name, jvm_name, descriptor)
                 )""");
             h.execute("""

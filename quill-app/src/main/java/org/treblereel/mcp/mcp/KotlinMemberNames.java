@@ -22,8 +22,8 @@ final class KotlinMemberNames {
             List<KotlinDeclarationRecord> declarations) {
         return declarations.stream()
                 .filter(value -> "FUNCTION".equals(value.kind())
-                        || "PROPERTY".equals(value.kind()))
-                .filter(value -> member.name().equals(value.jvmName()))
+                        || "PROPERTY".equals(value.kind()) || "CONSTRUCTOR".equals(value.kind()))
+                .filter(value -> ("CONSTRUCTOR".equals(member.kind()) ? "<init>" : member.name()).equals(value.jvmName()))
                 .filter(value -> value.descriptor() == null || value.descriptor().isBlank()
                         || member.descriptor().equals(value.descriptor()))
                 .findFirst();

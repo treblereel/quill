@@ -5,6 +5,9 @@ import java.util.List;
 import kotlin.Metadata;
 import kotlinx.metadata.Flag;
 import kotlinx.metadata.KmDeclarationContainer;
+import kotlinx.metadata.KmClass;
+import kotlinx.metadata.KmValueParameter;
+import org.treblereel.mcp.model.KotlinValueParameter;
 import kotlinx.metadata.KmFunction;
 import kotlinx.metadata.KmPackage;
 import kotlinx.metadata.KmProperty;
@@ -45,7 +48,14 @@ public final class KotlinMetadataReader {
 
     public record Function(
             String name, String jvmName, String descriptor, boolean suspend,
-            boolean extension, boolean hasDefaultParameters, boolean synthesized) {}
+            boolean extension, boolean hasDefaultParameters, boolean synthesized,
+            List<KotlinValueParameter> valueParameters) {
+        public Function { valueParameters = List.copyOf(valueParameters); }
+    }
+
+    public record Constructor(String descriptor, List<KotlinValueParameter> valueParameters) {
+        public Constructor { valueParameters = List.copyOf(valueParameters); }
+    }
 
     public record Property(
             String name, boolean mutable, boolean lateinit, boolean delegated,
@@ -56,15 +66,23 @@ public final class KotlinMetadataReader {
     public record Result(
             Status status, Kind kind, String kotlinName, String metadataVersion,
             boolean data, boolean inner, boolean value, boolean funInterface,
-            List<Function> functions, List<Property> properties, String detail) {
+            List<Function> functions, List<Property> properties, List<Constructor> constructors, String detail) {
         public Result {
             functions = functions == null ? List.of() : List.copyOf(functions);
             properties = properties == null ? List.of() : List.copyOf(properties);
+            constructors = constructors == null ? List.of() : List.copyOf(constructors);
+        }
+
+        public Result(Status status, Kind kind, String kotlinName, String metadataVersion,
+                boolean data, boolean inner, boolean value, boolean funInterface,
+                List<Function> functions, List<Property> properties, String detail) {
+            this(status, kind, kotlinName, metadataVersion, data, inner, value, funInterface,
+                    functions, properties, List.of(), detail);
         }
 
         static Result absent() {
             return new Result(Status.ABSENT, Kind.UNKNOWN, null, null,
-                    false, false, false, false, List.of(), List.of(), null);
+                    false, false, false, false, List.of(), List.of(), List.of(), null);
         }
     }
 
@@ -91,7 +109,7 @@ public final class KotlinMetadataReader {
             KotlinClassMetadata metadata = KotlinClassMetadata.readLenient(header);
             if (metadata == null) {
                 return new Result(Status.UNSUPPORTED, Kind.UNKNOWN, null, version,
-                        false, false, false, false, List.of(), List.of(),
+                        false, false, false, false, List.of(), List.of(), List.of(),
                         "Unsupported Kotlin metadata kind " + header.k());
             }
             if (metadata instanceof KotlinClassMetadata.Class value) {
@@ -101,7 +119,7 @@ public final class KotlinMetadataReader {
                         version, Flag.Class.IS_DATA.invoke(flags),
                         Flag.Class.IS_INNER.invoke(flags),
                         Flag.Class.IS_VALUE.invoke(flags) || Flag.Class.IS_INLINE.invoke(flags),
-                        Flag.Class.IS_FUN.invoke(flags), functions(kmClass), properties(kmClass), null);
+                        Flag.Class.IS_FUN.invoke(flags), functions(kmClass), properties(kmClass), constructors(kmClass), null);
             }
             if (metadata instanceof KotlinClassMetadata.FileFacade value) {
                 return packageResult(Kind.FILE_FACADE, value.getKmPackage(), version, null);
@@ -112,15 +130,15 @@ public final class KotlinMetadataReader {
             }
             if (metadata instanceof KotlinClassMetadata.MultiFileClassFacade value) {
                 return new Result(Status.PARSED, Kind.MULTIFILE_FACADE, null, version,
-                        false, false, false, false, List.of(), List.of(),
+                        false, false, false, false, List.of(), List.of(), List.of(),
                         String.join(",", value.getPartClassNames()));
             }
             if (metadata instanceof KotlinClassMetadata.SyntheticClass) {
                 return new Result(Status.PARSED, Kind.SYNTHETIC, null, version,
-                        false, false, false, false, List.of(), List.of(), null);
+                        false, false, false, false, List.of(), List.of(), List.of(), null);
             }
             return new Result(Status.UNSUPPORTED, Kind.UNKNOWN, null, version,
-                    false, false, false, false, List.of(), List.of(),
+                    false, false, false, false, List.of(), List.of(), List.of(),
                     "Unsupported Kotlin metadata representation "
                             + metadata.getClass().getSimpleName());
         } catch (IllegalArgumentException failure) {
@@ -133,7 +151,7 @@ public final class KotlinMetadataReader {
     private static Result packageResult(
             Kind kind, KmPackage value, String version, String detail) {
         return new Result(Status.PARSED, kind, null, version,
-                false, false, false, false, functions(value), properties(value), detail);
+                false, false, false, false, functions(value), properties(value), List.of(), detail);
     }
 
     private static List<Function> functions(KmDeclarationContainer container) {
@@ -148,9 +166,23 @@ public final class KotlinMetadataReader {
                     function.getReceiverParameterType() != null,
                     function.getValueParameters().stream().anyMatch(parameter ->
                             Flag.ValueParameter.DECLARES_DEFAULT_VALUE.invoke(parameter.getFlags())),
-                    Flag.Function.IS_SYNTHESIZED.invoke(flags)));
+                    Flag.Function.IS_SYNTHESIZED.invoke(flags), parameters(function.getValueParameters())));
         }
         return List.copyOf(result);
+    }
+
+    private static List<KotlinValueParameter> parameters(List<KmValueParameter> parameters) {
+        return parameters.stream().map(parameter -> new KotlinValueParameter(parameter.getName(),
+                Flag.ValueParameter.DECLARES_DEFAULT_VALUE.invoke(parameter.getFlags()),
+                parameter.getVarargElementType() != null)).toList();
+    }
+
+    private static List<Constructor> constructors(KmClass type) {
+        return type.getConstructors().stream().map(constructor -> {
+            var signature = JvmExtensionsKt.getSignature(constructor);
+            return new Constructor(signature == null ? null : signature.getDescriptor(),
+                    parameters(constructor.getValueParameters()));
+        }).toList();
     }
 
     private static List<Property> properties(KmDeclarationContainer container) {
@@ -187,7 +219,7 @@ public final class KotlinMetadataReader {
         String message = failure.getMessage();
         if (message == null || message.isBlank()) message = failure.getClass().getSimpleName();
         return new Result(status, Kind.UNKNOWN, null, version,
-                false, false, false, false, List.of(), List.of(), message);
+                false, false, false, false, List.of(), List.of(), List.of(), message);
     }
 
     private static int integer(AnnotationInstance annotation, String name, int fallback) {

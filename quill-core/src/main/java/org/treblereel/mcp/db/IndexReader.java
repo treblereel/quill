@@ -20,10 +20,10 @@ public final class IndexReader {
         return jdbi.withHandle(handle -> handle.createQuery("""
                         SELECT class_id, kind, name, jvm_name, descriptor, semantic_model,
                                is_suspend, is_extension, has_default_parameters,
-                               is_mutable, is_lateinit, is_delegated, is_synthetic
+                               is_mutable, is_lateinit, is_delegated, is_synthetic, value_parameters
                         FROM kotlin_declarations
                         WHERE class_id = :classId
-                        ORDER BY CASE kind WHEN 'FUNCTION' THEN 1 WHEN 'PROPERTY' THEN 2 ELSE 0 END,
+                        ORDER BY CASE kind WHEN 'FUNCTION' THEN 1 WHEN 'PROPERTY' THEN 2 WHEN 'CONSTRUCTOR' THEN 3 ELSE 0 END,
                                  name, descriptor
                         """)
                 .bind("classId", classId)
@@ -34,8 +34,29 @@ public final class IndexReader {
                         row.getInt("is_extension") == 1,
                         row.getInt("has_default_parameters") == 1,
                         row.getInt("is_mutable") == 1, row.getInt("is_lateinit") == 1,
-                        row.getInt("is_delegated") == 1, row.getInt("is_synthetic") == 1))
+                        row.getInt("is_delegated") == 1, row.getInt("is_synthetic") == 1,
+                        kotlinParametersFromJson(row.getString("value_parameters"))))
                 .list());
+    }
+
+    public static List<KotlinValueParameter> kotlinParametersFromJson(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            var tree = JSON.readTree(json);
+            if (!tree.isArray()) return null;
+            Set<String> names = new HashSet<>();
+            int varargs = 0;
+            for (var value : tree) {
+                if (!value.path("name").isTextual() || value.path("name").asText().isBlank()
+                        || !names.add(value.path("name").asText())
+                        || !value.path("hasDefault").isBoolean() || !value.path("vararg").isBoolean()) return null;
+                if (value.path("vararg").asBoolean() && ++varargs > 1) return null;
+            }
+            return JSON.readValue(json, new TypeReference<List<KotlinValueParameter>>() {});
+        } catch (JsonProcessingException error) {
+            // Older/incomplete metadata must not turn heuristic navigation into a false certainty.
+            return null;
+        }
     }
 
     public record ArchitectureHub(

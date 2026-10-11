@@ -298,8 +298,8 @@ class WorkspaceCommandTest {
         assertTrue(repository.path("supported").asBoolean());
         assertTrue(repository.path("compiled").asBoolean());
         assertTrue(repository.path("indexed").asBoolean());
-        assertEquals(25, repository.path("indexSchema").asInt());
-        assertEquals(25, repository.path("currentSchema").asInt());
+        assertEquals(org.treblereel.mcp.db.QuillDatabase.currentSchemaVersion(), repository.path("indexSchema").asInt());
+        assertEquals(org.treblereel.mcp.db.QuillDatabase.currentSchemaVersion(), repository.path("currentSchema").asInt());
         assertEquals("installed", repository.path("buildIntegration").asText());
         assertTrue(repository.path("queryReady").asBoolean());
     }

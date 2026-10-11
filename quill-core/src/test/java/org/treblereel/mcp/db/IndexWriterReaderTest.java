@@ -62,6 +62,36 @@ class IndexWriterReaderTest {
     }
 
     @Test
+    void roundTripsKotlinParametersAndDistinguishesUnknownFromZeroArguments() {
+        Jdbi database = QuillDatabase.create(tempDir.resolve("parameters.db"));
+        IndexWriter.write(database, List.of(new ClassRecord(0, "acme.Owner", "CLASS", null,
+                List.of(), "Owner.kt", 1, false, 0)), List.of(), List.of(), List.of(), Map.of());
+        var parameters = List.of(new KotlinValueParameter("required", false, false),
+                new KotlinValueParameter("optional", true, false), new KotlinValueParameter("values", false, true));
+        var known = new KotlinDeclarationRecord(1, "FUNCTION", "f", "f", "(II[I)V", "kotlin_metadata",
+                false, false, true, false, false, false, false, parameters);
+        var empty = new KotlinDeclarationRecord(1, "CONSTRUCTOR", "<init>", "<init>", "()V", "kotlin_metadata",
+                false, false, false, false, false, false, false, List.of());
+        var unknown = new KotlinDeclarationRecord(1, "FUNCTION", "g", "g", "()V", "kotlin_metadata",
+                false, false, false, false, false, false, false);
+        IndexWriter.writeKotlinDeclarations(database, List.of(known, empty, unknown));
+        var values = IndexReader.findKotlinDeclarations(database, 1);
+        assertEquals(known, values.stream().filter(v -> v.name().equals("f")).findFirst().orElseThrow());
+        assertEquals(empty, values.stream().filter(v -> v.kind().equals("CONSTRUCTOR")).findFirst().orElseThrow());
+        assertEquals(unknown, values.stream().filter(v -> v.name().equals("g")).findFirst().orElseThrow());
+    }
+
+    @Test
+    void invalidParameterMetadataDegradesToUnknown() {
+        for (String invalid : List.of("broken", "{}", "null", "[null]", "[{}]",
+                "[{\"name\":\"x\",\"hasDefault\":false,\"vararg\":false},{\"name\":\"x\",\"hasDefault\":true,\"vararg\":false}]")) {
+            assertNull(IndexReader.kotlinParametersFromJson(invalid), invalid);
+        }
+        assertNull(IndexReader.kotlinParametersFromJson(null));
+        assertEquals(List.of(), IndexReader.kotlinParametersFromJson("[]"));
+    }
+
+    @Test
     void incrementallyUpdatesConfigurationReferencesWithoutReplacingStableRows() {
         Path dbPath = tempDir.resolve("configuration.db");
         Jdbi database = QuillDatabase.create(dbPath);

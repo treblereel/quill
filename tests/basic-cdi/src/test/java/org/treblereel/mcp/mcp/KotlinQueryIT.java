@@ -94,4 +94,34 @@ class KotlinQueryIT {
         assertTrue(extension.path("usages").valueStream().anyMatch(u -> u.path("caller").path("method").asText().equals("extensionCaller")), extension.toPrettyString());
         assertTrue(extension.path("extension").asBoolean());
     }
+    @Test void compilerParameterMetadataSurvivesPersistenceAndDrivesNavigation() throws Exception {
+        var owner = IndexReader.findClassByName(db, PACKAGE + "KotlinCallsKt").orElseThrow();
+        var function = IndexReader.findKotlinDeclarations(db, owner.id()).stream()
+                .filter(value -> value.name().equals("parameterShapes")).findFirst().orElseThrow();
+        assertEquals(3, function.valueParameters().size());
+        assertTrue(function.valueParameters().getFirst().hasDefault());
+        assertTrue(function.valueParameters().get(1).vararg());
+        assertEquals("required", function.valueParameters().get(2).name());
+        var ctorOwner = IndexReader.findClassByName(db, PACKAGE + "ParameterShapes").orElseThrow();
+        var constructor = IndexReader.findKotlinDeclarations(db, ctorOwner.id()).stream()
+                .filter(value -> value.kind().equals("CONSTRUCTOR")).findFirst().orElseThrow();
+        assertEquals(2, constructor.valueParameters().size());
+        var childOwner = IndexReader.findClassByName(db, PACKAGE + "ParameterOuter$Child").orElseThrow();
+        var childConstructor = IndexReader.findKotlinDeclarations(db, childOwner.id()).stream()
+                .filter(value -> value.kind().equals("CONSTRUCTOR")).findFirst().orElseThrow();
+        assertEquals(1, childConstructor.valueParameters().size());
+        assertTrue(childConstructor.descriptor().contains("ParameterOuter;I"));
+        Path live = project.resolve("src/main/kotlin/Live.kt");
+        var query = new PositionSymbolQueries();
+        String valid = "import " + PACKAGE + "parameterShapes\nfun run() = parameterShapes(required = \"ok\")";
+        Files.writeString(live, valid);
+        var result = JSON.readTree(query.getSymbolAtPosition(db, project, "src/main/kotlin/Live.kt", 2, 13));
+        assertTrue(result.has("selected"), result.toPrettyString());
+        Files.writeString(live, "import " + PACKAGE + "parameterShapes\nfun run() = parameterShapes(1)");
+        assertFalse(JSON.readTree(query.getSymbolAtPosition(db, project, "src/main/kotlin/Live.kt", 2, 13)).has("selected"));
+        Files.writeString(live, "import " + PACKAGE + "ParameterShapes\nfun run() = ParameterShapes(required = \"ok\")");
+        var constructorResult = JSON.readTree(query.getSymbolAtPosition(db, project, "src/main/kotlin/Live.kt", 2, 13));
+        assertEquals("CONSTRUCTOR", constructorResult.path("selected").path("kind").asText(), constructorResult.toPrettyString());
+    }
+
 }

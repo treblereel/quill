@@ -700,8 +700,13 @@ A bounded normalization reports `normalization_truncated` and an incomplete answ
 
 Position navigation recognizes Kotlin constructor calls, backtick names, explicit import
 aliases, logical properties, and source parameter counts for suspend/extension functions.
+Callable metadata preserves source parameter names, default-value and vararg flags,
+including constructors. Navigation uses this evidence to check required arguments and
+named arguments; JVM receivers and Continuation are excluded from source arity.
+Trailing lambdas, backtick argument names, and mixed positional arguments after named
+arguments conservatively fall back to heuristics.
 This is metadata and lexical analysis: receiver types, local shadowing, generic overloads,
-required versus optional default arguments, and full coroutine source mapping still need
+full overload type inference and coroutine source mapping still need
 a Kotlin semantic backend. Kotlin position results therefore have at most medium confidence.
 
 Quill locates the root through `settings.gradle[.kts]`, runs `gradlew` when present,

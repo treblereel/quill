@@ -789,19 +789,21 @@ public class ProjectInitializer {
             result.add(new KotlinDeclarationRecord(classId, kotlinDeclarationKind(value), name,
                     className, "", "kotlin_metadata", false, false, false,
                     false, false, false,
-                    value.kind() == KotlinMetadataReader.Kind.SYNTHETIC));
+                    value.kind() == KotlinMetadataReader.Kind.SYNTHETIC, null, value.declarationTypes().get("CLASS")));
             value.functions().forEach(function -> result.add(new KotlinDeclarationRecord(
                     classId, "FUNCTION", function.name(), function.jvmName(),
                     function.descriptor() == null ? "" : function.descriptor(),
                     "kotlin_metadata", function.suspend(), function.extension(),
                     function.hasDefaultParameters(), false, false, false,
-                    function.synthesized(), function.valueParameters())));
+                    function.synthesized(), function.valueParameters(), value.declarationTypes().get(
+                            "FUNCTION|" + function.jvmName() + "|" + function.descriptor()))));
             value.constructors().forEach(constructor -> result.add(new KotlinDeclarationRecord(
                     classId, "CONSTRUCTOR", name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1), "<init>",
                     constructor.descriptor() == null ? "" : constructor.descriptor(),
                     "kotlin_metadata", false, false,
                     constructor.valueParameters().stream().anyMatch(parameter -> parameter.hasDefault()),
-                    false, false, false, false, constructor.valueParameters())));
+                    false, false, false, false, constructor.valueParameters(), value.declarationTypes().get(
+                            "CONSTRUCTOR|<init>|" + constructor.descriptor()))));
             value.properties().forEach(property -> {
                 int before = result.size();
                 addPropertyDeclaration(result, classId, property, property.fieldName(),
@@ -812,6 +814,13 @@ public class ProjectInitializer {
                         property.setterDescriptor());
                 if (result.size() == before) {
                     addPropertyDeclaration(result, classId, property, null, null);
+                }
+                for (int i = before; i < result.size(); i++) {
+                    var d = result.get(i);
+                    result.set(i, new KotlinDeclarationRecord(d.classId(), d.kind(), d.name(), d.jvmName(), d.descriptor(),
+                            d.semanticModel(), d.isSuspend(), d.extension(), d.hasDefaultParameters(), d.mutable(),
+                            d.lateinit(), d.delegated(), d.synthetic(), d.valueParameters(),
+                            value.declarationTypes().get("PROPERTY|" + property.name())));
                 }
             });
         });

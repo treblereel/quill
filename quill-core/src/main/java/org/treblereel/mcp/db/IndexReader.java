@@ -20,7 +20,7 @@ public final class IndexReader {
         return jdbi.withHandle(handle -> handle.createQuery("""
                         SELECT class_id, kind, name, jvm_name, descriptor, semantic_model,
                                is_suspend, is_extension, has_default_parameters,
-                               is_mutable, is_lateinit, is_delegated, is_synthetic, value_parameters
+                               is_mutable, is_lateinit, is_delegated, is_synthetic, value_parameters, declaration_types
                         FROM kotlin_declarations
                         WHERE class_id = :classId
                         ORDER BY CASE kind WHEN 'FUNCTION' THEN 1 WHEN 'PROPERTY' THEN 2 WHEN 'CONSTRUCTOR' THEN 3 ELSE 0 END,
@@ -35,8 +35,15 @@ public final class IndexReader {
                         row.getInt("has_default_parameters") == 1,
                         row.getInt("is_mutable") == 1, row.getInt("is_lateinit") == 1,
                         row.getInt("is_delegated") == 1, row.getInt("is_synthetic") == 1,
-                        kotlinParametersFromJson(row.getString("value_parameters"))))
+                        kotlinParametersFromJson(row.getString("value_parameters")),
+                        kotlinTypesFromJson(row.getString("declaration_types"))))
                 .list());
+    }
+
+    public static KotlinDeclarationTypes kotlinTypesFromJson(String json) {
+        if (json == null || json.isBlank()) return null;
+        try { return JSON.readValue(json, KotlinDeclarationTypes.class); }
+        catch (RuntimeException | JsonProcessingException invalid) { return null; }
     }
 
     public static List<KotlinValueParameter> kotlinParametersFromJson(String json) {

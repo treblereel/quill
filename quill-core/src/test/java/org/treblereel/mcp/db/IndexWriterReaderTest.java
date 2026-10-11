@@ -17,6 +17,24 @@ class IndexWriterReaderTest {
 
     @TempDir Path tempDir;
 
+    @Test void kotlinSourceTypesRoundTripAndInvalidDataRemainsUnknown() {
+        var database = QuillDatabase.create(tempDir.resolve("types.db"));
+        IndexWriter.write(database, List.of(new ClassRecord(0, "acme.Owner", "CLASS", null,
+                List.of(), "Owner.kt", 1, false, 0)), List.of(), List.of(), List.of(), Map.of());
+        var type = new KotlinDeclarationTypes.Type("class", "kotlin/String", true, false, false,
+                List.of(), null, null, null, null);
+        var types = new KotlinDeclarationTypes(type, null, List.of(new KotlinDeclarationTypes.Parameter("p", type, null)),
+                List.of(new KotlinDeclarationTypes.TypeParameter(0, "T", "INVARIANT", false, List.of(type))), List.of());
+        var declaration = new KotlinDeclarationRecord(1, "FUNCTION", "f", "f", "()V", "kotlin_metadata",
+                false, false, false, false, false, false, false, List.of(), types);
+        IndexWriter.writeKotlinDeclarations(database, List.of(declaration));
+        assertEquals(declaration, IndexReader.findKotlinDeclarations(database, 1).getFirst());
+        for (String invalid : List.of("", "invalid", "[]", "{}", "{\"result\":{}}")) assertNull(IndexReader.kotlinTypesFromJson(invalid));
+        assertNull(IndexReader.kotlinTypesFromJson(null));
+        database.useHandle(h -> h.execute("UPDATE kotlin_declarations SET declaration_types='{}'"));
+        assertNull(IndexReader.findKotlinDeclarations(database, 1).getFirst().declarationTypes());
+    }
+
     @Test
     void storesAndReadsKotlinSemanticDeclarations() {
         Jdbi database = QuillDatabase.create(tempDir.resolve("kotlin.db"));

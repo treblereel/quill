@@ -2,6 +2,10 @@ package org.treblereel.mcp.core;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import kotlinx.metadata.*;
+import org.treblereel.mcp.model.KotlinDeclarationTypes;
 import kotlin.Metadata;
 import kotlinx.metadata.Flag;
 import kotlinx.metadata.KmDeclarationContainer;
@@ -66,11 +70,20 @@ public final class KotlinMetadataReader {
     public record Result(
             Status status, Kind kind, String kotlinName, String metadataVersion,
             boolean data, boolean inner, boolean value, boolean funInterface,
-            List<Function> functions, List<Property> properties, List<Constructor> constructors, String detail) {
+            List<Function> functions, List<Property> properties, List<Constructor> constructors, String detail,
+            Map<String, KotlinDeclarationTypes> declarationTypes) {
         public Result {
+            declarationTypes = declarationTypes == null ? Map.of() : Map.copyOf(declarationTypes);
             functions = functions == null ? List.of() : List.copyOf(functions);
             properties = properties == null ? List.of() : List.copyOf(properties);
             constructors = constructors == null ? List.of() : List.copyOf(constructors);
+        }
+
+        public Result(Status status, Kind kind, String kotlinName, String metadataVersion,
+                boolean data, boolean inner, boolean value, boolean funInterface,
+                List<Function> functions, List<Property> properties, List<Constructor> constructors, String detail) {
+            this(status, kind, kotlinName, metadataVersion, data, inner, value, funInterface,
+                    functions, properties, constructors, detail, Map.of());
         }
 
         public Result(Status status, Kind kind, String kotlinName, String metadataVersion,
@@ -119,7 +132,7 @@ public final class KotlinMetadataReader {
                         version, Flag.Class.IS_DATA.invoke(flags),
                         Flag.Class.IS_INNER.invoke(flags),
                         Flag.Class.IS_VALUE.invoke(flags) || Flag.Class.IS_INLINE.invoke(flags),
-                        Flag.Class.IS_FUN.invoke(flags), functions(kmClass), properties(kmClass), constructors(kmClass), null);
+                        Flag.Class.IS_FUN.invoke(flags), functions(kmClass), properties(kmClass), constructors(kmClass), null, sourceTypes(kmClass));
             }
             if (metadata instanceof KotlinClassMetadata.FileFacade value) {
                 return packageResult(Kind.FILE_FACADE, value.getKmPackage(), version, null);
@@ -151,7 +164,7 @@ public final class KotlinMetadataReader {
     private static Result packageResult(
             Kind kind, KmPackage value, String version, String detail) {
         return new Result(Status.PARSED, kind, null, version,
-                false, false, false, false, functions(value), properties(value), List.of(), detail);
+                false, false, false, false, functions(value), properties(value), List.of(), detail, sourceTypes(value));
     }
 
     private static List<Function> functions(KmDeclarationContainer container) {
@@ -204,6 +217,65 @@ public final class KotlinMetadataReader {
                     setter == null ? null : setter.getDescriptor()));
         }
         return List.copyOf(result);
+    }
+
+    private static Map<String, KotlinDeclarationTypes> sourceTypes(KmDeclarationContainer container) {
+        Map<String, KotlinDeclarationTypes> result = new LinkedHashMap<>();
+        for (var f : container.getFunctions()) {
+            var signature = JvmExtensionsKt.getSignature(f);
+            if (signature != null) capture(result, "FUNCTION|" + signature.getName() + "|" + signature.getDescriptor(),
+                    () -> types(f.getReturnType(), f.getReceiverParameterType(), f.getValueParameters(), f.getTypeParameters(), f.getContextReceiverTypes()));
+        }
+        for (var p : container.getProperties()) capture(result, "PROPERTY|" + p.getName(),
+                () -> types(p.getReturnType(), p.getReceiverParameterType(), List.of(), p.getTypeParameters(), p.getContextReceiverTypes()));
+        if (container instanceof KmClass c) {
+            capture(result, "CLASS", () -> types(null, null, List.of(), c.getTypeParameters(), c.getContextReceiverTypes()));
+            for (var constructor : c.getConstructors()) {
+                var signature = JvmExtensionsKt.getSignature(constructor);
+                if (signature != null) capture(result, "CONSTRUCTOR|<init>|" + signature.getDescriptor(),
+                        () -> types(null, null, constructor.getValueParameters(), List.of(), List.of()));
+            }
+        }
+        return result;
+    }
+
+    private static void capture(Map<String, KotlinDeclarationTypes> result, String key,
+            java.util.function.Supplier<KotlinDeclarationTypes> supplier) {
+        try { result.put(key, supplier.get()); }
+        catch (RuntimeException invalidType) { /* Keep independently readable declaration metadata. */ }
+    }
+
+    static KotlinDeclarationTypes types(KmType result, KmType receiver, List<KmValueParameter> parameters,
+            List<KmTypeParameter> typeParameters, List<KmType> contextReceivers) {
+        var reader = new TypeReader();
+        return new KotlinDeclarationTypes(reader.read(result, 0), reader.read(receiver, 0),
+                parameters.stream().map(p -> new KotlinDeclarationTypes.Parameter(p.getName(),
+                        java.util.Objects.requireNonNull(reader.read(p.getType(), 0)), reader.read(p.getVarargElementType(), 0))).toList(),
+                typeParameters.stream().map(p -> new KotlinDeclarationTypes.TypeParameter(p.getId(), p.getName(),
+                        p.getVariance().name(), Flag.TypeParameter.IS_REIFIED.invoke(p.getFlags()),
+                        p.getUpperBounds().stream().map(t -> reader.read(t, 0)).toList())).toList(),
+                contextReceivers.stream().map(t -> reader.read(t, 0)).toList());
+    }
+
+    private static final class TypeReader {
+        private int count;
+        KotlinDeclarationTypes.Type read(KmType type, int depth) {
+            if (type == null) return null;
+            if (depth > 32 || ++count > 10000) throw new IllegalArgumentException("Type metadata limit exceeded");
+            var classifier = type.getClassifier();
+            String kind, name;
+            if (classifier instanceof KmClassifier.Class c) { kind = "class"; name = c.getName(); }
+            else if (classifier instanceof KmClassifier.TypeAlias a) { kind = "type_alias"; name = a.getName(); }
+            else if (classifier instanceof KmClassifier.TypeParameter p) { kind = "type_parameter"; name = Integer.toString(p.getId()); }
+            else throw new IllegalArgumentException("Unknown type classifier");
+            var flexible = type.getFlexibleTypeUpperBound();
+            return new KotlinDeclarationTypes.Type(kind, name, Flag.Type.IS_NULLABLE.invoke(type.getFlags()),
+                    Flag.Type.IS_DEFINITELY_NON_NULL.invoke(type.getFlags()), Flag.Type.IS_SUSPEND.invoke(type.getFlags()),
+                    type.getArguments().stream().map(p -> new KotlinDeclarationTypes.Projection(
+                            p.getVariance() == null ? "STAR" : p.getVariance().name(), read(p.getType(), depth + 1))).toList(),
+                    read(type.getOuterType(), depth + 1), read(type.getAbbreviatedType(), depth + 1),
+                    flexible == null ? null : read(flexible.getType(), depth + 1), flexible == null ? null : flexible.getTypeFlexibilityId());
+        }
     }
 
     private static Kind classKind(int flags) {

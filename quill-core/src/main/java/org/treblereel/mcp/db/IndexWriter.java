@@ -1008,8 +1008,8 @@ public final class IndexWriter {
                     "INSERT INTO kotlin_declarations (class_id, kind, name, jvm_name, "
                             + "descriptor, semantic_model, is_suspend, is_extension, "
                             + "has_default_parameters, is_mutable, is_lateinit, "
-                            + "is_delegated, is_synthetic, value_parameters) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            + "is_delegated, is_synthetic, value_parameters, declaration_types) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     declarations, (statement, declaration) -> {
                         statement.setInt(1, declaration.classId());
                         statement.setString(2, declaration.kind());
@@ -1026,6 +1026,7 @@ public final class IndexWriter {
                         statement.setInt(13, declaration.synthetic() ? 1 : 0);
                         statement.setString(14, declaration.valueParameters() == null ? null
                                 : jsonArray(declaration.valueParameters()));
+                        statement.setString(15, declaration.declarationTypes() == null ? null : toJson(declaration.declarationTypes()));
                     });
         });
     }

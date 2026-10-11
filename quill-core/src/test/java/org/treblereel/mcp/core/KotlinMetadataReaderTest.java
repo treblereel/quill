@@ -25,6 +25,56 @@ import org.junit.jupiter.api.Test;
 
 class KotlinMetadataReaderTest {
 
+    @Test void preservesNestedSourceTypesAndGenericBounds() {
+        var t = type("kotlin/String"); t.setFlags(FlagsKt.flagsOf(Flag.Type.IS_NULLABLE));
+        var list = type("kotlin/collections/List");
+        list.getArguments().add(new kotlinx.metadata.KmTypeProjection(kotlinx.metadata.KmVariance.OUT, t));
+        list.getArguments().add(kotlinx.metadata.KmTypeProjection.STAR);
+        list.getArguments().add(new kotlinx.metadata.KmTypeProjection(kotlinx.metadata.KmVariance.IN, t));
+        var generic = new kotlinx.metadata.KmTypeParameter(FlagsKt.flagsOf(Flag.TypeParameter.IS_REIFIED), "T", 7, kotlinx.metadata.KmVariance.INVARIANT);
+        generic.getUpperBounds().add(type("kotlin/CharSequence"));
+        var parameter = new KmValueParameter("values"); parameter.setType(list); parameter.setVarargElementType(t);
+        var receiver = new KmType(); receiver.setClassifier(new KmClassifier.TypeParameter(7));
+        receiver.setFlags(FlagsKt.flagsOf(Flag.Type.IS_DEFINITELY_NON_NULL));
+        var value = KotlinMetadataReader.types(list, receiver, List.of(parameter), List.of(generic), List.of(type("org/acme/Context")));
+        assertTrue(value.result().arguments().getFirst().type().nullable());
+        assertEquals("OUT", value.result().arguments().getFirst().variance());
+        assertEquals("STAR", value.result().arguments().get(1).variance());
+        assertEquals("IN", value.result().arguments().get(2).variance());
+        assertEquals("7", value.receiver().classifier()); assertTrue(value.receiver().definitelyNonNull());
+        assertTrue(value.parameters().getFirst().varargElement().nullable());
+        assertEquals("kotlin/CharSequence", value.typeParameters().getFirst().bounds().getFirst().classifier());
+        assertTrue(value.typeParameters().getFirst().reified());
+        assertEquals(1, value.contextReceivers().size());
+        org.junit.jupiter.api.Assertions.assertThrows(UnsupportedOperationException.class, () -> value.parameters().clear());
+    }
+
+    @Test void preservesAliasesOuterPlatformAndSuspendTypes() {
+        var type = type("kotlin/Function1"); type.setFlags(FlagsKt.flagsOf(Flag.Type.IS_SUSPEND));
+        var alias = new KmType(); alias.setClassifier(new KmClassifier.TypeAlias("org/acme/Callback"));
+        type.setAbbreviatedType(alias); type.setOuterType(type("org/acme/Outer"));
+        var upper = type("kotlin/Function1"); upper.setFlags(FlagsKt.flagsOf(Flag.Type.IS_NULLABLE));
+        type.setFlexibleTypeUpperBound(new kotlinx.metadata.KmFlexibleTypeUpperBound(upper, "kotlin.jvm.PlatformType"));
+        var value = KotlinMetadataReader.types(type, null, List.of(), List.of(), List.of()).result();
+        assertTrue(value.suspend()); assertTrue(value.flexibleUpper().nullable());
+        assertEquals("kotlin.jvm.PlatformType", value.flexibilityId());
+        assertEquals("type_alias", value.abbreviated().classifierKind());
+        assertEquals("org/acme/Outer", value.outer().classifier());
+    }
+
+    @Test void boundsRecursiveAndInvalidTypeEvidence() {
+        var recursive = type("kotlin/collections/List");
+        recursive.getArguments().add(new kotlinx.metadata.KmTypeProjection(kotlinx.metadata.KmVariance.INVARIANT, recursive));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> KotlinMetadataReader.types(recursive, null, List.of(), List.of(), List.of()));
+        org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
+                () -> KotlinMetadataReader.types(new KmType(), null, List.of(), List.of(), List.of()));
+        var wide = type("kotlin/collections/List");
+        for (int i = 0; i < 10001; i++) wide.getArguments().add(new kotlinx.metadata.KmTypeProjection(kotlinx.metadata.KmVariance.INVARIANT, type("kotlin/String")));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> KotlinMetadataReader.types(wide, null, List.of(), List.of(), List.of()));
+    }
+
     @Test
     void readsClassFunctionsPropertiesAndKotlinFlags() {
         KmClass type = new KmClass();
@@ -70,6 +120,11 @@ class KotlinMetadataReaderTest {
         assertTrue(function.extension());
         assertTrue(function.hasDefaultParameters());
         assertEquals(List.of(new KotlinValueParameter("limit", true, false)), function.valueParameters());
+        var sourceType = result.declarationTypes().get("FUNCTION|load|(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;");
+        assertNotNull(sourceType);
+        assertEquals("org/acme/Order", sourceType.result().classifier());
+        assertEquals("kotlin/Int", sourceType.parameters().getFirst().type().classifier());
+        assertEquals("kotlin/String", result.declarationTypes().get("PROPERTY|state").result().classifier());
         var property = result.properties().getFirst();
         assertEquals("state", property.name());
         assertTrue(property.mutable());

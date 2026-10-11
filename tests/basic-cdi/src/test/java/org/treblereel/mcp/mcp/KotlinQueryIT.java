@@ -58,6 +58,35 @@ class KotlinQueryIT {
                 method, kind, descriptor, "all", 100, 0));
     }
 
+    @Test void compiledMetadataPreservesNullabilityGenericBoundsAndProperties() throws Exception {
+        var owner = IndexReader.findClassByName(db, PACKAGE + "KotlinCallsKt").orElseThrow();
+        var declarations = IndexReader.findKotlinDeclarations(db, owner.id());
+        var rich = declarations.stream().filter(d -> d.name().equals("richTypes")).findFirst().orElseThrow().declarationTypes();
+        assertNotNull(rich);
+        assertEquals("kotlin/collections/Map", rich.result().classifier());
+        assertTrue(rich.result().arguments().get(1).type().nullable());
+        assertEquals("type_parameter", rich.parameters().getFirst().type().classifierKind());
+        assertEquals("kotlin/CharSequence", rich.typeParameters().getFirst().bounds().getFirst().classifier());
+        assertNotNull(rich.parameters().get(2).varargElement());
+        var labels = rich.parameters().get(1).type();
+        assertTrue(labels.arguments().getFirst().type().nullable());
+        assertEquals("type_alias", labels.abbreviated().classifierKind());
+        var extension = declarations.stream().filter(d -> d.name().equals("nullableExtension")).findFirst().orElseThrow().declarationTypes();
+        assertTrue(extension.receiver().nullable()); assertTrue(extension.result().nullable());
+        assertEquals("STAR", extension.parameters().getFirst().type().arguments().getFirst().variance());
+        var box = IndexReader.findClassByName(db, PACKAGE + "GenericBox").orElseThrow();
+        var boxDeclarations = IndexReader.findKotlinDeclarations(db, box.id());
+        assertEquals("T", boxDeclarations.stream().filter(d -> d.kind().equals("CLASS")).findFirst().orElseThrow().declarationTypes().typeParameters().getFirst().name());
+        assertTrue(boxDeclarations.stream().filter(d -> d.kind().equals("PROPERTY")).allMatch(d -> d.declarationTypes().result().nullable()));
+        assertTrue(boxDeclarations.stream().filter(d -> d.kind().equals("CONSTRUCTOR")).findFirst().orElseThrow().declarationTypes().parameters().getFirst().type().nullable());
+        var details = JSON.readTree(new SymbolToolQueries().getSymbolDetails(db, PACKAGE + "KotlinCallsKt", true, null, 100, 0));
+        var card = java.util.stream.StreamSupport.stream(details.path("kotlin_declarations").spliterator(), false)
+                .filter(d -> d.path("name").asText().equals("richTypes")).findFirst().orElseThrow();
+        assertTrue(card.path("declaration_types").path("result").path("arguments").get(1).path("type").path("nullable").asBoolean());
+        var suspended = declarations.stream().filter(d -> d.name().equals("debugSuspendCaller")).findFirst().orElseThrow().declarationTypes();
+        assertEquals("kotlin/String", suspended.result().classifier());
+    }
+
     @Test void defaultCallsAndConstructorsIdentifyOriginalSourceCallers() throws Exception {
         var greeting = usages("BillingKt", "greeting", "method", null);
         assertTrue(greeting.path("usages").valueStream().anyMatch(u -> u.path("caller").path("method").asText().equals("defaultCaller")

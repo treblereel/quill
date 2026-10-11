@@ -140,6 +140,7 @@ final class SymbolToolQueries {
             if (!declaration.descriptor().isBlank()) {
                 node.put("descriptor", declaration.descriptor());
             }
+            if (declaration.declarationTypes() != null) node.set("declaration_types", JSON.valueToTree(declaration.declarationTypes()));
             if (declaration.valueParameters() != null) {
                 node.set("value_parameters", JSON.valueToTree(declaration.valueParameters()));
             }

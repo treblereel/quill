@@ -186,5 +186,10 @@
   {"name":"[Lio.modelcontextprotocol.spec.McpSchema$Tool;"},
   {"name":"org.treblereel.mcp.core.KotlinSourceDebug$Info","allDeclaredConstructors":true,"allPublicMethods":true,"allDeclaredFields":true},
   {"name":"org.treblereel.mcp.core.KotlinSourceDebug$Mapping","allDeclaredConstructors":true,"allPublicMethods":true,"allDeclaredFields":true},
-  {"name":"org.treblereel.mcp.core.KotlinSourceDebug$Coroutine","allDeclaredConstructors":true,"allPublicMethods":true,"allDeclaredFields":true}
+  {"name":"org.treblereel.mcp.core.KotlinSourceDebug$Coroutine","allDeclaredConstructors":true,"allPublicMethods":true,"allDeclaredFields":true},
+  {"name": "org.treblereel.mcp.model.KotlinDeclarationTypes", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+  {"name": "org.treblereel.mcp.model.KotlinDeclarationTypes$Type", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+  {"name": "org.treblereel.mcp.model.KotlinDeclarationTypes$Projection", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+  {"name": "org.treblereel.mcp.model.KotlinDeclarationTypes$Parameter", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+  {"name": "org.treblereel.mcp.model.KotlinDeclarationTypes$TypeParameter", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true}
 ]

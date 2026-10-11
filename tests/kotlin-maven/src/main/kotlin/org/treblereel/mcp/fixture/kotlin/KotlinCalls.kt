@@ -41,3 +41,9 @@ inline fun debugInline(block: () -> String): String { greeting("inline"); return
 fun debugInlineCaller(): String = debugInline { greeting("callsite") }
 suspend fun debugSuspendPoint(): String = kotlin.coroutines.suspendCoroutine { continuation -> continuation.resumeWith(Result.success("ok")) }
 suspend fun debugSuspendCaller(): String { val value = debugSuspendPoint(); return greeting(value) }
+
+// Metadata must preserve these source types despite erased JVM signatures.
+typealias NullableLabels = List<String?>
+fun <T : CharSequence> richTypes(value: T, labels: NullableLabels, vararg rest: T): Map<String, T?> = mapOf("value" to value)
+fun String?.nullableExtension(values: List<*>): String? = this
+class GenericBox<T : CharSequence>(val value: T?)

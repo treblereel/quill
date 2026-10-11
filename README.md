@@ -716,6 +716,14 @@ named arguments; JVM receivers and Continuation are excluded from source arity.
 Navigation binds trailing lambdas to the last parameter when its JVM function type is
 known, accepts backtick parameter names, and checks mixed named/positional arguments
 against declaration order. SAM conversions and generic argument expressions remain conservative.
+Kotlin declaration cards include `declaration_types` when source type metadata is readable.
+This preserves nested nullability, generic parameter IDs and bounds, variance and star
+projections, extension/context receivers, vararg element types, type aliases, outer types
+and flexible platform type bounds. Property types describe the logical property across
+its field/getter/setter bindings; suspend return types remain source return types.
+Missing or invalid type evidence is omitted rather than inferred from erased JVM types.
+The index schema is v28 and requires reindexing older generations.
+
 Without a semantic worker, position results use metadata and lexical evidence and have at
 most medium confidence. An optional compiler worker resolves overloads, receiver members,
 generic functions and local shadowing, and exposes its status in `semantic_analysis`.

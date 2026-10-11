@@ -757,6 +757,13 @@ inputs change. Inputs are checked before and after analysis; races report `input
 and retain the metadata fallback. `semantic_analysis.analysis_reused` and the worker-local
 `analysis_generation` expose whether a frontend rebuild occurred. This is module snapshot
 reuse; source changes still trigger a full module analysis.
+After the first semantic query, Quill watches the most recently used module/source set
+and its captured classpath/compiled outputs. Filesystem events are coalesced for 150 ms
+before rebuilding FIR in the background. Position queries wait for an active warmup,
+recollect current inputs and retry if changes raced analysis. A query arriving during
+the debounce takes over the pending analysis. Module switches replace the subscriptions;
+MCP shutdown cancels background work and closes the watcher. Event delivery latency
+depends on the filesystem/platform; unavailable watching retains foreground analysis.
 Runtime checksums are validated when the worker starts, with file
 attributes checked between requests. Crashes, timeouts and runtime changes discard the
 worker; the next request starts a fresh process. MCP shutdown terminates it. The first

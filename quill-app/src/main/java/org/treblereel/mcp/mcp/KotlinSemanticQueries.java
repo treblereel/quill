@@ -14,8 +14,28 @@ import org.treblereel.mcp.db.IndexReader;
 /** K2 analysis in a bounded JVM child process; runtime preparation belongs to init. */
 final class KotlinSemanticQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static KotlinWarmupCoordinator warmup;
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(KotlinSemanticQueries::closeWarmup, "quill-k2-watch-shutdown"));
+    }
+    private static synchronized KotlinWarmupCoordinator warmup() {
+        if (warmup == null) warmup = new KotlinWarmupCoordinator(
+                org.treblereel.mcp.kotlin.KotlinWorkerClient.shared()::query, java.time.Duration.ofMillis(150));
+        return warmup;
+    }
+    static synchronized void closeWarmup() {
+        if (warmup != null) { warmup.close(); warmup = null; }
+    }
 
     static JsonNode resolve(Jdbi db, Path root, Path file, int offset) {
+        JsonNode initial = prepare(db, root, file, offset, false);
+        if (!initial.has("sources")) return initial;
+        return warmup().query(root.toAbsolutePath().normalize() + ":" + initial.path("module").asText()
+                        + ":" + initial.path("source_set").asText(),
+                () -> prepare(db, root, file, offset, false), () -> prepare(db, root, file, -1, true));
+    }
+
+    private static JsonNode prepare(Jdbi db, Path root, Path file, int offset, boolean warming) {
         if (file.toString().endsWith(".kts")) return status("unavailable");
         try {
             root = root.toAbsolutePath().normalize();
@@ -31,6 +51,7 @@ final class KotlinSemanticQueries {
             var request = JSON.createObjectNode();
             request.put("file", file.toString()); request.put("offset", offset);
             request.put("module", module.toString()); request.put("source_set", test ? "test" : "main");
+            request.put("captured_classpath", captured.toString());
             var sources = request.putArray("sources"); var javaRoots = request.putArray("java_roots");
             LinkedHashSet<Path> kotlinFiles = new LinkedHashSet<>();
             for (String set : test ? List.of("main", "test") : List.of("main")) {
@@ -45,7 +66,10 @@ final class KotlinSemanticQueries {
                     }
                 }
             }
-            kotlinFiles.add(file); kotlinFiles.forEach(value -> sources.add(value.toString()));
+            if (!warming || Files.isRegularFile(file)) kotlinFiles.add(file);
+            if (kotlinFiles.isEmpty()) return status("unavailable");
+            if (warming) request.put("file", kotlinFiles.iterator().next().toString());
+            kotlinFiles.stream().sorted().forEach(value -> sources.add(value.toString()));
             var classpath = request.putArray("classpath");
             var entries = new LinkedHashSet<String>();
             for (String entry : Files.readString(captured).strip().split(java.util.regex.Pattern.quote(File.pathSeparator))) {
@@ -66,7 +90,7 @@ final class KotlinSemanticQueries {
             }
             if (test && Files.isDirectory(module.resolve("target/test-classes"))) entries.add(module.resolve("target/test-classes").toString());
             entries.forEach(classpath::add);
-            return org.treblereel.mcp.kotlin.KotlinWorkerClient.shared().query(request);
+            return request;
         } catch (Exception failure) { return status("unavailable"); }
     }
 

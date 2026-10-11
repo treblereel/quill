@@ -154,6 +154,7 @@ def main() -> None:
                     report["mcp"][mode] = {"result": result, "metrics": metrics}
                     if mode == "prepared_k2":
                         samples = []
+                        previous_generation = result["semantic_analysis"]["analysis_generation"]
                         for i in range(20):
                             argument = '"changed"' if i % 2 else str(i)
                             caller.write_text("package org.treblereel.mcp.fixture.kotlin\n"
@@ -163,7 +164,10 @@ def main() -> None:
                             expected = "(Ljava/lang/String;)Ljava/lang/String;" if i % 2 else "(I)I"
                             assert warm["selected"]["jvm_descriptor"] == expected, warm
                             assert warm["semantic_analysis"]["status"] == "resolved", warm
-                            assert warm["semantic_analysis"]["analysis_reused"] is False, warm
+                            # A background warmup may have completed before this foreground query.
+                            current_generation = warm["semantic_analysis"]["analysis_generation"]
+                            assert current_generation > previous_generation, warm
+                            previous_generation = current_generation
                             samples.append(timing["latency_ms"])
                         report["mcp"][mode]["warm_fresh_source_latency_ms"] = samples
                         report["mcp"][mode]["warm_fresh_source_median_ms"] = statistics.median(samples)
@@ -179,6 +183,17 @@ def main() -> None:
                             unchanged.append(timing["latency_ms"])
                         report["mcp"][mode]["warm_unchanged_source_latency_ms"] = unchanged
                         report["mcp"][mode]["warm_unchanged_source_median_ms"] = statistics.median(unchanged)
+                        caller.write_text("package org.treblereel.mcp.fixture.kotlin\n"
+                                          "fun nativeProbe() = typedNavigation(42)\n")
+                        # Allow filesystem delivery (polling on some platforms), debounce and
+                        # frontend work to finish without sending any intervening MCP query.
+                        time.sleep(4)
+                        ready, timing = client.call("get_symbol_at_position", {
+                            "path": "src/main/kotlin/NativeProbe.kt", "line": 2, "column": 21})
+                        assert ready["selected"]["jvm_descriptor"] == "(I)I", ready
+                        assert ready["semantic_analysis"]["analysis_reused"] is True, ready
+                        assert ready["semantic_analysis"]["analysis_generation"] > generation, ready
+                        report["mcp"][mode]["background_warmed_query"] = {"result": ready, "metrics": timing}
             semantic = report["mcp"]["prepared_k2"]["result"]
             assert semantic["confidence"] == "high", semantic
             assert semantic["semantic_analysis"]["status"] == "resolved", semantic

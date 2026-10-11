@@ -1,0 +1,238 @@
+package org.treblereel.mcp.mcp;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.nio.file.*;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/** One watched, recently queried module, matching the worker's single FIR snapshot. */
+final class KotlinWarmupCoordinator implements AutoCloseable {
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private final Function<JsonNode, JsonNode> worker;
+    private final long debounceMillis;
+    private final Object state = new Object();
+    private final ReentrantLock operation = new ReentrantLock(true);
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(task -> {
+        var thread = new Thread(task, "quill-k2-warmup"); thread.setDaemon(true); return thread;
+    });
+    private boolean closed;
+    private String active;
+    private long epoch, revision;
+    private Supplier<JsonNode> provider;
+    private ScheduledFuture<?> pending;
+    private InputsWatcher watcher;
+
+    KotlinWarmupCoordinator(Function<JsonNode, JsonNode> worker, Duration debounce) {
+        this.worker = worker;
+        this.debounceMillis = debounce.toMillis();
+    }
+
+    JsonNode query(String key, Supplier<JsonNode> foreground, Supplier<JsonNode> background) {
+        boolean acquired = false;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        try {
+            acquired = operation.tryLock(30, TimeUnit.SECONDS);
+            if (!acquired) return status("timeout");
+            synchronized (state) {
+                if (closed) return status("unavailable");
+                if (!key.equals(active)) {
+                    cancelPending();
+                    if (watcher != null) watcher.close();
+                    active = key; epoch++; revision = 0;
+                    try { watcher = new InputsWatcher(epoch); }
+                    catch (IOException | UnsupportedOperationException unsupported) { watcher = null; }
+                }
+                provider = background;
+            }
+            // A query takes over a queued debounce; an already running warmup holds
+            // operation until it completes. Recollect inputs only after that wait.
+            while (System.nanoTime() < deadline) {
+                long before;
+                JsonNode request = foreground.get();
+                synchronized (state) {
+                    if (closed) return status("unavailable");
+                    cancelPending();
+                    if (watcher != null) watcher.configure(request);
+                    before = revision;
+                }
+                if (!request.has("sources")) return request;
+                JsonNode result = worker.apply(request);
+                synchronized (state) {
+                    if (closed) return status("unavailable");
+                    if (before == revision && !result.path("status").asText().equals("inputs_changed")) {
+                        cancelPending();
+                        return result;
+                    }
+                }
+            }
+            return status("timeout");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt(); return status("interrupted");
+        } catch (Exception unavailable) { return status("unavailable"); }
+        finally { if (acquired) operation.unlock(); }
+    }
+
+    // Also used by deterministic concurrency tests; watcher callbacks carry their epoch.
+    void changed() { synchronized (state) { changed(epoch); } }
+    private void changed(long expectedEpoch) {
+        synchronized (state) {
+            if (closed || expectedEpoch != epoch || provider == null) return;
+            revision++;
+            cancelPending();
+            long version = revision;
+            pending = scheduler.schedule(() -> warm(expectedEpoch, version), debounceMillis, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void warm(long expectedEpoch, long version) {
+        boolean acquired = false;
+        try {
+            operation.lockInterruptibly(); acquired = true;
+            Supplier<JsonNode> source;
+            synchronized (state) {
+                if (closed || epoch != expectedEpoch || revision != version) return;
+                source = provider;
+            }
+            JsonNode request = source.get();
+            synchronized (state) {
+                if (closed || epoch != expectedEpoch || revision != version) return;
+                if (watcher != null) watcher.configure(request);
+            }
+            if (!request.has("sources")) return;
+            JsonNode result = worker.apply(request);
+            if (result.path("status").asText().equals("inputs_changed")) changed(expectedEpoch);
+        } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+        catch (Exception unavailable) { /* A foreground query retains the existing fallback. */ }
+        finally { if (acquired) operation.unlock(); }
+    }
+
+    private void cancelPending() { if (pending != null) { pending.cancel(false); pending = null; } }
+    @Override public void close() {
+        synchronized (state) {
+            if (closed) return;
+            closed = true; epoch++; cancelPending();
+            if (watcher != null) { watcher.close(); watcher = null; }
+            provider = null;
+        }
+        scheduler.shutdownNow();
+    }
+    private static JsonNode status(String value) { return JSON.createObjectNode().put("status", value); }
+
+    private final class InputsWatcher implements AutoCloseable {
+        private final WatchService service = FileSystems.getDefault().newWatchService();
+        private final Map<WatchKey, Path> directories = new ConcurrentHashMap<>();
+        private volatile Set<Path> trees = Set.of(), files = Set.of();
+        private volatile boolean refresh = true;
+        private String signature;
+        private final long ownerEpoch;
+        InputsWatcher(long epoch) throws IOException {
+            ownerEpoch = epoch;
+            var thread = new Thread(this::listen, "quill-k2-input-watch"); thread.setDaemon(true); thread.start();
+        }
+        void configure(JsonNode request) {
+            if (!request.has("sources")) return;
+            String next = request.path("module") + ":" + request.path("source_set") + ":" + request.path("sources")
+                    + ":" + request.path("java_roots") + ":" + request.path("classpath") + ":" + request.path("captured_classpath");
+            if (next.equals(signature) && !refresh) return;
+            refresh = false; signature = next;
+            var recursive = new LinkedHashSet<Path>(); var exact = new LinkedHashSet<Path>();
+            Path module = Path.of(request.path("module").asText());
+            recursive.add(module.resolve("src/main"));
+            if (request.path("source_set").asText().equals("test")) recursive.add(module.resolve("src/test"));
+            for (String output : List.of("target/classes", "build/classes/java/main", "build/classes/kotlin/main"))
+                recursive.add(module.resolve(output));
+            if (request.path("source_set").asText().equals("test")) {
+                recursive.add(module.resolve("target/test-classes"));
+                recursive.add(module.resolve("build/classes/java/test"));
+                recursive.add(module.resolve("build/classes/kotlin/test"));
+            }
+            for (JsonNode source : request.path("sources")) exact.add(Path.of(source.asText()));
+            for (JsonNode root : request.path("java_roots")) recursive.add(Path.of(root.asText()));
+            for (JsonNode entry : request.path("classpath")) {
+                Path path = Path.of(entry.asText());
+                if (Files.isDirectory(path)) recursive.add(path); else exact.add(path);
+            }
+            exact.add(Path.of(request.path("captured_classpath").asText(module.resolve("target/quill-classpath.txt").toString())));
+            for (String marker : List.of("pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"))
+                exact.add(module.resolve(marker));
+            // Track real targets too, so symlinked source/output/JAR changes are visible.
+            for (Path path : List.copyOf(recursive)) addReal(recursive, path);
+            for (Path path : List.copyOf(exact)) addReal(exact, path);
+            trees = Set.copyOf(recursive); files = Set.copyOf(exact);
+            Set<Path> desired = new HashSet<>();
+            for (Path path : recursive) {
+                parents(desired, path, module);
+                if (Files.isDirectory(path)) {
+                    try (var paths = Files.walk(path, FileVisitOption.FOLLOW_LINKS)) {
+                        var iterator = paths.filter(Files::isDirectory).iterator();
+                        while (iterator.hasNext() && desired.size() < 8192) desired.add(iterator.next().toAbsolutePath().normalize());
+                    } catch (IOException | java.io.UncheckedIOException ignored) { }
+                }
+            }
+            for (Path path : exact) parents(desired, path.getParent(), module);
+            Set<Path> canonical = new HashSet<>();
+            for (Path path : desired) { try { canonical.add(path.toRealPath()); } catch (IOException ignored) { } }
+            directories.forEach((key, path) -> { if (!canonical.contains(path)) { key.cancel(); directories.remove(key); } });
+            Set<Path> registered = new HashSet<>(directories.values());
+            for (Path path : canonical) {
+                if (directories.size() >= 8192) break;
+                if (!registered.add(path)) continue;
+                try { directories.put(path.register(service, StandardWatchEventKinds.ENTRY_CREATE,
+                        StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_DELETE), path); }
+                catch (IOException | ClosedWatchServiceException ignored) { }
+            }
+        }
+        private void addReal(Set<Path> values, Path path) {
+            // Missing future inputs still need canonical aliases under a symlinked
+            // project parent (e.g. /var -> /private/var on macOS).
+            for (Path ancestor = path; ancestor != null; ancestor = ancestor.getParent()) {
+                try { values.add(ancestor.toRealPath().resolve(ancestor.relativize(path))); return; }
+                catch (IOException ignored) { }
+            }
+        }
+        private void parents(Set<Path> values, Path path, Path module) {
+            for (Path current = path; current != null; current = current.getParent()) {
+                if (Files.isDirectory(current)) values.add(current.toAbsolutePath().normalize());
+                // Only ancestors inside the module are needed to catch creation of missing trees.
+                if (!current.startsWith(module)) {
+                    if (!Files.isDirectory(current)) continue;
+                    Path parent = current.getParent();
+                    if (parent != null && Files.isDirectory(parent)) values.add(parent.toAbsolutePath().normalize());
+                    break;
+                }
+                if (current.equals(module)) break;
+            }
+        }
+        private boolean relevant(Path path) {
+            return files.contains(path) || trees.stream().anyMatch(root -> path.startsWith(root) || root.startsWith(path))
+                    || files.stream().anyMatch(file -> file.startsWith(path));
+        }
+        private void listen() {
+            try {
+                while (true) {
+                    WatchKey key = service.take(); Path directory = directories.get(key);
+                    boolean dirty = false;
+                    for (WatchEvent<?> event : key.pollEvents()) {
+                        boolean relevant = event.kind() == StandardWatchEventKinds.OVERFLOW
+                                || directory != null && event.context() instanceof Path path && relevant(directory.resolve(path));
+                        dirty |= relevant;
+                        if (relevant && event.kind() != StandardWatchEventKinds.ENTRY_MODIFY) refresh = true;
+                    }
+                    if (!key.reset()) { directories.remove(key); refresh = true; dirty = true; }
+                    if (dirty) changed(ownerEpoch);
+                }
+            } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            catch (ClosedWatchServiceException closed) { }
+        }
+        @Override public void close() {
+            try { service.close(); } catch (IOException ignored) { }
+            directories.clear();
+        }
+    }
+}

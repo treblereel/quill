@@ -26,6 +26,7 @@ class KotlinSemanticQueriesTest {
     }
 
     @AfterEach void restoreProperties() {
+        KotlinSemanticQueries.closeWarmup();
         org.treblereel.mcp.kotlin.KotlinWorkerClient.shared().close();
         if (previousCache == null) System.clearProperty("quill.kotlin.cache"); else System.setProperty("quill.kotlin.cache", previousCache);
         if (previousOffline == null) System.clearProperty("quill.kotlin.offline"); else System.setProperty("quill.kotlin.offline", previousOffline);
@@ -136,5 +137,35 @@ class KotlinSemanticQueriesTest {
         assertEquals("runtime_missing", KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick(")).path("status").asText());
         assertFalse(Files.exists(temp.resolve("absent runtime")));
         assertFalse(Files.exists(temp.resolve("build/classes")));
+    }
+
+    @Test void filesystemChangeWarmsRealFirBeforeTheNextQuery() throws Exception {
+        Path defs = temp.resolve("src/main/kotlin/Definitions.kt");
+        Path caller = temp.resolve("src/main/kotlin/Caller.kt"); Files.createDirectories(defs.getParent());
+        Files.writeString(defs, "package probe\nfun pick() = 1000");
+        String source = "package probe\nfun run() = pick()"; Files.writeString(caller, source);
+        var request = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()
+                .put("module", temp.toString()).put("source_set", "main").put("file", caller.toString())
+                .put("offset", source.lastIndexOf("pick()"));
+        request.putArray("sources").add(caller.toString()).add(defs.toString());
+        request.putArray("classpath").add(Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString());
+        var warmResult = new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.JsonNode>();
+        var warmed = new java.util.concurrent.CountDownLatch(1);
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            var result = org.treblereel.mcp.kotlin.KotlinWorkerClient.shared().query(r);
+            if (r.path("offset").asInt() == -1) { warmResult.set(result); warmed.countDown(); }
+            return result;
+        }, java.time.Duration.ofMillis(150))) {
+            java.util.function.Supplier<com.fasterxml.jackson.databind.JsonNode> background = () -> request.deepCopy().put("offset", -1);
+            var first = coordinator.query("main", () -> request, background);
+            assertEquals("()I", first.path("descriptor").asText(), first.toString());
+            Files.writeString(defs, "package probe\nfun pick() = true");
+            assertTrue(warmed.await(8, java.util.concurrent.TimeUnit.SECONDS));
+            assertFalse(warmResult.get().path("analysis_reused").asBoolean());
+            var next = coordinator.query("main", () -> request, background);
+            assertEquals("()Z", next.path("descriptor").asText(), next.toString());
+            assertTrue(next.path("analysis_reused").asBoolean(), next.toString());
+            assertEquals(warmResult.get().path("analysis_generation"), next.path("analysis_generation"));
+        }
     }
 }

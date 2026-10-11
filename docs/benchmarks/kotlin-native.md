@@ -301,3 +301,56 @@ The rebuilt native executable remains 67,199,992 bytes; native MCP smoke probes 
 Java 17 and 25 verified descriptor changes, FIR reuse, one worker PID per session and
 worker termination on MCP shutdown. Native compilation took 67 seconds with 2.82 GB
 peak build RSS.
+
+## Background warmup after edits
+
+After a successful request preparation, the MCP process watches the most recently
+queried Kotlin module/source set. Its source directories, captured classpath file,
+dependency JARs, module build markers and compiled output directories trigger a
+background worker request after a 150 ms debounce. Registrations cover new directories
+and parent directories needed to detect removed/recreated output roots, including
+external module outputs and real targets of symlinks. Watches are capped at 8,192
+directories for the single active module. A module/source-set switch cancels pending
+jobs and replaces subscriptions, matching the worker's one-snapshot memory bound.
+
+Foreground queries and background jobs serialize through the same coordinator.
+A query waits for a running warmup, then recollects the source list and classpath
+for its requested file/offset. During the debounce it takes over the pending analysis. A change
+observed during the query, or the worker's `inputs_changed` response, causes a retry
+with fresh inputs rather than publishing the raced result. Background jobs also
+recollect inputs, so additions/deletions and classpath changes are incorporated.
+Changes during a background run schedule the latest version. Worker failures retain
+the existing fallback/restart behavior; compiler errors remain reusable until repaired.
+Coordination waits are bounded and preserve interruption. MCP shutdown closes the
+watch service, cancels scheduled work and interrupts an active background request
+before terminating the worker.
+
+The debounce starts when the filesystem delivers an event, not at the editor's save
+timestamp. Watch delivery can involve polling on some platforms. If watching is
+unavailable, or a query arrives before the event, foreground content validation and
+analysis still ensure freshness. This moves frontend work ahead of a later query;
+it does not eliminate the frontend cost or guarantee that every immediate query is
+already warm. First-ever analysis and switching to an uncached module still have
+their existing startup/rebuild costs. The most recent module is watched after its
+first semantic request; this does not eagerly load every project module.
+
+Tests cover waiting behind a blocked warmup, edits during foreground/background
+analysis, coalesced events, queued-job cancellation on module switches, compiler-race
+retries, worker failure recovery, interrupted shutdown, source edits/additions/deletions,
+new directories, captured classpaths, dependency JARs, compiled outputs and recreation
+of an external output root while classpath preparation temporarily fails. A real K2
+test changes an inferred return in a dependent source file, waits for filesystem-driven
+warmup without an intervening query, and verifies the next query reuses the new FIR
+generation and returns the changed descriptor. The native E2E script performs the
+same no-intervening-query reuse check through MCP after its existing correctness probes.
+
+Validation passed: the full 684-unit-test suite, then 47 affected tests after the
+external-root/canonical-path fixes, 28 focused integration tests, and 20 native
+standalone semantic cases plus native MCP freshness/reuse and background-warmup
+checks. Missing future inputs under a symlinked project parent are canonicalized too,
+so creation of a previously absent Gradle build/classpath directory is observable.
+The final executable is 67,249,704 bytes, up 49,712 bytes (0.074%); native compilation
+took 61 seconds with 2.81 GB peak build RSS. The background-warmed native MCP query
+returned the changed descriptor with `analysis_reused: true` in 18.7 ms. This checks
+reuse after a four-second allowance for event delivery and analysis; it does not
+measure save-to-warmup completion latency.

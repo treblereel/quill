@@ -52,7 +52,7 @@ final class PositionSymbolQueries {
         String imported = kotlin ? importedName(code, identifier) : null;
         String lookupName = imported == null ? identifier : imported.substring(imported.lastIndexOf('.') + 1);
         List<Candidate> candidates = declarations(jdbi, lookupName, normalized);
-        if (kotlin) candidates = logicalProperties(jdbi, candidates, lookupName);
+        if (kotlin) candidates = sourceCallables(jdbi, logicalProperties(jdbi, candidates, lookupName));
         if (imported != null) {
             String qualified = imported;
             candidates = candidates.stream().filter(candidate -> candidate.className().replace('$', '.').equals(qualified)
@@ -175,6 +175,26 @@ final class PositionSymbolQueries {
                         row.getInt("has_defaults") == 1,
                         IndexReader.kotlinParametersFromJson(row.getString("value_parameters"))))
                 .list());
+    }
+
+    private static List<Candidate> sourceCallables(Jdbi jdbi, List<Candidate> candidates) {
+        return candidates.stream().filter(candidate -> {
+            if (candidate.semanticName() != null
+                    || !("METHOD".equals(candidate.kind()) || "CONSTRUCTOR".equals(candidate.kind()))) return true;
+            var owners = IndexReader.findClassesByName(jdbi, candidate.className()).stream()
+                    .filter(owner -> java.util.Objects.equals(owner.sourceFile(), candidate.sourceFile())).toList();
+            // Retain uncertain candidates, including duplicate owners with conflicting evidence.
+            return owners.isEmpty() || !owners.stream().allMatch(owner -> {
+                String method = "CONSTRUCTOR".equals(candidate.kind()) ? "<init>" : candidate.memberName();
+                var target = KotlinUsageNormalizer.sourceTarget(jdbi, owner.id(), method, candidate.descriptor());
+                return target.isPresent() && candidates.stream().anyMatch(source -> source.semanticName() != null
+                        && source.kind().equals(candidate.kind())
+                        && source.className().equals(target.get().className())
+                        && source.descriptor().equals(target.get().descriptor())
+                        && ("CONSTRUCTOR".equals(source.kind()) || source.memberName().equals(target.get().method()))
+                        && java.util.Objects.equals(source.sourceFile(), target.get().sourceFile()));
+            });
+        }).toList();
     }
 
     private static String importedName(String code, String identifier) {

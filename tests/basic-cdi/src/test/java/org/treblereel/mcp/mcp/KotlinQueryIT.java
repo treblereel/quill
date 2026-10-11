@@ -124,4 +124,35 @@ class KotlinQueryIT {
         assertEquals("CONSTRUCTOR", constructorResult.path("selected").path("kind").asText(), constructorResult.toPrettyString());
     }
 
+    private JsonNode livePosition(String expression, String token) throws Exception {
+        String source = "import " + PACKAGE + "*\nfun run() = " + expression;
+        String path = "src/main/kotlin/Navigation.kt";
+        Files.writeString(project.resolve(path), source);
+        return JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(db, project, path,
+                2, 13 + expression.indexOf(token)));
+    }
+
+    @Test void generatedJvmOverloadsNavigateToSingleSourceDeclaration() throws Exception {
+        for (String arguments : java.util.List.of("required = \"ok\"", "1, \"ok\"", "1, \"ok\", \"?\"")) {
+            var result = livePosition("overloadNavigation(" + arguments + ")", "overloadNavigation");
+            assertEquals("resolved", result.path("resolution").asText(), result.toPrettyString());
+            assertEquals("(ILjava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+                    result.path("selected").path("jvm_descriptor").asText());
+            assertEquals(1, result.path("candidate_count").asInt());
+        }
+        for (String arguments : java.util.List.of("", "1", "label = \"custom\"", "1, \"custom\"")) {
+            var result = livePosition("OverloadConstructor(" + arguments + ")", "OverloadConstructor");
+            assertEquals("resolved", result.path("resolution").asText(), result.toPrettyString());
+            assertEquals("(ILjava/lang/String;)V", result.path("selected").path("jvm_descriptor").asText());
+            assertEquals(1, result.path("candidates").valueStream()
+                    .filter(value -> value.path("kind").asText().equals("CONSTRUCTOR")).count());
+        }
+        for (String arguments : java.util.List.of("", "\"custom\"")) {
+            var result = livePosition("StaticShapes.welcome(" + arguments + ")", "welcome");
+            assertEquals("resolved", result.path("resolution").asText(), result.toPrettyString());
+            assertEquals(PACKAGE + "StaticShapes$Companion", result.path("selected").path("class_name").asText());
+            assertEquals(1, result.path("candidate_count").asInt());
+        }
+    }
+
 }

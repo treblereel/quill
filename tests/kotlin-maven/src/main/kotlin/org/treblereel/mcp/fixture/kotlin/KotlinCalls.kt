@@ -22,3 +22,7 @@ class StaticShapes {
 fun parameterShapes(optional: Int = 1, vararg values: String, required: String): String = required
 class ParameterShapes(val optional: Int = 1, val required: String)
 class ParameterOuter { inner class Child(val count: Int = 1) }
+
+@JvmOverloads
+fun overloadNavigation(optional: Int = 1, required: String, suffix: String = "!"): String = "$optional-$required$suffix"
+class OverloadConstructor @JvmOverloads constructor(val count: Int = 1, val label: String = "ok")

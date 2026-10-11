@@ -700,6 +700,10 @@ A bounded normalization reports `normalization_truncated` and an incomplete answ
 
 Position navigation recognizes Kotlin constructor calls, backtick names, explicit import
 aliases, logical properties, and source parameter counts for suspend/extension functions.
+Generated JVM overloads and companion forwarding methods are omitted from Kotlin position
+candidates when a unique compiler-forwarding chain reaches an indexed source declaration.
+Real source overloads and candidates with incomplete evidence remain visible; Java position
+navigation retains physical JVM overloads.
 Callable metadata preserves source parameter names, default-value and vararg flags,
 including constructors. Navigation uses this evidence to check required arguments and
 named arguments; JVM receivers and Continuation are excluded from source arity.

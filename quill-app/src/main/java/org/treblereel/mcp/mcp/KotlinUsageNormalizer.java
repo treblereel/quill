@@ -15,6 +15,30 @@ final class KotlinUsageNormalizer {
     record Result(List<Usage> usages, boolean truncated) {}
     private static final int CAP = 5_000;
 
+    record SourceMember(String className, String method, String descriptor, String sourceFile) {}
+
+    /** Returns a source declaration only after every edge has compiler-forwarding evidence. */
+    static java.util.Optional<SourceMember> sourceTarget(Jdbi jdbi, int owner, String method, String descriptor) {
+        Set<String> visited = new HashSet<>();
+        for (int depth = 0; depth < 32; depth++) {
+            if (!visited.add(owner + "|" + method + "|" + descriptor)) break;
+            final String name = method, desc = descriptor;
+            boolean declared = IndexReader.findKotlinDeclarations(jdbi, owner).stream().anyMatch(value ->
+                    ("FUNCTION".equals(value.kind()) || "CONSTRUCTOR".equals(value.kind()))
+                    && name.equals(value.jvmName()) && desc.equals(value.descriptor()));
+            if (declared) {
+                if (depth == 0) return java.util.Optional.empty();
+                var cls = IndexReader.findClassById(jdbi, owner);
+                return cls.map(value -> new SourceMember(value.className(), name, desc, value.sourceFile()));
+            }
+            var calls = IndexReader.findAdjacentMethodCalls(jdbi, owner, method, descriptor, "outbound");
+            if (calls.size() != 1 || calls.getFirst().occurrenceCount() != 1 || !forwarder(jdbi, calls.getFirst())) break;
+            var call = calls.getFirst();
+            owner = call.toClassId(); method = call.toMethod(); descriptor = call.toDescriptor();
+        }
+        return java.util.Optional.empty();
+    }
+
     static Result inbound(Jdbi jdbi, int owner, String method, String descriptor) {
         var result = new ArrayList<Usage>();
         boolean[] truncated = {false};
@@ -78,6 +102,15 @@ final class KotlinUsageNormalizer {
         boolean sameOwner = call.fromClassId() == call.toClassId();
         Type[] from = Type.getArgumentTypes(call.fromDescriptor());
         Type[] to = Type.getArgumentTypes(call.toDescriptor());
+        if (constructor && sameOwner && "<init>".equals(call.fromMethod())
+                && to.length > 0 && to[to.length - 1].getDescriptor().equals("Lkotlin/jvm/internal/DefaultConstructorMarker;")
+                && target.stream().anyMatch(value -> "CONSTRUCTOR".equals(value.kind()) && value.hasDefaultParameters())) {
+            boolean overload = IndexReader.findClassMembers(jdbi, call.fromClassId()).stream().anyMatch(member ->
+                    "CONSTRUCTOR".equals(member.kind()) && call.fromDescriptor().equals(member.descriptor())
+                    && member.annotations().contains("kotlin.jvm.JvmOverloads"));
+            return overload && call.occurrenceCount() == 1 && IndexReader.findAdjacentMethodCalls(jdbi,
+                    call.fromClassId(), call.fromMethod(), call.fromDescriptor(), "outbound").size() == 1;
+        }
         if (sameOwner && (call.fromMethod().equals(call.toMethod() + "$default")
                 || constructor && call.fromMethod().equals("<init>"))) {
             if (!constructor && (declaration.isEmpty() || !declaration.get().hasDefaultParameters())) return false;

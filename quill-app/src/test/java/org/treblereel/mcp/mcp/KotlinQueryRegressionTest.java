@@ -354,4 +354,88 @@ class KotlinQueryRegressionTest {
         assertEquals("run", KotlinUsageNormalizer.inbound(db, 1, "<init>", original).usages().getFirst().call().fromMethod());
     }
 
+    private void generatedFunction() {
+        member(1, "METHOD", "f", "(I)V", "[\"int\"]");
+        member(1, "METHOD", "f", "()V", "[]");
+        declaration(1, "FUNCTION", "f", "f", "(I)V", false, false, true);
+        parameters(1, "FUNCTION", "f", "(I)V", "[{\"name\":\"value\",\"hasDefault\":true,\"vararg\":false}]");
+        db.useHandle(h -> h.execute("UPDATE class_members SET annotations='[\"kotlin.jvm.JvmOverloads\"]' WHERE descriptor='()V'"));
+        call(1, "f", "()V", 1, "f$default", "(IILjava/lang/Object;)V", 0);
+        call(1, "f$default", "(IILjava/lang/Object;)V", 1, "f", "(I)V", 0);
+    }
+
+    @Test void generatedOverloadNavigationSelectsOriginalDescriptor() throws Exception {
+        generatedFunction();
+        for (String arguments : List.of("", "1", "value = 1")) {
+            var result = position("fun run() = f(" + arguments + ")", "f(");
+            assertEquals("resolved", result.path("resolution").asText(), result.toPrettyString());
+            assertEquals("(I)V", result.path("selected").path("jvm_descriptor").asText());
+            assertEquals(1, result.path("candidate_count").asInt());
+        }
+    }
+
+    @Test void realSourceOverloadRemainsEvenWhenAnnotatedAndForwarding() throws Exception {
+        generatedFunction();
+        declaration(1, "FUNCTION", "f", "f", "()V", false, false, false);
+        parameters(1, "FUNCTION", "f", "()V", "[]");
+        var result = position("fun run() = f()", "f(");
+        assertEquals(2, result.path("candidate_count").asInt());
+        assertEquals("ambiguous", result.path("resolution").asText());
+        assertFalse(result.has("selected"));
+    }
+
+    @Test void missingAnnotationOrMetadataOrUniqueEdgeKeepsPhysicalCandidate() throws Exception {
+        for (int scenario = 0; scenario < 4; scenario++) {
+            db.useHandle(h -> { h.execute("DELETE FROM class_members"); h.execute("DELETE FROM method_calls");
+                h.execute("DELETE FROM kotlin_declarations WHERE kind='FUNCTION'"); });
+            generatedFunction();
+            if (scenario == 0) db.useHandle(h -> h.execute("UPDATE class_members SET annotations='[]'"));
+            if (scenario == 1) db.useHandle(h -> h.execute("DELETE FROM kotlin_declarations WHERE kind='FUNCTION'"));
+            if (scenario == 2) call(1, "f", "()V", 2, "other", "()V", 1);
+            if (scenario == 3) db.useHandle(h -> h.execute("UPDATE method_calls SET to_descriptor='(II)V' WHERE from_method='f$default'"));
+            assertEquals(2, position("fun run() = f()", "f(").path("candidate_count").asInt(), "scenario " + scenario);
+            assertTrue(KotlinUsageNormalizer.sourceTarget(db, 1, "f", "()V").isEmpty());
+        }
+    }
+
+    @Test void generatedConstructorOverloadNavigatesAndNormalizesToSource() throws Exception {
+        member(1, "CONSTRUCTOR", "Owner", "(I)V", "[\"int\"]");
+        member(1, "CONSTRUCTOR", "Owner", "()V", "[]");
+        declaration(1, "CONSTRUCTOR", "Owner", "<init>", "(I)V", false, false, true);
+        parameters(1, "CONSTRUCTOR", "<init>", "(I)V", "[{\"name\":\"value\",\"hasDefault\":true,\"vararg\":false}]");
+        db.useHandle(h -> h.execute("UPDATE class_members SET annotations='[\"kotlin.jvm.JvmOverloads\"]' WHERE descriptor='()V'"));
+        String bridge = "(IILkotlin/jvm/internal/DefaultConstructorMarker;)V";
+        call(1, "<init>", "()V", 1, "<init>", bridge, 0);
+        call(1, "<init>", bridge, 1, "<init>", "(I)V", 0);
+        call(2, "run", "()V", 1, "<init>", "()V", 10);
+        var result = position("fun run() = Owner()", "Owner(");
+        assertEquals("(I)V", result.path("selected").path("jvm_descriptor").asText(), result.toPrettyString());
+        assertEquals("run", KotlinUsageNormalizer.inbound(db, 1, "<init>", "(I)V").usages().getFirst().call().fromMethod());
+        declaration(1, "CONSTRUCTOR", "Owner", "<init>", "()V", false, false, false);
+        assertTrue(KotlinUsageNormalizer.sourceTarget(db, 1, "<init>", "()V").isEmpty());
+    }
+
+    @Test void javaNavigationKeepsJvmOverloads() throws Exception {
+        generatedFunction();
+        String source = "class Caller { void run() { acme.Owner.f(); } }";
+        Files.writeString(temp.resolve("Caller.java"), source);
+        var result = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(db, temp,
+                "Caller.java", 1, source.indexOf("f();") + 1));
+        assertEquals(2, result.path("candidate_count").asInt());
+        assertEquals("()V", result.path("selected").path("jvm_descriptor").asText(), result.toPrettyString());
+    }
+
+    @Test void forwardingCyclesAndRepeatedEdgesDoNotHideCandidates() throws Exception {
+        generatedFunction();
+        db.useHandle(h -> h.execute("UPDATE method_calls SET occurrence_count=2 WHERE from_method='f'"));
+        assertTrue(KotlinUsageNormalizer.sourceTarget(db, 1, "f", "()V").isEmpty());
+        db.useHandle(h -> h.execute("DELETE FROM method_calls"));
+        member(1, "METHOD", "f", "(J)V", "[\"long\"]");
+        db.useHandle(h -> h.execute("UPDATE class_members SET annotations='[\"kotlin.jvm.JvmOverloads\"]'"));
+        call(1, "f", "()V", 1, "f", "(J)V", 0);
+        call(1, "f", "(J)V", 1, "f", "()V", 0);
+        assertTrue(KotlinUsageNormalizer.sourceTarget(db, 1, "f", "()V").isEmpty());
+        assertEquals(3, position("fun run() = f()", "f(").path("candidate_count").asInt());
+    }
+
 }

@@ -697,6 +697,12 @@ Method usages expand recognized default-argument, constructor, multifile, compan
 `@JvmStatic`, `@JvmOverloads`, and bridge forwarding. Normalized usages retain their
 `bytecode_path`; call hierarchy exposes `source_callers` alongside physical JVM edges.
 A bounded normalization reports `normalization_truncated` and an incomplete answer.
+Kotlin source debug information is indexed separately: usages and source call hierarchy
+include SMAP `source_locations` for Kotlin and KotlinDebug strata alongside unchanged
+JVM `evidence_lines`. Paths are resolved only against unambiguous visible indexed owners.
+Coroutine `DebugMetadata` versions 1 and 2 expose source function names and suspension
+(and v2 next-line) arrays; the runtime label is unknown, so no current suspension line is
+guessed. Malformed SMAP and unsupported coroutine versions remain explicit.
 
 Position navigation recognizes Kotlin constructor calls, backtick names, explicit import
 aliases, logical properties, and source parameter counts for suspend/extension functions.

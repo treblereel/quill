@@ -24,7 +24,7 @@ public final class IndexWriter {
             "resource_usages", "configuration_usages", "configuration_definitions",
             "dependencies", "field_accesses", "method_calls", "injection_points", "beans", "class_members",
             "class_annotations",
-            "class_occurrences", "module_classpath", "kotlin_declarations", "classes",
+            "class_occurrences", "module_classpath", "kotlin_declarations", "kotlin_source_debug", "classes",
             "files", "metadata"
     };
 
@@ -882,7 +882,7 @@ public final class IndexWriter {
         jdbi.useTransaction(h -> {
             for (String table : new String[]{"dependencies", "injection_points", "beans",
                     "method_calls", "class_members", "class_annotations", "class_occurrences",
-                    "classes", "files", "metadata"}) {
+                    "kotlin_source_debug", "classes", "files", "metadata"}) {
                 h.execute("DELETE FROM " + table);
             }
             h.execute("DELETE FROM sqlite_sequence");
@@ -987,6 +987,16 @@ public final class IndexWriter {
                         statement.setInt(3, entry.distance());
                         statement.setString(4, entry.relation());
                     });
+        });
+    }
+
+    public static void writeKotlinSourceDebug(Jdbi jdbi, Map<Integer, org.treblereel.mcp.core.KotlinSourceDebug.Info> values) {
+        jdbi.useTransaction(h -> {
+            h.execute("DELETE FROM kotlin_source_debug");
+            values.forEach((id, value) -> {
+                h.createUpdate("INSERT INTO kotlin_source_debug(class_id,data) VALUES (:id,:data)")
+                    .bind("id", id).bind("data", toJson(value)).execute();
+            });
         });
     }
 

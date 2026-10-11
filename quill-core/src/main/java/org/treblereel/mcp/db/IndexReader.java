@@ -1379,6 +1379,14 @@ public final class IndexReader {
                         .findFirst());
     }
 
+    public static Optional<org.treblereel.mcp.core.KotlinSourceDebug.Info> findKotlinSourceDebug(Jdbi jdbi, int classId) {
+        return jdbi.withHandle(h -> h.createQuery("SELECT data FROM kotlin_source_debug WHERE class_id=:id")
+                .bind("id", classId).mapTo(String.class).findOne()).flatMap(data -> {
+            try { return Optional.of(JSON.readValue(data, org.treblereel.mcp.core.KotlinSourceDebug.Info.class)); }
+            catch (Exception invalid) { return Optional.empty(); }
+        });
+    }
+
     public static Optional<ClassRecord> findClassById(Jdbi jdbi, int id) {
         return jdbi.withHandle(h ->
                 h.createQuery("SELECT * FROM classes WHERE id = :id")

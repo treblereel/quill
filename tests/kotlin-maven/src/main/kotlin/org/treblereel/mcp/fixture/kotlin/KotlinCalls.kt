@@ -36,3 +36,8 @@ fun typedNavigation(value: Int): Int = value
 fun typedNavigation(value: String): String = value
 fun <T> genericNavigation(value: T): T = value
 class TypedReceiver { fun typedNavigation(value: Long): Long = value }
+
+inline fun debugInline(block: () -> String): String { greeting("inline"); return block() }
+fun debugInlineCaller(): String = debugInline { greeting("callsite") }
+suspend fun debugSuspendPoint(): String = kotlin.coroutines.suspendCoroutine { continuation -> continuation.resumeWith(Result.success("ok")) }
+suspend fun debugSuspendCaller(): String { val value = debugSuspendPoint(); return greeting(value) }

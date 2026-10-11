@@ -488,4 +488,26 @@ class KotlinQueryRegressionTest {
         assertFalse(position("fun run() = action(last = {}) {}", "action").has("selected"));
     }
 
+    @Test void sourceLocationsPreserveJvmLinesAndDoNotGuessCoroutineState() throws Exception {
+        member(1, "METHOD", "g", "()V", "[]");
+        declaration(1, "FUNCTION", "g", "g", "()V", false, false, false);
+        call(2, "run", "()V", 1, "g", "()V", 101);
+        var info = new org.treblereel.mcp.core.KotlinSourceDebug.Info("acme.Client", List.of(
+                new org.treblereel.mcp.core.KotlinSourceDebug.Mapping("Kotlin", "Owner.kt", "acme/Owner", 5, 2, 100, 1)), false,
+                new org.treblereel.mcp.core.KotlinSourceDebug.Coroutine("acme.Owner", "g", "Owner.kt", 2, List.of(5, 6), List.of(6, -1)));
+        org.treblereel.mcp.db.IndexWriter.writeKotlinSourceDebug(db, java.util.Map.of(2, info));
+        var query = new SymbolUsageQueries();
+        var usage = JSON.readTree(query.findSymbolUsages(db, "acme.Owner", "g", "method", "()V", "all", 10, 0)).path("usages").get(0);
+        assertEquals(101, usage.path("evidence_lines").get(0).asInt());
+        assertEquals(6, usage.path("source_locations").get(0).path("source_line").asInt());
+        assertEquals("Owner.kt", usage.path("source_locations").get(0).path("source_file").asText());
+        assertFalse(usage.path("coroutine_source").path("runtime_state_known").asBoolean());
+        assertFalse(usage.path("coroutine_source").has("source_line"));
+        type(3, "acme.Owner", null);
+        db.useHandle(h -> h.execute("UPDATE classes SET source_file='other/Owner.kt' WHERE id=3"));
+        var node = JSON.createObjectNode(); KotlinSourceLocations.append(db, node, 2, List.of(101));
+        assertFalse(node.path("source_locations").get(0).path("mapped").asBoolean());
+        assertFalse(node.path("source_locations").get(0).has("source_file"));
+    }
+
 }

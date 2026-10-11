@@ -195,4 +195,18 @@ class KotlinQueryIT {
         }
     }
 
+    @Test void realCompilerInlineAndCoroutineLocationsSurviveIndexing() throws Exception {
+        var greeting = usages("BillingKt", "greeting", "method", "(Ljava/lang/String;)Ljava/lang/String;");
+        var inline = greeting.path("usages").valueStream().filter(value -> value.path("caller").path("method").asText().equals("debugInlineCaller"))
+                .findFirst().orElseThrow();
+        assertTrue(inline.path("source_locations").size() > 0, inline.toPrettyString());
+        assertTrue(inline.path("source_locations").valueStream().anyMatch(value -> value.path("mapped").asBoolean()
+                && value.path("source_file").asText().endsWith("KotlinCalls.kt")), inline.toPrettyString());
+        var coroutine = IndexReader.findClassesByName(db, PACKAGE + "KotlinCallsKt$debugSuspendCaller$1").getFirst();
+        var debug = IndexReader.findKotlinSourceDebug(db, coroutine.id()).orElseThrow();
+        assertEquals("debugSuspendCaller", debug.coroutine().method());
+        assertFalse(debug.coroutine().suspensionLines().isEmpty());
+        assertTrue(debug.coroutine().supported());
+    }
+
 }

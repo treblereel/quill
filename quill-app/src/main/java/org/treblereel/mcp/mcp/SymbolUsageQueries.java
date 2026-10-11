@@ -141,6 +141,7 @@ final class SymbolUsageQueries {
             node.put("occurrence_count", usage.occurrenceCount());
             node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
             appendPath(node, resolved);
+            KotlinSourceLocations.append(jdbi, node, usage.fromClassId(), usage.evidenceLines());
             if (countedClasses.add(usage.fromClassId())) naiveTokens += usage.fromSourceTokens();
         }
         limitations(root).add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
@@ -201,7 +202,8 @@ final class SymbolUsageQueries {
                     node.put("access_kind", binding.write() ? "setter_call" : "getter_call");
                     node.put("jvm_member", binding.name()); node.put("occurrence_count", usage.occurrenceCount());
                     node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
-                    appendPath(node, resolved); usages.add(node);
+                    appendPath(node, resolved);
+                    KotlinSourceLocations.append(jdbi, node, usage.fromClassId(), usage.evidenceLines()); usages.add(node);
                 }
             }
         }

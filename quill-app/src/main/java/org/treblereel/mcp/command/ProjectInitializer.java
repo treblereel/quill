@@ -444,6 +444,11 @@ public class ProjectInitializer {
         classes = correctedClasses;
         timings.finish("bean_resolution");
 
+        Map<Integer, org.treblereel.mcp.core.KotlinSourceDebug.Info> kotlinSourceDebug = new LinkedHashMap<>();
+        for (var info : org.treblereel.mcp.core.KotlinSourceDebug.scan(classFiles)) {
+            Integer id = classNameToSqliteId.get(info.className());
+            if (id != null) kotlinSourceDebug.put(id, info);
+        }
         List<DependencyRecord> remappedDeps = new ArrayList<>(persisted.dependencies());
         List<ExternalDepRecord> externalDeps;
         int serviceDescriptorCount;
@@ -699,6 +704,7 @@ public class ProjectInitializer {
             }
             Jdbi stagedIndex = QuillDatabase.openWritable(stagedDb);
             IndexWriter.writeKotlinDeclarations(stagedIndex, kotlinDeclarations);
+            IndexWriter.writeKotlinSourceDebug(stagedIndex, kotlinSourceDebug);
             IndexWriter.writeExternalBeans(stagedIndex, externalBeans);
             IndexWriter.writeModuleClasspath(stagedIndex, moduleClasspath);
             long validationStartedAt = System.nanoTime();

@@ -163,6 +163,7 @@ final class CallHierarchyQueries {
                 caller.put("occurrence_count", call.occurrenceCount());
                 caller.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
                 SymbolUsageQueries.appendPath(caller, usage);
+                KotlinSourceLocations.append(jdbi, caller, call.fromClassId(), call.evidenceLines());
             }
         }
         root.put("direct_only", !transitive);

@@ -774,4 +774,18 @@ class IndexWriterReaderTest {
         assertEquals(1, result.size(), "Only exact 'dev' profile should match, not '!dev' or 'dev-staging'");
         assertEquals(1, result.getFirst().classId());
     }
+    @Test void kotlinSourceDebugRoundTripsAndRemovesStaleEvidence() {
+        var db = QuillDatabase.create(tempDir.resolve("source-debug.db"));
+        db.useHandle(h -> h.execute("INSERT INTO classes(id,class_name,kind,interfaces) VALUES (1,'acme.Owner','CLASS','[]')"));
+        var info = new org.treblereel.mcp.core.KotlinSourceDebug.Info("acme.Owner", List.of(
+                new org.treblereel.mcp.core.KotlinSourceDebug.Mapping("Kotlin", "Owner.kt", "acme/Owner", 5, 1, 100, 1)), false,
+                new org.treblereel.mcp.core.KotlinSourceDebug.Coroutine("acme.Owner", "run", "Owner.kt", 2, List.of(5), List.of(6)));
+        IndexWriter.writeKotlinSourceDebug(db, java.util.Map.of(1, info));
+        assertEquals(info, IndexReader.findKotlinSourceDebug(db, 1).orElseThrow());
+        db.useHandle(h -> h.execute("UPDATE kotlin_source_debug SET data='invalid'"));
+        assertTrue(IndexReader.findKotlinSourceDebug(db, 1).isEmpty());
+        IndexWriter.writeKotlinSourceDebug(db, java.util.Map.of());
+        assertTrue(IndexReader.findKotlinSourceDebug(db, 1).isEmpty());
+    }
+
 }

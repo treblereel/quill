@@ -50,6 +50,25 @@ object K2Analyzer {
     private var snapshot: Snapshot? = null
     private var generation = 0L
 
+    // Worker-protocol opt-in for benchmarks; timings never enter snapshot identity.
+    private class Timings(val enabled: Boolean) {
+        private val started = if (enabled) System.nanoTime() else 0L
+        private val stages = if (enabled) json.createObjectNode() else null
+        fun <T> measure(name: String, action: () -> T): T {
+            if (!enabled) return action()
+            val start = System.nanoTime()
+            try { return action() }
+            finally { stages!!.put(name, stages.path(name).asDouble() + (System.nanoTime() - start) / 1_000_000.0) }
+        }
+        fun finish(result: ObjectNode): ObjectNode {
+            stages?.let {
+                it.put("total", (System.nanoTime() - started) / 1_000_000.0)
+                result.set<ObjectNode>("analysis_timings_ms", it)
+            }
+            return result
+        }
+    }
+
     @JvmStatic @Synchronized fun clear() {
         val previous = snapshot
         snapshot = null
@@ -57,28 +76,30 @@ object K2Analyzer {
     }
 
     @JvmStatic @Synchronized fun analyze(request: JsonNode): ObjectNode {
+        val timings = Timings(request.path("profile_analysis").asBoolean(false))
         try {
-            val inputs = CompilerInputs.capture(request)
+            val inputs = timings.measure("capture_before") { CompilerInputs.capture(request) }
             val reused = snapshot?.inputs?.fingerprint() == inputs.fingerprint()
             if (!reused) {
-                clear()
-                snapshot = build(request, inputs)
+                timings.measure("dispose") { clear() }
+                snapshot = build(request, inputs, timings)
             }
             val current = snapshot!!
-            val result = current.status?.let { response(it) } ?: resolve(current, request)
+            val result = current.status?.let { response(it) }
+                ?: timings.measure("lookup") { resolve(current, request) }
             // Source/classpath edits racing a frontend run or lookup cannot receive high confidence.
-            if (CompilerInputs.capture(request).fingerprint() != inputs.fingerprint()) {
-                clear()
-                return response("inputs_changed")
+            if (timings.measure("capture_after") { CompilerInputs.capture(request) }.fingerprint() != inputs.fingerprint()) {
+                timings.measure("dispose") { clear() }
+                return timings.finish(response("inputs_changed"))
             }
-            return result.put("analysis_reused", reused).put("analysis_generation", current.generation)
+            return timings.finish(result.put("analysis_reused", reused).put("analysis_generation", current.generation))
         } catch (failure: Exception) {
             clear()
             throw failure
         }
     }
 
-    private fun build(request: JsonNode, inputs: CompilerInputs): Snapshot {
+    private fun build(request: JsonNode, inputs: CompilerInputs, timings: Timings): Snapshot {
         val disposable = Disposer.newDisposable()
         var retained = false
         val revision = ++generation
@@ -95,11 +116,13 @@ object K2Analyzer {
                 disableDefaultScriptingPlugin = true
                 useFirLT = false
             }
-            val configuration = JvmConfigurationPipelinePhase.executePhase(ArgumentsPipelineArtifact(
-                arguments, Services.EMPTY, disposable, messages, PerformanceManagerImpl(JvmPlatforms.defaultJvmPlatform, "quill")))
+            val configuration = timings.measure("configuration") {
+                JvmConfigurationPipelinePhase.executePhase(ArgumentsPipelineArtifact(
+                    arguments, Services.EMPTY, disposable, messages, PerformanceManagerImpl(JvmPlatforms.defaultJvmPlatform, "quill")))
+            }
             fun invalid() = Snapshot(inputs, null, emptyMap(), "analysis_error", revision)
             if (messages.hasErrors()) return invalid()
-            val frontend = JvmFrontendPipelinePhase.executePhase(configuration) ?: return invalid()
+            val frontend = timings.measure("frontend") { JvmFrontendPipelinePhase.executePhase(configuration) } ?: return invalid()
             if (configuration.configuration.diagnosticsCollector.hasErrors || messages.hasErrors()) return invalid()
             val files = frontend.frontendOutput.outputs.flatMap { output -> output.fir.map { file ->
                 File(file.sourceFile?.path ?: "").absoluteFile.normalize().path to AnalyzedFile(file, output.session)

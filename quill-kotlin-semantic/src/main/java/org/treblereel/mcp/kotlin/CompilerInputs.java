@@ -69,6 +69,9 @@ public record CompilerInputs(String fingerprint, String moduleHome, String jdkHo
 
     private static String hash(Path path, boolean memoize) throws IOException {
         path = path.toAbsolutePath().normalize();
+        // Sources are deliberately read every time: cache stamps would add filesystem
+        // calls without avoiding any I/O or strengthening their content identity.
+        if (!memoize) return contentHash(path);
         var attributes = Files.readAttributes(path, BasicFileAttributes.class);
         Object changedAt;
         try { changedAt = Files.getAttribute(path, "unix:ctime"); }
@@ -81,16 +84,20 @@ public record CompilerInputs(String fingerprint, String moduleHome, String jdkHo
                 ? ARCHIVES : OUTPUTS;
         Hash cached = memoize && stamp != null ? hashes.get(path) : null;
         if (cached != null && cached.stamp().equals(stamp)) return cached.digest();
+        String result = contentHash(path);
+        // A raced write must not publish a hash under the post-write attributes.
+        if (stamp != null) hashes.put(path, new Hash(stamp, result));
+        return result;
+    }
+
+    private static String contentHash(Path path) throws IOException {
         MessageDigest digest = sha256();
         try (var input = Files.newInputStream(path)) {
             byte[] buffer = new byte[16 * 1024];
             int count;
             while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count);
         }
-        String result = HexFormat.of().formatHex(digest.digest());
-        // A raced write must not publish a hash under the post-write attributes.
-        if (memoize && stamp != null) hashes.put(path, new Hash(stamp, result));
-        return result;
+        return HexFormat.of().formatHex(digest.digest());
     }
 
     private static MessageDigest sha256() {

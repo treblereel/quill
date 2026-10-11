@@ -238,3 +238,66 @@ positions/files, dependent source edits, source addition/deletion, unchanged tou
 Java roots, real class/JAR replacement with restored timestamps, classpath ordering,
 module/source-set changes, JDK identity/content, symlinks and cycles, cached errors and
 repair, concurrent callers, explicit disposal, and changes racing a lookup.
+
+## Stage profiling and source fingerprint overhead
+
+The worker protocol accepts `profile_analysis: true` to attach an
+`analysis_timings_ms` object. Its `capture_before`, `dispose`, `configuration`,
+`frontend`, `lookup`, `capture_after` and `total` values measure this request only.
+Stages that did not execute are omitted: a reused snapshot has no configuration or
+frontend timing, and a reused analysis error has no lookup timing. Detected input
+races also include the work measured before returning `inputs_changed`. Normal
+requests omit timings, and toggling profiling does not change snapshot identity.
+The public MCP tool does not expose this benchmark flag.
+
+Reproduce the worker-only scaling probe:
+
+```bash
+./mvnw -q -pl quill-kotlin-semantic -am package -DskipTests
+python3 scripts/quill_kotlin_stage_benchmark.py \
+  --java-home /path/to/jdk17 --files 10 100 500 --samples 10 \
+  --output /tmp/quill-k2-stages.json
+```
+
+Each module contains the requested generated file count plus a definition and caller
+file. Generated files contain five functions with explicit Int return types and
+cross-file calls. Ten edits alternate an inferred Int/Boolean return in the definition
+file; each query checks the dependent caller's descriptor and a new FIR generation.
+Ten unchanged requests then verify reuse. Each module starts a fresh 512 MiB worker.
+Worker roundtrip includes framing and response serialization, and the cold roundtrip
+also includes JVM launch; stage timings exclude those costs. These are synthetic local
+measurements on the same macOS host, not full MCP request measurements.
+
+| Worker JVM | Source files | Changed roundtrip median | Frontend median | Configuration median | Unchanged roundtrip median |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Zulu 17.0.16 | 12 | 68 ms | 65 ms | 0.4 ms | 1.1 ms |
+| Zulu 17.0.16 | 102 | 134 ms | 127 ms | 0.6 ms | 3.7 ms |
+| Zulu 17.0.16 | 502 | 435 ms | 408 ms | 1.5 ms | 18.6 ms |
+| GraalVM 25.0.1 | 12 | 93 ms | 88 ms | 0.5 ms | 1.0 ms |
+| GraalVM 25.0.1 | 102 | 245 ms | 237 ms | 1.0 ms | 3.3 ms |
+| GraalVM 25.0.1 | 502 | 473 ms | 445 ms | 1.4 ms | 19.3 ms |
+
+Profiling exposed unnecessary metadata reads for source files: their content was
+always hashed, yet the code first fetched basic attributes and Unix change time used
+only for memoized binary hashes. Sources now bypass those metadata reads and still
+hash their bytes before and after analysis. On Java 17, unchanged worker roundtrip
+medians before/after were 2.9/1.1 ms (12 files), 5.8/3.7 ms (102), and 47.2/18.6 ms
+(502). The changed-source frontend remained the dominant cost: 396 ms before and
+408 ms after in the 502-file module. Independent medians and host variation prevent
+attributing every timing difference to this small change.
+
+Cold worker roundtrips were 1.6–3.3 seconds in the final probes. Configuration reuse
+would save little on changed-source queries in these fixtures; avoiding whole-module
+frontend work is the next substantial optimization to investigate. An initial
+500-file chain with inferred return types exhausted the K2 compiler stack on Java 17;
+the reported scaling workload uses explicit return types. Deep return-type inference
+remains a separate compiler stress case.
+
+Validation: 31 focused Java/Kotlin tests passed, including profiling on/off without
+invalidation, per-request stage presence, invalid positions, cached errors and repair,
+and racing inputs. All 180 generated-module queries across the baseline Java 17 and
+final Java 17/25 probes checked descriptors and FIR generations (plus nine cold queries).
+The rebuilt native executable remains 67,199,992 bytes; native MCP smoke probes on
+Java 17 and 25 verified descriptor changes, FIR reuse, one worker PID per session and
+worker termination on MCP shutdown. Native compilation took 67 seconds with 2.82 GB
+peak build RSS.

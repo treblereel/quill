@@ -152,8 +152,10 @@ class K2SnapshotTest {
             }
         };
         changing.setAll(request);
+        changing.put("profile_analysis", true);
         var raced = K2Analyzer.analyze(changing);
         assertEquals("inputs_changed", raced.path("status").asText());
+        timings(raced, "capture_before", "capture_after", "dispose", "total");
         rebuilt(first, resolve(request, "()I"));
     }
     @Test void concurrentQueriesSerializeAndShareOnlyOneSnapshot() throws Exception {
@@ -170,5 +172,57 @@ class K2SnapshotTest {
             }
         } finally { pool.shutdownNow(); }
         K2Analyzer.clear(); assertFalse(resolve(request, "()I").path("analysis_reused").asBoolean());
+    }
+    private void timings(JsonNode result, String... stages) {
+        var timings = result.path("analysis_timings_ms");
+        assertTrue(timings.isObject(), result.toString());
+        double sum = 0;
+        for (var values = timings.fields(); values.hasNext();) {
+            var stage = values.next();
+            assertTrue(stage.getValue().isNumber());
+            assertTrue(Double.isFinite(stage.getValue().asDouble()));
+            assertTrue(stage.getValue().asDouble() >= 0);
+            if (!stage.getKey().equals("total")) sum += stage.getValue().asDouble();
+        }
+        assertTrue(timings.path("total").asDouble() >= sum, timings.toString());
+        for (String stage : stages) assertTrue(timings.has(stage), timings.toString());
+    }
+    @Test void profilingIsOptInAndDoesNotInvalidateOrCachePositionTimings() throws Exception {
+        Path caller = source("Caller.kt", "fun pick() = 1\nfun run() = pick()");
+        var request = request(caller, "pick()", caller).put("profile_analysis", true);
+        var cold = resolve(request, "()I");
+        timings(cold, "capture_before", "dispose", "configuration", "frontend", "lookup", "capture_after", "total");
+        var warm = resolve(request, "()I");
+        timings(warm, "capture_before", "lookup", "capture_after", "total");
+        assertFalse(warm.path("analysis_timings_ms").has("frontend"));
+        assertFalse(warm.path("analysis_timings_ms").has("configuration"));
+        assertTrue(warm.path("analysis_reused").asBoolean());
+        assertEquals(cold.path("analysis_generation"), warm.path("analysis_generation"));
+        request.put("profile_analysis", false);
+        var ordinary = resolve(request, "()I");
+        assertFalse(ordinary.has("analysis_timings_ms")); assertTrue(ordinary.path("analysis_reused").asBoolean());
+        request.remove("profile_analysis");
+        assertFalse(resolve(request, "()I").has("analysis_timings_ms"));
+        request.put("profile_analysis", true).put("offset", -1);
+        var unresolved = K2Analyzer.analyze(request);
+        assertEquals("unresolved", unresolved.path("status").asText());
+        timings(unresolved, "lookup", "total");
+    }
+    @Test void cachedErrorsReportOnlyWorkPerformedInCurrentProfiledRequest() throws Exception {
+        Path caller = source("Caller.kt", "fun run() = missing()");
+        var request = request(caller, "missing()", caller).put("profile_analysis", true);
+        var first = K2Analyzer.analyze(request);
+        assertEquals("analysis_error", first.path("status").asText());
+        timings(first, "configuration", "frontend", "capture_before", "capture_after", "total");
+        var cached = K2Analyzer.analyze(request);
+        assertEquals("analysis_error", cached.path("status").asText());
+        assertTrue(cached.path("analysis_reused").asBoolean());
+        timings(cached, "capture_before", "capture_after", "total");
+        assertFalse(cached.path("analysis_timings_ms").has("frontend"));
+        assertFalse(cached.path("analysis_timings_ms").has("lookup"));
+        Files.writeString(caller, "fun missing() = 1\nfun run() = missing()");
+        request.put("offset", Files.readString(caller).lastIndexOf("missing()"));
+        var repaired = resolve(request, "()I"); rebuilt(cached, repaired);
+        timings(repaired, "configuration", "frontend", "lookup", "total");
     }
 }

@@ -771,10 +771,14 @@ recollect current inputs and retry if changes raced analysis. A query arriving d
 the debounce takes over the pending analysis. Module switches replace the subscriptions;
 MCP shutdown cancels background work and closes the watcher. Event delivery latency
 depends on the filesystem/platform; unavailable watching retains foreground analysis.
-For JDK polling watch providers (including macOS), Quill checks relevant directory-entry
-metadata every 100 ms instead of waiting for the provider's two-second poll. Native
-watch providers retain their event mechanism. These checks do not hash file contents;
-the worker still verifies input contents before and after analysis.
+Quill uses `directory-watcher` for recursive filesystem events, with FSEvents through
+JNA on macOS (20 ms stream latency) and the JDK event provider elsewhere. File hashing
+in the watcher is disabled; the worker verifies input contents before and after analysis.
+If event registration fails or its event loop terminates, relevant directory-entry
+metadata is polled with 100 ms between scans. Module switches and shutdown close the
+event streams and cancel background work. K2 response diagnostics include
+`input_detection` (`directory_watcher_fsevents`, `directory_watcher_watch_service`,
+or `metadata_poll_100ms`) to identify the active input watcher.
 Runtime checksums are validated when the worker starts, with file
 attributes checked between requests. Crashes, timeouts and runtime changes discard the
 worker; the next request starts a fresh process. MCP shutdown terminates it. When startup

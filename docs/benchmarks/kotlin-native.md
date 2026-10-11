@@ -414,8 +414,8 @@ can have a different phase, and Linux/Windows watchers need separate measurement
 Reducing the 150 ms debounce alone would leave most of this macOS delay intact.
 
 Run the benchmark from the repository root after building the app all.jar. The table
-above is the historical baseline; the current implementation uses accelerated polling
-on this host and produces the results in the following section.
+above is the historical baseline. The current implementation uses directory-watcher
+events; the accelerated-polling measurements below were captured before that switch.
 
 ```bash
 quill_bench_classes=$(mktemp -d)
@@ -432,9 +432,9 @@ The report records raw samples and compiler stages. A small smoke workload addit
 checks the report's watcher implementation field; invalid count arguments are rejected
 before creating the fixture.
 
-## Accelerated detection for polling providers
+## Accelerated detection for polling providers (historical primary, current fallback)
 
-Quill retains system events for native WatchService providers. For the JDK's
+Before directory-watcher integration, Quill retained system events for native WatchService providers. For the JDK's
 `PollingWatchService`, it instead snapshots relevant directory-entry metadata with
 100 ms between scans. The existing 150 ms debounce and one active module/source-set
 remain unchanged. This avoids an additional native bridge or runtime dependency.
@@ -473,7 +473,7 @@ parent CPU time during two-second idle observations after startup and after the
 analysis cycles. The CPU observations exclude the external K2
 process but includes all parent JVM activity; it is not isolated watcher CPU cost.
 
-On the same macOS arm64/GraalVM 25.0.1 host, the current implementation produced
+On the same macOS arm64/GraalVM 25.0.1 host, the accelerated-polling implementation produced
 the following 20 samples per row (one explicitly typed function per generated file,
 plus Definitions/Caller). All 120 cycles verified fresh descriptors and FIR reuse,
 with one observed background attempt per cycle. Each module subscribed to seven
@@ -494,7 +494,8 @@ cycles was 30.5, 17.7 and 130.5 ms for 12, 102 and 502 sources, respectively
 (approximately 1.5%, 0.9% and 6.5% of one core over that observation). These are single
 short observations, include other JVM activity, and do not establish long-term CPU
 usage. Faster polling is a latency/CPU tradeoff; native macOS events would require a
-separate bridge compatible with both the JVM distribution and native image.
+bridge compatible with both the JVM distribution and native image. The following
+integration supplies that bridge through directory-watcher/JNA.
 
 The native executable is 67,266,264 bytes, compared with 67,266,232 bytes before
 this change. No new runtime dependency or native bridge is bundled.
@@ -504,6 +505,95 @@ then all 33 affected tests after it (including the added boundary regression), p
 one-second allowance following a save, the native warmed query reused FIR and took
 5.9 ms in that smoke run. Scoped Quill verification completed with a satisfied gate
 and verified receipt after the successful build and index refresh.
+
+## Directory-watcher events and metadata polling fallback
+
+The production coordinator uses `io.methvin:directory-watcher:0.19.1`. On macOS its
+JNA 5.16.0 provider supplies FSEvents with 20 ms stream latency and file-level events;
+on other platforms it wraps the JDK event provider. The existing 150 ms debounce,
+single active module/source-set, foreground wait, and content verification remain
+the coordinator/worker's responsibility. Library file hashing is disabled.
+
+Canonical input directories are reduced to minimal recursive roots. A custom
+file-tree visitor skips unrelated trees/files (including `.git`); explicit symlink
+targets and ancestors needed for future inputs are included. Subscription changes
+close previous streams and reject late events by generation, including OVERFLOW.
+Invalid roots, native linkage failures, registration errors, and event-loop
+termination activate the existing metadata watcher. A failed event backend is not
+retried on every query; switching modules creates a new event backend. The metadata
+polling thread blocks while events are active and wakes only for fallback.
+
+A standalone prototype received real FSEvents callbacks on the JVM (~35 ms) and in
+GraalVM 25.0.1 native image (~11 ms), with hashing disabled. Agent-captured metadata
+registers the JNA JNI/reflection/proxy contracts and bundles the macOS arm64/x86-64
+dispatch libraries. The host's execution sandbox permits registration but prevents
+event delivery, so real event tests/benchmarks run outside that sandbox. These
+prototype timings are individual smoke measurements, not latency distributions.
+
+Tests exercise native-library/registration failure fallback, event-loop termination,
+root replacement and stale overflow, filtered traversal, watcher close, deletion and
+recreation of a whole module, plus the earlier atomic-save, burst, symlink,
+classpath/output and foreground/background-race cases. The native E2E checks
+`input_detection` as well as background FIR reuse after a save, so successful
+metadata polling cannot masquerade as a successful FSEvents integration.
+
+
+The full GraalVM 25.0.1 macOS arm64 executable is **68,473,032 bytes**, versus
+**67,266,264 bytes** for the preceding metadata-polling build: **+1,206,768 bytes
+(+1.79%)**. This includes directory-watcher, its JNA bridge, macOS dispatch resources,
+and native reachability metadata; the external K2 worker/runtime is unchanged.
+
+The final JVM coordinator benchmark used 20 samples per mode, generated one-function
+Kotlin sources, the same 150 ms debounce and an external K2 worker on Java 25.0.1.
+All 120 save/analysis/query cycles returned the updated descriptor and reused the
+completed background generation, with one observed background attempt per cycle.
+Every fixture selected `directory_watcher_fsevents` and two minimal recursive roots,
+compared with seven subscribed directories in the preceding polling fixture.
+Times are measured from the last save in each burst; five saves are 20 ms apart.
+
+| Sources | Saves | Ready median / p95 (ms) | Query median / p95 (ms) | Analysis-start median (ms) | FIR frontend median (ms) |
+|---|---:|---:|---:|---:|---:|
+| 12 | 1 | 208 / 248 | 4.0 / 6.9 | 165 | 38.1 |
+| 12 | 5 | 188 / 214 | 2.6 / 3.7 | 164 | 20.7 |
+| 102 | 1 | 249 / 350 | 7.7 / 12.8 | 170 | 70.1 |
+| 102 | 5 | 223 / 264 | 4.7 / 10.4 | 171 | 38.3 |
+| 502 | 1 | 318 / 368 | 15.0 / 25.2 | 196 | 95.6 |
+| 502 | 5 | 290 / 314 | 14.3 / 23.6 | 207 | 61.7 |
+
+Single-save ready medians were previously 237 / 296 / 402 ms at the same source
+counts. These are separate runs, not a paired experiment; frontend/JIT and host
+variation also affect the difference. The event path removes the periodic metadata
+scan but still retains debounce and rebuilds the module's FIR after changes.
+
+After each fixture's 40 cycles, one two-second idle observation recorded total
+parent-process CPU of **0.205 / 0.339 / 0.367 ms**, approximately **0.010 / 0.017 /
+0.018% of one core**, for 12 / 102 / 502 sources. The preceding polling observations
+were **30.5 / 17.7 / 130.5 ms**, or about **1.5 / 0.9 / 6.5%**. These are short
+aggregate process observations, not isolated watcher costs or long-term guarantees.
+The metadata fallback is asleep while native events are active.
+
+Validation passed **718 unit tests**, followed by **38 focused tests** after adding
+the backend diagnostic and strict native E2E assertion. Results are in
+`/private/tmp/quill-directory-watch-final-latency-{10,100,500}.json`; the benchmark
+script is `scripts/QuillKotlinWarmupBenchmark.java`.
+
+Full native E2E with Java 17.0.2 for the worker passed all **20 standalone semantic
+cases**, Maven/Gradle runtime preparation, metadata fallback, 20 changed-source
+queries, 20 unchanged-source reuse queries, background warmup, startup warmup and
+clean MCP shutdown. After a source save and a one-second readiness allowance, the
+native MCP query returned the updated `(I)I` descriptor with `analysis_reused: true`,
+a newer generation, and **`input_detection: directory_watcher_fsevents`** in
+**5.898 ms**. This confirms actual FSEvents-driven background analysis rather than
+metadata polling or foreground rebuilding. A new MCP session's first query reused
+startup analysis in **43.416 ms** after a five-second allowance. Changed-source and
+unchanged-source query medians were **87.4 ms / 3.7 ms** in the small native fixture.
+These native timings are smoke samples, not the JVM benchmark's distributions.
+The report is `/private/tmp/quill-directory-watch-native-report.json`; reproduce with
+`scripts/quill_kotlin_native_e2e.py --fixture tests/kotlin-maven --worker-java-home <jdk17>`.
+
+The 1.79% executable growth buys system events without continuous directory scans
+and a tested metadata fallback. The short idle observations support that tradeoff on
+macOS; Linux/Windows runtime and macOS x86-64 remain unmeasured here.
 
 ## Warming the first query at MCP startup
 

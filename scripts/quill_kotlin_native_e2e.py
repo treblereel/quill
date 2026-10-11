@@ -192,6 +192,9 @@ def main() -> None:
                             "path": "src/main/kotlin/NativeProbe.kt", "line": 2, "column": 21})
                         assert ready["selected"]["jvm_descriptor"] == "(I)I", ready
                         assert ready["semantic_analysis"]["analysis_reused"] is True, ready
+                        expected_watcher = ("directory_watcher_fsevents" if sys.platform == "darwin"
+                                            else "directory_watcher_watch_service")
+                        assert ready["semantic_analysis"]["input_detection"] == expected_watcher, ready
                         assert ready["semantic_analysis"]["analysis_generation"] > generation, ready
                         report["mcp"][mode]["background_warmed_query"] = {
                             "result": ready, "metrics": timing, "idle_allowance_seconds": 1}

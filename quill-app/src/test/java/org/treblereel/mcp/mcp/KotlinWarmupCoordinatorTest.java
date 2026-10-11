@@ -283,4 +283,49 @@ class KotlinWarmupCoordinatorTest {
                     () -> "Unexpected subscriptions outside the module: " + coordinator.watchedDirectories());
         }
     }
+
+    @Test void failedEventRegistrationAndMissingNativeLibraryRetainPollingAndForegroundQueries() throws Exception {
+        var request = request(); Path source = Path.of(request.path("file").asText());
+        for (boolean missingNative : new boolean[]{false, true}) {
+            var registrations = new AtomicInteger(); var warmed = new CountDownLatch(1);
+            KotlinDirectoryWatcher.Factory failing = (roots, listener, visitor) -> {
+                registrations.incrementAndGet();
+                if (missingNative) throw new UnsatisfiedLinkError("simulated native library unavailable");
+                throw new java.io.IOException("simulated registration failure");
+            };
+            try (var coordinator = new KotlinWarmupCoordinator(r -> {
+                if (r.path("offset").asInt() == -1) warmed.countDown(); return result(r);
+            }, Duration.ofMillis(100), failing)) {
+                Supplier<JsonNode> background = () -> request.deepCopy().put("offset", -1);
+                assertEquals("resolved", coordinator.query("main", () -> request, background).path("status").asText());
+                assertEquals("metadata_poll_100ms", coordinator.watchBackend());
+                assertEquals("metadata_poll_100ms", coordinator.query("main", () -> request, background)
+                        .path("input_detection").asText());
+                Files.writeString(source, "fun run() = " + missingNative); await(warmed);
+                assertEquals("resolved", coordinator.query("main", () -> request, background).path("status").asText());
+                assertEquals(1, registrations.get(), "Unavailable event backend must not be retried on every query");
+            }
+        }
+    }
+
+    @Test void deletedModuleCanBeRecreatedAfterTheLibraryStopsWatchingItsRoot() throws Exception {
+        var request = request(); Path source = Path.of(request.path("file").asText());
+        var missing = new CountDownLatch(1); var restored = new CountDownLatch(1);
+        Supplier<JsonNode> background = () -> {
+            if (!Files.exists(source)) { missing.countDown(); return JSON.createObjectNode().put("status", "source_missing"); }
+            return request.deepCopy().put("offset", -1);
+        };
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1) restored.countDown(); return result(r);
+        }, Duration.ofMillis(100))) {
+            coordinator.query("main", () -> request, background);
+            try (var paths = Files.walk(temp)) {
+                for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(path);
+            }
+            await(missing);
+            Files.createDirectories(source.getParent()); Files.writeString(source, "fun run() = true");
+            await(restored);
+            assertEquals("resolved", coordinator.query("main", () -> request, background).path("status").asText());
+        }
+    }
 }

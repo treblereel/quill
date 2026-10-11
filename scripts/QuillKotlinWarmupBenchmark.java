@@ -52,9 +52,7 @@ public final class QuillKotlinWarmupBenchmark {
                 .put("java", System.getProperty("java.version")).put("worker_java", KotlinRuntime.workerCommand().get(0))
                 .put("os", System.getProperty("os.name")).put("sources", sources.size()).put("samples_per_mode", samples);
         try (var service = FileSystems.getDefault().newWatchService()) {
-            report.put("watch_service", service.getClass().getName());
-            report.put("input_detection", service.getClass().getName().endsWith(".PollingWatchService")
-                    ? "metadata_poll_100ms" : "system_watch_service");
+            report.put("jdk_default_watch_service", service.getClass().getName());
         }
         var modes = report.putArray("modes");
         try (var coordinator = new KotlinWarmupCoordinator(request -> {
@@ -65,6 +63,7 @@ public final class QuillKotlinWarmupBenchmark {
         }, Duration.ofMillis(150))) {
             JsonNode current = coordinator.query(module.toString(), foreground, background);
             verify(current, "()I", false);
+            report.put("input_detection", coordinator.watchBackend());
             report.put("watched_directories", coordinator.watchedDirectories().size());
             var os = (com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean();
             long idleStarted = System.nanoTime(), cpuStarted = os.getProcessCpuTime();

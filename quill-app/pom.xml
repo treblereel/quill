@@ -13,6 +13,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>io.methvin</groupId>
+            <artifactId>directory-watcher</artifactId>
+            <version>0.19.1</version>
+        </dependency>
+        <dependency>
             <groupId>org.treblereel.mcp</groupId>
             <artifactId>quill-kotlin-semantic</artifactId>
             <version>${project.version}</version>

@@ -2,6 +2,7 @@ package org.treblereel.mcp.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.*;
 import java.time.Duration;
@@ -16,6 +17,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final Function<JsonNode, JsonNode> worker;
     private final long debounceMillis;
+    private final KotlinDirectoryWatcher.Factory eventFactory;
     private final Object state = new Object();
     private final ReentrantLock operation = new ReentrantLock(true);
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(task -> {
@@ -29,8 +31,13 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
     private InputsWatcher watcher;
 
     KotlinWarmupCoordinator(Function<JsonNode, JsonNode> worker, Duration debounce) {
+        this(worker, debounce, KotlinDirectoryWatcher.DEFAULT);
+    }
+
+    KotlinWarmupCoordinator(Function<JsonNode, JsonNode> worker, Duration debounce, KotlinDirectoryWatcher.Factory factory) {
         this.worker = worker;
         this.debounceMillis = debounce.toMillis();
+        this.eventFactory = factory;
     }
 
     boolean prewarm(String key, Supplier<JsonNode> background) {
@@ -81,7 +88,8 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                     if (closed) return status("unavailable");
                     if (before == revision && !result.path("status").asText().equals("inputs_changed")) {
                         cancelPending();
-                        return result;
+                        return result instanceof ObjectNode node
+                                ? node.deepCopy().put("input_detection", watchBackend()) : result;
                     }
                 }
             }
@@ -141,17 +149,20 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
     Set<Path> watchedDirectories() {
         synchronized (state) {
             if (watcher == null) return Set.of();
-            return watcher.polling != null ? watcher.polling.directories() : Set.copyOf(watcher.directories.values());
+            return watcher.events.active() ? watcher.events.roots() : watcher.polling.directories();
         }
     }
 
+    String watchBackend() {
+        synchronized (state) { return watcher == null ? "unavailable" : watcher.events.backend(); }
+    }
+
     private final class InputsWatcher implements AutoCloseable {
-        private final WatchService service = FileSystems.getDefault().newWatchService();
-        private final KotlinPollingWatcher polling = service.getClass().getName().endsWith(".PollingWatchService")
-                ? new KotlinPollingWatcher() : null;
+        private final KotlinPollingWatcher polling = new KotlinPollingWatcher();
+        private final KotlinDirectoryWatcher events;
+        private final Semaphore fallbackReady = new Semaphore(0);
         private final Thread listener;
-        private volatile boolean stopped;
-        private final Map<WatchKey, Path> directories = new ConcurrentHashMap<>();
+        private volatile boolean stopped, fallback;
         private volatile Set<Path> trees = Set.of(), files = Set.of();
         private volatile Set<Path> fileAncestors = Set.of();
         private volatile boolean refresh = true;
@@ -159,6 +170,11 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
         private final long ownerEpoch;
         InputsWatcher(long epoch) throws IOException {
             ownerEpoch = epoch;
+            events = new KotlinDirectoryWatcher(eventFactory, () -> {
+                refresh = true; changed(ownerEpoch);
+            }, () -> {
+                fallback = true; fallbackReady.release(); refresh = true; changed(ownerEpoch);
+            });
             listener = new Thread(this::listen, "quill-k2-input-watch"); listener.setDaemon(true); listener.start();
         }
         void configure(JsonNode request) {
@@ -209,19 +225,8 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
             for (Path path : exact) parents(desired, path.getParent(), module);
             Set<Path> canonical = new HashSet<>();
             for (Path path : desired) { try { canonical.add(path.toRealPath()); } catch (IOException ignored) { } }
-            if (polling != null) {
-                polling.configure(canonical, this::relevant);
-                return;
-            }
-            directories.forEach((key, path) -> { if (!canonical.contains(path)) { key.cancel(); directories.remove(key); } });
-            Set<Path> registered = new HashSet<>(directories.values());
-            for (Path path : canonical) {
-                if (directories.size() >= 8192) break;
-                if (!registered.add(path)) continue;
-                try { directories.put(path.register(service, StandardWatchEventKinds.ENTRY_CREATE,
-                        StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_DELETE), path); }
-                catch (IOException | ClosedWatchServiceException ignored) { }
-            }
+            polling.configure(canonical, this::relevant);
+            events.configure(canonical, this::relevant);
         }
         private void addReal(Set<Path> values, Path path) {
             // Missing future inputs still need canonical aliases under a symlinked
@@ -252,33 +257,17 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
         }
         private void listen() {
             try {
-                if (polling != null) {
-                    while (!stopped) {
-                        Thread.sleep(KotlinPollingWatcher.INTERVAL_MILLIS);
-                        if (polling.poll()) { refresh = true; changed(ownerEpoch); }
-                    }
-                    return;
-                }
-                while (true) {
-                    WatchKey key = service.take(); Path directory = directories.get(key);
-                    boolean dirty = false;
-                    for (WatchEvent<?> event : key.pollEvents()) {
-                        boolean relevant = event.kind() == StandardWatchEventKinds.OVERFLOW
-                                || directory != null && event.context() instanceof Path path && relevant(directory.resolve(path));
-                        dirty |= relevant;
-                        if (relevant && event.kind() != StandardWatchEventKinds.ENTRY_MODIFY) refresh = true;
-                    }
-                    if (!key.reset()) { directories.remove(key); refresh = true; dirty = true; }
-                    if (dirty) changed(ownerEpoch);
+                fallbackReady.acquire();
+                while (!stopped && fallback) {
+                    Thread.sleep(KotlinPollingWatcher.INTERVAL_MILLIS);
+                    if (polling.poll()) { refresh = true; changed(ownerEpoch); }
                 }
             } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
-            catch (ClosedWatchServiceException closed) { }
         }
         @Override public void close() {
             stopped = true;
             listener.interrupt();
-            try { service.close(); } catch (IOException ignored) { }
-            directories.clear();
+            events.close();
         }
     }
 }

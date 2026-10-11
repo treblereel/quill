@@ -84,7 +84,7 @@ final class KotlinSemanticQueries {
             if (process.exitValue() != 0 || !Files.isRegularFile(output) || Files.size(output) > 1024 * 1024) return status("worker_failed");
             JsonNode response = JSON.readTree(output.toFile());
             if (response == null || !response.isObject() || !response.path("status").isTextual()
-                    || !response.path("backend").asText().equals("kotlin_descriptor_frontend")) return status("worker_failed");
+                    || !response.path("backend").asText().equals("kotlin_k2_fir")) return status("worker_failed");
             return response;
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt(); return status("interrupted");

@@ -47,3 +47,7 @@ typealias NullableLabels = List<String?>
 fun <T : CharSequence> richTypes(value: T, labels: NullableLabels, vararg rest: T): Map<String, T?> = mapOf("value" to value)
 fun String?.nullableExtension(values: List<*>): String? = this
 class GenericBox<T : CharSequence>(val value: T?)
+
+context(prefix: String)
+fun contextNavigation(value: Int): String = prefix + value
+fun boxedNavigation(value: Int?): Int? = value

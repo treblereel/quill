@@ -207,6 +207,16 @@ class KotlinQueryIT {
             var integer = livePosition("typedNavigation(1)", "typedNavigation");
             assertEquals("resolved", integer.path("resolution").asText(), integer.toPrettyString());
             assertEquals("high", integer.path("confidence").asText());
+            assertEquals("kotlin_k2_fir", integer.path("semantic_analysis").path("backend").asText());
+            assertEquals("2.4", integer.path("semantic_analysis").path("language_version").asText());
+            var context = livePosition("with(\"prefix\") { contextNavigation(1) }", "contextNavigation");
+            assertEquals("high", context.path("confidence").asText(), context.toPrettyString());
+            assertEquals("(Ljava/lang/String;I)Ljava/lang/String;", context.path("selected").path("jvm_descriptor").asText());
+            var boxed = livePosition("boxedNavigation(null)", "boxedNavigation");
+            assertEquals("(Ljava/lang/Integer;)Ljava/lang/Integer;", boxed.path("selected").path("jvm_descriptor").asText(), boxed.toPrettyString());
+            var smartCast = livePosition("run { val x: Any = TypedReceiver(); val receiver = x is TypedReceiver; if (receiver) x.typedNavigation(1L) }", "typedNavigation");
+            assertEquals("high", smartCast.path("confidence").asText(), smartCast.toPrettyString());
+            assertEquals(PACKAGE + "TypedReceiver", smartCast.path("selected").path("class_name").asText());
             assertEquals("(I)I", integer.path("selected").path("jvm_descriptor").asText());
             assertEquals("(Ljava/lang/String;)Ljava/lang/String;", livePosition("typedNavigation(\"s\")", "typedNavigation")
                     .path("selected").path("jvm_descriptor").asText());

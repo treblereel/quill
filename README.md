@@ -729,11 +729,13 @@ most medium confidence. An optional compiler worker resolves overloads, receiver
 generic functions and local shadowing, and exposes its status in `semantic_analysis`.
 Build it with `./mvnw -P kotlin-semantic -pl quill-kotlin-semantic package`, then start Quill
 with `-Dquill.kotlin.semantic.worker=/absolute/path/quill-kotlin-semantic-0.1-SNAPSHOT-all.jar`.
-The worker uses the descriptor frontend at language level 1.9, analyzes sources without
+The worker uses the K2 FIR frontend from Kotlin 2.4.21 at language level 2.4, analyzes sources without
 executing build scripts or loading project compiler plugins, and needs captured module
 classpath files plus Java on the host. It runs in a separate JVM with a 30-second timeout;
 missing dependencies, unsupported syntax and analysis errors keep the lexical fallback.
-Kotlin 2.x-specific semantics require a future K2 backend. Script sources are not analyzed.
+K2 smart casts and context parameters participate in overload resolution. FIR analysis stops before
+IR lowering/code generation. Script sources are not analyzed. Project compiler plugins and
+custom language/experimental feature flags are not imported; such projects may fall back.
 Compiler-confirmed indexed targets have high confidence; local targets suppress unrelated
 indexed matches. A resolved target absent from the index reports `semantic_target_not_indexed`.
 

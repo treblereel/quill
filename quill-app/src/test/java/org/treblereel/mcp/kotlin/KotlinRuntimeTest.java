@@ -25,8 +25,8 @@ class KotlinRuntimeTest {
     Path remote;
 
     void property(String key, String value) {
-        previous.putIfAbsent(key, System.getProperty(key));
-        System.setProperty(key, value);
+        if (!previous.containsKey(key)) previous.put(key, System.getProperty(key));
+        if (value == null) System.clearProperty(key); else System.setProperty(key, value);
     }
 
     @BeforeEach void setup() throws Exception {
@@ -61,6 +61,50 @@ class KotlinRuntimeTest {
         assertEquals(files, KotlinRuntime.prepare());
         assertEquals(files, KotlinRuntime.available());
         assertTrue(KotlinRuntime.workerCommand().get(3).contains("runtime with spaces"));
+    }
+
+    private Path isolatedHomeWithoutMavenSettings() throws Exception {
+        Path home = temporary.resolve("home with spaces"); Files.createDirectories(home);
+        property("user.home", home.toString());
+        property("quill.kotlin.settings", null);
+        property("quill.kotlin.localRepository", null);
+        property("maven.repo.local", null);
+        property("quill.kotlin.cache", null);
+        assertFalse(Files.exists(home.resolve(".m2")));
+        assertTrue(KotlinRuntime.available().isEmpty());
+        assertFalse(Files.exists(home.resolve(".quill")));
+        return home;
+    }
+
+    @Test void absentDefaultMavenDirectoryIsCreatedAndRuntimeReusedOffline() throws Exception {
+        Path home = isolatedHomeWithoutMavenSettings();
+        var files = KotlinRuntime.prepare();
+        assertEquals(5, files.size());
+        assertTrue(Files.isRegularFile(home.resolve(".m2/repository/org/jetbrains/kotlin/kotlin-compiler-embeddable/"
+                + KotlinRuntime.version() + "/kotlin-compiler-embeddable-" + KotlinRuntime.version() + ".jar")));
+        assertFalse(Files.exists(home.resolve(".m2/settings.xml")));
+        assertTrue(Files.isRegularFile(KotlinRuntime.directory(KotlinRuntime.cacheRoot()).resolve("classpath.properties")));
+        property("quill.kotlin.offline", "true");
+        property("quill.kotlin.repository", temporary.resolve("unavailable repository").toUri().toString());
+        assertEquals(files, KotlinRuntime.prepare());
+        assertEquals(files, KotlinRuntime.available());
+    }
+
+    @Test void absentDefaultMavenDirectoryOfflineDoesNotPublishRuntime() throws Exception {
+        isolatedHomeWithoutMavenSettings();
+        property("quill.kotlin.offline", "true");
+        assertThrows(java.io.IOException.class, KotlinRuntime::prepare);
+        assertTrue(KotlinRuntime.available().isEmpty());
+        assertFalse(Files.exists(KotlinRuntime.directory(KotlinRuntime.cacheRoot()).resolve("classpath.properties")));
+    }
+
+    @Test void customRepositoryDoesNotRequireOrCreateDefaultMavenDirectory() throws Exception {
+        Path home = isolatedHomeWithoutMavenSettings();
+        Path repository = temporary.resolve("custom local repository");
+        property("quill.kotlin.localRepository", repository.toString());
+        assertEquals(5, KotlinRuntime.prepare().size());
+        assertTrue(Files.isDirectory(repository.resolve("org/jetbrains/kotlin")));
+        assertFalse(Files.exists(home.resolve(".m2")));
     }
 
     @Test void readingMissingRuntimeDoesNotCreateCacheOrResolveAnything() {

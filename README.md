@@ -787,6 +787,8 @@ Compiler-confirmed indexed targets have high confidence; local targets suppress 
 indexed matches. A resolved target absent from the index reports `semantic_target_not_indexed`.
 The earlier fully embedded compiler's native size and runtime costs are recorded in
 [the Kotlin footprint benchmark](docs/benchmarks/kotlin-native.md).
+Options and correctness criteria for future incremental FIR are documented in
+[the incremental analysis investigation](docs/benchmarks/kotlin-incremental-analysis.md).
 
 Quill locates the root through `settings.gradle[.kts]`, runs `gradlew` when present,
 and injects a temporary init script to export the evaluated Java project directories,

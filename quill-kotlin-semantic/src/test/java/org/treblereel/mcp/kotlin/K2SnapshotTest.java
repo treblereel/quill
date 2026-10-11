@@ -62,6 +62,31 @@ class K2SnapshotTest {
         rebuilt(first, resolve(request, "()Z"));
         assertTrue(resolve(request, "()Z").path("analysis_reused").asBoolean());
     }
+    @Test void bodyEditWithStableDeclaredReturnTypeChangesResolvedOverload() throws Exception {
+        Path defs = source("Defs.kt", "package probe\nfun pick(x: Int): Int = x\nfun pick(x: String): String = x");
+        Path caller = source("Caller.kt", "package probe\nfun run(): Any = pick(1)");
+        var request = request(caller, "pick(", defs, caller);
+        var first = resolve(request, "(I)I");
+        // run() keeps its public JVM signature, but the call within its body changes target.
+        Files.writeString(caller, "package probe\nfun run(): Any = pick(\"s\")");
+        rebuilt(first, resolve(request, "(Ljava/lang/String;)Ljava/lang/String;"));
+        assertTrue(resolve(request, "(Ljava/lang/String;)Ljava/lang/String;").path("analysis_reused").asBoolean());
+    }
+    @Test void addedOverloadChangesAnUneditedCallAndDeletionRestoresTheOriginalTarget() throws Exception {
+        Path defs = source("Defs.kt", "package probe\nfun pick(x: Any?) = 1");
+        Path caller = source("Caller.kt", "package probe\nfun run() = pick(null)");
+        var request = request(caller, "pick(", defs, caller);
+        var first = resolve(request, "(Ljava/lang/Object;)I");
+        // The old dependency graph contains no edge to a declaration which did not yet exist.
+        Path added = source("Added.kt", "package probe\nfun pick(x: String?) = true");
+        request.withArray("sources").add(added.toString());
+        var changed = resolve(request, "(Ljava/lang/String;)Z"); rebuilt(first, changed);
+        assertEquals("probe.AddedKt", changed.path("owner").asText());
+        assertTrue(resolve(request, "(Ljava/lang/String;)Z").path("analysis_reused").asBoolean());
+        Files.delete(added); request.withArray("sources").remove(2);
+        var restored = resolve(request, "(Ljava/lang/Object;)I"); rebuilt(changed, restored);
+        assertEquals("probe.DefsKt", restored.path("owner").asText());
+    }
     @Test void additionsDeletionsAndBrokenSourceInvalidateCachedErrorsAndFir() throws Exception {
         Path caller = source("Caller.kt", "package probe\nfun run() = missing()");
         var request = request(caller, "missing()", caller);

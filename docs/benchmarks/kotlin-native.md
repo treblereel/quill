@@ -139,10 +139,11 @@ python3 scripts/quill_kotlin_native_e2e.py \
 
 ## Persistent K2 worker
 
-Quill now reuses one compiler JVM for an MCP session. Requests use bounded,
-length-prefixed JSON frames and are serialized. Analysis still rebuilds FIR from
-current source files and captured classpaths on every request; analysis results are
-not cached. Runtime hashes are verified on worker startup, while file attributes and
+The persistent-worker implementation in commit `e92aa63` reuses one compiler JVM
+for an MCP session. Requests use bounded, length-prefixed JSON frames and are serialized.
+At that stage, analysis still rebuilt FIR from
+current source files and captured classpaths on every request; analysis results were
+not cached. The module-snapshot implementation below supersedes that behavior. Runtime hashes are verified on worker startup, while file attributes and
 the manifest identity are checked between requests. Changed/missing runtime files,
 crashes, malformed responses, timeout and cancellation discard the process. A following
 request starts a fresh worker; MCP EOF/shutdown kills and reaps it.
@@ -187,3 +188,53 @@ stderr flooding, changed/deleted runtime artifacts, runtime selection changes,
 source edits, project switches, shutdown during a blocked read, and shutdown racing
 with cold runtime preparation. Existing
 single-request worker behavior and Java 17 bytecode compatibility are preserved.
+
+## Reusing a module FIR snapshot
+
+The worker now retains resolved FIR and its compiler environment for one active
+module/source set. Different files and offsets reuse that snapshot while compiler
+inputs have identical content. Responses expose `analysis_reused` and
+`analysis_generation`, so the probes verify reuse independently of elapsed time.
+Switching modules or source sets disposes the previous snapshot. This is whole-module
+snapshot reuse; editing a compiler input still rebuilds the whole module frontend.
+
+The fingerprint covers Kotlin sources, Java source roots, ordered classpath entries,
+compiled output contents, the module/source-set identity and JDK inputs. Source bytes
+are always hashed. Dependency/JDK hashes and output hashes have separate bounded
+caches (2,048 and 8,192 entries), using file identity, size, modification time and Unix
+change time to detect replacement and same-size edits with restored modification time.
+Filesystems without Unix change time hash bytes on each request; their performance
+has not been measured. These caches retain hashes, not archive bytes. Inputs are checked
+before and after analysis: a detected concurrent change clears FIR and returns
+`inputs_changed`, allowing metadata fallback. Unchanged compiler errors are also cached,
+without retaining the failed compiler environment; repaired inputs trigger analysis.
+
+The final native executable is **67,199,992 bytes**: no size increase over the previous
+persistent-worker build. Native compilation took 49.7 seconds with 2.80 GB peak build
+RSS on the same macOS ARM64/GraalVM 25.0.1 host.
+
+The same six-source Maven fixture probe performed one cold query, 20 source edits,
+and 20 unchanged queries per JVM. Every edited query produced a new FIR generation;
+all unchanged queries reused the final generation. Both sessions retained one worker
+PID and reaped it on MCP shutdown.
+
+| Worker JVM | Cold MCP query | Changed-source median / p95 | Unchanged-source median | Worker RSS after cold / after 40 warm queries |
+| --- | ---: | ---: | ---: | ---: |
+| Zulu 17.0.16 | 3,644 ms | 173 / 266 ms | 7.3 ms | 335 / 476 MB |
+| GraalVM 25.0.1 | 2,478 ms | 174 / 240 ms | 4.8 ms | 332 / 558 MB |
+
+A separate full native E2E run measured 1,953 ms cold, 92 / 154 ms changed-source
+median / p95, and 3.5 ms unchanged-source median. A small JVM unit probe measured
+23.3 ms changed-source and 1.8 ms reused. These local measurements vary with workload;
+they do not establish latency guarantees for large projects. The 512 MiB worker heap
+limit does not bound total RSS. Cold startup, whole-module rebuilds after edits and
+eviction when switching modules remain costs for subsequent optimization.
+
+Validation passed: 675 unit tests, 28 focused integration tests, 20 native standalone
+semantic cases, and native MCP reuse/lifecycle probes on Java 17 and 25. The affected
+Kotlin tests and integration tests were rerun after splitting the hash caches, followed
+by rebuilding and probing the final native binary. New corner cases cover different
+positions/files, dependent source edits, source addition/deletion, unchanged touches,
+Java roots, real class/JAR replacement with restored timestamps, classpath ordering,
+module/source-set changes, JDK identity/content, symlinks and cycles, cached errors and
+repair, concurrent callers, explicit disposal, and changes racing a lookup.

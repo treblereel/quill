@@ -9,10 +9,11 @@ public final class SemanticWorker {
     private static final ObjectMapper JSON = new ObjectMapper();
     public static void main(String[] args) throws Exception {
         if (args.length == 1 && args[0].equals("--serve")) {
-            serve(System.in, System.out);
+            try { serve(System.in, System.out); } finally { K2Analyzer.clear(); }
             return;
         }
-        JSON.writeValue(System.out, safelyAnalyze(JSON.readTree(System.in)));
+        try { JSON.writeValue(System.out, safelyAnalyze(JSON.readTree(System.in))); }
+        finally { K2Analyzer.clear(); }
     }
 
     // Length-prefixed UTF-8 JSON keeps multiline paths and compiler diagnostics out of framing.
@@ -40,6 +41,7 @@ public final class SemanticWorker {
         ObjectNode result;
         try { result = analyze(request); }
         catch (Exception | LinkageError failure) {
+            K2Analyzer.clear();
             failure.printStackTrace(System.err);
             result = K2Analyzer.response("unavailable").put("reason", failure.getClass().getSimpleName());
         }

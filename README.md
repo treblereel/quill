@@ -748,11 +748,19 @@ Gradle-specific repository credentials are not imported. Quill system properties
 these runtime settings. Maven settings profiles and global settings are not merged.
 With a prepared cache, initialization and queries work offline.
 Analysis reuses one child JVM per MCP session with a 512 MiB heap limit and a
-30-second timeout. Requests are serialized; each analysis rereads source files and
-module classpaths. Runtime checksums are validated when the worker starts, with file
+30-second timeout. Requests are serialized. The worker retains one active module/source-set
+FIR snapshot and reuses it for different source positions while compiler inputs match.
+Content fingerprints cover Kotlin/Java sources, ordered classpaths, compiled outputs and
+the selected JDK. Changed inputs dispose the snapshot and rebuild the module frontend;
+unchanged build outputs keep it reusable. Stable analysis errors are also reused until
+inputs change. Inputs are checked before and after analysis; races report `inputs_changed`
+and retain the metadata fallback. `semantic_analysis.analysis_reused` and the worker-local
+`analysis_generation` expose whether a frontend rebuild occurred. This is module snapshot
+reuse; source changes still trigger a full module analysis.
+Runtime checksums are validated when the worker starts, with file
 attributes checked between requests. Crashes, timeouts and runtime changes discard the
 worker; the next request starts a fresh process. MCP shutdown terminates it. The first
-K2 request still pays JVM/compiler startup; subsequent requests reuse loaded compiler classes.
+K2 request still pays JVM/compiler startup; subsequent requests reuse loaded compiler classes and unchanged module FIR.
 It reads captured module classpaths and a JDK (`JAVA_HOME`, or the JVM's `java.home`),
 without executing build scripts or loading project compiler plugins. Missing dependencies,
 unsupported syntax and analysis errors keep the metadata/lexical fallback, whose confidence

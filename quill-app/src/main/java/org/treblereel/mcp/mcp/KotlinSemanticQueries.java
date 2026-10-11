@@ -30,6 +30,7 @@ final class KotlinSemanticQueries {
             if (!Files.isRegularFile(captured)) return status("classpath_missing");
             var request = JSON.createObjectNode();
             request.put("file", file.toString()); request.put("offset", offset);
+            request.put("module", module.toString()); request.put("source_set", test ? "test" : "main");
             var sources = request.putArray("sources"); var javaRoots = request.putArray("java_roots");
             LinkedHashSet<Path> kotlinFiles = new LinkedHashSet<>();
             for (String set : test ? List.of("main", "test") : List.of("main")) {

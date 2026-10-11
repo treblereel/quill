@@ -163,15 +163,19 @@ def main() -> None:
                             expected = "(Ljava/lang/String;)Ljava/lang/String;" if i % 2 else "(I)I"
                             assert warm["selected"]["jvm_descriptor"] == expected, warm
                             assert warm["semantic_analysis"]["status"] == "resolved", warm
+                            assert warm["semantic_analysis"]["analysis_reused"] is False, warm
                             samples.append(timing["latency_ms"])
                         report["mcp"][mode]["warm_fresh_source_latency_ms"] = samples
                         report["mcp"][mode]["warm_fresh_source_median_ms"] = statistics.median(samples)
                         report["mcp"][mode]["warm_fresh_source_p95_ms"] = sorted(samples)[18]
+                        generation = warm["semantic_analysis"]["analysis_generation"]
                         unchanged = []
                         for _ in range(20):
                             warm, timing = client.call("get_symbol_at_position", {
                                 "path": "src/main/kotlin/NativeProbe.kt", "line": 2, "column": 21})
                             assert warm["selected"]["jvm_descriptor"] == "(Ljava/lang/String;)Ljava/lang/String;", warm
+                            assert warm["semantic_analysis"]["analysis_reused"] is True, warm
+                            assert warm["semantic_analysis"]["analysis_generation"] == generation, warm
                             unchanged.append(timing["latency_ms"])
                         report["mcp"][mode]["warm_unchanged_source_latency_ms"] = unchanged
                         report["mcp"][mode]["warm_unchanged_source_median_ms"] = statistics.median(unchanged)

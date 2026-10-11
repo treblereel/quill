@@ -86,6 +86,18 @@ class KotlinSemanticQueriesTest {
             timings.add((System.nanoTime() - started) / 1_000_000.0);
             assertEquals("(I)I", warm.path("descriptor").asText(), warm.toString());
         }
+        var cachedTimings = new java.util.ArrayList<Double>();
+        long generation = -1;
+        for (int i = 0; i < 12; i++) {
+            long started = System.nanoTime();
+            var cached = KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick("));
+            cachedTimings.add((System.nanoTime() - started) / 1_000_000.0);
+            assertTrue(cached.path("analysis_reused").asBoolean(), cached.toString());
+            if (generation == -1) generation = cached.path("analysis_generation").asLong();
+            assertEquals(generation, cached.path("analysis_generation").asLong());
+        }
+        cachedTimings.sort(Double::compareTo);
+        System.out.println("K2 reused FIR analysis median_ms=" + cachedTimings.get(6));
         timings.sort(Double::compareTo);
         System.out.println("K2 repeated fresh-source analysis median_ms=" + timings.get(6));
         Path other = temp.resolve("another-project");

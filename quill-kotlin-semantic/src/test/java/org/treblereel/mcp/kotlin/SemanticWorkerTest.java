@@ -8,7 +8,9 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+@org.junit.jupiter.api.parallel.ResourceLock("K2_ANALYZER")
 class SemanticWorkerTest {
+    @org.junit.jupiter.api.AfterEach void clearSnapshot() { K2Analyzer.clear(); }
     @TempDir Path temp;
     @Test void workerBytecodeRunsOnJava17() throws Exception {
         try (var input = new java.io.DataInputStream(SemanticWorker.class.getResourceAsStream("SemanticWorker.class"))) {

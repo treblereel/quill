@@ -31,6 +31,9 @@ import picocli.CommandLine.Option;
                 DoctorCommand.class, CleanCommand.class, WorkspaceCommand.class, ClientCommand.class})
 public class QuillTopCommand implements Callable<Integer> {
 
+    @Option(names = "--kotlin-semantic-worker", hidden = true)
+    boolean kotlinSemanticWorker;
+
     @Option(names = "--mcp", description = "Start an MCP server (stdio transport)")
     boolean mcp;
 
@@ -100,6 +103,10 @@ public class QuillTopCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        if (kotlinSemanticWorker) {
+            org.treblereel.mcp.kotlin.SemanticWorker.main(new String[0]);
+            return CommandLine.ExitCode.OK;
+        }
         if (mcp) {
             DebugTrace.configure(debug || debugEnvironmentEnabled(), diagnosticRoot());
             UxTelemetry.configure(telemetry || telemetryEnvironmentEnabled(), diagnosticRoot(),

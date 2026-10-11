@@ -13,15 +13,12 @@ import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.IndexReader;
 
-/** Opt-in compiler worker, isolated from the lightweight/native Quill runtime. */
+/** Bundled K2 analysis in a bounded child process, using the same executable in native mode. */
 final class KotlinSemanticQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     static JsonNode resolve(Jdbi db, Path root, Path file, int offset) {
-        String configured = System.getProperty("quill.kotlin.semantic.worker", "");
-        if (configured.isBlank()) return status("disabled");
-        Path worker = Path.of(configured).toAbsolutePath();
-        if (!Files.isRegularFile(worker) || file.toString().endsWith(".kts")) return status("unavailable");
+        if (file.toString().endsWith(".kts")) return status("unavailable");
         Path scratch = null;
         Process process = null;
         try {
@@ -74,8 +71,7 @@ final class KotlinSemanticQueries {
             entries.forEach(classpath::add);
             scratch = Files.createTempDirectory("quill-kotlin-semantic-");
             Path output = scratch.resolve("response.json");
-            process = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                    "-Xmx512m", "-jar", worker.toString()).redirectOutput(output.toFile())
+            process = new ProcessBuilder(workerCommand(org.treblereel.mcp.QuillLauncher.detect())).redirectOutput(output.toFile())
                     .redirectError(scratch.resolve("stderr.txt").toFile()).start();
             try (var input = process.getOutputStream()) { JSON.writeValue(input, request); }
             if (!process.waitFor(30, TimeUnit.SECONDS)) {
@@ -95,6 +91,13 @@ final class KotlinSemanticQueries {
                 for (var path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
             } catch (Exception ignored) { /* Temporary files are never project files. */ }
         }
+    }
+
+    static List<String> workerCommand(String nativeLauncher) {
+        if (nativeLauncher != null) return List.of(nativeLauncher, "-Xmx512m", "--kotlin-semantic-worker");
+        return List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-Xmx512m", "-cp", System.getProperty("java.class.path"),
+                "org.treblereel.mcp.kotlin.SemanticWorker");
     }
 
     private static JsonNode status(String status) { return JSON.createObjectNode().put("status", status); }

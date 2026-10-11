@@ -724,20 +724,23 @@ its field/getter/setter bindings; suspend return types remain source return type
 Missing or invalid type evidence is omitted rather than inferred from erased JVM types.
 The index schema is v28 and requires reindexing older generations.
 
-Without a semantic worker, position results use metadata and lexical evidence and have at
-most medium confidence. An optional compiler worker resolves overloads, receiver members,
-generic functions and local shadowing, and exposes its status in `semantic_analysis`.
-Build it with `./mvnw -P kotlin-semantic -pl quill-kotlin-semantic package`, then start Quill
-with `-Dquill.kotlin.semantic.worker=/absolute/path/quill-kotlin-semantic-0.1-SNAPSHOT-all.jar`.
-The worker uses the K2 FIR frontend from Kotlin 2.4.21 at language level 2.4, analyzes sources without
-executing build scripts or loading project compiler plugins, and needs captured module
-classpath files plus Java on the host. It runs in a separate JVM with a 30-second timeout;
-missing dependencies, unsupported syntax and analysis errors keep the lexical fallback.
+Every Quill distribution includes the K2 FIR frontend from Kotlin 2.4.21 at language
+level 2.4. Kotlin position queries automatically resolve overloads, receiver members,
+generic functions and local shadowing, exposing the result in `semantic_analysis`.
+No separate worker JAR or system property is required. Native Quill starts the same
+executable in a hidden analysis mode; JVM Quill starts Java with its bundled classpath.
+Analysis runs in a child process with a 512 MiB heap limit and a 30-second timeout.
+It reads captured module classpaths and a JDK (`JAVA_HOME`, or the JVM's `java.home`),
+without executing build scripts or loading project compiler plugins. Missing dependencies,
+unsupported syntax and analysis errors keep the metadata/lexical fallback, whose confidence
+is at most medium.
 K2 smart casts and context parameters participate in overload resolution. FIR analysis stops before
 IR lowering/code generation. Script sources are not analyzed. Project compiler plugins and
 custom language/experimental feature flags are not imported; such projects may fall back.
 Compiler-confirmed indexed targets have high confidence; local targets suppress unrelated
 indexed matches. A resolved target absent from the index reports `semantic_target_not_indexed`.
+Measured native size and runtime costs are recorded in
+[the Kotlin footprint benchmark](docs/benchmarks/kotlin-native.md).
 
 Quill locates the root through `settings.gradle[.kts]`, runs `gradlew` when present,
 and injects a temporary init script to export the evaluated Java project directories,

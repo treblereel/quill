@@ -132,6 +132,14 @@ jobs:
         run: ./quill-app/target/quill --version
       - if: runner.os == 'Windows'
         run: .\quill-app\target\quill.exe --version
+      - name: Compile native Kotlin test fixture
+        if: runner.os != 'Windows'
+        run: ./mvnw -q -f tests/kotlin-maven/pom.xml compile
+      - name: Compile native Kotlin test fixture on Windows
+        if: runner.os == 'Windows'
+        run: .\mvnw.cmd -q -f tests/kotlin-maven/pom.xml compile
+      - name: Verify bundled native Kotlin analysis
+        run: python scripts/quill_kotlin_native_e2e.py --fixture tests/kotlin-maven
       - name: Sign and notarize macOS executable
         if: runner.os == 'macOS'
         env:

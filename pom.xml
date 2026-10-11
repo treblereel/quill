@@ -9,6 +9,7 @@
 
     <modules>
         <module>quill-core</module>
+        <module>quill-kotlin-semantic</module>
         <module>quill-app</module>
         <module>tests</module>
     </modules>
@@ -43,6 +44,7 @@
         <native.buildtools.version>1.1.12</native.buildtools.version>
         <jackson.version>2.22.2</jackson.version>
         <jandex.version>3.6.0</jandex.version>
+        <kotlin.version>2.4.21</kotlin.version>
         <sqlite.version>3.53.4.0</sqlite.version>
         <jdbi.version>3.54.0</jdbi.version>
         <jgit.version>7.7.1.202607240634-r</jgit.version>
@@ -70,6 +72,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-stdlib</artifactId>
+                <version>${kotlin.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.fasterxml.jackson</groupId>
                 <artifactId>jackson-bom</artifactId>
@@ -263,7 +270,7 @@
     <profiles>
         <profile>
             <id>kotlin-semantic</id>
-            <modules><module>quill-kotlin-semantic</module></modules>
+            <!-- Compatibility alias: semantic analysis is now part of every build. -->
         </profile>
         <profile>
             <id>native</id>

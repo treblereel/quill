@@ -10,6 +10,8 @@ Current supporting documents:
   attestations.
 - [Paired task evaluation](benchmarks/task-evaluation.md) — reproducible agent-effectiveness
   benchmark protocol.
+- [Kotlin native footprint](benchmarks/kotlin-native.md) — bundled K2 size, runtime checks,
+  and the Maven compiler cache alternative.
 - [CaseHub Engine benchmark](benchmarks/casehub-engine.md) and
   [Crysknife benchmark](benchmarks/crysknife.md) — dated measurement records. These describe the
   named commits and environments; they are evidence, not current performance guarantees.

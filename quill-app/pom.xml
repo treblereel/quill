@@ -13,6 +13,11 @@
     <dependencies>
         <dependency>
             <groupId>org.treblereel.mcp</groupId>
+            <artifactId>quill-kotlin-semantic</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.treblereel.mcp</groupId>
             <artifactId>quill-core</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -229,6 +234,15 @@
                             </metadataRepository>
                             <buildArgs>
                                 <buildArg>-Os</buildArg>
+                                <!-- K2 reads the project JDK's modules through the JRT filesystem. -->
+                                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+                                <buildArg>-H:+AllowJRTFileSystem</buildArg>
+                                <buildArg>-H:+AddAllCharsets</buildArg>
+                                <buildArg>--add-opens=java.base/java.lang=ALL-UNNAMED</buildArg>
+                                <buildArg>--add-opens=java.base/java.io=ALL-UNNAMED</buildArg>
+                                <buildArg>--add-opens=java.base/java.nio=ALL-UNNAMED</buildArg>
+                                <buildArg>--add-opens=java.base/sun.nio.ch=ALL-UNNAMED</buildArg>
+                                <buildArg>--add-opens=java.desktop/javax.swing=ALL-UNNAMED</buildArg>
                                 <buildArg>-H:+ReportExceptionStackTraces</buildArg>
                                 <!-- sqlite-jdbc loads its bundled native library through
                                      System.load, so the generated executable must grant

@@ -52,7 +52,9 @@ object K2Analyzer {
                 freeArgs = request.path("sources").map { it.asText() } + request.path("java_roots").map { it.asText() }
                 classpath = request.path("classpath").joinToString(File.pathSeparator) { it.asText() }
                 moduleName = "quill-semantic"
-                jdkHome = System.getProperty("java.home")
+                jdkHome = System.getenv("JAVA_HOME")?.takeIf { File(it, "release").isFile } ?: System.getProperty("java.home")
+                // Dependencies are supplied explicitly; native images have no compiler JAR to locate.
+                kotlinHome = File(request.path("file").asText()).absoluteFile.parent
                 noStdlib = true; noReflect = true
                 languageVersion = "2.4"; apiVersion = "2.4"
                 disableDefaultScriptingPlugin = true

@@ -10,7 +10,10 @@ public final class SemanticWorker {
     public static void main(String[] args) throws Exception {
         ObjectNode result;
         try { result = analyze(JSON.readTree(System.in)); }
-        catch (Exception | LinkageError failure) { result = K2Analyzer.response("unavailable"); }
+        catch (Exception | LinkageError failure) {
+            failure.printStackTrace(System.err);
+            result = K2Analyzer.response("unavailable").put("reason", failure.getClass().getSimpleName());
+        }
         JSON.writeValue(System.out, result);
     }
 

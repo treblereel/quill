@@ -110,6 +110,21 @@ class PicocliNativeMetadataTest {
         }
     }
 
+    @Test
+    void kotlinDeclarationRecordsAreAvailableToJacksonInNativeImages() throws Exception {
+        try (InputStream input = getClass().getClassLoader().getResourceAsStream(
+                "META-INF/native-image/org.treblereel.mcp/quill-app/reflect-config.json")) {
+            assertNotNull(input);
+            JsonNode entries = JSON.readTree(input);
+            for (String type : Set.of("org.treblereel.mcp.model.KotlinValueParameter",
+                    "org.treblereel.mcp.model.KotlinDeclarationRecord")) {
+                JsonNode record = findCommand(entries, type);
+                assertTrue(record.path("allDeclaredConstructors").asBoolean());
+                assertTrue(record.path("allPublicMethods").asBoolean());
+            }
+        }
+    }
+
     private static JsonNode findCommand(JsonNode commands, String name) {
         for (JsonNode command : commands) {
             if (name.equals(command.path("name").asText())) return command;

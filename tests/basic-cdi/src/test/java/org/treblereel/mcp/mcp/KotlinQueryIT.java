@@ -189,20 +189,18 @@ class KotlinQueryIT {
                 "argumentNavigation(`odd name` = \"value\") { \"ok\" }", "argumentNavigation(2, `odd name` = \"value\", block = { \"ok\" })")) {
             var result = livePosition(expression, "argumentNavigation");
             assertEquals("resolved", result.path("resolution").asText(), result.toPrettyString());
-            assertTrue(result.path("selected").path("ranking_reasons").toString().contains("metadata_arguments_match"));
+            assertEquals("resolved", result.path("semantic_analysis").path("status").asText(), result.toPrettyString());
+            assertEquals("high", result.path("confidence").asText());
+            assertTrue(result.path("selected").path("ranking_reasons").toString().contains("compiler_semantic_match"));
         }
         assertFalse(livePosition("argumentNavigation(`odd name` = \"value\", 2) { \"ok\" }", "argumentNavigation").has("selected"));
         assertFalse(livePosition("argumentNavigation(block = { \"ok\" }) { \"again\" }", "argumentNavigation").has("selected"));
     }
 
     @Test void semanticWorkerRefinesOverloadsReceiverAndLocalShadows() throws Exception {
-        Path repository = Path.of(System.getProperty("user.dir")).getParent().getParent();
-        Path worker = repository.resolve("quill-kotlin-semantic/target/quill-kotlin-semantic-0.1-SNAPSHOT-all.jar");
-        org.junit.jupiter.api.Assumptions.assumeTrue(Files.isRegularFile(worker), "Build the kotlin-semantic profile to test the optional worker");
         Files.deleteIfExists(project.resolve("src/main/kotlin/Live.kt"));
         Files.deleteIfExists(project.resolve("src/main/kotlin/Navigation.kt"));
-        String previous = System.getProperty("quill.kotlin.semantic.worker");
-        System.setProperty("quill.kotlin.semantic.worker", worker.toString());
+
         try {
             var integer = livePosition("typedNavigation(1)", "typedNavigation");
             assertEquals("resolved", integer.path("resolution").asText(), integer.toPrettyString());
@@ -228,8 +226,6 @@ class KotlinQueryIT {
             assertEquals("local_symbol", local.path("resolution").asText(), local.toPrettyString());
             assertFalse(local.has("selected"));
         } finally {
-            if (previous == null) System.clearProperty("quill.kotlin.semantic.worker");
-            else System.setProperty("quill.kotlin.semantic.worker", previous);
             Files.deleteIfExists(project.resolve("src/main/kotlin/Navigation.kt"));
         }
     }

@@ -43,6 +43,14 @@ class JavaCompilerSettingsTest {
         var custom = Stream.of(report.get(0), report.get(1), report.get(2)).filter(node -> node.path("source_set").asText().equals("integrationTest")).findFirst().orElseThrow();
         assertEquals("configuration_only", custom.path("status").asText()); assertFalse(custom.path("compiled_settings_confirmed").asBoolean());
     }
+    @Test void acceptsLegacyAndV1ButDoesNotConsumeFutureCompilerSchema() throws Exception {
+        var values = values(); values.setProperty("compilerSettingsProtocol", "1"); Path file = save(values);
+        assertEquals("captured", JavaCompilerSettings.read(root, "main", file).path("status").asText());
+        values.setProperty("compilerSettingsProtocol", "99"); save(values);
+        var future = JavaCompilerSettings.read(root, "main", file);
+        assertEquals("unsupported_protocol", future.path("status").asText()); assertFalse(future.has("settings"));
+    }
+
     @TestFactory Stream<DynamicTest> malformedMetadataCannotAppearUsable() {
         return Stream.of("negative", "excessive", "incomplete", "bad_sha", "identity", "no_inputs", "unknown_evidence", "bad_count", "unicode")
                 .map(label -> DynamicTest.dynamicTest(label, () -> {

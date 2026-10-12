@@ -670,6 +670,15 @@ a fresh event and allows the next MCP request to refresh the index. Maven and Gr
 processes started internally for project discovery are marked so they cannot recursively
 create another build event.
 
+Build producers also write `.quill/build-integration.properties`: manifest schema 1,
+build-event protocol 3, compiler-settings schema 1, producer version and advertised
+capabilities. `get_build_status.integration.protocol` reports available features,
+unknown features, unsupported protocols and configuration changes made since capture.
+Missing manifests are treated as legacy evidence; bytecode queries and existing v3
+build events continue to work. Compiler captures without a schema field use the legacy
+reader, while unknown compiler schemas are rejected rather than interpreted as v1.
+Producer artifact versions and wire-format versions are independent.
+
 Java compile settings are exported separately to `target/quill-java-{main,test}.properties`
 for Maven and `build/quill-java-<sourceSet>.properties` for Gradle, including custom source
 sets. These locations stay stable when the project's compiled-output directory changes.

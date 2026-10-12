@@ -42,6 +42,14 @@ class KotlinCompilerSettingsTest {
             assertThrows(Exception.class, () -> KotlinCompilerSettings.apply(root, root.resolve("target"), "main", new ObjectMapper().createObjectNode()));
         }
     }
+    @Test void unknownCompilerSchemaIsNotMergedIntoAnalysisRequest() throws Exception {
+        write(root.resolve("target/quill-kotlin-main.properties"), "compilerSettingsProtocol=99\nlanguageVersion=99.0\nargument.count=1\nargument.0=-Xfuture\n");
+        var request = new ObjectMapper().createObjectNode(); KotlinCompilerSettings.apply(root, root.resolve("target"), "main", request);
+        assertEquals("compiler_settings_protocol_unsupported", request.path("compiler_configuration_error").asText());
+        assertFalse(request.has("languageVersion")); assertFalse(request.has("compiler_arguments"));
+        assertEquals(2, request.path("compiler_settings_files").size(), "Watch the unsupported capture so fixing its protocol can trigger warmup");
+    }
+
     @Test void implicitLanguageLevelFollowsProjectCompilerAndExplicitLevelTakesPrecedence() throws Exception {
         write(root.resolve("target/quill-kotlin-main.properties"), "compilerVersion=2.3.21\n");
         var request = new ObjectMapper().createObjectNode(); KotlinCompilerSettings.apply(root, root.resolve("target"), "main", request);

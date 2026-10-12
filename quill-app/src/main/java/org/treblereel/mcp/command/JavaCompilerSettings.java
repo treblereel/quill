@@ -12,7 +12,7 @@ import org.treblereel.mcp.core.BuildSystem;
 public final class JavaCompilerSettings {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final List<String> FIELDS = List.of("buildTool", "sourceSet", "execution", "evidence", "compilerId",
-            "compilerPluginVersion", "source", "target", "release", "enablePreview", "fork", "proc", "parameters",
+            "compilerSettingsProtocol", "producerVersion", "compilerPluginVersion", "source", "target", "release", "enablePreview", "fork", "proc", "parameters",
             "encoding", "useModulePath", "modulePathEvidence", "processorPathEvidence", "jdkSelection", "jdkHome",
             "jdkVersion", "jdkVendor", "compilerExecutable", "requestedJdkVersion", "generatedSourcesDirectory", "legacyCompilerArgument");
     private static final List<String> LISTS = List.of("argument", "processor", "processorArtifact", "processorPath", "sourceRoot", "compileClasspath", "activeProfile");
@@ -44,6 +44,9 @@ public final class JavaCompilerSettings {
         try {
             if (Files.size(capture) > 4 * 1024 * 1024) throw new IOException("Compiler settings exceed 4 MiB");
             Properties values = new Properties(); try (var reader = Files.newBufferedReader(capture)) { values.load(reader); }
+            int protocol = Integer.parseInt(values.getProperty("compilerSettingsProtocol", "0"));
+            result.put("compiler_settings_protocol", protocol);
+            if (protocol != 0 && protocol != 1) return result.put("status", "unsupported_protocol").put("usable", false);
             if (!sourceSet.equals(values.getProperty("sourceSet"))) throw new IOException("Source-set identity mismatch");
             ObjectNode settings = result.putObject("settings");
             for (String field : FIELDS) if (values.containsKey(field)) settings.put(field, values.getProperty(field));

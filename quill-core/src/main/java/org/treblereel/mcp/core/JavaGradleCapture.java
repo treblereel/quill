@@ -4,7 +4,7 @@ package org.treblereel.mcp.core;
 public final class JavaGradleCapture {
     private JavaGradleCapture() {}
     public static String script() { return """
-        // quill:java-capture:v1
+        // quill:java-capture:v2
         def quillCaptureJava = { project, task, confirmed ->
                     try {
                         if (task.state.failure != null) return
@@ -15,6 +15,8 @@ public final class JavaGradleCapture {
                         def captureFile = new File(project.projectDir, 'build/quill-java-' + name + '.properties')
                         if (!confirmed && captureFile.isFile()) return
                         def values = new Properties()
+                        values.setProperty('compilerSettingsProtocol', '1')
+                        values.setProperty('producerVersion', '2')
                         def put = { prefix, items ->
                             values.setProperty(prefix + '.count', items.size().toString())
                             items.eachWithIndex { item, index -> values.setProperty(prefix + '.' + index, item.toString()) }
@@ -113,5 +115,5 @@ public final class JavaGradleCapture {
             if (task instanceof org.gradle.api.tasks.compile.JavaCompile && state.failure == null)
                 quillCaptureJava(task.project, task, true)
         }
-        """; }
+        """ + BuildIntegrationProtocol.gradleScript(); }
 }

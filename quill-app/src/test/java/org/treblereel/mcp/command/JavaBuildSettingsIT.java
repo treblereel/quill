@@ -82,6 +82,9 @@ class JavaBuildSettingsIT {
         build(List.of(maven, "-q", "test-compile", "-Pcompiler-settings", "-t", root.resolve("toolchains.xml").toString(), "-Dmaven.ext.class.path=" + extension));
         var main = settings("target/quill-java-main.properties"); var test = settings("target/quill-java-test.properties");
         assertEquals("17", main.getProperty("release")); assertEquals("21", test.getProperty("release"));
+        assertEquals("1", main.getProperty("compilerSettingsProtocol"));
+        assertEquals("supported", BuildIntegrationCapabilities.inspect(root, Files.isRegularFile(root.resolve("pom.xml"))
+                ? org.treblereel.mcp.core.BuildSystem.MAVEN : org.treblereel.mcp.core.BuildSystem.GRADLE).path("status").asText());
         assertEquals("toolchain", main.getProperty("jdkSelection")); assertEquals(jdk.toRealPath().toString(), Path.of(main.getProperty("jdkHome")).toRealPath().toString());
         assertEquals("compiler-settings", main.getProperty("activeProfile.0"));
         assertEquals("-Amessage=value with spaces", main.getProperty("argument.0"));
@@ -122,6 +125,9 @@ class JavaBuildSettingsIT {
         var main = settings("build/quill-java-main.properties"); var test = settings("build/quill-java-test.properties");
         var custom = settings("build/quill-java-integrationTest.properties");
         assertEquals("17", main.getProperty("release")); assertEquals("21", test.getProperty("release"));
+        assertEquals("1", main.getProperty("compilerSettingsProtocol"));
+        assertEquals("supported", BuildIntegrationCapabilities.inspect(root, Files.isRegularFile(root.resolve("pom.xml"))
+                ? org.treblereel.mcp.core.BuildSystem.MAVEN : org.treblereel.mcp.core.BuildSystem.GRADLE).path("status").asText());
         assertEquals("integrationTest", custom.getProperty("sourceSet")); assertEquals("17", custom.getProperty("release"));
         assertEquals("successful_task", main.getProperty("evidence")); assertEquals("task_java_compiler", main.getProperty("jdkSelection"));
         assertEquals("1", main.getProperty("processorPath.count")); assertTrue(main.getProperty("processorPath.0").endsWith("processor.jar"));

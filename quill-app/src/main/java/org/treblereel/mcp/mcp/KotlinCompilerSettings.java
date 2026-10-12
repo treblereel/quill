@@ -11,16 +11,20 @@ final class KotlinCompilerSettings {
         var properties = new Properties();
         Path captured = output.resolve("quill-kotlin-" + sourceSet + ".properties");
         var fingerprints = request.putArray("compiler_settings_fingerprints");
-        read(captured, properties, fingerprints);
+        boolean supported = read(captured, properties, fingerprints);
         Path override = module.resolve(".quill/kotlin-" + sourceSet + ".properties");
-        read(override, properties, fingerprints);
+        var settingsFiles = request.putArray("compiler_settings_files").add(captured.toString()).add(override.toString());
+        supported &= read(override, properties, fingerprints);
+        if (!supported) {
+            request.put("compiler_configuration_error", "compiler_settings_protocol_unsupported");
+            return;
+        }
         if (!Files.isRegularFile(captured) && !Files.isRegularFile(override)) {
             Path pom = module.resolve("pom.xml");
             if (Files.isRegularFile(pom) && Files.readString(pom).contains("kotlin-maven-plugin")
                     || Files.isRegularFile(module.resolve("build.gradle")) || Files.isRegularFile(module.resolve("build.gradle.kts")))
                 request.put("compiler_configuration_error", "compiler_settings_missing");
         }
-        var settingsFiles = request.putArray("compiler_settings_files").add(captured.toString()).add(override.toString());
         var buildInputs = request.putArray("compiler_build_inputs");
         int inputs = Integer.parseInt(properties.getProperty("buildInput.count", "0"));
         if (inputs < 0 || inputs > 1024) throw new IOException("Too many compiler build inputs");
@@ -45,10 +49,16 @@ final class KotlinCompilerSettings {
         request.put("allow_compiler_plugins", Boolean.parseBoolean(properties.getProperty("allowPlugins", "false")));
         if (properties.containsKey("unsupportedPlugins")) request.put("unsupported_plugins", properties.getProperty("unsupportedPlugins"));
     }
-    private static void read(Path path, Properties into, com.fasterxml.jackson.databind.node.ArrayNode fingerprints) throws IOException {
+    private static boolean read(Path path, Properties into, com.fasterxml.jackson.databind.node.ArrayNode fingerprints) throws IOException {
         byte[] bytes = Files.isRegularFile(path) ? Files.readAllBytes(path) : null;
         fingerprints.addObject().put("path", path.toString()).put("sha256", bytes == null ? "absent" : hash(bytes));
-        if (bytes != null) try (var reader = new java.io.StringReader(new String(bytes, java.nio.charset.StandardCharsets.UTF_8))) { into.load(reader); }
+        if (bytes == null) return true;
+        var values = new Properties();
+        try (var reader = new java.io.StringReader(new String(bytes, java.nio.charset.StandardCharsets.UTF_8))) { values.load(reader); }
+        String protocol = values.getProperty("compilerSettingsProtocol", "0");
+        if (!protocol.equals("0") && !protocol.equals("1")) return false;
+        into.putAll(values);
+        return true;
     }
     private static String hash(byte[] bytes) {
         try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes)); }

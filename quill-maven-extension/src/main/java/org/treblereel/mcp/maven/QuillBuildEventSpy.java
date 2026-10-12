@@ -53,6 +53,8 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
                 ? null : session.getTopLevelProject().getBasedir().toPath();
         Path root = eventRoot(reactorRoot, topLevelRoot);
         if (root == null) return;
+        try { BuildIntegrationProtocol.write(root); }
+        catch (Exception error) { System.err.println("[quill] Could not capture integration capabilities: " + error.getMessage()); }
         try {
             captureClasspaths(session.getProjects());
             boolean successful = !session.getResult().hasExceptions();

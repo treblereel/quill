@@ -77,6 +77,7 @@ final class JavaCompilerCapture {
 
     static Properties settings(Xpp3Dom config, boolean test) {
         var values = new Properties();
+        BuildIntegrationProtocol.compilerSettings(values);
         for (String key : List.of("source", "target", "release")) {
             String selected = test ? value(config, "test" + Character.toUpperCase(key.charAt(0)) + key.substring(1)) : null;
             if (selected == null) selected = value(config, key);

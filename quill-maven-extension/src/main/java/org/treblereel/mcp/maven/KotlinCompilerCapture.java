@@ -45,6 +45,7 @@ final class KotlinCompilerCapture {
     }
     static Properties settings(Xpp3Dom config, String version, List<Path> plugins) {
         var result = new Properties();
+        BuildIntegrationProtocol.compilerSettings(result);
         if (version != null) result.setProperty("compilerVersion", version);
         if (config == null) return result;
         for (String field : List.of("languageVersion", "apiVersion", "jvmTarget")) {
@@ -95,6 +96,7 @@ final class KotlinCompilerCapture {
     static void write(Path target, Properties settings) throws IOException {
         if (Files.isRegularFile(target)) {
             var previous = new Properties(); try (var reader = Files.newBufferedReader(target)) { previous.load(reader); }
+            catch (IllegalArgumentException malformed) { previous.clear(); }
             if (previous.equals(settings)) return;
         }
         Files.createDirectories(target.getParent()); Path temporary = Files.createTempFile(target.getParent(), ".kotlin-settings-", ".tmp");

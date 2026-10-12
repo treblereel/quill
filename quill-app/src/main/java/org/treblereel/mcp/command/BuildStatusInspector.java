@@ -60,6 +60,7 @@ public final class BuildStatusInspector {
         integrationNode.put("state", integration.state().name().toLowerCase());
         integrationNode.put("path", relative(root, integration.path()));
         integrationNode.put("detail", integration.detail());
+        integrationNode.set("protocol", BuildIntegrationCapabilities.inspect(root, buildSystem));
 
         result.set("java_compiler_settings", JavaCompilerSettings.inspect(outputDiscovery.moduleDirectories(), buildSystem));
 
@@ -83,7 +84,7 @@ public final class BuildStatusInspector {
         ObjectNode events = result.putObject("build_events");
         events.put("pending", pendingEvents);
         events.put("consumed_before_tool_execution", true);
-        events.put("protocol", 2);
+        events.put("protocol", 3);
 
         ObjectNode index = result.putObject("index");
         index.put("index_id", metadata.getOrDefault("index_id", "unknown"));

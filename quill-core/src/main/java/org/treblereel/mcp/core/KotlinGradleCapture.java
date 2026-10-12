@@ -12,6 +12,8 @@ public final class KotlinGradleCapture {
                     if (task != null && task.hasProperty('compilerOptions')) {
                         def options = task.compilerOptions
                         def values = new Properties()
+                        values.setProperty('compilerSettingsProtocol', '1')
+                        values.setProperty('producerVersion', '2')
                         ['languageVersion', 'apiVersion', 'jvmTarget'].each { key ->
                             if (options.hasProperty(key)) {
                                 def value = options."$key".orNull

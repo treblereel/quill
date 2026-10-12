@@ -17,7 +17,7 @@ import java.util.UUID;
 /** Obtains the evaluated Gradle project structure without embedding Gradle in Quill. */
 public final class GradleProjectDiscovery {
 
-    private static final String CACHE_VERSION = "5";
+    private static final String CACHE_VERSION = "6";
 
     public record Discovery(
             List<Path> moduleDirectories,

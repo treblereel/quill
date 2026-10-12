@@ -1,0 +1,202 @@
+{
+  "java": "17.0.2",
+  "compiler": "2.4.21",
+  "session_setup_ms": 677.415334,
+  "cases": [
+    {
+      "case": "cold",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 511.406334
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.366292
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.128667
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.11225
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.114333
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.105667
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.116792
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.108792
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.103167
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.104
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.101208
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.103417
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.100667
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.113458
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.105
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.106958
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.100333
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.116875
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.106959
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.099625
+    },
+    {
+      "case": "unchanged",
+      "expected": "kotlin/Int",
+      "actual": "kotlin/Int",
+      "correct": true,
+      "query_ms": 0.099333
+    },
+    {
+      "case": "same_size_restored_mtime_disk_only",
+      "expected": "kotlin/Boolean",
+      "actual": "kotlin/Int",
+      "correct": false,
+      "query_ms": 0.208416
+    },
+    {
+      "case": "explicit_psi_reload_and_global_invalidation",
+      "expected": "kotlin/Boolean",
+      "actual": "error:KotlinIllegalArgumentExceptionWithAttachments",
+      "correct": false,
+      "query_ms": 42.292709
+    },
+    {
+      "case": "second_edit_with_explicit_invalidation",
+      "expected": "kotlin/String",
+      "actual": "error:KotlinIllegalArgumentExceptionWithAttachments",
+      "correct": false,
+      "query_ms": 9.463041
+    }
+  ],
+  "production_enabled": false,
+  "runtime_artifacts": 67,
+  "runtime_bytes": 136258283,
+  "classpath_isolation": "Separate process; unshaded IntelliJ core, no production worker changes",
+  "fresh_cli_reference": [
+    {
+      "expression": "1000",
+      "descriptor": "()I",
+      "owner": "CallKt",
+      "status": "resolved"
+    },
+    {
+      "expression": "true",
+      "descriptor": "()Z",
+      "owner": "CallKt",
+      "status": "resolved"
+    },
+    {
+      "expression": "\"s\"",
+      "descriptor": "()Ljava/lang/String;",
+      "owner": "CallKt",
+      "status": "resolved"
+    }
+  ],
+  "mutable_session_correct": false,
+  "promotion_gate": "blocked",
+  "scope": "Single-file inferred type changes only; full corner-case matrix and large-module benchmarks remain prerequisites for promotion"
+}

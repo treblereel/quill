@@ -94,3 +94,28 @@ new overload regressions and their cached/rebuilt FIR generation checks. The las
 production revision separately passed 702 unit tests, 28 integration tests and the
 native semantic/startup probes described in the footprint benchmark; this final
 investigation changes documentation and tests only.
+
+## Executed Standalone prototype
+
+An [isolated executable probe](../../experiments/kotlin-analysis-api/README.md) now
+resolves against the published Kotlin 2.4.21 IDE bundles in the official
+[intellij-dependencies repository](https://packages.jetbrains.team/maven/p/ij/intellij-dependencies/org/jetbrains/kotlin/analysis-api-standalone-for-ide/2.4.21/).
+The old Space repository ends at 2.2-era versions; Maven Central does not publish this
+coordinate. The CLI compiler's reduced IntelliJ classes are insufficient: using them
+with the IDE bundles produced `FileType.getDefaultExtension()` linkage errors.
+Full platform core is pinned to `251.27812.49` from upstream
+[version settings](https://github.com/JetBrains/kotlin/blob/v2.4.21/gradle/versions.properties).
+
+[Java 17 results](results/kotlin-analysis-api-probe-jdk17-2026-10-11.json) and
+[Java 21 results](results/kotlin-analysis-api-probe-jdk21-2026-10-11.json) include
+initial resolution, 20 unchanged queries and three edited-state probes. Fresh CLI
+analysis correctly returns Int, Boolean and String descriptors. The retained
+Standalone session returns the old type after an on-disk edit and raises an Analysis
+API exception after explicit PSI reload/global modification events. Closing the
+project and global application services permits normal process shutdown on both JDKs.
+
+The promotion gate remains blocked on correctness. A mutable platform must rebuild
+its declaration providers/index and obey lifetime rules; sending a modification event
+alone does not supply this machinery. Large-module speedup measurements were deferred
+because the minimal edit test already fails. Production still fully rebuilds a changed
+module. The two-entry module cache is orthogonal and reuses unchanged modules only.

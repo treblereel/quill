@@ -30,6 +30,10 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
 
     @Override
     public void onEvent(Object event) {
+        if (event instanceof ExecutionEvent kotlinEvent && kotlinEvent.getType() == ExecutionEvent.Type.MojoSucceeded) {
+            try { KotlinCompilerCapture.capture(kotlinEvent); }
+            catch (Exception error) { System.err.println("[quill] Could not capture Kotlin compiler settings: " + error.getMessage()); }
+        }
         if (!(event instanceof ExecutionEvent execution)
                 || execution.getType() != ExecutionEvent.Type.SessionEnded) {
             return;

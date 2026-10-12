@@ -1,0 +1,467 @@
+{
+  "validation_dates": [
+    "2026-10-11",
+    "2026-10-12"
+  ],
+  "platform": "macOS arm64",
+  "compiler": "Kotlin 2.4.21",
+  "full_build_command": "./mvnw verify -Pnative -DskipITs=false -Dmaven.ext.class.path=quill-maven-extension/target/quill-maven-extension-0.1.1.jar",
+  "full_build_success": true,
+  "unit_tests": 971,
+  "integration_tests": 35,
+  "extension_tests": 9,
+  "python_tests": 189,
+  "module_tests": [
+    {
+      "module": "quill-core",
+      "phase": "surefire",
+      "tests": 189,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "quill-kotlin-semantic",
+      "phase": "surefire",
+      "tests": 41,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "quill-app",
+      "phase": "surefire",
+      "tests": 523,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "quill-app",
+      "phase": "failsafe",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "quill-tests-basic-cdi",
+      "phase": "surefire",
+      "tests": 69,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "quill-tests-basic-cdi",
+      "phase": "failsafe",
+      "tests": 32,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "quill-tests-advanced-cdi",
+      "phase": "surefire",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "quill-tests-multimodule-verify",
+      "phase": "surefire",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "quill-tests-basic-spring",
+      "phase": "surefire",
+      "tests": 46,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "quill-tests-advanced-spring",
+      "phase": "surefire",
+      "tests": 74,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "quill-test-processor-application",
+      "phase": "surefire",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "native_binary_bytes": 69133656,
+  "native_sha256": "1c461b348259dc9280c6c8106ccd174164feaa699c2df60267e4b13f6e5f1bc3",
+  "native_baseline_commit": "57e69a0",
+  "native_baseline_bytes": 69034552,
+  "native_growth_bytes": 99104,
+  "native_growth_percent": 0.14355709876989753,
+  "native_comparison_scope": "Combined module-cache and project-settings changes since watcher recovery; identical GraalVM CE 25.0.1 arm64 -Os configuration.",
+  "runtime_external_artifacts": 15,
+  "runtime_external_bytes": 69690979,
+  "worker_jar_bytes": 56013,
+  "runtime_combined_bytes": 69746992,
+  "runtime_scripting_additions_bytes": 1344964,
+  "runtime_prepared_offline": true,
+  "real_build_checks": [
+    "Maven effective compile/test-compile settings and all-open JAR/options into K2",
+    "Gradle Kotlin DSL task overrides, all-open, custom output directory and K2",
+    "Gradle discovery with lazy main/test tasks and a child module, no compilation or user plugin opt-in",
+    "Native single-module Maven initialization migrated a pre-existing classpath cache missing compiler metadata"
+  ],
+  "native_workers": [
+    {
+      "worker_jdk": 17,
+      "native_cases": 25,
+      "cases": [
+        {
+          "name": "int overload",
+          "status": "resolved"
+        },
+        {
+          "name": "string overload",
+          "status": "resolved"
+        },
+        {
+          "name": "smart cast",
+          "status": "resolved"
+        },
+        {
+          "name": "context parameter",
+          "status": "resolved"
+        },
+        {
+          "name": "local shadow",
+          "status": "local"
+        },
+        {
+          "name": "generic erasure",
+          "status": "resolved"
+        },
+        {
+          "name": "nullable boxing",
+          "status": "resolved"
+        },
+        {
+          "name": "array boxing",
+          "status": "resolved"
+        },
+        {
+          "name": "suspend",
+          "status": "resolved"
+        },
+        {
+          "name": "binary stdlib",
+          "status": "resolved"
+        },
+        {
+          "name": "JDK symbols",
+          "status": "resolved"
+        },
+        {
+          "name": "Java source symbols",
+          "status": "resolved"
+        },
+        {
+          "name": "constructor",
+          "status": "resolved"
+        },
+        {
+          "name": "nested type",
+          "status": "resolved"
+        },
+        {
+          "name": "property",
+          "status": "resolved"
+        },
+        {
+          "name": "JVM annotation",
+          "status": "resolved"
+        },
+        {
+          "name": "object receiver",
+          "status": "resolved"
+        },
+        {
+          "name": "type mismatch",
+          "status": "analysis_error"
+        },
+        {
+          "name": "incomplete source",
+          "status": "analysis_error"
+        },
+        {
+          "name": "literal position",
+          "status": "unresolved"
+        },
+        {
+          "name": "standalone script",
+          "status": "resolved"
+        },
+        {
+          "name": "project language settings",
+          "status": "resolved"
+        },
+        {
+          "name": "disabled project plugin",
+          "status": "compiler_plugins_disabled"
+        },
+        {
+          "name": "all-open project plugin",
+          "status": "resolved"
+        },
+        {
+          "name": "nonsemantic compiler flag",
+          "status": "unavailable"
+        }
+      ],
+      "script_semantics": {
+        "status": "resolved",
+        "backend": "kotlin_k2_fir",
+        "language_version": "2.4",
+        "compiler_version": "2.4.21",
+        "descriptor": "(I)I",
+        "kind": "METHOD",
+        "name": "typedNavigation",
+        "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+        "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-lpzbw_hi/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+        "source_line": 35,
+        "analysis_reused": true,
+        "analysis_generation": 23,
+        "snapshot_cache_entries": 1,
+        "snapshot_cache_capacity": 2,
+        "snapshot_cache_evictions": 0,
+        "input_detection": "directory_watcher_fsevents"
+      },
+      "background_semantics": {
+        "status": "resolved",
+        "backend": "kotlin_k2_fir",
+        "language_version": "2.4",
+        "compiler_version": "2.4.21",
+        "descriptor": "(I)I",
+        "kind": "METHOD",
+        "name": "typedNavigation",
+        "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+        "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-lpzbw_hi/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+        "source_line": 35,
+        "analysis_reused": true,
+        "analysis_generation": 22,
+        "snapshot_cache_entries": 1,
+        "snapshot_cache_capacity": 2,
+        "snapshot_cache_evictions": 0,
+        "input_detection": "directory_watcher_fsevents"
+      },
+      "completed_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 21.70024998486042
+      },
+      "startup_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 22.644582903012633
+      },
+      "scope": "Small semantic fixtures and lifecycle smoke checks; timings are not a large-project benchmark."
+    },
+    {
+      "worker_jdk": 21,
+      "native_cases": 25,
+      "cases": [
+        {
+          "name": "int overload",
+          "status": "resolved"
+        },
+        {
+          "name": "string overload",
+          "status": "resolved"
+        },
+        {
+          "name": "smart cast",
+          "status": "resolved"
+        },
+        {
+          "name": "context parameter",
+          "status": "resolved"
+        },
+        {
+          "name": "local shadow",
+          "status": "local"
+        },
+        {
+          "name": "generic erasure",
+          "status": "resolved"
+        },
+        {
+          "name": "nullable boxing",
+          "status": "resolved"
+        },
+        {
+          "name": "array boxing",
+          "status": "resolved"
+        },
+        {
+          "name": "suspend",
+          "status": "resolved"
+        },
+        {
+          "name": "binary stdlib",
+          "status": "resolved"
+        },
+        {
+          "name": "JDK symbols",
+          "status": "resolved"
+        },
+        {
+          "name": "Java source symbols",
+          "status": "resolved"
+        },
+        {
+          "name": "constructor",
+          "status": "resolved"
+        },
+        {
+          "name": "nested type",
+          "status": "resolved"
+        },
+        {
+          "name": "property",
+          "status": "resolved"
+        },
+        {
+          "name": "JVM annotation",
+          "status": "resolved"
+        },
+        {
+          "name": "object receiver",
+          "status": "resolved"
+        },
+        {
+          "name": "type mismatch",
+          "status": "analysis_error"
+        },
+        {
+          "name": "incomplete source",
+          "status": "analysis_error"
+        },
+        {
+          "name": "literal position",
+          "status": "unresolved"
+        },
+        {
+          "name": "standalone script",
+          "status": "resolved"
+        },
+        {
+          "name": "project language settings",
+          "status": "resolved"
+        },
+        {
+          "name": "disabled project plugin",
+          "status": "compiler_plugins_disabled"
+        },
+        {
+          "name": "all-open project plugin",
+          "status": "resolved"
+        },
+        {
+          "name": "nonsemantic compiler flag",
+          "status": "unavailable"
+        }
+      ],
+      "script_semantics": {
+        "status": "resolved",
+        "backend": "kotlin_k2_fir",
+        "language_version": "2.4",
+        "compiler_version": "2.4.21",
+        "descriptor": "(I)I",
+        "kind": "METHOD",
+        "name": "typedNavigation",
+        "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+        "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-_u8a5190/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+        "source_line": 35,
+        "analysis_reused": true,
+        "analysis_generation": 24,
+        "snapshot_cache_entries": 1,
+        "snapshot_cache_capacity": 2,
+        "snapshot_cache_evictions": 0,
+        "input_detection": "directory_watcher_fsevents"
+      },
+      "background_semantics": {
+        "status": "resolved",
+        "backend": "kotlin_k2_fir",
+        "language_version": "2.4",
+        "compiler_version": "2.4.21",
+        "descriptor": "(I)I",
+        "kind": "METHOD",
+        "name": "typedNavigation",
+        "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+        "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-_u8a5190/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+        "source_line": 35,
+        "analysis_reused": true,
+        "analysis_generation": 23,
+        "snapshot_cache_entries": 1,
+        "snapshot_cache_capacity": 2,
+        "snapshot_cache_evictions": 0,
+        "input_detection": "directory_watcher_fsevents"
+      },
+      "completed_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 21.7678751796484
+      },
+      "startup_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 22.604916943237185
+      },
+      "scope": "Small semantic fixtures and lifecycle smoke checks; timings are not a large-project benchmark."
+    }
+  ],
+  "pending_query_eof": [
+    {
+      "mcp_exit_code": 0,
+      "worker_processes": 1,
+      "forced_termination": false,
+      "elapsed_ms": 22.656874964013696,
+      "worker_java_home": "/Library/Java/JavaVirtualMachines/jdk-17.0.2.jdk/Contents/Home",
+      "additional_sources": 500,
+      "changed_query_sent_without_waiting": true
+    },
+    {
+      "mcp_exit_code": 0,
+      "worker_processes": 1,
+      "forced_termination": false,
+      "elapsed_ms": 22.585875121876597,
+      "worker_java_home": "/Users/treblereel/Library/Java/JavaVirtualMachines/openjdk-21.0.2/Contents/Home",
+      "additional_sources": 500,
+      "changed_query_sent_without_waiting": true
+    }
+  ],
+  "verification_receipt": "9a1506d015a85ef38f0b64d8",
+  "verification_phase": "complete",
+  "verification_gate": "satisfied",
+  "verification_verified": true,
+  "limitations": [
+    "macOS arm64 only; task 4 platform runs were excluded",
+    "Ordinary JVM scripts only; Gradle DSL/custom script definitions report unavailable",
+    "Standard JVM main/test task capture; Kotlin Multiplatform/Android require further integration",
+    "Compiler plugins need explicit opt-in and compiler version 2.4.21; IR-only generated declarations are outside FIR",
+    "Extension 0.1.1 installed locally, not published",
+    "Analysis API mutable-session prototype failed correctness gate and is not enabled in production"
+  ]
+}

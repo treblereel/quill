@@ -39,7 +39,7 @@
         <shade-plugin.version>3.6.1</shade-plugin.version>
         <resources-plugin.version>3.4.0</resources-plugin.version>
         <release-plugin.version>3.3.1</release-plugin.version>
-        <quill.maven.extension.version>0.1.0</quill.maven.extension.version>
+        <quill.maven.extension.version>0.1.1</quill.maven.extension.version>
         <slf4j.version>2.0.18</slf4j.version>
         <native.buildtools.version>1.1.12</native.buildtools.version>
         <jackson.version>2.22.2</jackson.version>

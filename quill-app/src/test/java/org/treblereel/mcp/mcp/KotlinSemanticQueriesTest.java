@@ -42,9 +42,20 @@ class KotlinSemanticQueriesTest {
         Files.createDirectories(temp.resolve("target"));
         Files.writeString(temp.resolve("target/quill-classpath.txt"), "missing-dependency.jar");
         assertEquals("classpath_missing", KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
-        assertEquals("unavailable", KotlinSemanticQueries.resolve(db, temp, temp.resolve("script.kts"), 0).path("status").asText());
+        assertEquals("classpath_missing", KotlinSemanticQueries.resolve(db, temp, temp.resolve("script.kts"), 0).path("status").asText());
     }
 
+    @Test void ordinaryScriptAndProjectSettingsReachWorkerButGradleDslRequiresDefinition() throws Exception {
+        var db = QuillDatabase.create(temp.resolve("index.db")); Files.writeString(temp.resolve("pom.xml"), "<project/>");
+        Path script = temp.resolve("example.kts"); String text = "fun pick() = 1\nval result = pick()\nerror(\"never run\")";
+        Files.writeString(script, text); Files.createDirectories(temp.resolve("target"));
+        Path stdlib = Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        Files.writeString(temp.resolve("target/quill-classpath.txt"), stdlib.toString());
+        Files.writeString(temp.resolve("target/quill-kotlin-main.properties"), "languageVersion=2.3\napiVersion=2.3\njvmTarget=17\n");
+        var result = KotlinSemanticQueries.resolve(db, temp, script, text.lastIndexOf("pick()"));
+        assertEquals("resolved", result.path("status").asText(), result.toString()); assertEquals("2.3", result.path("language_version").asText());
+        assertEquals("script_definition_missing", KotlinSemanticQueries.resolve(db, temp, temp.resolve("build.gradle.kts"), 0).path("status").asText());
+    }
     @Test void testSourcesUseTestClasspathAndSeeMainDeclarations() throws Exception {
         var db = QuillDatabase.create(temp.resolve("index.db"));
         Files.writeString(temp.resolve("pom.xml"), "<project/>");
@@ -133,6 +144,8 @@ class KotlinSemanticQueriesTest {
         Files.createDirectories(temp.resolve("build"));
         Path stdlib = Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         Files.writeString(temp.resolve("build/quill-classpath.txt"), stdlib.toString());
+        assertEquals("compiler_settings_missing", KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick(")).path("status").asText());
+        Files.writeString(temp.resolve("build/quill-kotlin-main.properties"), "languageVersion=2.4\n");
         assertEquals("resolved", KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick(")).path("status").asText());
         System.setProperty("quill.kotlin.cache", temp.resolve("absent runtime").toString());
         assertEquals("runtime_missing", KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick(")).path("status").asText());
@@ -206,6 +219,7 @@ class KotlinSemanticQueriesTest {
         Path captured = directory.resolve(buildMarker.startsWith("pom") ? "target/quill-classpath.txt" : "build/quill-classpath.txt");
         Files.createDirectories(captured.getParent()); Files.writeString(captured,
                 Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString());
+        Files.writeString(captured.getParent().resolve("quill-kotlin-" + sourceSet + ".properties"), "languageVersion=2.4\n");
         addStartupFile(db, temp.relativize(file).toString().replace('\\', '/'), module, sourceSet, "current");
         return db;
     }

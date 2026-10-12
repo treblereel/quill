@@ -16,6 +16,25 @@ class CompilerInputsTest {
         return new ObjectMapper().createObjectNode().put("module", temp.toString())
                 .put("file", file.toString()).set("sources", new ObjectMapper().createArrayNode().add(file.toString()));
     }
+    @Test void configurationEditsBetweenCollectionAndCompilerCaptureForceRetry() throws Exception {
+        var request = request(); Path settings = temp.resolve("options.properties"); Files.writeString(settings, "languageVersion=2.3");
+        String hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(settings)));
+        request.putArray("compiler_settings_fingerprints").addObject().put("path", settings.toString()).put("sha256", hash);
+        CompilerInputs.capture(request, temp); Files.writeString(settings, "languageVersion=2.4");
+        assertEquals("inputs_changed", K2Analyzer.analyze(request).path("status").asText());
+        assertThrows(CompilerInputs.ChangedException.class, () -> CompilerInputs.capture(request, temp));
+    }
+    @Test void pluginBytesFlagsAndOptionsAreCompilerInputsEvenWithRestoredAttributes() throws Exception {
+        var request = request(); Path plugin = temp.resolve("plugin.jar"); Files.writeString(plugin, "aaaa");
+        request.putArray("plugin_classpath").add(plugin.toString()); var first = CompilerInputs.capture(request, temp);
+        var modified = Files.getLastModifiedTime(plugin); Files.writeString(plugin, "bbbb"); Files.setLastModifiedTime(plugin, modified);
+        var changed = CompilerInputs.capture(request, temp); assertNotEquals(first.fingerprint(), changed.fingerprint());
+        request.putArray("plugin_options").add("plugin:id:annotation=probe.Open");
+        var options = CompilerInputs.capture(request, temp); assertNotEquals(changed.fingerprint(), options.fingerprint());
+        request.putArray("compiler_arguments").add("-Xcontext-parameters"); assertNotEquals(options.fingerprint(), CompilerInputs.capture(request, temp).fingerprint());
+        request.put("languageVersion", "2.3"); var language = CompilerInputs.capture(request, temp);
+        request.put("apiVersion", "2.3"); assertNotEquals(language.fingerprint(), CompilerInputs.capture(request, temp).fingerprint());
+    }
     @Test void jdkImageChangesWithRestoredMtimeAndJdkSelectionChangeInvalidateInputs() throws Exception {
         var request = request(); Path jdk = temp.resolve("jdk"); Files.createDirectories(jdk.resolve("lib"));
         Files.writeString(jdk.resolve("release"), "JAVA_VERSION=17"); Files.writeString(jdk.resolve("lib/modules"), "aaaa");

@@ -44,6 +44,7 @@ class KotlinRuntimeTest {
                 + "<dependency><groupId>fixture</groupId><artifactId>absent-optional</artifactId>"
                 + "<version>1</version><optional>true</optional></dependency></dependencies>";
         artifact("org.jetbrains.kotlin", "kotlin-compiler-embeddable", KotlinRuntime.version(), child);
+        artifact("org.jetbrains.kotlin", "kotlin-scripting-compiler-embeddable", KotlinRuntime.version(), "");
         artifact("org.jetbrains.kotlin", "kotlin-stdlib", KotlinRuntime.version(), "");
         artifact("com.fasterxml.jackson.core", "jackson-databind", QuillTopCommand.property("jackson-version"), "");
         artifact("fixture", "child", "1", "");
@@ -55,7 +56,7 @@ class KotlinRuntimeTest {
 
     @Test void resolvesTransitiveRuntimeOnceAndReusesOfflineCache() throws Exception {
         var files = KotlinRuntime.prepare();
-        assertEquals(5, files.size());
+        assertEquals(6, files.size());
         assertTrue(files.stream().anyMatch(p -> p.getFileName().toString().equals("child-1.jar")));
         property("quill.kotlin.offline", "true");
         assertEquals(files, KotlinRuntime.prepare());
@@ -80,7 +81,7 @@ class KotlinRuntimeTest {
     @Test void absentDefaultMavenDirectoryIsCreatedAndRuntimeReusedOffline() throws Exception {
         Path home = isolatedHomeWithoutMavenSettings();
         var files = KotlinRuntime.prepare();
-        assertEquals(5, files.size());
+        assertEquals(6, files.size());
         assertTrue(Files.isRegularFile(home.resolve(".m2/repository/org/jetbrains/kotlin/kotlin-compiler-embeddable/"
                 + KotlinRuntime.version() + "/kotlin-compiler-embeddable-" + KotlinRuntime.version() + ".jar")));
         assertFalse(Files.exists(home.resolve(".m2/settings.xml")));
@@ -103,7 +104,7 @@ class KotlinRuntimeTest {
         Path home = isolatedHomeWithoutMavenSettings();
         Path repository = temporary.resolve("custom local repository");
         property("quill.kotlin.localRepository", repository.toString());
-        assertEquals(5, KotlinRuntime.prepare().size());
+        assertEquals(6, KotlinRuntime.prepare().size());
         assertTrue(Files.isDirectory(repository.resolve("org/jetbrains/kotlin")));
         assertFalse(Files.exists(home.resolve(".m2")));
     }
@@ -152,7 +153,7 @@ class KotlinRuntimeTest {
             lock.release();
             assertTrue(process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS));
             assertEquals(0, process.exitValue(), Files.readString(temporary.resolve("child.log")));
-            assertEquals(5, KotlinRuntime.available().size());
+            assertEquals(6, KotlinRuntime.available().size());
         } finally { if (process != null && process.isAlive()) process.destroyForcibly(); }
     }
 
@@ -195,7 +196,7 @@ class KotlinRuntimeTest {
         property("quill.kotlin.repository", temporary.resolve("nonexistent").toUri().toString());
         Files.writeString(temporary.resolve("settings.xml"), "<settings><mirrors><mirror><id>company</id>"
                 + "<url>" + remote.toUri() + "</url><mirrorOf>*</mirrorOf></mirror></mirrors></settings>");
-        assertEquals(5, KotlinRuntime.prepare().size());
+        assertEquals(6, KotlinRuntime.prepare().size());
     }
 
     @Test void httpRepositoryUsesConfiguredServerCredentials() throws Exception {
@@ -220,7 +221,7 @@ class KotlinRuntimeTest {
             property("quill.kotlin.repository", "http://127.0.0.1:" + server.getAddress().getPort() + "/");
             Files.writeString(temporary.resolve("settings.xml"), "<settings><servers><server><id>central</id>"
                     + "<username>fixture</username><password>password</password></server></servers></settings>");
-            assertEquals(5, KotlinRuntime.prepare().size());
+            assertEquals(6, KotlinRuntime.prepare().size());
             assertTrue(authorized.get() > 0);
         } finally { server.stop(0); }
     }

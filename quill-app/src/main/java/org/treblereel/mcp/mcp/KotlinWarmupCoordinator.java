@@ -12,7 +12,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/** One watched, recently queried module, matching the worker's single FIR snapshot. */
+/** Watches the recently queried module while the worker can retain inactive FIR snapshots. */
 final class KotlinWarmupCoordinator implements AutoCloseable {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final Function<JsonNode, JsonNode> worker;
@@ -180,7 +180,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
         void configure(JsonNode request) {
             if (!request.has("sources")) return;
             String next = request.path("module") + ":" + request.path("source_set") + ":" + request.path("sources")
-                    + ":" + request.path("java_roots") + ":" + request.path("classpath") + ":" + request.path("captured_classpath");
+                    + ":" + request.path("java_roots") + ":" + request.path("classpath") + ":" + request.path("captured_classpath") + ":" + request.path("compiler_settings_files") + ":" + request.path("plugin_classpath");
             if (next.equals(signature) && !refresh) return;
             refresh = false; signature = next;
             var recursive = new LinkedHashSet<Path>(); var exact = new LinkedHashSet<Path>();
@@ -201,6 +201,8 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                 if (Files.isDirectory(path)) recursive.add(path); else exact.add(path);
             }
             exact.add(Path.of(request.path("captured_classpath").asText(module.resolve("target/quill-classpath.txt").toString())));
+            for (JsonNode setting : request.path("compiler_settings_files")) exact.add(Path.of(setting.asText()));
+            for (JsonNode plugin : request.path("plugin_classpath")) exact.add(Path.of(plugin.asText()));
             for (String marker : List.of("pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"))
                 exact.add(module.resolve(marker));
             // Track real targets too, so symlinked source/output/JAR changes are visible.

@@ -305,6 +305,10 @@ public final class DependencyIndexer {
                                    String expectedFingerprint) {
         Path cpFile = buildSystem.classpathFile(moduleDir);
         if (!Files.exists(cpFile)) return true;
+        if (buildSystem == BuildSystem.MAVEN
+                && (Files.isDirectory(moduleDir.resolve("src/main/kotlin")) || Files.isDirectory(moduleDir.resolve("src/test/kotlin")))
+                && (!Files.isRegularFile(moduleDir.resolve("target/quill-kotlin-main.properties"))
+                    || !Files.isRegularFile(moduleDir.resolve("target/quill-kotlin-test.properties")))) return true;
 
         Path fingerprintFile = buildSystem.classpathFingerprintFile(moduleDir);
         try {
@@ -464,48 +468,8 @@ public final class DependencyIndexer {
                     : ClasspathGenerationResult.failure(
                             "Gradle dependency classpath discovery failed");
         }
-        MavenProjectDiscovery.Discovery reactor = MavenProjectDiscovery.discover(projectRoot);
-        if (reactor.moduleDirectories().size() > 1) {
-            return MavenClasspathResolver.generate(projectRoot);
-        }
-        Process process = null;
-        try {
-            process = new ProcessBuilder(buildSystem.command(projectRoot,
-                    "-Dquill.internal=true", "dependency:build-classpath",
-                    "-DincludeScope=runtime",
-                    "-Dmdep.outputFile=target/quill-classpath.txt", "-q"))
-                    .directory(projectRoot.toFile())
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectError(ProcessBuilder.Redirect.INHERIT)
-                    .start();
-            int exit = process.waitFor();
-            if (exit != 0) {
-                String detail = "Maven dependency classpath generation exited with code " + exit;
-                System.err.println("[quill] Warning: " + detail);
-                return ClasspathGenerationResult.failure(detail);
-            }
-            return ClasspathGenerationResult.success();
-        } catch (InterruptedException e) {
-            terminate(process);
-            Thread.currentThread().interrupt();
-            String detail = "Dependency classpath resolution was interrupted";
-            System.err.println("[quill] Warning: " + detail);
-            return ClasspathGenerationResult.failure(detail);
-        } catch (IOException e) {
-            String detail = "Could not resolve dependency classpath: " + e.getMessage();
-            System.err.println("[quill] Warning: " + detail);
-            return ClasspathGenerationResult.failure(detail);
-        }
-    }
-
-    private static void terminate(Process process) {
-        if (process == null) return;
-        try (var descendants = process.descendants()) {
-            descendants.forEach(ProcessHandle::destroyForcibly);
-        } catch (UnsupportedOperationException | SecurityException ignored) {
-            // Best effort; destroying the wrapper process is still preferable to leaving it alive.
-        }
-        process.destroyForcibly();
+        // The effective POM also supplies Kotlin settings for single-module projects.
+        return MavenClasspathResolver.generate(projectRoot);
     }
 
     private static boolean generateGradleClasspathFiles(Path projectRoot) {

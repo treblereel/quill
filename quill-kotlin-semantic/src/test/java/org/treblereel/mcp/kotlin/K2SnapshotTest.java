@@ -39,6 +39,54 @@ class K2SnapshotTest {
         assertFalse(next.path("analysis_reused").asBoolean(), next.toString());
         assertTrue(next.path("analysis_generation").asLong() > first.path("analysis_generation").asLong());
     }
+    @Test void projectLanguageApiAndJvmTargetInvalidateCachedModels() throws Exception {
+        Path caller = source("Call.kt", "fun pick() = 1\nfun run() = pick()");
+        var request = request(caller, "pick()", caller).put("languageVersion", "2.3").put("apiVersion", "2.3").put("jvmTarget", "17");
+        var first = resolve(request, "()I"); assertEquals("2.3", first.path("language_version").asText());
+        request.put("languageVersion", "2.4").put("apiVersion", "2.4"); rebuilt(first, resolve(request, "()I"));
+        request.put("jvmTarget", "invalid"); assertEquals("analysis_error", K2Analyzer.analyze(request).path("status").asText());
+        request.put("jvmTarget", "17"); assertFalse(resolve(request, "()I").path("analysis_reused").asBoolean());
+        request.put("apiVersion", "2.5"); assertEquals("analysis_error", K2Analyzer.analyze(request).path("status").asText());
+    }
+    @Test void incompatibleOrUnapprovedPluginsNeverProduceConfidentResults() throws Exception {
+        Path caller = source("Call.kt", "fun pick() = 1\nfun run() = pick()");
+        var request = request(caller, "pick()", caller);
+        request.putArray("plugin_classpath").add("missing.jar");
+        assertEquals("compiler_plugins_disabled", K2Analyzer.analyze(request).path("status").asText());
+        request.put("allow_compiler_plugins", true).put("compilerVersion", "2.3.0");
+        assertEquals("compiler_plugin_version_mismatch", K2Analyzer.analyze(request).path("status").asText());
+        request.put("compilerVersion", "2.4.21"); assertThrows(java.io.IOException.class, () -> K2Analyzer.analyze(request));
+    }
+    @Test void allOpenFirPluginChangesResolutionAndDisablingItInvalidatesModel() throws Exception {
+        Path caller = source("Call.kt", "annotation class Open\n@Open class Base { fun pick() = 1 }\nclass Derived: Base()\nfun run() = Derived().pick()");
+        var request = request(caller, "pick()", caller);
+        assertEquals("analysis_error", K2Analyzer.analyze(request).path("status").asText());
+        String jar = Path.of(org.jetbrains.kotlin.allopen.AllOpenComponentRegistrar.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
+        request.putArray("plugin_classpath").add(jar); request.putArray("plugin_options").add("plugin:org.jetbrains.kotlin.allopen:annotation=Open");
+        request.put("allow_compiler_plugins", true).put("compilerVersion", "2.4.21");
+        var valid = resolve(request, "()I"); assertEquals("Base", valid.path("owner").asText());
+        assertTrue(resolve(request, "()I").path("analysis_reused").asBoolean());
+        request.withArray("plugin_options").removeAll();
+        assertEquals("analysis_error", K2Analyzer.analyze(request).path("status").asText());
+    }
+    @Test void standaloneScriptsResolveWithoutEvaluatingTopLevelCodeAndObserveEdits() throws Exception {
+        Path script = source("example.kts", "fun pick() = 1\nval value = pick()\nerror(\"must never evaluate\")");
+        var request = request(script, "pick()", script);
+        var first = resolve(request, "()I"); assertTrue(resolve(request, "()I").path("analysis_reused").asBoolean());
+        Files.writeString(script, "fun pick() = true\nval value = pick()\nerror(\"must never evaluate\")");
+        request.put("offset", Files.readString(script).lastIndexOf("pick()"));
+        rebuilt(first, resolve(request, "()Z"));
+    }
+    @Test void compilerArgumentsCannotOverrideSourceClasspathOrEnableEvaluation() throws Exception {
+        Path caller = source("Call.kt", "fun pick() = 1\nfun run() = pick()");
+        var request = request(caller, "pick()", caller);
+        for (var arguments : List.of(List.of("-d", temp.resolve("output").toString()), List.of("-script"),
+                List.of("-Xplugin=missing.jar"), List.of("@args.txt"), List.of("-Xunknown-quill-option"), List.of("-Xdump-directory=" + temp.resolve("dump")), List.of("other.kt"))) {
+            var options = request.putArray("compiler_arguments"); arguments.forEach(options::add);
+            assertThrows(IllegalArgumentException.class, () -> K2Analyzer.analyze(request), arguments.toString());
+        }
+        assertFalse(Files.exists(temp.resolve("output")));
+    }
     @Test void differentPositionsAndFilesReuseFirRatherThanACachedPositionResult() throws Exception {
         Path defs = source("Defs.kt", "package probe\nfun number() = 1\nfun text() = \"s\"");
         Path a = source("A.kt", "package probe\nfun run() = number()");

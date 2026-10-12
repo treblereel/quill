@@ -43,6 +43,10 @@ final class MavenClasspathResolver {
                 return DependencyIndexer.ClasspathGenerationResult.failure(
                         "Maven effective POM did not contain reactor projects");
             }
+            var kotlinModules = new LinkedHashMap<String, Path>();
+            for (EffectiveProject project : projects) if (project.moduleDirectory() != null)
+                kotlinModules.put(project.groupId() + ":" + project.artifactId() + ":" + project.version(), project.moduleDirectory());
+            MavenKotlinSettings.capture(effectivePom, projectRoot, kotlinModules);
             Set<ArtifactCoordinate> reactor = new LinkedHashSet<>();
             for (EffectiveProject project : projects) {
                 reactor.add(new ArtifactCoordinate(

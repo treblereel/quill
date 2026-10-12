@@ -7,7 +7,7 @@
     <!-- This artifact has an independent release lifecycle from the Quill binary. -->
     <groupId>org.treblereel.mcp</groupId>
     <artifactId>quill-maven-extension</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
     <packaging>jar</packaging>
 
     <name>Quill Maven build-result extension</name>

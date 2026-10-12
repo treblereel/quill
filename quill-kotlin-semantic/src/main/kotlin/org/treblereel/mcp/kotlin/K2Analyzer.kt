@@ -7,8 +7,12 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
 import java.io.File
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
+import org.jetbrains.kotlin.cli.common.arguments.parseCommandLineArguments
+import org.jetbrains.kotlin.cli.common.arguments.validateArguments
 import org.jetbrains.kotlin.cli.common.messages.GroupingMessageCollector
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSourceLocation
 import org.jetbrains.kotlin.cli.pipeline.ArgumentsPipelineArtifact
 import org.jetbrains.kotlin.cli.pipeline.jvm.JvmConfigurationPipelinePhase
 import org.jetbrains.kotlin.cli.pipeline.jvm.JvmFrontendPipelinePhase
@@ -46,7 +50,7 @@ object K2Analyzer {
 
     private data class AnalyzedFile(val file: FirFile, val session: FirSession)
     private data class Snapshot(val inputs: CompilerInputs, val disposable: org.jetbrains.kotlin.com.intellij.openapi.Disposable?,
-        val files: Map<String, AnalyzedFile>, val status: String?, val generation: Long)
+        val files: Map<String, AnalyzedFile>, val status: String?, val generation: Long, val language: String, val diagnostics: List<String> = emptyList())
     private data class CacheKey(val module: String, val sourceSet: String)
     private val snapshots = SnapshotCache<CacheKey, Snapshot>(2,
         { value -> value.disposable?.let { Disposer.dispose(it) } },
@@ -80,6 +84,12 @@ object K2Analyzer {
         val timings = Timings(request.path("profile_analysis").asBoolean(false))
         var key: CacheKey? = null
         try {
+            if (request.has("compiler_configuration_error")) return response(request.path("compiler_configuration_error").asText())
+            if (request.path("unsupported_plugins").asText().isNotBlank()) return response("compiler_plugins_unavailable")
+            if (!request.path("plugin_classpath").isEmpty || !request.path("plugin_options").isEmpty) {
+                if (!request.path("allow_compiler_plugins").asBoolean(false)) return response("compiler_plugins_disabled")
+                if (request.path("compilerVersion").asText() != "2.4.21") return response("compiler_plugin_version_mismatch")
+            }
             val inputs = timings.measure("capture_before") { CompilerInputs.capture(request) }
             key = CacheKey(inputs.moduleHome(), inputs.sourceSet())
             val previous = snapshots.get(key)
@@ -89,16 +99,19 @@ object K2Analyzer {
                 build(request, inputs, timings).also { snapshots.put(key, it) }
             }
             snapshots.pruneExcept(key)
-            val result = current.status?.let { response(it) }
+            val result = current.status?.let { response(it).apply { current.diagnostics.forEach { diagnostic -> withArray("diagnostics").add(diagnostic) } } }
                 ?: timings.measure("lookup") { resolve(current, request) }
             // Source/classpath edits racing a frontend run or lookup cannot receive high confidence.
             if (timings.measure("capture_after") { CompilerInputs.capture(request) }.fingerprint() != inputs.fingerprint()) {
                 timings.measure("dispose") { snapshots.remove(key) }
                 return timings.finish(response("inputs_changed"))
             }
-            return timings.finish(result.put("analysis_reused", reused).put("analysis_generation", current.generation)
+            return timings.finish(result.put("language_version", current.language).put("analysis_reused", reused).put("analysis_generation", current.generation)
                 .put("snapshot_cache_entries", snapshots.size()).put("snapshot_cache_capacity", 2)
                 .put("snapshot_cache_evictions", snapshots.evictions()))
+        } catch (changed: CompilerInputs.ChangedException) {
+            if (key == null) clear() else snapshots.remove(key)
+            return timings.finish(response("inputs_changed"))
         } catch (failure: Exception) {
             if (key == null) clear() else snapshots.remove(key)
             throw failure
@@ -110,7 +123,14 @@ object K2Analyzer {
         var retained = false
         val revision = ++generation
         try {
-            val messages = GroupingMessageCollector(MessageCollector.NONE, false, false)
+            val errors = mutableListOf<String>()
+            val messages = GroupingMessageCollector(object : MessageCollector {
+                override fun clear() { errors.clear() }
+                override fun hasErrors() = errors.isNotEmpty()
+                override fun report(severity: CompilerMessageSeverity, message: String, location: CompilerMessageSourceLocation?) {
+                    if (severity.isError && errors.size < 5) errors.add(message.take(2048))
+                }
+            }, false, false)
             val arguments = K2JVMCompilerArguments().apply {
                 freeArgs = request.path("sources").map { it.asText() } + request.path("java_roots").map { it.asText() }
                 classpath = request.path("classpath").joinToString(File.pathSeparator) { it.asText() }
@@ -118,23 +138,57 @@ object K2Analyzer {
                 jdkHome = inputs.jdkHome()
                 kotlinHome = inputs.moduleHome()
                 noStdlib = true; noReflect = true
-                languageVersion = "2.4"; apiVersion = "2.4"
-                disableDefaultScriptingPlugin = true
+                languageVersion = request.path("languageVersion").asText("2.4")
+                apiVersion = request.path("apiVersion").asText(languageVersion)
+                jvmTarget = request.path("jvmTarget").asText("1.8")
+                val extras = request.path("compiler_arguments").map { it.asText() }
+                // Build topology and executable/script evaluation options are outside frontend analysis.
+                val semanticValues = setOf("-language-version", "-api-version", "-jvm-target", "-opt-in", "-Xjsr305",
+                    "-Xjdk-release", "-Xjvm-default", "-jvm-default", "-Xnullability-annotations", "-Xexplicit-api", "-Xannotation-default-target")
+                val semanticFlags = setOf("-progressive", "-Xcontext-parameters", "-Xwhen-guards", "-Xmulti-dollar-interpolation",
+                    "-Xnested-type-aliases", "-Xconsistent-data-class-copy-visibility", "-Xunrestricted-builder-inference",
+                    "-Xtype-enhancement-improvements-strict-mode", "-Xenhance-type-parameter-types-to-def-not-null")
+                var index = 0
+                while (index < extras.size) {
+                    val option = extras[index++]
+                    val name = option.substringBefore('=')
+                    require(name in semanticFlags || name in semanticValues || option.startsWith("-XXLanguage:"))
+                    if (name in semanticValues && '=' !in option) {
+                        require(index < extras.size && !extras[index].startsWith("-")); index++
+                    }
+                }
+                val parsed = K2JVMCompilerArguments()
+                parseCommandLineArguments(extras, parsed)
+                require(validateArguments(parsed.errors) == null && parsed.errors?.unknownExtraFlags.isNullOrEmpty())
+                require(parsed.freeArgs.isEmpty() && parsed.destination == null && parsed.classpath == null
+                    && parsed.jdkHome == null && parsed.kotlinHome == null && !parsed.script && parsed.expression == null)
+                parseCommandLineArguments(extras, this)
+                pluginClasspaths = request.path("plugin_classpath").map { it.asText() }.toTypedArray()
+                pluginOptions = request.path("plugin_options").map { it.asText() }.toTypedArray()
+                disableDefaultScriptingPlugin = freeArgs.none { it.endsWith(".kts") }
+                allowAnyScriptsInSourceRoots = !disableDefaultScriptingPlugin
                 useFirLT = false
             }
             val configuration = timings.measure("configuration") {
                 JvmConfigurationPipelinePhase.executePhase(ArgumentsPipelineArtifact(
                     arguments, Services.EMPTY, disposable, messages, PerformanceManagerImpl(JvmPlatforms.defaultJvmPlatform, "quill")))
             }
-            fun invalid() = Snapshot(inputs, null, emptyMap(), "analysis_error", revision)
+            fun invalid(): Snapshot {
+                messages.flush()
+                return Snapshot(inputs, null, emptyMap(), "analysis_error", revision, arguments.languageVersion ?: "2.4", errors.toList())
+            }
             if (messages.hasErrors()) return invalid()
             val frontend = timings.measure("frontend") { JvmFrontendPipelinePhase.executePhase(configuration) } ?: return invalid()
-            if (configuration.configuration.diagnosticsCollector.hasErrors || messages.hasErrors()) return invalid()
+            if (configuration.configuration.diagnosticsCollector.hasErrors || messages.hasErrors()) {
+                configuration.configuration.diagnosticsCollector.diagnostics.filter { it.severity == org.jetbrains.kotlin.diagnostics.Severity.ERROR }
+                    .take(5).forEach { errors.add(it.renderMessage().take(2048)) }
+                return invalid()
+            }
             val files = frontend.frontendOutput.outputs.flatMap { output -> output.fir.map { file ->
                 File(file.sourceFile?.path ?: "").absoluteFile.normalize().path to AnalyzedFile(file, output.session)
             } }.toMap()
             retained = true
-            return Snapshot(inputs, disposable, files, null, revision)
+            return Snapshot(inputs, disposable, files, null, revision, arguments.languageVersion ?: "2.4")
         } finally { if (!retained) Disposer.dispose(disposable) }
     }
 

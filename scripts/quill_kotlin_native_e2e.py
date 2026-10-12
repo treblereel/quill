@@ -108,6 +108,11 @@ def main() -> None:
         ("type mismatch", 'fun pick(x: Int) = x\nfun run() = pick("bad")', "pick(", {"status": "analysis_error"}),
         ("incomplete source", 'fun pick() = 1\nfun run() { pick()', "pick()", {"status": "analysis_error"}),
         ("literal position", 'fun pick(x: String) = x\nfun run() = pick("literal")', "literal", {"status": "unresolved"}),
+        ("standalone script", 'fun pick(x: Int) = x\nval result = pick(1)\nerror("must never evaluate")', "pick(", {"status": "resolved", "descriptor": "(I)I"}),
+        ("project language settings", 'fun pick(x: Int) = x\nfun run() = pick(1)', "pick(", {"status": "resolved", "language_version": "2.3"}),
+        ("disabled project plugin", 'fun pick(x: Int) = x\nfun run() = pick(1)', "pick(", {"status": "compiler_plugins_disabled"}),
+        ("all-open project plugin", 'annotation class Open\n@Open class Base { fun pick() = 1 }\nclass Derived: Base()\nfun run() = Derived().pick()', "pick()", {"status": "resolved", "descriptor": "()I", "owner": "probe.Base"}),
+        ("nonsemantic compiler flag", 'fun pick(x: Int) = x\nfun run() = pick(1)', "pick(", {"status": "unavailable"}),
     ]
     report = {"binary_bytes": binary.stat().st_size, "cases": []}
     with tempfile.TemporaryDirectory(prefix="quill native K2 ") as directory:
@@ -136,11 +141,22 @@ def main() -> None:
         java_file.parent.mkdir(parents=True)
         java_file.write_text("package probe; public class JavaReceiver { public int pick(int x) { return x; } }")
         for name, body, token, expected in cases:
+            file = Path(directory) / ("Probe.kts" if name == "standalone script" else "Probe.kt")
             source = "package probe\n" + body
             file.write_text(source, encoding="utf-8")
             request = {"file": str(file), "sources": [str(file)], "classpath": [str(stdlib)],
                        "java_roots": [str(java_root)],
                        "offset": source.rfind(token)}
+            if name == "project language settings":
+                request.update(languageVersion="2.3", apiVersion="2.3", jvmTarget="17")
+            if name == "disabled project plugin":
+                request["plugin_classpath"] = [str(Path(directory) / "missing-plugin.jar")]
+            if name == "all-open project plugin":
+                plugin = (Path.home() / f".m2/repository/org/jetbrains/kotlin/kotlin-allopen-compiler-plugin-embeddable/{version}/kotlin-allopen-compiler-plugin-embeddable-{version}.jar").resolve(strict=True)
+                request.update(allow_compiler_plugins=True, compilerVersion=version,
+                               plugin_classpath=[str(plugin)], plugin_options=["plugin:org.jetbrains.kotlin.allopen:annotation=probe.Open"])
+            if name == "nonsemantic compiler flag":
+                request["compiler_arguments"] = ["-d", str(Path(directory) / "must-not-exist")]
             worker = command + ([] if args.java_jar else ["-Xmx512m"]) + ["--kotlin-semantic-worker"]
             result, elapsed = run(worker, request)
             actual = json.loads(result.stdout)
@@ -232,6 +248,15 @@ def main() -> None:
                         assert ready["semantic_analysis"]["analysis_generation"] > generation, ready
                         report["mcp"][mode]["background_warmed_query"] = {
                             "result": ready, "metrics": timing, "idle_allowance_seconds": 1}
+                        script = project / "src/main/kotlin/NativeScript.kts"
+                        script.write_text("package org.treblereel.mcp.fixture.kotlin\n"
+                                          "val result = typedNavigation(1)\nerror(\"must never evaluate\")\n")
+                        scripted, timing = client.call("get_symbol_at_position", {
+                            "path": "src/main/kotlin/NativeScript.kts", "line": 2, "column": 16})
+                        assert scripted["semantic_analysis"]["status"] == "resolved", scripted
+                        assert scripted["selected"]["jvm_descriptor"] == "(I)I", scripted
+                        report["mcp"][mode]["standalone_script"] = {"result": scripted, "metrics": timing}
+                        script.unlink()
                         if sys.platform == "darwin":
                             report["mcp"][mode]["eof_shutdown"] = assert_clean_shutdown(client)
             # A fresh MCP session warms the sole indexed Kotlin main module without

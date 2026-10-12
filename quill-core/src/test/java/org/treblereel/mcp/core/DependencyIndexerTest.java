@@ -96,6 +96,31 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void singleModuleMavenInitializationExportsEffectiveKotlinCompilerSettings() throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), pom("kotlin-settings", "jar", """
+                <build><plugins><plugin><groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-maven-plugin</artifactId><version>2.4.21</version>
+                <configuration><languageVersion>2.3</languageVersion><apiVersion>2.2</apiVersion><jvmTarget>17</jvmTarget></configuration>
+                </plugin></plugins></build>
+                """));
+        assertTrue(DependencyIndexer.generateClasspathFiles(tempDir));
+        var settings = new java.util.Properties();
+        try (var reader = Files.newBufferedReader(tempDir.resolve("target/quill-kotlin-main.properties"))) { settings.load(reader); }
+        assertEquals("2.3", settings.getProperty("languageVersion"));
+        assertEquals("2.2", settings.getProperty("apiVersion"));
+        assertEquals("17", settings.getProperty("jvmTarget"));
+        assertEquals("2.4.21", settings.getProperty("compilerVersion"));
+        assertTrue(Integer.parseInt(settings.getProperty("buildInput.count")) > 0);
+        Files.createDirectories(tempDir.resolve("src/main/kotlin"));
+        Files.writeString(BuildSystem.MAVEN.classpathFingerprintFile(tempDir), DependencyIndexer.buildFingerprint(tempDir));
+        assertFalse(DependencyIndexer.isStale(tempDir));
+        Files.delete(tempDir.resolve("target/quill-kotlin-main.properties"));
+        assertTrue(DependencyIndexer.isStale(tempDir), "Existing classpath caches must migrate missing compiler metadata");
+        assertTrue(DependencyIndexer.generateClasspathFiles(tempDir));
+        assertTrue(Files.isRegularFile(tempDir.resolve("target/quill-kotlin-main.properties")));
+    }
+
+    @Test
     void mavenClasspathFailureNamesUnresolvedReactorModules() {
         List<Path> unresolved = java.util.stream.IntStream.range(0, 12)
                 .mapToObj(index -> tempDir.resolve("module-" + index))

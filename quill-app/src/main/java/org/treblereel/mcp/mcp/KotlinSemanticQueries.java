@@ -77,7 +77,7 @@ final class KotlinSemanticQueries {
     }
 
     private static JsonNode prepare(Jdbi db, Path root, Path file, int offset, boolean warming) {
-        if (file.toString().endsWith(".kts")) return status("unavailable");
+        if (file.getFileName().toString().endsWith(".gradle.kts") || file.getFileName().toString().equals("settings.gradle.kts")) return status("script_definition_missing");
         try {
             root = root.toAbsolutePath().normalize();
             file = file.toAbsolutePath().normalize();
@@ -93,6 +93,7 @@ final class KotlinSemanticQueries {
             request.put("file", file.toString()); request.put("offset", offset);
             request.put("module", module.toString()); request.put("source_set", test ? "test" : "main");
             request.put("captured_classpath", captured.toString());
+            KotlinCompilerSettings.apply(module, captured.getParent(), test ? "test" : "main", request);
             var sources = request.putArray("sources"); var javaRoots = request.putArray("java_roots");
             LinkedHashSet<Path> kotlinFiles = new LinkedHashSet<>();
             for (String set : test ? List.of("main", "test") : List.of("main")) {

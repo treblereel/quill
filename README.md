@@ -724,8 +724,8 @@ its field/getter/setter bindings; suspend return types remain source return type
 Missing or invalid type evidence is omitted rather than inferred from erased JVM types.
 The index schema is v28 and requires reindexing older generations.
 
-Quill uses the K2 FIR frontend from Kotlin 2.4.21 at language
-level 2.4. Kotlin position queries automatically resolve overloads, receiver members,
+Quill uses the K2 FIR frontend from Kotlin 2.4.21, with language level 2.4
+as the default and captured project settings when available. Kotlin position queries automatically resolve overloads, receiver members,
 generic functions and local shadowing, exposing the result in `semantic_analysis`.
 Every distribution embeds a small worker JAR. On Kotlin projects, `quill init` prepares
 its compiler dependencies using embedded Maven Resolver, for both Maven and Gradle.
@@ -750,10 +750,12 @@ With a prepared cache, initialization and queries work offline.
 Analysis reuses one child JVM per MCP session with a 512 MiB heap limit and a
 30-second timeout. Its JVM thread stack is 8 MiB to support deep inferred return-type
 chains. Stack exhaustion returns an unavailable result and discards the worker before
-the next query. Requests are serialized. The worker retains one active module/source-set
-FIR snapshot and reuses it for different source positions while compiler inputs match.
-Content fingerprints cover Kotlin/Java sources, ordered classpaths, compiled outputs and
-the selected JDK. Changed inputs dispose the snapshot and rebuild the module frontend;
+the next query. Requests are serialized. The worker retains at most two module/source-set
+FIR snapshots using LRU eviction and reuses them while compiler inputs match. Returning
+to an unchanged module avoids another frontend run. At 75% of the maximum heap,
+inactive snapshots are discarded; filesystem watching follows the active module.
+Content fingerprints cover Kotlin/Java sources, ordered classpaths, compiled outputs,
+the selected JDK, compiler settings and plugin JAR contents. Changed inputs dispose the snapshot and rebuild the module frontend;
 unchanged build outputs keep it reusable. Stable analysis errors are also reused until
 inputs change. Inputs are checked before and after analysis; races report `inputs_changed`
 and retain the metadata fallback. `semantic_analysis.analysis_reused` and the worker-local
@@ -793,12 +795,47 @@ worker; the next request starts a fresh process. MCP shutdown terminates it. Whe
 warmup is unavailable or incomplete, the first K2 request still pays or waits for
 JVM/compiler startup; subsequent requests reuse loaded compiler classes and unchanged module FIR.
 It reads captured module classpaths and a JDK (`JAVA_HOME`, or the JVM's `java.home`),
-without executing build scripts or loading project compiler plugins. Missing dependencies,
+without executing build scripts during queries. Missing dependencies,
 unsupported syntax and analysis errors keep the metadata/lexical fallback, whose confidence
 is at most medium.
 K2 smart casts and context parameters participate in overload resolution. FIR analysis stops before
-IR lowering/code generation. Script sources are not analyzed. Project compiler plugins and
-custom language/experimental feature flags are not imported; such projects may fall back.
+IR lowering/code generation. Ordinary `.kts` sources use the default JVM script definition;
+top-level code is never evaluated. Gradle Kotlin DSL scripts require a custom definition
+and report `script_definition_missing`.
+
+Project language/API versions, JVM target and supported semantic compiler flags are
+captured separately for main and test source sets. Maven initialization reuses its
+effective POM; the Maven extension captures effective compile/test-compile settings
+and compiler plugin artifacts after a successful build. Gradle initialization and build
+integration capture evaluated Kotlin task options, including plugin classpaths/options.
+The generated files are `target/quill-kotlin-{main,test}.properties` for Maven and
+`build/quill-kotlin-{main,test}.properties` for Gradle, even with a custom build directory.
+Unchanged captures retain their modification time. Build input content hashes detect
+stale settings, including same-size edits with restored timestamps. Rebuild or run
+initialization again to refresh them. Missing, stale, ambiguous or unsupported
+configuration retains metadata navigation with a specific semantic status.
+
+Overrides live in `.quill/kotlin-main.properties` and `.quill/kotlin-test.properties`.
+For example, enable captured compatible plugins explicitly with:
+
+```properties
+allowPlugins=true
+compilerVersion=2.4.21
+```
+
+Gradle's built-in JVM scripting components do not require plugin opt-in.
+Compiler plugin loading is disabled by default and requires the project's exact compiler
+version to match the worker (2.4.21). The worker imports FIR extensions; declarations
+created only by IR code generation remain outside frontend analysis. All-open is tested
+against real Maven and Gradle builds. Indexed `argument.count` / `argument.N`,
+`pluginClasspath.count` / `pluginClasspath.N`, and `pluginOption.count` / `pluginOption.N`
+properties provide explicit overrides; plugin paths are relative to the module.
+Only supported semantic flags are accepted. Output, evaluation, plugin-loading and
+arbitrary compiler flags cannot be smuggled through the argument list.
+Kotlin Multiplatform/Android task graphs and custom script definitions need further
+integration; they are not covered by the standard JVM main/test capture.
+Maven build capture requires extension 0.1.1. It must be published separately before
+shipping this change; local validation installs it into the local Maven repository.
 Compiler-confirmed indexed targets have high confidence; local targets suppress unrelated
 indexed matches. A resolved target absent from the index reports `semantic_target_not_indexed`.
 The earlier fully embedded compiler's native size and runtime costs are recorded in
@@ -866,8 +903,3 @@ download verification.
 ## License
 
 Quill is licensed under the [Apache License 2.0](LICENSE).
-
-Kotlin K2 retains at most two module/source-set FIR snapshots using LRU eviction.
-Returning to an unchanged module avoids another frontend run; inactive edits are
-content-checked before reuse. Heap pressure drops inactive snapshots, and the worker
-keeps its 512 MiB Java heap limit. Filesystem watching follows the active module.

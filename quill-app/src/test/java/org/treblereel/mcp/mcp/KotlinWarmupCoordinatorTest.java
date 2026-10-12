@@ -98,12 +98,12 @@ class KotlinWarmupCoordinatorTest {
         var request = request(); var version = new AtomicInteger(); var calls = new AtomicInteger();
         var holder = new AtomicReference<KotlinWarmupCoordinator>();
         try (var coordinator = new KotlinWarmupCoordinator(r -> {
-            if (calls.getAndIncrement() == 0) { version.incrementAndGet(); holder.get().changed(); }
+            if (r.path("offset").asInt() != -1 && calls.getAndIncrement() == 0) { version.incrementAndGet(); holder.get().changed(); }
             return result(r);
         }, Duration.ofHours(1))) {
             holder.set(coordinator);
             Supplier<JsonNode> input = () -> request.deepCopy().put("version", version.get());
-            assertEquals(1, coordinator.query("main", input, input).path("version").asInt());
+            assertEquals(1, coordinator.query("main", input, () -> ((ObjectNode) input.get()).put("offset", -1)).path("version").asInt());
             assertEquals(2, calls.get());
         }
     }
@@ -163,6 +163,10 @@ class KotlinWarmupCoordinatorTest {
         request.withArray("classpath").add(jar.toString());
         Path captured = temp.resolve("build/quill-classpath.txt");
         request.put("captured_classpath", captured.toString());
+        Path settings = temp.resolve(".quill/kotlin-main.properties");
+        request.putArray("compiler_settings_files").add(settings.toString());
+        Path plugin = external.resolve("compiler plugin.jar"); Files.writeString(plugin, "before");
+        request.putArray("plugin_classpath").add(plugin.toString());
         try (var coordinator = new KotlinWarmupCoordinator(r -> {
             if (r.path("offset").asInt() == -1) events.add(r); return result(r);
         }, Duration.ofMillis(100))) {
@@ -187,6 +191,13 @@ class KotlinWarmupCoordinatorTest {
             coordinator.query("main", () -> request, background); events.clear();
             Files.createDirectories(captured.getParent()); Files.writeString(captured, jar.toString());
             assertNotNull(events.poll(8, TimeUnit.SECONDS));
+            coordinator.query("main", () -> request, background); events.clear();
+            Files.createDirectories(settings.getParent()); Files.writeString(settings, "languageVersion=2.3");
+            assertNotNull(events.poll(8, TimeUnit.SECONDS));
+            coordinator.query("main", () -> request, background); events.clear();
+            Files.writeString(plugin, "changed"); assertNotNull(events.poll(8, TimeUnit.SECONDS));
+            coordinator.query("main", () -> request, background); events.clear();
+            Files.delete(settings); assertNotNull(events.poll(8, TimeUnit.SECONDS));
         }
     }
     @Test void deletedExternalOutputRootIsWatchedForRecreationWhileClasspathIsMissing() throws Exception {

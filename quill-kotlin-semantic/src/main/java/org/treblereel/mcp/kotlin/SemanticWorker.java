@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-/** Isolated K2 FIR analysis; no code generation or project compiler plugins. */
+/** Isolated K2 FIR analysis with opt-in compatible plugins and no code generation. */
 public final class SemanticWorker {
     private static final ObjectMapper JSON = new ObjectMapper();
     public static void main(String[] args) throws Exception {

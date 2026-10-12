@@ -696,3 +696,50 @@ predict large-project latency. All 19 focused cache/fingerprint/FIR tests passed
 including inactive same-size edits with restored timestamps, source-set isolation,
 racing inputs, pressure eviction and exactly-once disposal. Quill scoped verification
 receipt: `dc3a150588ede4cd5ad875b5`.
+
+
+## Project compiler settings and scripts — 2026-10-11
+
+The worker imports captured language/API levels, JVM targets and an explicit set of
+semantic compiler flags. When a project omits its language level, the project compiler
+version supplies the default. Compiler plugins require explicit `allowPlugins=true`
+and the exact worker compiler version (2.4.21). Actual all-open artifacts/options from
+Maven and Gradle builds are tested through the isolated K2 worker. FIR extensions are
+supported; IR-only generated declarations are outside this frontend.
+
+Maven initialization exports effective POM settings for both single-module and reactor
+projects; existing Kotlin classpath caches missing this metadata are migrated. The
+Maven extension 0.1.1 exports successful compile/test-compile execution settings and
+plugin paths. Gradle exports actual main/test task options, including a custom build
+directory. Discovery resolves plugin configurations inside its Gradle task, before
+build teardown, and distinguishes built-in scripting artifacts from user plugins.
+The plain-project check includes a child module and performs no compilation.
+Identical captures preserve timestamps. Captured build-input hashes,
+settings bytes, arguments and plugin contents participate in validation. The parent
+and worker both verify build-input hashes to reject races and stale configurations.
+
+Ordinary `.kts` files use the JVM script definition with frontend-only analysis.
+A script containing a top-level throwing expression can still resolve its calls;
+the expression is not evaluated. Gradle DSL/custom definitions, Kotlin Multiplatform
+and Android task graphs require further integration. Querying unsupported, missing
+or stale configurations returns conservative metadata fallback. Queries perform no
+build or download. Extension 0.1.1 was installed locally for validation and requires
+a separate publication before distribution.
+
+Final host results are recorded in
+[the settings/scripts report](results/kotlin-project-settings-2026-10-11.json).
+
+The final native image is **69,133,656 bytes**, **+99,104 bytes (+0.14%)** versus
+watcher-recovery commit `57e69a0` (the comparison also includes the bounded module
+cache). The external runtime contains 15 dependency JARs totaling **69,690,979 bytes**
+plus the **56,013-byte** worker. Four new scripting JARs add **1,344,964 bytes** outside
+the native compiler image. The compiler remains outside the native executable.
+
+Full macOS arm64 validation passed **971 unit tests, 35 integration tests**,
+**9 standalone Maven-extension tests** and **189 Python tests**, with no failed or
+skipped tests in the full reactor. Each worker JDK (17 and 21) passed 25 native semantic
+cases, complete MCP navigation for scripts, actual FSEvents background warmup/FIR reuse,
+and completed/startup EOF. Pending-query EOF with 500 added sources also terminated
+cleanly on both JDKs without forced termination. These are host-specific small-fixture
+correctness/lifecycle checks. Scoped Quill gate is satisfied with verified receipt
+`9a1506d015a85ef38f0b64d8`.

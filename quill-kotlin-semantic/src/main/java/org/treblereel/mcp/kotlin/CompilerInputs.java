@@ -10,6 +10,7 @@ import java.util.*;
 
 /** Content identity for a compiler snapshot, excluding the requested file/offset. */
 public record CompilerInputs(String fingerprint, String moduleHome, String jdkHome, String sourceSet) {
+    public static final class ChangedException extends IOException { ChangedException() { super("Captured compiler settings changed"); } }
     private record Hash(String stamp, String digest) {}
     // Only content hashes, never JAR bytes. Access is serialized by K2Analyzer.
     private static final Map<Path, Hash> ARCHIVES = boundedHashes(2048);
@@ -32,9 +33,26 @@ public record CompilerInputs(String fingerprint, String moduleHome, String jdkHo
         module = Path.of(module).toAbsolutePath().normalize().toString();
         String jdk = jdkDirectory.toAbsolutePath().normalize().toString();
         MessageDigest digest = sha256();
-        token(digest, "K2-2.4.21-language-2.4-no-plugins");
+        token(digest, "K2-2.4.21-project-settings-scripting");
         String sourceSet = request.path("source_set").asText("main");
         token(digest, module); token(digest, sourceSet);
+        for (String field : List.of("languageVersion", "apiVersion", "jvmTarget", "compilerVersion", "compiler_arguments", "plugin_options", "allow_compiler_plugins", "unsupported_plugins")) {
+            token(digest, field); token(digest, request.path(field).toString());
+        }
+        token(digest, "compiler_settings");
+        for (JsonNode setting : request.path("compiler_settings_fingerprints")) {
+            Path path = Path.of(setting.path("path").asText());
+            String current = Files.isRegularFile(path) ? contentHash(path) : "absent";
+            if (!current.equals(setting.path("sha256").asText())) throw new ChangedException();
+            token(digest, path.toString()); token(digest, current);
+        }
+        token(digest, "compiler_build_inputs");
+        for (JsonNode input : request.path("compiler_build_inputs")) {
+            Path path = Path.of(input.asText()); token(digest, path.toString());
+            token(digest, Files.isRegularFile(path) ? contentHash(path) : "absent");
+        }
+        token(digest, "plugin_classpath");
+        for (JsonNode plugin : request.path("plugin_classpath")) file(digest, Path.of(plugin.asText()), true);
         token(digest, jdk);
         for (String name : List.of("release", "lib/modules", "lib/jrt-fs.jar")) {
             Path path = Path.of(jdk, name);
@@ -58,7 +76,7 @@ public record CompilerInputs(String fingerprint, String moduleHome, String jdkHo
         // Also captures file creation/deletion and symlinked source/output directories.
         try (var paths = Files.walk(root, FileVisitOption.FOLLOW_LINKS)) {
             for (Path path : paths.filter(Files::isRegularFile)
-                    .filter(p -> !javaOnly || (p.toString().endsWith(".java") || p.toString().endsWith(".kt"))).sorted().toList())
+                    .filter(p -> !javaOnly || (p.toString().endsWith(".java") || p.toString().endsWith(".kt") || p.toString().endsWith(".kts"))).sorted().toList())
                 file(digest, path, !javaOnly);
         } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
     }

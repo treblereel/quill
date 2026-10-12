@@ -218,6 +218,7 @@ public final class KotlinRuntime {
             var collect = new CollectRequest();
             collect.setRepositories(system.newResolutionRepositories(session, List.of(repository)));
             collect.addDependency(new Dependency(new DefaultArtifact("org.jetbrains.kotlin:kotlin-compiler-embeddable:" + version()), "runtime"));
+            collect.addDependency(new Dependency(new DefaultArtifact("org.jetbrains.kotlin:kotlin-scripting-compiler-embeddable:" + version()), "runtime"));
             collect.addDependency(new Dependency(new DefaultArtifact("org.jetbrains.kotlin:kotlin-stdlib:" + version()), "runtime"));
             collect.addDependency(new Dependency(new DefaultArtifact("com.fasterxml.jackson.core:jackson-databind:"
                     + QuillTopCommand.property("jackson-version")), "runtime"));

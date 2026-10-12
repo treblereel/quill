@@ -248,7 +248,7 @@ public final class GradleProjectDiscovery {
     }
 
     private static String initScript(String taskName, boolean writeClasspath) {
-        return """
+        return (writeClasspath ? KotlinGradleCapture.script() : "") + """
                 gradle.rootProject { root ->
                     root.tasks.register('%s') {
                         doLast {
@@ -268,6 +268,9 @@ public final class GradleProjectDiscovery {
                                     sourceSet == null ? [] : [[name: name, value: sourceSet]]
                                 }
                                 if (!selectedSourceSets.isEmpty()) {
+                                    // Resolve Kotlin plugin configurations while a Gradle task
+                                    // owns the project lock, before buildFinished tears it down.
+                                    if (%s) quillCaptureKotlin(project)
                                     def displayPath = { file ->
                                         def canonical = file.canonicalFile.toPath()
                                         if (canonical.startsWith(requested.toPath())) {
@@ -335,6 +338,6 @@ public final class GradleProjectDiscovery {
                         }
                     }
                 }
-                """.formatted(taskName, writeClasspath);
+                """.formatted(taskName, writeClasspath, writeClasspath);
     }
 }

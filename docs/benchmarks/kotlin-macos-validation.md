@@ -1,16 +1,67 @@
 # Kotlin macOS validation — 2026-10-11
 
 Tested macOS arm64 with GraalVM CE 25.0.1, application JVM 21.0.2, and external K2
-workers on JDK 17.0.2 / 21.0.2 / 25.0.1. Production code and the 68,473,032-byte
-native executable are unchanged from `ece1f3d`. Tests exercising FSEvents ran outside
-the execution sandbox, which permits registration but suppresses event delivery.
+workers on JDK 17.0.2 / 21.0.2 / 25.0.1. Initial validation used unchanged `ece1f3d`
+production code and a 68,473,032-byte native executable. The dispatch-queue repair
+below follows that run. Tests exercising FSEvents ran outside the execution sandbox,
+which permits registration but suppresses event delivery.
 
-**Two production issues remain:** immediate saves after switching modules can fail
+**Initial validation found two production issues:** immediate saves after switching modules can fail
 to trigger background warmup, and native FSEvents threads can survive closing their
 subscriptions. The foreground query still reads fresh inputs in the observed save
 failure. Successful standard suites do not imply that every stress scenario passed.
 
-## Completed checks
+## Dispatch-queue repair
+
+`QuillMacOSWatchService` retains directory-watcher 0.19.1's event reconciliation and
+WatchKey contracts, while replacing its Java CFRunLoop thread with a serial native
+dispatch queue. Registration calls `FSEventStreamStart` synchronously and checks its
+result before returning. Closing stops and invalidates every stream, waits for a
+queue barrier, then releases streams and the queue. Callback objects remain strongly
+reachable until the barrier finishes. A callback whose root disappears invalidates
+keys and lets the owning event loop close the service; it never drains its own queue.
+The superclass remains recognizable to DirectoryWatcher's recursive macOS handling.
+
+Apple documents [FSEventStreamSetDispatchQueue](https://developer.apple.com/documentation/coreservices/1444164-fseventstreamsetdispatchqueue)
+as the dispatch scheduling API; stream-start failure is the registration failure
+signal. The adapter continues to use the existing metadata-polling fallback when
+registration or the event loop fails. JNA proxies for both native interfaces and the
+barrier callback signature were captured by the GraalVM agent on real host events.
+The inherited `CarbonAPI.INSTANCE` field also requires reflection registration: an
+initial full native E2E caught its omission by rejecting silent polling fallback. An
+isolated native probe reproduced `MissingReflectionRegistrationError` and received a
+real MODIFY callback after the field registration was added.
+
+Nine deterministic tests cover blocking startup, close racing registration, callbacks
+still queued while close waits, failed and throwing start, missing native handles,
+retry after failed start, overlapping and independent roots, nonexistent directories,
+an event delivered during startup, and root deletion invalidating all keys without
+closing from inside a callback. These tests inject the platform API and do not need
+macOS native libraries; the following host checks exercise the actual implementation.
+
+| Post-repair check | Result |
+|---|---|
+| Immediate saves after module activation | 2,000 event rounds / 200,000 source writes, 1,000 subscription lifecycle cycles and 1,000 module switches passed without a settling pause; no fallback or event failures |
+| Isolated close stress | 5,000 subscription create/replace/close cycles passed; zero surviving Quill/CFRunLoop threads |
+| Resource snapshots | Both stress runs ended with 7 descriptors (baseline 7), 8 JVM threads (baseline 7), zero Quill/CFRunLoop threads and approximately 5.7–5.8 MB post-GC heap (baseline 5.4 MB) |
+| Actual K2 warmup | 502 sources, 100 single-save cycles and 100 five-save bursts; all 200 returned fresh descriptors and reused the completed analysis generation; one observed background attempt per cycle |
+| Full reactor validation | 952 unit + 32 integration tests; no failures/errors/skips; coverage checks passed |
+| Focused application JDK 21 tests | 72 passed, including the nine new lifecycle tests |
+| Python harness suite | 189 tests passed |
+| Full native Kotlin E2E on worker JDK 17 / 21 / 25 | 20 standalone cases per JDK; Maven/Gradle runtime preparation, fresh-source analysis, unchanged FIR reuse, actual FSEvents background warmup and startup warmup passed; natural MCP/worker EOF in both sessions |
+| Native EOF with changed-source query pending | Passed on worker JDK 17 / 21 / 25 after adding 500 sources; MCP exit 0, worker gone, no test-driver kill fallback; this does not attest the exact compiler phase at EOF |
+| Native executable size | 69,034,552 bytes versus 68,473,032 before repair: +561,520 bytes (+0.82%) |
+
+The completed immediate-switch stress replaces a reproduction that previously failed
+at switch 522; the close-only stress replaces a run with four surviving native threads.
+This provides regression evidence for the observed races, without estimating their
+frequency in real projects. Native OS dispatch worker pools are shared and are not
+individually counted by the JVM thread snapshots. The K2 run overlapped Maven tests,
+so its timing distributions are correctness evidence rather than a controlled speed
+comparison. Results are retained in the [post-repair JSON](results/kotlin-macos-dispatch-2026-10-11.json);
+the original failure report and stacks below remain historical evidence.
+
+## Initial validation checks before repair
 
 | Check | Result |
 |---|---|
@@ -30,7 +81,7 @@ which exact compiler phase had begun when EOF arrived. Their process snapshots c
 all existing descendants; parent exit alone cannot attest worker cleanup. Unit tests
 reject missing workers, EOF timeouts and surviving descendants.
 
-## FSEvents stress and the open issue
+## Historical FSEvents failures before the dispatch-queue repair
 
 `scripts/QuillKotlinWatcherStress.java` exercises the production event adapter and
 coordinator with a content-reading test worker. It does **not** run K2; the separate
@@ -62,8 +113,7 @@ freshness recovered in the observed case.
 
 The library starts its FSEvents run-loop thread asynchronously after registration;
 there is no readiness acknowledgement in the adapter. Together with the successful
-settled control, this suggests a registration/startup gap. The precise cause and fix
-remain unverified. Two immediate-switch runs failed and one passed under differing
+settled control, this suggests a registration/startup gap. That run did not verify the precise cause or a fix. Two immediate-switch runs failed and one passed under differing
 host loads/counts; these runs cannot establish a real-world failure rate.
 
 After the extended failure closed its resources: **0 Quill threads**, **7 open file
@@ -95,7 +145,7 @@ io.methvin.watchservice.MacOSXListeningWatchService$CFRunLoopThread.run
 Quill threads were zero and descriptors remained at seven. This reproduces a native
 run-loop lifecycle leak separately from the missed-warmup scenario. Inspection of
 library startup/close ordering suggests a race between `CFRunLoopStop` and entering
-`CFRunLoopRun`; the precise cause and a production repair are not yet verified.
+`CFRunLoopRun`; that initial run did not verify the precise cause or a production repair.
 The processes running these probes exited afterward, releasing their daemon threads.
 
 Raw observations and thread stacks are preserved in the accompanying
@@ -122,8 +172,8 @@ java --enable-native-access=ALL-UNNAMED -Xmx512m \
   org.treblereel.mcp.mcp.QuillKotlinWatcherStress 2000 1000 /tmp/quill-stress.json
 ```
 
-The failing result is preserved in JSON before the probe exits nonzero. Failure is
-intermittent. For the control, add `-Dquill.stress.registration-settle-ms=200` to the
+The original provider failed intermittently; failing results were preserved in JSON
+before the probe exited nonzero. For the control, add `-Dquill.stress.registration-settle-ms=200` to the
 Java invocation. This pause belongs to the test only and does not fix the close race.
 To isolate lifecycle cleanup, add `-Dquill.stress.skip-module-switches=true` and use
 counts `10 5000`; the probe allows ten seconds for native run-loop threads to exit.
@@ -135,7 +185,9 @@ python3 scripts/quill_kotlin_native_e2e.py --fixture tests/kotlin-maven \
   --worker-java-home <jdk-home> --output /tmp/quill-native-e2e.json
 ```
 
-Pending-request EOF check (requires an already prepared K2 cache; runs offline):
+Pending-request EOF check (requires a K2 cache prepared by `quill init` for the
+current distribution; rebuilding the embedded worker changes its cache identity;
+runs offline):
 
 ```sh
 python3 scripts/quill_kotlin_shutdown_e2e.py --runtime-cache <prepared-cache> \

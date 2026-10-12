@@ -772,7 +772,9 @@ the debounce takes over the pending analysis. Module switches replace the subscr
 MCP shutdown cancels background work and closes the watcher. Event delivery latency
 depends on the filesystem/platform; unavailable watching retains foreground analysis.
 Quill uses `directory-watcher` for recursive filesystem events, with FSEvents through
-JNA on macOS (20 ms stream latency) and the JDK event provider elsewhere. File hashing
+JNA on macOS (20 ms stream latency) and the JDK event provider elsewhere. On macOS,
+registration waits for the FSEvents stream to start on a serial dispatch queue; closing
+a subscription drains callbacks before releasing its stream and queue. File hashing
 in the watcher is disabled; the worker verifies input contents before and after analysis.
 If event registration fails or its event loop terminates, relevant directory-entry
 metadata is polled with 100 ms between scans. Module switches and shutdown close the

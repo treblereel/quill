@@ -762,6 +762,39 @@
           "io.methvin.watchservice.jna.CarbonAPI"
         ]
       }
+    },
+    {
+      "type": "io.methvin.watchservice.QuillMacOSWatchService$DispatchAPI$Work",
+      "methods": [
+        {
+          "name": "invoke",
+          "parameterTypes": [
+            "com.sun.jna.Pointer"
+          ]
+        }
+      ]
+    },
+    {
+      "type": {
+        "proxy": [
+          "io.methvin.watchservice.QuillMacOSWatchService$DispatchAPI"
+        ]
+      }
+    },
+    {
+      "type": {
+        "proxy": [
+          "io.methvin.watchservice.QuillMacOSWatchService$EventsAPI"
+        ]
+      }
+    },
+    {
+      "type": "io.methvin.watchservice.jna.CarbonAPI",
+      "fields": [
+        {
+          "name": "INSTANCE"
+        }
+      ]
     }
   ],
   "resources": [

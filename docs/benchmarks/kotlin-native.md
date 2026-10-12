@@ -509,7 +509,7 @@ and verified receipt after the successful build and index refresh.
 ## Directory-watcher events and metadata polling fallback
 
 The production coordinator uses `io.methvin:directory-watcher:0.19.1`. On macOS its
-JNA 5.16.0 provider supplies FSEvents with 20 ms stream latency and file-level events;
+JNA 5.16.0 bridge supplies FSEvents with 20 ms stream latency and file-level events;
 on other platforms it wraps the JDK event provider. The existing 150 ms debounce,
 single active module/source-set, foreground wait, and content verification remain
 the coordinator/worker's responsibility. Library file hashing is disabled.
@@ -631,3 +631,23 @@ startup, failure recovery, missing cache/classpath/source, Java-only and test-on
 modules, Maven submodules, Gradle roots, multiple modules/projects, script/deleted
 entries, out-of-root indexed anchors, cancellation with late registry resolution,
 and real compiler FIR reuse before any foreground query.
+
+
+## macOS FSEvents lifecycle repair
+
+The subsequent macOS stress validation found intermittent missed background saves
+immediately after module switching and CFRunLoop threads surviving subscription close.
+Quill now starts streams synchronously on a serial dispatch queue and drains callbacks
+before releasing native resources. The event reconciliation remains based on the pinned
+directory-watcher 0.19.1 implementation. Registration failure retains metadata polling.
+
+The repaired provider passed 200,000 burst source writes, 1,000 immediate module switches,
+and a separate 5,000-cycle close stress, with no surviving Quill/CFRunLoop threads or
+file-descriptor growth. Nine injected-platform lifecycle tests cover startup/close
+ordering, failure cleanup and root invalidation. A 502-source actual-K2 run passed all
+200 save/background-analysis/query cycles. See [macOS validation](kotlin-macos-validation.md)
+for the preserved historical failures, post-repair measurements and native checks.
+
+The repaired full native build is **69,034,552 bytes**, compared with the preceding
+**68,473,032-byte** build: **+561,520 bytes (+0.82%)** under the same GraalVM 25.0.1
+and size-optimized build configuration. The external K2 runtime is unchanged.

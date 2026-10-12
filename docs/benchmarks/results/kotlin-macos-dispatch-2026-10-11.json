@@ -1,0 +1,388 @@
+{
+  "date": "2026-10-11",
+  "platform": "macOS arm64",
+  "change": "Synchronous FSEvents start on serial dispatch queue; invalidate and drain before releasing streams and queue",
+  "historical_report": "kotlin-macos-validation-2026-10-11.json",
+  "stress": {
+    "immediate_switches": {
+      "os": "Mac OS X",
+      "arch": "aarch64",
+      "java": "25.0.1",
+      "scope": "host directory-watcher and coordinator lifecycle; content-reading test worker, not K2",
+      "rounds": 2000,
+      "lifecycle_count": 1000,
+      "registration_settle_ms": 0,
+      "skip_module_switches": false,
+      "backend": "directory_watcher_fsevents",
+      "baseline": {
+        "threads": 7,
+        "heap_used_bytes": 5411960,
+        "open_file_descriptors": 7,
+        "rss_bytes": 128188416,
+        "quill_threads": 0,
+        "fsevents_threads": 0,
+        "fsevents_thread_details": []
+      },
+      "event_callbacks": 36132,
+      "event_failures": 0,
+      "final_state_observation_median_ms": 24.951666,
+      "final_state_observation_p95_ms": 31.328625,
+      "after_event_lifecycle": {
+        "threads": 7,
+        "heap_used_bytes": 5720520,
+        "open_file_descriptors": 7,
+        "rss_bytes": 162676736,
+        "quill_threads": 0,
+        "fsevents_threads": 0,
+        "fsevents_thread_details": []
+      },
+      "module_switches_with_background_freshness": 1000,
+      "after_close": {
+        "threads": 8,
+        "heap_used_bytes": 5790968,
+        "open_file_descriptors": 7,
+        "rss_bytes": 134299648,
+        "quill_threads": 0,
+        "fsevents_threads": 0,
+        "fsevents_thread_details": []
+      },
+      "filesystem_mutations": 211006,
+      "elapsed_seconds": 114.968751792,
+      "status": "passed"
+    },
+    "close_only": {
+      "os": "Mac OS X",
+      "arch": "aarch64",
+      "java": "25.0.1",
+      "scope": "host directory-watcher and coordinator lifecycle; content-reading test worker, not K2",
+      "rounds": 10,
+      "lifecycle_count": 5000,
+      "registration_settle_ms": 0,
+      "skip_module_switches": true,
+      "backend": "directory_watcher_fsevents",
+      "baseline": {
+        "threads": 7,
+        "heap_used_bytes": 5412808,
+        "open_file_descriptors": 7,
+        "rss_bytes": 121503744,
+        "quill_threads": 0,
+        "fsevents_threads": 0,
+        "fsevents_thread_details": []
+      },
+      "event_callbacks": 943,
+      "event_failures": 0,
+      "final_state_observation_median_ms": 12.531833,
+      "final_state_observation_p95_ms": 24.011792,
+      "after_event_lifecycle": {
+        "threads": 8,
+        "heap_used_bytes": 5833752,
+        "open_file_descriptors": 7,
+        "rss_bytes": 143802368,
+        "quill_threads": 0,
+        "fsevents_threads": 0,
+        "fsevents_thread_details": []
+      },
+      "after_close": {
+        "threads": 8,
+        "heap_used_bytes": 5683632,
+        "open_file_descriptors": 7,
+        "rss_bytes": 143867904,
+        "quill_threads": 0,
+        "fsevents_threads": 0,
+        "fsevents_thread_details": []
+      },
+      "filesystem_mutations": 1042,
+      "elapsed_seconds": 6.604192209,
+      "status": "passed"
+    }
+  },
+  "actual_k2": {
+    "scope": "JVM coordinator, filesystem watcher and external K2; excludes MCP/indexing",
+    "java": "25.0.1",
+    "worker_java": "/Users/treblereel/.sdkman/candidates/java/current/bin/java",
+    "os": "Mac OS X",
+    "sources": 502,
+    "samples_per_mode": 100,
+    "jdk_default_watch_service": "sun.nio.fs.PollingWatchService",
+    "modes": [
+      {
+        "saves_per_burst": 1,
+        "interval_ms": 0,
+        "save_to_ready_median_ms": 260.9650215,
+        "save_to_ready_p95_ms": 398.91925,
+        "query_median_ms": 14.9624585,
+        "query_p95_ms": 24.938459,
+        "validated_cycles": 100,
+        "observed_background_attempts_total": 100,
+        "all_cycles_fresh_descriptor_and_completed_generation_reused": true,
+        "analysis_generations": {
+          "first": 2,
+          "last": 101
+        }
+      },
+      {
+        "saves_per_burst": 5,
+        "interval_ms": 20,
+        "save_to_ready_median_ms": 267.9582705,
+        "save_to_ready_p95_ms": 309.403292,
+        "query_median_ms": 13.4419585,
+        "query_p95_ms": 36.953625,
+        "validated_cycles": 100,
+        "observed_background_attempts_total": 100,
+        "all_cycles_fresh_descriptor_and_completed_generation_reused": true,
+        "analysis_generations": {
+          "first": 102,
+          "last": 201
+        }
+      }
+    ],
+    "input_detection": "directory_watcher_fsevents",
+    "watched_directories": 2,
+    "startup_idle_observation_ms": 2004.845083,
+    "startup_idle_parent_cpu_ms": 0.884,
+    "steady_idle_observation_ms": 2005.097917,
+    "steady_idle_parent_cpu_ms": 2.68
+  },
+  "measurement_limitations": [
+    "Stress uses a content-reading test worker; actual K2 is checked separately",
+    "K2 timings were collected during Maven compilation/tests and are correctness evidence, not a controlled performance comparison",
+    "Resource snapshots measure JVM threads, descriptors and post-GC heap/RSS; native OS dispatch queue thread pools are shared and are not counted individually",
+    "macOS x86-64, network filesystems and multi-hour workloads were not tested"
+  ],
+  "native_binary": {
+    "bytes": 69034552,
+    "previous_bytes": 68473032,
+    "delta_bytes": 561520,
+    "delta_percent": 0.8200600785430279,
+    "graalvm": "25.0.1",
+    "optimization": "-Os"
+  },
+  "standard_suites": {
+    "full_reactor_unit_tests": 952,
+    "full_reactor_integration_tests": 32,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "python_tests": 189,
+    "focused_jdk21_tests": 72,
+    "deterministic_native_lifecycle_tests": 9
+  },
+  "native_metadata_regression": {
+    "first_full_native_e2e": "failed on all three JDKs: metadata polling fallback instead of FSEvents",
+    "isolated_native_failure": "MissingReflectionRegistrationError: CarbonAPI.INSTANCE",
+    "repair": "Register inherited CarbonAPI.INSTANCE field captured by native-image-agent, in addition to EventsAPI/DispatchAPI proxies and Work.invoke",
+    "isolated_native_smoke_after_repair": {
+      "exit_code": 0,
+      "event": "MODIFY",
+      "provider": "io.methvin.watchservice.QuillMacOSWatchService",
+      "callback_latency_ms": 12.385625,
+      "timing_scope": "one smoke observation"
+    }
+  },
+  "native_e2e": {
+    "17": {
+      "exit_code": 0,
+      "standalone_semantic_cases": 20,
+      "maven_and_gradle_runtime_preparation": "passed",
+      "metadata_fallback_without_captured_classpath": "passed",
+      "fresh_source_queries": 20,
+      "unchanged_source_queries": 20,
+      "background_warmed_query": {
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "kotlin_k2_fir",
+          "language_version": "2.4",
+          "compiler_version": "2.4.21",
+          "descriptor": "(I)I",
+          "kind": "METHOD",
+          "name": "typedNavigation",
+          "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+          "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-vxujrsaa/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+          "source_line": 35,
+          "analysis_reused": true,
+          "analysis_generation": 22,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "idle_allowance_seconds": 1
+      },
+      "startup_warmed_first_query": {
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "kotlin_k2_fir",
+          "language_version": "2.4",
+          "compiler_version": "2.4.21",
+          "descriptor": "(I)I",
+          "kind": "METHOD",
+          "name": "typedNavigation",
+          "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+          "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-vxujrsaa/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+          "source_line": 35,
+          "analysis_reused": true,
+          "analysis_generation": 1,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "readiness_allowance_seconds": 5
+      },
+      "prepared_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 17.3247919883579
+      },
+      "startup_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 8.831124985590577
+      }
+    },
+    "21": {
+      "exit_code": 0,
+      "standalone_semantic_cases": 20,
+      "maven_and_gradle_runtime_preparation": "passed",
+      "metadata_fallback_without_captured_classpath": "passed",
+      "fresh_source_queries": 20,
+      "unchanged_source_queries": 20,
+      "background_warmed_query": {
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "kotlin_k2_fir",
+          "language_version": "2.4",
+          "compiler_version": "2.4.21",
+          "descriptor": "(I)I",
+          "kind": "METHOD",
+          "name": "typedNavigation",
+          "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+          "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-gw2__7io/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+          "source_line": 35,
+          "analysis_reused": true,
+          "analysis_generation": 23,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "idle_allowance_seconds": 1
+      },
+      "startup_warmed_first_query": {
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "kotlin_k2_fir",
+          "language_version": "2.4",
+          "compiler_version": "2.4.21",
+          "descriptor": "(I)I",
+          "kind": "METHOD",
+          "name": "typedNavigation",
+          "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+          "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-gw2__7io/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+          "source_line": 35,
+          "analysis_reused": true,
+          "analysis_generation": 1,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "readiness_allowance_seconds": 5
+      },
+      "prepared_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 37.986834067851305
+      },
+      "startup_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 8.817374939098954
+      }
+    },
+    "25": {
+      "exit_code": 0,
+      "standalone_semantic_cases": 20,
+      "maven_and_gradle_runtime_preparation": "passed",
+      "metadata_fallback_without_captured_classpath": "passed",
+      "fresh_source_queries": 20,
+      "unchanged_source_queries": 20,
+      "background_warmed_query": {
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "kotlin_k2_fir",
+          "language_version": "2.4",
+          "compiler_version": "2.4.21",
+          "descriptor": "(I)I",
+          "kind": "METHOD",
+          "name": "typedNavigation",
+          "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+          "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-ga_xshnx/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+          "source_line": 35,
+          "analysis_reused": true,
+          "analysis_generation": 23,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "idle_allowance_seconds": 1
+      },
+      "startup_warmed_first_query": {
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "kotlin_k2_fir",
+          "language_version": "2.4",
+          "compiler_version": "2.4.21",
+          "descriptor": "(I)I",
+          "kind": "METHOD",
+          "name": "typedNavigation",
+          "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+          "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-ga_xshnx/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+          "source_line": 35,
+          "analysis_reused": true,
+          "analysis_generation": 1,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "readiness_allowance_seconds": 5
+      },
+      "prepared_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 38.891833974048495
+      },
+      "startup_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 17.875625053420663
+      }
+    }
+  },
+  "pending_request_eof": [
+    {
+      "mcp_exit_code": 0,
+      "worker_processes": 1,
+      "forced_termination": false,
+      "elapsed_ms": 8.889832999557257,
+      "worker_java_home": "/Library/Java/JavaVirtualMachines/jdk-17.0.2.jdk/Contents/Home",
+      "additional_sources": 500,
+      "changed_query_sent_without_waiting": true
+    },
+    {
+      "mcp_exit_code": 0,
+      "worker_processes": 1,
+      "forced_termination": false,
+      "elapsed_ms": 18.920207861810923,
+      "worker_java_home": "/Users/treblereel/Library/Java/JavaVirtualMachines/openjdk-21.0.2/Contents/Home",
+      "additional_sources": 500,
+      "changed_query_sent_without_waiting": true
+    },
+    {
+      "mcp_exit_code": 0,
+      "worker_processes": 1,
+      "forced_termination": false,
+      "elapsed_ms": 18.885208992287517,
+      "worker_java_home": "/Users/treblereel/.sdkman/candidates/java/25.0.1-graalce",
+      "additional_sources": 500,
+      "changed_query_sent_without_waiting": true
+    }
+  ],
+  "pending_request_eof_preparation": "Current-distribution cache prepared offline with quill init; a cache from the prior embedded-worker build was rejected as runtime_missing",
+  "verification": {
+    "phase": "complete",
+    "phase_gate": "satisfied",
+    "verified_receipt": true,
+    "receipt_id": "593d1a3c6cc04ee9e84b2a8d"
+  }
+}

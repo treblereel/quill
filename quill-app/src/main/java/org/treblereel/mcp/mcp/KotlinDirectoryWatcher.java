@@ -4,6 +4,7 @@ import io.methvin.watcher.*;
 import io.methvin.watcher.hashing.FileHasher;
 import io.methvin.watcher.visitor.FileTreeVisitor;
 import io.methvin.watchservice.MacOSXListeningWatchService;
+import io.methvin.watchservice.QuillMacOSWatchService;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -86,7 +87,7 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
     private static DirectoryWatcher create(List<Path> roots, DirectoryChangeListener listener, FileTreeVisitor visitor) throws IOException {
         WatchService service;
         if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac")) {
-            service = new MacOSXListeningWatchService(new MacOSXListeningWatchService.Config() {
+            service = new QuillMacOSWatchService(new MacOSXListeningWatchService.Config() {
                 @Override public double latency() { return .02; }
                 @Override public FileHasher fileHasher() { return null; }
                 @Override public FileTreeVisitor fileTreeVisitor() { return visitor; }

@@ -64,6 +64,8 @@ jobs:
           release_version="${GITHUB_REF_NAME#v}"
           ./mvnw -B org.codehaus.mojo:versions-maven-plugin:2.19.1:set \
             -DnewVersion="${release_version}" -DprocessAllModules=true -DgenerateBackupPoms=false
+      - name: Install benchmark tools
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Verify standalone Maven extension before integration tests
         run: ./mvnw -B -f quill-maven-extension/pom.xml verify

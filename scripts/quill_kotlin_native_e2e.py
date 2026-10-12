@@ -49,10 +49,10 @@ def assert_clean_shutdown(client) -> dict:
             "forced_termination": False, "elapsed_ms": (time.monotonic() - started) * 1000}
 
 
-def run(command: list[str], request: dict | None = None) -> tuple[subprocess.CompletedProcess, float]:
+def run(command: list[str], request: dict | None = None, *, timeout: float = 35) -> tuple[subprocess.CompletedProcess, float]:
     started = time.perf_counter()
     result = subprocess.run(command, input=json.dumps(request) if request is not None else None,
-                            text=True, capture_output=True, timeout=35, check=True)
+                            text=True, capture_output=True, timeout=timeout, check=True)
     return result, time.perf_counter() - started
 
 
@@ -123,7 +123,9 @@ def main() -> None:
             shutil.copytree(fixture / path, project / path)
         shutil.copyfile(fixture / "pom.xml", project / "pom.xml")
         before = {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()}
-        initialization, elapsed = run(command + ["init", "--no-allow-quill-tools", "--project", str(project)])
+        # Initialization includes cold Maven resolution or Gradle startup; query
+        # latency is checked separately and retains the shorter deadline.
+        initialization, elapsed = run(command + ["init", "--no-allow-quill-tools", "--project", str(project)], timeout=180)
         assert "runtime ready" in initialization.stderr, initialization.stderr
         report["runtime_preparation_seconds"] = elapsed
         for path, data in before.items():
@@ -132,7 +134,7 @@ def main() -> None:
         (project / "pom.xml").unlink()
         (project / "build.gradle.kts").write_text('// compiler resolution must not depend on this script\nthrow GradleException("configuration unavailable")\n')
         shutil.copytree(project / "target/classes", project / "build/classes/kotlin/main")
-        gradle_init, elapsed = run(command + ["init", "--no-allow-quill-tools", "--project", str(project)])
+        gradle_init, elapsed = run(command + ["init", "--no-allow-quill-tools", "--project", str(project)], timeout=180)
         assert "runtime ready" in gradle_init.stderr, gradle_init.stderr
         report["gradle_runtime_preparation_seconds"] = elapsed
         file = Path(directory) / "Probe.kt"

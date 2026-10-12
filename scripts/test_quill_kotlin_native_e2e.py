@@ -1,8 +1,23 @@
 import subprocess
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
 import quill_kotlin_native_e2e as e2e
+
+
+class NativeKotlinCommandTest(unittest.TestCase):
+    def test_command_deadline_is_enforced(self):
+        with self.assertRaises(subprocess.TimeoutExpired):
+            e2e.run([sys.executable, "-c", "import time; time.sleep(5)"], timeout=.05)
+
+    def test_request_and_command_failure_are_not_hidden(self):
+        result, elapsed = e2e.run([sys.executable, "-c", "import sys; print(sys.stdin.read())"],
+                                 {"source": "spaces and Unicode: λ"}, timeout=5)
+        self.assertEqual({"source": "spaces and Unicode: λ"}, e2e.json.loads(result.stdout))
+        self.assertGreaterEqual(elapsed, 0)
+        with self.assertRaises(subprocess.CalledProcessError):
+            e2e.run([sys.executable, "-c", "raise SystemExit(7)"], timeout=5)
 
 
 class NativeKotlinShutdownTest(unittest.TestCase):

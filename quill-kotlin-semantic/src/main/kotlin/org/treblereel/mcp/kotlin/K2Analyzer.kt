@@ -47,7 +47,10 @@ object K2Analyzer {
     private data class AnalyzedFile(val file: FirFile, val session: FirSession)
     private data class Snapshot(val inputs: CompilerInputs, val disposable: org.jetbrains.kotlin.com.intellij.openapi.Disposable?,
         val files: Map<String, AnalyzedFile>, val status: String?, val generation: Long)
-    private var snapshot: Snapshot? = null
+    private data class CacheKey(val module: String, val sourceSet: String)
+    private val snapshots = SnapshotCache<CacheKey, Snapshot>(2,
+        { value -> value.disposable?.let { Disposer.dispose(it) } },
+        { Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() >= it.maxMemory() * 3 / 4 } })
     private var generation = 0L
 
     // Worker-protocol opt-in for benchmarks; timings never enter snapshot identity.
@@ -70,31 +73,34 @@ object K2Analyzer {
     }
 
     @JvmStatic @Synchronized fun clear() {
-        val previous = snapshot
-        snapshot = null
-        previous?.disposable?.let { Disposer.dispose(it) }
+        snapshots.clear()
     }
 
     @JvmStatic @Synchronized fun analyze(request: JsonNode): ObjectNode {
         val timings = Timings(request.path("profile_analysis").asBoolean(false))
+        var key: CacheKey? = null
         try {
             val inputs = timings.measure("capture_before") { CompilerInputs.capture(request) }
-            val reused = snapshot?.inputs?.fingerprint() == inputs.fingerprint()
-            if (!reused) {
-                timings.measure("dispose") { clear() }
-                snapshot = build(request, inputs, timings)
+            key = CacheKey(inputs.moduleHome(), inputs.sourceSet())
+            val previous = snapshots.get(key)
+            val reused = previous?.inputs?.fingerprint() == inputs.fingerprint()
+            val current = if (reused) previous!! else {
+                timings.measure("dispose") { snapshots.prepare(key) }
+                build(request, inputs, timings).also { snapshots.put(key, it) }
             }
-            val current = snapshot!!
+            snapshots.pruneExcept(key)
             val result = current.status?.let { response(it) }
                 ?: timings.measure("lookup") { resolve(current, request) }
             // Source/classpath edits racing a frontend run or lookup cannot receive high confidence.
             if (timings.measure("capture_after") { CompilerInputs.capture(request) }.fingerprint() != inputs.fingerprint()) {
-                timings.measure("dispose") { clear() }
+                timings.measure("dispose") { snapshots.remove(key) }
                 return timings.finish(response("inputs_changed"))
             }
-            return timings.finish(result.put("analysis_reused", reused).put("analysis_generation", current.generation))
+            return timings.finish(result.put("analysis_reused", reused).put("analysis_generation", current.generation)
+                .put("snapshot_cache_entries", snapshots.size()).put("snapshot_cache_capacity", 2)
+                .put("snapshot_cache_evictions", snapshots.evictions()))
         } catch (failure: Exception) {
-            clear()
+            if (key == null) clear() else snapshots.remove(key)
             throw failure
         }
     }

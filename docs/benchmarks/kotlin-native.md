@@ -675,3 +675,24 @@ recovery coverage; they do not provide content hashing for every source in the w
 On filesystems supporting Unix change time, the audit also detects in-place edits
 with preserved size and mtime via ctime. The worker still verifies complete compiler
 inputs on every query.
+
+## Bounded module cache — 2026-10-11
+
+The worker now retains up to two module/source-set FIR models in an LRU cache.
+Returning to an unchanged module reuses its generation. Every query still fingerprints
+source bytes and compiler inputs before and after lookup; inactive-module edits are
+validated on return. Replacing a model disposes it, and exceeding the two-entry bound
+releases the least recently used model before building. At 75% of the worker's maximum
+heap, inactive models are also discarded. The existing `-Xmx512m` remains the hard
+Java heap limit; this is not a bound on process RSS or on an individual compiler model.
+Only the active module is watched. EOF/error recovery clears all retained models.
+Earlier single-snapshot measurements above describe their respective revisions.
+
+[Measured worker results](results/kotlin-module-cache-2026-10-11.json): Java 17.0.2,
+one-function fixtures, 40 alternating cached module queries, median 0.55 ms and p95
+1.12 ms. First process analysis took 1937 ms, the second module 35 ms; rebuilding after
+LRU eviction took 21 ms. These small fixtures validate cache behavior rather than
+predict large-project latency. All 19 focused cache/fingerprint/FIR tests passed,
+including inactive same-size edits with restored timestamps, source-set isolation,
+racing inputs, pressure eviction and exactly-once disposal. Quill scoped verification
+receipt: `dc3a150588ede4cd5ad875b5`.

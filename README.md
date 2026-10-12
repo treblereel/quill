@@ -866,3 +866,8 @@ download verification.
 ## License
 
 Quill is licensed under the [Apache License 2.0](LICENSE).
+
+Kotlin K2 retains at most two module/source-set FIR snapshots using LRU eviction.
+Returning to an unchanged module avoids another frontend run; inactive edits are
+content-checked before reuse. Heap pressure drops inactive snapshots, and the worker
+keeps its 512 MiB Java heap limit. Filesystem watching follows the active module.

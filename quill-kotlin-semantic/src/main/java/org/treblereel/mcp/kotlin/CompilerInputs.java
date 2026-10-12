@@ -9,7 +9,7 @@ import java.security.MessageDigest;
 import java.util.*;
 
 /** Content identity for a compiler snapshot, excluding the requested file/offset. */
-public record CompilerInputs(String fingerprint, String moduleHome, String jdkHome) {
+public record CompilerInputs(String fingerprint, String moduleHome, String jdkHome, String sourceSet) {
     private record Hash(String stamp, String digest) {}
     // Only content hashes, never JAR bytes. Access is serialized by K2Analyzer.
     private static final Map<Path, Hash> ARCHIVES = boundedHashes(2048);
@@ -33,7 +33,8 @@ public record CompilerInputs(String fingerprint, String moduleHome, String jdkHo
         String jdk = jdkDirectory.toAbsolutePath().normalize().toString();
         MessageDigest digest = sha256();
         token(digest, "K2-2.4.21-language-2.4-no-plugins");
-        token(digest, module); token(digest, request.path("source_set").asText("main"));
+        String sourceSet = request.path("source_set").asText("main");
+        token(digest, module); token(digest, sourceSet);
         token(digest, jdk);
         for (String name : List.of("release", "lib/modules", "lib/jrt-fs.jar")) {
             Path path = Path.of(jdk, name);
@@ -49,7 +50,7 @@ public record CompilerInputs(String fingerprint, String moduleHome, String jdkHo
             Path path = Path.of(entry.asText());
             if (Files.isDirectory(path)) tree(digest, path, false); else file(digest, path, true);
         }
-        return new CompilerInputs(HexFormat.of().formatHex(digest.digest()), module, jdk);
+        return new CompilerInputs(HexFormat.of().formatHex(digest.digest()), module, jdk, sourceSet);
     }
 
     private static void tree(MessageDigest digest, Path root, boolean javaOnly) throws IOException {

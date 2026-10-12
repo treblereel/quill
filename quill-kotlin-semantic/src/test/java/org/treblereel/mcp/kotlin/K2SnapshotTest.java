@@ -162,7 +162,26 @@ class K2SnapshotTest {
         request.put("source_set", "test"); var test = resolve(request, "()Z"); rebuilt(reversed, test);
         Files.createDirectories(temp.resolve("other"));
         request.put("module", temp.resolve("other").toString()); var other = resolve(request, "()Z"); rebuilt(test, other);
-        request.put("module", temp.toString()); rebuilt(other, resolve(request, "()Z"));
+        request.put("module", temp.toString()); var returned = resolve(request, "()Z");
+        assertTrue(returned.path("analysis_reused").asBoolean());
+        assertEquals(test.path("analysis_generation"), returned.path("analysis_generation"));
+    }
+    @Test void inactiveModuleEditAndLruEvictionRemainFresh() throws Exception {
+        Path a = source("a/Call.kt", "fun pick() = 1000\nfun run() = pick()");
+        Path b = source("b/Call.kt", "fun pick() = 1\nfun run() = pick()");
+        Path c = source("c/Call.kt", "fun pick() = 1\nfun run() = pick()");
+        var ar = request(a, "pick()", a).put("module", a.getParent().toString());
+        var br = request(b, "pick()", b).put("module", b.getParent().toString());
+        var cr = request(c, "pick()", c).put("module", c.getParent().toString());
+        var first = resolve(ar, "()I"); var second = resolve(br, "()I");
+        assertEquals(first.path("analysis_generation"), resolve(ar, "()I").path("analysis_generation"));
+        var time = Files.getLastModifiedTime(a);
+        Files.writeString(a, "fun pick() = true\nfun run() = pick()"); Files.setLastModifiedTime(a, time);
+        rebuilt(first, resolve(ar, "()Z"));
+        assertEquals(second.path("analysis_generation"), resolve(br, "()I").path("analysis_generation"));
+        resolve(cr, "()I"); // A is least recently used, so only it is evicted.
+        assertTrue(resolve(br, "()I").path("analysis_reused").asBoolean());
+        assertFalse(resolve(ar, "()Z").path("analysis_reused").asBoolean());
     }
     @Test void unchangedBytesAfterTouchReuseSnapshotAndRacingInputsSuppressAttestation() throws Exception {
         Path caller = source("Caller.kt", "fun pick() = 1\nfun run() = pick()");

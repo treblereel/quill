@@ -9,6 +9,7 @@ import java.nio.file.StandardCopyOption;
 import org.treblereel.mcp.QuillTopCommand;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.KotlinGradleCapture;
+import org.treblereel.mcp.core.JavaGradleCapture;
 
 /** Installs and removes the build-result notification owned by Quill. */
 final class BuildIntegrationInstaller {
@@ -50,6 +51,8 @@ final class BuildIntegrationInstaller {
                 removed |= removeGradleManagedBlock(settings);
                 Path capture = root.resolve(".quill/kotlin-capture.gradle");
                 if (Files.isRegularFile(capture) && Files.readString(capture).equals(KotlinGradleCapture.script())) Files.delete(capture);
+                Path javaCapture = root.resolve(".quill/java-capture.gradle");
+                if (Files.isRegularFile(javaCapture) && Files.readString(javaCapture).equals(JavaGradleCapture.script())) Files.delete(javaCapture);
             }
             return removed ? Result.REMOVED : Result.NOT_FOUND;
         } catch (IOException e) {
@@ -129,6 +132,10 @@ final class BuildIntegrationInstaller {
             if (!content.contains("kotlin-capture.gradle") || !Files.isRegularFile(capture)
                     || !Files.readString(capture).equals(KotlinGradleCapture.script()))
                 return new Inspection(State.OUTDATED, file, "Kotlin compiler capture needs an update");
+            Path javaCapture = root.resolve(".quill/java-capture.gradle");
+            if (!content.contains("java-capture.gradle") || !Files.isRegularFile(javaCapture)
+                    || !Files.readString(javaCapture).equals(JavaGradleCapture.script()))
+                return new Inspection(State.OUTDATED, file, "Java compiler capture needs an update");
             return new Inspection(State.INSTALLED, file,
                     "Managed Gradle build integration is current");
         } catch (IOException error) {
@@ -179,6 +186,11 @@ final class BuildIntegrationInstaller {
         String captureScript = KotlinGradleCapture.script();
         boolean captureChanged = !Files.isRegularFile(capture) || !Files.readString(capture).equals(captureScript);
         if (captureChanged) atomicWrite(capture, captureScript);
+        Path javaCapture = root.resolve(".quill/java-capture.gradle");
+        String javaScript = JavaGradleCapture.script();
+        boolean javaChanged = !Files.isRegularFile(javaCapture) || !Files.readString(javaCapture).equals(javaScript);
+        if (javaChanged) atomicWrite(javaCapture, javaScript);
+        captureChanged |= javaChanged;
         String block = kotlin ? kotlinGradleBlock() : groovyGradleBlock();
         if (!settingsExisted) block = GRADLE_CREATED + "\n" + block;
         String content = settingsExisted ? Files.readString(settings) : "";
@@ -191,6 +203,7 @@ final class BuildIntegrationInstaller {
     private static String groovyGradleBlock() {
         return GRADLE_START + "\n"
                 + "apply from: new File(settingsDir, '.quill/kotlin-capture.gradle')\n"
+                + "apply from: new File(settingsDir, '.quill/java-capture.gradle')\n"
                 + "def quillDiagnostics = java.util.Collections.synchronizedList([])\n"
                 + "gradle.beforeProject { project ->\n"
                 + "    project.tasks.configureEach { task ->\n"
@@ -240,6 +253,7 @@ final class BuildIntegrationInstaller {
     private static String kotlinGradleBlock() {
         return GRADLE_START + "\n"
                 + "apply(from = file(\".quill/kotlin-capture.gradle\"))\n"
+                + "apply(from = file(\".quill/java-capture.gradle\"))\n"
                 + "val quillDiagnostics = java.util.Collections.synchronizedList(mutableListOf<String>())\n"
                 + "gradle.beforeProject {\n"
                 + "    tasks.configureEach {\n"

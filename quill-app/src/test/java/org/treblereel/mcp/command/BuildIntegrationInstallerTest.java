@@ -17,7 +17,7 @@ class BuildIntegrationInstallerTest {
 
     @Test
     void mavenExtensionVersionRemainsIndependentFromQuillReleaseVersion() {
-        assertEquals("0.1.1", BuildIntegrationInstaller.mavenExtensionVersion());
+        assertEquals("0.1.2", BuildIntegrationInstaller.mavenExtensionVersion());
     }
 
     @Test

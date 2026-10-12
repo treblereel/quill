@@ -17,7 +17,7 @@ import java.util.UUID;
 /** Obtains the evaluated Gradle project structure without embedding Gradle in Quill. */
 public final class GradleProjectDiscovery {
 
-    private static final String CACHE_VERSION = "4";
+    private static final String CACHE_VERSION = "5";
 
     public record Discovery(
             List<Path> moduleDirectories,
@@ -248,7 +248,7 @@ public final class GradleProjectDiscovery {
     }
 
     private static String initScript(String taskName, boolean writeClasspath) {
-        return (writeClasspath ? KotlinGradleCapture.script() : "") + """
+        return (writeClasspath ? KotlinGradleCapture.script() + JavaGradleCapture.script() : "") + """
                 gradle.rootProject { root ->
                     root.tasks.register('%s') {
                         doLast {
@@ -270,7 +270,10 @@ public final class GradleProjectDiscovery {
                                 if (!selectedSourceSets.isEmpty()) {
                                     // Resolve Kotlin plugin configurations while a Gradle task
                                     // owns the project lock, before buildFinished tears it down.
-                                    if (%s) quillCaptureKotlin(project)
+                                    if (%s) {
+                                        quillCaptureKotlin(project)
+                                        project.tasks.withType(org.gradle.api.tasks.compile.JavaCompile).each { task -> quillCaptureJava(project, task, false) }
+                                    }
                                     def displayPath = { file ->
                                         def canonical = file.canonicalFile.toPath()
                                         if (canonical.startsWith(requested.toPath())) {

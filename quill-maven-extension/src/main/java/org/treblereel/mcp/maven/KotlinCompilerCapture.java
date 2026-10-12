@@ -99,7 +99,7 @@ final class KotlinCompilerCapture {
         }
         Files.createDirectories(target.getParent()); Path temporary = Files.createTempFile(target.getParent(), ".kotlin-settings-", ".tmp");
         try {
-            try (var writer = Files.newBufferedWriter(temporary)) { settings.store(writer, "Quill Kotlin compiler settings"); }
+            try (var writer = Files.newBufferedWriter(temporary)) { settings.store(writer, "Quill compiler settings"); }
             try { Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
             catch (AtomicMoveNotSupportedException ignored) { Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING); }
         } finally { Files.deleteIfExists(temporary); }

@@ -61,6 +61,8 @@ public final class BuildStatusInspector {
         integrationNode.put("path", relative(root, integration.path()));
         integrationNode.put("detail", integration.detail());
 
+        result.set("java_compiler_settings", JavaCompilerSettings.inspect(outputDiscovery.moduleDirectories(), buildSystem));
+
         ObjectNode compiled = result.putObject("compiled_outputs");
         compiled.put("count", outputs.size());
         compiled.put("main_count", outputDiscovery.outputs().stream()

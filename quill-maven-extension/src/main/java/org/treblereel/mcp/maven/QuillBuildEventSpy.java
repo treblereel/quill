@@ -34,6 +34,10 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
             try { KotlinCompilerCapture.capture(kotlinEvent); }
             catch (Exception error) { System.err.println("[quill] Could not capture Kotlin compiler settings: " + error.getMessage()); }
         }
+        if (event instanceof ExecutionEvent javaEvent && javaEvent.getType() == ExecutionEvent.Type.MojoSucceeded) {
+            try { JavaCompilerCapture.capture(javaEvent); }
+            catch (Exception error) { System.err.println("[quill] Could not capture Java compiler settings: " + error.getMessage()); }
+        }
         if (!(event instanceof ExecutionEvent execution)
                 || execution.getType() != ExecutionEvent.Type.SessionEnded) {
             return;

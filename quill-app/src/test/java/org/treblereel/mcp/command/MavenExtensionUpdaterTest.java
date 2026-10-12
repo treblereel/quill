@@ -38,7 +38,7 @@ class MavenExtensionUpdaterTest {
         BuildIntegrationInstaller.install(root);
         Path file = root.resolve(".mvn/extensions.xml");
         String current = Files.readString(file);
-        Files.writeString(file, current.replace("<version>0.1.1</version>", "<version>0.1.0</version>"));
+        Files.writeString(file, current.replace("<version>0.1.2</version>", "<version>0.1.0</version>"));
         MavenExtensionUpdater.upgrade(root);
         assertEquals(current, Files.readString(file));
         FileTime old = FileTime.fromMillis(1000);
@@ -55,7 +55,7 @@ class MavenExtensionUpdaterTest {
         Path file = configuration(root, content);
         assertEquals(BuildIntegrationInstaller.State.OUTDATED, BuildIntegrationInstaller.inspect(root).state());
         MavenExtensionUpdater.upgrade(root);
-        assertEquals(content.replace(" \n 0.1.0 \t", " \n 0.1.1 \t"), Files.readString(file));
+        assertEquals(content.replace(" \n 0.1.0 \t", " \n 0.1.2 \t"), Files.readString(file));
         assertEquals(BuildIntegrationInstaller.State.INSTALLED, BuildIntegrationInstaller.inspect(root).state());
     }
 
@@ -64,7 +64,7 @@ class MavenExtensionUpdaterTest {
                 .replace("<", "<m:").replace("<m:/", "</m:") + "</m:extensions>";
         Path file = configuration(root, content);
         MavenExtensionUpdater.upgrade(root);
-        assertEquals(content.replace("0.1.0", "0.1.1"), Files.readString(file));
+        assertEquals(content.replace("0.1.0", "0.1.2"), Files.readString(file));
     }
 
     @TestFactory Stream<DynamicTest> upgradesOlderMavenVersions() {
@@ -74,7 +74,7 @@ class MavenExtensionUpdaterTest {
                     Path file = configuration(project, "<extensions>"
                             + extension("org.treblereel.mcp", version) + "</extensions>");
                     MavenExtensionUpdater.upgrade(project);
-                    assertTrue(Files.readString(file).contains("<version>0.1.1</version>"));
+                    assertTrue(Files.readString(file).contains("<version>0.1.2</version>"));
                 }));
     }
 
@@ -89,7 +89,7 @@ class MavenExtensionUpdaterTest {
         Path module = Files.createDirectories(root.resolve("module"));
         Files.writeString(module.resolve("pom.xml"), "<project/>");
         MavenExtensionUpdater.upgrade(module);
-        assertTrue(Files.readString(file).contains("<version>0.1.1</version>"));
+        assertTrue(Files.readString(file).contains("<version>0.1.2</version>"));
     }
 
     @Test void preservesSymbolicLinkToExtensionConfiguration() throws Exception {
@@ -100,7 +100,7 @@ class MavenExtensionUpdaterTest {
         Files.createSymbolicLink(file, Path.of("../shared-extensions.xml"));
         MavenExtensionUpdater.upgrade(root);
         assertTrue(Files.isSymbolicLink(file));
-        assertTrue(Files.readString(shared).contains("<version>0.1.1</version>"));
+        assertTrue(Files.readString(shared).contains("<version>0.1.2</version>"));
     }
 
     @Test void nearerMavenDirectoryStopsAncestorLookup() throws Exception {
@@ -132,7 +132,7 @@ class MavenExtensionUpdaterTest {
         String old = extension("org.treblereel.mcp", "0.1.0");
         List<String> contents = List.of(
                 "<extensions>" + extension("org.treblereel.mcp", "0.1.10") + "</extensions>",
-                "<extensions>" + extension("org.treblereel.mcp", "0.1.1") + "</extensions>",
+                "<extensions>" + extension("org.treblereel.mcp", "0.1.2") + "</extensions>",
                 "<extensions>" + extension("org.treblereel.mcp", "${extension.version}") + "</extensions>",
                 "<extensions>" + extension("org.treblereel.mcp", "LATEST") + "</extensions>",
                 "<extensions>" + extension("org.treblereel.mcp", "RELEASE") + "</extensions>",
@@ -161,14 +161,14 @@ class MavenExtensionUpdaterTest {
         Path file = configuration(root, "<extensions>" + extension("org.treblereel.mcp", "0.1.0") + "</extensions>");
         ProjectRegistry registry = new ProjectRegistry() {
             @Override public void prewarm() {
-                try { assertTrue(Files.readString(file).contains("<version>0.1.1</version>")); }
+                try { assertTrue(Files.readString(file).contains("<version>0.1.2</version>")); }
                 catch (Exception failure) { throw new AssertionError(failure); }
             }
         };
         registry.register(root);
         McpStdioServer.start(registry, new ByteArrayInputStream(new byte[0]),
                 new ByteArrayOutputStream(), McpToolProfile.parse("router"));
-        assertTrue(Files.readString(file).contains("<version>0.1.1</version>"));
+        assertTrue(Files.readString(file).contains("<version>0.1.2</version>"));
     }
 
     @Test void workspaceUpgradesEachRepository() throws Exception {
@@ -178,7 +178,7 @@ class MavenExtensionUpdaterTest {
         Path file1 = configuration(first, "<extensions>" + extension("org.treblereel.mcp", "0.1.0") + "</extensions>");
         Path file2 = configuration(second, "<extensions>" + extension("org.treblereel.mcp", "0.1.0") + "</extensions>");
         new ProjectRegistry(new WorkspaceProjectScope(root)).upgradeBuildIntegrations();
-        assertTrue(Files.readString(file1).contains("<version>0.1.1</version>"));
-        assertTrue(Files.readString(file2).contains("<version>0.1.1</version>"));
+        assertTrue(Files.readString(file1).contains("<version>0.1.2</version>"));
+        assertTrue(Files.readString(file2).contains("<version>0.1.2</version>"));
     }
 }

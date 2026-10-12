@@ -670,6 +670,21 @@ a fresh event and allows the next MCP request to refresh the index. Maven and Gr
 processes started internally for project discovery are marked so they cannot recursively
 create another build event.
 
+Java compile settings are exported separately to `target/quill-java-{main,test}.properties`
+for Maven and `build/quill-java-<sourceSet>.properties` for Gradle, including custom source
+sets. These locations stay stable when the project's compiled-output directory changes.
+`get_build_status` exposes `java_compiler_settings` with `captured`, `configuration_only`,
+`missing`, `stale`, or `invalid` status. SHA-256 checks cover the build descriptors,
+settings/toolchain files and JDK release metadata; same-size edits with restored mtime
+are detected. Configuration-only discovery never claims that a JDK compiled the project.
+
+The capture includes release/source/target (release takes precedence), preview flags,
+compiler arguments including JPMS and processor options, generated-source directories,
+classpath and selected JDK/toolchain. Maven processor dependencies are reported as declared
+coordinates; inferred module paths are labelled as compiler inference, not resolved paths.
+Gradle reports resolved annotation-processor files. Failed compilation preserves previous
+successful settings. Reading these files does not start a build.
+
 ### Maven projects
 
 Quill reads the reactor structure from `pom.xml` with Maven Model and recursively

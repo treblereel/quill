@@ -1,5 +1,6 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
+  <properties><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding></properties>
   <groupId>org.treblereel.mcp.experiments</groupId><artifactId>kotlin-analysis-api-probe</artifactId><version>1</version>
   <repositories><repository><id>jetbrains-intellij</id><url>https://packages.jetbrains.team/maven/p/ij/intellij-dependencies</url></repository><repository><id>intellij-releases</id><url>https://www.jetbrains.com/intellij-repository/releases</url></repository></repositories>
   <!-- IDE publications bundle their constituent modules; their POMs list unpublished source modules. -->
@@ -23,9 +24,10 @@
     <dependency><groupId>org.jetbrains.kotlinx</groupId><artifactId>kotlinx-serialization-json-jvm</artifactId><version>1.7.3</version></dependency>
     <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>symbol-light-classes-for-ide</artifactId><version>2.4.21</version><exclusions><exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion></exclusions></dependency>
     <dependency><groupId>org.jetbrains.kotlinx</groupId><artifactId>kotlinx-collections-immutable-jvm</artifactId><version>0.4.0</version></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.12.2</version><scope>test</scope></dependency>
   </dependencies>
   <build><plugins><plugin><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-maven-plugin</artifactId><version>2.4.21</version>
-  <executions><execution><id>compile</id><phase>compile</phase><goals><goal>compile</goal></goals></execution></executions>
+  <executions><execution><id>compile</id><phase>compile</phase><goals><goal>compile</goal></goals></execution><execution><id>test-compile</id><phase>test-compile</phase><goals><goal>test-compile</goal></goals><configuration><sourceDirs><sourceDir>${project.basedir}/src/test/kotlin</sourceDir></sourceDirs></configuration></execution></executions>
   <configuration><jvmTarget>17</jvmTarget><sourceDirs><sourceDir>${project.basedir}/src/main/kotlin</sourceDir></sourceDirs></configuration>
-  </plugin></plugins></build>
+  </plugin><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.6</version><configuration><argLine>-Xmx512m -Xss8m</argLine></configuration></plugin></plugins></build>
 </project>

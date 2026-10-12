@@ -1,0 +1,402 @@
+[
+  {
+    "case": "cold",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "unchanged_0",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "unchanged_1",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "unchanged_2",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "unchanged_3",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "unchanged_4",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "unchanged_5",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "unchanged_6",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "unchanged_7",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "unchanged_8",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "unchanged_9",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "same_size_restored_mtime_disk_only",
+    "sources": {
+      "Call.kt": "fun pick() = true\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Boolean",
+    "expected_descriptor": "()Z",
+    "expected_parameters": [],
+    "mode": "disk_only",
+    "restore_mtime": true
+  },
+  {
+    "case": "same_size_restored_mtime_refresh",
+    "sources": {
+      "Call.kt": "fun pick() = true\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Boolean",
+    "expected_descriptor": "()Z",
+    "expected_parameters": [],
+    "restore_mtime": true
+  },
+  {
+    "case": "second_inferred_edit",
+    "sources": {
+      "Call.kt": "fun pick() = \"s\"\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/String",
+    "expected_descriptor": "()Ljava/lang/String;",
+    "expected_parameters": []
+  },
+  {
+    "case": "split_declaration_into_file",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick()",
+      "Api.kt": "package api\nfun pick() = 1000"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "dependency_only_same_size_restored_mtime",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick()",
+      "Api.kt": "package api\nfun pick() = true"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Boolean",
+    "expected_descriptor": "()Z",
+    "expected_parameters": [],
+    "restore_mtime": true
+  },
+  {
+    "case": "explicit_return_signature",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick()",
+      "Api.kt": "package api\nfun pick(): Long = 1L"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Long",
+    "expected_descriptor": "()J",
+    "expected_parameters": []
+  },
+  {
+    "case": "parameter_signature_and_caller_edit",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick(\"x\")",
+      "Api.kt": "package api\nfun pick(value: String): String = value"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/String",
+    "expected_descriptor": "(Ljava/lang/String;)Ljava/lang/String;",
+    "expected_parameters": [
+      "kotlin/String"
+    ]
+  },
+  {
+    "case": "import_alias",
+    "sources": {
+      "Call.kt": "import api.pick as chosen\nfun run() = /*query*/chosen(\"x\")",
+      "Api.kt": "package api\nfun pick(value: String): String = value"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/String",
+    "expected_descriptor": "(Ljava/lang/String;)Ljava/lang/String;",
+    "expected_parameters": [
+      "kotlin/String"
+    ]
+  },
+  {
+    "case": "type_alias",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick()",
+      "Api.kt": "package api\ntypealias Answer = String\nfun pick(): Answer = \"x\""
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/String",
+    "expected_descriptor": "()Ljava/lang/String;",
+    "expected_parameters": []
+  },
+  {
+    "case": "type_alias_target_change",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick()",
+      "Api.kt": "package api\ntypealias Answer = Boolean\nfun pick(): Answer = true"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Boolean",
+    "expected_descriptor": "()Z",
+    "expected_parameters": []
+  },
+  {
+    "case": "property_declaration",
+    "sources": {
+      "Call.kt": "import api.answer\nfun run() = /*query*/answer",
+      "Api.kt": "package api\nval answer = 1000"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": [],
+    "expected_kind": "PROPERTY"
+  },
+  {
+    "case": "property_dependency_only_change",
+    "sources": {
+      "Call.kt": "import api.answer\nfun run() = /*query*/answer",
+      "Api.kt": "package api\nval answer = true"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Boolean",
+    "expected_descriptor": "()Z",
+    "expected_parameters": [],
+    "restore_mtime": true,
+    "expected_kind": "PROPERTY"
+  },
+  {
+    "case": "extension_function",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = \"x\"./*query*/pick()",
+      "Api.kt": "package api\nfun String.pick() = 1000"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "(Ljava/lang/String;)I",
+    "expected_parameters": []
+  },
+  {
+    "case": "add_source_file",
+    "sources": {
+      "Call.kt": "import api.added\nfun run() = /*query*/added()",
+      "Api.kt": "package api\nfun original() = 1000",
+      "Added.kt": "package api\nfun added() = true"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Boolean",
+    "expected_descriptor": "()Z",
+    "expected_parameters": []
+  },
+  {
+    "case": "delete_source_file",
+    "sources": {
+      "Call.kt": "import api.added\nfun run() = /*query*/added()",
+      "Api.kt": "package api\nfun original() = 1000"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "unresolved",
+    "expected_descriptor": null,
+    "expected_parameters": [],
+    "expected_missing_name": "added"
+  },
+  {
+    "case": "recreate_source_file",
+    "sources": {
+      "Call.kt": "import api.added\nfun run() = /*query*/added()",
+      "Added.kt": "package api\nfun added() = \"x\""
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/String",
+    "expected_descriptor": "()Ljava/lang/String;",
+    "expected_parameters": []
+  },
+  {
+    "case": "rename_source_file",
+    "sources": {
+      "Call.kt": "import api.added\nfun run() = /*query*/added()",
+      "Renamed.kt": "package api\nfun added() = \"x\""
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/String",
+    "expected_descriptor": "()Ljava/lang/String;",
+    "expected_parameters": []
+  },
+  {
+    "case": "rename_declaration",
+    "sources": {
+      "Call.kt": "import api.fresh\nfun run() = /*query*/fresh()",
+      "Renamed.kt": "package api\nfun fresh() = true"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Boolean",
+    "expected_descriptor": "()Z",
+    "expected_parameters": []
+  },
+  {
+    "case": "add_overloads",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick(\"x\")",
+      "Api.kt": "package api\nfun pick(x: Int): String = \"i\"\nfun pick(x: String): Boolean = true"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Boolean",
+    "expected_descriptor": "(Ljava/lang/String;)Z",
+    "expected_parameters": [
+      "kotlin/String"
+    ]
+  },
+  {
+    "case": "select_other_overload",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick(1)",
+      "Api.kt": "package api\nfun pick(x: Int): String = \"i\"\nfun pick(x: String): Boolean = true"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/String",
+    "expected_descriptor": "(I)Ljava/lang/String;",
+    "expected_parameters": [
+      "kotlin/Int"
+    ]
+  },
+  {
+    "case": "remove_overload_and_change_signature",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick(1)",
+      "Api.kt": "package api\nfun pick(x: Int): Int = x"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "(I)I",
+    "expected_parameters": [
+      "kotlin/Int"
+    ]
+  },
+  {
+    "case": "move_package",
+    "sources": {
+      "Call.kt": "import moved.pick\nfun run() = /*query*/pick()",
+      "Api.kt": "package moved\nfun pick() = true"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Boolean",
+    "expected_descriptor": "()Z",
+    "expected_parameters": []
+  },
+  {
+    "case": "annotated_declaration",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick()",
+      "Api.kt": "package api\n@Deprecated(\"old\")\nfun pick() = 1000"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  },
+  {
+    "case": "annotation_and_body_change",
+    "sources": {
+      "Call.kt": "import api.pick\nfun run() = /*query*/pick()",
+      "Api.kt": "package api\nfun pick() = true"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Boolean",
+    "expected_descriptor": "()Z",
+    "expected_parameters": []
+  },
+  {
+    "case": "restore_initial_snapshot",
+    "sources": {
+      "Call.kt": "fun pick() = 1000\nfun run() = /*query*/pick()"
+    },
+    "query_file": "Call.kt",
+    "expected_type": "kotlin/Int",
+    "expected_descriptor": "()I",
+    "expected_parameters": []
+  }
+]

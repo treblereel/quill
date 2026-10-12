@@ -78,6 +78,19 @@ git commit -m "Use Maven extension 0.1.0"
 The release version comes from the tag. Create the tag only from a clean commit that
 has passed CI; the workflow rejects a tag that GitHub cannot verify for the release.
 
+## Homebrew distribution
+
+Each release includes `quill.rb`, generated from all four Unix archives after their
+SHA-256 checksum files have been verified against the actual bytes. Publication
+also requires real `brew install` and `brew test` on four native runners. The test
+formula uses local workflow artifacts; the published formula uses GitHub URLs.
+
+Configure the separate tap and optional formula-update PR workflow using the
+[Homebrew setup guide](../packaging/homebrew/README.md). The GitHub release and tap
+have separate publication steps: merging the generated tap PR makes the version
+available to Homebrew users. A failed tap update can be retried independently
+through the **Update Homebrew Tap** workflow after fixing its configuration.
+
 ## Platform signing
 
 Signing is optional while the project is under development. Set the repository

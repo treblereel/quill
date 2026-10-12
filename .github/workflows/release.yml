@@ -64,6 +64,7 @@ jobs:
           release_version="${GITHUB_REF_NAME#v}"
           ./mvnw -B org.codehaus.mojo:versions-maven-plugin:2.19.1:set \
             -DnewVersion="${release_version}" -DprocessAllModules=true -DgenerateBackupPoms=false
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - run: ./mvnw -B clean verify -DskipITs=false
       - name: Prepare release SBOM input
         run: |
@@ -89,7 +90,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             artifact: linux-x86_64
           - os: ubuntu-24.04-arm
             artifact: linux-aarch64
@@ -247,14 +248,68 @@ jobs:
           path: dist/
           if-no-files-found: error
 
-  publish:
+  homebrew-test:
+    name: Homebrew installation (${{ matrix.os }})
     needs: [jvm, native]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15-intel, ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_ANALYTICS: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+    steps:
+      - uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c # 2026.07.10.1
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: quill-*
+          path: dist
+          merge-multiple: true
+      - name: Prepare temporary tap from verified native archives
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 scripts/quill_homebrew.py --version "${RELEASE_TAG#v}" \
+            --repository "${GITHUB_REPOSITORY}" --archives dist --output test-tap/Formula/quill.rb
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          formula = Path('test-tap/Formula/quill.rb')
+          base = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{os.environ['RELEASE_TAG']}"
+          formula.write_text(formula.read_text().replace(base, Path('dist').resolve().as_uri()))
+          PY
+          git init test-tap
+          git -C test-tap config user.name 'Quill Homebrew Test'
+          git -C test-tap config user.email 'quill@example.invalid'
+          git -C test-tap config commit.gpgsign false
+          git -C test-tap add Formula/quill.rb
+          git -C test-tap commit -m 'Validate release formula'
+      - name: Install and test packaged Quill through Homebrew
+        run: |
+          brew tap quill-ci/native-test "file://${GITHUB_WORKSPACE}/test-tap"
+          brew install quill-ci/native-test/quill
+          brew test quill-ci/native-test/quill
+      - name: Remove temporary Homebrew installation
+        if: always()
+        run: |
+          if brew list --formula quill >/dev/null 2>&1; then
+            brew uninstall quill-ci/native-test/quill
+          fi
+          brew untap quill-ci/native-test || true
+
+  publish:
+    needs: [jvm, native, homebrew-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
       attestations: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v5
         with:
           path: dist
@@ -272,7 +327,23 @@ jobs:
             dist/quill-*.tar.gz
             dist/quill-*.zip
           sbom-path: dist/quill.spdx.json
+      - name: Generate verified Homebrew formula
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 scripts/quill_homebrew.py --version "${RELEASE_TAG#v}" \
+            --repository "${GITHUB_REPOSITORY}" --archives dist --output dist/quill.rb
+          ruby -c dist/quill.rb
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --generate-notes --verify-tag
+
+  homebrew-tap:
+    needs: publish
+    if: vars.HOMEBREW_TAP_REPOSITORY != ''
+    uses: ./.github/workflows/update-homebrew.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

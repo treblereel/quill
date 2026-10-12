@@ -1,0 +1,124 @@
+name: Update Homebrew Tap
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable release tag (for example, v1.0.0)
+        required: true
+        type: string
+
+concurrency:
+  group: homebrew-tap-update
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      SOURCE_REPOSITORY: ${{ github.repository }}
+      TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate stable release and tap configuration
+        id: validate
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'scripts')
+          from quill_homebrew import stable_version, validate_repository, validate_version
+          tag = os.environ['RELEASE_TAG']
+          if not tag.startswith('v'):
+              raise SystemExit('Expected a v-prefixed release tag')
+          version = validate_version(tag[1:])
+          stable = stable_version(version)
+          if stable:
+              repository = validate_repository(os.environ['TAP_REPOSITORY'])
+              if not repository.split('/')[1].startswith('homebrew-'):
+                  raise SystemExit('Tap repository must use the homebrew- prefix')
+              if not os.environ['TAP_TOKEN']:
+                  raise SystemExit('HOMEBREW_TAP_TOKEN is required for tap updates')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'stable={str(stable).lower()}\n')
+          PY
+      - name: Verify published release and download native archives
+        if: steps.validate.outputs.stable == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${RELEASE_TAG}" --repo "${SOURCE_REPOSITORY}" \
+            --json tagName,isDraft,isPrerelease > release.json
+          python3 - <<'PY'
+          import json, os
+          release = json.load(open('release.json'))
+          if release['tagName'] != os.environ['RELEASE_TAG'] or release['isDraft'] or release['isPrerelease']:
+              raise SystemExit('Tap updates require a published stable release')
+          PY
+          gh release download "${RELEASE_TAG}" --repo "${SOURCE_REPOSITORY}" \
+            --pattern 'quill-*.tar.gz*' --dir archives
+      - name: Checkout tap default branch
+        if: steps.validate.outputs.stable == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - name: Generate formula without downgrading the tap
+        if: steps.validate.outputs.stable == 'true'
+        run: |
+          python3 scripts/quill_homebrew.py --version "${RELEASE_TAG#v}" \
+            --repository "${SOURCE_REPOSITORY}" --archives archives \
+            --previous tap/Formula/quill.rb --output candidate/quill.rb
+          ruby -c candidate/quill.rb
+      - name: Create or update formula pull request
+        if: steps.validate.outputs.stable == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ -f tap/Formula/quill.rb ]] && cmp -s candidate/quill.rb tap/Formula/quill.rb; then
+            echo "Tap formula already matches this release"
+            exit 0
+          fi
+          base="$(git -C tap branch --show-current)"
+          branch="quill-${RELEASE_TAG}"
+          git -C tap ls-remote origin "refs/heads/${branch}" > existing-branch.txt
+          if [[ -s existing-branch.txt ]]; then
+            git -C tap fetch origin "refs/heads/${branch}"
+            git -C tap switch -c "${branch}" FETCH_HEAD
+          else
+            git -C tap switch -c "${branch}"
+          fi
+          mkdir -p tap/Formula
+          cp candidate/quill.rb tap/Formula/quill.rb
+          git -C tap config user.name 'github-actions[bot]'
+          git -C tap config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C tap add Formula/quill.rb
+          if ! git -C tap diff --cached --quiet; then
+            git -C tap commit -m "quill ${RELEASE_TAG#v}"
+          fi
+          git -C tap push origin "HEAD:refs/heads/${branch}"
+          existing_pr="$(gh pr list --repo "${TAP_REPOSITORY}" --head "${branch}" --base "${base}" \
+            --state open --json url --jq '.[0].url // empty')"
+          if [[ -n "${existing_pr}" ]]; then
+            echo "Formula pull request: ${existing_pr}"
+          else
+            printf 'Update Quill to %s. Formula checksums were verified against all four published native archives.\n' \
+              "${RELEASE_TAG}" > tap-pr-body.md
+            gh pr create --repo "${TAP_REPOSITORY}" --head "${branch}" --base "${base}" \
+              --title "quill ${RELEASE_TAG#v}" --body-file tap-pr-body.md
+          fi

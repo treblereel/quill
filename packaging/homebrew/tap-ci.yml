@@ -1,0 +1,31 @@
+name: Test Quill Formula
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15-intel, ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_ANALYTICS: '1'
+    steps:
+      - uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c # 2026.07.10.1
+        with:
+          stable: true
+      - uses: actions/checkout@v4
+      - name: Test checked-out formula
+        run: |
+          brew tap quill-ci/candidate "file://${GITHUB_WORKSPACE}"
+          brew install quill-ci/candidate/quill
+          brew test quill-ci/candidate/quill

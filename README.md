@@ -923,6 +923,22 @@ available alongside the executable. Native executables are platform-specific; th
 reference Apple Silicon build with size optimization is about 38 MiB.
 On Windows the native output is `quill-app\target\quill.exe`.
 
+### Homebrew packaging
+
+Release CI generates a native `quill.rb` formula with verified SHA-256 hashes for
+macOS and Linux on ARM64 and x86-64, and tests real Homebrew installation before
+publishing. Once `treblereel/homebrew-quill` is bootstrapped, installation is:
+
+```bash
+brew install treblereel/quill/quill
+brew upgrade treblereel/quill/quill
+```
+
+Kotlin semantic analysis needs an existing Java 17+ runtime; the formula does not
+install a JDK or initialize projects. Tap publication requires separate setup; see
+[the Homebrew setup guide](packaging/homebrew/README.md). The optional release
+integration opens formula-update PRs in the configured tap.
+
 ### Releases
 
 Pushing a tag such as `v1.0.0` runs the complete JVM and native test suites and

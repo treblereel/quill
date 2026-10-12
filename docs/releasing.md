@@ -11,6 +11,10 @@ The Maven extension has its own release lifecycle and version. A Quill binary re
 extension version selected when that binary is built; it does not assume that the extension
 has the same version as Quill.
 
+Publish the selected extension before distributing a Quill binary that requires it.
+MCP startup upgrades older extension entries in existing projects to the embedded version;
+that artifact must therefore be available before users start their next Maven build.
+
 Before the first publication, verify the `org.treblereel.mcp` namespace in Maven Central and
 add these repository secrets:
 

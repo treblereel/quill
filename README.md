@@ -653,6 +653,15 @@ starts a build itself and build failures do not replace the previous index. Use
 `--index-only` to skip all project configuration changes. `quill clean` removes only
 the Quill-managed integration and the entire `.quill` directory.
 
+At MCP startup, Quill upgrades an existing older `quill-maven-extension` entry to the
+extension version embedded in the binary, including manually configured entries. It
+preserves the rest of `.mvn/extensions.xml`, skips newer versions, and does not install a
+missing integration. This also applies to workspace repositories and a module's nearest
+ancestor `.mvn` directory. The change takes effect on the next Maven invocation, when
+Maven resolves the selected artifact using its normal repositories and offline settings.
+Startup does not run Maven or download artifacts. Invalid or ambiguous descriptors and
+version expressions are left unchanged with a warning on stderr.
+
 Build events use a strict versioned contract and are accepted only for successful Maven
 or Gradle builds. If a structural worktree file was edited after the build completed,
 Quill discards the stale event and keeps reporting the previous graph as stale instead

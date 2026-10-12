@@ -277,6 +277,11 @@ public class ProjectRegistry {
         }
     }
 
+    public void upgradeBuildIntegrations() {
+        scope.snapshot().projects().stream().map(ProjectScope.Project::root).distinct()
+                .forEach(org.treblereel.mcp.command.MavenExtensionUpdater::upgrade);
+    }
+
     public void prewarm() {
         if (scope instanceof WorkspaceProjectScope workspace) {
             // The dependency graph (which also builds the coordinate catalog) and the SQLite

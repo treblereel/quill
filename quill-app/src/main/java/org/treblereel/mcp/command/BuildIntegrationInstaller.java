@@ -78,12 +78,12 @@ final class BuildIntegrationInstaller {
                 return new Inspection(State.INVALID, file,
                         "Quill-managed Maven extension block is incomplete");
             }
-            if (!content.contains("<artifactId>quill-maven-extension</artifactId>")) {
+            MavenExtensionUpdater.Entry entry = MavenExtensionUpdater.entry(content);
+            if (entry == null) {
                 return new Inspection(State.MISSING, file,
                         "Maven extensions file does not configure Quill");
             }
-            String expected = "<version>" + mavenExtensionVersion() + "</version>";
-            if (!content.contains(expected)) {
+            if (!mavenExtensionVersion().equals(entry.version())) {
                 return new Inspection(State.OUTDATED, file,
                         "Maven extension version differs from required version "
                                 + mavenExtensionVersion());
@@ -150,10 +150,12 @@ final class BuildIntegrationInstaller {
         String content;
         if (Files.isRegularFile(file)) {
             content = Files.readString(file);
-            String updated = replaceOrInsertXmlBlock(content, block);
+            MavenExtensionUpdater.Entry entry = MavenExtensionUpdater.entry(content);
+            String updated = entry == null ? replaceOrInsertXmlBlock(content, block)
+                    : entry.update(content, xml(version));
             if (updated.equals(content)) return Result.UNCHANGED;
             atomicWrite(file, updated);
-            return content.contains(MAVEN_START) ? Result.UPDATED : Result.INSTALLED;
+            return entry != null || content.contains(MAVEN_START) ? Result.UPDATED : Result.INSTALLED;
         }
         content = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
                 + "<extensions>\n" + block + "\n</extensions>\n";
@@ -359,7 +361,7 @@ final class BuildIntegrationInstaller {
         return true;
     }
 
-    private static void atomicWrite(Path file, String content) throws IOException {
+    static void atomicWrite(Path file, String content) throws IOException {
         Files.createDirectories(file.toAbsolutePath().normalize().getParent());
         Path temp = Files.createTempFile(file.getParent(), ".quill-", ".tmp");
         try {

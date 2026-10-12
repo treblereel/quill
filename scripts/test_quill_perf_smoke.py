@@ -1,11 +1,33 @@
 import tempfile
+import os
+import subprocess
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from quill_perf_smoke import enforce_budgets, generate_fixture
 
 
 class QuillPerfSmokeTest(unittest.TestCase):
+
+    def test_fixture_isolated_from_global_signing_and_automatic_maintenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            global_config = parent / "gitconfig"
+            global_config.write_text(
+                "[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = nonexistent-quill-test-signer\n"
+                "[gc]\n\tauto = 1\n[maintenance]\n\tauto = true\n", encoding="utf-8")
+            root = parent / "fixture"
+            root.mkdir()
+            with patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(global_config)}):
+                generate_fixture(root, 2, 1)
+                for key, expected in (("gc.auto", "0"), ("maintenance.auto", "false"),
+                                      ("commit.gpgsign", "false")):
+                    value = subprocess.check_output(
+                        ["git", "config", "--local", key], cwd=root, text=True).strip()
+                    self.assertEqual(expected, value)
+                self.assertEqual("fixture", subprocess.check_output(
+                    ["git", "log", "-1", "--format=%s"], cwd=root, text=True).strip())
 
     def test_fixture_generation_creates_requested_classes(self):
         with tempfile.TemporaryDirectory() as directory:

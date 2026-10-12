@@ -123,6 +123,11 @@ def generate_fixture(root: Path, class_count: int, dependency_count: int = 32) -
         os.pathsep.join(map(str, jars)), encoding="utf-8")
 
     subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+    # Temporary fixtures must not spawn maintenance after a command returns or
+    # inherit a developer's commit-signing requirements.
+    for key, value in (("gc.auto", "0"), ("maintenance.auto", "false"),
+                       ("commit.gpgsign", "false")):
+        subprocess.run(["git", "config", "--local", key, value], cwd=root, check=True)
     subprocess.run(["git", "add", "pom.xml", ".gitignore", "src"], cwd=root, check=True)
     subprocess.run([
         "git", "-c", "user.name=Quill CI", "-c", "user.email=quill@example.invalid",

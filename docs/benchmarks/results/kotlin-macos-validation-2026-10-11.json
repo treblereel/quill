@@ -1,0 +1,437 @@
+{
+  "date": "2026-10-11",
+  "host": "macOS arm64",
+  "production_commit": "ece1f3d",
+  "native_binary_bytes": 68473032,
+  "production_behavior_changed": false,
+  "overall": "two_stress_failures_remain",
+  "passed_suites": {
+    "maven_unit": 943,
+    "maven_integration": 32,
+    "python_unit": 189,
+    "jdk21_focused": 63,
+    "native_connectivity": true,
+    "native_change_loop_contract": true,
+    "native_scoped_verification": true
+  },
+  "stress": {
+    "immediate": {
+      "os": "Mac OS X",
+      "arch": "aarch64",
+      "java": "25.0.1",
+      "scope": "host directory-watcher and coordinator lifecycle; content-reading test worker, not K2",
+      "rounds": 500,
+      "lifecycle_count": 250,
+      "registration_settle_ms": 0,
+      "backend": "directory_watcher_fsevents",
+      "baseline": {
+        "threads": 7,
+        "heap_used_bytes": 5388984,
+        "open_file_descriptors": 7,
+        "rss_bytes": 126009344,
+        "quill_threads": 0
+      },
+      "event_callbacks": 2082,
+      "event_failures": 0,
+      "final_state_observation_median_ms": 24.81225,
+      "final_state_observation_p95_ms": 31.331375,
+      "after_event_lifecycle": {
+        "threads": 9,
+        "heap_used_bytes": 5868128,
+        "open_file_descriptors": 7,
+        "rss_bytes": 140656640,
+        "quill_threads": 0
+      },
+      "module_switches_with_background_freshness": 250,
+      "after_close": {
+        "threads": 9,
+        "heap_used_bytes": 5795368,
+        "open_file_descriptors": 7,
+        "rss_bytes": 155992064,
+        "quill_threads": 0
+      },
+      "filesystem_mutations": 52756,
+      "elapsed_seconds": 27.217360334,
+      "status": "passed"
+    },
+    "settled": {
+      "os": "Mac OS X",
+      "arch": "aarch64",
+      "java": "25.0.1",
+      "scope": "host directory-watcher and coordinator lifecycle; content-reading test worker, not K2",
+      "rounds": 500,
+      "lifecycle_count": 250,
+      "registration_settle_ms": 200,
+      "backend": "directory_watcher_fsevents",
+      "baseline": {
+        "threads": 7,
+        "heap_used_bytes": 5388888,
+        "open_file_descriptors": 7,
+        "rss_bytes": 126664704,
+        "quill_threads": 0
+      },
+      "event_callbacks": 14628,
+      "event_failures": 0,
+      "final_state_observation_median_ms": 24.523167,
+      "final_state_observation_p95_ms": 31.321292,
+      "after_event_lifecycle": {
+        "threads": 9,
+        "heap_used_bytes": 5774104,
+        "open_file_descriptors": 7,
+        "rss_bytes": 132726784,
+        "quill_threads": 0
+      },
+      "module_switches_with_background_freshness": 250,
+      "after_close": {
+        "threads": 8,
+        "heap_used_bytes": 5790800,
+        "open_file_descriptors": 7,
+        "rss_bytes": 100122624,
+        "quill_threads": 0
+      },
+      "filesystem_mutations": 52756,
+      "elapsed_seconds": 79.887062875,
+      "status": "passed"
+    },
+    "long": {
+      "os": "Mac OS X",
+      "arch": "aarch64",
+      "java": "25.0.1",
+      "scope": "host directory-watcher and coordinator lifecycle; content-reading test worker, not K2",
+      "rounds": 2000,
+      "lifecycle_count": 1000,
+      "registration_settle_ms": 0,
+      "backend": "directory_watcher_fsevents",
+      "baseline": {
+        "threads": 7,
+        "heap_used_bytes": 5387968,
+        "open_file_descriptors": 7,
+        "rss_bytes": 126959616,
+        "quill_threads": 0
+      },
+      "event_callbacks": 23547,
+      "event_failures": 0,
+      "final_state_observation_median_ms": 24.8975,
+      "final_state_observation_p95_ms": 31.320917,
+      "after_event_lifecycle": {
+        "threads": 7,
+        "heap_used_bytes": 5890064,
+        "open_file_descriptors": 7,
+        "rss_bytes": 141410304,
+        "quill_threads": 0
+      },
+      "failed_module_switch": 521,
+      "failed_switch_backend": "directory_watcher_fsevents",
+      "foreground_recovery": {
+        "status": "resolved",
+        "value": "version-521",
+        "input_detection": "directory_watcher_fsevents"
+      },
+      "status": "failed",
+      "failure": "java.lang.IllegalStateException: Module switch missed save: 521",
+      "filesystem_mutations": 209571,
+      "after_failure_close": {
+        "threads": 8,
+        "heap_used_bytes": 5755344,
+        "open_file_descriptors": 7,
+        "rss_bytes": 103120896,
+        "quill_threads": 0
+      }
+    },
+    "final-settled": {
+      "os": "Mac OS X",
+      "arch": "aarch64",
+      "java": "25.0.1",
+      "scope": "host directory-watcher and coordinator lifecycle; content-reading test worker, not K2",
+      "rounds": 500,
+      "lifecycle_count": 250,
+      "registration_settle_ms": 200,
+      "backend": "directory_watcher_fsevents",
+      "baseline": {
+        "threads": 7,
+        "heap_used_bytes": 5388640,
+        "open_file_descriptors": 7,
+        "rss_bytes": 126205952,
+        "quill_threads": 0,
+        "fsevents_threads": 0
+      },
+      "event_callbacks": 5365,
+      "event_failures": 0,
+      "final_state_observation_median_ms": 25.054041,
+      "final_state_observation_p95_ms": 31.33225,
+      "after_event_lifecycle": {
+        "threads": 9,
+        "heap_used_bytes": 5947320,
+        "open_file_descriptors": 7,
+        "rss_bytes": 129826816,
+        "quill_threads": 0,
+        "fsevents_threads": 1
+      },
+      "module_switches_with_background_freshness": 250,
+      "after_close": {
+        "threads": 8,
+        "heap_used_bytes": 5805448,
+        "open_file_descriptors": 7,
+        "rss_bytes": 132464640,
+        "quill_threads": 0,
+        "fsevents_threads": 1
+      },
+      "status": "failed",
+      "failure": "java.lang.IllegalStateException: Native FSEvents thread survived close",
+      "filesystem_mutations": 52756,
+      "after_failure_close": {
+        "threads": 9,
+        "heap_used_bytes": 5704736,
+        "open_file_descriptors": 7,
+        "rss_bytes": 96976896,
+        "quill_threads": 0,
+        "fsevents_threads": 1
+      }
+    },
+    "close-only": {
+      "os": "Mac OS X",
+      "arch": "aarch64",
+      "java": "25.0.1",
+      "scope": "host directory-watcher and coordinator lifecycle; content-reading test worker, not K2",
+      "rounds": 10,
+      "lifecycle_count": 5000,
+      "registration_settle_ms": 0,
+      "skip_module_switches": true,
+      "backend": "directory_watcher_fsevents",
+      "baseline": {
+        "threads": 7,
+        "heap_used_bytes": 5388952,
+        "open_file_descriptors": 7,
+        "rss_bytes": 126074880,
+        "quill_threads": 0,
+        "fsevents_threads": 0,
+        "fsevents_thread_details": []
+      },
+      "event_callbacks": 254,
+      "event_failures": 0,
+      "final_state_observation_median_ms": 25.069583,
+      "final_state_observation_p95_ms": 31.362291,
+      "after_event_lifecycle": {
+        "threads": 12,
+        "heap_used_bytes": 5761040,
+        "open_file_descriptors": 7,
+        "rss_bytes": 157876224,
+        "quill_threads": 0,
+        "fsevents_threads": 4,
+        "fsevents_thread_details": [
+          {
+            "name": "WatchService for /private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill watcher стресс 10734566824906299736",
+            "state": "RUNNABLE",
+            "stack": [
+              "app//com.sun.jna.Native.invokeVoid(Native Method)",
+              "app//com.sun.jna.Function.invoke(Function.java:418)",
+              "app//com.sun.jna.Function.invoke(Function.java:364)",
+              "app//com.sun.jna.Library$Handler.invoke(Library.java:270)",
+              "app/jdk.proxy1/jdk.proxy1.$Proxy0.CFRunLoopRun(Unknown Source)",
+              "app//io.methvin.watchservice.MacOSXListeningWatchService$CFRunLoopThread.run(MacOSXListeningWatchService.java:191)"
+            ]
+          },
+          {
+            "name": "WatchService for /private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill watcher стресс 10734566824906299736",
+            "state": "RUNNABLE",
+            "stack": [
+              "app//com.sun.jna.Native.invokeVoid(Native Method)",
+              "app//com.sun.jna.Function.invoke(Function.java:418)",
+              "app//com.sun.jna.Function.invoke(Function.java:364)",
+              "app//com.sun.jna.Library$Handler.invoke(Library.java:270)",
+              "app/jdk.proxy1/jdk.proxy1.$Proxy0.CFRunLoopRun(Unknown Source)",
+              "app//io.methvin.watchservice.MacOSXListeningWatchService$CFRunLoopThread.run(MacOSXListeningWatchService.java:191)"
+            ]
+          },
+          {
+            "name": "WatchService for /private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill watcher стресс 10734566824906299736",
+            "state": "RUNNABLE",
+            "stack": [
+              "app//com.sun.jna.Native.invokeVoid(Native Method)",
+              "app//com.sun.jna.Function.invoke(Function.java:418)",
+              "app//com.sun.jna.Function.invoke(Function.java:364)",
+              "app//com.sun.jna.Library$Handler.invoke(Library.java:270)",
+              "app/jdk.proxy1/jdk.proxy1.$Proxy0.CFRunLoopRun(Unknown Source)",
+              "app//io.methvin.watchservice.MacOSXListeningWatchService$CFRunLoopThread.run(MacOSXListeningWatchService.java:191)"
+            ]
+          },
+          {
+            "name": "WatchService for /private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill watcher стресс 10734566824906299736",
+            "state": "RUNNABLE",
+            "stack": [
+              "app//com.sun.jna.Native.invokeVoid(Native Method)",
+              "app//com.sun.jna.Function.invoke(Function.java:418)",
+              "app//com.sun.jna.Function.invoke(Function.java:364)",
+              "app//com.sun.jna.Library$Handler.invoke(Library.java:270)",
+              "app/jdk.proxy1/jdk.proxy1.$Proxy0.CFRunLoopRun(Unknown Source)",
+              "app//io.methvin.watchservice.MacOSXListeningWatchService$CFRunLoopThread.run(MacOSXListeningWatchService.java:191)"
+            ]
+          }
+        ]
+      },
+      "status": "failed",
+      "failure": "java.lang.IllegalStateException: Native FSEvents thread survived close",
+      "filesystem_mutations": 1042,
+      "after_failure_close": {
+        "threads": 12,
+        "heap_used_bytes": 5626224,
+        "open_file_descriptors": 7,
+        "rss_bytes": 117293056,
+        "quill_threads": 0,
+        "fsevents_threads": 4,
+        "fsevents_thread_details": [
+          {
+            "name": "WatchService for /private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill watcher стресс 10734566824906299736",
+            "state": "RUNNABLE",
+            "stack": [
+              "app//com.sun.jna.Native.invokeVoid(Native Method)",
+              "app//com.sun.jna.Function.invoke(Function.java:418)",
+              "app//com.sun.jna.Function.invoke(Function.java:364)",
+              "app//com.sun.jna.Library$Handler.invoke(Library.java:270)",
+              "app/jdk.proxy1/jdk.proxy1.$Proxy0.CFRunLoopRun(Unknown Source)",
+              "app//io.methvin.watchservice.MacOSXListeningWatchService$CFRunLoopThread.run(MacOSXListeningWatchService.java:191)"
+            ]
+          },
+          {
+            "name": "WatchService for /private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill watcher стресс 10734566824906299736",
+            "state": "RUNNABLE",
+            "stack": [
+              "app//com.sun.jna.Native.invokeVoid(Native Method)",
+              "app//com.sun.jna.Function.invoke(Function.java:418)",
+              "app//com.sun.jna.Function.invoke(Function.java:364)",
+              "app//com.sun.jna.Library$Handler.invoke(Library.java:270)",
+              "app/jdk.proxy1/jdk.proxy1.$Proxy0.CFRunLoopRun(Unknown Source)",
+              "app//io.methvin.watchservice.MacOSXListeningWatchService$CFRunLoopThread.run(MacOSXListeningWatchService.java:191)"
+            ]
+          },
+          {
+            "name": "WatchService for /private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill watcher стресс 10734566824906299736",
+            "state": "RUNNABLE",
+            "stack": [
+              "app//com.sun.jna.Native.invokeVoid(Native Method)",
+              "app//com.sun.jna.Function.invoke(Function.java:418)",
+              "app//com.sun.jna.Function.invoke(Function.java:364)",
+              "app//com.sun.jna.Library$Handler.invoke(Library.java:270)",
+              "app/jdk.proxy1/jdk.proxy1.$Proxy0.CFRunLoopRun(Unknown Source)",
+              "app//io.methvin.watchservice.MacOSXListeningWatchService$CFRunLoopThread.run(MacOSXListeningWatchService.java:191)"
+            ]
+          },
+          {
+            "name": "WatchService for /private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill watcher стресс 10734566824906299736",
+            "state": "RUNNABLE",
+            "stack": [
+              "app//com.sun.jna.Native.invokeVoid(Native Method)",
+              "app//com.sun.jna.Function.invoke(Function.java:418)",
+              "app//com.sun.jna.Function.invoke(Function.java:364)",
+              "app//com.sun.jna.Library$Handler.invoke(Library.java:270)",
+              "app/jdk.proxy1/jdk.proxy1.$Proxy0.CFRunLoopRun(Unknown Source)",
+              "app//io.methvin.watchservice.MacOSXListeningWatchService$CFRunLoopThread.run(MacOSXListeningWatchService.java:191)"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "initial_uninstrumented_stress_failure": {
+    "event_rounds_passed": 500,
+    "failed_module_switch": 30,
+    "source_log": "/private/tmp/quill-osx-watcher-stress.log"
+  },
+  "native_worker_matrix": {
+    "17": {
+      "standalone_semantic_cases": 20,
+      "input_detection": "directory_watcher_fsevents",
+      "fir_reused": true,
+      "completed_analysis_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 38.93250017426908
+      },
+      "startup_analysis_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 18.875249894335866
+      }
+    },
+    "21": {
+      "standalone_semantic_cases": 20,
+      "input_detection": "directory_watcher_fsevents",
+      "fir_reused": true,
+      "completed_analysis_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 18.92058295197785
+      },
+      "startup_analysis_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 38.88379200361669
+      }
+    },
+    "25": {
+      "standalone_semantic_cases": 20,
+      "input_detection": "directory_watcher_fsevents",
+      "fir_reused": true,
+      "completed_analysis_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 18.4128328692168
+      },
+      "startup_analysis_eof": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 17.304667038843036
+      }
+    }
+  },
+  "pending_changed_query_eof": [
+    {
+      "mcp_exit_code": 0,
+      "worker_processes": 1,
+      "forced_termination": false,
+      "elapsed_ms": 18.873083172366023,
+      "worker_java_home": "/Library/Java/JavaVirtualMachines/jdk-17.0.2.jdk/Contents/Home",
+      "additional_sources": 500,
+      "changed_query_sent_without_waiting": true
+    },
+    {
+      "mcp_exit_code": 0,
+      "worker_processes": 1,
+      "forced_termination": false,
+      "elapsed_ms": 18.87537515722215,
+      "worker_java_home": "/Users/treblereel/Library/Java/JavaVirtualMachines/openjdk-21.0.2/Contents/Home",
+      "additional_sources": 500,
+      "changed_query_sent_without_waiting": true
+    },
+    {
+      "mcp_exit_code": 0,
+      "worker_processes": 1,
+      "forced_termination": false,
+      "elapsed_ms": 18.41733301989734,
+      "worker_java_home": "/Users/treblereel/.sdkman/candidates/java/25.0.1-graalce",
+      "additional_sources": 500,
+      "changed_query_sent_without_waiting": true
+    }
+  ],
+  "real_k2_stress": {
+    "sources": 502,
+    "input_detection": "directory_watcher_fsevents",
+    "cycles": 200,
+    "observed_background_attempts": [
+      1
+    ],
+    "fresh_descriptor_and_background_generation_reuse": "asserted_every_cycle",
+    "performance_comparison": false
+  },
+  "unmeasured": [
+    "macOS x86-64",
+    "network filesystems",
+    "multi-hour workloads"
+  ]
+}

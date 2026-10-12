@@ -15,6 +15,40 @@ import sys
 import xml.etree.ElementTree as ET
 
 
+def assert_clean_shutdown(client) -> dict:
+    """On macOS, prove EOF closes MCP and its existing worker without forced termination."""
+    process = client.client.process
+    listing = subprocess.run(["/bin/ps", "-axo", "pid=,ppid="], capture_output=True,
+                             text=True, timeout=5, check=True)
+    parents = {int(pid): int(parent) for pid, parent in
+               (line.split() for line in listing.stdout.splitlines() if line.strip())}
+    descendants = {pid for pid, parent in parents.items() if parent == process.pid}
+    while True:
+        expanded = descendants | {pid for pid, parent in parents.items() if parent in descendants}
+        if expanded == descendants:
+            break
+        descendants = expanded
+    assert descendants, "Expected a live external K2 worker before shutdown"
+    assert process.stdin is not None
+    process.stdin.close()
+    started = time.monotonic()
+    assert process.wait(timeout=5) == 0, "MCP did not exit cleanly on EOF"
+
+    def alive(pid):
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+
+    deadline = time.monotonic() + 5
+    while any(alive(pid) for pid in descendants) and time.monotonic() < deadline:
+        time.sleep(.02)
+    assert not any(alive(pid) for pid in descendants), "K2 worker survived MCP EOF"
+    return {"mcp_exit_code": process.returncode, "worker_processes": len(descendants),
+            "forced_termination": False, "elapsed_ms": (time.monotonic() - started) * 1000}
+
+
 def run(command: list[str], request: dict | None = None) -> tuple[subprocess.CompletedProcess, float]:
     started = time.perf_counter()
     result = subprocess.run(command, input=json.dumps(request) if request is not None else None,
@@ -198,6 +232,8 @@ def main() -> None:
                         assert ready["semantic_analysis"]["analysis_generation"] > generation, ready
                         report["mcp"][mode]["background_warmed_query"] = {
                             "result": ready, "metrics": timing, "idle_allowance_seconds": 1}
+                        if sys.platform == "darwin":
+                            report["mcp"][mode]["eof_shutdown"] = assert_clean_shutdown(client)
             # A fresh MCP session warms the sole indexed Kotlin main module without
             # any semantic query. This checks reuse after an allowance, not readiness time.
             with WorkflowClient(command, project, 60) as client:
@@ -209,6 +245,8 @@ def main() -> None:
                 assert first["semantic_analysis"]["analysis_reused"] is True, first
                 report["mcp"]["startup_warmed_first_query"] = {"result": first, "metrics": timing,
                                                                "readiness_allowance_seconds": 5}
+                if sys.platform == "darwin":
+                    report["mcp"]["startup_warmed_first_query"]["eof_shutdown"] = assert_clean_shutdown(client)
             semantic = report["mcp"]["prepared_k2"]["result"]
             assert semantic["confidence"] == "high", semantic
             assert semantic["semantic_analysis"]["status"] == "resolved", semantic

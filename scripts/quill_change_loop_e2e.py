@@ -181,7 +181,7 @@ def main() -> int:
             "AGENTS.md": (project / "AGENTS.md").read_text(encoding="utf-8"),
             "CLAUDE.md": (project / "CLAUDE.md").read_text(encoding="utf-8"),
         }
-        guidance_tokens = ("quill:instructions:v2", "directive.primary_action",
+        guidance_tokens = ("quill:instructions:v3", "directive.primary_action",
                            "phase_gate", "review_checklist", "action_id")
         missing_guidance = [f"{name}:{token}" for name, content in guidance.items()
                             for token in guidance_tokens if token not in content]

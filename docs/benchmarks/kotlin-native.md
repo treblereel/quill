@@ -519,9 +519,16 @@ file-tree visitor skips unrelated trees/files (including `.git`); explicit symli
 targets and ancestors needed for future inputs are included. Subscription changes
 close previous streams and reject late events by generation, including OVERFLOW.
 Invalid roots, native linkage failures, registration errors, and event-loop
-termination activate the existing metadata watcher. A failed event backend is not
-retried on every query; switching modules creates a new event backend. The metadata
-polling thread blocks while events are active and wakes only for fallback.
+termination activate the existing metadata watcher. A failed event backend retries on a bounded schedule rather than on every query,
+without requiring a module switch. While events are healthy the input-watch thread
+performs a metadata audit every two seconds and sends a temporary-directory heartbeat
+at five-second intervals. Probe delivery has a two-second timeout; metadata changes
+without events receive a two-second grace period before activating fallback. A missed
+probe, failed registration or terminated event loop retries after 1/2/4/8/16 seconds,
+then at most once every 30 seconds. Acknowledged probes reset backoff and do not trigger
+K2 analysis. Successful recovery recollects inputs and schedules background warmup.
+Fallback still polls every 100 ms. All probing files are outside the project and are
+removed on close. Scheduler/load delays can extend these detection intervals.
 
 A standalone prototype received real FSEvents callbacks on the JVM (~35 ms) and in
 GraalVM 25.0.1 native image (~11 ms), with hashing disabled. Agent-captured metadata
@@ -651,3 +658,20 @@ for the preserved historical failures, post-repair measurements and native check
 The repaired full native build is **69,034,552 bytes**, compared with the preceding
 **68,473,032-byte** build: **+561,520 bytes (+0.82%)** under the same GraalVM 25.0.1
 and size-optimized build configuration. The external K2 runtime is unchanged.
+
+
+## Watcher recovery and silent-delivery checks
+
+Automatic recovery passed 39 focused tests, including a registered provider that
+emits no events, repeated registration failures, bounded retry backoff, reset after
+an acknowledged heartbeat, late callbacks and heartbeat cleanup. Host FSEvents
+stress passed 500 event rounds (50,000 source writes), 500 subscription lifecycle
+cycles and 500 immediate module switches with no reported event failures, surviving
+Quill/CFRunLoop threads or descriptor growth. Full native semantic/MCP E2E passed
+20 cases on worker JDK17, actual FSEvents warmup, FIR reuse and completed/startup EOF.
+The [recovery report](results/kotlin-watcher-recovery-2026-10-11.json) preserves these
+observations. Healthy metadata audits trade a low-frequency directory scan for
+recovery coverage; they do not provide content hashing for every source in the watcher.
+On filesystems supporting Unix change time, the audit also detects in-place edits
+with preserved size and mtime via ctime. The worker still verifies complete compiler
+inputs on every query.

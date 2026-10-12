@@ -1,0 +1,95 @@
+{
+  "platform": "macOS arm64",
+  "focused_tests": 39,
+  "native_binary_bytes": 69034552,
+  "stress": {
+    "os": "Mac OS X",
+    "arch": "aarch64",
+    "java": "25.0.1",
+    "scope": "host directory-watcher and coordinator lifecycle; content-reading test worker, not K2",
+    "rounds": 500,
+    "lifecycle_count": 500,
+    "registration_settle_ms": 0,
+    "skip_module_switches": false,
+    "backend": "directory_watcher_fsevents",
+    "baseline": {
+      "threads": 7,
+      "heap_used_bytes": 5417456,
+      "open_file_descriptors": 7,
+      "rss_bytes": 127336448,
+      "quill_threads": 0,
+      "fsevents_threads": 0,
+      "fsevents_thread_details": []
+    },
+    "event_callbacks": 9070,
+    "event_failures": 0,
+    "final_state_observation_median_ms": 23.855125,
+    "final_state_observation_p95_ms": 31.291042,
+    "after_event_lifecycle": {
+      "threads": 8,
+      "heap_used_bytes": 6006376,
+      "open_file_descriptors": 7,
+      "rss_bytes": 181551104,
+      "quill_threads": 0,
+      "fsevents_threads": 0,
+      "fsevents_thread_details": []
+    },
+    "module_switches_with_background_freshness": 500,
+    "after_close": {
+      "threads": 8,
+      "heap_used_bytes": 5897616,
+      "open_file_descriptors": 7,
+      "rss_bytes": 140722176,
+      "quill_threads": 0,
+      "fsevents_threads": 0,
+      "fsevents_thread_details": []
+    },
+    "filesystem_mutations": 53506,
+    "elapsed_seconds": 37.270726792,
+    "status": "passed"
+  },
+  "native_cases": 20,
+  "native_background": {
+    "status": "resolved",
+    "backend": "kotlin_k2_fir",
+    "language_version": "2.4",
+    "compiler_version": "2.4.21",
+    "descriptor": "(I)I",
+    "kind": "METHOD",
+    "name": "typedNavigation",
+    "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+    "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-9_z9l53w/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+    "source_line": 35,
+    "analysis_reused": true,
+    "analysis_generation": 22,
+    "input_detection": "directory_watcher_fsevents"
+  },
+  "native_eof": {
+    "mcp_exit_code": 0,
+    "worker_processes": 1,
+    "forced_termination": false,
+    "elapsed_ms": 39.04104116372764
+  },
+  "native_startup_eof": {
+    "mcp_exit_code": 0,
+    "worker_processes": 1,
+    "forced_termination": false,
+    "elapsed_ms": 18.899832852184772
+  },
+  "intervals": {
+    "healthy_audit_ms": 2000,
+    "heartbeat_ms": 5000,
+    "delivery_grace_ms": 2000,
+    "fallback_poll_ms": 100,
+    "retry_backoff_seconds": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      30
+    ]
+  },
+  "scope": "Injected-platform tests cover failed/silent providers and recovery. Native E2E uses worker JDK17 and actual FSEvents; stress uses a content-reading test worker, not K2.",
+  "verification_receipt": "75c81a8fc9062e91e4520900"
+}

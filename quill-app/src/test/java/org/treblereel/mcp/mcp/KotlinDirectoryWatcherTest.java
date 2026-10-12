@@ -18,7 +18,7 @@ class KotlinDirectoryWatcherTest {
         Files.createDirectories(ignored.getParent()); Files.writeString(ignored, "irrelevant");
         var listeners = new ArrayList<DirectoryChangeListener>(); var calls = new AtomicInteger();
         KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor) -> {
-            assertEquals(List.of(root), roots); listeners.add(listener);
+            assertEquals(root, roots.getFirst()); assertEquals(2, roots.size()); listeners.add(listener);
             var visited = new HashSet<Path>(); visitor.recursiveVisitFiles(root, visited::add, visited::add);
             assertTrue(visited.contains(source)); assertFalse(visited.contains(ignored.getParent()));
             return DirectoryWatcher.builder().paths(roots).listener(listener).fileHashing(false)
@@ -75,4 +75,87 @@ class KotlinDirectoryWatcherTest {
             assertEquals(1, events.get()); assertTrue(watcher.active());
         }
     }
+    private DirectoryChangeEvent probeEvent(KotlinDirectoryWatcher watcher) {
+        return new DirectoryChangeEvent(DirectoryChangeEvent.EventType.MODIFY, false,
+                watcher.healthFile(), null, 1, watcher.healthFile().getParent());
+    }
+    @Test void silentDeliveryFailureIsDetectedAndRecoveredWithoutModuleSwitch() throws Exception {
+        Path root = temp.toRealPath();
+        var clock = new AtomicLong(); var failures = new AtomicInteger(); var changes = new AtomicInteger();
+        var listeners = new ArrayList<DirectoryChangeListener>();
+        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor) -> {
+            listeners.add(listener);
+            return DirectoryWatcher.builder().paths(roots).listener(listener).fileTreeVisitor(visitor).fileHashing(false)
+                    .watchService(FileSystems.getDefault().newWatchService()).build();
+        }, changes::incrementAndGet, failures::incrementAndGet, clock::get)) {
+            assertTrue(watcher.configure(Set.of(root), path -> true));
+            Path healthFile = watcher.healthFile();
+            clock.set(KotlinDirectoryWatcher.HEALTH_INTERVAL_NANOS); watcher.checkHealth();
+            assertTrue(watcher.active()); assertEquals(0, failures.get());
+            clock.addAndGet(KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS); watcher.checkHealth();
+            assertFalse(watcher.active()); assertEquals(1, failures.get());
+            assertFalse(watcher.recover());
+            clock.addAndGet(KotlinDirectoryWatcher.INITIAL_RETRY_NANOS);
+            assertTrue(watcher.recover()); assertEquals(2, listeners.size());
+            // Completion and heartbeat from an old generation cannot affect the recovered one.
+            listeners.getFirst().onEvent(probeEvent(watcher));
+            assertTrue(watcher.active()); assertEquals(0, changes.get());
+            clock.addAndGet(KotlinDirectoryWatcher.HEALTH_INTERVAL_NANOS); watcher.checkHealth();
+            listeners.getLast().onEvent(probeEvent(watcher));
+            clock.addAndGet(KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS); watcher.checkHealth();
+            assertTrue(watcher.active()); assertEquals(1, failures.get()); assertEquals(0, changes.get());
+            clock.addAndGet(KotlinDirectoryWatcher.HEALTH_INTERVAL_NANOS); watcher.checkHealth();
+            clock.addAndGet(KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS); watcher.checkHealth();
+            assertFalse(watcher.active()); assertEquals(2, failures.get());
+            clock.addAndGet(KotlinDirectoryWatcher.INITIAL_RETRY_NANOS);
+            assertTrue(watcher.recover(), "Acknowledged heartbeat must reset retry delay");
+            watcher.close(); assertFalse(Files.exists(healthFile)); assertFalse(Files.exists(healthFile.getParent()));
+            clock.addAndGet(TimeUnit.MINUTES.toNanos(1)); assertFalse(watcher.recover());
+        }
+    }
+    @Test void failedRetriesBackOffAndDoNotLeakHealthDirectories() throws Exception {
+        var clock = new AtomicLong(); var attempts = new AtomicInteger(); var failures = new AtomicInteger();
+        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor) -> {
+            attempts.incrementAndGet(); throw new java.io.IOException("unavailable");
+        }, () -> fail("No project change"), failures::incrementAndGet, clock::get)) {
+            assertFalse(watcher.configure(Set.of(temp.toRealPath()), path -> true));
+            Path healthFile = watcher.healthFile();
+            assertFalse(watcher.recover()); assertEquals(1, attempts.get());
+            clock.addAndGet(KotlinDirectoryWatcher.INITIAL_RETRY_NANOS);
+            assertFalse(watcher.recover()); assertEquals(2, attempts.get());
+            clock.addAndGet(KotlinDirectoryWatcher.INITIAL_RETRY_NANOS);
+            assertFalse(watcher.recover()); assertEquals(2, attempts.get());
+            clock.addAndGet(KotlinDirectoryWatcher.INITIAL_RETRY_NANOS);
+            assertFalse(watcher.recover()); assertEquals(3, attempts.get()); assertEquals(3, failures.get());
+            assertEquals(healthFile, watcher.healthFile());
+            for (int i = 0; i < 8; i++) {
+                int previous = attempts.get(); clock.addAndGet(TimeUnit.SECONDS.toNanos(30));
+                assertFalse(watcher.recover()); assertEquals(previous + 1, attempts.get());
+                clock.addAndGet(TimeUnit.SECONDS.toNanos(29));
+                if (i >= 3) { assertFalse(watcher.recover()); assertEquals(previous + 1, attempts.get()); }
+                // Advance to a new failure so that the next iteration starts at its retry boundary.
+                if (i >= 3) { clock.addAndGet(TimeUnit.SECONDS.toNanos(1)); assertFalse(watcher.recover()); }
+            }
+            watcher.close();
+            assertFalse(Files.exists(healthFile.getParent()));
+        }
+    }
+    @Test void acknowledgedProbeNeverTriggersAnalysisOrFailure() throws Exception {
+        var clock = new AtomicLong(); var callbacks = new AtomicReference<DirectoryChangeListener>();
+        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor) -> {
+            callbacks.set(listener);
+            return DirectoryWatcher.builder().paths(roots).listener(listener).fileTreeVisitor(visitor).fileHashing(false)
+                    .watchService(FileSystems.getDefault().newWatchService()).build();
+        }, () -> fail("Heartbeat is not a compiler input"), () -> fail("Delivery acknowledged"), clock::get)) {
+            assertTrue(watcher.configure(Set.of(temp.toRealPath()), path -> true));
+            for (int i = 0; i < 20; i++) {
+                clock.addAndGet(KotlinDirectoryWatcher.HEALTH_INTERVAL_NANOS); watcher.checkHealth();
+                callbacks.get().onEvent(probeEvent(watcher));
+                clock.addAndGet(KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS); watcher.checkHealth();
+                assertTrue(watcher.active());
+            }
+            assertEquals(0, watcher.eventRevision());
+        }
+    }
+
 }

@@ -777,7 +777,13 @@ registration waits for the FSEvents stream to start on a serial dispatch queue; 
 a subscription drains callbacks before releasing its stream and queue. File hashing
 in the watcher is disabled; the worker verifies input contents before and after analysis.
 If event registration fails or its event loop terminates, relevant directory-entry
-metadata is polled with 100 ms between scans. Module switches and shutdown close the
+metadata is polled with 100 ms between scans. While events are active, a metadata audit
+runs every two seconds and an isolated temporary heartbeat checks event delivery.
+Missed metadata notifications receive a two-second delivery grace period. Failed
+subscriptions retry after 1, 2, 4, 8, 16 and at most 30 seconds; a successful heartbeat
+resets this backoff. Recovery warms current inputs without switching modules. The
+heartbeat is excluded from compiler inputs and removed on close.
+Module switches and shutdown close the
 event streams and cancel background work. K2 response diagnostics include
 `input_detection` (`directory_watcher_fsevents`, `directory_watcher_watch_service`,
 or `metadata_poll_100ms`) to identify the active input watcher.

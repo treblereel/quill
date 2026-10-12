@@ -256,11 +256,34 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                     || fileAncestors.contains(path);
         }
         private void listen() {
+            long observedEvents = 0;
+            long missedSince = 0;
             try {
-                fallbackReady.acquire();
-                while (!stopped && fallback) {
-                    Thread.sleep(KotlinPollingWatcher.INTERVAL_MILLIS);
-                    if (polling.poll()) { refresh = true; changed(ownerEpoch); }
+                while (!stopped) {
+                    // Healthy subscriptions only need a low-frequency audit/heartbeat.
+                    fallbackReady.tryAcquire(fallback ? KotlinPollingWatcher.INTERVAL_MILLIS : 2000, TimeUnit.MILLISECONDS);
+                    if (stopped) break;
+                    if (fallback) {
+                        if (polling.poll()) { refresh = true; changed(ownerEpoch); }
+                        synchronized (state) {
+                            if (stopped || closed || ownerEpoch != epoch) break;
+                            if (events.recover()) {
+                                fallback = false; missedSince = 0; observedEvents = events.eventRevision();
+                                refresh = true; changed(ownerEpoch);
+                            }
+                        }
+                    } else {
+                        events.checkHealth();
+                        long currentEvents = events.eventRevision();
+                        boolean metadataChanged = polling.poll();
+                        if (currentEvents != observedEvents) missedSince = 0;
+                        else if (metadataChanged && missedSince == 0) missedSince = System.nanoTime();
+                        if (missedSince != 0 && System.nanoTime() - missedSince >= KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS) {
+                            // Give ordinary delivery a grace period before declaring it missing.
+                            events.deliveryMissing(); missedSince = 0;
+                        }
+                        observedEvents = currentEvents;
+                    }
                 }
             } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
         }

@@ -67,4 +67,17 @@ class KotlinPollingWatcherTest {
         inaccessible.set(true); assertTrue(watcher.poll()); assertFalse(watcher.poll());
         inaccessible.set(false); assertTrue(watcher.poll()); assertFalse(watcher.poll());
     }
+    @Test void inPlaceEditWithRestoredSizeAndMtimeIsDetectedWhenChangeTimeExists() throws Exception {
+        Path source = temp.resolve("Caller.kt"); Files.writeString(source, "before");
+        Object originalChangeTime;
+        try { originalChangeTime = Files.getAttribute(source, "unix:ctime"); }
+        catch (UnsupportedOperationException | IllegalArgumentException unsupported) { return; }
+        var watcher = new KotlinPollingWatcher(); watcher.configure(Set.of(temp), source::equals);
+        var modified = Files.getLastModifiedTime(source); Thread.sleep(10);
+        Files.writeString(source, "after!"); Files.setLastModifiedTime(source, modified);
+        assertEquals(6, Files.size(source)); assertEquals(modified, Files.getLastModifiedTime(source));
+        assertNotEquals(originalChangeTime, Files.getAttribute(source, "unix:ctime"));
+        assertTrue(watcher.poll()); assertFalse(watcher.poll());
+    }
+
 }

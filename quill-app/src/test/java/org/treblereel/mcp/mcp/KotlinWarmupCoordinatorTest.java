@@ -328,4 +328,46 @@ class KotlinWarmupCoordinatorTest {
             assertEquals("resolved", coordinator.query("main", () -> request, background).path("status").asText());
         }
     }
+    @Test void failedRegistrationRecoversInSameModuleAndWarmsCurrentInputs() throws Exception {
+        var request = request(); var attempts = new AtomicInteger(); var recovered = new CountDownLatch(1);
+        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor) -> {
+            if (attempts.incrementAndGet() < 3) throw new java.io.IOException("transient registration failure");
+            return KotlinDirectoryWatcher.DEFAULT.create(roots, listener, visitor);
+        };
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (attempts.get() >= 3 && r.path("offset").asInt() == -1) recovered.countDown();
+            return result(r);
+        }, Duration.ofMillis(10), factory)) {
+            coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
+            assertEquals("metadata_poll_100ms", coordinator.watchBackend());
+            await(recovered); assertTrue(attempts.get() >= 3);
+            assertNotEquals("metadata_poll_100ms", coordinator.watchBackend());
+        }
+    }
+    @Test void metadataAuditDetectsSilentProviderAndBackgroundAnalysisReadsLatestContent() throws Exception {
+        var request = request(); Path source = Path.of(request.path("file").asText());
+        var attempts = new AtomicInteger(); var fresh = new CountDownLatch(1);
+        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor) -> {
+            if (attempts.incrementAndGet() == 1)
+                return io.methvin.watcher.DirectoryWatcher.builder().paths(roots).listener(listener)
+                        .fileTreeVisitor(visitor).fileHashing(false)
+                        .watchService(new io.methvin.watchservice.SilentMacOSWatchService()).build();
+            return KotlinDirectoryWatcher.DEFAULT.create(roots, listener, visitor);
+        };
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            try {
+                if (r.path("offset").asInt() == -1 && Files.readString(source).contains("changed")) fresh.countDown();
+            } catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+            return result(r);
+        }, Duration.ofMillis(10), factory)) {
+            coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
+            var modified = Files.getLastModifiedTime(source);
+            Files.writeString(source, "fun run() = \"changed\""); Files.setLastModifiedTime(source, modified);
+            await(fresh);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (attempts.get() == 1 && System.nanoTime() < deadline) Thread.sleep(20);
+            assertTrue(attempts.get() >= 2, "Silent event provider must be replaced without a module switch");
+        }
+    }
+
 }

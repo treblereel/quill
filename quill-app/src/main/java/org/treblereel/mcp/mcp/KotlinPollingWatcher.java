@@ -10,7 +10,7 @@ import java.util.function.Predicate;
 /** Metadata only, for providers whose WatchService already polls at a slow fixed interval. */
 final class KotlinPollingWatcher {
     static final long INTERVAL_MILLIS = 100;
-    private record Stamp(FileTime modified, long size, Object identity, boolean directory, boolean symlink) {}
+    private record Stamp(FileTime modified, long size, Object identity, Object changedAt, boolean directory, boolean symlink) {}
     private record Snapshot(boolean readable, Map<Path, Stamp> entries) {}
     private final Map<Path, Snapshot> directories = new HashMap<>();
     private Predicate<Path> relevant = path -> false;
@@ -41,8 +41,11 @@ final class KotlinPollingWatcher {
                 if (!relevant.test(path)) continue;
                 try {
                     var attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                    Object changedAt;
+                    try { changedAt = Files.getAttribute(path, "unix:ctime", LinkOption.NOFOLLOW_LINKS); }
+                    catch (UnsupportedOperationException | IllegalArgumentException unsupported) { changedAt = null; }
                     entries.put(path, new Stamp(attributes.lastModifiedTime(), attributes.size(), attributes.fileKey(),
-                            attributes.isDirectory(), attributes.isSymbolicLink()));
+                            changedAt, attributes.isDirectory(), attributes.isSymbolicLink()));
                 } catch (NoSuchFileException deletedDuringScan) { }
             }
             return new Snapshot(true, entries);

@@ -77,6 +77,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Verify standalone Maven extension before release preparation
+        run: ./mvnw -B -f quill-maven-extension/pom.xml verify
+
       - name: Prepare release commit and tag
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}

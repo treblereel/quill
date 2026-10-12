@@ -79,6 +79,8 @@ class JavaBuildSettingsIT {
         write("src/test/java/probe/Check.java", "package probe; public class Check { public int call() { return new Call().call(); } }");
         Path repo = Path.of(System.getProperty("user.dir")).getParent();
         String extension = repo.resolve("quill-maven-extension/target/quill-maven-extension-" + BuildIntegrationInstaller.mavenExtensionVersion() + ".jar").toString();
+        assertTrue(Files.isRegularFile(Path.of(extension)),
+                "Build the standalone extension before integration tests: ./mvnw -f quill-maven-extension/pom.xml verify");
         build(List.of(maven, "-q", "test-compile", "-Pcompiler-settings", "-t", root.resolve("toolchains.xml").toString(), "-Dmaven.ext.class.path=" + extension));
         var main = settings("target/quill-java-main.properties"); var test = settings("target/quill-java-test.properties");
         assertEquals("17", main.getProperty("release")); assertEquals("21", test.getProperty("release"));

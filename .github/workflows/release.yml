@@ -65,6 +65,8 @@ jobs:
           ./mvnw -B org.codehaus.mojo:versions-maven-plugin:2.19.1:set \
             -DnewVersion="${release_version}" -DprocessAllModules=true -DgenerateBackupPoms=false
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Verify standalone Maven extension before integration tests
+        run: ./mvnw -B -f quill-maven-extension/pom.xml verify
       - run: ./mvnw -B clean verify -DskipITs=false
       - name: Prepare release SBOM input
         run: |

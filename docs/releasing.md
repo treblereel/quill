@@ -56,6 +56,7 @@ SPDX SBOM. The shaded JAR is used inside CI only as input for SBOM generation.
 For emergency or local preparation, the equivalent command is:
 
 ```bash
+./mvnw -B -f quill-maven-extension/pom.xml verify
 ./mvnw org.codehaus.mojo:versions-maven-plugin:2.19.1:set-property \
   -Dproperty=quill.maven.extension.version \
   -DnewVersion=0.1.0 \

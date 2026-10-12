@@ -87,6 +87,8 @@ class KotlinBuildSettingsIT {
         write("src/main/kotlin/Call.kt", "package probe\nannotation class Open\n@Open class Base { fun pick() = 1 }\nclass Derived: Base()\nfun call() = Derived().pick()\n");
         Path repository = Path.of(System.getProperty("user.dir")).getParent();
         String extension = repository.resolve("quill-maven-extension/target/quill-maven-extension-" + BuildIntegrationInstaller.mavenExtensionVersion() + ".jar").toString();
+        assertTrue(Files.isRegularFile(Path.of(extension)),
+                "Build the standalone extension before integration tests: ./mvnw -f quill-maven-extension/pom.xml verify");
         String maven = Path.of(System.getProperty("maven.home"), "bin/mvn").toString();
         build(List.of(maven, "test-compile", "-q", "-Dmaven.ext.class.path=" + extension));
         var main = settings("target/quill-kotlin-main.properties"); var test = settings("target/quill-kotlin-test.properties");

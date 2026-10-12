@@ -355,6 +355,35 @@ class KotlinWarmupCoordinatorTest {
             assertNotEquals("metadata_poll_100ms", coordinator.watchBackend());
         }
     }
+    @Test void metadataAuditDoesNotDiscardASilentSaveInAnIntervalWithAnEarlierEvent() throws Exception {
+        var request = request(); Path source = Path.of(request.path("file").asText());
+        var callback = new AtomicReference<io.methvin.watcher.DirectoryChangeListener>();
+        var earlierWarmup = new CountDownLatch(1); var fresh = new CountDownLatch(1);
+        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor) -> {
+            callback.set(listener);
+            return io.methvin.watcher.DirectoryWatcher.builder().paths(roots).listener(listener)
+                    .fileTreeVisitor(visitor).fileHashing(false)
+                    .watchService(new io.methvin.watchservice.SilentMacOSWatchService()).build();
+        };
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1) {
+                try {
+                    if (Files.readString(source).contains("changed")) fresh.countDown();
+                    else earlierWarmup.countDown();
+                } catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+            }
+            return result(r);
+        }, Duration.ZERO, factory)) {
+            coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
+            callback.get().onEvent(new io.methvin.watcher.DirectoryChangeEvent(
+                    io.methvin.watcher.DirectoryChangeEvent.EventType.MODIFY, false, source, null, 1, temp));
+            await(earlierWarmup);
+            Files.writeString(source, "fun run() = \"changed\"");
+            assertTrue(fresh.await(5, TimeUnit.SECONDS),
+                    "Metadata audit must detect the save before heartbeat failure activates fallback");
+        }
+    }
+
     @Test void metadataAuditDetectsSilentProviderAndBackgroundAnalysisReadsLatestContent() throws Exception {
         var request = request(); Path source = Path.of(request.path("file").asText());
         var attempts = new AtomicInteger(); var fresh = new CountDownLatch(1);

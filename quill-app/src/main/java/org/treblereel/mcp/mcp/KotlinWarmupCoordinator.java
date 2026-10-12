@@ -278,6 +278,9 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                         events.checkHealth();
                         long currentEvents = events.eventRevision();
                         boolean metadataChanged = polling.poll();
+                        // An event in this interval does not prove that every metadata
+                        // change was delivered, or that a warmup read the latest save.
+                        if (metadataChanged) { refresh = true; changed(ownerEpoch); }
                         if (currentEvents != observedEvents) missedSince = 0;
                         else if (metadataChanged && missedSince == 0) missedSince = System.nanoTime();
                         if (missedSince != 0 && System.nanoTime() - missedSince >= KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS) {

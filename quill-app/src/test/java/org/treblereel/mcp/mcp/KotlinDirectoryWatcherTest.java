@@ -86,7 +86,7 @@ class KotlinDirectoryWatcherTest {
         try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor) -> {
             listeners.add(listener);
             return DirectoryWatcher.builder().paths(roots).listener(listener).fileTreeVisitor(visitor).fileHashing(false)
-                    .watchService(FileSystems.getDefault().newWatchService()).build();
+                    .watchService(new io.methvin.watchservice.SilentMacOSWatchService()).build();
         }, changes::incrementAndGet, failures::incrementAndGet, clock::get)) {
             assertTrue(watcher.configure(Set.of(root), path -> true));
             Path healthFile = watcher.healthFile();

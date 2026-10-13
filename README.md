@@ -4,8 +4,44 @@ Pre-computed codebase intelligence for AI coding agents. Quill indexes your Java
 
 ## Prerequisites
 
-- A Quill native executable for your operating system
+- Quill installed using Homebrew or a native release archive (see below)
 - The JDK and Maven or Gradle required to build the indexed project
+
+## Installation
+
+### macOS and Linux (recommended: Homebrew)
+
+If [Homebrew](https://brew.sh/) is available on your system, install Quill with:
+
+```bash
+brew install treblereel/quill/quill
+quill --version
+```
+
+The [Quill tap](https://github.com/treblereel/homebrew-quill) provides prebuilt native
+executables for macOS (Apple Silicon and Intel) and Linux (ARM64 and x86-64).
+Homebrew verifies the archive checksum and puts `quill` on your `PATH`.
+Linux packages are built and tested on Ubuntu 24.04; compatibility with older
+glibc versions is not guaranteed.
+
+To update an existing installation:
+
+```bash
+brew update
+brew upgrade treblereel/quill/quill
+```
+
+The formula installs Quill only. Keep the JDK and Maven or Gradle needed by your
+project; Kotlin semantic analysis requires a Java 17+ runtime selected through
+`JAVA_HOME` or `PATH`. Run `quill init` in each compiled project after installation.
+
+### Windows or systems without Homebrew
+
+Download the archive matching your operating system and architecture from the
+[latest release](https://github.com/treblereel/quill/releases/latest), verify its
+SHA-256 checksum against the accompanying `.sha256` file, and extract it.
+Add the directory containing `quill` (or `quill.exe` on Windows) to your `PATH`.
+See [download verification](docs/releasing.md) for checksum and attestation checks.
 
 ## Quick Start
 
@@ -16,7 +52,7 @@ cd /path/to/your/project
 # ./gradlew classes            # Gradle
 
 # 2. Initialize the Quill index (the current directory is used automatically)
-/path/to/quill init
+quill init
 
 # 3. Connect Quill to Claude Code or Codex (see below)
 ```
@@ -492,17 +528,19 @@ Initialize the project once before connecting an MCP client. From the project di
 
 ```bash
 cd /absolute/path/to/project
-/absolute/path/to/quill init
+quill init
 ```
 
 Alternatively, specify the project explicitly when running Quill from another directory:
 
 ```bash
-/absolute/path/to/quill init --project /absolute/path/to/project
+quill init --project /absolute/path/to/project
 ```
 
 Quill is a local stdio MCP server. The client starts it on demand and communicates
-with it over stdin/stdout; you do not need to run a daemon. Absolute paths are
+with it over stdin/stdout; you do not need to run a daemon. In the manual MCP
+configuration examples below, replace `/absolute/path/to/quill` with your installed
+executable's absolute path (`command -v quill` on macOS/Linux). Absolute paths are
 recommended because an MCP client's process working directory is not guaranteed.
 
 For structured troubleshooting, add `--debug` to the MCP command. Quill keeps stdout
@@ -927,17 +965,12 @@ On Windows the native output is `quill-app\target\quill.exe`.
 
 Release CI generates a native `quill.rb` formula with verified SHA-256 hashes for
 macOS and Linux on ARM64 and x86-64, and tests real Homebrew installation before
-publishing. Once `treblereel/homebrew-quill` is bootstrapped, installation is:
-
-```bash
-brew install treblereel/quill/quill
-brew upgrade treblereel/quill/quill
-```
-
-Kotlin semantic analysis needs an existing Java 17+ runtime; the formula does not
-install a JDK or initialize projects. Tap publication requires separate setup; see
-[the Homebrew setup guide](packaging/homebrew/README.md). The optional release
-integration opens formula-update PRs in the configured tap.
+publishing. Users should follow the [installation instructions](#installation)
+above. Release automation opens formula-update PRs in
+[`treblereel/homebrew-quill`](https://github.com/treblereel/homebrew-quill);
+merging a verified update makes it available through `brew upgrade`.
+For maintainer configuration, see
+[the Homebrew setup guide](packaging/homebrew/README.md).
 
 ### Releases
 

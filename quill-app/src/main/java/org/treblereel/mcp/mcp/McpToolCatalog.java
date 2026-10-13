@@ -133,7 +133,7 @@ final class McpToolCatalog {
             String mode = workspace
                     ? "Server mode: workspace (--workspace). First call with view=compact (limit<=50); then project=<name> with view=full. "
                     : "Server mode: single_project. Call without arguments, not view=compact. ";
-            return mode + "Start here even for narrow symbol tasks. Index freshness and frameworks; use change_session before edits.";
+            return mode + "Start here even for narrow symbol tasks; use change_session before edits.";
         }
         return switch (method.getName()) {
             case "search_classes", "find_implementations", "find_annotated_symbols" ->

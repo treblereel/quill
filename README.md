@@ -432,7 +432,9 @@ does not imply that an executor, reactive stream, or message publication has com
 - **find_annotated_symbols** — find annotated types, methods, fields, constructors, and parameters
   by short annotation name or FQCN, preserving parameter position, name, and type
 - **find_framework_endpoints** — find Spring MVC and JAX-RS routes with HTTP methods, constant
-  class/method paths, module/source context, and bounded direct project-call evidence
+  class/method paths, composed Spring mappings with explicit `@AliasFor`, custom JAX-RS HTTP
+  methods, module/source context, and bounded direct project-call evidence.
+  See [HTTP endpoint analysis](docs/http-endpoints.md) for supported mappings and limits.
 - **find_configuration_references** — find `.properties`, YAML, and persistence-unit definitions
   together with annotation-based Spring, MicroProfile, SmallRye, and JPA consumers; configuration
   values are deliberately not indexed

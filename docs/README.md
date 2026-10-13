@@ -27,3 +27,5 @@ table aligned with picocli command definitions and its MCP list aligned with the
 - [Java compiler navigation](java-semantic-navigation.md): captured JDK settings, worker lifecycle and supported inputs.
 
 - [API compatibility review](api-compatibility.md): declaration deltas and baseline static impact in `compare_index`.
+
+- [HTTP endpoint analysis](http-endpoints.md): composed Spring mappings, custom JAX-RS methods, and static-analysis limits.

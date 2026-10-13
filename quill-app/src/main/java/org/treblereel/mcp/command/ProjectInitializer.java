@@ -385,7 +385,7 @@ public class ProjectInitializer {
                 JandexScanner.extractClassMembers(scanResult.index(), classNameToSqliteId);
         List<FrameworkEndpointRecord> frameworkEndpoints =
                 JandexScanner.extractFrameworkEndpoints(
-                        scanResult.index(), classNameToSqliteId);
+                        scanResult.index(), annotationLookup, classNameToSqliteId);
         List<ClassOccurrenceRecord> classOccurrences = ClassOccurrenceScanner.scan(
                 root, classFiles, classDirectoryOwners, classDirectorySourceSets,
                 classNameToSqliteId, sourceRoots, scanResult.sourceMappings());

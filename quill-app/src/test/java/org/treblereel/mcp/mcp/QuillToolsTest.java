@@ -3421,6 +3421,35 @@ class QuillToolsTest {
     }
 
     @Test
+    void findFrameworkEndpointsFiltersCustomVerbsAndPreservesComposedEvidence() throws Exception {
+        jdbi.useHandle(handle -> handle.createUpdate("""
+                INSERT INTO metadata(key,value) VALUES ('framework_endpoints_detail', :value)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value""")
+                .bind("value", """
+                        [{"classId":1,"className":"org.acme.OrderService","methodName":"clear",
+                          "signature":"clear():void","descriptor":"()V","framework":"jax-rs",
+                          "httpMethods":["purge"],"classPaths":["/cache"],"methodPaths":[""],
+                          "annotations":["org.acme.Purge"]},
+                         {"classId":1,"className":"org.acme.OrderService","methodName":"read",
+                          "signature":"read():void","descriptor":"()V","framework":"spring",
+                          "httpMethods":["GET"],"classPaths":["/api"],"methodPaths":["/one","/two"],
+                          "annotations":["org.acme.Read","org.springframework.web.bind.annotation.RequestMapping"]}]
+                        """).execute());
+        var queries = new QuillToolQueries();
+        JsonNode purge = JSON.readTree(queries.findFrameworkEndpoints(jdbi, "jax-rs", "purge",
+                "/cache", null, false, false, 10, 0));
+        assertEquals(1, purge.path("total").asInt());
+        assertEquals("/cache", purge.path("endpoints").get(0).path("paths").get(0).asText());
+        JsonNode spring = JSON.readTree(queries.findFrameworkEndpoints(jdbi, "spring", "GET",
+                "/api", null, false, false, 10, 0));
+        assertEquals(1, spring.path("total").asInt());
+        assertEquals(List.of("/api/one", "/api/two"), spring.path("endpoints").get(0)
+                .path("paths").valueStream().map(JsonNode::asText).toList());
+        assertEquals("org.acme.Read", spring.path("endpoints").get(0).path("annotations").get(0).asText());
+        assertTrue(spring.path("limitations").valueStream().anyMatch(v -> v.asText().contains("inherited")));
+    }
+
+    @Test
     void structuralQueriesExposeDuplicateOccurrencesAndFilterByOccurrenceModule()
             throws Exception {
         jdbi.useHandle(handle -> {

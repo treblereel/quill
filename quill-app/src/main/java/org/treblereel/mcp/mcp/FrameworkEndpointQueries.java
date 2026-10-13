@@ -57,7 +57,7 @@ final class FrameworkEndpointQueries {
                     .filter(endpoint -> normalizedFramework == null
                             || normalizedFramework.equals(endpoint.framework()))
                     .filter(endpoint -> normalizedMethod == null
-                            || endpoint.httpMethods().contains(normalizedMethod)
+                            || endpoint.httpMethods().stream().anyMatch(verb -> verb.equalsIgnoreCase(normalizedMethod))
                             || endpoint.httpMethods().contains("ANY"))
                     .filter(endpoint -> normalizedPrefix == null
                             || endpoint.paths().stream().anyMatch(
@@ -90,7 +90,9 @@ final class FrameworkEndpointQueries {
         root.put("call_detail_limit", CALL_DETAIL_LIMIT);
         ArrayNode limitations = root.putArray("limitations");
         limitations.add("Only constant Spring MVC and JAX-RS annotations retained in compiled bytecode are analyzed");
-        limitations.add("Programmatic, XML, YAML, runtime-generated, and meta-annotated routes may be absent");
+        limitations.add("Programmatic, XML, YAML, runtime-generated, inherited, and unresolved meta-annotated routes may be absent");
+        limitations.add("Composed Spring mappings require indexed annotation definitions and explicit AliasFor overrides; ambiguous mappings and convention-based overrides are omitted or incomplete");
+        limitations.add("Media types, params, headers, runtime registration, and JAX-RS subresource chains are not resolved; SUBRESOURCE only denotes a declared Path without a recognized HTTP method");
         limitations.add("Direct project calls are static bytecode targets, not guaranteed runtime service dispatches");
 
         ArrayNode values = root.putArray("endpoints");

@@ -658,7 +658,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Compare the active index with an earlier local generation.")
+    @Tool(readOnly = true, structured = true, description = "Compare retained indexes: structural changes, conservative JVM API compatibility and baseline consumer impact.")
     public String compare_index(
             @ToolArg(description = "Index id or commit; default previous") Optional<String> baseline,
             @ToolArg(description = "Details per category; default 50") Optional<Integer> limit,

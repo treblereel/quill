@@ -63,15 +63,15 @@ public class DoctorCommand implements Callable<Integer> {
         checks.add(Check.pass("project", "Detected "
                 + buildSystem.name().toLowerCase(Locale.ROOT) + " project at " + normalized));
 
-        List<Path> classesDirectories = ProjectInitializer.findMainClassesDirs(normalized);
+        List<Path> classesDirectories = ProjectInitializer.findIndexableClassesDirs(normalized);
         if (classesDirectories.isEmpty()) {
-            checks.add(Check.error("compiled_outputs", "No compiled main classes were found",
+            checks.add(Check.error("compiled_outputs", "No compiled JVM source-set classes were found",
                     buildSystem == BuildSystem.MAVEN
                             ? "Run the project's Maven compile/package command"
                             : "Run the project's Gradle classes/build command"));
         } else {
             checks.add(Check.pass("compiled_outputs", "Found " + classesDirectories.size()
-                    + " compiled main class director"
+                    + " compiled JVM source-set class director"
                     + (classesDirectories.size() == 1 ? "y" : "ies")));
         }
 

@@ -47,7 +47,7 @@ final class WorkspaceRepositoryStatusInspector {
                     "Unsupported Java project");
         }
 
-        List<Path> compiledDirectories = ProjectInitializer.findMainClassesDirs(root);
+        List<Path> compiledDirectories = ProjectInitializer.findIndexableClassesDirs(root);
         String codeExpectation = ProjectCodeExpectation.inspect(root, buildSystem)
                 .name().toLowerCase(Locale.ROOT);
         ProjectDiagnostics.Report index = ProjectDiagnostics.inspect(root);

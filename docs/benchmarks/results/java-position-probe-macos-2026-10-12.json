@@ -1,0 +1,628 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-12",
+  "tests": {
+    "jdk17": 30,
+    "jdk21": 30
+  },
+  "single_source": {
+    "schema_version": 1,
+    "source_sha256": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84",
+    "source_root": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+    "release_level": "17",
+    "source_files": 1,
+    "classpath_entries": 0,
+    "limitations": [
+      "One selected real source position; not exhaustive navigation coverage",
+      "Content fingerprinting scans every configured source and classpath input",
+      "Not integrated with production MCP, compiler-settings capture, or native distribution"
+    ],
+    "runs": [
+      {
+        "java_home": "/Library/Java/JavaVirtualMachines/jdk-17.0.2.jdk/Contents/Home",
+        "jdk_release_sha256": "5360ece907657d3d9e6de9f26c2867d5ae4baec143dcd0a7d8d1c102c6a4cfdd",
+        "startup_ms": 136.7657920345664,
+        "first_analysis_ms": 452.728,
+        "warm_latency": {
+          "samples": 20,
+          "p50_latency_ms": 0.93,
+          "p95_latency_ms": 2.17,
+          "max_latency_ms": 2.91,
+          "errors": 0
+        },
+        "peak_sampled_rss_kib": 113840,
+        "rows": [
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": false,
+            "analysis_ms": 452.728,
+            "heap_bytes": 25199104
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.882084,
+            "heap_bytes": 25199104
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.20975,
+            "heap_bytes": 25199104
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.985,
+            "heap_bytes": 25199104
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.177084,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.168042,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.313209,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 2.907625,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.28925,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.488333,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.843083,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.84525,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.718375,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.829375,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.949334,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.926875,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.881625,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.808084,
+            "heap_bytes": 25725624
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 2.169708,
+            "heap_bytes": 26247680
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.519667,
+            "heap_bytes": 26247680
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.339208,
+            "heap_bytes": 26247680
+          }
+        ],
+        "clean_eof": true,
+        "passed": true
+      },
+      {
+        "java_home": "/Users/treblereel/Library/Java/JavaVirtualMachines/openjdk-21.0.2/Contents/Home",
+        "jdk_release_sha256": "ed7346877719c0bf50b60d97cbf1c06c095877d998e7c7d33653d17ce49e387b",
+        "startup_ms": 47.4741670768708,
+        "first_analysis_ms": 410.821542,
+        "warm_latency": {
+          "samples": 20,
+          "p50_latency_ms": 0.66,
+          "p95_latency_ms": 2.22,
+          "max_latency_ms": 2.38,
+          "errors": 0
+        },
+        "peak_sampled_rss_kib": 115792,
+        "rows": [
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": false,
+            "analysis_ms": 410.821542,
+            "heap_bytes": 28243048
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.4495,
+            "heap_bytes": 28243048
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.622834,
+            "heap_bytes": 28243048
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.719916,
+            "heap_bytes": 28243048
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.21175,
+            "heap_bytes": 28324800
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.558292,
+            "heap_bytes": 28324800
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.5905,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.361,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.887333,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 2.375417,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 1.398292,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.66325,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.447,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.466,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.502958,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.480042,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.729458,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.376333,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.615875,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 0.739375,
+            "heap_bytes": 28809464
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 2.222708,
+            "heap_bytes": 28809464
+          }
+        ],
+        "clean_eof": true,
+        "passed": true
+      }
+    ],
+    "all_passed": true,
+    "additional_runtime_dependency_jars": 0,
+    "production_backend_enabled": false,
+    "native_size_growth_bytes": null
+  },
+  "complete_module": {
+    "schema_version": 1,
+    "source_sha256": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84",
+    "source_root": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java",
+    "release_level": "21",
+    "source_files": 75,
+    "classpath_entries": 18,
+    "limitations": [
+      "One selected real source position; not exhaustive navigation coverage",
+      "Content fingerprinting scans every configured source and classpath input",
+      "Not integrated with production MCP, compiler-settings capture, or native distribution"
+    ],
+    "runs": [
+      {
+        "java_home": "/Users/treblereel/Library/Java/JavaVirtualMachines/openjdk-21.0.2/Contents/Home",
+        "jdk_release_sha256": "ed7346877719c0bf50b60d97cbf1c06c095877d998e7c7d33653d17ce49e387b",
+        "startup_ms": 43.955250177532434,
+        "first_analysis_ms": 1856.430792,
+        "warm_latency": {
+          "samples": 5,
+          "p50_latency_ms": 82.96,
+          "p95_latency_ms": 98.25,
+          "max_latency_ms": 98.25,
+          "errors": 0
+        },
+        "peak_sampled_rss_kib": 287424,
+        "rows": [
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": false,
+            "analysis_ms": 1856.430792,
+            "heap_bytes": 167268360
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 77.01775,
+            "heap_bytes": 171448312
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 70.765459,
+            "heap_bytes": 175116280
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 87.012375,
+            "heap_bytes": 179310584
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 98.254792,
+            "heap_bytes": 183504888
+          },
+          {
+            "status": "resolved",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "generation": 1,
+            "reused": true,
+            "analysis_ms": 82.957458,
+            "heap_bytes": 42587936
+          }
+        ],
+        "clean_eof": true,
+        "passed": true
+      }
+    ],
+    "all_passed": true,
+    "additional_runtime_dependency_jars": 0,
+    "production_backend_enabled": false,
+    "native_size_growth_bytes": null
+  }
+}

@@ -43,6 +43,25 @@ final class KotlinCompilerSettings {
                     .matcher(properties.getProperty("compilerVersion", ""));
             if (version.matches()) request.put("languageVersion", version.group(1));
         }
+        if (properties.containsKey("analysisInputsProtocol")) {
+            if (!properties.getProperty("analysisInputsProtocol").equals("1")) {
+                request.put("compiler_configuration_error", "analysis_inputs_protocol_unsupported");
+            } else {
+                for (String prefix : new String[]{"sourceRoot", "javaRoot", "compileClasspath"}) {
+                    if (!properties.containsKey(prefix + ".count")) throw new IOException("Incomplete analysis inputs");
+                    copy(properties, prefix, request.putArray("captured_" + prefix), module, true);
+                }
+                copy(properties, "optionalOutput", request.putArray("optional_outputs"), module, true);
+                copy(properties, "optionalFriendPath", request.putArray("optional_friend_paths"), module, true);
+                copy(properties, "friendPath", request.putArray("friend_paths"), module, true);
+                if (properties.containsKey("sourceSelection")) {
+                    String selection = properties.getProperty("sourceSelection");
+                    if (selection.length() > 4_000_000) throw new IOException("Source selection limit");
+                    request.set("source_selection", new com.fasterxml.jackson.databind.ObjectMapper().readTree(selection));
+                }
+                request.put("captured_analysis_inputs", true);
+            }
+        }
         copy(properties, "argument", request.putArray("compiler_arguments"), module, false);
         copy(properties, "pluginClasspath", request.putArray("plugin_classpath"), module, true);
         copy(properties, "pluginOption", request.putArray("plugin_options"), module, false);

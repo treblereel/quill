@@ -13,6 +13,10 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.treblereel.mcp</groupId><artifactId>quill-java-semantic</artifactId>
+            <version>${project.version}</version><scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>io.methvin</groupId>
             <artifactId>directory-watcher</artifactId>
             <version>0.19.1</version>
@@ -22,6 +26,11 @@
             <artifactId>quill-kotlin-semantic</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.treblereel.mcp</groupId><artifactId>quill-kotlin-semantic</artifactId>
+            <version>${project.version}</version><classifier>source-selection</classifier>
+            <exclusions><exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion></exclusions>
         </dependency>
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
@@ -134,6 +143,11 @@
                         <outputDirectory>${project.build.directory}/generated-resources/kotlin-worker</outputDirectory>
                         <destFileName>worker.jar</destFileName>
                         <overWrite>true</overWrite>
+                    </artifactItem><artifactItem>
+                        <groupId>org.treblereel.mcp</groupId><artifactId>quill-java-semantic</artifactId>
+                        <version>${project.version}</version>
+                        <outputDirectory>${project.build.directory}/generated-resources/java-worker</outputDirectory>
+                        <destFileName>worker.jar</destFileName><overWrite>true</overWrite>
                     </artifactItem></artifactItems></configuration>
                 </execution></executions>
             </plugin>

@@ -50,6 +50,24 @@ class KotlinCompilerSettingsTest {
         assertEquals(2, request.path("compiler_settings_files").size(), "Watch the unsupported capture so fixing its protocol can trigger warmup");
     }
 
+    @Test void analysisInputsRequireAllListsAndSupportedProtocol() throws Exception {
+        String valid = "analysisInputsProtocol=1\nsourceRoot.count=1\nsourceRoot.0=relocated ü/kotlin\njavaRoot.count=0\ncompileClasspath.count=1\ncompileClasspath.0=dependencies/with spaces.jar\nfriendPath.count=1\nfriendPath.0=out/main\n";
+        write(root.resolve("build/quill-kotlin-integrationTest.properties"), valid);
+        var request = new ObjectMapper().createObjectNode(); KotlinCompilerSettings.apply(root, root.resolve("build"), "integrationTest", request);
+        assertTrue(request.path("captured_analysis_inputs").asBoolean());
+        assertEquals(root.resolve("relocated ü/kotlin").toString(), request.path("captured_sourceRoot").get(0).asText());
+        assertEquals(root.resolve("out/main").toString(), request.path("friend_paths").get(0).asText());
+        for (String invalid : new String[]{valid.replace("javaRoot.count=0", ""), valid.replace("sourceRoot.count=1", "sourceRoot.count=-1"),
+                valid.replace("compileClasspath.count=1", "compileClasspath.count=1025"), valid.replace("sourceRoot.0=relocated ü/kotlin", "")}) {
+            write(root.resolve("build/quill-kotlin-integrationTest.properties"), invalid);
+            assertThrows(Exception.class, () -> KotlinCompilerSettings.apply(root, root.resolve("build"), "integrationTest", new ObjectMapper().createObjectNode()));
+        }
+        write(root.resolve("build/quill-kotlin-integrationTest.properties"), valid.replace("analysisInputsProtocol=1", "analysisInputsProtocol=99"));
+        var unsupported = new ObjectMapper().createObjectNode(); KotlinCompilerSettings.apply(root, root.resolve("build"), "integrationTest", unsupported);
+        assertEquals("analysis_inputs_protocol_unsupported", unsupported.path("compiler_configuration_error").asText());
+        assertFalse(unsupported.has("captured_analysis_inputs"));
+    }
+
     @Test void implicitLanguageLevelFollowsProjectCompilerAndExplicitLevelTakesPrecedence() throws Exception {
         write(root.resolve("target/quill-kotlin-main.properties"), "compilerVersion=2.3.21\n");
         var request = new ObjectMapper().createObjectNode(); KotlinCompilerSettings.apply(root, root.resolve("target"), "main", request);

@@ -200,6 +200,31 @@ class KotlinWarmupCoordinatorTest {
             Files.delete(settings); assertNotNull(events.poll(8, TimeUnit.SECONDS));
         }
     }
+    @Test void capturedCustomRootsWatchNewSourcesAndMissingJavaOutputs() throws Exception {
+        var request = request(); var events = new LinkedBlockingQueue<JsonNode>();
+        Path sources = temp.resolve("relocated ü/kotlin"); Files.createDirectories(sources);
+        Path futureJava = temp.resolve("relocated/java");
+        Path output = temp.resolve("out/classes/java/main");
+        request.put("captured_analysis_inputs", true).put("source_set", "integrationTest");
+        request.putArray("source_roots").add(sources.toString());
+        request.putArray("captured_javaRoot").add(futureJava.toString());
+        request.putArray("optional_outputs").add(output.toString());
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1) events.add(r); return result(r);
+        }, Duration.ofMillis(100))) {
+            Supplier<JsonNode> background = () -> request.deepCopy().put("offset", -1);
+            coordinator.query("custom", () -> request, background);
+            Files.writeString(sources.resolve("Added.kt"), "fun added() = 1");
+            assertNotNull(events.poll(8, TimeUnit.SECONDS));
+            coordinator.query("custom", () -> request, background); events.clear();
+            Files.createDirectories(futureJava); Files.writeString(futureJava.resolve("Added.java"), "class Added {}");
+            assertNotNull(events.poll(8, TimeUnit.SECONDS));
+            coordinator.query("custom", () -> request, background); events.clear();
+            Files.createDirectories(output); Files.writeString(output.resolve("Added.class"), "new bytecode");
+            assertNotNull(events.poll(8, TimeUnit.SECONDS));
+        }
+    }
+
     @Test void deletedExternalOutputRootIsWatchedForRecreationWhileClasspathIsMissing() throws Exception {
         var request = request();
         Path output = external.resolve("classes"); Files.createDirectories(output);

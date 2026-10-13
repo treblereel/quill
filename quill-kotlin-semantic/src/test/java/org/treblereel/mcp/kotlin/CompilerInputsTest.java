@@ -16,6 +16,20 @@ class CompilerInputsTest {
         return new ObjectMapper().createObjectNode().put("module", temp.toString())
                 .put("file", file.toString()).set("sources", new ObjectMapper().createArrayNode().add(file.toString()));
     }
+    @Test void selectedSourceTopologyChangesBetweenCollectionAndAnalysisForceRetry() throws Exception {
+        var request = request(); var selection = new ObjectMapper().createObjectNode().put("protocol", 1);
+        var entry = selection.putArray("entries").addObject().put("kind", "kotlin").put("root", temp.toString());
+        entry.putArray("defaultExcludes"); var gate = entry.putArray("gates").addObject();
+        gate.putArray("includes").add("**/*.kt"); gate.putArray("excludes");
+        request.put("repository_root", temp.toString()).set("source_selection", selection);
+        request.putArray("sources").add(temp.resolve("Caller.kt").toRealPath().toString());
+        request.putArray("java_sources"); CompilerInputs.capture(request, temp);
+        Path extra = temp.resolve("New.kt"); Files.writeString(extra, "fun added() = 1");
+        assertThrows(CompilerInputs.ChangedException.class, () -> CompilerInputs.capture(request, temp));
+        request.withArray("sources").add(extra.toRealPath().toString()); CompilerInputs.capture(request, temp);
+        Files.delete(extra); assertThrows(CompilerInputs.ChangedException.class, () -> CompilerInputs.capture(request, temp));
+    }
+
     @Test void configurationEditsBetweenCollectionAndCompilerCaptureForceRetry() throws Exception {
         var request = request(); Path settings = temp.resolve("options.properties"); Files.writeString(settings, "languageVersion=2.3");
         String hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(settings)));
@@ -35,6 +49,16 @@ class CompilerInputsTest {
         request.put("languageVersion", "2.3"); var language = CompilerInputs.capture(request, temp);
         request.put("apiVersion", "2.3"); assertNotEquals(language.fingerprint(), CompilerInputs.capture(request, temp).fingerprint());
     }
+    @Test void friendModuleSelectionAndContentsInvalidateAnalysis() throws Exception {
+        var request = request(); Path output = temp.resolve("friends"); Files.createDirectories(output);
+        Path binary = output.resolve("Api.class"); Files.writeString(binary, "aaaa");
+        var first = CompilerInputs.capture(request, temp);
+        request.putArray("friend_paths").add(output.toString());
+        var selected = CompilerInputs.capture(request, temp); assertNotEquals(first.fingerprint(), selected.fingerprint());
+        Files.writeString(binary, "bbbb");
+        assertNotEquals(selected.fingerprint(), CompilerInputs.capture(request, temp).fingerprint());
+    }
+
     @Test void jdkImageChangesWithRestoredMtimeAndJdkSelectionChangeInvalidateInputs() throws Exception {
         var request = request(); Path jdk = temp.resolve("jdk"); Files.createDirectories(jdk.resolve("lib"));
         Files.writeString(jdk.resolve("release"), "JAVA_VERSION=17"); Files.writeString(jdk.resolve("lib/modules"), "aaaa");

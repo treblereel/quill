@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.FileRecord;
 import org.treblereel.mcp.model.GitFileStats;
 
@@ -25,6 +26,12 @@ public final class FileInventory {
     public static Result build(Path projectRoot, List<Path> moduleDirectories,
             List<Path> sourceRoots, List<ClassRecord> classes, List<GitFileStats> gitFiles,
             WorktreeInspector.Snapshot worktree) {
+        return build(projectRoot, moduleDirectories, sourceRoots, classes, gitFiles, worktree, List.of());
+    }
+
+    public static Result build(Path projectRoot, List<Path> moduleDirectories,
+            List<Path> sourceRoots, List<ClassRecord> classes, List<GitFileStats> gitFiles,
+            WorktreeInspector.Snapshot worktree, List<ClassOccurrenceRecord> occurrences) {
         Path root = projectRoot.toAbsolutePath().normalize();
         Path repositoryRoot = worktree.repositoryRoot() != null
                 ? worktree.repositoryRoot().toAbsolutePath().normalize() : root;
@@ -67,6 +74,14 @@ public final class FileInventory {
                             exists ? "current" : "historical", worktreeStatuses.get(repositoryPath)));
         }
 
+        Map<String, SourceContext> compiledContexts = new LinkedHashMap<>();
+        for (ClassOccurrenceRecord occurrence : occurrences) {
+            String source = normalizeSource(root, occurrence.sourceFile());
+            if (source == null) continue;
+            SourceContext context = new SourceContext(occurrence.module(), occurrence.sourceSet());
+            compiledContexts.merge(source, context, (left, right) -> left.equals(right) ? left : SourceContext.UNKNOWN);
+        }
+
         List<MutableFile> ordered = byRepositoryPath.values().stream()
                 .sorted(Comparator.comparing(file -> file.repositoryPath))
                 .toList();
@@ -75,7 +90,8 @@ public final class FileInventory {
         Map<Integer, SourceContext> contextsByFileId = new LinkedHashMap<>();
         int nextId = 1;
         for (MutableFile file : ordered) {
-            SourceContext context = sourceContext(root, moduleDirectories, file.projectPath);
+            SourceContext context = compiledContexts.getOrDefault(file.projectPath,
+                    sourceContext(root, moduleDirectories, file.projectPath));
             files.add(new FileRecord(nextId, file.projectPath, file.repositoryPath, file.kind,
                     file.origin, file.lifecycle, file.worktreeStatus,
                     context.module(), context.sourceSet()));

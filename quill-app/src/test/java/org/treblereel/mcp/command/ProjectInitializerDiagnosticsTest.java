@@ -39,7 +39,10 @@ class ProjectInitializerDiagnosticsTest {
                 new FrameworkEndpointRecord(7, "com.acme.Orders", "create",
                         "create(com.acme.Order):void", "(Lcom/acme/Order;)V",
                         "spring", List.of("POST"), List.of("/orders"),
-                        List.of("/{id}"), List.of("PostMapping"))));
+                        List.of("/{id}"), List.of("PostMapping")),
+                new FrameworkEndpointRecord(8, "com.acme.Child", "read", "read():void", "()V",
+                        "spring", List.of("GET"), List.of(), List.of("/read"), List.of("GetMapping"),
+                        null, "external.Base", List.of("method:external.Base#read()V"))));
 
         var endpoint = JSON.readTree(json).get(0);
         assertEquals(7, endpoint.path("classId").asInt());
@@ -47,6 +50,14 @@ class ProjectInitializerDiagnosticsTest {
         assertEquals("POST", endpoint.path("httpMethods").get(0).asText());
         assertEquals("/orders", endpoint.path("classPaths").get(0).asText());
         assertEquals("/{id}", endpoint.path("methodPaths").get(0).asText());
+        assertEquals(7, endpoint.path("declaringClassId").asInt());
+        assertEquals("com.acme.Orders", endpoint.path("declaringClassName").asText());
+        assertTrue(endpoint.path("mappingSources").isArray());
+        var external = JSON.readTree(json).get(1);
+        assertTrue(external.has("declaringClassId"));
+        assertTrue(external.path("declaringClassId").isNull());
+        assertEquals("external.Base", external.path("declaringClassName").asText());
+        assertEquals("method:external.Base#read()V", external.path("mappingSources").get(0).asText());
     }
 
     @Test

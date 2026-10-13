@@ -1,0 +1,586 @@
+{
+  "schema_version": 1,
+  "expectation_basis": "Manually reviewed source references and javap descriptors; expected facts are not generated from Quill responses",
+  "projects": [
+    {
+      "id": "quill-java",
+      "repository": "https://github.com/treblereel/quill",
+      "revision": "718cde5731ba0a7fb361f44c5828d87f24159344",
+      "build_system": "maven",
+      "cases": [
+        {
+          "id": "java-overload-string-position",
+          "tool": "get_symbol_at_position",
+          "arguments": {},
+          "evidence": [
+            {
+              "path": "quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+              "sha256": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "resolution"
+              ],
+              "expected": "resolved",
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "selected",
+                "jvm_descriptor"
+              ],
+              "expected": "(Ljava/lang/String;)Z",
+              "mode": "equals"
+            }
+          ],
+          "position": {
+            "path": "quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "anchor": "return isSourceFile(path.getFileName().toString());",
+            "token": "isSourceFile"
+          }
+        },
+        {
+          "id": "java-test-static-call-position",
+          "tool": "get_symbol_at_position",
+          "arguments": {},
+          "evidence": [
+            {
+              "path": "quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+              "sha256": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84"
+            },
+            {
+              "path": "quill-core/src/test/java/org/treblereel/mcp/core/JvmSourceFilesTest.java",
+              "sha256": "a613227ea09aabb26d5f7f6ca87346db18089bdb53d4217d734abd2cf1c86437"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "resolution"
+              ],
+              "expected": "resolved",
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "selected",
+                "class_name"
+              ],
+              "expected": "org.treblereel.mcp.core.JvmSourceFiles",
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "selected",
+                "member_name"
+              ],
+              "expected": "findConventionalSource",
+              "mode": "equals"
+            }
+          ],
+          "position": {
+            "path": "quill-core/src/test/java/org/treblereel/mcp/core/JvmSourceFilesTest.java",
+            "anchor": "assertEquals(kotlin, JvmSourceFiles.findConventionalSource(\n                module, \"main\", \"org.acme.OrderService\"));",
+            "token": "findConventionalSource"
+          }
+        },
+        {
+          "id": "java-overload-string-usages",
+          "tool": "find_symbol_usages",
+          "arguments": {
+            "target": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "method",
+            "name": "isSourceFile",
+            "signature": "(Ljava/lang/String;)Z",
+            "limit": 100
+          },
+          "evidence": [
+            {
+              "path": "quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+              "sha256": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84"
+            },
+            {
+              "path": "quill-core/src/test/java/org/treblereel/mcp/core/JvmSourceFilesTest.java",
+              "sha256": "a613227ea09aabb26d5f7f6ca87346db18089bdb53d4217d734abd2cf1c86437"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "descriptor"
+              ],
+              "expected": "(Ljava/lang/String;)Z",
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "usages",
+                "*",
+                "caller",
+                "class"
+              ],
+              "expected": [
+                "org.treblereel.mcp.core.JvmSourceFiles"
+              ],
+              "mode": "contains"
+            },
+            {
+              "path": [
+                "usages",
+                "*",
+                "caller",
+                "class"
+              ],
+              "expected": [
+                "org.treblereel.mcp.core.JvmSourceFilesTest"
+              ],
+              "mode": "excludes"
+            }
+          ]
+        },
+        {
+          "id": "java-source-path-method-usages",
+          "tool": "find_symbol_usages",
+          "arguments": {
+            "target": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "method",
+            "name": "findConventionalSource",
+            "signature": "(Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;)Ljava/nio/file/Path;",
+            "limit": 100
+          },
+          "evidence": [
+            {
+              "path": "quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+              "sha256": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84"
+            },
+            {
+              "path": "quill-core/src/test/java/org/treblereel/mcp/core/JvmSourceFilesTest.java",
+              "sha256": "a613227ea09aabb26d5f7f6ca87346db18089bdb53d4217d734abd2cf1c86437"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "usages",
+                "*",
+                "caller",
+                "class"
+              ],
+              "expected": [
+                "org.treblereel.mcp.core.JvmSourceFilesTest"
+              ],
+              "mode": "contains"
+            }
+          ]
+        },
+        {
+          "id": "java-direct-test-impact",
+          "tool": "find_impacted_tests",
+          "arguments": {
+            "targets": [
+              "org.treblereel.mcp.core.JvmSourceFiles"
+            ],
+            "transitive": false,
+            "limit": 100
+          },
+          "evidence": [
+            {
+              "path": "quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+              "sha256": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84"
+            },
+            {
+              "path": "quill-core/src/test/java/org/treblereel/mcp/core/JvmSourceFilesTest.java",
+              "sha256": "a613227ea09aabb26d5f7f6ca87346db18089bdb53d4217d734abd2cf1c86437"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "tests",
+                "*",
+                "class"
+              ],
+              "expected": [
+                "org.treblereel.mcp.core.JvmSourceFilesTest"
+              ],
+              "mode": "contains"
+            },
+            {
+              "path": [
+                "test_index_coverage",
+                "complete"
+              ],
+              "expected": true,
+              "mode": "equals"
+            }
+          ]
+        },
+        {
+          "id": "java-change-plan",
+          "tool": "plan_change",
+          "arguments": {
+            "targets": [
+              "org.treblereel.mcp.core.JvmSourceFiles"
+            ],
+            "change": "Recognize an additional JVM source extension",
+            "limit": 100
+          },
+          "evidence": [
+            {
+              "path": "quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+              "sha256": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84"
+            },
+            {
+              "path": "quill-core/src/test/java/org/treblereel/mcp/core/JvmSourceFilesTest.java",
+              "sha256": "a613227ea09aabb26d5f7f6ca87346db18089bdb53d4217d734abd2cf1c86437"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "primary_changes",
+                "*",
+                "class"
+              ],
+              "expected": [
+                "org.treblereel.mcp.core.JvmSourceFiles"
+              ],
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "test_plan",
+                "tests",
+                "*",
+                "class"
+              ],
+              "expected": [
+                "org.treblereel.mcp.core.JvmSourceFilesTest"
+              ],
+              "mode": "contains"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "jetbrains-kotlin",
+      "repository": "https://github.com/hechtcarmel/jetbrains-index-mcp-plugin",
+      "revision": "2983e24dc4ae3c464d8a8bcbe5a212cf72cd321b",
+      "build_system": "gradle",
+      "cases": [
+        {
+          "id": "kotlin-top-level-position",
+          "tool": "get_symbol_at_position",
+          "arguments": {},
+          "evidence": [
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/SearchMatchUtils.kt",
+              "sha256": "cfcfe1c9e6941dfaeb77939bb51f63cc3ca45f66c73a2442a22de73f5a82516e"
+            },
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/ExcludedPathScope.kt",
+              "sha256": "f174f43515fafebe8f715a8d49e0f074a08993ec1e0e86340a1ad3d018abf559"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "resolution"
+              ],
+              "expected": "resolved",
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "selected",
+                "class_name"
+              ],
+              "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "selected",
+                "jvm_descriptor"
+              ],
+              "expected": "(Ljava/lang/String;)Z",
+              "mode": "equals"
+            }
+          ],
+          "position": {
+            "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/ExcludedPathScope.kt",
+            "anchor": "return !isExcludedPath(relativePath)",
+            "token": "isExcludedPath"
+          }
+        },
+        {
+          "id": "kotlin-default-argument-position",
+          "tool": "get_symbol_at_position",
+          "arguments": {},
+          "evidence": [
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/SearchMatchUtils.kt",
+              "sha256": "cfcfe1c9e6941dfaeb77939bb51f63cc3ca45f66c73a2442a22de73f5a82516e"
+            },
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/OptimizedSymbolSearch.kt",
+              "sha256": "e5483202abacd99fe3a8fe2aae9a87cb0aef5fd02d94b7ccab2d8f1498702975"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "resolution"
+              ],
+              "expected": "resolved",
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "selected",
+                "class_name"
+              ],
+              "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "selected",
+                "member_name"
+              ],
+              "expected": "createMatcher",
+              "mode": "equals"
+            }
+          ],
+          "position": {
+            "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/OptimizedSymbolSearch.kt",
+            "anchor": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.createMatcher(pattern)",
+            "token": "createMatcher"
+          }
+        },
+        {
+          "id": "kotlin-default-cursor-position",
+          "tool": "get_symbol_at_position",
+          "arguments": {},
+          "evidence": [
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/server/PaginationService.kt",
+              "sha256": "fb278874135c25020c2a564f029bfecdcbb7a6035584aeb392566b0148fb29bc"
+            },
+            {
+              "path": "src/test/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/PaginationServiceUnitTest.kt",
+              "sha256": "e07238ab300102d416733172b1050e3850efba38c34d7ec613ec79df0c32fa78"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "resolution"
+              ],
+              "expected": "resolved",
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "selected",
+                "class_name"
+              ],
+              "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService",
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "selected",
+                "member_name"
+              ],
+              "expected": "encodeCursor",
+              "mode": "equals"
+            }
+          ],
+          "position": {
+            "path": "src/test/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/PaginationServiceUnitTest.kt",
+            "anchor": "val token = service.encodeCursor(\"entry123\", 200)",
+            "token": "encodeCursor"
+          }
+        },
+        {
+          "id": "kotlin-top-level-usages",
+          "tool": "find_symbol_usages",
+          "arguments": {
+            "target": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+            "kind": "method",
+            "name": "isExcludedPath",
+            "signature": "(Ljava/lang/String;)Z",
+            "limit": 100
+          },
+          "evidence": [
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/SearchMatchUtils.kt",
+              "sha256": "cfcfe1c9e6941dfaeb77939bb51f63cc3ca45f66c73a2442a22de73f5a82516e"
+            },
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/ExcludedPathScope.kt",
+              "sha256": "f174f43515fafebe8f715a8d49e0f074a08993ec1e0e86340a1ad3d018abf559"
+            },
+            {
+              "path": "src/test/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/PaginationServiceUnitTest.kt",
+              "sha256": "e07238ab300102d416733172b1050e3850efba38c34d7ec613ec79df0c32fa78"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "usages",
+                "*",
+                "caller",
+                "class"
+              ],
+              "expected": [
+                "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope"
+              ],
+              "mode": "contains"
+            },
+            {
+              "path": [
+                "usages",
+                "*",
+                "caller",
+                "class"
+              ],
+              "expected": [
+                "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+              ],
+              "mode": "excludes"
+            }
+          ]
+        },
+        {
+          "id": "kotlin-default-forwarded-usages",
+          "tool": "find_symbol_usages",
+          "arguments": {
+            "target": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+            "kind": "method",
+            "name": "createMatcher",
+            "signature": "(Ljava/lang/String;Ljava/lang/String;)Lcom/intellij/psi/codeStyle/MinusculeMatcher;",
+            "limit": 100
+          },
+          "evidence": [
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/SearchMatchUtils.kt",
+              "sha256": "cfcfe1c9e6941dfaeb77939bb51f63cc3ca45f66c73a2442a22de73f5a82516e"
+            },
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/OptimizedSymbolSearch.kt",
+              "sha256": "e5483202abacd99fe3a8fe2aae9a87cb0aef5fd02d94b7ccab2d8f1498702975"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "usages",
+                "*",
+                "caller",
+                "class"
+              ],
+              "expected": [
+                "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+              ],
+              "mode": "contains"
+            }
+          ]
+        },
+        {
+          "id": "kotlin-direct-test-impact",
+          "tool": "find_impacted_tests",
+          "arguments": {
+            "targets": [
+              "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+            ],
+            "transitive": false,
+            "limit": 100
+          },
+          "evidence": [
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/server/PaginationService.kt",
+              "sha256": "fb278874135c25020c2a564f029bfecdcbb7a6035584aeb392566b0148fb29bc"
+            },
+            {
+              "path": "src/test/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/PaginationServiceUnitTest.kt",
+              "sha256": "e07238ab300102d416733172b1050e3850efba38c34d7ec613ec79df0c32fa78"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "tests",
+                "*",
+                "class"
+              ],
+              "expected": [
+                "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+              ],
+              "mode": "contains"
+            },
+            {
+              "path": [
+                "test_index_coverage",
+                "complete"
+              ],
+              "expected": true,
+              "mode": "equals"
+            }
+          ]
+        },
+        {
+          "id": "kotlin-change-plan",
+          "tool": "plan_change",
+          "arguments": {
+            "targets": [
+              "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+            ],
+            "change": "Change pagination cursor encoding",
+            "limit": 100
+          },
+          "evidence": [
+            {
+              "path": "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/server/PaginationService.kt",
+              "sha256": "fb278874135c25020c2a564f029bfecdcbb7a6035584aeb392566b0148fb29bc"
+            },
+            {
+              "path": "src/test/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/PaginationServiceUnitTest.kt",
+              "sha256": "e07238ab300102d416733172b1050e3850efba38c34d7ec613ec79df0c32fa78"
+            }
+          ],
+          "assertions": [
+            {
+              "path": [
+                "primary_changes",
+                "*",
+                "class"
+              ],
+              "expected": [
+                "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+              ],
+              "mode": "equals"
+            },
+            {
+              "path": [
+                "test_plan",
+                "tests",
+                "*",
+                "class"
+              ],
+              "expected": [
+                "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+              ],
+              "mode": "contains"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

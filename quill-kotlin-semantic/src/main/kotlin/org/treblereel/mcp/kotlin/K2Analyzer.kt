@@ -132,9 +132,10 @@ object K2Analyzer {
                 }
             }, false, false)
             val arguments = K2JVMCompilerArguments().apply {
-                freeArgs = request.path("sources").map { it.asText() } + request.path("java_roots").map { it.asText() }
+                freeArgs = request.path("sources").map { it.asText() } + request.path("java_roots").map { it.asText() } + request.path("java_sources").map { it.asText() }
                 classpath = request.path("classpath").joinToString(File.pathSeparator) { it.asText() }
                 moduleName = "quill-semantic"
+                friendPaths = request.path("friend_paths").map { it.asText() }.toTypedArray()
                 jdkHome = inputs.jdkHome()
                 kotlinHome = inputs.moduleHome()
                 noStdlib = true; noReflect = true

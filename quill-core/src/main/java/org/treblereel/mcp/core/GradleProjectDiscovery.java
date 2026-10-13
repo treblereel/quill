@@ -17,7 +17,7 @@ import java.util.UUID;
 /** Obtains the evaluated Gradle project structure without embedding Gradle in Quill. */
 public final class GradleProjectDiscovery {
 
-    private static final String CACHE_VERSION = "6";
+    private static final String CACHE_VERSION = "11";
 
     public record Discovery(
             List<Path> moduleDirectories,
@@ -25,13 +25,22 @@ public final class GradleProjectDiscovery {
             Map<Path, Path> classDirectoryOwners,
             Map<Path, String> classDirectorySourceSets,
             Map<Path, String> projectPaths,
+            List<Path> sourceRoots,
             boolean complete) {
+        public Discovery(List<Path> moduleDirectories, List<Path> classesDirectories,
+                Map<Path, Path> classDirectoryOwners, Map<Path, String> classDirectorySourceSets,
+                Map<Path, String> projectPaths, boolean complete) {
+            this(moduleDirectories, classesDirectories, classDirectoryOwners,
+                    classDirectorySourceSets, projectPaths, List.of(), complete);
+        }
+
         public Discovery {
             moduleDirectories = List.copyOf(moduleDirectories);
             classesDirectories = List.copyOf(classesDirectories);
             classDirectoryOwners = Map.copyOf(classDirectoryOwners);
             classDirectorySourceSets = Map.copyOf(classDirectorySourceSets);
             projectPaths = Map.copyOf(projectPaths);
+            sourceRoots = List.copyOf(sourceRoots);
         }
     }
 
@@ -41,12 +50,13 @@ public final class GradleProjectDiscovery {
             Map<Path, Path> classDirectoryOwners,
             Map<Path, String> classDirectorySourceSets,
             Map<Path, String> projectPaths,
+            List<Path> sourceRoots,
             boolean valid) {}
 
     private GradleProjectDiscovery() {}
 
     /**
-     * Asks the target build's Gradle wrapper to export Java projects, main class
+     * Asks the target build's Gradle wrapper to export JVM source sets, class
      * directories, and runtime classpaths. The target build is evaluated normally,
      * so dynamic settings and custom project directories are respected.
      */
@@ -80,6 +90,9 @@ public final class GradleProjectDiscovery {
 
             process = new ProcessBuilder(BuildSystem.GRADLE.command(normalizedRoot,
                     "--init-script", initScript.toString(),
+                    // Export tasks capture evaluated Project objects and listeners. Keep
+                    // them outside the project's configuration cache for this invocation.
+                    "--no-configuration-cache",
                     "-Dquill.internal=true",
                     "-Dquill.manifest=" + manifest,
                     "-Dquill.project=" + normalizedRoot,
@@ -105,7 +118,7 @@ public final class GradleProjectDiscovery {
             return new Discovery(
                     parsed.moduleDirectories(), parsed.classesDirectories(),
                     parsed.classDirectoryOwners(), parsed.classDirectorySourceSets(),
-                    parsed.projectPaths(),
+                    parsed.projectPaths(), parsed.sourceRoots(),
                     parsed.valid());
         } catch (InterruptedException e) {
             terminate(process);
@@ -135,13 +148,13 @@ public final class GradleProjectDiscovery {
         ParsedManifest parsed = parseManifest(manifest);
         return new Discovery(parsed.moduleDirectories(), parsed.classesDirectories(),
                 parsed.classDirectoryOwners(), parsed.classDirectorySourceSets(),
-                parsed.projectPaths(),
+                parsed.projectPaths(), parsed.sourceRoots(),
                 parsed.valid());
     }
 
     private static ParsedManifest parseManifest(Path manifest) {
         if (manifest == null || !Files.isRegularFile(manifest)) {
-            return new ParsedManifest(List.of(), List.of(), Map.of(), Map.of(), Map.of(), false);
+            return new ParsedManifest(List.of(), List.of(), Map.of(), Map.of(), Map.of(), List.of(), false);
         }
 
         Set<Path> modules = new LinkedHashSet<>();
@@ -149,16 +162,22 @@ public final class GradleProjectDiscovery {
         Map<Path, Path> owners = new LinkedHashMap<>();
         Map<Path, String> sourceSets = new LinkedHashMap<>();
         Map<Path, String> projectPaths = new LinkedHashMap<>();
+        Set<Path> roots = new LinkedHashSet<>();
         boolean valid = true;
         try {
             for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
                 if (line.isBlank()) continue;
                 String[] fields = line.split("\\t", -1);
                 try {
+                    if (fields[0].equals("@sources")) {
+                        if (fields.length < 2) throw new IllegalArgumentException("Missing source roots");
+                        for (int i = 1; i < fields.length; i++) roots.add(decodePath(fields[i]));
+                        continue;
+                    }
                     Path module = decodePath(fields[0]);
                     modules.add(module);
                     if (fields.length < 3 || !fields[1].startsWith(":")
-                            || !(fields[2].equals("main") || fields[2].equals("test"))) {
+                            || !validSourceSet(fields[2])) {
                         valid = false;
                         continue;
                     }
@@ -168,8 +187,10 @@ public final class GradleProjectDiscovery {
                         if (!fields[i].isEmpty()) {
                             Path classesDirectory = decodePath(fields[i]);
                             classes.add(classesDirectory);
-                            owners.putIfAbsent(classesDirectory, module);
-                            sourceSets.putIfAbsent(classesDirectory, sourceSet);
+                            Path previousOwner = owners.putIfAbsent(classesDirectory, module);
+                            String previousSet = sourceSets.putIfAbsent(classesDirectory, sourceSet);
+                            if (previousOwner != null && (!previousOwner.equals(module)
+                                    || !previousSet.equals(sourceSet))) valid = false;
                         }
                     }
                 } catch (IllegalArgumentException e) {
@@ -177,11 +198,16 @@ public final class GradleProjectDiscovery {
                 }
             }
         } catch (IOException e) {
-            return new ParsedManifest(List.of(), List.of(), Map.of(), Map.of(), Map.of(), false);
+            return new ParsedManifest(List.of(), List.of(), Map.of(), Map.of(), Map.of(), List.of(), false);
         }
         return new ParsedManifest(
                 new ArrayList<>(modules), new ArrayList<>(classes), owners, sourceSets,
-                projectPaths, valid);
+                projectPaths, new ArrayList<>(roots), valid);
+    }
+
+    public static boolean validSourceSet(String name) {
+        return name != null && name.matches("[A-Za-z0-9_][A-Za-z0-9._-]*")
+                && !name.equals(".") && !name.equals("..");
     }
 
     private static Path decodePath(String value) {
@@ -191,7 +217,7 @@ public final class GradleProjectDiscovery {
     }
 
     private static Discovery incomplete() {
-        return new Discovery(List.of(), List.of(), Map.of(), Map.of(), Map.of(), false);
+        return new Discovery(List.of(), List.of(), Map.of(), Map.of(), Map.of(), List.of(), false);
     }
 
     private static Discovery readCache(Path projectRoot) {
@@ -263,16 +289,17 @@ public final class GradleProjectDiscovery {
                                 def projectDir = project.projectDir.canonicalFile
                                 def selected = rootRequested || projectDir.toPath().startsWith(requested.toPath())
                                 def sourceSets = selected ? project.extensions.findByName('sourceSets') : null
-                                def selectedSourceSets = ['main', 'test'].collectMany { name ->
-                                    def sourceSet = sourceSets?.findByName(name)
-                                    sourceSet == null ? [] : [[name: name, value: sourceSet]]
-                                }
+                                def selectedSourceSets = sourceSets == null ? [] : sourceSets.toList()
+                                    .sort { a, b ->
+                                        def rank = { name -> name == 'main' ? 0 : name == 'test' ? 1 : 2 }
+                                        rank(a.name) <=> rank(b.name) ?: a.name <=> b.name
+                                    }.collect { [name: it.name, value: it] }
                                 if (!selectedSourceSets.isEmpty()) {
                                     // Resolve Kotlin plugin configurations while a Gradle task
                                     // owns the project lock, before buildFinished tears it down.
                                     if (%s) {
                                         quillCaptureKotlin(project)
-                                        project.tasks.withType(org.gradle.api.tasks.compile.JavaCompile).each { task -> quillCaptureJava(project, task, false) }
+                                        project.tasks.withType(org.gradle.api.tasks.compile.JavaCompile).toList().each { task -> quillCaptureJava(project, task, false) }
                                     }
                                     def displayPath = { file ->
                                         def canonical = file.canonicalFile.toPath()
@@ -284,8 +311,17 @@ public final class GradleProjectDiscovery {
                                     }
                                     selectedSourceSets.each { selectedSourceSet ->
                                         def classDirs = selectedSourceSet.value.output.classesDirs.files
-                                            .collect { it.canonicalFile }
-                                            .sort { it.absolutePath }
+                                            .collect { it.canonicalFile }.toSet()
+                                        def javaTask = project.tasks.findByName(selectedSourceSet.value.compileJavaTaskName)
+                                        if (javaTask instanceof org.gradle.api.tasks.compile.JavaCompile) {
+                                            // A task-level destination override need not update SourceSetOutput.
+                                            def configured = selectedSourceSet.value.java.destinationDirectory.orNull
+                                            if (configured != null) classDirs.remove(configured.asFile.canonicalFile)
+                                            def actual = javaTask.destinationDirectory.orNull
+                                            if (actual != null) classDirs.add(actual.asFile.canonicalFile)
+                                        }
+                                        classDirs = classDirs.sort { it.absolutePath }
+                                        selectedSourceSet.classDirs = classDirs
                                         def fields = [encoder.encodeToString(
                                                 displayPath(projectDir).absolutePath.getBytes('UTF-8')),
                                             project.path, selectedSourceSet.name]
@@ -294,18 +330,39 @@ public final class GradleProjectDiscovery {
                                                 displayPath(file).absolutePath.getBytes('UTF-8'))
                                         })
                                         records << fields.join('\t')
+                                        def sourceDirectories = selectedSourceSet.value.allSource.srcDirs.toList()
+                                        def kotlinTask = project.tasks.findByName(selectedSourceSet.value.getCompileTaskName('kotlin'))
+                                        if (kotlinTask != null && kotlinTask.hasProperty('sources')) {
+                                            def trees = [kotlinTask.sources]
+                                            if (kotlinTask.hasProperty('javaSources')) trees.add(kotlinTask.javaSources)
+                                            trees.each { collection ->
+                                                collection.asFileTree.visitStructure([
+                                                    visitCollection: { source, files -> files.each { file -> sourceDirectories.add(file.parentFile) } },
+                                                    visitFileTree: { directory, patterns, tree -> sourceDirectories.add(directory.isFile() ? directory.parentFile : directory) },
+                                                    visitFileTreeBackedByFile: { file, tree, mirror -> }
+                                                ] as org.gradle.api.internal.file.FileCollectionStructureVisitor)
+                                            }
+                                        }
+                                        def roots = sourceDirectories
+                                            .collect { encoder.encodeToString(displayPath(it).absolutePath.getBytes('UTF-8')) }
+                                            .unique().sort()
+                                        if (!roots.isEmpty()) records << (['@sources'] + roots).join('\t')
                                     }
 
                                     def main = sourceSets.findByName('main')
-                                    def mainClassDirs = main == null ? [] : main.output.classesDirs.files
-                                    if (%s && mainClassDirs.any { it.isDirectory() }) {
+                                    def compiledSourceSets = selectedSourceSets.findAll { it.classDirs.any { it.isDirectory() } }
+                                    if (%s && !compiledSourceSets.isEmpty()) {
                                         def buildDir = new File(projectDir, 'build')
                                         def classpath = new File(buildDir, 'quill-classpath.txt')
                                         classpath.parentFile.mkdirs()
-                                        classpath.setText(main.runtimeClasspath.files
+                                        // The dependency index covers all compiled sets; semantic workers use task-specific captures.
+                                        new File(buildDir, 'quill-source-set-classpath.txt').setText(compiledSourceSets.collectMany { it.value.runtimeClasspath.files.toList() }
                                             .findAll { it.isFile() && it.name.endsWith('.jar') }
-                                            .collect { it.canonicalPath }.sort()
+                                            .collect { it.canonicalPath }.unique().sort()
                                             .join(File.pathSeparator), 'UTF-8')
+                                        classpath.setText((main == null ? [] : main.runtimeClasspath.files)
+                                            .findAll { it.isFile() && it.name.endsWith('.jar') }
+                                            .collect { it.canonicalPath }.unique().sort().join(File.pathSeparator), 'UTF-8')
                                         def test = sourceSets.findByName('test')
                                         if (test != null && test.output.classesDirs.files.any {
                                                 it.isDirectory() }) {

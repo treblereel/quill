@@ -8,7 +8,7 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ProjectCodeExpectation;
 import org.treblereel.mcp.workspace.WorkspaceDiscovery;
 
-/** Initializes every discovered Java repository that already has compiled main classes. */
+/** Initializes every discovered Java repository that already has compiled JVM source-set classes. */
 final class WorkspaceRepositoryInitializer {
 
     static final int DEFAULT_JOBS = 4;
@@ -94,7 +94,7 @@ final class WorkspaceRepositoryInitializer {
                 output.accept("Skipped " + repository.name() + ": " + diagnostic);
                 return new RepositoryResult(repository.name(), root, "skipped", diagnostic);
             }
-            List<Path> mainClasses = ProjectInitializer.findMainClassesDirs(root);
+            List<Path> mainClasses = ProjectInitializer.findIndexableClassesDirs(root);
             if (mainClasses.isEmpty()
                     && ProjectCodeExpectation.inspect(root, buildSystem)
                             == ProjectCodeExpectation.State.METADATA_ONLY) {
@@ -116,9 +116,9 @@ final class WorkspaceRepositoryInitializer {
             }
             if (mainClasses.isEmpty()) {
                 String diagnostic = indexOnly
-                        ? "no compiled main classes; build the repository, then run "
+                        ? "no compiled JVM source-set classes; build the repository, then run "
                                 + "workspace refresh"
-                        : "no compiled main classes; build integration is installed and the next "
+                        : "no compiled JVM source-set classes; build integration is installed and the next "
                                 + "successful build will make the repository indexable";
                 output.accept("Pending build " + repository.name() + ": " + diagnostic);
                 return new RepositoryResult(

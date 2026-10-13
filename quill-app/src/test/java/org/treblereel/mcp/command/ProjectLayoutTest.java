@@ -29,6 +29,7 @@ class ProjectLayoutTest {
         assertEquals(List.of("main", "test"), discovery.outputs().stream()
                 .map(ProjectLayout.CompiledOutput::sourceSet).toList());
         assertEquals(List.of(main), ProjectInitializer.findMainClassesDirs(project));
+        assertEquals(List.of(main), ProjectInitializer.findIndexableClassesDirs(project));
         assertEquals(List.of(testSources.toAbsolutePath().normalize()),
                 ProjectLayout.findSourceRoots(discovery.moduleDirectories()));
     }
@@ -73,6 +74,25 @@ class ProjectLayoutTest {
         Files.createDirectories(source.getParent());
         Files.writeString(source, "class FeatureTest");
         assertTrue(ProjectLayout.hasTestSources(module));
+    }
+
+    @Test
+    void retainsCustomOutputSourceSetAndRejectsTraversal(@TempDir Path module) {
+        var output = new ProjectLayout.CompiledOutput(module.resolve("out/fixtures"), module, "testFixtures");
+        assertEquals("testFixtures", output.sourceSet());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> new ProjectLayout.CompiledOutput(module.resolve("out"), module, "../outside"));
+    }
+
+    @Test
+    void stateFingerprintIncludesAdditionalGradleClasspath(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("build.gradle"), "plugins { id 'java' }");
+        Path output = classOutput(project.resolve("build/classes/java/main"), "Main.class");
+        Files.writeString(project.resolve("build/quill-classpath.txt"), "");
+        Path extra = Files.writeString(project.resolve("build/quill-source-set-classpath.txt"), "");
+        String before = ProjectLayout.computeStateFingerprint(project, List.of(output));
+        Files.writeString(extra, project.resolve("integration-only.jar").toString());
+        assertNotEquals(before, ProjectLayout.computeStateFingerprint(project, List.of(output)));
     }
 
     private static Path classOutput(Path directory, String className) throws Exception {

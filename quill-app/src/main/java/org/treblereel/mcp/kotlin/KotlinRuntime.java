@@ -42,35 +42,58 @@ public final class KotlinRuntime {
 
     public static String version() { return QuillTopCommand.property("kotlin-version"); }
 
+    /** Compiler plugins require the exact compiler patch version used by the build. */
+    public static String selectVersion(String captured) {
+        if (captured == null || captured.isBlank()) return version();
+        for (String supported : List.of("2.1.20", version())) {
+            if (captured.equals(supported) || captured.startsWith(supported + "-")) return supported;
+        }
+        return null;
+    }
+
+    private static String workerResource(String selected) {
+        return "/kotlin-worker/" + (selected.equals(version()) ? "worker.jar" : "worker-2.1.20.jar");
+    }
+
     /** Shared across projects and processes; a manifest is published only after every JAR exists. */
-    public static synchronized List<Path> prepare() throws IOException {
+    public static synchronized List<Path> prepare() throws IOException { return prepareVersion(version()); }
+
+    public static synchronized List<Path> prepareVersion(String selected) throws IOException {
+        requireSupported(selected);
         checkJava();
-        Path directory = directory(cacheRoot());
+        Path directory = directory(cacheRoot(), selected);
         Files.createDirectories(directory);
         try (var channel = FileChannel.open(directory.resolve("runtime.lock"),
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE); var lock = channel.lock()) {
-            List<Path> cached = read(directory);
+            List<Path> cached = read(directory, selected);
             if (!cached.isEmpty()) return cached;
-            List<Path> dependencies = resolve();
-            return publish(directory, dependencies);
+            List<Path> dependencies = resolve(selected);
+            return publish(directory, dependencies, selected);
         }
     }
 
     /** Never contacts a repository, creates files, or runs Maven/Gradle. */
-    public static List<Path> available() {
-        try { return read(directory(cacheRoot())); }
+    public static List<Path> available() { return available(version()); }
+
+    public static List<Path> available(String selected) {
+        if (selectVersion(selected) == null) return List.of();
+        try { return read(directory(cacheRoot(), selected), selected); }
         catch (IOException | RuntimeException failure) { return List.of(); }
     }
 
-    static String workerIdentity() throws IOException {
-        Path manifest = directory(cacheRoot()).resolve("classpath.properties");
+    static String workerIdentity() throws IOException { return workerIdentity(version()); }
+
+    static String workerIdentity(String selected) throws IOException {
+        Path manifest = directory(cacheRoot(), selected).resolve("classpath.properties");
         var attributes = Files.readAttributes(manifest, java.nio.file.attribute.BasicFileAttributes.class);
         return manifest.toAbsolutePath() + ":" + attributes.lastModifiedTime() + ":" + attributes.size()
                 + ":" + attributes.fileKey() + ":" + javaExecutable();
     }
 
-    public static List<String> workerCommand() throws IOException {
-        List<Path> files = available();
+    public static List<String> workerCommand() throws IOException { return workerCommand(version()); }
+
+    public static List<String> workerCommand(String selected) throws IOException {
+        List<Path> files = available(selected);
         if (files.isEmpty()) throw new IOException("K2 runtime is missing or damaged; run quill init");
         return List.of(javaExecutable(), "-Xmx512m", "-cp",
                 String.join(File.pathSeparator, files.stream().map(Path::toString).toList()),
@@ -107,24 +130,31 @@ public final class KotlinRuntime {
         catch (NumberFormatException malformed) { return -1; }
     }
 
-    static Path directory(Path root) throws IOException {
-        try (InputStream worker = KotlinRuntime.class.getResourceAsStream("/kotlin-worker/worker.jar")) {
+    static Path directory(Path root) throws IOException { return directory(root, version()); }
+
+    static Path directory(Path root, String selected) throws IOException {
+        requireSupported(selected);
+        try (InputStream worker = KotlinRuntime.class.getResourceAsStream(workerResource(selected))) {
             if (worker == null) throw new IOException("Distribution is missing its Kotlin worker");
             String hash = digest(worker.readAllBytes());
-            return root.toAbsolutePath().normalize().resolve(version()).resolve(hash);
+            return root.toAbsolutePath().normalize().resolve(selected).resolve(hash);
         }
     }
 
     static List<Path> publish(Path directory, List<Path> dependencies) throws IOException {
+        return publish(directory, dependencies, version());
+    }
+
+    static List<Path> publish(Path directory, List<Path> dependencies, String selected) throws IOException {
         if (dependencies.isEmpty()) throw new IOException("Empty compiler dependency graph");
         Path worker = directory.resolve("worker.jar");
-        try (InputStream source = KotlinRuntime.class.getResourceAsStream("/kotlin-worker/worker.jar")) {
+        try (InputStream source = KotlinRuntime.class.getResourceAsStream(workerResource(selected))) {
             if (source == null) throw new IOException("Distribution is missing its Kotlin worker");
             atomicWrite(worker, source.readAllBytes());
         }
         List<Path> files = new ArrayList<>(); files.add(worker); files.addAll(dependencies);
         Properties manifest = new Properties();
-        manifest.setProperty("version", version());
+        manifest.setProperty("version", selected);
         manifest.setProperty("count", Integer.toString(files.size()));
         for (int i = 0; i < files.size(); i++) {
             Path file = files.get(i).toAbsolutePath().normalize();
@@ -136,13 +166,15 @@ public final class KotlinRuntime {
         return List.copyOf(files);
     }
 
-    static List<Path> read(Path directory) throws IOException {
+    static List<Path> read(Path directory) throws IOException { return read(directory, version()); }
+
+    static List<Path> read(Path directory, String selected) throws IOException {
         Path file = directory.resolve("classpath.properties");
         if (!Files.isRegularFile(file)) return List.of();
         Properties manifest = new Properties();
         try (var input = Files.newInputStream(file)) { manifest.load(input); }
         try {
-            if (!version().equals(manifest.getProperty("version"))) return List.of();
+            if (!selected.equals(manifest.getProperty("version"))) return List.of();
             int count = Integer.parseInt(manifest.getProperty("count"));
             if (count < 2 || count > 100) return List.of();
             List<Path> paths = new ArrayList<>();
@@ -182,7 +214,15 @@ public final class KotlinRuntime {
         } catch (java.security.NoSuchAlgorithmException impossible) { throw new IOException(impossible); }
     }
 
-    static List<Path> resolve() throws IOException {
+    static List<Path> resolve() throws IOException { return resolve(version()); }
+
+    private static void requireSupported(String selected) throws IOException {
+        if (selected == null || !selected.equals("2.1.20") && !selected.equals(version()))
+            throw new IOException("Unsupported K2 compiler version: " + selected);
+    }
+
+    static List<Path> resolve(String selected) throws IOException {
+        requireSupported(selected);
         Settings settings = settings();
         var system = new RepositorySystemSupplier().get();
         try {
@@ -217,9 +257,9 @@ public final class KotlinRuntime {
                             RepositoryPolicy.CHECKSUM_POLICY_FAIL)).build();
             var collect = new CollectRequest();
             collect.setRepositories(system.newResolutionRepositories(session, List.of(repository)));
-            collect.addDependency(new Dependency(new DefaultArtifact("org.jetbrains.kotlin:kotlin-compiler-embeddable:" + version()), "runtime"));
-            collect.addDependency(new Dependency(new DefaultArtifact("org.jetbrains.kotlin:kotlin-scripting-compiler-embeddable:" + version()), "runtime"));
-            collect.addDependency(new Dependency(new DefaultArtifact("org.jetbrains.kotlin:kotlin-stdlib:" + version()), "runtime"));
+            collect.addDependency(new Dependency(new DefaultArtifact("org.jetbrains.kotlin:kotlin-compiler-embeddable:" + selected), "runtime"));
+            collect.addDependency(new Dependency(new DefaultArtifact("org.jetbrains.kotlin:kotlin-scripting-compiler-embeddable:" + selected), "runtime"));
+            collect.addDependency(new Dependency(new DefaultArtifact("org.jetbrains.kotlin:kotlin-stdlib:" + selected), "runtime"));
             collect.addDependency(new Dependency(new DefaultArtifact("com.fasterxml.jackson.core:jackson-databind:"
                     + QuillTopCommand.property("jackson-version")), "runtime"));
             List<Path> files = system.resolveDependencies(session, new DependencyRequest(collect,
@@ -239,7 +279,7 @@ public final class KotlinRuntime {
             return files;
         } catch (Exception failure) {
             // Repository errors can contain URLs or credentials; do not echo their messages.
-            throw new IOException("Could not resolve K2 " + version()
+            throw new IOException("Could not resolve K2 " + selected
                     + "; check repository access, settings and offline cache", failure);
         } finally { system.shutdown(); }
     }

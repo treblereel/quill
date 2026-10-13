@@ -88,7 +88,8 @@ object K2Analyzer {
             if (request.path("unsupported_plugins").asText().isNotBlank()) return response("compiler_plugins_unavailable")
             if (!request.path("plugin_classpath").isEmpty || !request.path("plugin_options").isEmpty) {
                 if (!request.path("allow_compiler_plugins").asBoolean(false)) return response("compiler_plugins_disabled")
-                if (request.path("compilerVersion").asText() != "2.4.21") return response("compiler_plugin_version_mismatch")
+                val compilerVersion = request.path("compilerVersion").asText()
+                if (compilerVersion != "2.4.21" && !compilerVersion.startsWith("2.4.21-")) return response("compiler_plugin_version_mismatch")
             }
             val inputs = timings.measure("capture_before") { CompilerInputs.capture(request) }
             key = CacheKey(inputs.moduleHome(), inputs.sourceSet())

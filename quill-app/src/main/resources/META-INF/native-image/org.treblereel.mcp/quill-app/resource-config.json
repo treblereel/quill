@@ -5,6 +5,7 @@
       {"pattern": "java-worker/worker\\.jar$"},
       {"pattern": "quill\\.properties$"},
       {"pattern": "kotlin-worker/worker\\.jar$"},
+      {"pattern": "kotlin-worker/worker-2\\.1\\.20\\.jar$"},
       {"pattern": "org/eclipse/jgit/internal/JGitText\\.properties$"},
       {"pattern": "org/eclipse/jgit/internal/storage/dfs/DfsText\\.properties$"}
     ]

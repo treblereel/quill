@@ -139,5 +139,36 @@ Both remaining `unknown` cases are change plans. Their expected primary classes
 and tests appear in the response, but the nested affected-test list exceeds the
 tool's 100-result limit and is correctly marked incomplete. They are not counted
 as passes. The candidate's benchmark exit status therefore remains nonzero even
-though all independently checkable facts pass. Multi-version K2 plugin support
-and complete paginated change-plan evidence remain separate follow-up work.
+though all independently checkable facts pass. Complete paginated change-plan
+evidence remains follow-up work.
+
+## Kotlin 2.1.20 worker check — macOS arm64, 2026-10-13
+
+The next JVM candidate embeds a separate thin 2.1.20 worker. On the same disposable
+JetBrains Gradle project, `quill init` read `compilerVersion=2.1.20-release-217`
+from the captured Kotlin task settings and prepared the 2.1.20 runtime. With
+`allowPlugins=true` in the disposable project's `.quill/kotlin-main.properties`,
+the first `get_symbol_at_position` for `isExcludedPath(path)` returned
+`semantic_analysis.status=resolved`, `compiler_version=2.1.20`, and the expected
+`(Ljava/lang/String;)Z` descriptor. This confirms that the serialization plugin
+and project compiler can run through FIR together. The first request took 11.4 s;
+startup and frontend costs are included, so this is not a warm latency estimate.
+
+A one-sample run of the pinned manifest returned Java 5/0/1 and Kotlin 6/0/1
+passed/failed/unknown, with source, bytecode and Git status unchanged. The two
+unknown change plans remain limited by the 100-result affected-test page. This
+single-sample check establishes correctness, not a latency comparison with the
+six-sample native runs above.
+
+The macOS arm64 native candidate was built with `./mvnw -pl quill-app -am
+-DskipTests package -Pnative`. Its executable is 69,497,560 bytes, 16,528 bytes
+larger than the preceding single-worker candidate from the same checkout. Native
+`quill init` prepared K2 2.1.20, and a native position query with the serialization
+plugin enabled returned `semantic_analysis.status=resolved` and the same descriptor.
+
+[Six samples per case](results/real-projects-v1-macos-2026-10-13-k2-2.1.20-native.json)
+returned Java 5/0/1 and Kotlin 6/0/1 passed/failed/unknown; both input snapshots
+remained unchanged. The first Kotlin position request took 13.4 s including startup,
+while its five subsequent requests had a 199 ms median and 213 ms p95. This
+measures one project and host with compiler plugins enabled, not a general K2
+latency guarantee. Both unknown change plans still exceed the affected-test page.

@@ -71,4 +71,21 @@ class KotlinRuntimeInitializationTest {
         assertTrue(KotlinRuntime.available().isEmpty());
         assertNotNull(ProjectIndexStore.findDbForHead(project));
     }
+
+    @Test void capturedCompilerVersionControlsWhichRuntimeInitPrepares() throws Exception {
+        kotlinSource();
+        Files.writeString(project.resolve("target/quill-kotlin-main.properties"),
+                "compilerVersion=2.1.20-release-217\n");
+        assertTrue(ProjectInitializer.initializeDetailed(project, false).successful());
+        assertTrue(Files.isDirectory(KotlinRuntime.cacheRoot().resolve("2.1.20")));
+        assertFalse(Files.exists(KotlinRuntime.cacheRoot().resolve(KotlinRuntime.version())));
+    }
+
+    @Test void unsupportedCompilerDoesNotDownloadAnUnrelatedRuntime() throws Exception {
+        kotlinSource();
+        Files.writeString(project.resolve("target/quill-kotlin-main.properties"),
+                "compilerVersion=2.1.21\n");
+        assertTrue(ProjectInitializer.initializeDetailed(project, false).successful());
+        assertFalse(Files.exists(KotlinRuntime.cacheRoot()));
+    }
 }

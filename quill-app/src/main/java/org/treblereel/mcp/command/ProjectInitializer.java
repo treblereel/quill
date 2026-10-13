@@ -649,12 +649,38 @@ public class ProjectInitializer {
         metadata.put("kotlin_declarations", Integer.toString(kotlinDeclarations.size()));
         if (!indexOnly && (!kotlinDeclarations.isEmpty() || inventory.files().stream()
                 .anyMatch(file -> file.kind().equals("kotlin") && file.lifecycle().equals("current")))) {
-            try {
-                org.treblereel.mcp.kotlin.KotlinRuntime.prepare();
-                System.err.println("[quill] K2 " + org.treblereel.mcp.kotlin.KotlinRuntime.version() + " runtime ready");
-            } catch (IOException failure) {
-                System.err.println("[quill] K2 runtime unavailable; Kotlin metadata analysis remains available. "
-                        + failure.getMessage());
+            var versions = new java.util.LinkedHashSet<String>();
+            boolean capturedVersion = false;
+            for (Path module : moduleDirectories) {
+                BuildSystem moduleBuild = BuildSystem.hasGradleMarker(module) ? BuildSystem.GRADLE
+                        : Files.isRegularFile(module.resolve("pom.xml")) ? BuildSystem.MAVEN : buildSystem;
+                Path output = moduleBuild.classpathFile(module).getParent();
+                if (!Files.isDirectory(output)) continue;
+                try (var settings = Files.newDirectoryStream(output, "quill-kotlin-*.properties")) {
+                    for (Path file : settings) {
+                        var properties = new java.util.Properties();
+                        try (var input = Files.newInputStream(file)) { properties.load(input); }
+                        String captured = properties.getProperty("compilerVersion", "");
+                        if (!captured.isBlank()) {
+                            capturedVersion = true;
+                            String selected = org.treblereel.mcp.kotlin.KotlinRuntime.selectVersion(captured);
+                            if (selected == null) System.err.println("[quill] K2 " + captured + " is unsupported; semantic analysis will use indexed fallback");
+                            else versions.add(selected);
+                        }
+                    }
+                } catch (IOException failure) {
+                    System.err.println("[quill] Could not read captured Kotlin compiler settings: " + failure.getMessage());
+                }
+            }
+            if (!capturedVersion) versions.add(org.treblereel.mcp.kotlin.KotlinRuntime.version());
+            for (String selected : versions) {
+                try {
+                    org.treblereel.mcp.kotlin.KotlinRuntime.prepareVersion(selected);
+                    System.err.println("[quill] K2 " + selected + " runtime ready");
+                } catch (IOException failure) {
+                    System.err.println("[quill] K2 " + selected + " runtime unavailable; Kotlin metadata analysis remains available. "
+                            + failure.getMessage());
+                }
             }
             timings.finish("kotlin_runtime");
         }

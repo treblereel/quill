@@ -63,7 +63,7 @@ class K2SnapshotTest {
         assertEquals("analysis_error", K2Analyzer.analyze(request).path("status").asText());
         String jar = Path.of(org.jetbrains.kotlin.allopen.AllOpenComponentRegistrar.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
         request.putArray("plugin_classpath").add(jar); request.putArray("plugin_options").add("plugin:org.jetbrains.kotlin.allopen:annotation=Open");
-        request.put("allow_compiler_plugins", true).put("compilerVersion", "2.4.21");
+        request.put("allow_compiler_plugins", true).put("compilerVersion", "2.4.21-release-1");
         var valid = resolve(request, "()I"); assertEquals("Base", valid.path("owner").asText());
         assertTrue(resolve(request, "()I").path("analysis_reused").asBoolean());
         request.withArray("plugin_options").removeAll();

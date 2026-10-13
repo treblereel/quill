@@ -818,15 +818,17 @@ selection from lexical fallback and include freshness metadata. Preview, JPMS an
 unsupported configurations report explicit semantic statuses. See
 [Java compiler navigation](docs/java-semantic-navigation.md) for requirements and limits.
 
-Quill uses the K2 FIR frontend from Kotlin 2.4.21, with language level 2.4
-as the default and captured project settings when available. Kotlin position queries automatically resolve overloads, receiver members,
+Quill supports the K2 FIR frontends from Kotlin 2.1.20 and 2.4.21. It selects the
+worker from each module's captured compiler version; without a capture it defaults
+to 2.4.21. Other compiler versions report `compiler_version_unsupported` and retain
+indexed navigation. Kotlin position queries automatically resolve overloads, receiver members,
 generic functions and local shadowing, exposing the result in `semantic_analysis`.
-Every distribution embeds a small worker JAR. On Kotlin projects, `quill init` prepares
-its compiler dependencies using embedded Maven Resolver, for both Maven and Gradle.
+Every distribution embeds two small worker JARs. On Kotlin projects, `quill init` prepares
+the required compiler dependencies using embedded Maven Resolver, for both Maven and Gradle.
 Compiler resolution does not run either build tool or change the project's compiler version.
 Native and JVM Quill run this worker with Java 17 or newer (`JAVA_HOME`, then
 `java.home`, then `java` on PATH). The compiler is not linked into the native executable.
-The shared runtime manifest is stored under `~/.quill/kotlin`; artifacts use the Maven
+Version-specific runtime manifests are stored under `~/.quill/kotlin`; artifacts use the Maven
 local repository. Concurrent initialization is locked and incomplete manifests are not published.
 `--index-only` skips runtime installation. Resolution failures preserve indexing and
 print a warning; missing/damaged runtimes report `runtime_missing` during queries.
@@ -843,7 +845,8 @@ these runtime settings. Maven settings profiles and global settings are not merg
 With a prepared cache, initialization and queries work offline.
 Analysis reuses one child JVM per MCP session with a 512 MiB heap limit and a
 30-second timeout. Its JVM thread stack is 8 MiB to support deep inferred return-type
-chains. Stack exhaustion returns an unavailable result and discards the worker before
+chains. Switching between compiler versions restarts that child with the matching
+runtime. Stack exhaustion returns an unavailable result and discards the worker before
 the next query. Requests are serialized. The worker retains at most two module/source-set
 FIR snapshots using LRU eviction and reuses them while compiler inputs match. Returning
 to an unchanged module avoids another frontend run. At 75% of the maximum heap,
@@ -892,7 +895,8 @@ It reads captured module classpaths and a JDK (`JAVA_HOME`, or the JVM's `java.h
 without executing build scripts during queries. Missing dependencies,
 unsupported syntax and analysis errors keep the metadata/lexical fallback, whose confidence
 is at most medium.
-K2 smart casts and context parameters participate in overload resolution. FIR analysis stops before
+K2 smart casts participate in overload resolution; context parameters require the
+2.4.21 worker. FIR analysis stops before
 IR lowering/code generation. Ordinary `.kts` sources use the default JVM script definition;
 top-level code is never evaluated. Gradle Kotlin DSL scripts require a custom definition
 and report `script_definition_missing`.
@@ -914,12 +918,11 @@ For example, enable captured compatible plugins explicitly with:
 
 ```properties
 allowPlugins=true
-compilerVersion=2.4.21
 ```
 
 Gradle's built-in JVM scripting components do not require plugin opt-in.
 Compiler plugin loading is disabled by default and requires the project's exact compiler
-version to match the worker (2.4.21). The worker imports FIR extensions; declarations
+patch version to match one of the workers (2.1.20 or 2.4.21). The worker imports FIR extensions; declarations
 created only by IR code generation remain outside frontend analysis. All-open is tested
 against real Maven and Gradle builds. Indexed `argument.count` / `argument.N`,
 `pluginClasspath.count` / `pluginClasspath.N`, and `pluginOption.count` / `pluginOption.N`
@@ -928,8 +931,7 @@ Only supported semantic flags are accepted. Output, evaluation, plugin-loading a
 arbitrary compiler flags cannot be smuggled through the argument list.
 Kotlin Multiplatform/Android task graphs and custom script definitions need further
 integration; they are not covered by the standard JVM main/test capture.
-Maven build capture requires extension 0.1.1. It must be published separately before
-shipping this change; local validation installs it into the local Maven repository.
+Maven build capture requires extension 0.1.3 or newer.
 Compiler-confirmed indexed targets have high confidence; local targets suppress unrelated
 indexed matches. A resolved target absent from the index reports `semantic_target_not_indexed`.
 The earlier fully embedded compiler's native size and runtime costs are recorded in

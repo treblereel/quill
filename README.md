@@ -456,7 +456,10 @@ does not imply that an executor, reactive stream, or message publication has com
 - **get_context** — assemble a compact change-ready card for up to ten classes: resolution,
   symbol and DI details, coupling, usages, affected tests, risk, and index freshness
 - **plan_change** — turn an intended change into an ordered, evidence-backed plan with primary
-  files, dependency-review candidates, ranked tests, risk, coverage, and freshness warnings
+  files, dependency-review candidates, ranked tests, risk, coverage, and freshness warnings.
+  When `test_plan.has_more` is true, follow `test_plan.next_page_request` with
+  `find_impacted_tests` to retrieve every remaining ranked test; the continuation retains
+  the same targets, traversal depth, page size, and offset
 - **verify_change** — combine live worktree state, captured build diagnostics, affected tests,
   and index freshness into `ready`, `needs_build`, `blocked`, or `partial` verification
   plus a non-executing verification plan that uses a project wrapper when usable, falls back to

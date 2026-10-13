@@ -145,6 +145,57 @@ def score(payload: dict[str, Any], assertions: list[dict[str, Any]]) -> dict[str
             **({"reason": reason} if reason else {}), "assertions": results}
 
 
+def complete_change_plan_tests(client: Any, payload: dict[str, Any]) -> tuple[dict[str, Any], float]:
+    """Follow only Quill's exact affected-test continuation; reject moving or partial evidence."""
+    plan = payload.get("test_plan")
+    if not isinstance(plan, dict) or not plan.get("has_more"):
+        return payload, 0.0
+    tests = plan.get("tests")
+    if not isinstance(tests, list) or not isinstance(plan.get("total"), int):
+        raise RuntimeError("Incomplete change-plan test page")
+    expected_index = payload.get("_meta", {}).get("index_id")
+    if not expected_index:
+        raise RuntimeError("Change-plan index identity missing")
+    seen = {(test.get("class"), test.get("file")) for test in tests}
+    total = plan["total"]
+    extra_ms = 0.0
+    while plan.get("has_more"):
+        continuation = plan.get("next_page_request")
+        if not isinstance(continuation, dict) or continuation.get("tool") != "find_impacted_tests":
+            raise RuntimeError("Change-plan continuation missing")
+        args = continuation.get("arguments")
+        if not isinstance(args, dict) or args.get("offset") != len(tests) or args.get("limit", 0) < 1:
+            raise RuntimeError("Change-plan continuation invalid")
+        page, timing = client.call("find_impacted_tests", args)
+        extra_ms += timing["latency_ms"]
+        if (page.get("_meta", {}).get("index_id") != expected_index
+                or page.get("targets") != args.get("targets")
+                or page.get("offset") != args["offset"] or page.get("total") != total
+                or page.get("answer_complete") is not True
+                or page.get("test_index_coverage", {}).get("complete") is not True
+                or not isinstance(page.get("tests"), list)
+                or page.get("showing") != len(page["tests"])):
+            raise RuntimeError("Change-plan continuation evidence changed")
+        for test in page["tests"]:
+            identity = (test.get("class"), test.get("file"))
+            if identity in seen:
+                raise RuntimeError("Duplicate affected test across pages")
+            seen.add(identity)
+            tests.append(test)
+        if len(tests) > total or page.get("has_more") and page.get("next_offset") != len(tests):
+            raise RuntimeError("Change-plan continuation did not advance")
+        plan["has_more"] = page.get("has_more")
+        plan["next_page_request"] = ({"tool": "find_impacted_tests", "arguments": {
+            **args, "offset": page["next_offset"]}} if page.get("has_more") else None)
+    if len(tests) != total:
+        raise RuntimeError("Affected-test pagination did not cover the total")
+    plan["showing"] = total
+    plan["pagination_complete"] = True
+    plan.pop("next_page_request", None)
+    plan.pop("next_offset", None)
+    return payload, extra_ms
+
+
 def prepare_case(root: Path, case: dict[str, Any]) -> dict[str, Any]:
     for evidence in case["evidence"]:
         if digest(source_path(root, evidence["path"])) != evidence["sha256"]:
@@ -200,8 +251,11 @@ def run_project(command: list[str], root: Path, project: dict[str, Any], samples
                 started = time.perf_counter()
                 try:
                     payload, timing = client.call(case["tool"], arguments)
+                    extra_ms = 0.0
+                    if case["tool"] == "plan_change":
+                        payload, extra_ms = complete_change_plan_tests(client, payload)
                     result = score(payload, case["assertions"])
-                    elapsed = timing["latency_ms"]
+                    elapsed = timing["latency_ms"] + extra_ms
                     transport_errors.append(False)
                 except (RuntimeError, TimeoutError, OSError) as error:
                     # Never persist raw server messages, which may contain private code.

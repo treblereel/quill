@@ -96,8 +96,8 @@ final class ContextQueries {
             ObjectNode impact = parse(tests.findImpactedTests(
                     jdbi, resolvedNames, true, 3, limit, 0));
             root.set("impacted_tests", compact(impact, List.of(
-                    "targets", "test_index_coverage", "answer_complete", "limitations", "tests",
-                    "showing", "total", "has_more", "next_offset")));
+                "targets", "test_index_coverage", "answer_complete", "limitations", "tests",
+                "showing", "total", "limit", "offset", "has_more", "next_offset")));
         }
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();

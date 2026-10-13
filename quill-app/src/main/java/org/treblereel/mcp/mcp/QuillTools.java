@@ -245,9 +245,9 @@ public final class QuillTools {
     public String plan_change(
             @ToolArg(description = "Classes or source paths to change (max 10)") List<String> targets,
             @ToolArg(description = "Concise description of the intended change") String change,
-            @ToolArg(description = "Members, usages, and tests per section; default 10, max 25") Optional<Integer> limit,
+            @ToolArg(description = "Members, usages, and tests per section; default 10, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        int requestedLimit = clamp(limit.orElse(10), 1, 25);
+        int requestedLimit = clamp(limit.orElse(10), 1, 100);
         return forAllProjects(project.orElse(null), p -> queries.planChange(
                 p.jdbi(), p.root(), targets, change, requestedLimit));
     }

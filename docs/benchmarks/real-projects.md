@@ -172,3 +172,14 @@ remained unchanged. The first Kotlin position request took 13.4 s including star
 while its five subsequent requests had a 199 ms median and 213 ms p95. This
 measures one project and host with compiler plugins enabled, not a general K2
 latency guarantee. Both unknown change plans still exceed the affected-test page.
+
+## Affected-test continuation follow-up
+
+The next candidate adds `test_plan.next_page_request` to `plan_change` when its nested
+affected-test list has another page. The request names `find_impacted_tests` with the
+same targets, traversal settings, and the next offset. `change_session` preserves this
+request in both summary and full plan views. The real-project runner now follows all
+pages before scoring a plan, checking index identity, target identity, total count,
+coverage, monotonic offsets, and duplicate test identities. A failed or changed page
+remains `unknown`; earlier published reports are unchanged. A new host run is needed
+before claiming the two real-project change plans pass.

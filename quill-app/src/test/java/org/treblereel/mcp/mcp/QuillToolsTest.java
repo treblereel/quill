@@ -466,6 +466,89 @@ class QuillToolsTest {
     }
 
     @Test
+    void planChangeProvidesExecutableContinuationForEveryAffectedTest() throws Exception {
+        writeMinimalPom();
+        addOrderTests(0, 27);
+        var tools = new QuillTools();
+        JsonNode plan = JSON.readTree(tools.planChange(jdbi, tempDir,
+                List.of("OrderService"), "Change order processing", 10));
+        JsonNode testPlan = plan.path("test_plan");
+        assertEquals(27, testPlan.path("total").asInt());
+        assertEquals(10, testPlan.path("showing").asInt());
+        assertTrue(testPlan.path("has_more").asBoolean());
+        assertTrue(testPlan.path("answer_complete").asBoolean());
+        JsonNode next = testPlan.path("next_page_request");
+        assertEquals("find_impacted_tests", next.path("tool").asText());
+        JsonNode args = next.path("arguments");
+        assertEquals(10, args.path("offset").asInt());
+        assertEquals(10, args.path("limit").asInt());
+        assertEquals(3, args.path("max_depth").asInt());
+        assertEquals("org.acme.OrderService", args.path("targets").get(0).asText());
+
+        JsonNode second = JSON.readTree(tools.findImpactedTests(jdbi,
+                List.of("org.acme.OrderService"), true, 3, 10, 10));
+        JsonNode third = JSON.readTree(tools.findImpactedTests(jdbi,
+                List.of("org.acme.OrderService"), true, 3, 10, 20));
+        assertEquals(10, second.path("showing").asInt());
+        assertEquals(7, third.path("showing").asInt());
+        assertFalse(third.path("has_more").asBoolean());
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (JsonNode page : List.of(testPlan, second, third)) {
+            for (JsonNode test : page.path("tests")) names.add(test.path("class").asText());
+        }
+        assertEquals(27, names.size());
+
+        JsonNode session = JSON.readTree(new ChangeSessionQueries().snapshot(
+                jdbi, tempDir, List.of("OrderService"), "Change order processing", 10,
+                "summary", "plan"));
+        assertEquals(next, session.path("plan").path("test_plan")
+                .path("next_page_request"));
+    }
+
+    @Test
+    void planChangeContinuationAppearsOnlyBeyondHundredTests() throws Exception {
+        writeMinimalPom();
+        addOrderTests(0, 100);
+        var tools = new QuillTools();
+        JsonNode exact = JSON.readTree(tools.planChange(jdbi, tempDir,
+                List.of("OrderService"), "Change order processing", 100));
+        assertEquals(100, exact.path("test_plan").path("showing").asInt());
+        assertFalse(exact.path("test_plan").path("has_more").asBoolean());
+        assertFalse(exact.path("test_plan").has("next_page_request"));
+
+        addOrderTests(100, 1);
+        JsonNode overflow = JSON.readTree(tools.planChange(jdbi, tempDir,
+                List.of("OrderService"), "Change order processing", 100));
+        assertEquals(101, overflow.path("test_plan").path("total").asInt());
+        assertEquals(100, overflow.path("test_plan").path("showing").asInt());
+        assertEquals(100, overflow.path("test_plan").path("next_page_request")
+                .path("arguments").path("offset").asInt());
+        JsonNode last = JSON.readTree(tools.findImpactedTests(jdbi,
+                List.of("org.acme.OrderService"), true, 3, 100, 100));
+        assertEquals(1, last.path("showing").asInt());
+        assertFalse(last.path("has_more").asBoolean());
+    }
+
+    private void addOrderTests(int start, int count) {
+        jdbi.useHandle(handle -> {
+            for (int index = start; index < start + count; index++) {
+                int id = handle.createUpdate("""
+                        INSERT INTO classes (class_name, kind, source_file, source_line,
+                                             source_set, origin, lifecycle)
+                        VALUES (:name, 'CLASS', :source, 1, 'test', 'source', 'current')
+                        """)
+                        .bind("name", "org.acme.OrderTest" + index)
+                        .bind("source", "src/test/java/org/acme/OrderTest" + index + ".java")
+                        .executeAndReturnGeneratedKeys("id").mapTo(Integer.class).one();
+                handle.createUpdate("""
+                        INSERT INTO dependencies (from_class_id, to_class_id, kind)
+                        VALUES (:from, 1, 'CALLS')
+                        """).bind("from", id).execute();
+            }
+        });
+    }
+
+    @Test
     void verifyChangeBlocksOnCapturedBuildFailure() throws Exception {
         writeMinimalPom();
         Path state = tempDir.resolve(".quill/build-state.json");

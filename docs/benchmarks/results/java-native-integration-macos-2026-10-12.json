@@ -1,0 +1,594 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-12",
+  "platform": "macOS arm64",
+  "build": {
+    "jdk": "GraalVM CE 25.0.1",
+    "optimization": "-Os",
+    "before_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+    "after": "working tree implementing Java compiler worker",
+    "before_bytes": 69183272,
+    "after_bytes": 69249432,
+    "delta_bytes": 66160,
+    "delta_percent": 0.09563005346147069,
+    "before_sha256": "71089eef8478a81729c961e814ccdcda8f1b5b3f5514e575c56690899d4882d8",
+    "after_sha256": "175a7563ef02aaf4890ecbb67aaa713a34fc4d1783e95439fff798f6b4bf0c2b",
+    "worker_jar_bytes": 23183,
+    "additional_runtime_dependency_jars": 0,
+    "tests_during_native_build": "skipped; separate focused suites executed"
+  },
+  "tests": {
+    "frontend_jdk17": {
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0
+    },
+    "frontend_jdk21": {
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0
+    },
+    "focused_reactor_jdk25": {
+      "frontend_passed": 32,
+      "app_passed": 150,
+      "failed": 0,
+      "skipped": 0
+    },
+    "earlier_kotlin_semantic_regression": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "native_mcp_current_project": {
+    "schema_version": 1,
+    "platform": "macOS arm64",
+    "binary_sha256": "175a7563ef02aaf4890ecbb67aaa713a34fc4d1783e95439fff798f6b4bf0c2b",
+    "native_bytes": 69249432,
+    "source_sha256": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84",
+    "project": "quill working tree",
+    "queries": [
+      {
+        "latency_ms": 2317.494,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": false,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "resolution": "resolved",
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+          "indexed_at": "2026-10-13T01:46:23.596861Z",
+          "indexed_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "current_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "commit_stale": false,
+          "worktree_dirty": true,
+          "worktree_changed_files": 18,
+          "structural_changed_files": 11,
+          "structure_stale": true,
+          "stale_reasons": [
+            "dirty_worktree_not_compiled"
+          ],
+          "stale_warning": true,
+          "stale_scope": "outside_target_module",
+          "answer_confidence": "medium",
+          "target_source_changed": false,
+          "target_module_changed": false,
+          "recommended_action": "Compile structural changes, then refresh the Quill index before consequential decisions",
+          "index_recovery": {
+            "reason": "referenced_generation_invalid",
+            "selected_index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+            "recovered_at": "2026-10-13T01:47:35.269719Z"
+          }
+        }
+      },
+      {
+        "latency_ms": 46.362,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "resolution": "resolved",
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+          "indexed_at": "2026-10-13T01:46:23.596861Z",
+          "indexed_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "current_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "commit_stale": false,
+          "worktree_dirty": true,
+          "worktree_changed_files": 18,
+          "structural_changed_files": 11,
+          "structure_stale": true,
+          "stale_reasons": [
+            "dirty_worktree_not_compiled"
+          ],
+          "stale_warning": true,
+          "stale_scope": "outside_target_module",
+          "answer_confidence": "medium",
+          "target_source_changed": false,
+          "target_module_changed": false,
+          "recommended_action": "Compile structural changes, then refresh the Quill index before consequential decisions",
+          "index_recovery": {
+            "reason": "referenced_generation_invalid",
+            "selected_index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+            "recovered_at": "2026-10-13T01:47:35.269719Z"
+          }
+        }
+      },
+      {
+        "latency_ms": 41.954,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "resolution": "resolved",
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+          "indexed_at": "2026-10-13T01:46:23.596861Z",
+          "indexed_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "current_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "commit_stale": false,
+          "worktree_dirty": true,
+          "worktree_changed_files": 18,
+          "structural_changed_files": 11,
+          "structure_stale": true,
+          "stale_reasons": [
+            "dirty_worktree_not_compiled"
+          ],
+          "stale_warning": true,
+          "stale_scope": "outside_target_module",
+          "answer_confidence": "medium",
+          "target_source_changed": false,
+          "target_module_changed": false,
+          "recommended_action": "Compile structural changes, then refresh the Quill index before consequential decisions",
+          "index_recovery": {
+            "reason": "referenced_generation_invalid",
+            "selected_index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+            "recovered_at": "2026-10-13T01:47:35.269719Z"
+          }
+        }
+      },
+      {
+        "latency_ms": 40.93,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "resolution": "resolved",
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+          "indexed_at": "2026-10-13T01:46:23.596861Z",
+          "indexed_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "current_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "commit_stale": false,
+          "worktree_dirty": true,
+          "worktree_changed_files": 18,
+          "structural_changed_files": 11,
+          "structure_stale": true,
+          "stale_reasons": [
+            "dirty_worktree_not_compiled"
+          ],
+          "stale_warning": true,
+          "stale_scope": "outside_target_module",
+          "answer_confidence": "medium",
+          "target_source_changed": false,
+          "target_module_changed": false,
+          "recommended_action": "Compile structural changes, then refresh the Quill index before consequential decisions",
+          "index_recovery": {
+            "reason": "referenced_generation_invalid",
+            "selected_index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+            "recovered_at": "2026-10-13T01:47:35.269719Z"
+          }
+        }
+      },
+      {
+        "latency_ms": 45.077,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "resolution": "resolved",
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+          "indexed_at": "2026-10-13T01:46:23.596861Z",
+          "indexed_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "current_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "commit_stale": false,
+          "worktree_dirty": true,
+          "worktree_changed_files": 18,
+          "structural_changed_files": 11,
+          "structure_stale": true,
+          "stale_reasons": [
+            "dirty_worktree_not_compiled"
+          ],
+          "stale_warning": true,
+          "stale_scope": "outside_target_module",
+          "answer_confidence": "medium",
+          "target_source_changed": false,
+          "target_module_changed": false,
+          "recommended_action": "Compile structural changes, then refresh the Quill index before consequential decisions",
+          "index_recovery": {
+            "reason": "referenced_generation_invalid",
+            "selected_index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+            "recovered_at": "2026-10-13T01:47:35.269719Z"
+          }
+        }
+      },
+      {
+        "latency_ms": 38.563,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "resolution": "resolved",
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+          "indexed_at": "2026-10-13T01:46:23.596861Z",
+          "indexed_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "current_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "commit_stale": false,
+          "worktree_dirty": true,
+          "worktree_changed_files": 18,
+          "structural_changed_files": 11,
+          "structure_stale": true,
+          "stale_reasons": [
+            "dirty_worktree_not_compiled"
+          ],
+          "stale_warning": true,
+          "stale_scope": "outside_target_module",
+          "answer_confidence": "medium",
+          "target_source_changed": false,
+          "target_module_changed": false,
+          "recommended_action": "Compile structural changes, then refresh the Quill index before consequential decisions",
+          "index_recovery": {
+            "reason": "referenced_generation_invalid",
+            "selected_index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+            "recovered_at": "2026-10-13T01:47:35.269719Z"
+          }
+        }
+      },
+      {
+        "latency_ms": 43.276,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "resolution": "resolved",
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+          "indexed_at": "2026-10-13T01:46:23.596861Z",
+          "indexed_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "current_commit": "b8c34f427a8411f3711cf946e6ba9c450ff46116",
+          "commit_stale": false,
+          "worktree_dirty": true,
+          "worktree_changed_files": 18,
+          "structural_changed_files": 11,
+          "structure_stale": true,
+          "stale_reasons": [
+            "dirty_worktree_not_compiled"
+          ],
+          "stale_warning": true,
+          "stale_scope": "outside_target_module",
+          "answer_confidence": "medium",
+          "target_source_changed": false,
+          "target_module_changed": false,
+          "recommended_action": "Compile structural changes, then refresh the Quill index before consequential decisions",
+          "index_recovery": {
+            "reason": "referenced_generation_invalid",
+            "selected_index_id": "b8c34f427a8411f3711cf946e6ba9c450ff46116-4032ed7c2675",
+            "recovered_at": "2026-10-13T01:47:35.269719Z"
+          }
+        }
+      }
+    ],
+    "limitations": [
+      "Selected real overload only, not external-project acceptance",
+      "Multiple indexed Java modules: startup does not prewarm one arbitrarily",
+      "No post-edit latency or long-session RSS measurement in this probe"
+    ]
+  },
+  "native_mcp_temporary_project_edits": {
+    "schema_version": 1,
+    "project": "temporary archive of b8c34f4, compiled and indexed",
+    "source_restored": true,
+    "queries": [
+      {
+        "case": "first",
+        "latency_ms": 1566.259,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": false,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "nocommit-efa1577ed14e",
+          "indexed_at": "2026-10-13T01:45:31.076630Z",
+          "indexed_commit": "unknown",
+          "current_commit": null,
+          "commit_stale": false,
+          "worktree_dirty": false,
+          "worktree_changed_files": 0,
+          "structural_changed_files": 0,
+          "structure_stale": false,
+          "stale_reasons": [],
+          "stale_warning": false,
+          "stale_scope": "current",
+          "answer_confidence": "high"
+        }
+      },
+      {
+        "case": "unchanged",
+        "latency_ms": 42.291,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "nocommit-efa1577ed14e",
+          "indexed_at": "2026-10-13T01:45:31.076630Z",
+          "indexed_commit": "unknown",
+          "current_commit": null,
+          "commit_stale": false,
+          "worktree_dirty": false,
+          "worktree_changed_files": 0,
+          "structural_changed_files": 0,
+          "structure_stale": false,
+          "stale_reasons": [],
+          "stale_warning": false,
+          "stale_scope": "current",
+          "answer_confidence": "high"
+        }
+      },
+      {
+        "case": "unchanged",
+        "latency_ms": 44.804,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "nocommit-efa1577ed14e",
+          "indexed_at": "2026-10-13T01:45:31.076630Z",
+          "indexed_commit": "unknown",
+          "current_commit": null,
+          "commit_stale": false,
+          "worktree_dirty": false,
+          "worktree_changed_files": 0,
+          "structural_changed_files": 0,
+          "structure_stale": false,
+          "stale_reasons": [],
+          "stale_warning": false,
+          "stale_scope": "current",
+          "answer_confidence": "high"
+        }
+      },
+      {
+        "case": "unchanged",
+        "latency_ms": 62.391,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "nocommit-efa1577ed14e",
+          "indexed_at": "2026-10-13T01:45:31.076630Z",
+          "indexed_commit": "unknown",
+          "current_commit": null,
+          "commit_stale": false,
+          "worktree_dirty": false,
+          "worktree_changed_files": 0,
+          "structural_changed_files": 0,
+          "structure_stale": false,
+          "stale_reasons": [],
+          "stale_warning": false,
+          "stale_scope": "current",
+          "answer_confidence": "high"
+        }
+      },
+      {
+        "case": "unchanged",
+        "latency_ms": 49.472,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 1,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "nocommit-efa1577ed14e",
+          "indexed_at": "2026-10-13T01:45:31.076630Z",
+          "indexed_commit": "unknown",
+          "current_commit": null,
+          "commit_stale": false,
+          "worktree_dirty": false,
+          "worktree_changed_files": 0,
+          "structural_changed_files": 0,
+          "structure_stale": false,
+          "stale_reasons": [],
+          "stale_warning": false,
+          "stale_scope": "current",
+          "answer_confidence": "high"
+        }
+      },
+      {
+        "case": "300ms_after_equal_size_restored_mtime_edit",
+        "latency_ms": 452.276,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/nio/file/Path;)Z",
+          "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 2,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "descriptor": "(Ljava/nio/file/Path;)Z",
+        "meta": {
+          "index_id": "nocommit-efa1577ed14e",
+          "indexed_at": "2026-10-13T01:45:31.076630Z",
+          "indexed_commit": "unknown",
+          "current_commit": null,
+          "commit_stale": false,
+          "worktree_dirty": false,
+          "worktree_changed_files": 0,
+          "structural_changed_files": 0,
+          "structure_stale": false,
+          "stale_reasons": [],
+          "stale_warning": false,
+          "stale_scope": "current",
+          "answer_confidence": "high"
+        }
+      },
+      {
+        "case": "1500ms_after_restore",
+        "latency_ms": 37.978,
+        "semantic_analysis": {
+          "status": "resolved",
+          "backend": "javac",
+          "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+          "kind": "METHOD",
+          "name": "isSourceFile",
+          "descriptor": "(Ljava/lang/String;)Z",
+          "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+          "generation": 3,
+          "reused": true,
+          "input_detection": "directory_watcher_fsevents"
+        },
+        "descriptor": "(Ljava/lang/String;)Z",
+        "meta": {
+          "index_id": "nocommit-efa1577ed14e",
+          "indexed_at": "2026-10-13T01:45:31.076630Z",
+          "indexed_commit": "unknown",
+          "current_commit": null,
+          "commit_stale": false,
+          "worktree_dirty": false,
+          "worktree_changed_files": 0,
+          "structural_changed_files": 0,
+          "structure_stale": false,
+          "stale_reasons": [],
+          "stale_warning": false,
+          "stale_scope": "current",
+          "answer_confidence": "high"
+        }
+      }
+    ],
+    "limitations": [
+      "Single module/position, small sample",
+      "Delay does not establish exact warmup start/end times",
+      "Working source edit deliberately changes overload selection without regenerating bytecode"
+    ]
+  },
+  "limitations": [
+    "Native size is one before/after build pair, not a reproducibility study",
+    "Measurements cover one real overload in quill-core, not broad external acceptance",
+    "Post-edit timing is a small controlled sample; warmup start/end were not independently timestamped",
+    "No long-session memory measurement or full repository-wide test suite"
+  ]
+}

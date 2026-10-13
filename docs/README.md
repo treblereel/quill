@@ -23,3 +23,5 @@ Current supporting documents:
 When behavior changes, update the root README in the same change. In particular, keep its command
 table aligned with picocli command definitions and its MCP list aligned with the `@Tool` methods in
 `QuillTools`.
+
+- [Java compiler navigation](java-semantic-navigation.md): captured JDK settings, worker lifecycle and supported inputs.

@@ -2,6 +2,7 @@
   "resources": {
     "includes": [
       {"pattern": "com/knuddels/jtokkit/cl100k_base\\.tiktoken$"},
+      {"pattern": "java-worker/worker\\.jar$"},
       {"pattern": "quill\\.properties$"},
       {"pattern": "kotlin-worker/worker\\.jar$"},
       {"pattern": "org/eclipse/jgit/internal/JGitText\\.properties$"},

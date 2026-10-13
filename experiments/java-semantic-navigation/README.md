@@ -3,7 +3,9 @@
 This experiment resolves live Java positions through public JDK compiler APIs
 (`JavacTask`, `Trees`, `Elements`, `Types`). It is outside the production reactor
 and has no runtime dependencies. It does not change the native binary or add a
-production Java worker yet.
+production Java worker by itself. Its frontend has now been promoted into
+[`quill-java-semantic`](../../quill-java-semantic); see the
+[production integration](../../docs/java-semantic-navigation.md).
 
 The frontend parses and attributes sources; it never generates bytecode, runs
 project static initializers, or executes annotation processors (`-proc:none`).

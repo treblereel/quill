@@ -798,6 +798,14 @@ its field/getter/setter bindings; suspend return types remain source return type
 Missing or invalid type evidence is omitted rather than inferred from erased JVM types.
 The index schema is v28 and requires reindexing older generations.
 
+Java position navigation uses the selected project's JDK compiler when successful
+Maven/Gradle compiler settings are available. It resolves overloads and method
+references in a bounded JVM worker, preserves source/target or release settings,
+and warms the active module after input changes. Results distinguish compiler
+selection from lexical fallback and include freshness metadata. Preview, JPMS and
+unsupported configurations report explicit semantic statuses. See
+[Java compiler navigation](docs/java-semantic-navigation.md) for requirements and limits.
+
 Quill uses the K2 FIR frontend from Kotlin 2.4.21, with language level 2.4
 as the default and captured project settings when available. Kotlin position queries automatically resolve overloads, receiver members,
 generic functions and local shadowing, exposing the result in `semantic_analysis`.

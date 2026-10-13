@@ -9,6 +9,7 @@
     <modules>
         <module>quill-core</module>
         <module>quill-kotlin-semantic</module>
+        <module>quill-java-semantic</module>
         <module>quill-app</module>
         <module>tests</module>
     </modules>

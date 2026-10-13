@@ -59,7 +59,7 @@ quill init
 
 ## How It Works
 
-Quill scans Maven `target/classes` and Gradle `build/classes/*/main` directories for
+Quill scans Maven main/test outputs and the evaluated Gradle JVM source-set outputs for
 compiled `.class` files, builds a [Jandex](https://smallrye.io/jandex/jandex/main/index.html) index, and
 resolves CDI or Spring dependency injection directly from bytecode metadata. Quill
 itself does not use or start Quarkus; the target framework is detected automatically.
@@ -120,6 +120,9 @@ savings. For an automated, controlled with/without-Quill Responses API compariso
 actual and cached tokens, time, model/tool requests, and manual verification, use the paired task
 evaluation described in
 [`docs/benchmarks/task-evaluation.md`](docs/benchmarks/task-evaluation.md).
+For source-confirmed navigation, usages and change-impact checks on pinned real
+Java/Maven and Kotlin/Gradle projects, see
+[the real-project correctness baseline](docs/benchmarks/real-projects.md).
 CI also runs a generated 400-class, 32-dependency-JAR native smoke fixture on Linux and
 Windows. It verifies dependency-cache miss and hit behavior with intentionally broad time,
 memory, and concurrent-request budgets to catch major regressions without depending on an
@@ -226,7 +229,8 @@ quill --mcp --workspace /absolute/path/to/workspace
 ```
 
 `workspace init` discovers Git repositories at depth one by default; use `--depth N` for nested
-checkouts. It initializes every Maven or Gradle repository that already has compiled main classes.
+checkouts. It initializes every Maven or Gradle repository that already has compiled main
+or custom JVM source-set classes.
 Unsupported and uncompiled repositories are reported and skipped. Quill never starts a Maven or
 Gradle build while indexing them. `--index-only` creates indexes without installing build-result
 integration or modifying repository-local client configuration.
@@ -416,7 +420,9 @@ does not imply that an executor, reactive stream, or message publication has com
   project-module dependencies, including a representative closed path and internal edge kinds;
   nested classes are collapsed into their top-level owner to suppress compiler-structure noise
 - **compare_index** — compare the active immutable index with a retained generation, including
-  class/member, static dependency, bean, and injection-resolution deltas
+  class/member, static dependency, bean, and injection-resolution deltas.
+  Includes a conservative JVM API review and baseline caller/field-access/subtype impact;
+  it does not prove compatibility. See [API compatibility review](docs/api-compatibility.md).
 - **get_build_status** — inspect build-result integration, compiled outputs, pending events,
   index freshness, and the next required action without invoking Maven or Gradle; build-required
   responses distinguish `classes_missing` from `classes_stale` and identify stale modules
@@ -427,7 +433,10 @@ does not imply that an executor, reactive stream, or message publication has com
 - **find_annotated_symbols** — find annotated types, methods, fields, constructors, and parameters
   by short annotation name or FQCN, preserving parameter position, name, and type
 - **find_framework_endpoints** — find Spring MVC and JAX-RS routes with HTTP methods, constant
-  class/method paths, module/source context, and bounded direct project-call evidence
+  class/method paths, composed Spring mappings with explicit `@AliasFor`, custom JAX-RS HTTP
+  methods, inherited mappings with declaration provenance, module/source context, and bounded
+  direct project-call evidence from the method body owner.
+  See [HTTP endpoint analysis](docs/http-endpoints.md) for supported mappings and limits.
 - **find_configuration_references** — find `.properties`, YAML, and persistence-unit definitions
   together with annotation-based Spring, MicroProfile, SmallRye, and JPA consumers; configuration
   values are deliberately not indexed
@@ -753,7 +762,13 @@ JVM class loading.
 ### Gradle projects
 
 Both Groovy and Kotlin DSL projects are supported, including multi-project builds.
-Java and Kotlin/JVM main sources are mapped back from compiled classes, inventoried,
+Java and Kotlin/JVM sources from the evaluated `sourceSets` container are indexed,
+including custom sets such as `integrationTest` and `testFixtures` from the
+`java-test-fixtures` plugin. Their original
+names, module ownership, configured source directories and class output directories
+are preserved. Compile additional sets yourself (for example,
+`./gradlew classes integrationTestClasses testFixturesClasses`) before indexing.
+Uncompiled sets are not synthesized from source files. Sources are mapped back, inventoried,
 and token-counted; common KSP-generated Kotlin sources are included as generated input.
 
 Kotlin source mapping uses the declared package and the bytecode `SourceFile` attribute,
@@ -794,6 +809,14 @@ and flexible platform type bounds. Property types describe the logical property 
 its field/getter/setter bindings; suspend return types remain source return types.
 Missing or invalid type evidence is omitted rather than inferred from erased JVM types.
 The index schema is v28 and requires reindexing older generations.
+
+Java position navigation uses the selected project's JDK compiler when successful
+Maven/Gradle compiler settings are available. It resolves overloads and method
+references in a bounded JVM worker, preserves source/target or release settings,
+and warms the active module after input changes. Results distinguish compiler
+selection from lexical fallback and include freshness metadata. Preview, JPMS and
+unsupported configurations report explicit semantic statuses. See
+[Java compiler navigation](docs/java-semantic-navigation.md) for requirements and limits.
 
 Quill uses the K2 FIR frontend from Kotlin 2.4.21, with language level 2.4
 as the default and captured project settings when available. Kotlin position queries automatically resolve overloads, receiver members,
@@ -916,13 +939,37 @@ Options and correctness criteria for future incremental FIR are documented in
 
 Quill locates the root through `settings.gradle[.kts]`, runs `gradlew` when present,
 and injects a temporary init script to export the evaluated Java project directories,
-main source-set outputs, and `runtimeClasspath`. This respects dynamic settings and
+all JVM source-set outputs and configured source roots. Dependencies of compiled sets
+are exported to `build/quill-source-set-classpath.txt` for bytecode indexing; separate
+main/test classpaths remain available to semantic analysis. This respects dynamic settings and
 custom `projectDir`/`buildDirectory` mappings while excluding stale outputs from
 removed projects.
+Internal discovery runs with `--no-configuration-cache` because its export tasks
+use evaluated project objects and build listeners. This applies only to Quill's
+discovery invocation; the project's configuration-cache preference is preserved.
 Quill does not modify project build files or embed the Gradle Tooling API. Discovery
 and dependency classpath caches are written under `build/` directories and invalidated
 when Gradle build files, version catalogs, wrapper properties, or `buildSrc` change.
 The sharded dependency Jandex index uses the same shared cache and invalidation as Maven.
+Source-set names remain distinct; Quill does not infer test execution or production status
+from a custom name. Standard test-coverage metadata still concerns the `test` set.
+Java compiler capture already records custom `JavaCompile` settings. Kotlin K2 position
+analysis supports additional Gradle JVM source sets using each Kotlin compile task's
+captured classpath, configured Kotlin/Java roots, compiler options, plugins and friend
+paths. Dependencies stay isolated between sets; standard Kotlin tests retain access to
+`internal` declarations from main through Gradle's friend paths. Source edits and new
+files under captured roots are collected without running Gradle during a query. Run
+initialization again after upgrading Quill to refresh older captures. Missing/stale
+settings produce an explicit fallback. Task-level source overrides and declarative
+`include`/`exclude` file-tree filters are captured from the actual compile task and
+replayed for new or removed Kotlin and Java files. Executable predicate filters use
+a guarded snapshot: source content or topology changes return
+`source_selection_refresh_required`; run initialization again to evaluate the
+project predicates in Gradle. Quill does not execute project predicates during
+queries. Android
+variants, Kotlin Multiplatform compilations, and mutually exclusive variants with duplicate
+class names are not modeled as separate analysis universes. Physical occurrences remain
+available, but a single logical class index cannot prove variant-specific resolution.
 On Windows it uses `gradlew.bat`; Maven projects use `mvnw.cmd`. If a wrapper is absent,
 Quill falls back to `gradle` or `mvn` from `PATH`.
 

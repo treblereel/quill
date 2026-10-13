@@ -26,7 +26,7 @@ final class ProjectLayout {
         CompiledOutput {
             directory = directory.toAbsolutePath().normalize();
             moduleDirectory = moduleDirectory.toAbsolutePath().normalize();
-            if (!sourceSet.equals("main") && !sourceSet.equals("test")) {
+            if (!GradleProjectDiscovery.validSourceSet(sourceSet)) {
                 throw new IllegalArgumentException("Unsupported source set: " + sourceSet);
             }
         }
@@ -113,6 +113,15 @@ final class ProjectLayout {
         return List.copyOf(roots);
     }
 
+    static List<Path> findSourceRoots(Path root, List<Path> moduleDirectories) {
+        LinkedHashSet<Path> roots = new LinkedHashSet<>(findSourceRoots(moduleDirectories));
+        if (BuildSystem.detect(root) == BuildSystem.GRADLE) {
+            GradleProjectDiscovery.discover(root).sourceRoots().stream()
+                    .filter(Files::isDirectory).forEach(roots::add);
+        }
+        return List.copyOf(roots);
+    }
+
     static String computeStateFingerprint(Path root, List<Path> classesDirs) {
         return computeStateFingerprint(
                 root, classesDirs, ClassFileSnapshot.capture(classesDirs).fingerprint());
@@ -174,6 +183,10 @@ final class ProjectLayout {
                 Path moduleDir = entry.getKey();
                 Path classpathFile = buildSystem.classpathFile(moduleDir);
                 updateClasspathIdentity(digest, root, classpathFile, "classpathMissing", moduleDir);
+                if (buildSystem == BuildSystem.GRADLE) {
+                    updateClasspathIdentity(digest, root, moduleDir.resolve("build/quill-source-set-classpath.txt"),
+                            "sourceSetClasspathMissing", moduleDir);
+                }
                 if (entry.getValue().stream().anyMatch(ProjectLayout::isTestOutputDirectory)) {
                     updateClasspathIdentity(digest, root, buildSystem.testClasspathFile(moduleDir),
                             "testClasspathMissing", moduleDir);

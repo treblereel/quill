@@ -24,34 +24,37 @@ final class PositionSymbolQueries {
         String normalized = sourcePath.strip().replace('\\', '/');
         Path file = root.resolve(normalized).normalize();
         if (!file.startsWith(root.toAbsolutePath().normalize())) {
-            return error("INVALID_SOURCE_PATH", "Source path escapes the project root");
+            return error(jdbi, "INVALID_SOURCE_PATH", "Source path escapes the project root");
         }
-        List<String> lines;
-        try {
-            lines = Files.readAllLines(file);
-        } catch (IOException error) {
-            return error("SOURCE_NOT_FOUND", "Could not read source file: " + normalized);
+        String source;
+        try { source = Files.readString(file); }
+        catch (IOException failure) { return error(jdbi, "SOURCE_NOT_FOUND", "Could not read source file: " + normalized); }
+        List<String> lines = source.lines().toList();
+        if (line < 1 || line > lines.size()) return error(jdbi, "INVALID_POSITION", "Line is outside the source file");
+        int lineOffset = 0;
+        for (int i = 0; i < line - 1; i++) {
+            while (lineOffset < source.length() && source.charAt(lineOffset) != '\n' && source.charAt(lineOffset) != '\r') lineOffset++;
+            if (lineOffset < source.length() && source.charAt(lineOffset++) == '\r'
+                    && lineOffset < source.length() && source.charAt(lineOffset) == '\n') lineOffset++;
         }
-        if (line < 1 || line > lines.size()) {
-            return error("INVALID_POSITION", "Line is outside the source file");
-        }
-        String source = String.join("\n", lines);
         String code = KotlinSourceText.code(source);
-        String sourceLine = code.split("\n", -1)[line - 1];
+        String sourceLine = code.substring(lineOffset, lineOffset + lines.get(line - 1).length());
         if (column < 1 || column > sourceLine.length() + 1) {
-            return error("INVALID_POSITION", "Column is outside the source line");
+            return error(jdbi, "INVALID_POSITION", "Column is outside the source line");
         }
         Identifier located = identifierAt(sourceLine, column - 1);
         if (located == null) {
-            return error("SYMBOL_NOT_FOUND",
+            return error(jdbi, "SYMBOL_NOT_FOUND",
                     "No Java/Kotlin identifier at the requested position");
         }
         String identifier = located.value();
 
         boolean kotlin = normalized.endsWith(".kt") || normalized.endsWith(".kts");
-        int lineOffset = 0;
-        for (int i = 0; i < line - 1; i++) lineOffset += lines.get(i).length() + 1;
-        var semantic = kotlin ? KotlinSemanticQueries.resolve(jdbi, root, file, lineOffset + located.start()) : null;
+        var semantic = kotlin ? KotlinSemanticQueries.resolve(jdbi, root, file, lineOffset + located.start())
+                : JavaSemanticQueries.resolve(jdbi, root, file, lineOffset + located.start());
+        try {
+            if (!Files.readString(file).equals(source)) return error(jdbi, "SOURCE_CHANGED", "Source changed while resolving the position; retry the query");
+        } catch (IOException unavailable) { return error(jdbi, "SOURCE_CHANGED", "Source became unavailable while resolving the position"); }
         boolean compilerResolved = semantic != null && semantic.path("status").asText().equals("resolved");
         boolean compilerLocal = semantic != null && java.util.Set.of("local", "unresolved").contains(semantic.path("status").asText());
         String imported = kotlin ? importedName(code, identifier) : null;
@@ -124,8 +127,9 @@ final class PositionSymbolQueries {
                 : compilerResolved && candidates.isEmpty() ? "semantic_target_not_indexed"
                 : noApplicable ? "no_applicable_candidate" : decisive ? "resolved"
                 : candidates.isEmpty() ? "enclosing_class_fallback" : "ambiguous");
+        result.put("resolution_basis", compilerResolved || compilerLocal ? "compiler" : "lexical_fallback");
         result.put("confidence", compilerLocal || compilerResolved && decisive ? "high"
-                : noApplicable ? "low" : decisive && selected.score() >= 100 && !kotlin ? "high"
+                : noApplicable ? "low"
                 : decisive ? "medium" : candidates.isEmpty() && !enclosing.isEmpty() ? "low" : "medium");
         if (semantic != null) result.set("semantic_analysis", semantic);
         if (decisive) {
@@ -146,7 +150,9 @@ final class PositionSymbolQueries {
         result.put("candidate_count", candidates.size());
         result.putArray("limitations")
                 .add("Resolution uses the live identifier text and indexed declarations; local variables are not indexed")
-                .add("Argument-count ranking does not perform full Java or Kotlin overload type inference");
+                .add(compilerResolved ? "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
+                        : "Fallback argument-count ranking does not perform full Java or Kotlin overload type inference");
+        ToolResponseSupport.appendMeta(result, jdbi, 0, normalized, null);
         return result.toString();
     }
 
@@ -530,14 +536,17 @@ final class PositionSymbolQueries {
             item.put("required_parameter_count", candidate.valueParameters().stream()
                     .filter(parameter -> !parameter.hasDefault() && !parameter.vararg()).count());
         }
+        if (candidate.descriptor() != null) item.put("descriptor", candidate.descriptor());
         if (candidate.sourceFile() != null) item.put("source_file", candidate.sourceFile());
         item.put("same_file", candidate.sameFile());
         item.put("score", ranked.score());
         item.set("ranking_reasons", JSON.valueToTree(ranked.reasons()));
     }
 
-    private static String error(String code, String message) {
-        return ToolResponseSupport.errorResponse(code, message);
+    private static String error(Jdbi jdbi, String code, String message) {
+        var result = ToolResponseSupport.appendError(JSON.createObjectNode(), code, message);
+        ToolResponseSupport.appendMeta(result, jdbi, 0);
+        return result.toString();
     }
 
     private record Identifier(String value, int start, int end) {}

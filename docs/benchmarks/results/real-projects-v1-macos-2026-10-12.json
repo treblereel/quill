@@ -1,0 +1,530 @@
+{
+  "schema_version": 1,
+  "quill_version": "quill 0.3.1",
+  "binary_sha256": "e8c2eb7cb5cae34ad66891929de3ee93fad710564f3c9ea3a946ff1852525ce1",
+  "manifest_sha256": "c2535c865114bfc36854086a0691c5ce576d1461a7ba0a69b3850c04ee415fc6",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "limitations": [
+    "Selected source-confirmed facts, not exhaustive usages or impact coverage",
+    "No model evaluation or project tests executed",
+    "First request may benefit from MCP startup warmup"
+  ],
+  "all_passed": false,
+  "date": "2026-10-12",
+  "projects": [
+    {
+      "id": "quill-java",
+      "planned_cases": 6,
+      "counts": {
+        "passed": 3,
+        "failed": 0,
+        "unknown": 3
+      },
+      "all_passed": false,
+      "inputs_unchanged": true,
+      "overview_project": {
+        "framework": "Mixed",
+        "classes": 794,
+        "beans": 60,
+        "total_source_tokens": 2453763,
+        "dependency_index": "complete",
+        "dependency_index_detail": "85 JARs loaded from cache",
+        "service_descriptors": 1,
+        "service_registrations": 2,
+        "configuration_definitions": 7,
+        "configuration_usages": 71
+      },
+      "input": {
+        "git": {
+          "git_head": "718cde5731ba0a7fb361f44c5828d87f24159344",
+          "worktree_dirty": false
+        },
+        "git_status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "compiled_classes": 832,
+        "compiled_sha256": "1855a041d5024b579dac76edac5d1078feb258dba91ab59eb645064f2ecf075a",
+        "evidence": {
+          "quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84",
+          "quill-core/src/test/java/org/treblereel/mcp/core/JvmSourceFilesTest.java": "a613227ea09aabb26d5f7f6ca87346db18089bdb53d4217d734abd2cf1c86437"
+        }
+      },
+      "cases": [
+        {
+          "id": "java-overload-string-position",
+          "tool": "get_symbol_at_position",
+          "status": "unknown",
+          "first_request_ms": 6.032,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 2.62,
+            "p95_latency_ms": 2.75,
+            "max_latency_ms": 2.75,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown"
+          ],
+          "observed_fact_statuses": [
+            "failed",
+            "failed",
+            "failed",
+            "failed",
+            "failed",
+            "failed"
+          ],
+          "reason": "freshness_unavailable",
+          "mismatches": [
+            {
+              "status": "failed",
+              "path": [
+                "resolution"
+              ],
+              "mode": "equals",
+              "expected": "resolved",
+              "actual": "ambiguous"
+            },
+            {
+              "status": "unknown",
+              "reason": "projection_unavailable",
+              "path": [
+                "selected",
+                "jvm_descriptor"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "java-test-static-call-position",
+          "tool": "get_symbol_at_position",
+          "status": "unknown",
+          "first_request_ms": 2.565,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 2.57,
+            "p95_latency_ms": 2.59,
+            "max_latency_ms": 2.59,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": "freshness_unavailable",
+          "mismatches": []
+        },
+        {
+          "id": "java-overload-string-usages",
+          "tool": "find_symbol_usages",
+          "status": "passed",
+          "first_request_ms": 5.243,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 1.94,
+            "p95_latency_ms": 2.02,
+            "max_latency_ms": 2.02,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": null,
+          "mismatches": []
+        },
+        {
+          "id": "java-source-path-method-usages",
+          "tool": "find_symbol_usages",
+          "status": "passed",
+          "first_request_ms": 2.355,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 2.33,
+            "p95_latency_ms": 2.38,
+            "max_latency_ms": 2.38,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": null,
+          "mismatches": []
+        },
+        {
+          "id": "java-direct-test-impact",
+          "tool": "find_impacted_tests",
+          "status": "passed",
+          "first_request_ms": 5.054,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 4.25,
+            "p95_latency_ms": 4.37,
+            "max_latency_ms": 4.37,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": null,
+          "mismatches": []
+        },
+        {
+          "id": "java-change-plan",
+          "tool": "plan_change",
+          "status": "unknown",
+          "first_request_ms": 25.171,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 21.85,
+            "p95_latency_ms": 36.31,
+            "max_latency_ms": 36.31,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": "test_plan_incomplete",
+          "mismatches": []
+        }
+      ]
+    },
+    {
+      "id": "jetbrains-kotlin",
+      "planned_cases": 7,
+      "counts": {
+        "passed": 3,
+        "failed": 0,
+        "unknown": 4
+      },
+      "all_passed": false,
+      "inputs_unchanged": true,
+      "overview_project": {
+        "framework": "Plain",
+        "classes": 979,
+        "beans": 0,
+        "total_source_tokens": 3402692,
+        "dependency_index": "degraded",
+        "dependency_index_detail": "Gradle dependency classpath discovery failed; using cached data",
+        "service_descriptors": 0,
+        "service_registrations": 0,
+        "configuration_definitions": 109,
+        "configuration_usages": 4
+      },
+      "input": {
+        "git": {
+          "git_head": "2983e24dc4ae3c464d8a8bcbe5a212cf72cd321b",
+          "worktree_dirty": true
+        },
+        "git_status_sha256": "e43cabcf0d98d8fb6f20bb2775f501116ff804b40c12a73b4debd341b655fe88",
+        "compiled_classes": 2976,
+        "compiled_sha256": "f2da18bf30c47752ab3db342a446f250a56f91af02a03affa717b045e6d4eb42",
+        "evidence": {
+          "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/ExcludedPathScope.kt": "f174f43515fafebe8f715a8d49e0f074a08993ec1e0e86340a1ad3d018abf559",
+          "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/OptimizedSymbolSearch.kt": "e5483202abacd99fe3a8fe2aae9a87cb0aef5fd02d94b7ccab2d8f1498702975",
+          "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/SearchMatchUtils.kt": "cfcfe1c9e6941dfaeb77939bb51f63cc3ca45f66c73a2442a22de73f5a82516e",
+          "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/server/PaginationService.kt": "fb278874135c25020c2a564f029bfecdcbb7a6035584aeb392566b0148fb29bc",
+          "src/test/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/PaginationServiceUnitTest.kt": "e07238ab300102d416733172b1050e3850efba38c34d7ec613ec79df0c32fa78"
+        }
+      },
+      "cases": [
+        {
+          "id": "kotlin-top-level-position",
+          "tool": "get_symbol_at_position",
+          "status": "unknown",
+          "first_request_ms": 190.088,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 41.02,
+            "p95_latency_ms": 58.89,
+            "max_latency_ms": 58.89,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": "freshness_unavailable",
+          "mismatches": []
+        },
+        {
+          "id": "kotlin-default-argument-position",
+          "tool": "get_symbol_at_position",
+          "status": "unknown",
+          "first_request_ms": 41.29,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 41.27,
+            "p95_latency_ms": 44.16,
+            "max_latency_ms": 44.16,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown"
+          ],
+          "observed_fact_statuses": [
+            "failed",
+            "failed",
+            "failed",
+            "failed",
+            "failed",
+            "failed"
+          ],
+          "reason": "freshness_unavailable",
+          "mismatches": [
+            {
+              "status": "failed",
+              "path": [
+                "selected",
+                "class_name"
+              ],
+              "mode": "equals",
+              "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+              "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+            }
+          ]
+        },
+        {
+          "id": "kotlin-default-cursor-position",
+          "tool": "get_symbol_at_position",
+          "status": "unknown",
+          "first_request_ms": 113.689,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 46.22,
+            "p95_latency_ms": 75.13,
+            "max_latency_ms": 75.13,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": "freshness_unavailable",
+          "mismatches": []
+        },
+        {
+          "id": "kotlin-top-level-usages",
+          "tool": "find_symbol_usages",
+          "status": "passed",
+          "first_request_ms": 17.861,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 14.66,
+            "p95_latency_ms": 16.52,
+            "max_latency_ms": 16.52,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": null,
+          "mismatches": []
+        },
+        {
+          "id": "kotlin-default-forwarded-usages",
+          "tool": "find_symbol_usages",
+          "status": "passed",
+          "first_request_ms": 6.629,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 6.83,
+            "p95_latency_ms": 7.14,
+            "max_latency_ms": 7.14,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": null,
+          "mismatches": []
+        },
+        {
+          "id": "kotlin-direct-test-impact",
+          "tool": "find_impacted_tests",
+          "status": "passed",
+          "first_request_ms": 5.575,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 4.9,
+            "p95_latency_ms": 5.52,
+            "max_latency_ms": 5.52,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": null,
+          "mismatches": []
+        },
+        {
+          "id": "kotlin-change-plan",
+          "tool": "plan_change",
+          "status": "unknown",
+          "first_request_ms": 116.774,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 106.59,
+            "p95_latency_ms": 109.11,
+            "max_latency_ms": 109.11,
+            "errors": 0
+          },
+          "sample_statuses": [
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown"
+          ],
+          "observed_fact_statuses": [
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed",
+            "passed"
+          ],
+          "reason": "test_plan_incomplete",
+          "mismatches": []
+        }
+      ]
+    }
+  ]
+}

@@ -59,6 +59,48 @@ class GradleProjectDiscoveryTest {
         assertTrue(discovery.classDirectoryOwners().isEmpty());
     }
 
+    @Test
+    void retainsCustomSetsAndEncodedSourceRoots() throws Exception {
+        Path module = tempDir.resolve("module ü with spaces");
+        Path output = tempDir.resolve("out/integration");
+        Path roots = module.resolve("custom sources ü");
+        Path manifest = Files.writeString(tempDir.resolve("custom.tsv"),
+                encode(module) + "\t:service\tintegrationTest\t" + encode(output) + "\n"
+                        + "@sources\t" + encode(roots) + "\t" + encode(roots) + "\n"
+                        + encode(module) + "\t:service\ttestFixtures\t" + encode(module.resolve("fixtures")));
+        var discovery = GradleProjectDiscovery.readManifest(manifest);
+        assertTrue(discovery.complete());
+        assertEquals("integrationTest", discovery.classDirectorySourceSets().get(output));
+        assertEquals(module, discovery.classDirectoryOwners().get(output));
+        assertEquals(java.util.List.of(roots), discovery.sourceRoots());
+    }
+
+    @Test
+    void rejectsUnsafeOrEmptySourceSetNames() throws Exception {
+        for (String name : java.util.List.of("", "../escape", "/absolute", ".", "..", "a/b")) {
+            Path manifest = Files.writeString(tempDir.resolve("invalid.tsv"),
+                    encode(tempDir) + "\t:module\t" + name + "\t" + encode(tempDir.resolve("output")));
+            var discovery = GradleProjectDiscovery.readManifest(manifest);
+            assertFalse(discovery.complete(), name);
+            assertTrue(discovery.classesDirectories().isEmpty(), name);
+        }
+    }
+
+    @Test
+    void reportsSharedOutputOwnershipAsIncomplete() throws Exception {
+        Path output = tempDir.resolve("shared");
+        Path manifest = Files.writeString(tempDir.resolve("shared.tsv"),
+                encode(tempDir) + "\t:module\tmain\t" + encode(output) + "\n"
+                        + encode(tempDir) + "\t:module\tintegrationTest\t" + encode(output));
+        assertFalse(GradleProjectDiscovery.readManifest(manifest).complete());
+    }
+
+    @Test
+    void rejectsMalformedSourceRootRecord() throws Exception {
+        Path manifest = Files.writeString(tempDir.resolve("roots.tsv"), "@sources\tnot-base64!\n");
+        assertFalse(GradleProjectDiscovery.readManifest(manifest).complete());
+    }
+
     private static String encode(Path path) {
         return Base64.getEncoder().encodeToString(
                 path.toString().getBytes(StandardCharsets.UTF_8));

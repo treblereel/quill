@@ -1,0 +1,73 @@
+# API compatibility review
+
+`compare_index` adds an `api_compatibility` object to the existing structural,
+dependency, bean and injection deltas. No new MCP tool or index schema is required.
+The baseline remains a retained local generation selected by index ID/commit, or
+the previous generation by default.
+
+The report compares current main-source-set classes and legacy classes without a
+source-set label. Explicit test/custom source sets and orphan outputs are excluded.
+Owners are scoped by binary class name, module and source set. Members use kind,
+JVM name and full JVM descriptor, including return types; constructor names are
+normalized to `<init>`. Public/protected declared members participate in the review.
+Missing/malformed descriptors, unknown modifier encodings and ambiguous owner
+occurrences produce unknown evidence rather than a compatibility assertion.
+
+## Findings and verdict
+
+`potentially_breaking` findings include class removal, class-kind/hierarchy changes,
+declared member removal or descriptor change, visibility narrowing, static/instance
+changes, newly final/abstract members and newly added abstract methods.
+
+`review_required` findings include ordinary member/class additions, visibility
+widening, generic/source signature changes visible in indexed types, annotations,
+and other modifier changes. An added overload may keep an old binary running while
+making an old source call ambiguous. A removed declared descriptor may still link
+through an inherited method or a synthetic bridge, so even a removal is a potential
+problem rather than a proven linkage failure.
+
+The aggregate `verdict` is `potentially_breaking`, `unknown`, `review_required` or
+`no_detected_changes`. `compatibility_proven` is always false. The schema does not
+retain class access/final/abstract flags, constants, throws clauses, full generic
+signatures or synthetic/bridge methods. Kotlin source visibility, nullability,
+inline bodies and default-argument contracts are not analyzed. Class annotation
+values are not retained; member annotation values are compared when available.
+Even an unchanged declaration surface therefore does not prove compatibility.
+
+## Baseline impact and bounds
+
+Each returned finding contains `baseline_impact`. For a known old member, callers
+or field accesses match the exact baseline owner ID, JVM member name and descriptor.
+Class-level changes/additions use class dependency evidence. Direct subclasses and
+implementors are shown separately because final/abstract changes can matter even
+without a call instruction. Consumers retain baseline class IDs, module/source-set
+labels and method descriptors, avoiding overload and same-name record conflation.
+
+Impact describes the baseline even if a caller has disappeared from the current
+index. Added owners have no baseline impact and report unavailable. Counts remain
+complete for the queried static evidence while consumer/subtype arrays are bounded
+by the existing `limit`; every truncated array has an explicit marker. Findings are
+ordered deterministically, and total finding/category counts precede truncation.
+`baseline_impact.complete` is false: external consumers, reflection, transitive
+subtypes and references using inherited symbolic owners are not expanded. An empty
+consumer list is not proof that no consumer exists.
+
+The structural `classes.modified` fingerprint also compares JVM descriptors and
+member annotation details, so descriptor-only deltas are not hidden by an identical
+human-readable signature.
+
+## Validation
+
+Tests exercise overload identity, field accesses, `<init>` calls, public/protected
+visibility, static/final/abstract changes, additions, type/annotation changes,
+order-only differences, missing/malformed descriptors, duplicate owners, test/orphan
+filtering, baseline-only consumers, truncation, deterministic ordering and impact
+cache isolation when baseline/current database IDs coincide.
+
+Independent javac fixtures run clients compiled against the old API with the new
+API: removal produces `NoSuchMethodError`, static-to-instance change produces
+`IncompatibleClassChangeError`, a generated bridge preserves covariant-return binary
+linkage, and an added overload preserves a binary client but prevents recompiling
+its `null` call. These cases verify the limits of the conservative classification.
+The existing `QuillToolsTest` checks that the new object is present without losing
+the prior structural/resolution response fields.

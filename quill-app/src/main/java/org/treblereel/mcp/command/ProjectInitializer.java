@@ -288,9 +288,9 @@ public class ProjectInitializer {
         List<ProjectLayout.CompiledOutput> compiledOutputs = classesDiscovery.outputs();
         timings.finish("class_discovery");
 
-        if (compiledOutputs.stream().noneMatch(output -> output.sourceSet().equals("main"))) {
+        if (compiledOutputs.stream().allMatch(output -> output.sourceSet().equals("test"))) {
             return InitializationResult.failure(FailureReason.NO_COMPILED_CLASSES,
-                    "No main .class files were found under " + root
+                    "No main .class files or additional JVM source-set outputs were found under " + root
                             + ". Build the project with Maven or Gradle, then run `quill init` again.",
                     startedAtNanos);
         }
@@ -330,7 +330,7 @@ public class ProjectInitializer {
         List<Path> moduleDirectories = classDirectoryOwners.values().stream().distinct().toList();
         List<ModuleClasspathRecord> moduleClasspath = ModuleClasspathResolver.resolve(
                 root, buildSystem, moduleDirectories);
-        List<Path> sourceRoots = ProjectLayout.findSourceRoots(moduleDirectories);
+        List<Path> sourceRoots = ProjectLayout.findSourceRoots(root, moduleDirectories);
         List<Path> indexingClassDirs = List.copyOf(classesDirs);
         timings.finish("index_setup");
         ClassFileSnapshot classFiles;
@@ -385,7 +385,7 @@ public class ProjectInitializer {
                 JandexScanner.extractClassMembers(scanResult.index(), classNameToSqliteId);
         List<FrameworkEndpointRecord> frameworkEndpoints =
                 JandexScanner.extractFrameworkEndpoints(
-                        scanResult.index(), classNameToSqliteId);
+                        scanResult.index(), annotationLookup, classNameToSqliteId);
         List<ClassOccurrenceRecord> classOccurrences = ClassOccurrenceScanner.scan(
                 root, classFiles, classDirectoryOwners, classDirectorySourceSets,
                 classNameToSqliteId, sourceRoots, scanResult.sourceMappings());
@@ -540,7 +540,7 @@ public class ProjectInitializer {
                 .toList();
 
         FileInventory.Result inventory = FileInventory.build(root, moduleDirectories, sourceRoots,
-                classes, gitResult.fileStats(), initialWorktree);
+                classes, gitResult.fileStats(), initialWorktree, classOccurrences);
         classes = inventory.classes();
         ConfigurationScanner.ScanResult references = ConfigurationScanner.scan(
                 root, moduleDirectories, scanResult.index(), classNameToSqliteId, classes,
@@ -600,6 +600,10 @@ public class ProjectInitializer {
                 Boolean.toString(classesDiscovery.complete()));
         metadata.put("compiled_main_output_count", Long.toString(compiledOutputs.stream()
                 .filter(output -> output.sourceSet().equals("main")).count()));
+        metadata.put("compiled_additional_output_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> !output.sourceSet().equals("main") && !output.sourceSet().equals("test")).count()));
+        metadata.put("compiled_source_sets", toJson(compiledOutputs.stream()
+                .map(ProjectLayout.CompiledOutput::sourceSet).distinct().sorted().toList()));
         metadata.put("compiled_test_output_count", Long.toString(compiledOutputs.stream()
                 .filter(output -> output.sourceSet().equals("test")).count()));
         metadata.put("compiled_test_module_count", Long.toString(compiledOutputs.stream()
@@ -906,6 +910,9 @@ public class ProjectInitializer {
             row.put("classPaths", endpoint.classPaths());
             row.put("methodPaths", endpoint.methodPaths());
             row.put("annotations", endpoint.annotations());
+            row.put("declaringClassId", endpoint.declaringClassId());
+            row.put("declaringClassName", endpoint.declaringClassName());
+            row.put("mappingSources", endpoint.mappingSources());
             return row;
         }).toList();
         return toJson(rows);
@@ -927,6 +934,12 @@ public class ProjectInitializer {
 
     public static List<Path> findClassesDirs(Path root) {
         return ProjectLayout.findClassesDirs(root, false);
+    }
+
+    public static List<Path> findIndexableClassesDirs(Path root) {
+        return ProjectLayout.discoverClassesDirs(root, false).outputs().stream()
+                .filter(output -> !output.sourceSet().equals("test"))
+                .map(ProjectLayout.CompiledOutput::directory).toList();
     }
 
     public static List<Path> findMainClassesDirs(Path root) {

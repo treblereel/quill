@@ -73,12 +73,14 @@ public final class McpStdioServer {
                 .validateToolInputs(false)
                 .build();
         Runnable stopStartup = registry == null ? () -> {} : KotlinSemanticQueries.startWarmup(registry);
+        Runnable stopJavaStartup = registry == null ? () -> {} : JavaSemanticQueries.startWarmup(registry);
         try {
             eof.await();
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         } finally {
             stopStartup.run();
+            stopJavaStartup.run();
             try {
                 // Cancelling the worker scheduler first interrupts active blocking tool calls and
                 // prevents an abandoned client from keeping the stdio process alive indefinitely.
@@ -87,6 +89,7 @@ public final class McpStdioServer {
             } finally {
                 responseScheduler.dispose();
                 KotlinSemanticQueries.closeWarmup();
+                JavaSemanticQueries.close();
                 org.treblereel.mcp.kotlin.KotlinWorkerClient.shared().close();
             }
         }

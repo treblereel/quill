@@ -96,6 +96,26 @@ class FileInventoryTest {
         assertEquals("kotlin", result.files().getFirst().kind());
     }
 
+    @Test
+    void compiledOwnershipOverridesPathConventionAndKeepsConflictsUnknown() throws Exception {
+        Path source = tempDir.resolve("shared sources/Probe.java");
+        Files.createDirectories(source.getParent()); Files.writeString(source, "class Probe {}");
+        var main = new org.treblereel.mcp.model.ClassOccurrenceRecord(1, 1, "Probe", "service",
+                "integrationTest", "out/integration", "out/integration/Probe.class",
+                "shared sources/Probe.java", "source");
+        var result = FileInventory.build(tempDir, List.of(tempDir), List.of(source.getParent()),
+                List.of(cls(1, "Probe", source.toString())), List.of(), WorktreeInspector.Snapshot.empty(), List.of(main));
+        assertEquals("service", result.files().getFirst().module());
+        assertEquals("integrationTest", result.files().getFirst().sourceSet());
+        assertEquals("integrationTest", result.classes().getFirst().sourceSet());
+        var conflicting = new org.treblereel.mcp.model.ClassOccurrenceRecord(2, 1, "Probe", "service",
+                "main", "out/main", "out/main/Probe.class", "shared sources/Probe.java", "source");
+        result = FileInventory.build(tempDir, List.of(tempDir), List.of(source.getParent()),
+                List.of(cls(1, "Probe", source.toString())), List.of(), WorktreeInspector.Snapshot.empty(), List.of(main, conflicting));
+        assertNull(result.files().getFirst().sourceSet());
+        assertNull(result.classes().getFirst().sourceSet());
+    }
+
     private static ClassRecord cls(int id, String name, String source) {
         return new ClassRecord(id, name, "CLASS", "java.lang.Object", List.of(),
                 source, 1, false, 10);

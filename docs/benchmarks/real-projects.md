@@ -89,3 +89,20 @@ Follow-up priorities are configuration-cache-safe internal discovery, freshness
 metadata on position responses, Java compiler-backed overload resolution, and
 correct qualification in Kotlin fallback navigation. Rerun the same manifest after
 each repair; keep the original report intact.
+
+## Configuration-cache repair
+
+Internal Gradle discovery now passes `--no-configuration-cache` for its temporary
+export task. The project's properties and regular build invocation remain unchanged.
+The corrected JVM discovery on the same disposable Kotlin project completed in
+**12.562 seconds**, with one module and four output directories, and returned
+`complete=true`. This measures discovery/classpath export, not native indexing or
+K2 frontend latency; do not compare it directly with the full 379.534-second index.
+
+Validation passed two `GradleProjectDiscoveryTest` cases and all four
+`GradleMultiModuleIT` cases. The new integration regression first builds a reactor
+with configuration cache enabled and problems configured to fail, then verifies
+both read-only discovery and classpath export, cached reuse, a custom output path,
+unchanged bytecode, and unchanged cache preferences. Its temporary project path
+contains spaces and Unicode. Focused verification disables the aggregate coverage
+gate; this is not a fresh full-reactor coverage result.

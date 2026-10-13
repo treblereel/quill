@@ -80,6 +80,9 @@ public final class GradleProjectDiscovery {
 
             process = new ProcessBuilder(BuildSystem.GRADLE.command(normalizedRoot,
                     "--init-script", initScript.toString(),
+                    // Export tasks capture evaluated Project objects and listeners. Keep
+                    // them outside the project's configuration cache for this invocation.
+                    "--no-configuration-cache",
                     "-Dquill.internal=true",
                     "-Dquill.manifest=" + manifest,
                     "-Dquill.project=" + normalizedRoot,

@@ -146,6 +146,42 @@ class GradleMultiModuleIT {
         assertEquals(Integer.toString(declarationCount), metadata.get("kotlin_declarations"));
     }
 
+    @Test
+    void discoversProjectsAndExportsClasspathWithConfigurationCacheEnabled() throws Exception {
+        assumeGradleAvailable();
+        Path project = TestProjectCopies.copyFixture(
+                PROJECT_FIXTURE, tempDir.resolve("configuration cache ü"));
+        Path properties = project.resolve("gradle.properties");
+        String configured = (Files.exists(properties) ? Files.readString(properties) : "")
+                + "\norg.gradle.configuration-cache=true\n"
+                + "org.gradle.configuration-cache.problems=fail\n";
+        Files.writeString(properties, configured);
+        runGradleCleanAndBuild(project);
+        Path classes = project.resolve("common/build/classes/java/main");
+        Path example;
+        try (var files = Files.walk(classes)) {
+            example = files.filter(path -> path.toString().endsWith(".class"))
+                    .findFirst().orElseThrow();
+        }
+        byte[] bytecode = Files.readAllBytes(example);
+
+        var readOnly = GradleProjectDiscovery.discover(project);
+        assertTrue(readOnly.complete(), "Read-only discovery must bypass configuration cache");
+        assertTrue(readOnly.classesDirectories().contains(
+                project.resolve("out/custom/classes/java/main").toAbsolutePath()));
+        assertFalse(Files.exists(project.resolve("common/build/quill-classpath.txt")));
+
+        var exported = GradleProjectDiscovery.discoverAndWriteClasspath(project);
+        assertTrue(exported.complete(), "Classpath export must bypass configuration cache");
+        assertEquals(readOnly.moduleDirectories(), exported.moduleDirectories());
+        assertTrue(Files.isRegularFile(project.resolve("common/build/quill-classpath.txt")));
+        assertTrue(Files.isRegularFile(project.resolve("service/build/quill-classpath.txt")));
+        assertTrue(Files.isRegularFile(project.resolve("build/quill-projects.tsv")));
+        assertTrue(GradleProjectDiscovery.discover(project).complete(), "Cached discovery must remain usable");
+        assertEquals(configured, Files.readString(properties), "Normal build cache preference is preserved");
+        assertArrayEquals(bytecode, Files.readAllBytes(example), "Discovery must not compile the project");
+    }
+
     private static void assumeGradleAvailable() throws Exception {
         Process process = new ProcessBuilder(
                 BuildSystem.GRADLE.command(PROJECT_FIXTURE, "--version"))

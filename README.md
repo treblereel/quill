@@ -922,6 +922,9 @@ and injects a temporary init script to export the evaluated Java project directo
 main source-set outputs, and `runtimeClasspath`. This respects dynamic settings and
 custom `projectDir`/`buildDirectory` mappings while excluding stale outputs from
 removed projects.
+Internal discovery runs with `--no-configuration-cache` because its export tasks
+use evaluated project objects and build listeners. This applies only to Quill's
+discovery invocation; the project's configuration-cache preference is preserved.
 Quill does not modify project build files or embed the Gradle Tooling API. Discovery
 and dependency classpath caches are written under `build/` directories and invalidated
 when Gradle build files, version catalogs, wrapper properties, or `buildSrc` change.

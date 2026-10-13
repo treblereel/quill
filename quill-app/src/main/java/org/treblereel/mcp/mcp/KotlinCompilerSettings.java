@@ -54,6 +54,11 @@ final class KotlinCompilerSettings {
                 copy(properties, "optionalOutput", request.putArray("optional_outputs"), module, true);
                 copy(properties, "optionalFriendPath", request.putArray("optional_friend_paths"), module, true);
                 copy(properties, "friendPath", request.putArray("friend_paths"), module, true);
+                if (properties.containsKey("sourceSelection")) {
+                    String selection = properties.getProperty("sourceSelection");
+                    if (selection.length() > 4_000_000) throw new IOException("Source selection limit");
+                    request.set("source_selection", new com.fasterxml.jackson.databind.ObjectMapper().readTree(selection));
+                }
                 request.put("captured_analysis_inputs", true);
             }
         }

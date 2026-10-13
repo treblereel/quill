@@ -180,7 +180,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
         void configure(JsonNode request) {
             if (!request.has("sources")) return;
             String next = request.path("module") + ":" + request.path("source_set") + ":" + request.path("sources")
-                    + ":" + request.path("optional_friend_paths") + ":" + request.path("optional_outputs") + ":" + request.path("friend_paths") + ":" + request.path("source_roots") + ":" + request.path("java_roots") + ":" + request.path("classpath") + ":" + request.path("captured_classpath") + ":" + request.path("compiler_settings_files") + ":" + request.path("plugin_classpath");
+                    + ":" + request.path("optional_friend_paths") + ":" + request.path("optional_outputs") + ":" + request.path("friend_paths") + ":" + request.path("java_sources") + ":" + request.path("source_roots") + ":" + request.path("java_roots") + ":" + request.path("classpath") + ":" + request.path("captured_classpath") + ":" + request.path("compiler_settings_files") + ":" + request.path("plugin_classpath");
             if (next.equals(signature) && !refresh) return;
             refresh = false; signature = next;
             var recursive = new LinkedHashSet<Path>(); var exact = new LinkedHashSet<Path>();
@@ -197,6 +197,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                 }
             }
             for (JsonNode root : request.path("captured_javaRoot")) recursive.add(Path.of(root.asText()));
+            for (JsonNode source : request.path("java_sources")) exact.add(Path.of(source.asText()));
             for (JsonNode source : request.path("sources")) exact.add(Path.of(source.asText()));
             for (JsonNode root : request.path("source_roots")) recursive.add(Path.of(root.asText()));
             for (JsonNode root : request.path("java_roots")) recursive.add(Path.of(root.asText()));

@@ -71,13 +71,44 @@ class KotlinCustomSourceSetIT {
             write("src/main/kotlin/Api.kt", "not valid Kotlin");
             assertEquals("resolved", KotlinSemanticQueries.resolve(db, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize(")).path("status").asText());
             String initialBuild = Files.readString(root.resolve("build.gradle.kts"));
-            for (String filter : new String[]{"kotlin.exclude(\"**/Probe.kt\")",
-                    "kotlin.exclude(org.gradle.api.specs.Spec<org.gradle.api.file.FileTreeElement> { it.name == \"Future.kt\" })"}) {
-                write("build.gradle.kts", initialBuild + "\nkotlin.sourceSets.named(\"integrationTest\") { " + filter + " }\n");
-                assertTrue(GradleProjectDiscovery.discoverAndWriteClasspath(root).complete());
-                assertEquals("compiler_settings_unavailable", KotlinSemanticQueries.resolve(db, root,
-                        root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize(")).path("status").asText(), filter);
-            }
+            write("build.gradle.kts", initialBuild + "\nkotlin.sourceSets.named(\"integrationTest\") { kotlin.exclude(\"**/Probe.kt\") }\n");
+            assertTrue(GradleProjectDiscovery.discoverAndWriteClasspath(root).complete());
+            assertEquals("source_not_in_source_set", KotlinSemanticQueries.resolve(db, root,
+                    root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize(")).path("status").asText());
+            write("build.gradle.kts", initialBuild + "\nkotlin.sourceSets.named(\"integrationTest\") { "
+                    + "kotlin.exclude(org.gradle.api.specs.Spec<org.gradle.api.file.FileTreeElement> { it.name == \"Future.kt\" }) }\n");
+            assertTrue(GradleProjectDiscovery.discoverAndWriteClasspath(root).complete());
+            assertEquals("resolved", KotlinSemanticQueries.resolve(db, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize(")).path("status").asText());
+            write("relocated ü/kotlin/Future.kt", "invalid excluded Kotlin");
+            assertEquals("source_selection_refresh_required", KotlinSemanticQueries.resolve(db, root,
+                    root.resolve("relocated ü/kotlin/Probe.kt"), 0).path("status").asText());
+            // Refresh the evaluated predicate snapshot after source topology changes.
+            org.treblereel.mcp.core.GradleProjectDiscovery.discoverAndWriteClasspath(root);
+            assertEquals("resolved", KotlinSemanticQueries.resolve(db, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize(")).path("status").asText());
+            write("override sources ü/Probe.kt", "package extra\nfun pick() = true\nfun run() = pick()");
+            write("override sources ü/Ignored.kt", "invalid excluded Kotlin");
+            write("override sources ü/Api.java", "package extra; public class Api { public static String pick() { return \"ok\"; } }");
+            write("override sources ü/Ignored.java", "invalid excluded Java");
+            write("build.gradle.kts", initialBuild + """
+                    tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileIntegrationTestKotlin") {
+                        setSource(fileTree("override sources ü") { include("**/*.kt", "**/*.java"); exclude("**/Ignored.kt", "**/Ignored.java") })
+                    }
+                    """);
+            assertTrue(GradleProjectDiscovery.discoverAndWriteClasspath(root).complete());
+            db.useHandle(h -> h.execute("INSERT INTO files(project_path,repository_path,kind,origin,lifecycle,module,source_set) "
+                    + "VALUES('override sources ü/Probe.kt','override sources ü/Probe.kt','kotlin','source','current','.','integrationTest')"));
+            Path override = root.resolve("override sources ü/Probe.kt");
+            assertEquals("()Z", KotlinSemanticQueries.resolve(db, root, override, Files.readString(override).lastIndexOf("pick()")).path("descriptor").asText());
+            write("override sources ü/New.kt", "package extra\nfun added() = 123");
+            write("override sources ü/Probe.kt", "package extra\nfun run() = added()");
+            assertEquals("()I", KotlinSemanticQueries.resolve(db, root, override, Files.readString(override).lastIndexOf("added()")).path("descriptor").asText());
+            write("override sources ü/Probe.kt", "package extra\nfun run() = Api.pick()");
+            var mixed = KotlinSemanticQueries.resolve(db, root, override, Files.readString(override).lastIndexOf("pick()"));
+            assertEquals("resolved", mixed.path("status").asText(), mixed.toString());
+            assertEquals("extra.Api", mixed.path("owner").asText());
+            write("override sources ü/Probe.kt", "package extra\nfun run() = added()");
+            Files.delete(root.resolve("override sources ü/New.kt"));
+            assertEquals("analysis_error", KotlinSemanticQueries.resolve(db, root, override, 0).path("status").asText());
         } finally {
             KotlinSemanticQueries.closeWarmup(); org.treblereel.mcp.kotlin.KotlinWorkerClient.shared().close();
             if (previousCache == null) System.clearProperty("quill.kotlin.cache"); else System.setProperty("quill.kotlin.cache", previousCache);

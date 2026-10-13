@@ -960,8 +960,13 @@ paths. Dependencies stay isolated between sets; standard Kotlin tests retain acc
 `internal` declarations from main through Gradle's friend paths. Source edits and new
 files under captured roots are collected without running Gradle during a query. Run
 initialization again after upgrading Quill to refresh older captures. Missing/stale
-settings, arbitrary task source overrides and source-selection filters produce an
-explicit fallback rather than analysis with a guessed source scope. Android
+settings produce an explicit fallback. Task-level source overrides and declarative
+`include`/`exclude` file-tree filters are captured from the actual compile task and
+replayed for new or removed Kotlin and Java files. Executable predicate filters use
+a guarded snapshot: source content or topology changes return
+`source_selection_refresh_required`; run initialization again to evaluate the
+project predicates in Gradle. Quill does not execute project predicates during
+queries. Android
 variants, Kotlin Multiplatform compilations, and mutually exclusive variants with duplicate
 class names are not modeled as separate analysis universes. Physical occurrences remain
 available, but a single logical class index cannot prove variant-specific resolution.

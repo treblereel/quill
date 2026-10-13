@@ -120,7 +120,17 @@ final class KotlinSemanticQueries {
             var sources = request.putArray("sources"); var javaRoots = request.putArray("java_roots");
             LinkedHashSet<Path> kotlinFiles = new LinkedHashSet<>();
             var roots = new LinkedHashSet<Path>();
-            if (capturedInputs) {
+            boolean selected = request.has("source_selection");
+            if (selected) {
+                request.put("repository_root", root.toString());
+                var selection = org.treblereel.mcp.kotlin.GradleSourceSelection.collect(root, request.path("source_selection"));
+                if (!warming && !selection.kotlin().contains(file)) return status("source_not_in_source_set");
+                kotlinFiles.addAll(selection.kotlin());
+                var javaSources = request.putArray("java_sources");
+                selection.java().forEach(path -> javaSources.add(path.toString()));
+                var watchedRoots = request.putArray("source_roots");
+                selection.roots().forEach(path -> watchedRoots.add(path.toString()));
+            } else if (capturedInputs) {
                 for (JsonNode path : request.path("captured_sourceRoot")) roots.add(canonical(Path.of(path.asText())));
                 for (JsonNode path : request.path("captured_javaRoot")) {
                     Path javaRoot = canonical(Path.of(path.asText()));
@@ -148,7 +158,7 @@ final class KotlinSemanticQueries {
                     }
                 }
             }
-            if (!warming || Files.isRegularFile(file)) kotlinFiles.add(file);
+            if (!selected && (!warming || Files.isRegularFile(file))) kotlinFiles.add(file);
             if (kotlinFiles.isEmpty()) return status("unavailable");
             if (warming) request.put("file", kotlinFiles.iterator().next().toString());
             kotlinFiles.stream().sorted().forEach(value -> sources.add(value.toString()));
@@ -191,7 +201,8 @@ final class KotlinSemanticQueries {
             }
             entries.forEach(classpath::add);
             return request;
-        } catch (Exception failure) { return status("unavailable"); }
+        } catch (org.treblereel.mcp.kotlin.GradleSourceSelection.Invalid invalid) { return status(invalid.status); }
+        catch (Exception failure) { return status("unavailable"); }
     }
 
     private static boolean optionalOutput(JsonNode request, Path path) {

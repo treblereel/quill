@@ -59,8 +59,24 @@ public record CompilerInputs(String fingerprint, String moduleHome, String jdkHo
             token(digest, name);
             if (Files.isRegularFile(path)) token(digest, hash(path, true)); else token(digest, "absent");
         }
-        token(digest, "sources");
-        for (JsonNode source : request.path("sources")) file(digest, Path.of(source.asText()), false);
+        if (request.has("source_selection")) {
+            try {
+                var selection = GradleSourceSelection.collect(Path.of(request.path("repository_root").asText()), request.path("source_selection"));
+                var kotlinPaths = new ArrayList<String>(); request.path("sources").forEach(value -> kotlinPaths.add(value.asText()));
+                var javaPaths = new ArrayList<String>(); request.path("java_sources").forEach(value -> javaPaths.add(value.asText()));
+                if (!selection.kotlin().stream().map(Path::toString).toList().equals(kotlinPaths)
+                        || !selection.java().stream().map(Path::toString).toList().equals(javaPaths)) throw new ChangedException();
+            } catch (GradleSourceSelection.Invalid invalid) { throw new ChangedException(); }
+        }
+        try {
+            token(digest, "sources");
+            for (JsonNode source : request.path("sources")) file(digest, Path.of(source.asText()), false);
+            token(digest, "java_sources");
+            for (JsonNode source : request.path("java_sources")) file(digest, Path.of(source.asText()), false);
+        } catch (java.nio.file.NoSuchFileException removed) {
+            if (request.has("source_selection")) throw new ChangedException();
+            throw removed;
+        }
         token(digest, "java_roots");
         for (JsonNode root : request.path("java_roots")) tree(digest, Path.of(root.asText()), true);
         token(digest, "classpath");

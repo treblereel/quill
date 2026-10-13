@@ -121,6 +121,30 @@ class KotlinSemanticQueriesTest {
         try (var writer = Files.newBufferedWriter(settings)) { properties.store(writer, "fixture"); }
     }
 
+    @Test void excludedIndexedAnchorDoesNotPreventWarmupOfSelectedSources() throws Exception {
+        var db = QuillDatabase.create(temp.resolve("index.db"));
+        Files.writeString(temp.resolve("build.gradle.kts"), "// never execute");
+        Path sources = temp.resolve("src/main/kotlin"); Files.createDirectories(sources);
+        Path excluded = sources.resolve("A.kt"); Files.writeString(excluded, "invalid excluded Kotlin");
+        Path selected = sources.resolve("B.kt"); Files.writeString(selected, "fun pick() = 1");
+        Path settings = temp.resolve("build/quill-kotlin-main.properties"); Files.createDirectories(settings.getParent());
+        writeInputs(settings, sources, Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()));
+        var json = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("protocol", 1);
+        var entry = json.putArray("entries").addObject().put("kind", "kotlin").put("root", sources.toString());
+        entry.putArray("defaultExcludes"); var gate = entry.putArray("gates").addObject();
+        gate.putArray("includes").add("**/*.kt"); gate.putArray("excludes").add("**/A.kt");
+        var properties = new java.util.Properties(); try (var reader = Files.newBufferedReader(settings)) { properties.load(reader); }
+        properties.setProperty("sourceSelection", json.toString());
+        try (var writer = Files.newBufferedWriter(settings)) { properties.store(writer, "fixture"); }
+        addStartupFile(db, "src/main/kotlin/A.kt", ".", "main", "current");
+        assertEquals("source_not_in_source_set", KotlinSemanticQueries.resolve(db, temp, excluded, 0).path("status").asText());
+        var method = KotlinSemanticQueries.class.getDeclaredMethod("prepare", org.jdbi.v3.core.Jdbi.class, Path.class, Path.class, int.class, boolean.class);
+        method.setAccessible(true);
+        var request = (com.fasterxml.jackson.databind.JsonNode) method.invoke(null, db, temp, excluded, -1, true);
+        assertEquals(selected.toRealPath().toString(), request.path("file").asText(), request.toString());
+        assertEquals(1, request.path("sources").size());
+    }
+
     @Test void missingProjectEvidenceKeepsFallbackWithoutExecutingBuilds() throws Exception {
         var db = QuillDatabase.create(temp.resolve("index.db"));
         Path file = temp.resolve("Example.kt"); Files.writeString(file, "fun run() = 1");

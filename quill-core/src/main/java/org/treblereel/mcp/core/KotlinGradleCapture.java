@@ -5,6 +5,72 @@ public final class KotlinGradleCapture {
     private KotlinGradleCapture() {}
     public static String script() { return """
         // quill:kotlin-capture:v1
+        def quillSourceSelection = { project, task ->
+            def entries = []
+            def snapshot = false
+            def gates
+            gates = { patterns, depth ->
+                if (depth > 32) throw new GradleException('Source pattern nesting limit')
+                if (!patterns.includeSpecs.isEmpty() || !patterns.excludeSpecs.isEmpty()) snapshot = true
+                def result = [[includes: patterns.includes.toList().sort(), excludes: patterns.excludes.toList().sort(), caseSensitive: patterns.caseSensitive]]
+                if (patterns instanceof org.gradle.api.tasks.util.internal.IntersectionPatternSet) result.addAll(gates(patterns.other, depth + 1))
+                result
+            }
+            def visit = { collection, kind ->
+                collection.asFileTree.visitStructure([
+                    visitCollection: { source, files -> files.each { file ->
+                        entries.add([kind: kind, file: file.canonicalPath])
+                    } },
+                    visitFileTree: { directory, patterns, tree ->
+                        entries.add([kind: kind, root: directory.canonicalPath, gates: gates(patterns, 0),
+                            defaultExcludes: org.apache.tools.ant.DirectoryScanner.getDefaultExcludes().toList().sort()])
+                    },
+                    visitFileTreeBackedByFile: { file, tree, mirror ->
+                        snapshot = true
+                        entries.add([kind: kind, file: file.canonicalPath])
+                    }
+                ] as org.gradle.api.internal.file.FileCollectionStructureVisitor)
+            }
+            visit(task.sources, 'kotlin')
+            if (task.hasProperty('javaSources')) visit(task.javaSources, 'java')
+            def selected = [kotlin: task.sources.files.findAll { it.name.endsWith('.kt') }.collect { it.canonicalPath }.sort(),
+                java: task.hasProperty('javaSources') ? task.javaSources.files.findAll { it.name.endsWith('.java') }.collect { it.canonicalPath }.sort() : []]
+            // Validate the structural export against Gradle's evaluated task inputs.
+            // Unusual file-tree implementations fall back to a guarded snapshot.
+            if (!snapshot) {
+                def replay = [kotlin: [], java: []]
+                entries.each { entry ->
+                    def files
+                    if (entry.root != null) {
+                        def tree = project.fileTree(new File(entry.root))
+                        entry.gates.each { rule ->
+                            tree = tree.matching {
+                                setCaseSensitive(rule.caseSensitive)
+                                if (!rule.includes.isEmpty()) include(rule.includes)
+                                if (!rule.excludes.isEmpty()) exclude(rule.excludes)
+                            }
+                        }
+                        files = tree.files
+                    } else files = [new File(entry.file)].findAll { it.isFile() }
+                    replay[entry.kind].addAll(files.findAll { it.name.endsWith(entry.kind == 'kotlin' ? '.kt' : '.java') }.collect { it.canonicalPath })
+                }
+                if (replay.kotlin.unique().sort() != selected.kotlin.unique().sort() || replay.java.unique().sort() != selected.java.unique().sort()) snapshot = true
+            }
+            def selection = [protocol: 1, entries: entries.unique(), snapshot: snapshot, selected: selected]
+            if (snapshot) {
+                def observed = []
+                selection.entries.each { entry ->
+                    if (entry.root != null) {
+                        def dir = new File(entry.root)
+                        if (dir.isDirectory()) project.fileTree(dir).files.each { observed.add(it.canonicalFile) }
+                    } else observed.add(new File(entry.file))
+                }
+                selection.guard = observed.unique().sort { it.canonicalPath }.collect { file ->
+                    [path: file.canonicalPath, sha256: file.isFile() ? java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes)) : 'absent']
+                }
+            }
+            selection
+        }
         def quillCaptureKotlin = { project ->
             def sets = project.extensions.findByName('sourceSets')
             (sets == null ? [] : sets.toList()).each { jvmSet ->
@@ -16,7 +82,7 @@ public final class KotlinGradleCapture {
                         def options = task.compilerOptions
                         def values = new Properties()
                         values.setProperty('compilerSettingsProtocol', '1')
-                        values.setProperty('producerVersion', '3')
+                        values.setProperty('producerVersion', '4')
                         ['languageVersion', 'apiVersion', 'jvmTarget'].each { key ->
                             if (options.hasProperty(key)) {
                                 def value = options."$key".orNull
@@ -50,18 +116,7 @@ public final class KotlinGradleCapture {
                             // A planned friend JAR need not exist when compiling tests against
                             // main classes. It must never make a missing dependency JAR optional.
                             put('optionalFriendPath', friends.findAll { !it.exists() }.collect { it.canonicalPath }.sort())
-                            // Arbitrary task source overrides/predicate filters cannot be reconstructed
-                            // from roots. Fail closed rather than analysing excluded declarations.
-                            def configured = kotlinSources.files.findAll { it.name.endsWith('.kt') }.collect { it.canonicalPath }.toSet()
-                            def actual = task.sources.files.findAll { it.name.endsWith('.kt') }.collect { it.canonicalPath }.toSet()
-                            def filtered = { source ->
-                                source.srcDirTrees.any { !it.patterns.isEmpty() }
-                                    || !source.filter.excludes.isEmpty()
-                                    || !(source.filter instanceof org.gradle.api.tasks.util.PatternSet)
-                                    || !source.filter.includeSpecs.isEmpty() || !source.filter.excludeSpecs.isEmpty()
-                            }
-                            if (filtered(kotlinSources) || filtered(jvmSet.java)
-                                    || configured != actual) values.setProperty('configurationError', 'source_selection_unsupported')
+                            values.setProperty('sourceSelection', groovy.json.JsonOutput.toJson(quillSourceSelection(project, task)))
                         } else values.setProperty('configurationError', 'analysis_inputs_unavailable')
                         put('argument', options.freeCompilerArgs.orNull ?: [])
                         def plugins = task.hasProperty('pluginClasspath') ? task.pluginClasspath.files.collect { it.canonicalPath }.sort() : []

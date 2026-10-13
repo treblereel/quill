@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -11,13 +14,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.jar.JarFile;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.GitAnalyzer;
+import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.JvmSourceFiles;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.MetaEnvelope;
 import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
 import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
@@ -561,8 +568,32 @@ final class WorkspaceToolQueries {
 
     String findUsages(String target, String providerRepository, String usageKind,
             int limit, int consumerLimit, int offset) {
+        return findUsages(target, providerRepository, usageKind, limit, consumerLimit,
+                offset, 0);
+    }
+
+    String findUsages(String target, String providerRepository, String usageKind,
+            int limit, int consumerLimit, int offset, int consumerOffset) {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null) return workspaceRequired();
+        SymbolContract.Reference member;
+        try {
+            member = SymbolContract.parse(target).orElse(null);
+        } catch (SymbolContract.ParseException invalid) {
+            return ToolResponseSupport.errorResponse(invalid.errorCode(), invalid.getMessage());
+        }
+        if (member != null && Set.of("METHOD", "CONSTRUCTOR", "FIELD").contains(member.kind())) {
+            return findMemberUsages(member, target, providerRepository, usageKind,
+                    limit, consumerLimit, offset, consumerOffset, scope);
+        }
+        if (member != null && "PROPERTY".equals(member.kind())) {
+            return ToolResponseSupport.errorResponse("UNSUPPORTED_SYMBOL_KIND",
+                    "Workspace property usages require a resolved JVM field or accessor symbol_id");
+        }
+        if (consumerOffset > 0) {
+            return ToolResponseSupport.errorResponse("INVALID_ARGUMENT",
+                    "consumer_offset applies only to method, constructor, or field symbol_id queries");
+        }
         ProjectRegistry.Resolution providerAvailability = null;
         if (providerRepository != null && !providerRepository.isBlank()) {
             providerAvailability = registry.resolve(providerRepository);
@@ -707,6 +738,344 @@ final class WorkspaceToolQueries {
         root.putArray("limitations").add(
                 "Only repositories declaring the provider artifact are queried");
         return root.toString();
+    }
+
+    private String findMemberUsages(SymbolContract.Reference reference, String symbolId,
+            String providerRepository, String usageKind, int limit, int consumerLimit,
+            int offset, int consumerOffset, WorkspaceProjectScope scope) {
+        String expectedKind = "FIELD".equals(reference.kind()) ? "field_access"
+                : "CONSTRUCTOR".equals(reference.kind()) ? "constructor_call" : "method_call";
+        if (usageKind != null && !usageKind.isBlank() && !"all".equalsIgnoreCase(usageKind)
+                && !expectedKind.equalsIgnoreCase(usageKind)) {
+            return ToolResponseSupport.errorResponse("INVALID_ARGUMENT",
+                    "usage_kind for this symbol must be " + expectedKind + " or all");
+        }
+        List<ProviderClass> providers = findProviderClasses(reference.className(), providerRepository)
+                .stream().filter(value -> reference.sourceFile().isBlank()
+                        || reference.sourceFile().equals(value.sourceFile())).toList();
+        if (providers.size() != 1) {
+            ObjectNode error = JSON.createObjectNode();
+            ToolResponseSupport.appendError(error, providers.isEmpty()
+                    ? "SYMBOL_NOT_FOUND" : "AMBIGUOUS_WORKSPACE_SYMBOL",
+                    providers.isEmpty() ? "Provider declaration is not indexed"
+                            : "Select one provider_repository for this symbol_id");
+            error.put("symbol_id", symbolId);
+            providers.forEach(value -> error.putArray("candidates").add(providerJson(value)));
+            return error.toString();
+        }
+        ProviderClass provider = providers.getFirst();
+        ProjectRegistry.Resolution providerResolution = registry.resolve(provider.repository());
+        if (providerResolution.projects().isEmpty()) {
+            return ToolResponseSupport.errorResponse("PROVIDER_INDEX_UNAVAILABLE",
+                    "Provider index is unavailable");
+        }
+        Jdbi providerDb = providerResolution.projects().getFirst().jdbi();
+        if (MetaEnvelope.from(providerDb, 0, 0).structureStale()) {
+            return ToolResponseSupport.errorResponse("PROVIDER_INDEX_STALE",
+                    "Provider index is stale; refresh it before matching member usages");
+        }
+        List<ClassRecord> providerClasses = IndexReader.findClassesByName(providerDb,
+                reference.className()).stream()
+                .filter(cls -> !"dependency".equals(cls.origin())
+                        && provider.module().equals(cls.module())
+                        && (reference.sourceFile().isBlank()
+                            || reference.sourceFile().equals(cls.sourceFile())))
+                .toList();
+        if (providerClasses.size() != 1) {
+            return ToolResponseSupport.errorResponse("PROVIDER_SYMBOL_AMBIGUOUS",
+                    "Provider class identity is not unique in the index");
+        }
+        List<ClassMemberRecord> providerMembers = matchingMembers(providerDb,
+                providerClasses.getFirst(), reference);
+        if (providerMembers.size() != 1 || reference.descriptor().isBlank()) {
+            return ToolResponseSupport.errorResponse("SYMBOL_NOT_FOUND",
+                    "The exact member descriptor is not present in the provider index");
+        }
+        WorkspaceCoordinateCatalog.Result catalog = WorkspaceCoordinateCatalog.discover(scope.manifest());
+        WorkspaceCoordinateCatalog.Module providerModule = catalog.modules().stream()
+                .filter(value -> value.repository().equals(provider.repository())
+                        && value.module().equals(provider.module())).findFirst().orElse(null);
+        if (providerModule == null || providerModule.ga() == null) {
+            return ToolResponseSupport.errorResponse("PROVIDER_COORDINATE_UNKNOWN",
+                    "Provider module has no unambiguous build coordinate");
+        }
+        WorkspaceDependencyGraph.Result graph = WorkspaceDependencyGraph.discover(scope.manifest());
+        List<WorkspaceDependencyGraph.Edge> edges = graph.edges().stream()
+                .filter(WorkspaceDependencyGraph.Edge::crossRepository)
+                .filter(edge -> edge.providerRepository().equals(provider.repository())
+                        && edge.providerModule().equals(provider.module())
+                        && edge.coordinate().equals(providerModule.ga())).toList();
+        edges = expandTestSourceSets(edges, catalog);
+        List<ConsumerUsage> usages = new ArrayList<>();
+        ArrayNode unresolved = JSON.createArrayNode();
+        int resolved = 0, queried = 0, truncated = 0;
+        for (WorkspaceDependencyGraph.Edge edge : edges) {
+            ObjectNode issue = unresolved.addObject();
+            issue.put("repository", edge.consumerRepository());
+            issue.put("module", edge.consumerModule());
+            issue.put("source_set", edge.sourceSet());
+            issue.put("resolved_binary_version", edge.resolvedBinaryVersion());
+            issue.put("version_status", edge.status());
+            if (!"version_match".equals(edge.status())) {
+                issue.put("status", "binary_behind_checkout".equals(edge.status())
+                        ? "version_mismatch" : "version_unknown");
+                continue;
+            }
+            ProjectRegistry.Resolution consumerResolution = registry.resolve(edge.consumerRepository());
+            if (consumerResolution.projects().isEmpty()) {
+                issue.put("status", "consumer_index_unavailable");
+                continue;
+            }
+            queried++;
+            Jdbi consumerDb = consumerResolution.projects().getFirst().jdbi();
+            if (!"complete".equals(IndexReader.getMetadata(consumerDb).get("dependency_index"))) {
+                issue.put("status", "dependency_index_incomplete");
+                continue;
+            }
+            if (MetaEnvelope.from(consumerDb, 0, 0).structureStale()) {
+                issue.put("status", "consumer_index_stale");
+                continue;
+            }
+            WorkspaceCoordinateCatalog.Module consumerModule = catalog.modules().stream()
+                    .filter(value -> value.repository().equals(edge.consumerRepository())
+                            && value.module().equals(edge.consumerModule()))
+                    .findFirst().orElse(null);
+            String binaryStatus = binaryOwnership(consumerResolution.projects().getFirst().root(),
+                    consumerModule, edge, reference.className());
+            if (binaryStatus != null) {
+                issue.put("status", binaryStatus);
+                continue;
+            }
+            List<ClassRecord> binaryClasses = IndexReader.findClassesByName(consumerDb,
+                    reference.className()).stream()
+                    .filter(cls -> "dependency".equals(cls.origin())).toList();
+            if (binaryClasses.size() != 1) {
+                issue.put("status", binaryClasses.isEmpty()
+                        ? "consumer_binary_class_missing" : "consumer_binary_class_ambiguous");
+                continue;
+            }
+            ClassRecord binaryClass = binaryClasses.getFirst();
+            if (matchingMembers(consumerDb, binaryClass, reference).size() != 1) {
+                issue.put("status", "consumer_binary_member_missing");
+                continue;
+            }
+            ObjectNode data = memberUsages(consumerDb, binaryClass, reference, edge,
+                    consumerLimit, consumerOffset);
+            resolved++;
+            if (data.path("has_more").asBoolean()) truncated++;
+            if (data.path("usage_group_count").asInt() > 0) {
+                usages.add(new ConsumerUsage(edge.consumerRepository(), edge, data));
+            }
+            unresolved.remove(unresolved.size() - 1);
+        }
+        usages.sort(java.util.Comparator.comparing(ConsumerUsage::repository)
+                .thenComparing(value -> value.edge().consumerModule())
+                .thenComparing(value -> value.edge().sourceSet()));
+        int from = Math.min(offset, usages.size());
+        int to = (int) Math.min((long) from + limit, usages.size());
+        ObjectNode root = JSON.createObjectNode();
+        root.put("target", reference.className());
+        root.put("symbol_id", symbolId);
+        root.put("granularity", "member");
+        root.put("kind", reference.kind().toLowerCase(java.util.Locale.ROOT));
+        root.put("name", reference.jvmName());
+        root.put("descriptor", reference.descriptor());
+        ObjectNode providerNode = root.putObject("provider");
+        providerNode.put("repository", provider.repository());
+        providerNode.put("module", provider.module());
+        providerNode.put("coordinate", providerModule.ga());
+        providerNode.put("version", providerModule.version());
+        ArrayNode values = root.putArray("consumers");
+        for (ConsumerUsage usage : usages.subList(from, to)) {
+            ObjectNode node = values.addObject();
+            node.put("repository", usage.repository());
+            node.put("module", usage.edge().consumerModule());
+            node.put("source_set", usage.edge().sourceSet());
+            node.put("resolved_binary_version", usage.edge().resolvedBinaryVersion());
+            node.put("version_status", usage.edge().status());
+            node.set("usage", usage.data());
+        }
+        ToolResponseSupport.appendPage(root, to - from, usages.size(), limit, offset);
+        root.put("candidate_consumer_count", edges.size());
+        root.put("queried_consumer_count", queried);
+        root.put("resolved_consumer_count", resolved);
+        root.put("unresolved_consumer_count", unresolved.size());
+        root.put("truncated_consumer_count", truncated);
+        root.put("consumer_usage_limit", consumerLimit);
+        root.put("consumer_usage_offset", consumerOffset);
+        root.put("complete", graph.complete() && unresolved.isEmpty() && truncated == 0);
+        root.put("unresolved_consumers_truncated", unresolved.size() > 20);
+        ArrayNode reportedUnresolved = JSON.createArrayNode();
+        for (int i = 0; i < Math.min(20, unresolved.size()); i++) {
+            reportedUnresolved.add(unresolved.get(i));
+        }
+        root.set("unresolved_consumers", reportedUnresolved);
+        if (truncated > 0) {
+            int nextOffset = (int) Math.min((long) consumerOffset + consumerLimit,
+                    Integer.MAX_VALUE);
+            ObjectNode next = root.putObject("next_usage_page_request");
+            next.put("tool", "find_workspace_usages");
+            ObjectNode args = next.putObject("arguments");
+            args.put("target", symbolId);
+            args.put("provider_repository", provider.repository());
+            if (usageKind != null) args.put("usage_kind", usageKind);
+            args.put("limit", limit);
+            args.put("consumer_limit", consumerLimit);
+            args.put("consumer_offset", nextOffset);
+            args.put("offset", offset);
+        }
+        appendDiagnostics(root, graph.diagnostics());
+        root.putArray("limitations")
+                .add("Only indexed bytecode calls and field accesses in the matched consumer source set are reported")
+                .add("Reflection and dynamically selected targets are not inferred")
+                .add("Classpath order and indexed binary identity are checked; binary content hashes are not compared");
+        return root.toString();
+    }
+
+    private List<WorkspaceDependencyGraph.Edge> expandTestSourceSets(
+            List<WorkspaceDependencyGraph.Edge> edges, WorkspaceCoordinateCatalog.Result catalog) {
+        List<WorkspaceDependencyGraph.Edge> expanded = new ArrayList<>(edges);
+        for (WorkspaceDependencyGraph.Edge edge : edges) {
+            if (!"main".equals(edge.sourceSet())) continue;
+            ProjectRegistry.Resolution resolution = registry.resolve(edge.consumerRepository());
+            if (resolution.projects().isEmpty()) continue;
+            Jdbi db = resolution.projects().getFirst().jdbi();
+            boolean hasTestClasses = db.withHandle(handle -> handle.createQuery("""
+                    SELECT COUNT(*) FROM classes WHERE module = :module AND source_set = 'test'
+                      AND lifecycle = 'current' AND origin NOT IN ('dependency', 'orphan_output')
+                    """).bind("module", edge.consumerModule()).mapTo(Integer.class).one() > 0);
+            if (!hasTestClasses) continue;
+            WorkspaceCoordinateCatalog.Module module = catalog.modules().stream()
+                    .filter(value -> value.repository().equals(edge.consumerRepository())
+                            && value.module().equals(edge.consumerModule()))
+                    .findFirst().orElse(null);
+            String version = null;
+            if (module != null) {
+                Path root = resolution.projects().getFirst().root();
+                Path moduleRoot = ".".equals(module.module()) ? root
+                        : root.resolve(module.module()).normalize();
+                BuildSystem system = BuildSystem.valueOf(
+                        module.buildSystem().toUpperCase(java.util.Locale.ROOT));
+                version = WorkspaceDependencyGraph.resolvedVersion(
+                        DependencyIndexer.parseClasspathFile(system.testClasspathFile(moduleRoot)),
+                        edge.coordinate());
+            }
+            String status = version == null ? "binary_version_unknown"
+                    : version.equals(edge.checkoutVersion()) ? "version_match"
+                    : "binary_behind_checkout";
+            expanded.add(new WorkspaceDependencyGraph.Edge(edge.consumerRepository(),
+                    edge.consumerModule(), edge.providerRepository(), edge.providerModule(),
+                    edge.coordinate(), edge.scopes(), "test", "captured_test_runtime_classpath",
+                    edge.checkoutVersion(), version, status, edge.crossRepository(),
+                    edge.ambiguousProvider()));
+        }
+        return expanded;
+    }
+
+    private static List<ClassMemberRecord> matchingMembers(Jdbi db, ClassRecord cls,
+            SymbolContract.Reference reference) {
+        return IndexReader.findClassMembers(db, cls.id()).stream()
+                .filter(member -> member.kind().equals(reference.kind())
+                        && member.name().equals(reference.jvmName())
+                        && member.descriptor().equals(reference.descriptor())).toList();
+    }
+
+    private static String binaryOwnership(Path repositoryRoot,
+            WorkspaceCoordinateCatalog.Module module, WorkspaceDependencyGraph.Edge edge,
+            String className) {
+        if (module == null) return "consumer_module_unknown";
+        Path moduleRoot = ".".equals(module.module()) ? repositoryRoot
+                : repositoryRoot.resolve(module.module()).normalize();
+        BuildSystem system = BuildSystem.valueOf(module.buildSystem().toUpperCase(java.util.Locale.ROOT));
+        Path classpath = "test".equals(edge.sourceSet())
+                ? system.testClasspathFile(moduleRoot) : system.classpathFile(moduleRoot);
+        if (!Files.isRegularFile(classpath)) return "consumer_classpath_missing";
+        String entry = className.replace('.', '/') + ".class";
+        try {
+            String contents = Files.readString(classpath).strip();
+            if (contents.isEmpty()) return "consumer_binary_class_unattributed";
+            for (String item : contents.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
+                Path candidate = Path.of(item).toAbsolutePath().normalize();
+                if (Files.isDirectory(candidate) && Files.isRegularFile(candidate.resolve(entry))) {
+                    return "consumer_binary_class_shadowed";
+                }
+                if (!item.endsWith(".jar")) continue;
+                Path jar = Path.of(item).toAbsolutePath().normalize();
+                if (!Files.isRegularFile(jar)) return "consumer_classpath_missing";
+                try (JarFile archive = new JarFile(jar.toFile(), false)) {
+                    if (archive.getJarEntry(entry) == null) continue;
+                }
+                String version = WorkspaceDependencyGraph.resolvedVersion(List.of(jar), edge.coordinate());
+                return edge.resolvedBinaryVersion().equals(version)
+                        ? null : "consumer_binary_class_shadowed";
+            }
+            return "consumer_binary_class_unattributed";
+        } catch (IOException invalid) {
+            return "consumer_classpath_unreadable";
+        }
+    }
+
+    private static ObjectNode memberUsages(Jdbi db, ClassRecord target,
+            SymbolContract.Reference reference, WorkspaceDependencyGraph.Edge edge,
+            int limit, int offset) {
+        boolean field = "FIELD".equals(reference.kind());
+        String table = field ? "field_accesses" : "method_calls";
+        String nameColumn = field ? "field_name" : "to_method";
+        String descriptorColumn = field ? "field_descriptor" : "to_descriptor";
+        String bytecodeName = "CONSTRUCTOR".equals(reference.kind())
+                ? "<init>" : reference.jvmName();
+        String from = " FROM " + table + " usage JOIN classes caller ON caller.id = usage.from_class_id"
+                + " WHERE usage.to_class_id = :target AND usage." + nameColumn + " = :name"
+                + " AND usage." + descriptorColumn + " = :descriptor"
+                + " AND caller.lifecycle = 'current' AND caller.origin NOT IN ('dependency', 'orphan_output')"
+                + " AND caller.module = :module AND caller.source_set = :sourceSet";
+        return db.withHandle(handle -> {
+            var count = handle.createQuery("SELECT COUNT(*) AS groups, COALESCE(SUM(usage.occurrence_count), 0) AS occurrences" + from)
+                    .bind("target", target.id()).bind("name", bytecodeName)
+                    .bind("descriptor", reference.descriptor())
+                    .bind("module", edge.consumerModule()).bind("sourceSet", edge.sourceSet())
+                    .map((row, ctx) -> new int[]{row.getInt("groups"), row.getInt("occurrences")}).one();
+            String sql = "SELECT caller.class_name, caller.source_file, caller.source_line,"
+                    + " usage.from_method, usage.from_descriptor, usage.occurrence_count,"
+                    + " usage.evidence_lines, usage." + (field ? "access_kind" : "invocation_kind")
+                    + " AS bytecode_kind" + from
+                    + " ORDER BY caller.class_name, usage.from_method, usage.from_descriptor, bytecode_kind"
+                    + " LIMIT :limit OFFSET :offset";
+            ObjectNode result = JSON.createObjectNode();
+            result.put("usage_group_count", count[0]);
+            result.put("usage_occurrence_count", count[1]);
+            ArrayNode rows = result.putArray("usages");
+            handle.createQuery(sql).bind("target", target.id()).bind("name", bytecodeName)
+                    .bind("descriptor", reference.descriptor())
+                    .bind("module", edge.consumerModule()).bind("sourceSet", edge.sourceSet())
+                    .bind("limit", limit).bind("offset", offset).map((row, ctx) -> {
+                        ObjectNode node = JSON.createObjectNode();
+                        node.put("class", row.getString("class_name"));
+                        node.put("caller_method", row.getString("from_method"));
+                        node.put("caller_descriptor", row.getString("from_descriptor"));
+                        node.put("occurrence_count", row.getInt("occurrence_count"));
+                        String kind = row.getString("bytecode_kind");
+                        node.put(field ? "access_kind" : "invocation_kind", kind);
+                        node.put("usage_kind", field
+                                ? kind.startsWith("read_") ? "read" : "write" : "call");
+                        try {
+                            node.set("evidence_lines", JSON.readTree(row.getString("evidence_lines")));
+                        } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
+                            throw new IllegalStateException("Invalid indexed evidence lines", invalid);
+                        }
+                        String source = row.getString("source_file");
+                        if (source == null) node.putNull("source");
+                        else node.put("source", source);
+                        return node;
+                    }).forEach(rows::add);
+            ToolResponseSupport.appendPage(result, rows.size(), count[0], limit, offset);
+            result.put("answer_complete", !result.path("has_more").asBoolean());
+            Map<String, String> metadata = IndexReader.getMetadata(db);
+            ObjectNode snapshot = result.putObject("index_snapshot");
+            snapshot.put("index_id", metadata.getOrDefault("index_id", "unknown"));
+            snapshot.put("indexed_commit", metadata.getOrDefault("last_commit", "unknown"));
+            return result;
+        });
     }
 
     private static String consumerUsages(UsageToolQueries usageQueries, Jdbi jdbi,

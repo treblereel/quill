@@ -151,7 +151,7 @@ public final class WorkspaceDependencyGraph {
         return mainScope ? "main" : "test";
     }
 
-    static String resolvedVersion(List<Path> jars, String ga) {
+    public static String resolvedVersion(List<Path> jars, String ga) {
         int separator = ga.indexOf(':');
         if (separator <= 0 || separator == ga.length() - 1) return null;
         String group = ga.substring(0, separator);

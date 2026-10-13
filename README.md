@@ -532,7 +532,10 @@ emitted by the MCP surface.
 - **get_workspace_dependencies** — resolve declared dependencies onto providers in other local
   workspace repositories and report binary/version drift
 - **resolve_workspace_entity** — resolve a class across repositories with explicit ambiguity
-- **find_workspace_usages** — find cross-repository usages of an indexed class
+- **find_workspace_usages** — find cross-repository usages of an indexed class or exact
+  method, constructor, or field `symbol_id`. Member results include JVM descriptors,
+  binary-version checks, caller evidence, and per-consumer pagination. Unavailable or
+  mismatched consumer indexes are reported as unresolved, rather than as zero usages.
 - **assess_workspace_change_risk** — aggregate change impact across repository boundaries
 
 Paginated responses use the same `showing`, `total`, `limit`, `offset`, `has_more`,

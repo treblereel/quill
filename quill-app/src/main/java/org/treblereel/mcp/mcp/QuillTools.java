@@ -85,16 +85,25 @@ public final class QuillTools {
     @Tool(readOnly = true, structured = true, description = "Find workspace usages.")
     public String find_workspace_usages(
             @ToolArg(description = "Target") String target,
-            @ToolArg(description = "Provider repository") Optional<String> provider_repository,
+            @ToolArg(description = "Provider repo") Optional<String> provider_repository,
             @ToolArg(description = "Usage kind") Optional<String> usage_kind,
-            @ToolArg(description = "Consumer repository page size") Optional<Integer> limit,
-            @ToolArg(description = "Usage groups returned per consumer (default: 20, max: 100)") Optional<Integer> consumer_limit,
+            @ToolArg(description = "Page size") Optional<Integer> limit,
+            @ToolArg(description = "Groups per consumer") Optional<Integer> consumer_limit,
+            @ToolArg(description = "Usage offset") Optional<Integer> consumer_offset,
             @ToolArg(description = "Offset") Optional<Integer> offset) {
         return ResponseBudget.apply(workspace.findUsages(target,
                 provider_repository.orElse(null), usage_kind.orElse(null),
                 clamp(limit.orElse(20), 1, 100),
                 clamp(consumer_limit.orElse(20), 1, 100),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE),
+                clamp(consumer_offset.orElse(0), 0, Integer.MAX_VALUE)));
+    }
+
+    String find_workspace_usages(String target, Optional<String> provider_repository,
+            Optional<String> usage_kind, Optional<Integer> limit,
+            Optional<Integer> consumer_limit, Optional<Integer> offset) {
+        return find_workspace_usages(target, provider_repository, usage_kind, limit,
+                consumer_limit, Optional.empty(), offset);
     }
 
     @Tool(readOnly = true, structured = true, description = "Assess cross-repo change risk.")

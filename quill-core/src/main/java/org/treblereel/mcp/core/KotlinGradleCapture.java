@@ -63,6 +63,7 @@ public final class KotlinGradleCapture {
                     if (entry.root != null) {
                         def dir = new File(entry.root)
                         if (dir.isDirectory()) project.fileTree(dir).files.each { observed.add(it.canonicalFile) }
+                        else if (dir.isFile()) observed.add(dir.canonicalFile)
                     } else observed.add(new File(entry.file))
                 }
                 selection.guard = observed.unique().sort { it.canonicalPath }.collect { file ->

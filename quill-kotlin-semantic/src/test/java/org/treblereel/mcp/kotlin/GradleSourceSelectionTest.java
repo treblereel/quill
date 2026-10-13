@@ -63,6 +63,25 @@ class GradleSourceSelectionTest {
         var result = GradleSourceSelection.collect(root, s); assertEquals(List.of(java), result.java()); assertEquals(List.of(kotlin), result.kotlin());
         Files.delete(kotlin); assertTrue(GradleSourceSelection.collect(root, s).kotlin().isEmpty());
     }
+    @Test void gradleFileTreeMayHaveAnIndividualFileAsItsRoot() throws Exception {
+        Path file = write("src/Explicit.kt", "fun explicit() = 1"); write("src/Neighbour.kt", "invalid unrelated Kotlin");
+        var s = selection(); var entry = tree(s, "kotlin", "src/Explicit.kt"); var rule = gate(entry, "**/*.kt", null);
+        var result = GradleSourceSelection.collect(root, s);
+        assertEquals(List.of(file), result.kotlin()); assertEquals(List.of(file.getParent()), result.roots());
+        rule.withArray("excludes").add("**/Explicit.kt"); assertTrue(GradleSourceSelection.collect(root, s).kotlin().isEmpty());
+        Files.delete(file); assertTrue(GradleSourceSelection.collect(root, s).kotlin().isEmpty());
+        write("src/Explicit.kt", "restored"); rule.withArray("excludes").removeAll();
+        assertEquals(List.of(file), GradleSourceSelection.collect(root, s).kotlin());
+    }
+    @Test void predicateSnapshotGuardAlsoCoversAnIndividualFileTreeRoot() throws Exception {
+        Path file = write("src/Explicit.kt", "aaaa"); var s = selection().put("snapshot", true);
+        gate(tree(s, "kotlin", "src/Explicit.kt"), "**/*.kt", null);
+        s.putObject("selected").putArray("kotlin").add(file.toString()); s.withObject("selected").putArray("java");
+        s.putArray("guard").addObject().put("path", file.toString()).put("sha256",
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))));
+        GradleSourceSelection.collect(root, s); Files.writeString(file, "bbbb"); status("source_selection_refresh_required", s);
+    }
+
     @Test void caseInsensitiveIncludesAndExcludesUseSameSetting() throws Exception {
         Path a = write("src/A.kt", "ok"); write("src/Ignored.kt", "invalid");
         var s = selection(); gate(tree(s, "kotlin", "src"), "**/*.KT", "**/IGNORED.KT").put("caseSensitive", false);

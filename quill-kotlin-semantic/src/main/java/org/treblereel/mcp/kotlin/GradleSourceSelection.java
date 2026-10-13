@@ -6,6 +6,7 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /** Replays declarative Gradle file trees. Executable predicates use a guarded build snapshot. */
 public final class GradleSourceSelection {
@@ -36,17 +37,18 @@ public final class GradleSourceSelection {
                 if (snapshot) observed.put(path.toString(), hash(path));
                 if (Files.isRegularFile(path)) add(kind, path, kotlin, java);
             } else {
-                roots.add(path);
+                boolean singleFile = Files.isRegularFile(path);
+                roots.add(singleFile ? path.getParent() : path);
                 JsonNode gates = entry.path("gates");
                 if (!gates.isArray() || gates.size() > 64) throw new Invalid("source_selection_invalid");
                 validatePatterns(entry.path("defaultExcludes"));
                 for (JsonNode gate : gates) { validatePatterns(gate.path("includes")); validatePatterns(gate.path("excludes")); }
-                if (!Files.isDirectory(path)) continue;
-                try (var files = Files.walk(path, FileVisitOption.FOLLOW_LINKS)) {
+                if (!singleFile && !Files.isDirectory(path)) continue;
+                try (var files = singleFile ? Stream.of(path) : Files.walk(path, FileVisitOption.FOLLOW_LINKS)) {
                     var iterator = files.filter(Files::isRegularFile).iterator();
                     while (iterator.hasNext()) {
                         Path candidate = iterator.next();
-                        String relative = path.relativize(candidate).toString().replace('\\', '/');
+                        String relative = (singleFile ? candidate.getFileName() : path.relativize(candidate)).toString().replace('\\', '/');
                         if (matches(entry.path("defaultExcludes"), relative, true)) continue;
                         Path actual = candidate.toRealPath();
                         if (!actual.startsWith(root)) throw new Invalid("source_outside_root");

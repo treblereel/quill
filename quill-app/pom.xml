@@ -28,6 +28,11 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
+            <groupId>org.treblereel.mcp</groupId><artifactId>quill-kotlin-semantic</artifactId>
+            <version>${project.version}</version><classifier>source-selection</classifier>
+            <exclusions><exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion></exclusions>
+        </dependency>
+        <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-supplier</artifactId>
             <version>${maven-resolver.version}</version>

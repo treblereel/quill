@@ -269,14 +269,31 @@ class GradleMultiModuleIT {
     }
 
     @Test
-    void indexesKotlinCustomSourceSet() throws Exception {
+    void indexesKotlinTaskOverrideOutsideConfiguredSourceSetRoots() throws Exception {
+        indexesKotlinTaskOverride(false);
+    }
+
+    @Test
+    void indexesSingleFileKotlinTaskOverrideOutsideConfiguredRoots() throws Exception {
+        indexesKotlinTaskOverride(true);
+    }
+
+    private void indexesKotlinTaskOverride(boolean singleFile) throws Exception {
         assumeGradleAvailable();
         Path project = TestProjectCopies.copyFixture(SPRING_PROJECT_FIXTURE, tempDir.resolve("kotlin custom"));
         Path build = project.resolve("build.gradle.kts");
-        Files.writeString(build, Files.readString(build) + "\nval integrationTest by sourceSets.creating\n");
-        Path source = project.resolve("src/integrationTest/kotlin/custom/Probe.kt");
+        Files.writeString(build, Files.readString(build) + """
+
+                val integrationTest by sourceSets.creating
+                tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileIntegrationTestKotlin") {
+                    setSource(%s)
+                }
+                """.formatted(singleFile ? "file(\"override sources ü/custom/Probe.kt\")"
+                        : "fileTree(\"override sources ü\") { include(\"**/*.kt\"); exclude(\"**/Ignored.kt\") }"));
+        Path source = project.resolve("override sources ü/custom/Probe.kt");
         Files.createDirectories(source.getParent());
         Files.writeString(source, "package custom\nclass Probe { fun value() = 42 }");
+        Files.writeString(source.getParent().resolve("Ignored.kt"), "invalid excluded Kotlin");
         Process process = new ProcessBuilder(BuildSystem.GRADLE.command(project, "clean", "classes", "integrationTestClasses", "--quiet"))
                 .directory(project.toFile()).inheritIO().start();
         assertEquals(0, process.waitFor());
@@ -286,13 +303,17 @@ class GradleMultiModuleIT {
         try (var reader = Files.newBufferedReader(project.resolve("build/quill-kotlin-integrationTest.properties"))) { settings.load(reader); }
         assertEquals("1", settings.getProperty("analysisInputsProtocol"));
         assertNull(settings.getProperty("configurationError"), settings.toString());
-        String kotlinRoot = source.getParent().getParent().toRealPath().toString();
-        assertTrue(settings.values().stream().anyMatch(value -> value.toString().equals(kotlinRoot)));
+        String kotlinRoot = (singleFile ? source : source.getParent().getParent()).toRealPath().toString();
+        Path inventoryRoot = singleFile ? source.getParent() : source.getParent().getParent();
+        var selection = new com.fasterxml.jackson.databind.ObjectMapper().readTree(settings.getProperty("sourceSelection"));
+        assertTrue(selection.path("entries").findValuesAsText("root").contains(kotlinRoot), selection.toString());
+        assertTrue(org.treblereel.mcp.core.GradleProjectDiscovery.discover(project).sourceRoots().stream()
+                .anyMatch(path -> path.toAbsolutePath().normalize().toString().equals(inventoryRoot.toAbsolutePath().normalize().toString())));
         assertTrue(Integer.parseInt(settings.getProperty("compileClasspath.count")) > 0);
         var db = QuillDatabase.open(ProjectIndexStore.findDbForHead(project));
         var probe = IndexReader.findClassByName(db, "custom.Probe").orElseThrow();
         assertEquals("integrationTest", probe.sourceSet());
-        assertEquals("src/integrationTest/kotlin/custom/Probe.kt", probe.sourceFile());
+        assertEquals("override sources ü/custom/Probe.kt", probe.sourceFile());
         assertTrue(probe.sourceTokens() > 0);
         assertFalse(IndexReader.findKotlinDeclarations(db, probe.id()).isEmpty());
         assertEquals("integrationTest", IndexReader.findFileByPath(db, probe.sourceFile()).orElseThrow().sourceSet());

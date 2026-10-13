@@ -1,5 +1,7 @@
 # Kotlin runtime footprint — 2026-10-11
 
+See [the packaged Gradle/native validation](gradle-native-macos.md) for the current distribution measurements.
+
 ## Embedded compiler (`4e53715`)
 
 Measured on macOS arm64, GraalVM CE 25.0.1, with `-Os` and 10 build threads.

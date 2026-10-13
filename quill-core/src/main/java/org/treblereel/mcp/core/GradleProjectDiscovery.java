@@ -17,7 +17,7 @@ import java.util.UUID;
 /** Obtains the evaluated Gradle project structure without embedding Gradle in Quill. */
 public final class GradleProjectDiscovery {
 
-    private static final String CACHE_VERSION = "9";
+    private static final String CACHE_VERSION = "11";
 
     public record Discovery(
             List<Path> moduleDirectories,
@@ -330,7 +330,20 @@ public final class GradleProjectDiscovery {
                                                 displayPath(file).absolutePath.getBytes('UTF-8'))
                                         })
                                         records << fields.join('\t')
-                                        def roots = selectedSourceSet.value.allSource.srcDirs
+                                        def sourceDirectories = selectedSourceSet.value.allSource.srcDirs.toList()
+                                        def kotlinTask = project.tasks.findByName(selectedSourceSet.value.getCompileTaskName('kotlin'))
+                                        if (kotlinTask != null && kotlinTask.hasProperty('sources')) {
+                                            def trees = [kotlinTask.sources]
+                                            if (kotlinTask.hasProperty('javaSources')) trees.add(kotlinTask.javaSources)
+                                            trees.each { collection ->
+                                                collection.asFileTree.visitStructure([
+                                                    visitCollection: { source, files -> files.each { file -> sourceDirectories.add(file.parentFile) } },
+                                                    visitFileTree: { directory, patterns, tree -> sourceDirectories.add(directory.isFile() ? directory.parentFile : directory) },
+                                                    visitFileTreeBackedByFile: { file, tree, mirror -> }
+                                                ] as org.gradle.api.internal.file.FileCollectionStructureVisitor)
+                                            }
+                                        }
+                                        def roots = sourceDirectories
                                             .collect { encoder.encodeToString(displayPath(it).absolutePath.getBytes('UTF-8')) }
                                             .unique().sort()
                                         if (!roots.isEmpty()) records << (['@sources'] + roots).join('\t')

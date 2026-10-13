@@ -1,0 +1,4330 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-12",
+  "build": {
+    "source_base_commit": "626c5239674338095c5529e0360c1121554e1966",
+    "runtime_patch_files": [
+      "quill-app/pom.xml",
+      "quill-kotlin-semantic/pom.xml",
+      "quill-core/src/main/java/org/treblereel/mcp/core/GradleProjectDiscovery.java",
+      "quill-core/src/main/java/org/treblereel/mcp/core/KotlinGradleCapture.java",
+      "quill-kotlin-semantic/src/main/java/org/treblereel/mcp/kotlin/GradleSourceSelection.java"
+    ],
+    "runtime_patch_sha256": "b76a336b35fdc393c99e8fae3e763b74816dcf3f97bd69d0642a1c699f589f60",
+    "candidate": {
+      "bytes": 69481032,
+      "sha256": "d1db2110c34f9efaad402aa080285b4a100358b9e1d207fdbfd59c8978ffec0c"
+    },
+    "baseline": {
+      "bytes": 69249432,
+      "sha256": "175a7563ef02aaf4890ecbb67aaa713a34fc4d1783e95439fff798f6b4bf0c2b"
+    },
+    "helper": {
+      "bytes": 10139,
+      "sha256": "08025739f631fffc49025621a5d64cb021b53d58d6e5bc36027e1390d565f911"
+    },
+    "worker": {
+      "bytes": 62756,
+      "sha256": "589ca2e64e4d9b57bd6280cda22f32175477d2c1babee4e4ec746bbf89314232"
+    },
+    "platform": "macOS arm64",
+    "graalvm": "CE 25.0.1",
+    "optimization": "-Os",
+    "reactor_build_seconds_approx": 73,
+    "native_image_peak_rss_decimal_gb": 2.84,
+    "baseline_code_reference": "ddb9a4a",
+    "baseline_attestation": "Size and SHA match the historical Java worker native integration report; this is not a fresh build of ca4c6e8. Growth includes intervening API/HTTP/Gradle changes.",
+    "growth_bytes": 231600,
+    "growth_percent": 0.33444317637146825
+  },
+  "tests": {
+    "broad_before_native_fixes": {
+      "unit_passed": 1039,
+      "integration_passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    "focused_after_final_fixes": {
+      "unit_passed": 44,
+      "integration_passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "native_kotlin_language_cases": 50,
+    "native_gradle_requests": 18,
+    "jvm_explicit_file_requests": 6,
+    "native_java_requests": 16,
+    "python_shutdown_tests_passed": 6
+  },
+  "kotlin": {
+    "jdk25": {
+      "binary_bytes": 69481032,
+      "cases": [
+        {
+          "name": "int overload",
+          "seconds": 1.5137945420574397,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "string overload",
+          "seconds": 1.4134203749708831,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/lang/String;)Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 3,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "smart cast",
+          "seconds": 1.393049041973427,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.Receiver",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "context parameter",
+          "seconds": 1.407105791149661,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/lang/String;I)Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "local shadow",
+          "seconds": 1.403003750136122,
+          "result": {
+            "status": "local",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "generic erasure",
+          "seconds": 1.7547039580531418,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/lang/Object;)Ljava/lang/Object;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "nullable boxing",
+          "seconds": 1.6383417500182986,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/lang/Integer;)Ljava/lang/Integer;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "array boxing",
+          "seconds": 1.5315480001736432,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "([Ljava/lang/Integer;)[Ljava/lang/Integer;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "suspend",
+          "seconds": 1.6450676668900996,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "binary stdlib",
+          "seconds": 1.2592151251155883,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/lang/Object;)Ljava/util/List;",
+            "kind": "METHOD",
+            "name": "listOf",
+            "owner": "kotlin.collections.CollectionsKt__CollectionsJVMKt",
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "JDK symbols",
+          "seconds": 1.5518459589220583,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/util/ArrayList;)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "Java source symbols",
+          "seconds": 1.5809352919459343,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.JavaReceiver",
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "constructor",
+          "seconds": 1.2695814580656588,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)V",
+            "kind": "CONSTRUCTOR",
+            "name": "Receiver",
+            "owner": "probe.Receiver",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "nested type",
+          "seconds": 1.6780202500522137,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "kind": "CLASS",
+            "name": "Nested",
+            "owner": "probe.Outer$Nested",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "property",
+          "seconds": 2.121272583026439,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "kind": "PROPERTY",
+            "name": "name",
+            "owner": "probe.Receiver",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "JVM annotation",
+          "seconds": 1.3742073751054704,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "renamed",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "object receiver",
+          "seconds": 1.3049447920639068,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.Receiver",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "type mismatch",
+          "seconds": 1.3019643330480903,
+          "result": {
+            "status": "analysis_error",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "diagnostics": [
+              "Argument type mismatch: actual type is 'String', but 'Int' was expected."
+            ],
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "incomplete source",
+          "seconds": 1.213533875066787,
+          "result": {
+            "status": "analysis_error",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "diagnostics": [
+              "Syntax error: Expecting '}'."
+            ],
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "literal position",
+          "seconds": 1.218306333059445,
+          "result": {
+            "status": "unresolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "standalone script",
+          "seconds": 1.406509832944721,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kts",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "project language settings",
+          "seconds": 1.3503580829128623,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.3",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "disabled project plugin",
+          "seconds": 0.40243325009942055,
+          "result": {
+            "status": "compiler_plugins_disabled",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21"
+          }
+        },
+        {
+          "name": "all-open project plugin",
+          "seconds": 1.3147726659663022,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.Base",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 rc1uyaa6/Probe.kt",
+            "source_line": 3,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "nonsemantic compiler flag",
+          "seconds": 0.5344210411421955,
+          "result": {
+            "status": "unavailable",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "reason": "IllegalArgumentException"
+          }
+        }
+      ],
+      "runtime_preparation_seconds": 3.7978964580688626,
+      "gradle_runtime_preparation_seconds": 5.932108458131552,
+      "startup_version_seconds": [
+        0.016903209034353495,
+        0.016189708141610026,
+        0.0163420841563493,
+        0.01633149990811944,
+        0.016181709012016654,
+        0.016672208905220032
+      ],
+      "startup_warm_median_seconds": 0.01633149990811944,
+      "max_child_rss_bytes": 304234496,
+      "baseline_bytes": 69249432,
+      "growth_bytes": 231600,
+      "growth_percent": 0.33444317637146825,
+      "baseline_startup_version_seconds": [
+        0.028167666867375374,
+        0.01980216708034277,
+        0.019521957961842418,
+        0.019757041009142995,
+        0.01981737487949431,
+        0.02013991610147059
+      ],
+      "baseline_startup_warm_median_seconds": 0.01980216708034277,
+      "mcp": {
+        "metadata_fallback": {
+          "result": {
+            "path": "src/main/kotlin/NativeProbe.kt",
+            "line": 2,
+            "column": 21,
+            "identifier": "typedNavigation",
+            "context": "method_call",
+            "argument_count": 1,
+            "resolution": "ambiguous",
+            "resolution_basis": "lexical_fallback",
+            "confidence": "medium",
+            "semantic_analysis": {
+              "status": "classpath_missing"
+            },
+            "candidates": [
+              {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(int):int",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(I)I",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(I)I",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 110,
+                "ranking_reasons": [
+                  "call_expression_method",
+                  "metadata_arguments_match"
+                ]
+              },
+              {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(java.lang.String):java.lang.String",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KExqYXZhL2xhbmcvU3RyaW5nOylMamF2YS9sYW5nL1N0cmluZzs:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(Ljava/lang/String;)Ljava/lang/String;",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(Ljava/lang/String;)Ljava/lang/String;",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 110,
+                "ranking_reasons": [
+                  "call_expression_method",
+                  "metadata_arguments_match"
+                ]
+              },
+              {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.TypedReceiver",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(long):long",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLlR5cGVkUmVjZWl2ZXI:method:dHlwZWROYXZpZ2F0aW9u:KEopSg:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(J)J",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(J)J",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 110,
+                "ranking_reasons": [
+                  "call_expression_method",
+                  "metadata_arguments_match"
+                ]
+              }
+            ],
+            "candidate_count": 3,
+            "limitations": [
+              "Resolution uses the live identifier text and indexed declarations; local variables are not indexed",
+              "Fallback argument-count ranking does not perform full Java or Kotlin overload type inference"
+            ],
+            "_meta": {
+              "index_id": "nocommit-36dd7c823b0a",
+              "indexed_at": "2026-10-13T05:57:43.227321Z",
+              "indexed_commit": "unknown",
+              "current_commit": null,
+              "commit_stale": false,
+              "worktree_dirty": false,
+              "worktree_changed_files": 0,
+              "structural_changed_files": 0,
+              "structure_stale": false,
+              "stale_reasons": [],
+              "stale_warning": false,
+              "stale_scope": "current",
+              "answer_confidence": "high"
+            },
+            "project_warnings": [
+              {
+                "status": "build_required",
+                "project": "quill-kotlin-mcp-68xhcs78",
+                "project_root": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-68xhcs78",
+                "build_system": "maven",
+                "message": "Compiled main classes are older than project build inputs",
+                "recommended_action": "Decide whether to run the project's Maven compile/package command, then retry",
+                "build_reason": "classes_stale",
+                "stale_modules": [
+                  "."
+                ],
+                "build_was_started": false,
+                "decision_owner": "mcp_client",
+                "retryable": true
+              }
+            ]
+          },
+          "metrics": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 136.593,
+            "response_bytes": 4379
+          }
+        },
+        "prepared_k2": {
+          "result": {
+            "path": "src/main/kotlin/NativeProbe.kt",
+            "line": 2,
+            "column": 21,
+            "identifier": "typedNavigation",
+            "context": "method_call",
+            "argument_count": 1,
+            "resolution": "resolved",
+            "resolution_basis": "compiler",
+            "confidence": "high",
+            "semantic_analysis": {
+              "status": "resolved",
+              "backend": "kotlin_k2_fir",
+              "language_version": "2.4",
+              "compiler_version": "2.4.21",
+              "descriptor": "(I)I",
+              "kind": "METHOD",
+              "name": "typedNavigation",
+              "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+              "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-68xhcs78/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+              "source_line": 35,
+              "analysis_reused": false,
+              "analysis_generation": 1,
+              "snapshot_cache_entries": 1,
+              "snapshot_cache_capacity": 2,
+              "snapshot_cache_evictions": 0,
+              "input_detection": "directory_watcher_fsevents"
+            },
+            "selected": {
+              "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+              "kind": "METHOD",
+              "member_name": "typedNavigation",
+              "signature": "typedNavigation(int):int",
+              "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+              "language": "kotlin",
+              "source_name": "typedNavigation",
+              "jvm_name": "typedNavigation",
+              "jvm_descriptor": "(I)I",
+              "location": {
+                "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "line": null
+              },
+              "kotlin_kind": "function",
+              "kotlin_name": "typedNavigation",
+              "parameter_count": 1,
+              "value_parameters": [
+                {
+                  "name": "value",
+                  "hasDefault": false,
+                  "vararg": false
+                }
+              ],
+              "required_parameter_count": 1,
+              "descriptor": "(I)I",
+              "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+              "same_file": false,
+              "score": 1000,
+              "ranking_reasons": [
+                "compiler_semantic_match"
+              ]
+            },
+            "candidates": [
+              {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(int):int",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(I)I",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(I)I",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 1000,
+                "ranking_reasons": [
+                  "compiler_semantic_match"
+                ]
+              }
+            ],
+            "candidate_count": 1,
+            "limitations": [
+              "Resolution uses the live identifier text and indexed declarations; local variables are not indexed",
+              "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
+            ],
+            "_meta": {
+              "index_id": "nocommit-36dd7c823b0a",
+              "indexed_at": "2026-10-13T05:57:43.227321Z",
+              "indexed_commit": "unknown",
+              "current_commit": null,
+              "commit_stale": false,
+              "worktree_dirty": false,
+              "worktree_changed_files": 0,
+              "structural_changed_files": 0,
+              "structure_stale": false,
+              "stale_reasons": [],
+              "stale_warning": false,
+              "stale_scope": "current",
+              "answer_confidence": "high"
+            },
+            "project_warnings": [
+              {
+                "status": "build_required",
+                "project": "quill-kotlin-mcp-68xhcs78",
+                "project_root": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-68xhcs78",
+                "build_system": "maven",
+                "message": "Compiled main classes are older than project build inputs",
+                "recommended_action": "Decide whether to run the project's Maven compile/package command, then retry",
+                "build_reason": "classes_stale",
+                "stale_modules": [
+                  "."
+                ],
+                "build_was_started": false,
+                "decision_owner": "mcp_client",
+                "retryable": true
+              }
+            ]
+          },
+          "metrics": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 2087.343,
+            "response_bytes": 3780
+          },
+          "warm_fresh_source_latency_ms": [
+            202.762,
+            148.212,
+            136.993,
+            117.123,
+            129.808,
+            115.147,
+            100.549,
+            101.925,
+            93.469,
+            97.979,
+            99.958,
+            90.838,
+            82.807,
+            82.069,
+            104.211,
+            86.171,
+            101.555,
+            80.872,
+            78.621,
+            91.041
+          ],
+          "warm_fresh_source_median_ms": 100.2535,
+          "warm_fresh_source_p95_ms": 148.212,
+          "warm_unchanged_source_latency_ms": [
+            5.705,
+            5.484,
+            6.27,
+            5.286,
+            5.008,
+            10.119,
+            4.996,
+            4.984,
+            5.426,
+            5.261,
+            4.944,
+            5.545,
+            4.788,
+            4.966,
+            5.112,
+            4.655,
+            4.96,
+            7.62,
+            5.0,
+            4.724
+          ],
+          "warm_unchanged_source_median_ms": 5.0600000000000005,
+          "background_warmed_query": {
+            "result": {
+              "path": "src/main/kotlin/NativeProbe.kt",
+              "line": 2,
+              "column": 21,
+              "identifier": "typedNavigation",
+              "context": "method_call",
+              "argument_count": 1,
+              "resolution": "resolved",
+              "resolution_basis": "compiler",
+              "confidence": "high",
+              "semantic_analysis": {
+                "status": "resolved",
+                "backend": "kotlin_k2_fir",
+                "language_version": "2.4",
+                "compiler_version": "2.4.21",
+                "descriptor": "(I)I",
+                "kind": "METHOD",
+                "name": "typedNavigation",
+                "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-68xhcs78/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "source_line": 35,
+                "analysis_reused": true,
+                "analysis_generation": 22,
+                "snapshot_cache_entries": 1,
+                "snapshot_cache_capacity": 2,
+                "snapshot_cache_evictions": 0,
+                "input_detection": "directory_watcher_fsevents"
+              },
+              "selected": {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(int):int",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(I)I",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(I)I",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 1000,
+                "ranking_reasons": [
+                  "compiler_semantic_match"
+                ]
+              },
+              "candidates": [
+                {
+                  "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                  "kind": "METHOD",
+                  "member_name": "typedNavigation",
+                  "signature": "typedNavigation(int):int",
+                  "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                  "language": "kotlin",
+                  "source_name": "typedNavigation",
+                  "jvm_name": "typedNavigation",
+                  "jvm_descriptor": "(I)I",
+                  "location": {
+                    "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                    "line": null
+                  },
+                  "kotlin_kind": "function",
+                  "kotlin_name": "typedNavigation",
+                  "parameter_count": 1,
+                  "value_parameters": [
+                    {
+                      "name": "value",
+                      "hasDefault": false,
+                      "vararg": false
+                    }
+                  ],
+                  "required_parameter_count": 1,
+                  "descriptor": "(I)I",
+                  "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "same_file": false,
+                  "score": 1000,
+                  "ranking_reasons": [
+                    "compiler_semantic_match"
+                  ]
+                }
+              ],
+              "candidate_count": 1,
+              "limitations": [
+                "Resolution uses the live identifier text and indexed declarations; local variables are not indexed",
+                "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
+              ],
+              "_meta": {
+                "index_id": "nocommit-36dd7c823b0a",
+                "indexed_at": "2026-10-13T05:57:43.227321Z",
+                "indexed_commit": "unknown",
+                "current_commit": null,
+                "commit_stale": false,
+                "worktree_dirty": false,
+                "worktree_changed_files": 0,
+                "structural_changed_files": 0,
+                "structure_stale": false,
+                "stale_reasons": [],
+                "stale_warning": false,
+                "stale_scope": "current",
+                "answer_confidence": "high"
+              },
+              "project_warnings": [
+                {
+                  "status": "build_required",
+                  "project": "quill-kotlin-mcp-68xhcs78",
+                  "project_root": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-68xhcs78",
+                  "build_system": "maven",
+                  "message": "Compiled main classes are older than project build inputs",
+                  "recommended_action": "Decide whether to run the project's Maven compile/package command, then retry",
+                  "build_reason": "classes_stale",
+                  "stale_modules": [
+                    "."
+                  ],
+                  "build_was_started": false,
+                  "decision_owner": "mcp_client",
+                  "retryable": true
+                }
+              ]
+            },
+            "metrics": {
+              "tool": "get_symbol_at_position",
+              "latency_ms": 22.907,
+              "response_bytes": 3780
+            },
+            "idle_allowance_seconds": 1
+          },
+          "standalone_script": {
+            "result": {
+              "path": "src/main/kotlin/NativeScript.kts",
+              "line": 2,
+              "column": 16,
+              "identifier": "typedNavigation",
+              "context": "method_call",
+              "argument_count": 1,
+              "resolution": "resolved",
+              "resolution_basis": "compiler",
+              "confidence": "high",
+              "semantic_analysis": {
+                "status": "resolved",
+                "backend": "kotlin_k2_fir",
+                "language_version": "2.4",
+                "compiler_version": "2.4.21",
+                "descriptor": "(I)I",
+                "kind": "METHOD",
+                "name": "typedNavigation",
+                "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-68xhcs78/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "source_line": 35,
+                "analysis_reused": true,
+                "analysis_generation": 23,
+                "snapshot_cache_entries": 1,
+                "snapshot_cache_capacity": 2,
+                "snapshot_cache_evictions": 0,
+                "input_detection": "directory_watcher_fsevents"
+              },
+              "selected": {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(int):int",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(I)I",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(I)I",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 1000,
+                "ranking_reasons": [
+                  "compiler_semantic_match"
+                ]
+              },
+              "candidates": [
+                {
+                  "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                  "kind": "METHOD",
+                  "member_name": "typedNavigation",
+                  "signature": "typedNavigation(int):int",
+                  "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                  "language": "kotlin",
+                  "source_name": "typedNavigation",
+                  "jvm_name": "typedNavigation",
+                  "jvm_descriptor": "(I)I",
+                  "location": {
+                    "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                    "line": null
+                  },
+                  "kotlin_kind": "function",
+                  "kotlin_name": "typedNavigation",
+                  "parameter_count": 1,
+                  "value_parameters": [
+                    {
+                      "name": "value",
+                      "hasDefault": false,
+                      "vararg": false
+                    }
+                  ],
+                  "required_parameter_count": 1,
+                  "descriptor": "(I)I",
+                  "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "same_file": false,
+                  "score": 1000,
+                  "ranking_reasons": [
+                    "compiler_semantic_match"
+                  ]
+                }
+              ],
+              "candidate_count": 1,
+              "limitations": [
+                "Resolution uses the live identifier text and indexed declarations; local variables are not indexed",
+                "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
+              ],
+              "_meta": {
+                "index_id": "nocommit-36dd7c823b0a",
+                "indexed_at": "2026-10-13T05:57:43.227321Z",
+                "indexed_commit": "unknown",
+                "current_commit": null,
+                "commit_stale": false,
+                "worktree_dirty": false,
+                "worktree_changed_files": 0,
+                "structural_changed_files": 0,
+                "structure_stale": false,
+                "stale_reasons": [],
+                "stale_warning": false,
+                "stale_scope": "current",
+                "answer_confidence": "high"
+              },
+              "project_warnings": [
+                {
+                  "status": "build_required",
+                  "project": "quill-kotlin-mcp-68xhcs78",
+                  "project_root": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-68xhcs78",
+                  "build_system": "maven",
+                  "message": "Compiled main classes are older than project build inputs",
+                  "recommended_action": "Decide whether to run the project's Maven compile/package command, then retry",
+                  "build_reason": "classes_stale",
+                  "stale_modules": [
+                    "."
+                  ],
+                  "build_was_started": false,
+                  "decision_owner": "mcp_client",
+                  "retryable": true
+                }
+              ]
+            },
+            "metrics": {
+              "tool": "get_symbol_at_position",
+              "latency_ms": 215.828,
+              "response_bytes": 3782
+            }
+          },
+          "eof_shutdown": {
+            "mcp_exit_code": 0,
+            "worker_processes": 1,
+            "forced_termination": false,
+            "elapsed_ms": 18.900958821177483
+          }
+        },
+        "startup_warmed_first_query": {
+          "result": {
+            "path": "src/main/kotlin/NativeProbe.kt",
+            "line": 2,
+            "column": 21,
+            "identifier": "typedNavigation",
+            "context": "method_call",
+            "argument_count": 1,
+            "resolution": "resolved",
+            "resolution_basis": "compiler",
+            "confidence": "high",
+            "semantic_analysis": {
+              "status": "resolved",
+              "backend": "kotlin_k2_fir",
+              "language_version": "2.4",
+              "compiler_version": "2.4.21",
+              "descriptor": "(I)I",
+              "kind": "METHOD",
+              "name": "typedNavigation",
+              "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+              "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-68xhcs78/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+              "source_line": 35,
+              "analysis_reused": true,
+              "analysis_generation": 1,
+              "snapshot_cache_entries": 1,
+              "snapshot_cache_capacity": 2,
+              "snapshot_cache_evictions": 0,
+              "input_detection": "directory_watcher_fsevents"
+            },
+            "selected": {
+              "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+              "kind": "METHOD",
+              "member_name": "typedNavigation",
+              "signature": "typedNavigation(int):int",
+              "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+              "language": "kotlin",
+              "source_name": "typedNavigation",
+              "jvm_name": "typedNavigation",
+              "jvm_descriptor": "(I)I",
+              "location": {
+                "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "line": null
+              },
+              "kotlin_kind": "function",
+              "kotlin_name": "typedNavigation",
+              "parameter_count": 1,
+              "value_parameters": [
+                {
+                  "name": "value",
+                  "hasDefault": false,
+                  "vararg": false
+                }
+              ],
+              "required_parameter_count": 1,
+              "descriptor": "(I)I",
+              "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+              "same_file": false,
+              "score": 1000,
+              "ranking_reasons": [
+                "compiler_semantic_match"
+              ]
+            },
+            "candidates": [
+              {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(int):int",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(I)I",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(I)I",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 1000,
+                "ranking_reasons": [
+                  "compiler_semantic_match"
+                ]
+              }
+            ],
+            "candidate_count": 1,
+            "limitations": [
+              "Resolution uses the live identifier text and indexed declarations; local variables are not indexed",
+              "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
+            ],
+            "_meta": {
+              "index_id": "nocommit-36dd7c823b0a",
+              "indexed_at": "2026-10-13T05:57:43.227321Z",
+              "indexed_commit": "unknown",
+              "current_commit": null,
+              "commit_stale": false,
+              "worktree_dirty": false,
+              "worktree_changed_files": 0,
+              "structural_changed_files": 0,
+              "structure_stale": false,
+              "stale_reasons": [],
+              "stale_warning": false,
+              "stale_scope": "current",
+              "answer_confidence": "high"
+            },
+            "project_warnings": [
+              {
+                "status": "build_required",
+                "project": "quill-kotlin-mcp-68xhcs78",
+                "project_root": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-68xhcs78",
+                "build_system": "maven",
+                "message": "Compiled main classes are older than project build inputs",
+                "recommended_action": "Decide whether to run the project's Maven compile/package command, then retry",
+                "build_reason": "classes_stale",
+                "stale_modules": [
+                  "."
+                ],
+                "build_was_started": false,
+                "decision_owner": "mcp_client",
+                "retryable": true
+              }
+            ]
+          },
+          "metrics": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 45.741,
+            "response_bytes": 3779
+          },
+          "readiness_allowance_seconds": 5,
+          "eof_shutdown": {
+            "mcp_exit_code": 0,
+            "worker_processes": 1,
+            "forced_termination": false,
+            "elapsed_ms": 18.886333098635077
+          }
+        }
+      }
+    },
+    "jdk17": {
+      "binary_bytes": 69481032,
+      "cases": [
+        {
+          "name": "int overload",
+          "seconds": 1.5113803332205862,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "string overload",
+          "seconds": 1.4359887081664056,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/lang/String;)Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 3,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "smart cast",
+          "seconds": 1.477607916109264,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.Receiver",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "context parameter",
+          "seconds": 2.0259892500471324,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/lang/String;I)Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "local shadow",
+          "seconds": 1.5797087501268834,
+          "result": {
+            "status": "local",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "generic erasure",
+          "seconds": 1.5339219169691205,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/lang/Object;)Ljava/lang/Object;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "nullable boxing",
+          "seconds": 1.4323715828359127,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/lang/Integer;)Ljava/lang/Integer;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "array boxing",
+          "seconds": 1.6128355839755386,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "([Ljava/lang/Integer;)[Ljava/lang/Integer;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "suspend",
+          "seconds": 1.5452184160239995,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "binary stdlib",
+          "seconds": 1.5324832079932094,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/lang/Object;)Ljava/util/List;",
+            "kind": "METHOD",
+            "name": "listOf",
+            "owner": "kotlin.collections.CollectionsKt__CollectionsJVMKt",
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "JDK symbols",
+          "seconds": 1.6248167499434203,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(Ljava/util/ArrayList;)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "Java source symbols",
+          "seconds": 2.4021364168729633,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.JavaReceiver",
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "constructor",
+          "seconds": 2.9875663749407977,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)V",
+            "kind": "CONSTRUCTOR",
+            "name": "Receiver",
+            "owner": "probe.Receiver",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "nested type",
+          "seconds": 2.1951049170456827,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "kind": "CLASS",
+            "name": "Nested",
+            "owner": "probe.Outer$Nested",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "property",
+          "seconds": 1.4929322497919202,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "kind": "PROPERTY",
+            "name": "name",
+            "owner": "probe.Receiver",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "JVM annotation",
+          "seconds": 1.5192478750832379,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "renamed",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "object receiver",
+          "seconds": 1.5152297909371555,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.Receiver",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "type mismatch",
+          "seconds": 1.4747787090018392,
+          "result": {
+            "status": "analysis_error",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "diagnostics": [
+              "Argument type mismatch: actual type is 'String', but 'Int' was expected."
+            ],
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "incomplete source",
+          "seconds": 1.4115209998562932,
+          "result": {
+            "status": "analysis_error",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "diagnostics": [
+              "Syntax error: Expecting '}'."
+            ],
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "literal position",
+          "seconds": 1.4452297079842538,
+          "result": {
+            "status": "unresolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "standalone script",
+          "seconds": 1.5740502080880105,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kts",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "project language settings",
+          "seconds": 1.4221044168807566,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.3",
+            "compiler_version": "2.4.21",
+            "descriptor": "(I)I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.ProbeKt",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "disabled project plugin",
+          "seconds": 0.38249058299697936,
+          "result": {
+            "status": "compiler_plugins_disabled",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21"
+          }
+        },
+        {
+          "name": "all-open project plugin",
+          "seconds": 1.5289320419542491,
+          "result": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "probe.Base",
+            "source_file": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill native K2 tlopyjcg/Probe.kt",
+            "source_line": 3,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0
+          }
+        },
+        {
+          "name": "nonsemantic compiler flag",
+          "seconds": 0.8013719590380788,
+          "result": {
+            "status": "unavailable",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "reason": "IllegalArgumentException"
+          }
+        }
+      ],
+      "runtime_preparation_seconds": 2.5537430830299854,
+      "gradle_runtime_preparation_seconds": 3.3567921249195933,
+      "startup_version_seconds": [
+        0.018039708025753498,
+        0.017141625052317977,
+        0.01646783296018839,
+        0.016517125070095062,
+        0.01633970788680017,
+        0.016525582876056433
+      ],
+      "startup_warm_median_seconds": 0.016517125070095062,
+      "max_child_rss_bytes": 282165248,
+      "mcp": {
+        "metadata_fallback": {
+          "result": {
+            "path": "src/main/kotlin/NativeProbe.kt",
+            "line": 2,
+            "column": 21,
+            "identifier": "typedNavigation",
+            "context": "method_call",
+            "argument_count": 1,
+            "resolution": "ambiguous",
+            "resolution_basis": "lexical_fallback",
+            "confidence": "medium",
+            "semantic_analysis": {
+              "status": "classpath_missing"
+            },
+            "candidates": [
+              {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(int):int",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(I)I",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(I)I",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 110,
+                "ranking_reasons": [
+                  "call_expression_method",
+                  "metadata_arguments_match"
+                ]
+              },
+              {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(java.lang.String):java.lang.String",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KExqYXZhL2xhbmcvU3RyaW5nOylMamF2YS9sYW5nL1N0cmluZzs:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(Ljava/lang/String;)Ljava/lang/String;",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(Ljava/lang/String;)Ljava/lang/String;",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 110,
+                "ranking_reasons": [
+                  "call_expression_method",
+                  "metadata_arguments_match"
+                ]
+              },
+              {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.TypedReceiver",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(long):long",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLlR5cGVkUmVjZWl2ZXI:method:dHlwZWROYXZpZ2F0aW9u:KEopSg:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(J)J",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(J)J",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 110,
+                "ranking_reasons": [
+                  "call_expression_method",
+                  "metadata_arguments_match"
+                ]
+              }
+            ],
+            "candidate_count": 3,
+            "limitations": [
+              "Resolution uses the live identifier text and indexed declarations; local variables are not indexed",
+              "Fallback argument-count ranking does not perform full Java or Kotlin overload type inference"
+            ],
+            "_meta": {
+              "index_id": "nocommit-66ae8eb3ef7a",
+              "indexed_at": "2026-10-13T05:58:41.620300Z",
+              "indexed_commit": "unknown",
+              "current_commit": null,
+              "commit_stale": false,
+              "worktree_dirty": false,
+              "worktree_changed_files": 0,
+              "structural_changed_files": 0,
+              "structure_stale": false,
+              "stale_reasons": [],
+              "stale_warning": false,
+              "stale_scope": "current",
+              "answer_confidence": "high"
+            },
+            "project_warnings": [
+              {
+                "status": "build_required",
+                "project": "quill-kotlin-mcp-4z7tjxom",
+                "project_root": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-4z7tjxom",
+                "build_system": "maven",
+                "message": "Compiled main classes are older than project build inputs",
+                "recommended_action": "Decide whether to run the project's Maven compile/package command, then retry",
+                "build_reason": "classes_stale",
+                "stale_modules": [
+                  "."
+                ],
+                "build_was_started": false,
+                "decision_owner": "mcp_client",
+                "retryable": true
+              }
+            ]
+          },
+          "metrics": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 135.084,
+            "response_bytes": 4379
+          }
+        },
+        "prepared_k2": {
+          "result": {
+            "path": "src/main/kotlin/NativeProbe.kt",
+            "line": 2,
+            "column": 21,
+            "identifier": "typedNavigation",
+            "context": "method_call",
+            "argument_count": 1,
+            "resolution": "resolved",
+            "resolution_basis": "compiler",
+            "confidence": "high",
+            "semantic_analysis": {
+              "status": "resolved",
+              "backend": "kotlin_k2_fir",
+              "language_version": "2.4",
+              "compiler_version": "2.4.21",
+              "descriptor": "(I)I",
+              "kind": "METHOD",
+              "name": "typedNavigation",
+              "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+              "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-4z7tjxom/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+              "source_line": 35,
+              "analysis_reused": true,
+              "analysis_generation": 1,
+              "snapshot_cache_entries": 1,
+              "snapshot_cache_capacity": 2,
+              "snapshot_cache_evictions": 0,
+              "input_detection": "directory_watcher_fsevents"
+            },
+            "selected": {
+              "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+              "kind": "METHOD",
+              "member_name": "typedNavigation",
+              "signature": "typedNavigation(int):int",
+              "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+              "language": "kotlin",
+              "source_name": "typedNavigation",
+              "jvm_name": "typedNavigation",
+              "jvm_descriptor": "(I)I",
+              "location": {
+                "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "line": null
+              },
+              "kotlin_kind": "function",
+              "kotlin_name": "typedNavigation",
+              "parameter_count": 1,
+              "value_parameters": [
+                {
+                  "name": "value",
+                  "hasDefault": false,
+                  "vararg": false
+                }
+              ],
+              "required_parameter_count": 1,
+              "descriptor": "(I)I",
+              "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+              "same_file": false,
+              "score": 1000,
+              "ranking_reasons": [
+                "compiler_semantic_match"
+              ]
+            },
+            "candidates": [
+              {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(int):int",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(I)I",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(I)I",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 1000,
+                "ranking_reasons": [
+                  "compiler_semantic_match"
+                ]
+              }
+            ],
+            "candidate_count": 1,
+            "limitations": [
+              "Resolution uses the live identifier text and indexed declarations; local variables are not indexed",
+              "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
+            ],
+            "_meta": {
+              "index_id": "nocommit-66ae8eb3ef7a",
+              "indexed_at": "2026-10-13T05:58:41.620300Z",
+              "indexed_commit": "unknown",
+              "current_commit": null,
+              "commit_stale": false,
+              "worktree_dirty": false,
+              "worktree_changed_files": 0,
+              "structural_changed_files": 0,
+              "structure_stale": false,
+              "stale_reasons": [],
+              "stale_warning": false,
+              "stale_scope": "current",
+              "answer_confidence": "high"
+            },
+            "project_warnings": [
+              {
+                "status": "build_required",
+                "project": "quill-kotlin-mcp-4z7tjxom",
+                "project_root": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-4z7tjxom",
+                "build_system": "maven",
+                "message": "Compiled main classes are older than project build inputs",
+                "recommended_action": "Decide whether to run the project's Maven compile/package command, then retry",
+                "build_reason": "classes_stale",
+                "stale_modules": [
+                  "."
+                ],
+                "build_was_started": false,
+                "decision_owner": "mcp_client",
+                "retryable": true
+              }
+            ]
+          },
+          "metrics": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 2436.261,
+            "response_bytes": 3779
+          },
+          "warm_fresh_source_latency_ms": [
+            227.898,
+            187.666,
+            325.868,
+            146.78,
+            154.758,
+            180.628,
+            100.682,
+            135.63,
+            110.722,
+            92.102,
+            103.229,
+            111.58,
+            89.87,
+            91.816,
+            94.372,
+            85.274,
+            92.992,
+            80.617,
+            94.026,
+            84.55
+          ],
+          "warm_fresh_source_median_ms": 101.9555,
+          "warm_fresh_source_p95_ms": 227.898,
+          "warm_unchanged_source_latency_ms": [
+            10.189,
+            5.837,
+            5.485,
+            7.501,
+            5.385,
+            4.932,
+            5.172,
+            4.827,
+            5.361,
+            5.715,
+            5.071,
+            4.893,
+            7.453,
+            6.629,
+            7.094,
+            5.139,
+            6.216,
+            6.084,
+            6.384,
+            5.233
+          ],
+          "warm_unchanged_source_median_ms": 5.6,
+          "background_warmed_query": {
+            "result": {
+              "path": "src/main/kotlin/NativeProbe.kt",
+              "line": 2,
+              "column": 21,
+              "identifier": "typedNavigation",
+              "context": "method_call",
+              "argument_count": 1,
+              "resolution": "resolved",
+              "resolution_basis": "compiler",
+              "confidence": "high",
+              "semantic_analysis": {
+                "status": "resolved",
+                "backend": "kotlin_k2_fir",
+                "language_version": "2.4",
+                "compiler_version": "2.4.21",
+                "descriptor": "(I)I",
+                "kind": "METHOD",
+                "name": "typedNavigation",
+                "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-4z7tjxom/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "source_line": 35,
+                "analysis_reused": true,
+                "analysis_generation": 23,
+                "snapshot_cache_entries": 1,
+                "snapshot_cache_capacity": 2,
+                "snapshot_cache_evictions": 0,
+                "input_detection": "directory_watcher_fsevents"
+              },
+              "selected": {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(int):int",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(I)I",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(I)I",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 1000,
+                "ranking_reasons": [
+                  "compiler_semantic_match"
+                ]
+              },
+              "candidates": [
+                {
+                  "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                  "kind": "METHOD",
+                  "member_name": "typedNavigation",
+                  "signature": "typedNavigation(int):int",
+                  "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                  "language": "kotlin",
+                  "source_name": "typedNavigation",
+                  "jvm_name": "typedNavigation",
+                  "jvm_descriptor": "(I)I",
+                  "location": {
+                    "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                    "line": null
+                  },
+                  "kotlin_kind": "function",
+                  "kotlin_name": "typedNavigation",
+                  "parameter_count": 1,
+                  "value_parameters": [
+                    {
+                      "name": "value",
+                      "hasDefault": false,
+                      "vararg": false
+                    }
+                  ],
+                  "required_parameter_count": 1,
+                  "descriptor": "(I)I",
+                  "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "same_file": false,
+                  "score": 1000,
+                  "ranking_reasons": [
+                    "compiler_semantic_match"
+                  ]
+                }
+              ],
+              "candidate_count": 1,
+              "limitations": [
+                "Resolution uses the live identifier text and indexed declarations; local variables are not indexed",
+                "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
+              ],
+              "_meta": {
+                "index_id": "nocommit-66ae8eb3ef7a",
+                "indexed_at": "2026-10-13T05:58:41.620300Z",
+                "indexed_commit": "unknown",
+                "current_commit": null,
+                "commit_stale": false,
+                "worktree_dirty": false,
+                "worktree_changed_files": 0,
+                "structural_changed_files": 0,
+                "structure_stale": false,
+                "stale_reasons": [],
+                "stale_warning": false,
+                "stale_scope": "current",
+                "answer_confidence": "high"
+              },
+              "project_warnings": [
+                {
+                  "status": "build_required",
+                  "project": "quill-kotlin-mcp-4z7tjxom",
+                  "project_root": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-4z7tjxom",
+                  "build_system": "maven",
+                  "message": "Compiled main classes are older than project build inputs",
+                  "recommended_action": "Decide whether to run the project's Maven compile/package command, then retry",
+                  "build_reason": "classes_stale",
+                  "stale_modules": [
+                    "."
+                  ],
+                  "build_was_started": false,
+                  "decision_owner": "mcp_client",
+                  "retryable": true
+                }
+              ]
+            },
+            "metrics": {
+              "tool": "get_symbol_at_position",
+              "latency_ms": 6.303,
+              "response_bytes": 3780
+            },
+            "idle_allowance_seconds": 1
+          },
+          "standalone_script": {
+            "result": {
+              "path": "src/main/kotlin/NativeScript.kts",
+              "line": 2,
+              "column": 16,
+              "identifier": "typedNavigation",
+              "context": "method_call",
+              "argument_count": 1,
+              "resolution": "resolved",
+              "resolution_basis": "compiler",
+              "confidence": "high",
+              "semantic_analysis": {
+                "status": "resolved",
+                "backend": "kotlin_k2_fir",
+                "language_version": "2.4",
+                "compiler_version": "2.4.21",
+                "descriptor": "(I)I",
+                "kind": "METHOD",
+                "name": "typedNavigation",
+                "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-4z7tjxom/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "source_line": 35,
+                "analysis_reused": true,
+                "analysis_generation": 24,
+                "snapshot_cache_entries": 1,
+                "snapshot_cache_capacity": 2,
+                "snapshot_cache_evictions": 0,
+                "input_detection": "directory_watcher_fsevents"
+              },
+              "selected": {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(int):int",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(I)I",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(I)I",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 1000,
+                "ranking_reasons": [
+                  "compiler_semantic_match"
+                ]
+              },
+              "candidates": [
+                {
+                  "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                  "kind": "METHOD",
+                  "member_name": "typedNavigation",
+                  "signature": "typedNavigation(int):int",
+                  "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                  "language": "kotlin",
+                  "source_name": "typedNavigation",
+                  "jvm_name": "typedNavigation",
+                  "jvm_descriptor": "(I)I",
+                  "location": {
+                    "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                    "line": null
+                  },
+                  "kotlin_kind": "function",
+                  "kotlin_name": "typedNavigation",
+                  "parameter_count": 1,
+                  "value_parameters": [
+                    {
+                      "name": "value",
+                      "hasDefault": false,
+                      "vararg": false
+                    }
+                  ],
+                  "required_parameter_count": 1,
+                  "descriptor": "(I)I",
+                  "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "same_file": false,
+                  "score": 1000,
+                  "ranking_reasons": [
+                    "compiler_semantic_match"
+                  ]
+                }
+              ],
+              "candidate_count": 1,
+              "limitations": [
+                "Resolution uses the live identifier text and indexed declarations; local variables are not indexed",
+                "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
+              ],
+              "_meta": {
+                "index_id": "nocommit-66ae8eb3ef7a",
+                "indexed_at": "2026-10-13T05:58:41.620300Z",
+                "indexed_commit": "unknown",
+                "current_commit": null,
+                "commit_stale": false,
+                "worktree_dirty": false,
+                "worktree_changed_files": 0,
+                "structural_changed_files": 0,
+                "structure_stale": false,
+                "stale_reasons": [],
+                "stale_warning": false,
+                "stale_scope": "current",
+                "answer_confidence": "high"
+              },
+              "project_warnings": [
+                {
+                  "status": "build_required",
+                  "project": "quill-kotlin-mcp-4z7tjxom",
+                  "project_root": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-4z7tjxom",
+                  "build_system": "maven",
+                  "message": "Compiled main classes are older than project build inputs",
+                  "recommended_action": "Decide whether to run the project's Maven compile/package command, then retry",
+                  "build_reason": "classes_stale",
+                  "stale_modules": [
+                    "."
+                  ],
+                  "build_was_started": false,
+                  "decision_owner": "mcp_client",
+                  "retryable": true
+                }
+              ]
+            },
+            "metrics": {
+              "tool": "get_symbol_at_position",
+              "latency_ms": 171.452,
+              "response_bytes": 3782
+            }
+          },
+          "eof_shutdown": {
+            "mcp_exit_code": 0,
+            "worker_processes": 1,
+            "forced_termination": false,
+            "elapsed_ms": 19.037374993786216
+          }
+        },
+        "startup_warmed_first_query": {
+          "result": {
+            "path": "src/main/kotlin/NativeProbe.kt",
+            "line": 2,
+            "column": 21,
+            "identifier": "typedNavigation",
+            "context": "method_call",
+            "argument_count": 1,
+            "resolution": "resolved",
+            "resolution_basis": "compiler",
+            "confidence": "high",
+            "semantic_analysis": {
+              "status": "resolved",
+              "backend": "kotlin_k2_fir",
+              "language_version": "2.4",
+              "compiler_version": "2.4.21",
+              "descriptor": "(I)I",
+              "kind": "METHOD",
+              "name": "typedNavigation",
+              "owner": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+              "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-4z7tjxom/src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+              "source_line": 35,
+              "analysis_reused": true,
+              "analysis_generation": 1,
+              "snapshot_cache_entries": 1,
+              "snapshot_cache_capacity": 2,
+              "snapshot_cache_evictions": 0,
+              "input_detection": "directory_watcher_fsevents"
+            },
+            "selected": {
+              "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+              "kind": "METHOD",
+              "member_name": "typedNavigation",
+              "signature": "typedNavigation(int):int",
+              "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+              "language": "kotlin",
+              "source_name": "typedNavigation",
+              "jvm_name": "typedNavigation",
+              "jvm_descriptor": "(I)I",
+              "location": {
+                "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "line": null
+              },
+              "kotlin_kind": "function",
+              "kotlin_name": "typedNavigation",
+              "parameter_count": 1,
+              "value_parameters": [
+                {
+                  "name": "value",
+                  "hasDefault": false,
+                  "vararg": false
+                }
+              ],
+              "required_parameter_count": 1,
+              "descriptor": "(I)I",
+              "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+              "same_file": false,
+              "score": 1000,
+              "ranking_reasons": [
+                "compiler_semantic_match"
+              ]
+            },
+            "candidates": [
+              {
+                "class_name": "org.treblereel.mcp.fixture.kotlin.KotlinCallsKt",
+                "kind": "METHOD",
+                "member_name": "typedNavigation",
+                "signature": "typedNavigation(int):int",
+                "symbol_id": "quill:symbol:v2:b3JnLnRyZWJsZXJlZWwubWNwLmZpeHR1cmUua290bGluLktvdGxpbkNhbGxzS3Q:method:dHlwZWROYXZpZ2F0aW9u:KEkpSQ:c3JjL21haW4va290bGluL29yZy90cmVibGVyZWVsL21jcC9maXh0dXJlL2tvdGxpbi9Lb3RsaW5DYWxscy5rdA",
+                "language": "kotlin",
+                "source_name": "typedNavigation",
+                "jvm_name": "typedNavigation",
+                "jvm_descriptor": "(I)I",
+                "location": {
+                  "path": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                  "line": null
+                },
+                "kotlin_kind": "function",
+                "kotlin_name": "typedNavigation",
+                "parameter_count": 1,
+                "value_parameters": [
+                  {
+                    "name": "value",
+                    "hasDefault": false,
+                    "vararg": false
+                  }
+                ],
+                "required_parameter_count": 1,
+                "descriptor": "(I)I",
+                "source_file": "src/main/kotlin/org/treblereel/mcp/fixture/kotlin/KotlinCalls.kt",
+                "same_file": false,
+                "score": 1000,
+                "ranking_reasons": [
+                  "compiler_semantic_match"
+                ]
+              }
+            ],
+            "candidate_count": 1,
+            "limitations": [
+              "Resolution uses the live identifier text and indexed declarations; local variables are not indexed",
+              "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
+            ],
+            "_meta": {
+              "index_id": "nocommit-66ae8eb3ef7a",
+              "indexed_at": "2026-10-13T05:58:41.620300Z",
+              "indexed_commit": "unknown",
+              "current_commit": null,
+              "commit_stale": false,
+              "worktree_dirty": false,
+              "worktree_changed_files": 0,
+              "structural_changed_files": 0,
+              "structure_stale": false,
+              "stale_reasons": [],
+              "stale_warning": false,
+              "stale_scope": "current",
+              "answer_confidence": "high"
+            },
+            "project_warnings": [
+              {
+                "status": "build_required",
+                "project": "quill-kotlin-mcp-4z7tjxom",
+                "project_root": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-kotlin-mcp-4z7tjxom",
+                "build_system": "maven",
+                "message": "Compiled main classes are older than project build inputs",
+                "recommended_action": "Decide whether to run the project's Maven compile/package command, then retry",
+                "build_reason": "classes_stale",
+                "stale_modules": [
+                  "."
+                ],
+                "build_was_started": false,
+                "decision_owner": "mcp_client",
+                "retryable": true
+              }
+            ]
+          },
+          "metrics": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 24.231,
+            "response_bytes": 3779
+          },
+          "readiness_allowance_seconds": 5,
+          "eof_shutdown": {
+            "mcp_exit_code": 0,
+            "worker_processes": 1,
+            "forced_termination": false,
+            "elapsed_ms": 18.87145801447332
+          }
+        }
+      }
+    }
+  },
+  "gradle": {
+    "configured": {
+      "schema_version": 1,
+      "platform": "macOS arm64",
+      "task_override": false,
+      "explicit_file": false,
+      "distribution": "native",
+      "eof_shutdown": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 18.893833039328456
+      },
+      "binary_sha256": "d1db2110c34f9efaad402aa080285b4a100358b9e1d207fdbfd59c8978ffec0c",
+      "cases": [
+        {
+          "case": "main",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 1766.823,
+            "response_bytes": 3095
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "mainprobe.MainKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-ml_2chlp/src/main/kotlin/Main.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 90996736,
+            "direct_children": [
+              {
+                "pid": 41729,
+                "rss_bytes": 247726080
+              }
+            ]
+          }
+        },
+        {
+          "case": "integrationTest",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 40.482,
+            "response_bytes": 3245
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-ml_2chlp/custom \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 2,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 93962240,
+            "direct_children": [
+              {
+                "pid": 41729,
+                "rss_bytes": 249593856
+              }
+            ]
+          }
+        },
+        {
+          "case": "main_revisited",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 11.16,
+            "response_bytes": 3095
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "mainprobe.MainKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-ml_2chlp/src/main/kotlin/Main.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 96043008,
+            "direct_children": [
+              {
+                "pid": 41729,
+                "rss_bytes": 249692160
+              }
+            ]
+          }
+        },
+        {
+          "case": "integrationTest_revisited",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 11.235,
+            "response_bytes": 3244
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-ml_2chlp/custom \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 2,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 98615296,
+            "direct_children": [
+              {
+                "pid": 41729,
+                "rss_bytes": 249724928
+              }
+            ]
+          }
+        },
+        {
+          "case": "created_source_background_warmup",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 9.421,
+            "response_bytes": 1919
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Z",
+            "kind": "METHOD",
+            "name": "added",
+            "owner": "customprobe.AddedKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-ml_2chlp/custom \u00fc/Added.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 3,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "semantic_target_not_indexed",
+          "confidence": "low",
+          "rss_snapshot": {
+            "server_bytes": 104546304,
+            "direct_children": [
+              {
+                "pid": 41729,
+                "rss_bytes": 258818048
+              }
+            ]
+          }
+        },
+        {
+          "case": "excluded_file_changed",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 17.031,
+            "response_bytes": 1919
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Z",
+            "kind": "METHOD",
+            "name": "added",
+            "owner": "customprobe.AddedKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-ml_2chlp/custom \u00fc/Added.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 3,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "semantic_target_not_indexed",
+          "confidence": "low",
+          "rss_snapshot": {
+            "server_bytes": 104562688,
+            "direct_children": [
+              {
+                "pid": 41729,
+                "rss_bytes": 266305536
+              }
+            ]
+          }
+        }
+      ],
+      "limitations": [
+        "Small single-module Gradle fixture; RSS snapshots after requests, not long-session peaks",
+        "The 1.5 second allowance proves background reuse, not exact readiness time",
+        "Predicate snapshots and task-level inputs also covered by JVM Gradle integration tests",
+        "A newly declared target has a compiler descriptor but no indexed selected symbol until rebuild and update"
+      ]
+    },
+    "override": {
+      "schema_version": 1,
+      "platform": "macOS arm64",
+      "task_override": true,
+      "explicit_file": false,
+      "distribution": "native",
+      "eof_shutdown": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 18.865291960537434
+      },
+      "binary_sha256": "d1db2110c34f9efaad402aa080285b4a100358b9e1d207fdbfd59c8978ffec0c",
+      "cases": [
+        {
+          "case": "main",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 1614.349,
+            "response_bytes": 3096
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "mainprobe.MainKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-d2x9jxhh/src/main/kotlin/Main.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 91226112,
+            "direct_children": [
+              {
+                "pid": 41793,
+                "rss_bytes": 247775232
+              }
+            ]
+          }
+        },
+        {
+          "case": "integrationTest",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 37.053,
+            "response_bytes": 3261
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-d2x9jxhh/override \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 2,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 94060544,
+            "direct_children": [
+              {
+                "pid": 41793,
+                "rss_bytes": 249233408
+              }
+            ]
+          }
+        },
+        {
+          "case": "main_revisited",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 10.539,
+            "response_bytes": 3095
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "mainprobe.MainKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-d2x9jxhh/src/main/kotlin/Main.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 96141312,
+            "direct_children": [
+              {
+                "pid": 41793,
+                "rss_bytes": 249348096
+              }
+            ]
+          }
+        },
+        {
+          "case": "integrationTest_revisited",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 10.31,
+            "response_bytes": 3260
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-d2x9jxhh/override \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 2,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 98697216,
+            "direct_children": [
+              {
+                "pid": 41793,
+                "rss_bytes": 249397248
+              }
+            ]
+          }
+        },
+        {
+          "case": "created_source_background_warmup",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 9.253,
+            "response_bytes": 1923
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Z",
+            "kind": "METHOD",
+            "name": "added",
+            "owner": "customprobe.AddedKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-d2x9jxhh/override \u00fc/Added.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 3,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "semantic_target_not_indexed",
+          "confidence": "low",
+          "rss_snapshot": {
+            "server_bytes": 104660992,
+            "direct_children": [
+              {
+                "pid": 41793,
+                "rss_bytes": 229277696
+              }
+            ]
+          }
+        },
+        {
+          "case": "excluded_file_changed",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 25.577,
+            "response_bytes": 1923
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Z",
+            "kind": "METHOD",
+            "name": "added",
+            "owner": "customprobe.AddedKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-d2x9jxhh/override \u00fc/Added.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 3,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "semantic_target_not_indexed",
+          "confidence": "low",
+          "rss_snapshot": {
+            "server_bytes": 104939520,
+            "direct_children": [
+              {
+                "pid": 41793,
+                "rss_bytes": 250871808
+              }
+            ]
+          }
+        }
+      ],
+      "limitations": [
+        "Small single-module Gradle fixture; RSS snapshots after requests, not long-session peaks",
+        "The 1.5 second allowance proves background reuse, not exact readiness time",
+        "Predicate snapshots and task-level inputs also covered by JVM Gradle integration tests",
+        "A newly declared target has a compiler descriptor but no indexed selected symbol until rebuild and update"
+      ]
+    },
+    "explicit": {
+      "schema_version": 1,
+      "platform": "macOS arm64",
+      "task_override": true,
+      "explicit_file": true,
+      "distribution": "native",
+      "eof_shutdown": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 18.89716600999236
+      },
+      "binary_sha256": "d1db2110c34f9efaad402aa080285b4a100358b9e1d207fdbfd59c8978ffec0c",
+      "cases": [
+        {
+          "case": "main",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 1695.301,
+            "response_bytes": 3095
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "mainprobe.MainKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-3ljjn6ba/src/main/kotlin/Main.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 91078656,
+            "direct_children": [
+              {
+                "pid": 41856,
+                "rss_bytes": 248594432
+              }
+            ]
+          }
+        },
+        {
+          "case": "integrationTest",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 35.435,
+            "response_bytes": 3261
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-3ljjn6ba/override \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 2,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 93405184,
+            "direct_children": [
+              {
+                "pid": 41856,
+                "rss_bytes": 250134528
+              }
+            ]
+          }
+        },
+        {
+          "case": "main_revisited",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 10.561,
+            "response_bytes": 3095
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "mainprobe.MainKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-3ljjn6ba/src/main/kotlin/Main.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 95453184,
+            "direct_children": [
+              {
+                "pid": 41856,
+                "rss_bytes": 250249216
+              }
+            ]
+          }
+        },
+        {
+          "case": "integrationTest_revisited",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 9.195,
+            "response_bytes": 3260
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-3ljjn6ba/override \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 2,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 97452032,
+            "direct_children": [
+              {
+                "pid": 41856,
+                "rss_bytes": 250314752
+              }
+            ]
+          }
+        },
+        {
+          "case": "created_source_background_warmup",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 38.602,
+            "response_bytes": 1925
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Z",
+            "kind": "METHOD",
+            "name": "added",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-3ljjn6ba/override \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 3,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "semantic_target_not_indexed",
+          "confidence": "low",
+          "rss_snapshot": {
+            "server_bytes": 104873984,
+            "direct_children": [
+              {
+                "pid": 41856,
+                "rss_bytes": 229130240
+              }
+            ]
+          }
+        },
+        {
+          "case": "excluded_file_changed",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 27.763,
+            "response_bytes": 1925
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Z",
+            "kind": "METHOD",
+            "name": "added",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-3ljjn6ba/override \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 3,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "semantic_target_not_indexed",
+          "confidence": "low",
+          "rss_snapshot": {
+            "server_bytes": 104890368,
+            "direct_children": [
+              {
+                "pid": 41856,
+                "rss_bytes": 249462784
+              }
+            ]
+          }
+        }
+      ],
+      "limitations": [
+        "Small single-module Gradle fixture; RSS snapshots after requests, not long-session peaks",
+        "The 1.5 second allowance proves background reuse, not exact readiness time",
+        "Predicate snapshots and task-level inputs also covered by JVM Gradle integration tests",
+        "A newly declared target has a compiler descriptor but no indexed selected symbol until rebuild and update"
+      ]
+    },
+    "jvm-explicit": {
+      "schema_version": 1,
+      "platform": "macOS arm64",
+      "task_override": true,
+      "explicit_file": true,
+      "distribution": "jvm",
+      "eof_shutdown": {
+        "mcp_exit_code": 0,
+        "worker_processes": 1,
+        "forced_termination": false,
+        "elapsed_ms": 38.90949999913573
+      },
+      "binary_sha256": "e3c070725cf53448218326981f2d69f5a7da2716453966ec74421f8d6c4e0b03",
+      "cases": [
+        {
+          "case": "main",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 1340.871,
+            "response_bytes": 3095
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "mainprobe.MainKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-rkjop8ml/src/main/kotlin/Main.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 1,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 191922176,
+            "direct_children": [
+              {
+                "pid": 41922,
+                "rss_bytes": 248528896
+              }
+            ]
+          }
+        },
+        {
+          "case": "integrationTest",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 52.372,
+            "response_bytes": 3261
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-rkjop8ml/override \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": false,
+            "analysis_generation": 2,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 194969600,
+            "direct_children": [
+              {
+                "pid": 41922,
+                "rss_bytes": 250347520
+              }
+            ]
+          }
+        },
+        {
+          "case": "main_revisited",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 20.072,
+            "response_bytes": 3095
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()I",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "mainprobe.MainKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-rkjop8ml/src/main/kotlin/Main.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 1,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 197361664,
+            "direct_children": [
+              {
+                "pid": 41922,
+                "rss_bytes": 250462208
+              }
+            ]
+          }
+        },
+        {
+          "case": "integrationTest_revisited",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 15.583,
+            "response_bytes": 3260
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Ljava/lang/String;",
+            "kind": "METHOD",
+            "name": "pick",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-rkjop8ml/override \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 2,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "resolved",
+          "confidence": "high",
+          "rss_snapshot": {
+            "server_bytes": 199475200,
+            "direct_children": [
+              {
+                "pid": 41922,
+                "rss_bytes": 250544128
+              }
+            ]
+          }
+        },
+        {
+          "case": "created_source_background_warmup",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 30.58,
+            "response_bytes": 1925
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Z",
+            "kind": "METHOD",
+            "name": "added",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-rkjop8ml/override \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 3,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "semantic_target_not_indexed",
+          "confidence": "low",
+          "rss_snapshot": {
+            "server_bytes": 189399040,
+            "direct_children": [
+              {
+                "pid": 41922,
+                "rss_bytes": 243548160
+              }
+            ]
+          }
+        },
+        {
+          "case": "excluded_file_changed",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 30.394,
+            "response_bytes": 1925
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "kotlin_k2_fir",
+            "language_version": "2.4",
+            "compiler_version": "2.4.21",
+            "descriptor": "()Z",
+            "kind": "METHOD",
+            "name": "added",
+            "owner": "customprobe.CustomKt",
+            "source_file": "/private/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-native-gradle-\u00fc-rkjop8ml/override \u00fc/Custom.kt",
+            "source_line": 2,
+            "analysis_reused": true,
+            "analysis_generation": 3,
+            "snapshot_cache_entries": 2,
+            "snapshot_cache_capacity": 2,
+            "snapshot_cache_evictions": 0,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "resolution": "semantic_target_not_indexed",
+          "confidence": "low",
+          "rss_snapshot": {
+            "server_bytes": 198279168,
+            "direct_children": [
+              {
+                "pid": 41922,
+                "rss_bytes": 261537792
+              }
+            ]
+          }
+        }
+      ],
+      "limitations": [
+        "Small single-module Gradle fixture; RSS snapshots after requests, not long-session peaks",
+        "The 1.5 second allowance proves background reuse, not exact readiness time",
+        "Predicate snapshots and task-level inputs also covered by JVM Gradle integration tests",
+        "A newly declared target has a compiler descriptor but no indexed selected symbol until rebuild and update"
+      ]
+    }
+  },
+  "java": {
+    "current": {
+      "schema_version": 1,
+      "platform": "macOS arm64",
+      "binary_bytes": 69481032,
+      "binary_sha256": "d1db2110c34f9efaad402aa080285b4a100358b9e1d207fdbfd59c8978ffec0c",
+      "exercise_edit": false,
+      "source_restored": true,
+      "cases": [
+        {
+          "case": "first",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 2262.746,
+            "response_bytes": 3067
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": false,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 116424704,
+            "direct_children": [
+              {
+                "pid": 41945,
+                "rss_bytes": 380272640,
+                "worker": "java"
+              },
+              {
+                "pid": 41946,
+                "rss_bytes": 201162752,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 43.866,
+            "response_bytes": 3066
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 119947264,
+            "direct_children": [
+              {
+                "pid": 41945,
+                "rss_bytes": 379600896,
+                "worker": "java"
+              },
+              {
+                "pid": 41946,
+                "rss_bytes": 201162752,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 40.769,
+            "response_bytes": 3066
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 119963648,
+            "direct_children": [
+              {
+                "pid": 41945,
+                "rss_bytes": 386007040,
+                "worker": "java"
+              },
+              {
+                "pid": 41946,
+                "rss_bytes": 201162752,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 48.89,
+            "response_bytes": 3066
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 119980032,
+            "direct_children": [
+              {
+                "pid": 41945,
+                "rss_bytes": 394919936,
+                "worker": "java"
+              },
+              {
+                "pid": 41946,
+                "rss_bytes": 201162752,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 43.535,
+            "response_bytes": 3066
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 120045568,
+            "direct_children": [
+              {
+                "pid": 41945,
+                "rss_bytes": 406880256,
+                "worker": "java"
+              },
+              {
+                "pid": 41946,
+                "rss_bytes": 201162752,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 50.117,
+            "response_bytes": 3066
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 120061952,
+            "direct_children": [
+              {
+                "pid": 41945,
+                "rss_bytes": 437780480,
+                "worker": "java"
+              },
+              {
+                "pid": 41946,
+                "rss_bytes": 201162752,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 38.359,
+            "response_bytes": 3066
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/Users/treblereel/workspace/llm/joker/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 120078336,
+            "direct_children": [
+              {
+                "pid": 41945,
+                "rss_bytes": 437813248,
+                "worker": "java"
+              },
+              {
+                "pid": 41946,
+                "rss_bytes": 201162752,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        }
+      ],
+      "limitations": [
+        "One overload in quill-core; not a repository-wide acceptance benchmark",
+        "RSS snapshots include only the MCP server and its direct children",
+        "Delay proves background reuse, not precise warmup completion time"
+      ]
+    },
+    "edit": {
+      "schema_version": 1,
+      "platform": "macOS arm64",
+      "binary_bytes": 69481032,
+      "binary_sha256": "d1db2110c34f9efaad402aa080285b4a100358b9e1d207fdbfd59c8978ffec0c",
+      "exercise_edit": true,
+      "source_restored": true,
+      "cases": [
+        {
+          "case": "first",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 2041.309,
+            "response_bytes": 3657
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": false,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 113639424,
+            "direct_children": [
+              {
+                "pid": 41972,
+                "rss_bytes": 420085760,
+                "worker": "java"
+              },
+              {
+                "pid": 41973,
+                "rss_bytes": 200900608,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 42.798,
+            "response_bytes": 3656
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 113655808,
+            "direct_children": [
+              {
+                "pid": 41972,
+                "rss_bytes": 420429824,
+                "worker": "java"
+              },
+              {
+                "pid": 41973,
+                "rss_bytes": 200900608,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 39.254,
+            "response_bytes": 3656
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 113688576,
+            "direct_children": [
+              {
+                "pid": 41972,
+                "rss_bytes": 421609472,
+                "worker": "java"
+              },
+              {
+                "pid": 41973,
+                "rss_bytes": 200900608,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 37.796,
+            "response_bytes": 3656
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 113721344,
+            "direct_children": [
+              {
+                "pid": 41972,
+                "rss_bytes": 420675584,
+                "worker": "java"
+              },
+              {
+                "pid": 41973,
+                "rss_bytes": 200900608,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 37.728,
+            "response_bytes": 3656
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 113770496,
+            "direct_children": [
+              {
+                "pid": 41972,
+                "rss_bytes": 421543936,
+                "worker": "java"
+              },
+              {
+                "pid": 41973,
+                "rss_bytes": 200900608,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 36.967,
+            "response_bytes": 3656
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 113786880,
+            "direct_children": [
+              {
+                "pid": 41972,
+                "rss_bytes": 433094656,
+                "worker": "java"
+              },
+              {
+                "pid": 41973,
+                "rss_bytes": 200900608,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "unchanged",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 41.2,
+            "response_bytes": 3656
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 1,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 113819648,
+            "direct_children": [
+              {
+                "pid": 41972,
+                "rss_bytes": 444628992,
+                "worker": "java"
+              },
+              {
+                "pid": 41973,
+                "rss_bytes": 200900608,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "300ms_after_equal_size_restored_mtime_edit",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 377.546,
+            "response_bytes": 3676
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/nio/file/Path;)Z",
+            "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 2,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/nio/file/Path;)Z",
+          "rss_snapshot": {
+            "server_bytes": 113934336,
+            "direct_children": [
+              {
+                "pid": 41972,
+                "rss_bytes": 523534336,
+                "worker": "java"
+              },
+              {
+                "pid": 41973,
+                "rss_bytes": 200900608,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        },
+        {
+          "case": "1500ms_after_restore",
+          "timing": {
+            "tool": "get_symbol_at_position",
+            "latency_ms": 42.311,
+            "response_bytes": 3656
+          },
+          "semantic_analysis": {
+            "status": "resolved",
+            "backend": "javac",
+            "owner": "org.treblereel.mcp.core.JvmSourceFiles",
+            "kind": "METHOD",
+            "name": "isSourceFile",
+            "descriptor": "(Ljava/lang/String;)Z",
+            "source_file": "/private/tmp/quill-java-before-b8c34f4/quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java",
+            "generation": 3,
+            "reused": true,
+            "input_detection": "directory_watcher_fsevents"
+          },
+          "descriptor": "(Ljava/lang/String;)Z",
+          "rss_snapshot": {
+            "server_bytes": 116572160,
+            "direct_children": [
+              {
+                "pid": 41972,
+                "rss_bytes": 538869760,
+                "worker": "java"
+              },
+              {
+                "pid": 41973,
+                "rss_bytes": 200900608,
+                "worker": "kotlin"
+              }
+            ]
+          }
+        }
+      ],
+      "limitations": [
+        "One overload in quill-core; not a repository-wide acceptance benchmark",
+        "RSS snapshots include only the MCP server and its direct children",
+        "Delay proves background reuse, not precise warmup completion time"
+      ]
+    }
+  },
+  "workflow": {
+    "phase": "complete",
+    "phase_gate": {
+      "schema_version": 1,
+      "phase": "complete",
+      "can_proceed_without_resolution": true,
+      "required_evidence": [],
+      "status": "satisfied",
+      "transition": "none",
+      "required_evidence_count": 0
+    },
+    "verification_receipt": {
+      "schema_version": 1,
+      "receipt_id": "ed6bf99f86785e45253ab828",
+      "session_id": "2e9ce146ebd8750eff87ec72",
+      "phase": "complete",
+      "verdict": "ready",
+      "verified": true,
+      "review_status": "advisory",
+      "review_required_count": 0,
+      "recommendation": {
+        "scope": "quick_compile",
+        "argv": [
+          "/Users/treblereel/workspace/llm/joker/mvnw",
+          "-pl",
+          "quill-core,quill-kotlin-semantic,tests/basic-cdi,quill-app",
+          "-am",
+          "test-compile"
+        ],
+        "working_directory": "/Users/treblereel/workspace/llm/joker",
+        "executes_tests": false,
+        "compiles_test_sources": true,
+        "executed_by_quill": false,
+        "command_attestation": "not_captured"
+      },
+      "observed_evidence": {
+        "build_event_observed": true,
+        "build_status": "success",
+        "build_tool": "maven",
+        "finished_at": "2026-10-13T05:53:32.906Z",
+        "capture_scope": "exception_chain",
+        "compiled_outputs": {
+          "count": 10,
+          "main_count": 5,
+          "test_count": 5,
+          "directories": [
+            "quill-app/target/classes",
+            "quill-app/target/test-classes",
+            "quill-core/target/classes",
+            "quill-core/target/test-classes",
+            "quill-java-semantic/target/classes",
+            "quill-java-semantic/target/test-classes",
+            "quill-kotlin-semantic/target/classes",
+            "quill-kotlin-semantic/target/test-classes",
+            "tests/basic-cdi/target/classes",
+            "tests/basic-cdi/target/test-classes"
+          ],
+          "directories_truncated": false,
+          "status": "fresh",
+          "stale_modules": [],
+          "latest_class_modified_at": "2026-10-13T05:52:27.966Z",
+          "changed_after_index": false
+        },
+        "verification_scope": {
+          "kind": "modules_with_prerequisites",
+          "modules": [
+            ".",
+            "quill-app",
+            "quill-core",
+            "quill-java-semantic",
+            "quill-kotlin-semantic",
+            "tests",
+            "tests/basic-cdi"
+          ],
+          "reason": "static_maven_prerequisites"
+        },
+        "repository_status": "integration_required",
+        "repository_stale_modules": [],
+        "index_current": true,
+        "structural_worktree_dirty": true
+      },
+      "reason_codes": [
+        "SUCCESSFUL_BUILD_EVENT",
+        "INDEX_CURRENT",
+        "TARGETS_RESOLVED",
+        "TEST_EVIDENCE_COMPLETE"
+      ],
+      "limitations": [
+        "The build event attests the result, not the exact command argv"
+      ]
+    }
+  },
+  "limitations": [
+    "One native build pair; aggregate delta is not an attribution of size to filters alone",
+    "Only macOS arm64; JVM suites preceded native validation and were refreshed with focused tests after fixes",
+    "RSS snapshots are not heap limits or long-session memory measurements",
+    "Small fixtures and one Java overload; no broad performance acceptance threshold",
+    "New live declarations can yield semantic_target_not_indexed until bytecode/index refresh"
+  ]
+}

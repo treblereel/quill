@@ -120,6 +120,9 @@ savings. For an automated, controlled with/without-Quill Responses API compariso
 actual and cached tokens, time, model/tool requests, and manual verification, use the paired task
 evaluation described in
 [`docs/benchmarks/task-evaluation.md`](docs/benchmarks/task-evaluation.md).
+For source-confirmed navigation, usages and change-impact checks on pinned real
+Java/Maven and Kotlin/Gradle projects, see
+[the real-project correctness baseline](docs/benchmarks/real-projects.md).
 CI also runs a generated 400-class, 32-dependency-JAR native smoke fixture on Linux and
 Windows. It verifies dependency-cache miss and hit behavior with intentionally broad time,
 memory, and concurrent-request budgets to catch major regressions without depending on an

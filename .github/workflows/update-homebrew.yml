@@ -115,10 +115,16 @@ jobs:
           existing_pr="$(gh pr list --repo "${TAP_REPOSITORY}" --head "${branch}" --base "${base}" \
             --state open --json url --jq '.[0].url // empty')"
           if [[ -n "${existing_pr}" ]]; then
-            echo "Formula pull request: ${existing_pr}"
+            pr_url="${existing_pr}"
           else
             printf 'Update Quill to %s. Formula checksums were verified against all four published native archives.\n' \
               "${RELEASE_TAG}" > tap-pr-body.md
-            gh pr create --repo "${TAP_REPOSITORY}" --head "${branch}" --base "${base}" \
-              --title "quill ${RELEASE_TAG#v}" --body-file tap-pr-body.md
+            pr_url="$(gh pr create --repo "${TAP_REPOSITORY}" --head "${branch}" --base "${base}" \
+              --title "quill ${RELEASE_TAG#v}" --body-file tap-pr-body.md)"
+          fi
+          echo "Formula pull request: ${pr_url}"
+          if [[ "$(gh pr view "${pr_url}" --repo "${TAP_REPOSITORY}" \
+            --json autoMergeRequest --jq '.autoMergeRequest != null')" != "true" ]]; then
+            gh pr merge "${pr_url}" --repo "${TAP_REPOSITORY}" --auto --squash \
+              --match-head-commit "$(git -C tap rev-parse HEAD)" --delete-branch
           fi

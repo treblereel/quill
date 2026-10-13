@@ -32,6 +32,22 @@ class KotlinSemanticQueriesTest {
         if (previousOffline == null) System.clearProperty("quill.kotlin.offline"); else System.setProperty("quill.kotlin.offline", previousOffline);
     }
 
+    @Test void customIndexedSetDoesNotBorrowMainCompilerSettings() throws Exception {
+        var db = QuillDatabase.create(temp.resolve("index.db"));
+        Files.writeString(temp.resolve("build.gradle"), "plugins { id 'java' }");
+        Path file = temp.resolve("custom sources/Probe.kt");
+        Files.createDirectories(file.getParent()); Files.writeString(file, "fun pick() = 1");
+        db.useHandle(h -> h.createUpdate("""
+                INSERT INTO files(id,project_path,repository_path,kind,origin,lifecycle,worktree_status,module,source_set)
+                VALUES(1,'custom sources/Probe.kt','custom sources/Probe.kt','kotlin','source','current','clean','.','integrationTest')
+                """).execute());
+        assertEquals("custom_source_set_unsupported",
+                KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
+        db.useHandle(h -> h.execute("UPDATE files SET source_set = NULL"));
+        assertEquals("source_set_unknown", KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
+        assertFalse(Files.exists(temp.resolve("build")), "Fallback must not trigger a build");
+    }
+
     @Test void missingProjectEvidenceKeepsFallbackWithoutExecutingBuilds() throws Exception {
         var db = QuillDatabase.create(temp.resolve("index.db"));
         Path file = temp.resolve("Example.kt"); Files.writeString(file, "fun run() = 1");

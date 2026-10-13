@@ -85,6 +85,13 @@ final class KotlinSemanticQueries {
             while (module != null && module.startsWith(root) && !Files.isRegularFile(module.resolve("pom.xml"))
                     && !BuildSystem.hasGradleMarker(module)) module = module.getParent();
             if (module == null || !module.startsWith(root)) return status("module_unknown");
+            var indexedFile = IndexReader.findFileByPath(db, root.relativize(file).toString().replace('\\', '/'));
+            if (indexedFile.isPresent()) {
+                String sourceSet = indexedFile.get().sourceSet();
+                if (sourceSet == null) return status("source_set_unknown");
+                if (!sourceSet.equals("main") && !sourceSet.equals("test"))
+                    return status("custom_source_set_unsupported");
+            }
             boolean test = module.relativize(file).toString().replace('\\', '/').startsWith("src/test/");
             BuildSystem system = BuildSystem.detect(module);
             Path captured = test ? system.testClasspathFile(module) : system.classpathFile(module);

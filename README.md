@@ -59,7 +59,7 @@ quill init
 
 ## How It Works
 
-Quill scans Maven `target/classes` and Gradle `build/classes/*/main` directories for
+Quill scans Maven main/test outputs and the evaluated Gradle JVM source-set outputs for
 compiled `.class` files, builds a [Jandex](https://smallrye.io/jandex/jandex/main/index.html) index, and
 resolves CDI or Spring dependency injection directly from bytecode metadata. Quill
 itself does not use or start Quarkus; the target framework is detected automatically.
@@ -229,7 +229,8 @@ quill --mcp --workspace /absolute/path/to/workspace
 ```
 
 `workspace init` discovers Git repositories at depth one by default; use `--depth N` for nested
-checkouts. It initializes every Maven or Gradle repository that already has compiled main classes.
+checkouts. It initializes every Maven or Gradle repository that already has compiled main
+or custom JVM source-set classes.
 Unsupported and uncompiled repositories are reported and skipped. Quill never starts a Maven or
 Gradle build while indexing them. `--index-only` creates indexes without installing build-result
 integration or modifying repository-local client configuration.
@@ -761,7 +762,13 @@ JVM class loading.
 ### Gradle projects
 
 Both Groovy and Kotlin DSL projects are supported, including multi-project builds.
-Java and Kotlin/JVM main sources are mapped back from compiled classes, inventoried,
+Java and Kotlin/JVM sources from the evaluated `sourceSets` container are indexed,
+including custom sets such as `integrationTest` and `testFixtures` from the
+`java-test-fixtures` plugin. Their original
+names, module ownership, configured source directories and class output directories
+are preserved. Compile additional sets yourself (for example,
+`./gradlew classes integrationTestClasses testFixturesClasses`) before indexing.
+Uncompiled sets are not synthesized from source files. Sources are mapped back, inventoried,
 and token-counted; common KSP-generated Kotlin sources are included as generated input.
 
 Kotlin source mapping uses the declared package and the bytecode `SourceFile` attribute,
@@ -932,7 +939,9 @@ Options and correctness criteria for future incremental FIR are documented in
 
 Quill locates the root through `settings.gradle[.kts]`, runs `gradlew` when present,
 and injects a temporary init script to export the evaluated Java project directories,
-main source-set outputs, and `runtimeClasspath`. This respects dynamic settings and
+all JVM source-set outputs and configured source roots. Dependencies of compiled sets
+are exported to `build/quill-source-set-classpath.txt` for bytecode indexing; separate
+main/test classpaths remain available to semantic analysis. This respects dynamic settings and
 custom `projectDir`/`buildDirectory` mappings while excluding stale outputs from
 removed projects.
 Internal discovery runs with `--no-configuration-cache` because its export tasks
@@ -942,6 +951,14 @@ Quill does not modify project build files or embed the Gradle Tooling API. Disco
 and dependency classpath caches are written under `build/` directories and invalidated
 when Gradle build files, version catalogs, wrapper properties, or `buildSrc` change.
 The sharded dependency Jandex index uses the same shared cache and invalidation as Maven.
+Source-set names remain distinct; Quill does not infer test execution or production status
+from a custom name. Standard test-coverage metadata still concerns the `test` set.
+Java compiler capture already records custom `JavaCompile` settings. Kotlin K2 position
+analysis currently supports conventional main/test roots; custom sets have bytecode and
+source-mapping support with an explicit K2 fallback. Android
+variants, Kotlin Multiplatform compilations, and mutually exclusive variants with duplicate
+class names are not modeled as separate analysis universes. Physical occurrences remain
+available, but a single logical class index cannot prove variant-specific resolution.
 On Windows it uses `gradlew.bat`; Maven projects use `mvnw.cmd`. If a wrapper is absent,
 Quill falls back to `gradle` or `mvn` from `PATH`.
 

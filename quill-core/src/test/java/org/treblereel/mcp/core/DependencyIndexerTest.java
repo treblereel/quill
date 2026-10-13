@@ -285,6 +285,41 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void gradleDependencyIndexIncludesAdditionalSetClasspathWithoutChangingMainClasspath() throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("custom-classpath"));
+        Path output = Files.createDirectories(project.resolve("build/classes/java/integrationTest"));
+        Files.writeString(project.resolve("build.gradle"), "plugins { id 'java' }");
+        Path jar = writeJar(project.resolve("integration-only.jar"), Map.of(
+                "sample/IntegrationDependency.class", classBytes("sample/IntegrationDependency", "java/lang/Object")), false);
+        Files.writeString(project.resolve("build/quill-classpath.txt"), "");
+        Files.writeString(project.resolve("build/quill-source-set-classpath.txt"), jar.toString());
+        Files.writeString(project.resolve("build/quill-classpath.sha256"), DependencyIndexer.buildFingerprint(project));
+        var result = DependencyIndexer.buildDependencyIndex(project, List.of(output));
+        assertEquals(DependencyIndexer.Status.COMPLETE, result.status());
+        assertNotNull(result.index().getClassByName("sample.IntegrationDependency"));
+        assertEquals("", Files.readString(project.resolve("build/quill-classpath.txt")));
+        Files.delete(jar);
+        assertEquals(DependencyIndexer.Status.DEGRADED,
+                DependencyIndexer.buildDependencyIndex(project, List.of(output)).status());
+    }
+
+    @Test
+    void missingCustomClasspathTriggersExportAndCannotClaimCompleteEvidence() throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("missing-custom-classpath"));
+        Path output = Files.createDirectories(project.resolve("build/classes/java/integrationTest"));
+        Files.writeString(project.resolve("build.gradle"), "plugins { id 'java' }");
+        Files.writeString(project.resolve("build/quill-classpath.txt"), "");
+        Files.writeString(project.resolve("build/quill-classpath.sha256"), DependencyIndexer.buildFingerprint(project));
+        var calls = new AtomicInteger();
+        var result = DependencyIndexer.buildDependencyIndex(project, List.of(output), Map.of(output, "integrationTest"),
+                (root, system) -> { calls.incrementAndGet(); return DependencyIndexer.ClasspathGenerationResult.success(); },
+                System.currentTimeMillis());
+        assertEquals(1, calls.get());
+        assertEquals(DependencyIndexer.Status.DEGRADED, result.status());
+        assertTrue(result.detail().contains("missing Gradle source-set classpath"));
+    }
+
+    @Test
     void isStaleReturnsTrueWhenClasspathFileMissing() throws Exception {
         Path moduleDir = tempDir.resolve("mod");
         Files.createDirectories(moduleDir.resolve("target"));

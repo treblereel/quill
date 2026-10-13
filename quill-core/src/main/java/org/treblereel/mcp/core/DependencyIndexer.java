@@ -119,7 +119,7 @@ public final class DependencyIndexer {
         return buildDependencyIndex(projectRoot, classesDirs, Map.of(), generator, nowMillis);
     }
 
-    private static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs,
+    static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs,
             Map<Path, String> classDirectorySourceSets,
             ClasspathGenerator generator, long nowMillis) {
         Map<String, Long> timings = new LinkedHashMap<>();
@@ -137,12 +137,20 @@ public final class DependencyIndexer {
                         || isTestClassesDirectory(entry.getKey()))
                 .map(Map.Entry::getValue)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<Path> additionalOutputModules = classDirectoryOwners.entrySet().stream()
+                .filter(entry -> {
+                    String sourceSet = classDirectorySourceSets.get(entry.getKey());
+                    return sourceSet != null && !sourceSet.equals("main") && !sourceSet.equals("test");
+                })
+                .map(Map.Entry::getValue).collect(java.util.stream.Collectors.toSet());
         BuildInputSnapshot buildInputs = buildInputSnapshot(
                 projectRoot, buildSystem, moduleDirs);
         String buildFingerprint = buildInputs.fingerprint();
         boolean anyStale = false;
         for (Path moduleDir : moduleDirs) {
-            if (isStale(moduleDir, buildSystem, buildFingerprint)) {
+            if (isStale(moduleDir, buildSystem, buildFingerprint)
+                    || buildSystem == BuildSystem.GRADLE && additionalOutputModules.contains(moduleDir)
+                        && !Files.isRegularFile(moduleDir.resolve("build/quill-source-set-classpath.txt"))) {
                 anyStale = true;
                 break;
             }
@@ -182,6 +190,18 @@ public final class DependencyIndexer {
                 if (classpath.readable()) modulesResolved++;
                 if (generationIssue == null && classpath.readable()) {
                     writeFingerprint(moduleDir, buildSystem, buildFingerprint);
+                }
+            }
+            if (buildSystem == BuildSystem.GRADLE) {
+                Path additionalClasspath = moduleDir.resolve("build/quill-source-set-classpath.txt");
+                if (Files.exists(additionalClasspath)) {
+                    ClasspathRead additional = readClasspathFile(additionalClasspath);
+                    jars.addAll(additional.jars());
+                    missingJars += additional.missingJars();
+                    if (!additional.readable() && generationIssue == null)
+                        generationIssue = "unreadable Gradle source-set classpath for " + moduleDir;
+                } else if (additionalOutputModules.contains(moduleDir) && generationIssue == null) {
+                    generationIssue = "missing Gradle source-set classpath for " + moduleDir;
                 }
             }
             if (testOutputModules.contains(moduleDir)) {

@@ -27,42 +27,45 @@ final class FrameworkEndpointScanner {
                 .sorted(Comparator.comparing(c -> c.name().toString())).toList()) {
             Integer id = ids.get(owner.name().toString());
             if (id == null || owner.isAnnotation()) continue;
-            List<Mapping> classMappings = scanner.spring(owner.declaredAnnotations());
-            List<String> springPaths = classMappings.size() == 1
-                    ? classMappings.getFirst().paths : List.of();
+            EndpointHierarchy hierarchy = new EndpointHierarchy(owner, lookup);
+            SpringSelection classSelection = scanner.springSelection(hierarchy, owner.name(), null, new HashSet<>());
+            List<Mapping> classMappings = classSelection.mappings;
+            List<String> springPaths = classMappings.size() == 1 ? classMappings.getFirst().paths : List.of();
             List<String> jaxPaths = owner.declaredAnnotations().stream()
                     .filter(a -> jax(a.name().toString(), "Path"))
                     .flatMap(a -> strings(a.value("value")).stream()).distinct().toList();
-            for (MethodInfo method : owner.methods()) {
-                if (method.name().startsWith("<") || (method.flags() & 0x1000) != 0) continue;
-                List<AnnotationInstance> annotations = method.annotations().stream()
-                        .filter(a -> a.target() != null
-                                && a.target().kind() == AnnotationTarget.Kind.METHOD).toList();
-                List<Mapping> spring = scanner.spring(annotations);
-                // Multiple mappings on one element have framework-dependent precedence.
-                if (spring.size() == 1 && classMappings.size() <= 1) {
-                    Mapping mapping = spring.getFirst();
+            for (MethodInfo method : hierarchy.effectiveMethods()) {
+                EndpointHierarchy context = method.declaringClass().name().equals(owner.name())
+                        ? hierarchy : new EndpointHierarchy(method.declaringClass(), lookup);
+                SpringSelection selected = scanner.springSelection(context, method.declaringClass().name(),
+                        context.key(method), new HashSet<>());
+                if (!selected.blocked && !classSelection.blocked && selected.mappings.size() == 1 && classMappings.size() <= 1) {
+                    Mapping mapping = selected.mappings.getFirst();
                     Set<String> combinedVerbs = new TreeSet<>(mapping.verbs);
                     if (classMappings.size() == 1) combinedVerbs.addAll(classMappings.getFirst().verbs);
                     List<String> verbs = List.copyOf(combinedVerbs);
-                    result.add(record(id, owner, method, "spring", verbs.isEmpty()
-                            ? List.of("ANY") : verbs, springPaths, mapping.paths, mapping.evidence));
+                    List<String> sources = new ArrayList<>(classSelection.sources);
+                    sources.addAll(selected.sources);
+                    result.add(record(id, owner, method, "spring", verbs.isEmpty() ? List.of("ANY") : verbs,
+                            springPaths, mapping.paths, mapping.evidence, ids, sources));
                 }
+                if (!java.lang.reflect.Modifier.isPublic(method.flags())) continue;
+                MethodInfo jaxSource = scanner.jaxSource(hierarchy, method);
+                if (jaxSource == null) continue;
                 Set<String> verbs = new TreeSet<>();
                 Set<String> paths = new LinkedHashSet<>();
                 Set<String> evidence = new TreeSet<>();
-                for (AnnotationInstance annotation : annotations) {
+                for (AnnotationInstance annotation : methodAnnotations(jaxSource)) {
                     String name = annotation.name().toString();
-                    if (jax(name, "Path")) {
-                        paths.addAll(strings(annotation.value("value"))); evidence.add(name);
-                    }
+                    if (jax(name, "Path")) {paths.addAll(strings(annotation.value("value"))); evidence.add(name);}
                     String verb = scanner.jaxVerb(annotation);
-                    if (verb != null) { verbs.add(verb); evidence.add(name); }
+                    if (verb != null) {verbs.add(verb); evidence.add(name);}
                 }
                 if (!evidence.isEmpty()) result.add(record(id, owner, method, "jax-rs",
-                        verbs.isEmpty() ? List.of("SUBRESOURCE") : List.copyOf(verbs),
-                        jaxPaths, paths.isEmpty() ? List.of("") : List.copyOf(paths),
-                        List.copyOf(evidence)));
+                        verbs.isEmpty() ? List.of("SUBRESOURCE") : List.copyOf(verbs), jaxPaths,
+                        paths.isEmpty() ? List.of("") : List.copyOf(paths), List.copyOf(evidence), ids,
+                        jaxPaths.isEmpty() ? List.of(methodSource(jaxSource))
+                                : List.of("class:" + owner.name(), methodSource(jaxSource))));
             }
         }
         return result;
@@ -70,16 +73,94 @@ final class FrameworkEndpointScanner {
 
     private static FrameworkEndpointRecord record(int id, ClassInfo owner, MethodInfo method,
             String framework, List<String> verbs, List<String> classPaths,
-            List<String> paths, List<String> evidence) {
+            List<String> paths, List<String> evidence, Map<String, Integer> ids, List<String> sources) {
         String signature = method.name() + "(" + String.join(",", method.parameterTypes()
                 .stream().map(Type::toString).toList()) + "):" + method.returnType();
+        String declaring = method.declaringClass().name().toString();
         return new FrameworkEndpointRecord(id, owner.name().toString(), method.name(), signature,
-                method.descriptor(identifier -> java.util.stream.Stream.concat(
-                        method.typeParameters().stream(), owner.typeParameters().stream())
-                        .filter(v -> v.identifier().equals(identifier)).findFirst()
-                        .flatMap(v -> v.bounds().stream().findFirst())
-                        .orElseGet(() -> Type.create(Object.class))),
-                framework, verbs, classPaths, paths, evidence);
+                EndpointHierarchy.descriptor(method), framework, verbs, classPaths, paths, evidence,
+                ids.get(declaring), declaring, sources.stream().distinct().toList());
+    }
+
+    private static List<AnnotationInstance> methodAnnotations(MethodInfo method) {
+        return method.annotations().stream().filter(a -> a.target() != null
+                && a.target().kind() == AnnotationTarget.Kind.METHOD).toList();
+    }
+
+    private static String methodSource(MethodInfo method) {
+        return "method:" + method.declaringClass().name() + "#" + method.name() + EndpointHierarchy.descriptor(method);
+    }
+
+    private SpringSelection springSelection(EndpointHierarchy hierarchy, DotName type,
+            String methodKey, Set<DotName> visited) {
+        EndpointHierarchy.Node node = hierarchy.nodes.get(type);
+        if (node == null || !visited.add(type)) return SpringSelection.EMPTY;
+        MethodInfo method = methodKey == null ? null : hierarchy.matching(node, methodKey);
+        List<AnnotationInstance> declared = methodKey == null ? node.type().declaredAnnotations()
+                : method == null ? List.of() : methodAnnotations(method);
+        List<Mapping> direct = spring(declared);
+        if (!direct.isEmpty()) return new SpringSelection(direct,
+                List.of(methodKey == null ? "class:" + type : methodSource(method)), false);
+        if (declared.stream().anyMatch(a -> mappingDeclared(a, new HashSet<>())))
+            return new SpringSelection(List.of(), List.of(), true);
+        if (!hierarchy.complete) return methodKey == null
+                ? new SpringSelection(List.of(), List.of(), true) : SpringSelection.EMPTY;
+        List<SpringSelection> interfaces = new ArrayList<>();
+        for (Type iface : node.type().interfaceTypes()) {
+            SpringSelection selection = springSelection(hierarchy, iface.name(), methodKey, visited);
+            if (!selection.mappings.isEmpty() || selection.blocked) interfaces.add(selection);
+        }
+        if (interfaces.size() == 1) return interfaces.getFirst();
+        if (interfaces.size() > 1) return new SpringSelection(List.of(), List.of(), true);
+        return node.type().superName() == null ? SpringSelection.EMPTY
+                : springSelection(hierarchy, node.type().superName(), methodKey, visited);
+    }
+
+    private MethodInfo jaxSource(EndpointHierarchy hierarchy, MethodInfo method) {
+        if (hasJaxAnnotations(method)) return method;
+        if (!hierarchy.complete) return null;
+        String key = hierarchy.key(method);
+        for (EndpointHierarchy.Node node : hierarchy.nodes.values().stream()
+                .filter(n -> !n.type().isInterface()).sorted(Comparator.comparingInt(EndpointHierarchy.Node::depth)).toList()) {
+            MethodInfo candidate = hierarchy.matching(node, key);
+            if (candidate != null && hasJaxAnnotations(candidate)) return candidate;
+        }
+        List<MethodInfo> candidates = new ArrayList<>();
+        for (EndpointHierarchy.Node node : hierarchy.nodes.values()) if (node.type().isInterface()) {
+            MethodInfo candidate = hierarchy.matching(node, key);
+            if (candidate != null && hasJaxAnnotations(candidate)) candidates.add(candidate);
+        }
+        candidates = hierarchy.mostSpecific(candidates);
+        // Conflicting interface contracts have implementation-specific precedence in JAX-RS.
+        return candidates.size() == 1 ? candidates.getFirst() : null;
+    }
+
+    private boolean hasJaxAnnotations(MethodInfo method) {
+        return method.annotations().stream().filter(a -> a.target() != null
+                && (a.target().kind() == AnnotationTarget.Kind.METHOD
+                    || a.target().kind() == AnnotationTarget.Kind.METHOD_PARAMETER))
+                .anyMatch(a -> a.name().toString().startsWith("jakarta.ws.rs.")
+                        || a.name().toString().startsWith("javax.ws.rs.") || customJaxDesignator(a));
+    }
+
+    private boolean customJaxDesignator(AnnotationInstance annotation) {
+        ClassInfo definition = lookup.getClassByName(annotation.name());
+        return definition != null && definition.isAnnotation() && definition.declaredAnnotations().stream()
+                .anyMatch(a -> jax(a.name().toString(), "HttpMethod"));
+    }
+
+    private boolean mappingDeclared(AnnotationInstance annotation, Set<DotName> visited) {
+        String name = annotation.name().toString();
+        if (name.equals(REQUEST) || SPRING_VERBS.containsKey(name)) return true;
+        if (visited.size() >= 128) return true; // Do not inherit past unresolved traversal evidence.
+        if (!visited.add(annotation.name()) || name.startsWith("java.lang.annotation.")) return false;
+        ClassInfo definition = lookup.getClassByName(annotation.name());
+        return definition != null && definition.isAnnotation() && definition.declaredAnnotations().stream()
+                .anyMatch(a -> mappingDeclared(a, visited));
+    }
+
+    private record SpringSelection(List<Mapping> mappings, List<String> sources, boolean blocked) {
+        static final SpringSelection EMPTY = new SpringSelection(List.of(), List.of(), false);
     }
 
     private String jaxVerb(AnnotationInstance annotation) {

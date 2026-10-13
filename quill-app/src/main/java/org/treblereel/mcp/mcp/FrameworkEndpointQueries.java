@@ -90,9 +90,11 @@ final class FrameworkEndpointQueries {
         root.put("call_detail_limit", CALL_DETAIL_LIMIT);
         ArrayNode limitations = root.putArray("limitations");
         limitations.add("Only constant Spring MVC and JAX-RS annotations retained in compiled bytecode are analyzed");
-        limitations.add("Programmatic, XML, YAML, runtime-generated, inherited, and unresolved meta-annotated routes may be absent");
+        limitations.add("Programmatic, XML, YAML, runtime-generated, incomplete hierarchies, and unresolved meta-annotated routes may be absent");
         limitations.add("Composed Spring mappings require indexed annotation definitions and explicit AliasFor overrides; ambiguous mappings and convention-based overrides are omitted or incomplete");
         limitations.add("Media types, params, headers, runtime registration, and JAX-RS subresource chains are not resolved; SUBRESOURCE only denotes a declared Path without a recognized HTTP method");
+        limitations.add("Inherited mappings require complete indexed ancestors; conflicting interface contracts are omitted. JAX-RS type Path is not inherited");
+        limitations.add("Direct calls use the method body declaration; external bodies have unavailable counts, not proven empty call sets");
         limitations.add("Direct project calls are static bytecode targets, not guaranteed runtime service dispatches");
 
         ArrayNode values = root.putArray("endpoints");
@@ -109,6 +111,13 @@ final class FrameworkEndpointQueries {
             node.put("signature", endpoint.signature());
             node.put("descriptor", endpoint.descriptor());
             node.set("annotations", JSON.valueToTree(endpoint.annotations()));
+            node.put("declaring_class", endpoint.declaringClassName());
+            node.set("mapping_sources", JSON.valueToTree(endpoint.mappingSources()));
+            ClassRecord declaration = endpoint.declaringClassId() == null ? null : classes.get(endpoint.declaringClassId());
+            boolean callsIndexed = declaration != null && declaration.className().equals(endpoint.declaringClassName());
+            node.put("direct_call_targets_indexed", callsIndexed);
+            if (callsIndexed && declaration.sourceFile() != null) node.put("declaring_source", declaration.sourceFile());
+            if (callsIndexed && countedClasses.add(declaration.id())) naiveTokens += declaration.sourceTokens();
             if (cls != null) {
                 if (cls.sourceFile() != null) node.put("source", cls.sourceLine() > 0
                         ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile());
@@ -117,9 +126,10 @@ final class FrameworkEndpointQueries {
                 if (cls.sourceSet() != null) node.put("source_set", cls.sourceSet());
                 if (countedClasses.add(cls.id())) naiveTokens += cls.sourceTokens();
             }
-            List<MethodCallView> calls = IndexReader.findAdjacentMethodCalls(jdbi,
-                    endpoint.classId(), endpoint.methodName(), endpoint.descriptor(), "outbound");
-            node.put("direct_project_call_count", calls.size());
+            List<MethodCallView> calls = callsIndexed ? IndexReader.findAdjacentMethodCalls(jdbi,
+                    endpoint.declaringClassId(), endpoint.methodName(), endpoint.descriptor(), "outbound") : List.of();
+            if (callsIndexed) node.put("direct_project_call_count", calls.size());
+            else node.putNull("direct_project_call_count");
             node.put("calls_truncated", calls.size() > CALL_DETAIL_LIMIT);
             ArrayNode callNodes = node.putArray("direct_project_calls");
             for (MethodCallView call : calls.stream().limit(CALL_DETAIL_LIMIT).toList()) {
@@ -148,9 +158,18 @@ final class FrameworkEndpointQueries {
                     node.path("className").asText(), node.path("methodName").asText(),
                     node.path("signature").asText(), node.path("descriptor").asText(),
                     node.path("framework").asText(), strings(node.path("httpMethods")),
-                    combinePaths(classPaths, methodPaths), strings(node.path("annotations"))));
+                    combinePaths(classPaths, methodPaths), strings(node.path("annotations")),
+                    declarationId(node),
+                    node.has("declaringClassName") ? node.path("declaringClassName").asText()
+                            : node.path("className").asText(), strings(node.path("mappingSources"))));
         }
         return result;
+    }
+
+    private static Integer declarationId(JsonNode node) {
+        if (!node.has("declaringClassId")) return node.path("classId").asInt();
+        if (node.path("declaringClassId").isNull()) return null;
+        return node.path("declaringClassId").asInt();
     }
 
     private static List<String> strings(JsonNode array) {
@@ -201,5 +220,6 @@ final class FrameworkEndpointQueries {
 
     private record Endpoint(int classId, String className, String methodName,
             String signature, String descriptor, String framework,
-            List<String> httpMethods, List<String> paths, List<String> annotations) {}
+            List<String> httpMethods, List<String> paths, List<String> annotations,
+            Integer declaringClassId, String declaringClassName, List<String> mappingSources) {}
 }

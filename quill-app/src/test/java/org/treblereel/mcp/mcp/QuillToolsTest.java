@@ -3446,7 +3446,51 @@ class QuillToolsTest {
         assertEquals(List.of("/api/one", "/api/two"), spring.path("endpoints").get(0)
                 .path("paths").valueStream().map(JsonNode::asText).toList());
         assertEquals("org.acme.Read", spring.path("endpoints").get(0).path("annotations").get(0).asText());
-        assertTrue(spring.path("limitations").valueStream().anyMatch(v -> v.asText().contains("inherited")));
+        assertTrue(spring.path("limitations").valueStream().anyMatch(v -> v.asText().contains("Inherited")));
+    }
+
+    @Test
+    void inheritedEndpointsUseBodyOwnerForDirectCalls() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO method_calls(from_class_id,from_method,from_descriptor,
+                      to_class_id,to_method,to_descriptor,invocation_kind,occurrence_count,evidence_lines)
+                    VALUES(3,'handle','()V',1,'submit','()V','virtual',1,'[20]')""");
+            handle.createUpdate("INSERT INTO metadata(key,value) VALUES ('framework_endpoints_detail', :value)")
+                    .bind("value", """
+                            [{"classId":1,"className":"org.acme.OrderService","methodName":"handle",
+                              "signature":"handle():void","descriptor":"()V","framework":"spring",
+                              "httpMethods":["GET"],"classPaths":["/orders"],"methodPaths":[""],
+                              "annotations":["GetMapping"],"declaringClassId":3,
+                              "declaringClassName":"org.acme.StripePaymentService",
+                              "mappingSources":["method:org.acme.StripePaymentService#handle()V"]}]
+                            """).execute();
+        });
+        JsonNode result=JSON.readTree(new QuillToolQueries().findFrameworkEndpoints(jdbi,"spring",null,null,null,false,false,10,0));
+        JsonNode endpoint=result.path("endpoints").get(0);
+        assertEquals("org.acme.OrderService",endpoint.path("class").asText());
+        assertEquals("org.acme.StripePaymentService",endpoint.path("declaring_class").asText());
+        assertTrue(endpoint.path("direct_call_targets_indexed").asBoolean());
+        assertEquals(1,endpoint.path("direct_project_call_count").asInt());
+        assertEquals("org.acme.OrderService",endpoint.path("direct_project_calls").get(0).path("class").asText());
+        assertEquals("method:org.acme.StripePaymentService#handle()V",endpoint.path("mapping_sources").get(0).asText());
+    }
+
+    @Test
+    void externalInheritedBodyDoesNotClaimEmptyProjectCallSet() throws Exception {
+        jdbi.useHandle(handle -> handle.createUpdate("INSERT INTO metadata(key,value) VALUES ('framework_endpoints_detail', :value)")
+                .bind("value", """
+                        [{"classId":1,"className":"org.acme.OrderService","methodName":"handle",
+                          "signature":"handle():void","descriptor":"()V","framework":"spring",
+                          "httpMethods":["GET"],"classPaths":["/orders"],"methodPaths":[""],
+                          "annotations":["GetMapping"],"declaringClassId":null,
+                          "declaringClassName":"external.Base","mappingSources":[]}]
+                        """).execute());
+        JsonNode endpoint=JSON.readTree(new QuillToolQueries().findFrameworkEndpoints(jdbi,"spring",null,null,null,false,false,10,0))
+                .path("endpoints").get(0);
+        assertFalse(endpoint.path("direct_call_targets_indexed").asBoolean());
+        assertTrue(endpoint.path("direct_project_call_count").isNull());
+        assertTrue(endpoint.path("direct_project_calls").isEmpty());
     }
 
     @Test

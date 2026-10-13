@@ -906,6 +906,9 @@ public class ProjectInitializer {
             row.put("classPaths", endpoint.classPaths());
             row.put("methodPaths", endpoint.methodPaths());
             row.put("annotations", endpoint.annotations());
+            row.put("declaringClassId", endpoint.declaringClassId());
+            row.put("declaringClassName", endpoint.declaringClassName());
+            row.put("mappingSources", endpoint.mappingSources());
             return row;
         }).toList();
         return toJson(rows);

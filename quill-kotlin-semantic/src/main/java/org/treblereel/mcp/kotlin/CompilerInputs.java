@@ -36,7 +36,7 @@ public record CompilerInputs(String fingerprint, String moduleHome, String jdkHo
         token(digest, "K2-2.4.21-project-settings-scripting");
         String sourceSet = request.path("source_set").asText("main");
         token(digest, module); token(digest, sourceSet);
-        for (String field : List.of("languageVersion", "apiVersion", "jvmTarget", "compilerVersion", "compiler_arguments", "plugin_options", "allow_compiler_plugins", "unsupported_plugins")) {
+        for (String field : List.of("languageVersion", "apiVersion", "jvmTarget", "compilerVersion", "compiler_arguments", "plugin_options", "allow_compiler_plugins", "unsupported_plugins", "friend_paths")) {
             token(digest, field); token(digest, request.path(field).toString());
         }
         token(digest, "compiler_settings");
@@ -66,6 +66,11 @@ public record CompilerInputs(String fingerprint, String moduleHome, String jdkHo
         token(digest, "classpath");
         for (JsonNode entry : request.path("classpath")) {
             Path path = Path.of(entry.asText());
+            if (Files.isDirectory(path)) tree(digest, path, false); else file(digest, path, true);
+        }
+        token(digest, "friend_paths");
+        for (JsonNode friend : request.path("friend_paths")) {
+            Path path = Path.of(friend.asText());
             if (Files.isDirectory(path)) tree(digest, path, false); else file(digest, path, true);
         }
         return new CompilerInputs(HexFormat.of().formatHex(digest.digest()), module, jdk, sourceSet);

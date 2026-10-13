@@ -282,6 +282,13 @@ class GradleMultiModuleIT {
         assertEquals(0, process.waitFor());
         var result = ProjectInitializer.initializeDetailed(project, true);
         assertTrue(result.successful(), result.message());
+        var settings = new java.util.Properties();
+        try (var reader = Files.newBufferedReader(project.resolve("build/quill-kotlin-integrationTest.properties"))) { settings.load(reader); }
+        assertEquals("1", settings.getProperty("analysisInputsProtocol"));
+        assertNull(settings.getProperty("configurationError"), settings.toString());
+        String kotlinRoot = source.getParent().getParent().toRealPath().toString();
+        assertTrue(settings.values().stream().anyMatch(value -> value.toString().equals(kotlinRoot)));
+        assertTrue(Integer.parseInt(settings.getProperty("compileClasspath.count")) > 0);
         var db = QuillDatabase.open(ProjectIndexStore.findDbForHead(project));
         var probe = IndexReader.findClassByName(db, "custom.Probe").orElseThrow();
         assertEquals("integrationTest", probe.sourceSet());

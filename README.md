@@ -954,8 +954,14 @@ The sharded dependency Jandex index uses the same shared cache and invalidation 
 Source-set names remain distinct; Quill does not infer test execution or production status
 from a custom name. Standard test-coverage metadata still concerns the `test` set.
 Java compiler capture already records custom `JavaCompile` settings. Kotlin K2 position
-analysis currently supports conventional main/test roots; custom sets have bytecode and
-source-mapping support with an explicit K2 fallback. Android
+analysis supports additional Gradle JVM source sets using each Kotlin compile task's
+captured classpath, configured Kotlin/Java roots, compiler options, plugins and friend
+paths. Dependencies stay isolated between sets; standard Kotlin tests retain access to
+`internal` declarations from main through Gradle's friend paths. Source edits and new
+files under captured roots are collected without running Gradle during a query. Run
+initialization again after upgrading Quill to refresh older captures. Missing/stale
+settings, arbitrary task source overrides and source-selection filters produce an
+explicit fallback rather than analysis with a guessed source scope. Android
 variants, Kotlin Multiplatform compilations, and mutually exclusive variants with duplicate
 class names are not modeled as separate analysis universes. Physical occurrences remain
 available, but a single logical class index cannot prove variant-specific resolution.

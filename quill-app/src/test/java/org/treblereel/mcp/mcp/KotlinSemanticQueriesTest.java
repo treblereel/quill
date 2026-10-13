@@ -41,11 +41,84 @@ class KotlinSemanticQueriesTest {
                 INSERT INTO files(id,project_path,repository_path,kind,origin,lifecycle,worktree_status,module,source_set)
                 VALUES(1,'custom sources/Probe.kt','custom sources/Probe.kt','kotlin','source','current','clean','.','integrationTest')
                 """).execute());
-        assertEquals("custom_source_set_unsupported",
+        assertEquals("compiler_settings_missing",
                 KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
         db.useHandle(h -> h.execute("UPDATE files SET source_set = NULL"));
         assertEquals("source_set_unknown", KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
         assertFalse(Files.exists(temp.resolve("build")), "Fallback must not trigger a build");
+    }
+
+    @Test void capturedCustomInputsResolveRelocatedSourcesWithoutLeakingMainOrTest() throws Exception {
+        var db = QuillDatabase.create(temp.resolve("index.db"));
+        Files.writeString(temp.resolve("build.gradle.kts"), "// Never execute");
+        Path module = temp.resolve("module without build marker");
+        Path sources = temp.resolve("custom sources ü");
+        Files.createDirectories(sources);
+        String text = "package custom\nfun pick(x: String) = x\nfun run() = pick(\"ok\")";
+        Path file = sources.resolve("Probe.kt"); Files.writeString(file, text);
+        Path main = module.resolve("src/main/kotlin/Bad.kt"); Files.createDirectories(main.getParent());
+        Files.writeString(main, "this is deliberately invalid Kotlin");
+        Path settings = module.resolve("build/quill-kotlin-integrationTest.properties"); Files.createDirectories(settings.getParent());
+        writeInputs(settings, sources, Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()));
+        addStartupFile(db, "custom sources ü/Probe.kt", "module without build marker", "integrationTest", "current");
+        var result = KotlinSemanticQueries.resolve(db, temp, file, text.lastIndexOf("pick("));
+        assertEquals("resolved", result.path("status").asText(), result.toString());
+        assertEquals("(Ljava/lang/String;)Ljava/lang/String;", result.path("descriptor").asText());
+        // A newly added file is collected from captured roots without another Gradle run.
+        Files.writeString(sources.resolve("Extra.kt"), "package custom\nfun added() = true");
+        Files.writeString(file, "package custom\nfun run() = added()");
+        assertEquals("()Z", KotlinSemanticQueries.resolve(db, temp, file, Files.readString(file).lastIndexOf("added()")).path("descriptor").asText());
+        Path absentOutput = temp.resolve("absent java output");
+        var optional = new java.util.Properties();
+        try (var reader = Files.newBufferedReader(settings)) { optional.load(reader); }
+        optional.setProperty("compileClasspath.count", "2"); optional.setProperty("compileClasspath.1", absentOutput.toString());
+        optional.setProperty("optionalOutput.count", "1"); optional.setProperty("optionalOutput.0", absentOutput.toString());
+        try (var writer = Files.newBufferedWriter(settings)) { optional.store(writer, "fixture"); }
+        assertEquals("()Z", KotlinSemanticQueries.resolve(db, temp, file, Files.readString(file).lastIndexOf("added()")).path("descriptor").asText());
+        writeInputs(settings, sources, temp.resolve("missing.jar"));
+        assertEquals("classpath_missing", KotlinSemanticQueries.resolve(db, temp, file, 0).path("status").asText());
+        var missingFriend = new java.util.Properties();
+        try (var reader = Files.newBufferedReader(settings)) { missingFriend.load(reader); }
+        missingFriend.setProperty("optionalFriendPath.count", "1"); missingFriend.setProperty("optionalFriendPath.0", temp.resolve("missing.jar").toString());
+        try (var writer = Files.newBufferedWriter(settings)) { missingFriend.store(writer, "fixture"); }
+        assertEquals("classpath_missing", KotlinSemanticQueries.resolve(db, temp, file, 0).path("status").asText(), "An optional friend JAR must not hide a missing compile dependency");
+        writeInputs(settings, temp.resolve("different root"), Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()));
+        assertEquals("source_not_in_source_set", KotlinSemanticQueries.resolve(db, temp, file, 0).path("status").asText());
+        db.useHandle(h -> h.execute("UPDATE files SET module = '../outside'"));
+        assertEquals("module_unknown", KotlinSemanticQueries.resolve(db, temp, file, 0).path("status").asText());
+    }
+
+    @Test void relocatedTestUsesIndexedSourceSetAndCapturedClasspath() throws Exception {
+        var db = QuillDatabase.create(temp.resolve("index.db"));
+        Files.writeString(temp.resolve("build.gradle"), "// fixture");
+        Path sources = temp.resolve("relocated test"); Files.createDirectories(sources);
+        Path file = sources.resolve("Test.kt"); String text = "fun pick() = true\nfun run() = pick()";
+        Files.writeString(file, text);
+        Path settings = temp.resolve("build/quill-kotlin-test.properties"); Files.createDirectories(settings.getParent());
+        writeInputs(settings, sources, Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()));
+        addStartupFile(db, "relocated test/Test.kt", ".", "test", "current");
+        assertEquals("()Z", KotlinSemanticQueries.resolve(db, temp, file, text.lastIndexOf("pick()")).path("descriptor").asText());
+        assertFalse(Files.exists(temp.resolve("build/quill-classpath.txt")));
+    }
+
+    @Test void capturedRootsOutsideRepositoryFailClosed() throws Exception {
+        var db = QuillDatabase.create(temp.resolve("index.db"));
+        Files.writeString(temp.resolve("build.gradle"), "// fixture");
+        Path file = temp.resolve("Probe.kt"); Files.writeString(file, "fun pick() = 1");
+        Path settings = temp.resolve("build/quill-kotlin-integrationTest.properties"); Files.createDirectories(settings.getParent());
+        writeInputs(settings, temp.getParent(), Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()));
+        addStartupFile(db, "Probe.kt", ".", "integrationTest", "current");
+        assertEquals("source_outside_root", KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
+    }
+
+    private void writeInputs(Path settings, Path sources, Path classpath) throws Exception {
+        var properties = new java.util.Properties();
+        properties.setProperty("compilerSettingsProtocol", "1"); properties.setProperty("languageVersion", "2.4");
+        properties.setProperty("analysisInputsProtocol", "1");
+        properties.setProperty("sourceRoot.count", "1"); properties.setProperty("sourceRoot.0", sources.toString());
+        properties.setProperty("javaRoot.count", "0");
+        properties.setProperty("compileClasspath.count", "1"); properties.setProperty("compileClasspath.0", classpath.toString());
+        try (var writer = Files.newBufferedWriter(settings)) { properties.store(writer, "fixture"); }
     }
 
     @Test void missingProjectEvidenceKeepsFallbackWithoutExecutingBuilds() throws Exception {

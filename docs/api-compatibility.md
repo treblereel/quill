@@ -19,6 +19,15 @@ occurrences produce unknown evidence rather than a compatibility assertion.
 declared member removal or descriptor change, visibility narrowing, static/instance
 changes, newly final/abstract members and newly added abstract methods.
 
+Kotlin metadata declarations with the same JVM identity and a public/protected
+baseline JVM member are also compared. Removing
+a default argument, changing a parameter name or vararg marker, changing the
+extension/suspend call convention, making a property read-only, widening a result
+to nullable or narrowing a nullable input are `potentially_breaking` for Kotlin
+source callers. Other retained source-type changes and newly added defaults request
+review. A changed default contract with missing parameter metadata is `unknown`.
+The report includes the before/after Kotlin declarations for these findings.
+
 `review_required` findings include ordinary member/class additions, visibility
 widening, generic/source signature changes visible in indexed types, annotations,
 and other modifier changes. An added overload may keep an old binary running while
@@ -29,8 +38,9 @@ problem rather than a proven linkage failure.
 The aggregate `verdict` is `potentially_breaking`, `unknown`, `review_required` or
 `no_detected_changes`. `compatibility_proven` is always false. The schema does not
 retain class access/final/abstract flags, constants, throws clauses, full generic
-signatures or synthetic/bridge methods. Kotlin source visibility, nullability,
-inline bodies and default-argument contracts are not analyzed. Class annotation
+signatures or synthetic/bridge methods. Kotlin checks require retained metadata
+on both sides and a matching JVM declaration. Kotlin source visibility, inline
+bodies and missing metadata are not analyzed. Class annotation
 values are not retained; member annotation values are compared when available.
 Even an unchanged declaration surface therefore does not prove compatibility.
 
@@ -62,7 +72,10 @@ Tests exercise overload identity, field accesses, `<init>` calls, public/protect
 visibility, static/final/abstract changes, additions, type/annotation changes,
 order-only differences, missing/malformed descriptors, duplicate owners, test/orphan
 filtering, baseline-only consumers, truncation, deterministic ordering and impact
-cache isolation when baseline/current database IDs coincide.
+cache isolation when baseline/current database IDs coincide. Kotlin tests cover
+default removal/addition, named parameters, nullability direction, call convention,
+property mutability, duplicate accessor suppression, private-member exclusion and
+incomplete parameter data.
 
 Independent javac fixtures run clients compiled against the old API with the new
 API: removal produces `NoSuchMethodError`, static-to-instance change produces

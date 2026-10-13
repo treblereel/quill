@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
 import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
+import org.treblereel.mcp.model.KotlinDeclarationTypes;
+import org.treblereel.mcp.model.KotlinValueParameter;
 
 /** Conservative declaration deltas, not a complete JVM linkage or source-compatibility proof. */
 final class ApiCompatibilityQueries {
@@ -20,16 +24,27 @@ final class ApiCompatibilityQueries {
     private record Member(MemberKey key, String signature, Set<String> flags, String annotations, String types, boolean valid, boolean visibilityKnown) {
         boolean visible() { return flags.contains("public") || flags.contains("protected"); }
     }
+    private record KotlinKey(String kind, String jvmName, String descriptor) implements Comparable<KotlinKey> {
+        public int compareTo(KotlinKey other) { return Comparator.comparing(KotlinKey::kind).thenComparing(KotlinKey::jvmName)
+                .thenComparing(KotlinKey::descriptor).compare(this, other); }
+    }
     private static final class Owner {
         final int id; final OwnerKey key; final String kind, superclass, interfaces;
         final Map<MemberKey, Member> members = new TreeMap<>();
+        final Map<KotlinKey, KotlinDeclarationRecord> kotlin = new TreeMap<>();
         final Set<String> annotations = new TreeSet<>();
         boolean ambiguous;
         Owner(int id, OwnerKey key, String kind, String superclass, String interfaces) {
             this.id=id; this.key=key; this.kind=kind; this.superclass=superclass; this.interfaces=interfaces;
         }
     }
-    private record Finding(Owner before, Owner after, Member oldMember, Member newMember, String reason, String assessment) {}
+    private record Finding(Owner before, Owner after, Member oldMember, Member newMember,
+                           KotlinDeclarationRecord oldKotlin, KotlinDeclarationRecord newKotlin,
+                           String reason, String assessment) {
+        Finding(Owner before, Owner after, Member oldMember, Member newMember, String reason, String assessment) {
+            this(before, after, oldMember, newMember, null, null, reason, assessment);
+        }
+    }
 
     static ObjectNode compare(Jdbi baseline, Jdbi current, int limit) {
         Map<OwnerKey, Owner> before = owners(baseline), after = owners(current);
@@ -78,12 +93,14 @@ final class ApiCompatibilityQueries {
                         || left.flags.contains("abstract") && !right.flags.contains("abstract"))
                     findings.add(new Finding(old,now,left,right,"OTHER_MODIFIERS_CHANGED","review_required"));
             }
+            compareKotlin(old, now, findings);
         }
         ObjectNode root = JSON.createObjectNode();
         long breaks = findings.stream().filter(f -> f.assessment.equals("potentially_breaking")).count();
         long unknown = findings.stream().filter(f -> f.assessment.equals("unknown")).count();
         root.put("verdict", breaks > 0 ? "potentially_breaking" : unknown > 0 ? "unknown" : findings.isEmpty() ? "no_detected_changes" : "review_required");
         root.put("scope","indexed_main_and_legacy_unspecified_classes_public_protected_declared_jvm_members");
+        root.put("kotlin_metadata_scope","matched_public_protected_jvm_declarations");
         root.put("compatibility_proven",false); root.put("baseline_class_count",before.size()); root.put("current_class_count",after.size());
         root.put("finding_count",findings.size()); root.put("potentially_breaking_count",breaks); root.put("unknown_count",unknown);
         root.put("review_required_count",findings.size()-breaks-unknown);
@@ -101,6 +118,8 @@ final class ApiCompatibilityQueries {
             }
             if (finding.oldMember != null) appendMember(node.putObject("before"),finding.oldMember);
             if (finding.newMember != null) appendMember(node.putObject("after"),finding.newMember);
+            if (finding.oldKotlin != null) appendKotlin(node.putObject("before_kotlin"),finding.oldKotlin);
+            if (finding.newKotlin != null) appendKotlin(node.putObject("after_kotlin"),finding.newKotlin);
             String impactKey=finding.before==null?"absent:"+owner.key:"baseline:"+owner.id+":"+(finding.oldMember==null?"class":finding.oldMember.key.toString());
             node.set("baseline_impact",impacts.computeIfAbsent(impactKey,ignored->{
                 var impact=JSON.createObjectNode();appendImpact(impact,baseline,finding,Math.max(0,limit),subtypes);return impact;
@@ -110,7 +129,7 @@ final class ApiCompatibilityQueries {
                 .add("This is a declaration review, not a binary/source compatibility proof or a release approval")
                 .add("Class access/final/abstract flags, constants, exceptions, bridge/synthetic methods and complete generic signatures are not retained")
                 .add("Inherited member lookup and replacement artifacts can preserve linkage after a declared member disappears")
-                .add("Kotlin source visibility, nullability, inline bodies and default-argument contracts are not classified")
+                .add("Kotlin checks cover retained metadata declarations with the same JVM identity; source visibility, inline bodies and missing metadata remain unknown")
                 .add("Member additions can affect overload resolution; source compatibility requires recompiling consumers")
                 .add("Impact uses baseline indexed static callers, field accesses, subclasses and dependencies; external consumers and inherited symbolic-owner references are unknown")
                 .add("Test and custom source sets are excluded; legacy unspecified source sets may contain tests")
@@ -124,6 +143,83 @@ final class ApiCompatibilityQueries {
     private static void appendMember(ObjectNode node, Member member) {
         node.put("kind",member.key.kind); node.put("name",member.key.name); node.put("descriptor",member.key.descriptor);
         node.put("signature",member.signature); node.set("modifiers",JSON.valueToTree(new TreeSet<>(member.flags)));
+    }
+    private static void appendKotlin(ObjectNode node, KotlinDeclarationRecord declaration) {
+        node.put("kind", declaration.kind()).put("name", declaration.name());
+        node.put("jvm_name", declaration.jvmName()).put("descriptor", declaration.descriptor());
+        node.put("suspend", declaration.isSuspend()).put("extension", declaration.extension());
+        node.put("has_default_parameters", declaration.hasDefaultParameters());
+        node.put("mutable", declaration.mutable()).put("lateinit", declaration.lateinit());
+        node.put("delegated", declaration.delegated());
+        if (declaration.valueParameters() != null) node.set("value_parameters", JSON.valueToTree(declaration.valueParameters()));
+        if (declaration.declarationTypes() != null) node.set("source_types", JSON.valueToTree(declaration.declarationTypes()));
+    }
+    private static void compareKotlin(Owner old, Owner now, List<Finding> findings) {
+        Set<String> comparedProperties = new HashSet<>();
+        for (var entry : old.kotlin.entrySet()) {
+            KotlinDeclarationRecord left = entry.getValue(), right = now.kotlin.get(entry.getKey());
+            // JVM removals have their own finding. Source checks require matched metadata on both sides.
+            if (right == null || !visibleKotlin(old, left)) continue;
+            if (left.kind().equals("PROPERTY") && !comparedProperties.add(left.name())) continue;
+            if (!left.name().equals(right.name())) kotlinFinding(findings, old, now, left, right,
+                    "KOTLIN_NAME_CHANGED", "potentially_breaking");
+            if (left.isSuspend() != right.isSuspend() || left.extension() != right.extension())
+                kotlinFinding(findings, old, now, left, right, "KOTLIN_CALL_CONVENTION_CHANGED", "potentially_breaking");
+            List<KotlinValueParameter> oldParameters = left.valueParameters(), newParameters = right.valueParameters();
+            if (oldParameters != null && newParameters != null) {
+                if (oldParameters.size() != newParameters.size())
+                    kotlinFinding(findings, old, now, left, right, "KOTLIN_PARAMETERS_CHANGED", "potentially_breaking");
+                else for (int i = 0; i < oldParameters.size(); i++) {
+                    var before = oldParameters.get(i); var after = newParameters.get(i);
+                    if (!before.name().equals(after.name()) || before.vararg() != after.vararg())
+                        kotlinFinding(findings, old, now, left, right, "KOTLIN_PARAMETERS_CHANGED", "potentially_breaking");
+                    if (before.hasDefault() && !after.hasDefault())
+                        kotlinFinding(findings, old, now, left, right, "KOTLIN_DEFAULT_REMOVED", "potentially_breaking");
+                    else if (!before.hasDefault() && after.hasDefault())
+                        kotlinFinding(findings, old, now, left, right, "KOTLIN_DEFAULT_ADDED", "review_required");
+                }
+            } else if (left.hasDefaultParameters() != right.hasDefaultParameters())
+                kotlinFinding(findings, old, now, left, right, "KOTLIN_PARAMETER_EVIDENCE_INCOMPLETE", "unknown");
+            if (left.mutable() && !right.mutable())
+                kotlinFinding(findings, old, now, left, right, "KOTLIN_PROPERTY_BECAME_READ_ONLY", "potentially_breaking");
+            else if (!left.mutable() && right.mutable())
+                kotlinFinding(findings, old, now, left, right, "KOTLIN_PROPERTY_BECAME_MUTABLE", "review_required");
+            if (left.lateinit() != right.lateinit() || left.delegated() != right.delegated())
+                kotlinFinding(findings, old, now, left, right, "KOTLIN_PROPERTY_SEMANTICS_CHANGED", "review_required");
+            KotlinDeclarationTypes beforeTypes = left.declarationTypes(), afterTypes = right.declarationTypes();
+            if (beforeTypes != null && afterTypes != null && !beforeTypes.equals(afterTypes))
+                kotlinFinding(findings, old, now, left, right,
+                        unsafeNullability(beforeTypes, afterTypes) ? "KOTLIN_NULLABILITY_WEAKENED" : "KOTLIN_SOURCE_TYPES_CHANGED",
+                        unsafeNullability(beforeTypes, afterTypes) ? "potentially_breaking" : "review_required");
+        }
+    }
+    private static boolean visibleKotlin(Owner owner, KotlinDeclarationRecord declaration) {
+        Member member = memberForKotlin(owner, declaration);
+        return member != null && member.valid && member.visible();
+    }
+    private static Member memberForKotlin(Owner owner, KotlinDeclarationRecord declaration) {
+        String name = declaration.jvmName();
+        if (name == null || name.isBlank()) return null;
+        String kind = declaration.kind().equals("CONSTRUCTOR") ? "CONSTRUCTOR" : "METHOD";
+        Member member = owner.members.get(new MemberKey(kind, name, declaration.descriptor()));
+        if (member == null && declaration.kind().equals("PROPERTY"))
+            member = owner.members.get(new MemberKey("FIELD", name, declaration.descriptor()));
+        return member;
+    }
+    private static boolean unsafeNullability(KotlinDeclarationTypes before, KotlinDeclarationTypes after) {
+        if (before.result() != null && after.result() != null && !before.result().nullable() && after.result().nullable()) return true;
+        if (before.receiver() != null && after.receiver() != null && before.receiver().nullable() && !after.receiver().nullable()) return true;
+        if (before.parameters().size() != after.parameters().size()) return false;
+        for (int i = 0; i < before.parameters().size(); i++) {
+            if (before.parameters().get(i).type().nullable() && !after.parameters().get(i).type().nullable()) return true;
+        }
+        return false;
+    }
+    private static void kotlinFinding(List<Finding> findings, Owner old, Owner now,
+            KotlinDeclarationRecord left, KotlinDeclarationRecord right, String reason, String assessment) {
+        if (findings.stream().anyMatch(f -> f.oldKotlin == left && f.reason.equals(reason))) return;
+        findings.add(new Finding(old, now, memberForKotlin(old, left), memberForKotlin(now, right),
+                left, right, reason, assessment));
     }
     private static Map<OwnerKey,Owner> owners(Jdbi db) {
         return db.withHandle(h -> {
@@ -144,6 +240,26 @@ final class ApiCompatibilityQueries {
             h.createQuery("SELECT class_id,annotation_name,direct,via_annotation FROM class_annotations ORDER BY class_id,annotation_name,direct,via_annotation")
                     .map((r,c)->Map.entry(r.getInt("class_id"),r.getString("annotation_name")+"|"+r.getInt("direct")+"|"+value(r.getString("via_annotation"))))
                     .forEach(entry->{if(ids.containsKey(entry.getKey()))ids.get(entry.getKey()).annotations.add(entry.getValue());});
+            h.createQuery("""
+                    SELECT class_id,kind,name,jvm_name,descriptor,semantic_model,is_suspend,is_extension,
+                           has_default_parameters,is_mutable,is_lateinit,is_delegated,is_synthetic,value_parameters,declaration_types
+                    FROM kotlin_declarations ORDER BY class_id,kind,name,jvm_name,descriptor
+                    """).map((r,c) -> new KotlinDeclarationRecord(r.getInt("class_id"), r.getString("kind"), r.getString("name"),
+                            r.getString("jvm_name"), r.getString("descriptor"), r.getString("semantic_model"),
+                            r.getInt("is_suspend") == 1, r.getInt("is_extension") == 1,
+                            r.getInt("has_default_parameters") == 1, r.getInt("is_mutable") == 1,
+                            r.getInt("is_lateinit") == 1, r.getInt("is_delegated") == 1,
+                            r.getInt("is_synthetic") == 1, IndexReader.kotlinParametersFromJson(r.getString("value_parameters")),
+                            IndexReader.kotlinTypesFromJson(r.getString("declaration_types"))))
+                    .forEach(declaration -> {
+                        Owner owner = ids.get(declaration.classId());
+                        if (owner == null || declaration.synthetic() || !"kotlin_metadata".equals(declaration.semanticModel())
+                                || !Set.of("FUNCTION", "PROPERTY", "CONSTRUCTOR").contains(declaration.kind())) return;
+                        String jvmName = declaration.jvmName() == null || declaration.jvmName().isBlank()
+                                ? "source:" + declaration.name() : declaration.jvmName();
+                        KotlinKey key = new KotlinKey(declaration.kind(), jvmName, value(declaration.descriptor()));
+                        if (owner.kotlin.putIfAbsent(key, declaration) != null) owner.ambiguous = true;
+                    });
             return result;
         });
     }

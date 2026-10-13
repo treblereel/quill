@@ -9,7 +9,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
-/** One bounded child JVM; changing module/configuration evicts the previous model. */
+/** One bounded child JVM with a two-module compiler-model cache. */
 final class JavaWorkerClient implements AutoCloseable {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final long timeoutMillis;
@@ -20,7 +20,7 @@ final class JavaWorkerClient implements AutoCloseable {
     private Future<String> response;
     private BufferedReader output;
     private Path directory;
-    private String configuration;
+    private String jdkHome;
 
     JavaWorkerClient() { this(Duration.ofSeconds(25), "org.treblereel.mcp.javac.JavaWorker"); }
     JavaWorkerClient(Duration timeout, String workerMain) { this.timeoutMillis = timeout.toMillis(); this.workerMain = workerMain; }
@@ -28,12 +28,20 @@ final class JavaWorkerClient implements AutoCloseable {
     synchronized JsonNode query(JsonNode request) {
         if (!request.has("sources")) return request;
         try {
-            String next = request.path("jdk_home") + ":" + request.path("release") + ":" + request.path("source") + ":" + request.path("target") + ":"
-                    + request.path("java_roots") + ":" + request.path("classpath") + ":" + request.path("settings_sha256");
-            if (process == null || !process.isAlive() || !next.equals(configuration)) {
-                close(); start(request); configuration = next;
+            String nextJdk = request.path("jdk_home").asText();
+            if (process == null || !process.isAlive() || !nextJdk.equals(jdkHome)) {
+                close(); start(request); jdkHome = nextJdk;
             }
-            input.write(Base64.getEncoder().encodeToString(request.path("file").asText().getBytes(StandardCharsets.UTF_8)));
+            String key = request.path("module") + ":" + request.path("source_set") + ":" + request.path("release") + ":"
+                    + request.path("source") + ":" + request.path("target") + ":" + request.path("java_roots") + ":"
+                    + request.path("classpath") + ":" + request.path("settings_sha256");
+            Properties settings = new Properties();
+            for (String property : List.of("release", "source", "target"))
+                if (request.has(property)) settings.setProperty(property, request.path(property).asText());
+            copy(settings, "roots", request.path("java_roots")); copy(settings, "classpath", request.path("classpath"));
+            var serialized = new StringWriter(); settings.store(serialized, "Quill Java inputs");
+            input.write(encode(key)); input.write('\t'); input.write(encode(serialized.toString())); input.write('\t');
+            input.write(encode(request.path("file").asText()));
             input.write('\t'); input.write(Integer.toString(request.path("offset").asInt())); input.newLine(); input.flush();
             String line = read();
             if (line == null) throw new EOFException();
@@ -54,17 +62,13 @@ final class JavaWorkerClient implements AutoCloseable {
 
     private void start(JsonNode request) throws Exception {
         directory = Files.createTempDirectory("quill-java-worker-");
-        Path jar = directory.resolve("worker.jar"), config = directory.resolve("settings.properties");
+        Path jar = directory.resolve("worker.jar");
         try (var resource = JavaWorkerClient.class.getResourceAsStream("/java-worker/worker.jar")) {
             if (resource == null) throw new FileNotFoundException("Embedded Java worker missing");
             Files.copy(resource, jar);
         }
-        Properties settings = new Properties();
-        for (String key : List.of("release", "source", "target")) if (request.has(key)) settings.setProperty(key, request.path(key).asText());
-        copy(settings, "roots", request.path("java_roots")); copy(settings, "classpath", request.path("classpath"));
-        try (var writer = Files.newBufferedWriter(config)) { settings.store(writer, "Quill Java inputs"); }
         Path java = Path.of(request.path("jdk_home").asText()).resolve("bin/java");
-        var builder = new ProcessBuilder(java.toString(), "-Xmx512m", "-Xss8m", "-cp", jar.toString(), workerMain, config.toString());
+        var builder = new ProcessBuilder(java.toString(), "-Xmx512m", "-Xss8m", "-cp", jar.toString(), workerMain);
         // JVM options inherited from the host must not load agents into the selected compiler.
         for (String key : List.of("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "CLASSPATH")) builder.environment().remove(key);
         builder.redirectError(ProcessBuilder.Redirect.DISCARD);
@@ -72,8 +76,9 @@ final class JavaWorkerClient implements AutoCloseable {
         input = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
         output = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         reader = Executors.newSingleThreadExecutor(task -> { var t = new Thread(task, "quill-java-worker-read"); t.setDaemon(true); return t; });
-        if (!"QUILL_JAVA_1".equals(read())) throw new IOException("Worker protocol mismatch");
+        if (!"QUILL_JAVA_2".equals(read())) throw new IOException("Worker protocol mismatch");
     }
+    private static String encode(String value) { return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8)); }
     private static void copy(Properties settings, String prefix, JsonNode values) {
         settings.setProperty(prefix + ".count", Integer.toString(values.size()));
         for (int i = 0; i < values.size(); i++) settings.setProperty(prefix + "." + i, values.get(i).asText());
@@ -88,7 +93,7 @@ final class JavaWorkerClient implements AutoCloseable {
     synchronized boolean alive() { return process != null && process.isAlive(); }
     synchronized void killForTest() { if (process != null) process.destroyForcibly(); }
     @Override public synchronized void close() {
-        configuration = null;
+        jdkHome = null;
         if (process != null) {
             process.destroyForcibly();
             try { process.waitFor(2, TimeUnit.SECONDS); }

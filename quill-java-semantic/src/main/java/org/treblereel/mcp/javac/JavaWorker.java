@@ -18,23 +18,37 @@ public final class JavaWorker {
         return result;
     }
     public static void main(String[] args) throws Exception {
-        Properties settings = new Properties();
-        try (var reader = Files.newBufferedReader(Path.of(args[0]))) { settings.load(reader); }
-        try (var model = new JavaPositionResolver(paths(settings, "roots"), paths(settings, "classpath"), settings.getProperty("release"), settings.getProperty("source"), settings.getProperty("target"));
-             var reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
-            System.out.println("QUILL_JAVA_1");
+        var models = new LinkedHashMap<String, JavaPositionResolver>(4, 0.75f, true);
+        try (var reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
+            System.out.println("QUILL_JAVA_2");
             for (String line; (line = reader.readLine()) != null;) {
                 try {
                     var parts = line.split("\t", -1);
-                    if (parts.length != 2) throw new IllegalArgumentException("Invalid request");
-                    Path file = Path.of(new String(Base64.getDecoder().decode(parts[0]), StandardCharsets.UTF_8));
-                    int offset = Integer.parseInt(parts[1]);
+                    if (parts.length != 4 || line.length() > 1_500_000) throw new IllegalArgumentException("Invalid request");
+                    String key = decode(parts[0]);
+                    JavaPositionResolver model = models.get(key);
+                    if (model == null) {
+                        Properties settings = new Properties();
+                        settings.load(new StringReader(decode(parts[1])));
+                        model = new JavaPositionResolver(paths(settings, "roots"), paths(settings, "classpath"),
+                                settings.getProperty("release"), settings.getProperty("source"), settings.getProperty("target"));
+                        models.put(key, model);
+                        if (models.size() > 2) {
+                            var eldest = models.entrySet().iterator().next();
+                            eldest.getValue().close(); models.remove(eldest.getKey());
+                        }
+                    }
+                    Path file = Path.of(decode(parts[2]));
+                    int offset = Integer.parseInt(parts[3]);
                     var result = offset == -1 ? model.warm(file) : model.resolve(file, offset);
                     System.out.println(String.join("\t", result.status(), encode(result.owner()), encode(result.kind()),
                             encode(result.name()), encode(result.descriptor()), encode(result.declarationFile()),
                             Long.toString(result.generation()), Boolean.toString(result.reused())));
                 } catch (Exception error) { System.out.println("ERROR\t" + error.getClass().getSimpleName()); }
             }
+        } finally {
+            for (var model : models.values()) model.close();
         }
     }
+    private static String decode(String value) { return new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8); }
 }

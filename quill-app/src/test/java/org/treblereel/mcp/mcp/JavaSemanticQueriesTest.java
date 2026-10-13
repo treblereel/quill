@@ -49,6 +49,43 @@ class JavaSemanticQueriesTest {
             client.close(); assertFalse(client.alive());
         }
     }
+    private JsonNode gradleModule(String name) throws Exception {
+        Path module = root.resolve(name);
+        Path source = module.resolve("src/main/java/p/Example.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package p; class Example { int pick(int x){return x;} void run(){pick(1);}} ");
+        Path captured = module.resolve("build/quill-java-main.properties"); Files.createDirectories(captured.getParent());
+        Properties values = new Properties(); values.putAll(settings);
+        values.setProperty("evidence", "successful_task");
+        values.setProperty("sourceRoot.0", source.getParent().getParent().toString());
+        try (var writer = Files.newBufferedWriter(captured)) { values.store(writer, "test"); }
+        return JavaSemanticQueries.prepare(root, source, Files.readString(source).indexOf("pick(1)"));
+    }
+    @Test void gradleSubprojectsWithoutBuildScriptsRetainTwoModelsAndEvictTheThird() throws Exception {
+        JsonNode a = gradleModule("a"), b = gradleModule("b"), c = gradleModule("c");
+        for (JsonNode request : List.of(a,b,c)) assertTrue(request.has("sources"), request.toString());
+        try (var client = new JavaWorkerClient()) {
+            assertFalse(client.query(a).path("reused").asBoolean());
+            assertFalse(client.query(b).path("reused").asBoolean());
+            assertTrue(client.query(a).path("reused").asBoolean(), "A survives A→B→A");
+            assertFalse(client.query(c).path("reused").asBoolean());
+            assertTrue(client.query(a).path("reused").asBoolean(), "A survives B eviction");
+            assertFalse(client.query(b).path("reused").asBoolean(), "B was evicted by C");
+            assertTrue(client.alive());
+        }
+    }
+    @Test void indexedGradleSubprojectWithoutBuildScriptUsesItsOwnCapture() throws Exception {
+        JsonNode expected = gradleModule("child");
+        Path source = Path.of(expected.path("file").asText());
+        var db = QuillDatabase.create(root.resolve("index.db"));
+        db.useHandle(h -> h.execute("""
+                INSERT INTO files(project_path,repository_path,kind,origin,lifecycle,module,source_set)
+                VALUES(?,?,'java','source','current','child','main')
+                """, root.relativize(source).toString(), root.relativize(source).toString()));
+        JsonNode result = JavaSemanticQueries.resolve(db, root, source, expected.path("offset").asInt());
+        assertEquals("resolved", result.path("status").asText(), result.toString());
+        assertEquals("(I)I", result.path("descriptor").asText());
+    }
     @Test void restoredTimestampEditCannotReusePreviousOverload() throws Exception {
         try (var client = new JavaWorkerClient()) {
             assertEquals("(I)I", client.query(request()).path("descriptor").asText());

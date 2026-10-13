@@ -46,10 +46,12 @@ This is full re-attribution, not incremental javac analysis. A source error does
 reuse an earlier successful compiler selection. Unsupported synthetic constructor
 descriptors remain unknown; local variables do not map to indexed fields.
 
-Changing configuration/module evicts the worker. It runs with `-Xmx512m` and an
+The worker retains the two most recently used module configurations and evicts the
+least recently used compiler model when a third is selected. Changing JDK or losing
+the child process restarts it. It runs with `-Xmx512m` and an
 8 MiB stack. Startup and response reads each have a 25-second timeout. Timeout,
 interruption, EOF or malformed transport dispose the child; a following request can
-start another. Shutdown removes the temporary worker/config files. Heap limits do
+start another. Shutdown removes the temporary worker files. Heap limits do
 not cap total process RSS.
 
 Java reuses the directory-watcher and debounce coordinator used by Kotlin, with its
@@ -57,7 +59,8 @@ own worker and coordinator instance. The active module's source roots, outputs,
 classpath, settings and build inputs are watched. A foreground query waits for a
 running warmup and then recollects inputs. Startup prewarms only when one indexed
 main Java module is an unambiguous choice; otherwise the first Java query selects
-the active module. Inactive modules are evicted rather than retained in an LRU.
+the active module. Gradle subprojects without their own build script use their indexed
+module context and compiler capture; the worker retains one additional inactive model.
 
 ## Validation
 
@@ -72,7 +75,7 @@ for running warmup and file-change races.
 The earlier [isolated measurements](benchmarks/results/java-position-probe-macos-2026-10-12.json)
 remain informational and do not measure production MCP startup/warmup. Broad
 external-project acceptance, declarations beyond the supported reference nodes,
-JPMS/preview, compiler plugin configurations, multiple retained module caches and
+JPMS/preview, compiler plugin configurations, more than two retained module caches and
 long-session memory measurements remain follow-up work.
 
 The [macOS native integration record](benchmarks/results/java-native-integration-macos-2026-10-12.json)

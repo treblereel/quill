@@ -88,8 +88,9 @@ formula uses local workflow artifacts; the published formula uses GitHub URLs.
 
 Configure the separate tap and optional formula-update PR workflow using the
 [Homebrew setup guide](../packaging/homebrew/README.md). The GitHub release and tap
-have separate publication steps: merging the generated tap PR makes the version
-available to Homebrew users. A failed tap update can be retried independently
+have separate publication steps: the generated tap PR auto-merges after all four
+required platform checks pass, making the version available to Homebrew users.
+A failed tap update can be retried independently
 through the **Update Homebrew Tap** workflow after fixing its configuration.
 
 ## Platform signing

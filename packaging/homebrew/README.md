@@ -36,13 +36,16 @@ In the **Quill source repository**, configure:
 After successful release publication, the reusable `Update Homebrew Tap` workflow
 verifies that the release is neither draft nor prerelease, downloads all four Unix
 archives plus checksums, verifies their bytes, and regenerates the formula. It
-opens or updates a `quill-v<version>` PR in the tap; it does not merge it. Existing
+opens or updates a `quill-v<version>` PR in the tap and enables squash auto-merge.
+The tap's `main` branch requires successful `test` checks on macOS arm64, macOS
+Intel, Linux x86-64, and Linux arm64; a failed check leaves the PR open. Existing
 identical formulas/PRs are reused. An older release cannot downgrade the current
 formula, and the same release version cannot replace existing archive checksums.
 
-Keep the tap PR checks required and its branch up to date before merging. A later
-release might supersede an older pending PR; merge the newest version. Only merging
-the tap formula update makes the new version available through `brew upgrade`.
+Keep all four tap checks required in branch protection and allow auto-merge in the
+tap repository settings. A later release may supersede an older pending PR;
+close any obsolete PR rather than merging it. Only a merged formula update makes
+the new version available through `brew upgrade`.
 
 If the variable is absent, Quill publication still produces the `quill.rb` release
 asset and does not attempt to update any tap. If configured, a missing token fails

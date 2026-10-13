@@ -58,6 +58,7 @@ final class IndexComparisonQueries {
                     detailLimit, "identities");
             appendInjectionChanges(root.putObject("injections"), before.injections(),
                     after.injections(), detailLimit);
+            root.set("api_compatibility", ApiCompatibilityQueries.compare(previous, current, detailLimit));
             root.putArray("limitations")
                     .add("Comparison uses retained local immutable generations; pruned generations are unavailable")
                     .add("Dependency deltas describe indexed static edges, not runtime call counts")
@@ -101,8 +102,8 @@ final class IndexComparisonQueries {
                 ORDER BY c.class_name, detail
                 """);
         appendClassDetails(jdbi, classValues, """
-                SELECT c.class_name, 'M|' || m.kind || '|' || m.signature || '|'
-                       || m.type_name || '|' || m.modifiers || '|' || m.annotations AS detail
+                SELECT c.class_name, 'M|' || m.kind || '|' || m.signature || '|' || m.descriptor || '|'
+                       || m.type_name || '|' || m.modifiers || '|' || m.annotations || '|' || m.annotation_details AS detail
                 FROM class_members m JOIN classes c ON c.id = m.class_id
                 WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
                 ORDER BY c.class_name, detail

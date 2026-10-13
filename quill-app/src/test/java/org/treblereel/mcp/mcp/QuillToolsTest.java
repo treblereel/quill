@@ -2255,6 +2255,8 @@ class QuillToolsTest {
                 jdbi, tempDir, null, 20));
 
         assertEquals("baseline", result.path("baseline").path("index_id").asText());
+        assertTrue(result.path("api_compatibility").isObject());
+        assertFalse(result.path("api_compatibility").path("compatibility_proven").asBoolean());
         assertEquals("current", result.path("current").path("index_id").asText());
         assertEquals(1, result.path("classes").path("added_count").asInt());
         assertEquals("org.acme.AuditService",

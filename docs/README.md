@@ -25,3 +25,5 @@ table aligned with picocli command definitions and its MCP list aligned with the
 `QuillTools`.
 
 - [Java compiler navigation](java-semantic-navigation.md): captured JDK settings, worker lifecycle and supported inputs.
+
+- [API compatibility review](api-compatibility.md): declaration deltas and baseline static impact in `compare_index`.

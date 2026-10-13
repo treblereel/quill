@@ -1,0 +1,261 @@
+package org.treblereel.mcp.mcp;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.*;
+import org.jdbi.v3.core.Jdbi;
+
+/** Conservative declaration deltas, not a complete JVM linkage or source-compatibility proof. */
+final class ApiCompatibilityQueries {
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private record OwnerKey(String name, String module, String sourceSet) implements Comparable<OwnerKey> {
+        public int compareTo(OwnerKey other) { return Comparator.comparing(OwnerKey::name).thenComparing(OwnerKey::module)
+                .thenComparing(OwnerKey::sourceSet).compare(this, other); }
+    }
+    private record MemberKey(String kind, String name, String descriptor) implements Comparable<MemberKey> {
+        public int compareTo(MemberKey other) { return Comparator.comparing(MemberKey::kind).thenComparing(MemberKey::name)
+                .thenComparing(MemberKey::descriptor).compare(this, other); }
+    }
+    private record Member(MemberKey key, String signature, Set<String> flags, String annotations, String types, boolean valid, boolean visibilityKnown) {
+        boolean visible() { return flags.contains("public") || flags.contains("protected"); }
+    }
+    private static final class Owner {
+        final int id; final OwnerKey key; final String kind, superclass, interfaces;
+        final Map<MemberKey, Member> members = new TreeMap<>();
+        final Set<String> annotations = new TreeSet<>();
+        boolean ambiguous;
+        Owner(int id, OwnerKey key, String kind, String superclass, String interfaces) {
+            this.id=id; this.key=key; this.kind=kind; this.superclass=superclass; this.interfaces=interfaces;
+        }
+    }
+    private record Finding(Owner before, Owner after, Member oldMember, Member newMember, String reason, String assessment) {}
+
+    static ObjectNode compare(Jdbi baseline, Jdbi current, int limit) {
+        Map<OwnerKey, Owner> before = owners(baseline), after = owners(current);
+        List<Finding> findings = new ArrayList<>();
+        Set<OwnerKey> keys = new TreeSet<>(before.keySet()); keys.addAll(after.keySet());
+        for (OwnerKey key : keys) {
+            Owner old = before.get(key), now = after.get(key);
+            if (old != null && old.ambiguous || now != null && now.ambiguous) {
+                findings.add(new Finding(old,now,null,null,"AMBIGUOUS_OWNER","unknown")); continue;
+            }
+            if (old == null || now == null) {
+                findings.add(new Finding(old,now,null,null,old == null ? "CLASS_ADDED" : "CLASS_REMOVED",
+                        old == null ? "review_required" : "potentially_breaking")); continue;
+            }
+            if (!old.kind.equals(now.kind)) findings.add(new Finding(old,now,null,null,"CLASS_KIND_CHANGED","potentially_breaking"));
+            if (!old.superclass.equals(now.superclass) || !old.interfaces.equals(now.interfaces))
+                findings.add(new Finding(old,now,null,null,"HIERARCHY_CHANGED","potentially_breaking"));
+            if (!old.annotations.equals(now.annotations)) findings.add(new Finding(old,now,null,null,"CLASS_ANNOTATIONS_CHANGED","review_required"));
+            Set<MemberKey> members = new TreeSet<>(old.members.keySet()); members.addAll(now.members.keySet());
+            for (MemberKey memberKey : members) {
+                Member left = old.members.get(memberKey), right = now.members.get(memberKey);
+                if (left != null && !left.valid || right != null && !right.valid) {
+                    if (left != null && (left.visible() || !left.visibilityKnown) || right != null && (right.visible() || !right.visibilityKnown))
+                        findings.add(new Finding(old,now,left,right,"MEMBER_EVIDENCE_INCOMPLETE","unknown"));
+                    continue;
+                }
+                if ((left == null || !left.visible()) && (right == null || !right.visible())) continue;
+                if (left == null) {
+                    boolean abstractAdded = right.key.kind.equals("METHOD") && right.flags.contains("abstract") && !right.flags.contains("static");
+                    findings.add(new Finding(old,now,null,right,abstractAdded ? "ABSTRACT_METHOD_ADDED" : "MEMBER_ADDED",
+                            abstractAdded ? "potentially_breaking" : "review_required")); continue;
+                }
+                if (right == null) { findings.add(new Finding(old,now,left,null,"MEMBER_REMOVED_OR_DESCRIPTOR_CHANGED","potentially_breaking")); continue; }
+                if (access(right.flags) < access(left.flags)) findings.add(new Finding(old,now,left,right,"VISIBILITY_NARROWED","potentially_breaking"));
+                else if (access(right.flags) > access(left.flags)) findings.add(new Finding(old,now,left,right,"VISIBILITY_WIDENED","review_required"));
+                if (left.flags.contains("static") != right.flags.contains("static")) findings.add(new Finding(old,now,left,right,"STATIC_INSTANCE_CHANGED","potentially_breaking"));
+                if (!left.flags.contains("final") && right.flags.contains("final")) findings.add(new Finding(old,now,left,right,"FINAL_ADDED","potentially_breaking"));
+                if (!left.flags.contains("abstract") && right.flags.contains("abstract")) findings.add(new Finding(old,now,left,right,"ABSTRACT_ADDED","potentially_breaking"));
+                if (!left.signature.equals(right.signature) || !left.types.equals(right.types))
+                    findings.add(new Finding(old,now,left,right,"SOURCE_SIGNATURE_CHANGED","review_required"));
+                if (!left.annotations.equals(right.annotations)) findings.add(new Finding(old,now,left,right,"ANNOTATIONS_CHANGED","review_required"));
+                Set<String> ignored = Set.of("public","protected","private","static","final","abstract");
+                Set<String> leftOther = new TreeSet<>(left.flags), rightOther = new TreeSet<>(right.flags);
+                leftOther.removeAll(ignored); rightOther.removeAll(ignored);
+                if (!leftOther.equals(rightOther) || left.flags.contains("final") && !right.flags.contains("final")
+                        || left.flags.contains("abstract") && !right.flags.contains("abstract"))
+                    findings.add(new Finding(old,now,left,right,"OTHER_MODIFIERS_CHANGED","review_required"));
+            }
+        }
+        ObjectNode root = JSON.createObjectNode();
+        long breaks = findings.stream().filter(f -> f.assessment.equals("potentially_breaking")).count();
+        long unknown = findings.stream().filter(f -> f.assessment.equals("unknown")).count();
+        root.put("verdict", breaks > 0 ? "potentially_breaking" : unknown > 0 ? "unknown" : findings.isEmpty() ? "no_detected_changes" : "review_required");
+        root.put("scope","indexed_main_and_legacy_unspecified_classes_public_protected_declared_jvm_members");
+        root.put("compatibility_proven",false); root.put("baseline_class_count",before.size()); root.put("current_class_count",after.size());
+        root.put("finding_count",findings.size()); root.put("potentially_breaking_count",breaks); root.put("unknown_count",unknown);
+        root.put("review_required_count",findings.size()-breaks-unknown);
+        root.put("truncated",findings.size()>limit);
+        var details=root.putArray("findings");
+        Map<String,List<ObjectNode>> subtypes = directSubtypes(baseline);
+        Map<String,ObjectNode> impacts = new HashMap<>();
+        for (Finding finding : findings.stream().limit(Math.max(0,limit)).toList()) {
+            var node=details.addObject(); Owner owner=finding.before != null ? finding.before : finding.after;
+            node.put("class_name",owner.key.name); node.put("module",owner.key.module); node.put("source_set",owner.key.sourceSet);
+            node.put("reason",finding.reason); node.put("assessment",finding.assessment);
+            if (finding.oldMember == null && finding.newMember == null) {
+                if (finding.before != null) appendOwner(node.putObject("before_class"),finding.before);
+                if (finding.after != null) appendOwner(node.putObject("after_class"),finding.after);
+            }
+            if (finding.oldMember != null) appendMember(node.putObject("before"),finding.oldMember);
+            if (finding.newMember != null) appendMember(node.putObject("after"),finding.newMember);
+            String impactKey=finding.before==null?"absent:"+owner.key:"baseline:"+owner.id+":"+(finding.oldMember==null?"class":finding.oldMember.key.toString());
+            node.set("baseline_impact",impacts.computeIfAbsent(impactKey,ignored->{
+                var impact=JSON.createObjectNode();appendImpact(impact,baseline,finding,Math.max(0,limit),subtypes);return impact;
+            }));
+        }
+        root.putArray("limitations")
+                .add("This is a declaration review, not a binary/source compatibility proof or a release approval")
+                .add("Class access/final/abstract flags, constants, exceptions, bridge/synthetic methods and complete generic signatures are not retained")
+                .add("Inherited member lookup and replacement artifacts can preserve linkage after a declared member disappears")
+                .add("Kotlin source visibility, nullability, inline bodies and default-argument contracts are not classified")
+                .add("Member additions can affect overload resolution; source compatibility requires recompiling consumers")
+                .add("Impact uses baseline indexed static callers, field accesses, subclasses and dependencies; external consumers and inherited symbolic-owner references are unknown")
+                .add("Test and custom source sets are excluded; legacy unspecified source sets may contain tests")
+                .add("Missing class visibility means public/protected members of non-public owners may be included");
+        return root;
+    }
+    private static void appendOwner(ObjectNode node,Owner owner) {
+        node.put("kind",owner.kind);node.put("superclass",owner.superclass);
+        node.put("interfaces",owner.interfaces);node.set("annotation_markers",JSON.valueToTree(owner.annotations));
+    }
+    private static void appendMember(ObjectNode node, Member member) {
+        node.put("kind",member.key.kind); node.put("name",member.key.name); node.put("descriptor",member.key.descriptor);
+        node.put("signature",member.signature); node.set("modifiers",JSON.valueToTree(new TreeSet<>(member.flags)));
+    }
+    private static Map<OwnerKey,Owner> owners(Jdbi db) {
+        return db.withHandle(h -> {
+            Map<OwnerKey,Owner> result=new TreeMap<>(); Map<Integer,Owner> ids=new HashMap<>();
+            h.createQuery("""
+                    SELECT id,class_name,kind,superclass,interfaces,module,source_set FROM classes
+                    WHERE lifecycle='current' AND origin!='orphan_output' AND (source_set='main' OR source_set IS NULL)
+                    ORDER BY class_name,module,source_set,id
+                    """).map((r,c) -> new Owner(r.getInt("id"),new OwnerKey(r.getString("class_name"),value(r.getString("module")),value(r.getString("source_set"))),
+                        r.getString("kind"),value(r.getString("superclass")),canonical(r.getString("interfaces"),true)))
+                    .forEach(owner -> { Owner existing=result.putIfAbsent(owner.key,owner); if(existing!=null) {existing.ambiguous=true;owner.ambiguous=true;} ids.put(owner.id,existing==null?owner:existing); });
+            h.createQuery("SELECT class_id,COUNT(DISTINCT module) AS n FROM class_occurrences GROUP BY class_id HAVING n>1")
+                    .map((r,c)->r.getInt("class_id")).forEach(id->{if(ids.containsKey(id))ids.get(id).ambiguous=true;});
+            h.createQuery("SELECT class_id,kind,name,descriptor,signature,modifiers,annotations,annotation_details,type_name,parameter_types FROM class_members ORDER BY class_id,kind,name,descriptor,signature")
+                    .map((r,c) -> Map.entry(r.getInt("class_id"),member(r.getString("kind"),r.getString("name"),r.getString("descriptor"),r.getString("signature"),
+                            r.getString("modifiers"),r.getString("annotations"),r.getString("annotation_details"),r.getString("type_name"),r.getString("parameter_types"))))
+                    .forEach(entry -> {Owner owner=ids.get(entry.getKey());if(owner!=null && owner.members.putIfAbsent(entry.getValue().key,entry.getValue())!=null)owner.ambiguous=true;});
+            h.createQuery("SELECT class_id,annotation_name,direct,via_annotation FROM class_annotations ORDER BY class_id,annotation_name,direct,via_annotation")
+                    .map((r,c)->Map.entry(r.getInt("class_id"),r.getString("annotation_name")+"|"+r.getInt("direct")+"|"+value(r.getString("via_annotation"))))
+                    .forEach(entry->{if(ids.containsKey(entry.getKey()))ids.get(entry.getKey()).annotations.add(entry.getValue());});
+            return result;
+        });
+    }
+    private static Member member(String kind,String name,String descriptor,String signature,String modifiers,String annotations,String details,String type,String parameters) {
+        Set<String> flags=new TreeSet<>();
+        for(String token:value(modifiers).replaceAll("[\\[\\],]"," ").split("\\s+")) if(!token.isEmpty()) flags.add(token);
+        Set<String> supported=Set.of("public","private","protected","static","final","abstract","native","synchronized","strictfp","transient","volatile");
+        long access=flags.stream().filter(Set.of("public","private","protected")::contains).count();
+        boolean valid=validDescriptor(kind,descriptor) && supported.containsAll(flags) && access<=1;
+        String canonicalName=kind.equals("CONSTRUCTOR")?"<init>":name;
+        // Empty descriptors must not accidentally merge unrelated legacy declarations.
+        return new Member(new MemberKey(kind,canonicalName,valid?descriptor:"unknown:"+value(descriptor)+":"+signature),signature,flags,
+                canonical(annotations,true)+"|"+canonical(details,true),value(type)+"|"+canonical(parameters,false),valid,supported.containsAll(flags) && access<=1);
+    }
+    private static boolean validDescriptor(String kind,String value) {
+        if(value==null || value.isEmpty())return false;
+        try {
+            if(kind.equals("FIELD"))return typeEnd(value,0,false)==value.length();
+            if(!Set.of("METHOD","CONSTRUCTOR").contains(kind) || value.charAt(0)!='(')return false;
+            int cursor=1;
+            while(cursor<value.length() && value.charAt(cursor)!=')')cursor=typeEnd(value,cursor,false);
+            if(cursor>=value.length())return false;
+            int result=cursor+1;
+            return typeEnd(value,result,true)==value.length() && (!kind.equals("CONSTRUCTOR") || value.substring(result).equals("V"));
+        } catch(IllegalArgumentException malformed){return false;}
+    }
+    private static int typeEnd(String value,int offset,boolean allowVoid) {
+        if(offset>=value.length())throw new IllegalArgumentException();
+        char kind=value.charAt(offset);
+        if("BCDFIJSZ".indexOf(kind)>=0 || kind=='V' && allowVoid)return offset+1;
+        if(kind=='[') {
+            int cursor=offset;
+            while(cursor<value.length() && value.charAt(cursor)=='[')cursor++;
+            if(cursor-offset>255)throw new IllegalArgumentException();
+            return typeEnd(value,cursor,false);
+        }
+        if(kind=='L') {
+            int end=value.indexOf(';',offset);
+            if(end<0)throw new IllegalArgumentException();
+            String name=value.substring(offset+1,end);
+            if(name.isEmpty() || name.contains(".") || name.contains("[") || name.startsWith("/") || name.endsWith("/") || name.contains("//"))throw new IllegalArgumentException();
+            return end+1;
+        }
+        throw new IllegalArgumentException();
+    }
+    private static int access(Set<String> flags) {return flags.contains("public")?3:flags.contains("protected")?2:flags.contains("private")?0:1;}
+    private static String value(String value) {return value==null?"":value;}
+    private static String canonical(String value,boolean unordered) {
+        if(value==null)return "";
+        try {
+            JsonNode node=orderedObjects(JSON.readTree(value));
+            if(unordered && node.isArray()) {List<String> entries=new ArrayList<>();node.forEach(n->entries.add(n.toString()));Collections.sort(entries);return entries.toString();}
+            return node.toString();
+        } catch(Exception malformed){return "unparsed:"+value;}
+    }
+    private static JsonNode orderedObjects(JsonNode node) {
+        if(node.isObject()) {
+            ObjectNode result=JSON.createObjectNode();Set<String> fields=new TreeSet<>();node.fieldNames().forEachRemaining(fields::add);
+            fields.forEach(key->result.set(key,orderedObjects(node.get(key))));return result;
+        }
+        if(node.isArray()) {var result=JSON.createArrayNode();node.forEach(value->result.add(orderedObjects(value)));return result;}
+        return node;
+    }
+    private static void appendImpact(ObjectNode node,Jdbi baseline,Finding finding,int limit,Map<String,List<ObjectNode>> subtypeMap) {
+        node.put("scope","baseline_static_evidence"); node.put("complete",false); node.put("external_consumers_known",false);
+        if(finding.before==null || finding.before.ambiguous) {node.put("status","unavailable"); return;}
+        Owner owner=finding.before;
+        baseline.useHandle(h -> {
+            String sql;Map<String,Object> bindings;
+            if(finding.oldMember!=null && finding.oldMember.valid) {
+                Member member=finding.oldMember;
+                sql=member.key.kind.equals("FIELD") ? """
+                    SELECT DISTINCT c.id,c.class_name,c.module,c.source_set,a.from_method,a.from_descriptor FROM field_accesses a JOIN classes c ON c.id=a.from_class_id
+                    WHERE a.to_class_id=:id AND a.field_name=:name AND a.field_descriptor=:descriptor AND c.lifecycle='current' AND c.origin!='orphan_output'
+                    """ : """
+                    SELECT DISTINCT c.id,c.class_name,c.module,c.source_set,a.from_method,a.from_descriptor FROM method_calls a JOIN classes c ON c.id=a.from_class_id
+                    WHERE a.to_class_id=:id AND a.to_method=:name AND a.to_descriptor=:descriptor AND c.lifecycle='current' AND c.origin!='orphan_output'
+                    """;
+                bindings=Map.of("id",owner.id,"name",member.key.name,"descriptor",member.key.descriptor);
+                node.put("reference_matching","exact_owner_name_descriptor");
+            } else {
+                sql="""
+                    SELECT DISTINCT c.id,c.class_name,c.module,c.source_set,NULL AS from_method,NULL AS from_descriptor FROM dependencies d JOIN classes c ON c.id=d.from_class_id
+                    WHERE d.to_class_id=:id AND c.lifecycle='current' AND c.origin!='orphan_output'
+                    """;
+                bindings=Map.of("id",owner.id);node.put("reference_matching","class_dependency");
+            }
+            long count=h.createQuery("SELECT COUNT(*) FROM ("+sql+")").bindMap(bindings).mapTo(Long.class).one();
+            List<ObjectNode> consumers=h.createQuery("SELECT * FROM ("+sql+") ORDER BY class_name,module,source_set,id,from_method,from_descriptor LIMIT :detail_limit")
+                    .bindMap(bindings).bind("detail_limit",limit).map((r,c)->consumer(r)).list();
+            node.put("consumer_count",count);node.set("consumers",JSON.valueToTree(consumers));node.put("consumers_truncated",count>limit);
+            // Subclasses matter for final/abstract changes even when no call instruction exists.
+            List<ObjectNode> subtypes=subtypeMap.getOrDefault(owner.key.name,List.of());
+            node.put("direct_subtype_count",subtypes.size());node.set("direct_subtypes",JSON.valueToTree(subtypes.stream().limit(limit).toList()));node.put("direct_subtypes_truncated",subtypes.size()>limit);
+        });
+    }
+    private static ObjectNode consumer(java.sql.ResultSet row) throws java.sql.SQLException {
+        ObjectNode node=JSON.createObjectNode().put("baseline_class_id",row.getInt("id")).put("class_name",row.getString("class_name"));
+        node.put("module",value(row.getString("module")));node.put("source_set",value(row.getString("source_set")));
+        if(row.getString("from_method")!=null)node.put("method",row.getString("from_method")).put("descriptor",row.getString("from_descriptor"));
+        return node;
+    }
+    private static Map<String,List<ObjectNode>> directSubtypes(Jdbi db) {
+        Map<String,List<ObjectNode>> result=new HashMap<>();
+        db.useHandle(h->h.createQuery("SELECT id,class_name,module,source_set,superclass,interfaces,NULL AS from_method,NULL AS from_descriptor FROM classes WHERE lifecycle='current' AND origin!='orphan_output' ORDER BY class_name,module,source_set,id")
+                .map((r,c)->{
+                    ObjectNode node=consumer(r);Set<String> parents=new TreeSet<>();
+                    String superclass=r.getString("superclass");if(superclass!=null && !superclass.isBlank())parents.add(superclass);
+                    try {JsonNode interfaces=JSON.readTree(r.getString("interfaces"));if(interfaces!=null && interfaces.isArray())interfaces.forEach(v->parents.add(v.asText()));}catch(Exception ignored){}
+                    for(String parent:parents)result.computeIfAbsent(parent,ignored->new ArrayList<>()).add(node);
+                    return node;
+                }).list());
+        return result;
+    }
+}

@@ -419,7 +419,9 @@ does not imply that an executor, reactive stream, or message publication has com
   project-module dependencies, including a representative closed path and internal edge kinds;
   nested classes are collapsed into their top-level owner to suppress compiler-structure noise
 - **compare_index** — compare the active immutable index with a retained generation, including
-  class/member, static dependency, bean, and injection-resolution deltas
+  class/member, static dependency, bean, and injection-resolution deltas.
+  Includes a conservative JVM API review and baseline caller/field-access/subtype impact;
+  it does not prove compatibility. See [API compatibility review](docs/api-compatibility.md).
 - **get_build_status** — inspect build-result integration, compiled outputs, pending events,
   index freshness, and the next required action without invoking Maven or Gradle; build-required
   responses distinguish `classes_missing` from `classes_stale` and identify stale modules

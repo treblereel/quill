@@ -46,14 +46,19 @@ final class JavaWorkerClient implements AutoCloseable {
             String line = read();
             if (line == null) throw new EOFException();
             String[] parts = line.split("\t", -1);
-            if (parts.length != 8) throw new IOException("Invalid worker response");
+            if (parts.length != 12) throw new IOException("Invalid worker response");
             var result = JSON.createObjectNode().put("status", parts[0]).put("backend", "javac");
             String[] keys = {"owner", "kind", "name", "descriptor", "source_file"};
             for (int i = 0; i < keys.length; i++) if (!parts[i + 1].equals("-"))
                 result.put(keys[i], new String(Base64.getDecoder().decode(parts[i + 1]), StandardCharsets.UTF_8));
-            result.put("generation", Long.parseLong(parts[6]));
-            if (!Set.of("true", "false").contains(parts[7])) throw new IOException("Invalid reuse flag");
-            result.put("reused", Boolean.parseBoolean(parts[7])); return result;
+            String[] positions = {"source_line", "source_column", "source_end_line", "source_end_column"};
+            for (int i = 0; i < positions.length; i++) {
+                int value = Integer.parseInt(parts[i + 6]);
+                if (value > 0) result.put(positions[i], value);
+            }
+            result.put("generation", Long.parseLong(parts[10]));
+            if (!Set.of("true", "false").contains(parts[11])) throw new IOException("Invalid reuse flag");
+            result.put("reused", Boolean.parseBoolean(parts[11])); return result;
         } catch (InterruptedException interrupted) {
             close(); Thread.currentThread().interrupt(); return status("interrupted");
         } catch (TimeoutException timeout) { close(); return status("timeout"); }
@@ -76,7 +81,7 @@ final class JavaWorkerClient implements AutoCloseable {
         input = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
         output = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         reader = Executors.newSingleThreadExecutor(task -> { var t = new Thread(task, "quill-java-worker-read"); t.setDaemon(true); return t; });
-        if (!"QUILL_JAVA_2".equals(read())) throw new IOException("Worker protocol mismatch");
+        if (!"QUILL_JAVA_3".equals(read())) throw new IOException("Worker protocol mismatch");
     }
     private static String encode(String value) { return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8)); }
     private static void copy(Properties settings, String prefix, JsonNode values) {

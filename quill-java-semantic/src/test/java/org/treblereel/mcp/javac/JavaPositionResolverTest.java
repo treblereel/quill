@@ -65,6 +65,28 @@ class JavaPositionResolverTest {
             assertEquals("p.I",inherited.owner()); assertEquals("()I",inherited.descriptor());
         }
     }
+    @Test void declarationRangesDistinguishOverloadsAndFieldsFromTheirClass() throws Exception {
+        String source = "package p;\nclass Example {\n  int value;\n  int pick(int x) { return x; }\n  int pick(String x) { return 1; }\n  void run() { value = pick(1); pick(\"x\"); }\n}";
+        Path file = write(source);
+        try (var resolver = resolver()) {
+            var field = query(resolver, file, "value =", "value");
+            assertEquals("FIELD", field.kind());
+            assertEquals(3, field.startLine());
+            assertEquals(3, field.startColumn());
+            assertEquals(3, field.endLine());
+            assertEquals(13, field.endColumn());
+            var number = query(resolver, file, "pick(1)", "pick");
+            var text = query(resolver, file, "pick(\"x\")", "pick");
+            assertEquals(4, number.startLine());
+            assertEquals(5, text.startLine());
+            assertTrue(number.endColumn() > number.startColumn());
+            assertEquals(file.toString(), number.declarationFile());
+            var binary = query(resolver, file, "String x)", "String");
+            assertEquals("resolved", binary.status());
+            assertNull(binary.declarationFile());
+            assertEquals(-1, binary.startLine());
+        }
+    }
     @Test void localShadowingDoesNotSelectSameNameField() throws Exception {
         Path file=write("package p; class Example {String value; void run(){String value=\"x\"; value.length();}}");
         try(var resolver=resolver()) {

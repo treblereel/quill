@@ -5,6 +5,9 @@ Java calls, constructor calls, member access and method references. The compiler
 owner and erased JVM descriptor select the corresponding indexed declaration.
 `resolution_basis` distinguishes `compiler` from `lexical_fallback`;
 `semantic_analysis` reports the backend, status, model generation and reuse.
+For source declarations, it also reports one-based start and exclusive end coordinates;
+the matched indexed symbol receives these in `location` with `basis: compiler`.
+External binary declarations have no source range.
 Position results and errors include index freshness metadata. A compiler-selected
 declaration absent from the index reports `semantic_target_not_indexed`.
 

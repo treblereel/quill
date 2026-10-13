@@ -87,9 +87,9 @@ final class SymbolSearchQueries {
             node.put("declaring_class", match.className());
             node.put("class_kind", match.classKind().toLowerCase(Locale.ROOT));
             if (match.sourceFile() == null) node.putNull("source");
-            else node.put("source", match.sourceLine() > 0
-                    ? match.sourceFile() + ":" + match.sourceLine()
-                    : match.sourceFile());
+            else node.put("source", Set.of("CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD")
+                    .contains(match.symbolKind()) && match.sourceLine() > 0
+                    ? match.sourceFile() + ":" + match.sourceLine() : match.sourceFile());
             node.put("origin", match.origin());
             if (match.module() == null) node.putNull("module");
             else node.put("module", match.module());

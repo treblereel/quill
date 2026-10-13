@@ -364,12 +364,16 @@ The router profile returns the same policy in `search_tools.guidance`, including
   structural-change classification
 - **get_symbol_at_position** — resolve the identifier at a one-based Java/Kotlin source position
   to indexed class/member declarations, with ambiguity and confidence reported explicitly;
-  resolved declarations include a stable `symbol_id`
+  resolved declarations include a stable `symbol_id`. When the Java or K2 compiler confirms a
+  source declaration, `selected.location` includes its one-based start and exclusive end
+  coordinates with `basis: compiler`
 - **search_external_symbols** / **get_external_symbol_details** — search and inspect class/member
   declarations indexed from dependency bytecode without mixing them with application symbols
 - **search_symbols** — search class, method, field, constructor, and Kotlin property declarations by name or
   signature, with kind/language filtering and pagination. Results distinguish source-level and
-  JVM names and include a stable `symbol_id`
+  JVM names and include a stable `symbol_id`. Bytecode-only member records retain the source path
+  but report `location.line: null` and `basis: unknown`; `class_declaration_line` is owner context,
+  never a claimed method or field location
 - **get_call_hierarchy** — inspect direct or bounded-transitive method callers and callees with
   exact overload selection by signature/JVM descriptor, invocation kinds, source-line evidence,
   traversal depth, and call paths; use `scope=cross_class` or `scope=cross_package` to suppress

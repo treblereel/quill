@@ -20,7 +20,7 @@ public final class JavaWorker {
     public static void main(String[] args) throws Exception {
         var models = new LinkedHashMap<String, JavaPositionResolver>(4, 0.75f, true);
         try (var reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
-            System.out.println("QUILL_JAVA_2");
+            System.out.println("QUILL_JAVA_3");
             for (String line; (line = reader.readLine()) != null;) {
                 try {
                     var parts = line.split("\t", -1);
@@ -43,6 +43,8 @@ public final class JavaWorker {
                     var result = offset == -1 ? model.warm(file) : model.resolve(file, offset);
                     System.out.println(String.join("\t", result.status(), encode(result.owner()), encode(result.kind()),
                             encode(result.name()), encode(result.descriptor()), encode(result.declarationFile()),
+                            Integer.toString(result.startLine()), Integer.toString(result.startColumn()),
+                            Integer.toString(result.endLine()), Integer.toString(result.endColumn()),
                             Long.toString(result.generation()), Boolean.toString(result.reused())));
                 } catch (Exception error) { System.out.println("ERROR\t" + error.getClass().getSimpleName()); }
             }

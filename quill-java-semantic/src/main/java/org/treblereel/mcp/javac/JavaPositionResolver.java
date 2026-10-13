@@ -26,7 +26,8 @@ import javax.tools.*;
 /** Worker frontend: only public compiler APIs, no processor execution or code generation. */
 public final class JavaPositionResolver implements AutoCloseable {
     public record Result(String status, String owner, String kind, String name,
-                         String descriptor, String declarationFile, long generation, boolean reused) {}
+                         String descriptor, String declarationFile, int startLine, int startColumn,
+                         int endLine, int endColumn, long generation, boolean reused) {}
     private record Inputs(Map<Path, String> sources, String fingerprint) {}
     private record Candidate(Element element, long width, int priority) {}
     private static final class Snapshot implements AutoCloseable {
@@ -222,7 +223,8 @@ public final class JavaPositionResolver implements AutoCloseable {
         if (element.getKind() == ElementKind.LOCAL_VARIABLE || element.getKind() == ElementKind.PARAMETER
                 || element.getKind() == ElementKind.EXCEPTION_PARAMETER || element.getKind() == ElementKind.TYPE_PARAMETER
                 || element.getKind() == ElementKind.BINDING_VARIABLE)
-            return new Result("local", null, element.getKind().name(), element.getSimpleName().toString(), null, null, generation, reused);
+            return new Result("local", null, element.getKind().name(), element.getSimpleName().toString(), null, null,
+                    -1, -1, -1, -1, generation, reused);
         TypeElement owner = owner(element);
         if (owner == null) return status("unresolved", reused);
         String name = element.getSimpleName().toString(), kind;
@@ -246,7 +248,20 @@ public final class JavaPositionResolver implements AutoCloseable {
         } else return status("unresolved", reused);
         TreePath declaration = model.trees.getPath(element);
         String source = declaration == null ? null : Path.of(declaration.getCompilationUnit().getSourceFile().toUri()).toString();
-        return new Result("resolved", model.elements.getBinaryName(owner).toString(), kind, name, descriptor, source, generation, reused);
+        int startLine = -1, startColumn = -1, endLine = -1, endColumn = -1;
+        if (declaration != null) {
+            var declarationUnit = declaration.getCompilationUnit();
+            long start = positions.getStartPosition(declarationUnit, declaration.getLeaf());
+            long end = positions.getEndPosition(declarationUnit, declaration.getLeaf());
+            if (start >= 0 && end > start && declarationUnit.getLineMap() != null) {
+                startLine = (int) declarationUnit.getLineMap().getLineNumber(start);
+                startColumn = (int) declarationUnit.getLineMap().getColumnNumber(start);
+                endLine = (int) declarationUnit.getLineMap().getLineNumber(end);
+                endColumn = (int) declarationUnit.getLineMap().getColumnNumber(end);
+            }
+        }
+        return new Result("resolved", model.elements.getBinaryName(owner).toString(), kind, name, descriptor, source,
+                startLine, startColumn, endLine, endColumn, generation, reused);
     }
 
     private static TypeElement owner(Element element) {
@@ -266,7 +281,7 @@ public final class JavaPositionResolver implements AutoCloseable {
     }
 
     private Result status(String status, boolean reused) {
-        return new Result(status, null, null, null, null, null, generation, reused);
+        return new Result(status, null, null, null, null, null, -1, -1, -1, -1, generation, reused);
     }
     public synchronized int closedSnapshots() { return closedSnapshots; }
     public synchronized void close() throws IOException {

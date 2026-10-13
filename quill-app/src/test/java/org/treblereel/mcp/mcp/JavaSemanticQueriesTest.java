@@ -192,6 +192,10 @@ class JavaSemanticQueriesTest {
         JsonNode result=new ObjectMapper().readTree(new PositionSymbolQueries().getSymbolAtPosition(db,root,"src/main/java/p/Example.java",4,line.indexOf("pick(1)")+1));
         assertEquals("resolved",result.path("resolution").asText());
         assertEquals("(I)I",result.path("selected").path("descriptor").asText());
+        assertEquals(3,result.path("selected").path("location").path("line").asInt());
+        assertEquals("compiler",result.path("selected").path("location").path("basis").asText());
+        assertTrue(result.path("selected").path("location").path("column").asInt() > 0);
+        assertEquals(3,result.path("semantic_analysis").path("source_end_line").asInt());
         assertEquals("javac",result.path("semantic_analysis").path("backend").asText()); assertTrue(result.has("_meta"));
     }
 }

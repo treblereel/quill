@@ -268,7 +268,14 @@ object K2Analyzer {
         } else return response("unavailable")
         if (sourceFile != null) {
             result.put("source_file", sourceFile.virtualFilePath)
-            result.put("source_line", 1 + sourceFile.text.take(declaration.source!!.startOffset).count { it == '\n' })
+            val source = declaration.source!!
+            val text = sourceFile.text
+            if (source.startOffset >= 0 && source.endOffset > source.startOffset && source.endOffset <= text.length) {
+                result.put("source_line", 1 + text.take(source.startOffset).count { it == '\n' })
+                result.put("source_column", source.startOffset - text.lastIndexOf('\n', source.startOffset - 1))
+                result.put("source_end_line", 1 + text.take(source.endOffset).count { it == '\n' })
+                result.put("source_end_column", source.endOffset - text.lastIndexOf('\n', source.endOffset - 1))
+            }
         }
         return result
     }

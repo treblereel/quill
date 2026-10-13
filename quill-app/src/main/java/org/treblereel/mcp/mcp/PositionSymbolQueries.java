@@ -139,11 +139,13 @@ final class PositionSymbolQueries {
         if (decisive) {
             ObjectNode selectedNode = result.putObject("selected");
             addCandidate(selectedNode, selected);
+            if (compilerResolved) applyCompilerLocation(selectedNode, semantic);
         }
         ArrayNode matches = result.putArray("candidates");
         ranked.stream().limit(50).forEach(candidate -> {
             ObjectNode item = matches.addObject();
             addCandidate(item, candidate);
+            if (compilerResolved) applyCompilerLocation(item, semantic);
         });
         if (!enclosing.isEmpty()) {
             EnclosingClass value = enclosing.getFirst();
@@ -553,6 +555,17 @@ final class PositionSymbolQueries {
         item.put("same_file", candidate.sameFile());
         item.put("score", ranked.score());
         item.set("ranking_reasons", JSON.valueToTree(ranked.reasons()));
+    }
+
+    private static void applyCompilerLocation(ObjectNode item, com.fasterxml.jackson.databind.JsonNode semantic) {
+        if (!semantic.hasNonNull("source_file") || semantic.path("source_line").asInt() < 1) return;
+        ObjectNode location = item.with("location");
+        location.put("line", semantic.path("source_line").asInt());
+        location.put("basis", "compiler");
+        location.remove("class_declaration_line");
+        if (semantic.hasNonNull("source_column")) location.put("column", semantic.path("source_column").asInt());
+        if (semantic.hasNonNull("source_end_line")) location.put("end_line", semantic.path("source_end_line").asInt());
+        if (semantic.hasNonNull("source_end_column")) location.put("end_column", semantic.path("source_end_column").asInt());
     }
 
     private static String error(Jdbi jdbi, String code, String message) {

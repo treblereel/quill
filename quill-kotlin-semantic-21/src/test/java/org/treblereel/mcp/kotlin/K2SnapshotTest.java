@@ -39,6 +39,21 @@ class K2SnapshotTest {
         assertFalse(next.path("analysis_reused").asBoolean(), next.toString());
         assertTrue(next.path("analysis_generation").asLong() > first.path("analysis_generation").asLong());
     }
+    @Test void sourceRangesIdentifyOverloadsAndPropertiesWithoutBorrowingClassLines() throws Exception {
+        Path definitions = source("Defs.kt", "package probe\nclass Receiver {\n  val name = \"s\"\n  fun pick(x: Int) = x\n  fun pick(x: String) = x\n}");
+        Path caller = source("Caller.kt", "package probe\nfun run(r: Receiver) { r.pick(1); r.pick(\"x\"); println(r.name) }");
+        var number = resolve(request(caller, "pick(1)", definitions, caller), "(I)I");
+        assertEquals(definitions.toString(), number.path("source_file").asText());
+        assertEquals(4, number.path("source_line").asInt());
+        assertEquals(3, number.path("source_column").asInt());
+        assertEquals(4, number.path("source_end_line").asInt());
+        var text = resolve(request(caller, "pick(\"x\")", definitions, caller), "(Ljava/lang/String;)Ljava/lang/String;");
+        assertEquals(5, text.path("source_line").asInt());
+        var property = K2Analyzer.analyze(request(caller, "name", definitions, caller));
+        assertEquals("PROPERTY", property.path("kind").asText(), property.toString());
+        assertEquals(3, property.path("source_line").asInt());
+        assertTrue(property.path("source_end_column").asInt() > property.path("source_column").asInt());
+    }
     @Test void projectLanguageApiAndJvmTargetInvalidateCachedModels() throws Exception {
         Path caller = source("Call.kt", "fun pick() = 1\nfun run() = pick()");
         var request = request(caller, "pick()", caller).put("languageVersion", "2.0").put("apiVersion", "2.0").put("jvmTarget", "17");

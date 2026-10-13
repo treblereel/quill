@@ -1098,6 +1098,29 @@ class QuillToolsTest {
     }
 
     @Test
+    void indexedMembersDoNotBorrowTheirOwnersDeclarationLine() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members
+                  (class_id, kind, name, signature, descriptor, type_name,
+                   parameter_types, modifiers, annotations)
+                VALUES (1, 'METHOD', 'runPrecisely', 'runPrecisely()', '()V', 'void',
+                        '[]', 'public', '[]')"""));
+        JsonNode symbol = JSON.readTree(new QuillTools().searchSymbols(
+                jdbi, "runPrecisely", "method", 10, 0)).path("symbols").get(0);
+        assertTrue(symbol.path("location").path("line").isNull());
+        assertEquals("unknown", symbol.path("location").path("basis").asText());
+        assertTrue(symbol.path("location").path("class_declaration_line").asInt() > 0);
+        assertFalse(symbol.path("source").asText().matches(".*:[0-9]+"));
+        JsonNode detail = JSON.readTree(new QuillTools().getSymbolDetails(
+                jdbi, "org.acme.OrderService", true, "method", 100, 0));
+        JsonNode member = detail.path("members").valueStream()
+                .filter(value -> value.path("name").asText().equals("runPrecisely"))
+                .findFirst().orElseThrow();
+        assertTrue(member.path("location").path("line").isNull());
+        assertEquals("unknown", member.path("location").path("basis").asText());
+    }
+
+    @Test
     void searchSymbolsIncludesTypesAndPaginates() throws Exception {
         QuillTools tools = new QuillTools();
         JsonNode page = JSON.readTree(tools.searchSymbols(jdbi, "Service", null, 2, 1));

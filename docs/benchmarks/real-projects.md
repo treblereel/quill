@@ -71,8 +71,11 @@ failures. Their observed facts nevertheless expose useful diagnostic targets:
   the String and Path overloads.
 - Kotlin's fully qualified call to the top-level `createMatcher(pattern)` selects
   the same-name private wrapper on `OptimizedSymbolSearch` instead. This project
-  uses serialization with compiler 2.1.20; the pinned worker's plugin requirements
-  restrict compiler semantics, so this is a fallback-navigation observation.
+  returned `semantic_analysis.status=runtime_missing`: this index-only control run
+  had not prepared the released worker's runtime. This is a metadata/lexical
+  fallback observation, not a K2 correctness result. The project also uses
+  serialization with compiler 2.1.20, which needs separate plugin compatibility
+  checks after runtime preparation.
 - The simple Java static call and two other Kotlin navigation positions match the
   manually expected declarations, but lack independent response freshness metadata.
 - Both change plans include the expected primary class and test, but report an

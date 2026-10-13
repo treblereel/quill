@@ -8,6 +8,8 @@ Current supporting documents:
 
 - [Real-project correctness baseline](benchmarks/real-projects.md) — pinned Java/Maven
   and Kotlin/Gradle facts, independent expectations, and explicit incomplete results.
+- [Java compiler navigation probe](../experiments/java-semantic-navigation/README.md) —
+  standalone JDK-backed overload resolution and its production integration gates.
 - [Release guide](releasing.md) — release artifacts, signing, notarization, checksums, and
   attestations.
 - [Paired task evaluation](benchmarks/task-evaluation.md) — reproducible agent-effectiveness

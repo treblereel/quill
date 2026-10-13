@@ -1,0 +1,3646 @@
+{
+  "schema_version": 1,
+  "quill_version": "quill 0.4.0",
+  "binary_sha256": "9a8b2bab59a1327e5ade44528ec4cfd865b01f810415840544234ef03ffbebc3",
+  "manifest_sha256": "c2535c865114bfc36854086a0691c5ce576d1461a7ba0a69b3850c04ee415fc6",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "projects": [
+    {
+      "id": "quill-java",
+      "cases": [
+        {
+          "id": "java-overload-string-position",
+          "tool": "get_symbol_at_position",
+          "status": "passed",
+          "first_request_ms": 1672.764,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 43.01,
+            "p95_latency_ms": 56.45,
+            "max_latency_ms": 56.45,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "java-test-static-call-position",
+          "tool": "get_symbol_at_position",
+          "status": "passed",
+          "first_request_ms": 1130.595,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 51.03,
+            "p95_latency_ms": 67.43,
+            "max_latency_ms": 67.43,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "org.treblereel.mcp.core.JvmSourceFiles",
+                  "actual": "org.treblereel.mcp.core.JvmSourceFiles"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "findConventionalSource",
+                  "actual": "findConventionalSource"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "org.treblereel.mcp.core.JvmSourceFiles",
+                  "actual": "org.treblereel.mcp.core.JvmSourceFiles"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "findConventionalSource",
+                  "actual": "findConventionalSource"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "org.treblereel.mcp.core.JvmSourceFiles",
+                  "actual": "org.treblereel.mcp.core.JvmSourceFiles"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "findConventionalSource",
+                  "actual": "findConventionalSource"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "org.treblereel.mcp.core.JvmSourceFiles",
+                  "actual": "org.treblereel.mcp.core.JvmSourceFiles"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "findConventionalSource",
+                  "actual": "findConventionalSource"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "org.treblereel.mcp.core.JvmSourceFiles",
+                  "actual": "org.treblereel.mcp.core.JvmSourceFiles"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "findConventionalSource",
+                  "actual": "findConventionalSource"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "org.treblereel.mcp.core.JvmSourceFiles",
+                  "actual": "org.treblereel.mcp.core.JvmSourceFiles"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "findConventionalSource",
+                  "actual": "findConventionalSource"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "java-overload-string-usages",
+          "tool": "find_symbol_usages",
+          "status": "passed",
+          "first_request_ms": 17.395,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 2.2,
+            "p95_latency_ms": 2.3,
+            "max_latency_ms": 2.3,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "java-source-path-method-usages",
+          "tool": "find_symbol_usages",
+          "status": "passed",
+          "first_request_ms": 2.456,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 2.47,
+            "p95_latency_ms": 2.62,
+            "max_latency_ms": 2.62,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.ClassOccurrenceScanner",
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueries"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.ClassOccurrenceScanner",
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueries"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.ClassOccurrenceScanner",
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueries"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.ClassOccurrenceScanner",
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueries"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.ClassOccurrenceScanner",
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueries"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.ClassOccurrenceScanner",
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueries"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "java-direct-test-impact",
+          "tool": "find_impacted_tests",
+          "status": "passed",
+          "first_request_ms": 5.336,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 4.36,
+            "p95_latency_ms": 4.51,
+            "max_latency_ms": 4.51,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.command.KotlinMavenIT",
+                    "org.treblereel.mcp.command.ProjectConfigurationTest",
+                    "org.treblereel.mcp.command.McpJsonInstallerTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.PositionSymbolQueriesTest",
+                    "org.treblereel.mcp.mcp.ProjectRegistryTest",
+                    "org.treblereel.mcp.command.CompiledOutputInspectorTest",
+                    "org.treblereel.mcp.command.ClaudePermissionConsentTest",
+                    "org.treblereel.mcp.command.WorkspaceTaskExecutorTest",
+                    "org.treblereel.mcp.core.BuildRunnerResolverTest",
+                    "org.treblereel.mcp.command.McpStdioIT",
+                    "org.treblereel.mcp.mcp.ClassTargetResolverTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.command.ClaudeSettingsInstallerTest",
+                    "org.treblereel.mcp.command.GradleMultiModuleIT",
+                    "org.treblereel.mcp.core.KotlinMetadataReaderTest",
+                    "org.treblereel.mcp.command.ClientPermissionsCommandTest",
+                    "org.treblereel.mcp.command.WorkspaceCommandTest$Captured",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest$BlockingTools",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.McpConnectivityProbeTest$FakeServer",
+                    "org.treblereel.mcp.mcp.SymbolContractTest",
+                    "org.treblereel.mcp.command.PicocliNativeMetadataTest",
+                    "org.treblereel.mcp.db.IndexWriterReaderTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.command.ClientRefreshCommandTest",
+                    "org.treblereel.mcp.mcp.VerificationPlanQueriesTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest$1",
+                    "org.treblereel.mcp.core.GradleProjectDiscoveryTest",
+                    "org.treblereel.mcp.core.WorktreeInspectorTest",
+                    "org.treblereel.mcp.command.BuildIntegrationInstallerTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.command.KotlinMavenIT",
+                    "org.treblereel.mcp.command.ProjectConfigurationTest",
+                    "org.treblereel.mcp.command.McpJsonInstallerTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.PositionSymbolQueriesTest",
+                    "org.treblereel.mcp.mcp.ProjectRegistryTest",
+                    "org.treblereel.mcp.command.CompiledOutputInspectorTest",
+                    "org.treblereel.mcp.command.ClaudePermissionConsentTest",
+                    "org.treblereel.mcp.command.WorkspaceTaskExecutorTest",
+                    "org.treblereel.mcp.core.BuildRunnerResolverTest",
+                    "org.treblereel.mcp.command.McpStdioIT",
+                    "org.treblereel.mcp.mcp.ClassTargetResolverTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.command.ClaudeSettingsInstallerTest",
+                    "org.treblereel.mcp.command.GradleMultiModuleIT",
+                    "org.treblereel.mcp.core.KotlinMetadataReaderTest",
+                    "org.treblereel.mcp.command.ClientPermissionsCommandTest",
+                    "org.treblereel.mcp.command.WorkspaceCommandTest$Captured",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest$BlockingTools",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.McpConnectivityProbeTest$FakeServer",
+                    "org.treblereel.mcp.mcp.SymbolContractTest",
+                    "org.treblereel.mcp.command.PicocliNativeMetadataTest",
+                    "org.treblereel.mcp.db.IndexWriterReaderTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.command.ClientRefreshCommandTest",
+                    "org.treblereel.mcp.mcp.VerificationPlanQueriesTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest$1",
+                    "org.treblereel.mcp.core.GradleProjectDiscoveryTest",
+                    "org.treblereel.mcp.core.WorktreeInspectorTest",
+                    "org.treblereel.mcp.command.BuildIntegrationInstallerTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.command.KotlinMavenIT",
+                    "org.treblereel.mcp.command.ProjectConfigurationTest",
+                    "org.treblereel.mcp.command.McpJsonInstallerTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.PositionSymbolQueriesTest",
+                    "org.treblereel.mcp.mcp.ProjectRegistryTest",
+                    "org.treblereel.mcp.command.CompiledOutputInspectorTest",
+                    "org.treblereel.mcp.command.ClaudePermissionConsentTest",
+                    "org.treblereel.mcp.command.WorkspaceTaskExecutorTest",
+                    "org.treblereel.mcp.core.BuildRunnerResolverTest",
+                    "org.treblereel.mcp.command.McpStdioIT",
+                    "org.treblereel.mcp.mcp.ClassTargetResolverTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.command.ClaudeSettingsInstallerTest",
+                    "org.treblereel.mcp.command.GradleMultiModuleIT",
+                    "org.treblereel.mcp.core.KotlinMetadataReaderTest",
+                    "org.treblereel.mcp.command.ClientPermissionsCommandTest",
+                    "org.treblereel.mcp.command.WorkspaceCommandTest$Captured",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest$BlockingTools",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.McpConnectivityProbeTest$FakeServer",
+                    "org.treblereel.mcp.mcp.SymbolContractTest",
+                    "org.treblereel.mcp.command.PicocliNativeMetadataTest",
+                    "org.treblereel.mcp.db.IndexWriterReaderTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.command.ClientRefreshCommandTest",
+                    "org.treblereel.mcp.mcp.VerificationPlanQueriesTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest$1",
+                    "org.treblereel.mcp.core.GradleProjectDiscoveryTest",
+                    "org.treblereel.mcp.core.WorktreeInspectorTest",
+                    "org.treblereel.mcp.command.BuildIntegrationInstallerTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.command.KotlinMavenIT",
+                    "org.treblereel.mcp.command.ProjectConfigurationTest",
+                    "org.treblereel.mcp.command.McpJsonInstallerTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.PositionSymbolQueriesTest",
+                    "org.treblereel.mcp.mcp.ProjectRegistryTest",
+                    "org.treblereel.mcp.command.CompiledOutputInspectorTest",
+                    "org.treblereel.mcp.command.ClaudePermissionConsentTest",
+                    "org.treblereel.mcp.command.WorkspaceTaskExecutorTest",
+                    "org.treblereel.mcp.core.BuildRunnerResolverTest",
+                    "org.treblereel.mcp.command.McpStdioIT",
+                    "org.treblereel.mcp.mcp.ClassTargetResolverTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.command.ClaudeSettingsInstallerTest",
+                    "org.treblereel.mcp.command.GradleMultiModuleIT",
+                    "org.treblereel.mcp.core.KotlinMetadataReaderTest",
+                    "org.treblereel.mcp.command.ClientPermissionsCommandTest",
+                    "org.treblereel.mcp.command.WorkspaceCommandTest$Captured",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest$BlockingTools",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.McpConnectivityProbeTest$FakeServer",
+                    "org.treblereel.mcp.mcp.SymbolContractTest",
+                    "org.treblereel.mcp.command.PicocliNativeMetadataTest",
+                    "org.treblereel.mcp.db.IndexWriterReaderTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.command.ClientRefreshCommandTest",
+                    "org.treblereel.mcp.mcp.VerificationPlanQueriesTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest$1",
+                    "org.treblereel.mcp.core.GradleProjectDiscoveryTest",
+                    "org.treblereel.mcp.core.WorktreeInspectorTest",
+                    "org.treblereel.mcp.command.BuildIntegrationInstallerTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.command.KotlinMavenIT",
+                    "org.treblereel.mcp.command.ProjectConfigurationTest",
+                    "org.treblereel.mcp.command.McpJsonInstallerTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.PositionSymbolQueriesTest",
+                    "org.treblereel.mcp.mcp.ProjectRegistryTest",
+                    "org.treblereel.mcp.command.CompiledOutputInspectorTest",
+                    "org.treblereel.mcp.command.ClaudePermissionConsentTest",
+                    "org.treblereel.mcp.command.WorkspaceTaskExecutorTest",
+                    "org.treblereel.mcp.core.BuildRunnerResolverTest",
+                    "org.treblereel.mcp.command.McpStdioIT",
+                    "org.treblereel.mcp.mcp.ClassTargetResolverTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.command.ClaudeSettingsInstallerTest",
+                    "org.treblereel.mcp.command.GradleMultiModuleIT",
+                    "org.treblereel.mcp.core.KotlinMetadataReaderTest",
+                    "org.treblereel.mcp.command.ClientPermissionsCommandTest",
+                    "org.treblereel.mcp.command.WorkspaceCommandTest$Captured",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest$BlockingTools",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.McpConnectivityProbeTest$FakeServer",
+                    "org.treblereel.mcp.mcp.SymbolContractTest",
+                    "org.treblereel.mcp.command.PicocliNativeMetadataTest",
+                    "org.treblereel.mcp.db.IndexWriterReaderTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.command.ClientRefreshCommandTest",
+                    "org.treblereel.mcp.mcp.VerificationPlanQueriesTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest$1",
+                    "org.treblereel.mcp.core.GradleProjectDiscoveryTest",
+                    "org.treblereel.mcp.core.WorktreeInspectorTest",
+                    "org.treblereel.mcp.command.BuildIntegrationInstallerTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.command.KotlinMavenIT",
+                    "org.treblereel.mcp.command.ProjectConfigurationTest",
+                    "org.treblereel.mcp.command.McpJsonInstallerTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.PositionSymbolQueriesTest",
+                    "org.treblereel.mcp.mcp.ProjectRegistryTest",
+                    "org.treblereel.mcp.command.CompiledOutputInspectorTest",
+                    "org.treblereel.mcp.command.ClaudePermissionConsentTest",
+                    "org.treblereel.mcp.command.WorkspaceTaskExecutorTest",
+                    "org.treblereel.mcp.core.BuildRunnerResolverTest",
+                    "org.treblereel.mcp.command.McpStdioIT",
+                    "org.treblereel.mcp.mcp.ClassTargetResolverTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.command.ClaudeSettingsInstallerTest",
+                    "org.treblereel.mcp.command.GradleMultiModuleIT",
+                    "org.treblereel.mcp.core.KotlinMetadataReaderTest",
+                    "org.treblereel.mcp.command.ClientPermissionsCommandTest",
+                    "org.treblereel.mcp.command.WorkspaceCommandTest$Captured",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest$BlockingTools",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.McpConnectivityProbeTest$FakeServer",
+                    "org.treblereel.mcp.mcp.SymbolContractTest",
+                    "org.treblereel.mcp.command.PicocliNativeMetadataTest",
+                    "org.treblereel.mcp.db.IndexWriterReaderTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.command.ClientRefreshCommandTest",
+                    "org.treblereel.mcp.mcp.VerificationPlanQueriesTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest$1",
+                    "org.treblereel.mcp.core.GradleProjectDiscoveryTest",
+                    "org.treblereel.mcp.core.WorktreeInspectorTest",
+                    "org.treblereel.mcp.command.BuildIntegrationInstallerTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "java-change-plan",
+          "tool": "plan_change",
+          "status": "unknown",
+          "first_request_ms": 24.389,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 19.81,
+            "p95_latency_ms": 21.08,
+            "max_latency_ms": 21.08,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.mcp.CaseFlowExecutionOrderIT",
+                    "org.treblereel.mcp.command.InitCommandTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest",
+                    "org.treblereel.mcp.command.MultiModuleCommandsTest",
+                    "org.treblereel.mcp.command.ProjectLayoutTest",
+                    "org.treblereel.mcp.mcp.ConfigurationReferenceIntegrationTest",
+                    "org.treblereel.mcp.command.ProjectInitializerDiagnosticsTest",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest",
+                    "org.treblereel.mcp.core.SpringResolverTest",
+                    "org.treblereel.mcp.command.KotlinRuntimeInitializationTest",
+                    "org.treblereel.mcp.mcp.KotlinQueryIT",
+                    "org.treblereel.mcp.command.ProjectInitializerRemapTest",
+                    "org.treblereel.mcp.core.JandexScannerTest",
+                    "org.treblereel.mcp.core.BytecodeDependencyScannerTest",
+                    "org.treblereel.mcp.mcp.BuildEventConsumerTest",
+                    "org.treblereel.mcp.command.MavenModuleLifecycleTest"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.mcp.CaseFlowExecutionOrderIT",
+                    "org.treblereel.mcp.command.InitCommandTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest",
+                    "org.treblereel.mcp.command.MultiModuleCommandsTest",
+                    "org.treblereel.mcp.command.ProjectLayoutTest",
+                    "org.treblereel.mcp.mcp.ConfigurationReferenceIntegrationTest",
+                    "org.treblereel.mcp.command.ProjectInitializerDiagnosticsTest",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest",
+                    "org.treblereel.mcp.core.SpringResolverTest",
+                    "org.treblereel.mcp.command.KotlinRuntimeInitializationTest",
+                    "org.treblereel.mcp.mcp.KotlinQueryIT",
+                    "org.treblereel.mcp.command.ProjectInitializerRemapTest",
+                    "org.treblereel.mcp.core.JandexScannerTest",
+                    "org.treblereel.mcp.core.BytecodeDependencyScannerTest",
+                    "org.treblereel.mcp.mcp.BuildEventConsumerTest",
+                    "org.treblereel.mcp.command.MavenModuleLifecycleTest"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.mcp.CaseFlowExecutionOrderIT",
+                    "org.treblereel.mcp.command.InitCommandTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest",
+                    "org.treblereel.mcp.command.MultiModuleCommandsTest",
+                    "org.treblereel.mcp.command.ProjectLayoutTest",
+                    "org.treblereel.mcp.mcp.ConfigurationReferenceIntegrationTest",
+                    "org.treblereel.mcp.command.ProjectInitializerDiagnosticsTest",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest",
+                    "org.treblereel.mcp.core.SpringResolverTest",
+                    "org.treblereel.mcp.command.KotlinRuntimeInitializationTest",
+                    "org.treblereel.mcp.mcp.KotlinQueryIT",
+                    "org.treblereel.mcp.command.ProjectInitializerRemapTest",
+                    "org.treblereel.mcp.core.JandexScannerTest",
+                    "org.treblereel.mcp.core.BytecodeDependencyScannerTest",
+                    "org.treblereel.mcp.mcp.BuildEventConsumerTest",
+                    "org.treblereel.mcp.command.MavenModuleLifecycleTest"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.mcp.CaseFlowExecutionOrderIT",
+                    "org.treblereel.mcp.command.InitCommandTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest",
+                    "org.treblereel.mcp.command.MultiModuleCommandsTest",
+                    "org.treblereel.mcp.command.ProjectLayoutTest",
+                    "org.treblereel.mcp.mcp.ConfigurationReferenceIntegrationTest",
+                    "org.treblereel.mcp.command.ProjectInitializerDiagnosticsTest",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest",
+                    "org.treblereel.mcp.core.SpringResolverTest",
+                    "org.treblereel.mcp.command.KotlinRuntimeInitializationTest",
+                    "org.treblereel.mcp.mcp.KotlinQueryIT",
+                    "org.treblereel.mcp.command.ProjectInitializerRemapTest",
+                    "org.treblereel.mcp.core.JandexScannerTest",
+                    "org.treblereel.mcp.core.BytecodeDependencyScannerTest",
+                    "org.treblereel.mcp.mcp.BuildEventConsumerTest",
+                    "org.treblereel.mcp.command.MavenModuleLifecycleTest"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.mcp.CaseFlowExecutionOrderIT",
+                    "org.treblereel.mcp.command.InitCommandTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest",
+                    "org.treblereel.mcp.command.MultiModuleCommandsTest",
+                    "org.treblereel.mcp.command.ProjectLayoutTest",
+                    "org.treblereel.mcp.mcp.ConfigurationReferenceIntegrationTest",
+                    "org.treblereel.mcp.command.ProjectInitializerDiagnosticsTest",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest",
+                    "org.treblereel.mcp.core.SpringResolverTest",
+                    "org.treblereel.mcp.command.KotlinRuntimeInitializationTest",
+                    "org.treblereel.mcp.mcp.KotlinQueryIT",
+                    "org.treblereel.mcp.command.ProjectInitializerRemapTest",
+                    "org.treblereel.mcp.core.JandexScannerTest",
+                    "org.treblereel.mcp.core.BytecodeDependencyScannerTest",
+                    "org.treblereel.mcp.mcp.BuildEventConsumerTest",
+                    "org.treblereel.mcp.command.MavenModuleLifecycleTest"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFiles"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest"
+                  ],
+                  "actual": [
+                    "org.treblereel.mcp.core.JvmSourceFilesTest",
+                    "org.treblereel.mcp.core.BytecodeSourceMapperTest",
+                    "org.treblereel.mcp.mcp.WorkspaceToolQueriesTest",
+                    "org.treblereel.mcp.core.ClassOccurrenceScannerTest",
+                    "org.treblereel.mcp.core.JandexKotlinSourceMappingTest",
+                    "org.treblereel.mcp.command.DoctorCommandTest",
+                    "org.treblereel.mcp.mcp.AnnotationProcessingIndexTest",
+                    "org.treblereel.mcp.mcp.ChangeVerificationScopeTest",
+                    "org.treblereel.mcp.command.CodexConfigInstallerTest",
+                    "org.treblereel.mcp.mcp.CaseFlowExecutionOrderIT",
+                    "org.treblereel.mcp.command.InitCommandTest",
+                    "org.treblereel.mcp.mcp.QuillToolsTest",
+                    "org.treblereel.mcp.command.MultiModuleCommandsTest",
+                    "org.treblereel.mcp.command.ProjectLayoutTest",
+                    "org.treblereel.mcp.mcp.ConfigurationReferenceIntegrationTest",
+                    "org.treblereel.mcp.command.ProjectInitializerDiagnosticsTest",
+                    "org.treblereel.mcp.mcp.McpToolCatalogTest",
+                    "org.treblereel.mcp.core.SpringResolverTest",
+                    "org.treblereel.mcp.command.KotlinRuntimeInitializationTest",
+                    "org.treblereel.mcp.mcp.KotlinQueryIT",
+                    "org.treblereel.mcp.command.ProjectInitializerRemapTest",
+                    "org.treblereel.mcp.core.JandexScannerTest",
+                    "org.treblereel.mcp.core.BytecodeDependencyScannerTest",
+                    "org.treblereel.mcp.mcp.BuildEventConsumerTest",
+                    "org.treblereel.mcp.command.MavenModuleLifecycleTest"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "planned_cases": 6,
+      "input": {
+        "git": {
+          "git_head": "718cde5731ba0a7fb361f44c5828d87f24159344",
+          "worktree_dirty": true
+        },
+        "git_status_sha256": "0124e100ac0932b9c718240d1b7e85f3d32424db48a09f08057c5dcaaac0d01f",
+        "compiled_classes": 796,
+        "compiled_sha256": "6cc24ab5850ab96a7de14c32e3b9386ee29989d021c112cd92fc6aef45461252",
+        "evidence": {
+          "quill-core/src/main/java/org/treblereel/mcp/core/JvmSourceFiles.java": "9a1a51f7e5d9275e87512491ab22c967dfb539866e5fb20b2161f771a0f88b84",
+          "quill-core/src/test/java/org/treblereel/mcp/core/JvmSourceFilesTest.java": "a613227ea09aabb26d5f7f6ca87346db18089bdb53d4217d734abd2cf1c86437"
+        }
+      },
+      "overview_freshness": {
+        "index_id": "718cde5731ba0a7fb361f44c5828d87f24159344-7b9e3ad360f8",
+        "indexed_at": "2026-10-13T20:21:29.520120Z",
+        "indexed_commit": "718cde5731ba0a7fb361f44c5828d87f24159344",
+        "current_commit": "718cde5731ba0a7fb361f44c5828d87f24159344",
+        "commit_stale": false,
+        "worktree_dirty": true,
+        "worktree_changed_files": 3,
+        "structural_changed_files": 0,
+        "structure_stale": false,
+        "stale_reasons": [],
+        "stale_warning": false,
+        "stale_scope": "current",
+        "answer_confidence": "high"
+      },
+      "overview_project": {
+        "framework": "Mixed",
+        "classes": 794,
+        "beans": 60,
+        "total_source_tokens": 2453763,
+        "dependency_index": "complete",
+        "dependency_index_detail": "85 JARs indexed",
+        "service_descriptors": 1,
+        "service_registrations": 2,
+        "configuration_definitions": 7,
+        "configuration_usages": 71
+      },
+      "inputs_unchanged": true,
+      "counts": {
+        "passed": 5,
+        "failed": 0,
+        "unknown": 1
+      },
+      "all_passed": false
+    },
+    {
+      "id": "jetbrains-kotlin",
+      "cases": [
+        {
+          "id": "kotlin-top-level-position",
+          "tool": "get_symbol_at_position",
+          "status": "passed",
+          "first_request_ms": 787.319,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 89.1,
+            "p95_latency_ms": 93.77,
+            "max_latency_ms": 93.77,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "jvm_descriptor"
+                  ],
+                  "mode": "equals",
+                  "expected": "(Ljava/lang/String;)Z",
+                  "actual": "(Ljava/lang/String;)Z"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "kotlin-default-argument-position",
+          "tool": "get_symbol_at_position",
+          "status": "failed",
+          "first_request_ms": 90.337,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 90.29,
+            "p95_latency_ms": 94.42,
+            "max_latency_ms": 94.42,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "failed",
+              "observed_fact_status": "failed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "failed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "createMatcher",
+                  "actual": "createMatcher"
+                }
+              ]
+            },
+            {
+              "status": "failed",
+              "observed_fact_status": "failed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "failed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "createMatcher",
+                  "actual": "createMatcher"
+                }
+              ]
+            },
+            {
+              "status": "failed",
+              "observed_fact_status": "failed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "failed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "createMatcher",
+                  "actual": "createMatcher"
+                }
+              ]
+            },
+            {
+              "status": "failed",
+              "observed_fact_status": "failed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "failed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "createMatcher",
+                  "actual": "createMatcher"
+                }
+              ]
+            },
+            {
+              "status": "failed",
+              "observed_fact_status": "failed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "failed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "createMatcher",
+                  "actual": "createMatcher"
+                }
+              ]
+            },
+            {
+              "status": "failed",
+              "observed_fact_status": "failed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "failed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.SearchMatchUtilsKt",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "createMatcher",
+                  "actual": "createMatcher"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "kotlin-default-cursor-position",
+          "tool": "get_symbol_at_position",
+          "status": "passed",
+          "first_request_ms": 126.491,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 66.21,
+            "p95_latency_ms": 72.88,
+            "max_latency_ms": 72.88,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "encodeCursor",
+                  "actual": "encodeCursor"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "encodeCursor",
+                  "actual": "encodeCursor"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "encodeCursor",
+                  "actual": "encodeCursor"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "encodeCursor",
+                  "actual": "encodeCursor"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "encodeCursor",
+                  "actual": "encodeCursor"
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "resolution"
+                  ],
+                  "mode": "equals",
+                  "expected": "resolved",
+                  "actual": "resolved"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "class_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService",
+                  "actual": "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "selected",
+                    "member_name"
+                  ],
+                  "mode": "equals",
+                  "expected": "encodeCursor",
+                  "actual": "encodeCursor"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "kotlin-top-level-usages",
+          "tool": "find_symbol_usages",
+          "status": "passed",
+          "first_request_ms": 17.978,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 14.21,
+            "p95_latency_ms": 14.76,
+            "max_latency_ms": 14.76,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "excludes",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.ExcludedPathScope",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsUnitTest"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "kotlin-default-forwarded-usages",
+          "tool": "find_symbol_usages",
+          "status": "passed",
+          "first_request_ms": 7.059,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 6.68,
+            "p95_latency_ms": 8.02,
+            "max_latency_ms": 8.02,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindClassTool"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindClassTool"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindClassTool"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindClassTool"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindClassTool"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "usages",
+                    "*",
+                    "caller",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.OptimizedSymbolSearch",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolsTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindClassTool"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "kotlin-direct-test-impact",
+          "tool": "find_impacted_tests",
+          "status": "passed",
+          "first_request_ms": 6.041,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 5.04,
+            "p95_latency_ms": 5.84,
+            "max_latency_ms": 5.84,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageLastPageHasMoreFalse$1"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageLastPageHasMoreFalse$1"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageLastPageHasMoreFalse$1"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageLastPageHasMoreFalse$1"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageLastPageHasMoreFalse$1"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            },
+            {
+              "status": "passed",
+              "observed_fact_status": "passed",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageLastPageHasMoreFalse$1"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_index_coverage",
+                    "complete"
+                  ],
+                  "mode": "equals",
+                  "expected": true,
+                  "actual": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "kotlin-change-plan",
+          "tool": "plan_change",
+          "status": "unknown",
+          "first_request_ms": 47.904,
+          "warm_latency": {
+            "samples": 5,
+            "p50_latency_ms": 48.07,
+            "p95_latency_ms": 51.41,
+            "max_latency_ms": 51.41,
+            "errors": 0
+          },
+          "samples": [
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1"
+                  ]
+                }
+              ]
+            },
+            {
+              "status": "unknown",
+              "observed_fact_status": "passed",
+              "reason": "test_plan_incomplete",
+              "assertions": [
+                {
+                  "status": "passed",
+                  "path": [
+                    "primary_changes",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "equals",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService"
+                  ]
+                },
+                {
+                  "status": "passed",
+                  "path": [
+                    "test_plan",
+                    "tests",
+                    "*",
+                    "class"
+                  ],
+                  "mode": "contains",
+                  "expected": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest"
+                  ],
+                  "actual": [
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testNullPageSizeWithLegacyCursorReturnsMalformed$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSecondPage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExpiredCursorReturnsError$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageRejectsNonEmptyMalformedCursorStrictly$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderFailureReturnsSearchInvalidated$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageStaleDetection$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExtenderCalledWhenCacheExhausted$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testExplicitPageSizeOverridesCursorPageSize$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreTrueWhenExtenderReturnsResults$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageWrongProject$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseOnLastPageWithExtender$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMaxCachedResultsStopsExtension$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageSuccess$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testHasMoreFalseWhenExtenderExhaustedOnSinglePage$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageMalformedToken$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testMetadataRoundTrip$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testDisposeClearsAllEntries$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d1$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testGetPageIdempotent$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testConcurrentPageRequests$1$1$d2$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testPageSizePreservedInNextCursor$1",
+                    "com.github.hechtcarmel.jetbrainsindexmcpplugin.PaginationServiceUnitTest$testCursorPageSizeUsedWhenNoExplicitPageSize$1"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "planned_cases": 7,
+      "input": {
+        "git": {
+          "git_head": "2983e24dc4ae3c464d8a8bcbe5a212cf72cd321b",
+          "worktree_dirty": true
+        },
+        "git_status_sha256": "c275b18367213e0a7fd713073f35f4b88433b27c7143d3d7e6a1c7fa18328f6b",
+        "compiled_classes": 2382,
+        "compiled_sha256": "fa40944321ba046964699668e294d4ede23221606abda119f5f3c5665a4c795f",
+        "evidence": {
+          "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/ExcludedPathScope.kt": "f174f43515fafebe8f715a8d49e0f074a08993ec1e0e86340a1ad3d018abf559",
+          "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/OptimizedSymbolSearch.kt": "e5483202abacd99fe3a8fe2aae9a87cb0aef5fd02d94b7ccab2d8f1498702975",
+          "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/handlers/SearchMatchUtils.kt": "cfcfe1c9e6941dfaeb77939bb51f63cc3ca45f66c73a2442a22de73f5a82516e",
+          "src/main/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/server/PaginationService.kt": "fb278874135c25020c2a564f029bfecdcbb7a6035584aeb392566b0148fb29bc",
+          "src/test/kotlin/com/github/hechtcarmel/jetbrainsindexmcpplugin/PaginationServiceUnitTest.kt": "e07238ab300102d416733172b1050e3850efba38c34d7ec613ec79df0c32fa78"
+        }
+      },
+      "overview_freshness": {
+        "index_id": "2983e24dc4ae3c464d8a8bcbe5a212cf72cd321b-215e9f00e0ad",
+        "indexed_at": "2026-10-13T20:20:13.158884Z",
+        "indexed_commit": "2983e24dc4ae3c464d8a8bcbe5a212cf72cd321b",
+        "current_commit": "2983e24dc4ae3c464d8a8bcbe5a212cf72cd321b",
+        "commit_stale": false,
+        "worktree_dirty": true,
+        "worktree_changed_files": 5,
+        "structural_changed_files": 0,
+        "structure_stale": false,
+        "stale_reasons": [],
+        "stale_warning": false,
+        "stale_scope": "current",
+        "answer_confidence": "high"
+      },
+      "overview_project": {
+        "framework": "Plain",
+        "classes": 979,
+        "beans": 0,
+        "total_source_tokens": 3402692,
+        "dependency_index": "complete",
+        "dependency_index_detail": "56 JARs indexed",
+        "service_descriptors": 0,
+        "service_registrations": 0,
+        "configuration_definitions": 109,
+        "configuration_usages": 4
+      },
+      "inputs_unchanged": true,
+      "counts": {
+        "passed": 5,
+        "failed": 1,
+        "unknown": 1
+      },
+      "all_passed": false
+    }
+  ],
+  "limitations": [
+    "Selected source-confirmed facts, not exhaustive usages or impact coverage",
+    "No model evaluation or project tests executed",
+    "First request may benefit from MCP startup warmup"
+  ],
+  "all_passed": false
+}

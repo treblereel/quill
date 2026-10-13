@@ -57,7 +57,8 @@ final class PositionSymbolQueries {
         } catch (IOException unavailable) { return error(jdbi, "SOURCE_CHANGED", "Source became unavailable while resolving the position"); }
         boolean compilerResolved = semantic != null && semantic.path("status").asText().equals("resolved");
         boolean compilerLocal = semantic != null && java.util.Set.of("local", "unresolved").contains(semantic.path("status").asText());
-        String imported = kotlin ? importedName(code, identifier) : null;
+        String explicitQualified = kotlin ? qualifiedCall(sourceLine, located) : null;
+        String imported = kotlin && explicitQualified == null ? importedName(code, identifier) : null;
         String lookupName = imported == null ? identifier : imported.substring(imported.lastIndexOf('.') + 1);
         if (compilerResolved && semantic.path("name").isTextual()) {
             lookupName = semantic.path("name").asText();
@@ -69,15 +70,18 @@ final class PositionSymbolQueries {
         List<Candidate> candidates = declarations(jdbi, lookupName, normalized);
         if (kotlin) candidates = sourceCallables(jdbi, logicalProperties(jdbi, candidates, lookupName));
         if (compilerLocal) candidates = List.of();
-        if (imported != null && !compilerResolved) {
-            String qualified = imported;
+        if ((imported != null || explicitQualified != null) && !compilerResolved) {
+            String qualified = explicitQualified == null ? imported : explicitQualified;
             String importedMember = lookupName;
-            candidates = candidates.stream().filter(candidate -> candidate.className().replace('$', '.').equals(qualified)
+            List<Candidate> qualifiedCandidates = candidates.stream().filter(candidate -> candidate.className().replace('$', '.').equals(qualified)
                     || (candidate.className().replace('$', '.') + "." + importedMember).equals(qualified)
                     || qualified.equals(candidate.className().substring(0,
                             candidate.className().lastIndexOf('.') + 1) + importedMember)
                         && topLevel(jdbi, candidate.className()))
                     .toList();
+            // A dotted receiver may be an expression rather than a package. Only narrow
+            // explicit source qualification when indexed declarations confirm its owner.
+            if (explicitQualified == null || !qualifiedCandidates.isEmpty()) candidates = qualifiedCandidates;
         }
         if (compilerResolved) candidates = candidates.stream().filter(candidate ->
                 candidate.className().equals(semantic.path("owner").asText())
@@ -247,6 +251,14 @@ final class PositionSymbolQueries {
             }
         }
         return result;
+    }
+
+    private static String qualifiedCall(String sourceLine, Identifier located) {
+        String before = sourceLine.substring(0, located.start());
+        var matcher = java.util.regex.Pattern.compile(
+                "(?:(?:[\\p{L}_$][\\p{L}\\p{N}_$]*|`[^`\\r\\n]+`)\\.)+$").matcher(before);
+        if (!matcher.find()) return null;
+        return (matcher.group() + located.value()).replace("`", "");
     }
 
     private static boolean topLevel(Jdbi jdbi, String className) {

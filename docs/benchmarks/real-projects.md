@@ -109,3 +109,35 @@ both read-only discovery and classpath export, cached reuse, a custom output pat
 unchanged bytecode, and unchanged cache preferences. Its temporary project path
 contains spaces and Unicode. Focused verification disables the aggregate coverage
 gate; this is not a fresh full-reactor coverage result.
+
+## Clean-build rerun on 0.4.0 — macOS arm64, 2026-10-13
+
+Disposable copies of the same pinned commits were rebuilt from source. Quill used
+`./mvnw clean test-compile -DskipTests`; the JetBrains plugin used
+`./gradlew --no-daemon --no-configuration-cache clean classes testClasses`.
+Full initialization installed the Maven build integration and prepared the K2
+runtime; Quill was rebuilt and reindexed after Maven compiler capture. The released
+0.4.0 macOS arm64 archive matched its published SHA-256 file. Six samples were
+collected for each of the 13 original cases. Source, compiled outputs, and Git
+status remained unchanged during each measurement.
+
+| Binary | Java/Maven passed / failed / unknown | Kotlin/Gradle passed / failed / unknown |
+| --- | --- | --- |
+| [Published 0.4.0](results/real-projects-v1-macos-2026-10-13-v0.4.0.json) | 5 / 0 / 1 | 5 / 1 / 1 |
+| [Native candidate with qualified fallback fix](results/real-projects-v1-macos-2026-10-13-qualified-fallback.json) | 5 / 0 / 1 | 6 / 0 / 1 |
+
+The published Kotlin binary resolves the fully qualified
+`com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.createMatcher(pattern)`
+to the same-name method in the current class. Its semantic backend explicitly
+reports `compiler_plugins_disabled`: the project uses Kotlin 2.1.20 with
+serialization, while the bundled K2 worker is 2.4.21. This is a lexical-fallback
+error, not a failed K2 attribution. The candidate uses the explicit package in
+source text to select the indexed top-level function. A focused test also checks
+that an ordinary receiver call retains its existing fallback behavior.
+
+Both remaining `unknown` cases are change plans. Their expected primary classes
+and tests appear in the response, but the nested affected-test list exceeds the
+tool's 100-result limit and is correctly marked incomplete. They are not counted
+as passes. The candidate's benchmark exit status therefore remains nonzero even
+though all independently checkable facts pass. Multi-version K2 plugin support
+and complete paginated change-plan evidence remain separate follow-up work.

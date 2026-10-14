@@ -32,7 +32,7 @@ class WorktreeIsolationIT {
         if (kotlin) {
             Files.writeString(main.resolve("settings.gradle.kts"), "rootProject.name = \"worktree-fixture\"\n");
             Files.writeString(main.resolve("build.gradle.kts"), """
-                    plugins { kotlin("jvm") version "2.4.20" }
+                    plugins { kotlin("jvm") version "2.4.21" }
                     repositories { mavenCentral() }
                     kotlin { jvmToolchain(21) }
                     """);
@@ -96,6 +96,18 @@ class WorktreeIsolationIT {
         assertEquals(0, legacyAbsent.path("total").asInt(), legacyAbsent.toString());
         assertEquals(unchangedConfiguration, Files.readString(main.resolve(".mcp.json")));
         assertEquals(unchangedConfiguration, Files.readString(linked.resolve(".mcp.json")));
+        if (kotlin) org.treblereel.mcp.kotlin.KotlinRuntime.prepareVersion("2.4.21");
+        // Compiler evidence, not lexical name matching, must survive A -> B -> edited A.
+        assertCompiler(tools, main, kotlin, "first", "(I)I");
+        assertCompiler(tools, linked, kotlin, "second", "(J)J");
+        Path caller = main.resolve(kotlin ? "src/main/kotlin/fixture/Caller.kt" : "src/main/java/fixture/Caller.java");
+        Files.writeString(caller, Files.readString(caller).replace("first(1)", "first(\"changed\")"));
+        assertCompiler(tools, main, kotlin, "first", "(Ljava/lang/String;)I");
+        try (var callers = Executors.newFixedThreadPool(2)) {
+            var left = callers.submit(() -> { assertCompiler(tools, main, kotlin, "first", "(Ljava/lang/String;)I"); return null; });
+            var right = callers.submit(() -> { assertCompiler(tools, linked, kotlin, "second", "(J)J"); return null; });
+            left.get(60, TimeUnit.SECONDS); right.get(60, TimeUnit.SECONDS);
+        }
         // A copied generation cannot become queryable even at the same Git commit.
         org.treblereel.mcp.workspace.WorkspaceManifestStore.initialize(temp, 1);
         ProjectRegistry workspace = new ProjectRegistry(new org.treblereel.mcp.mcp.WorkspaceProjectScope(temp));
@@ -119,8 +131,24 @@ class WorktreeIsolationIT {
     private void writeSource(Path project, boolean kotlin, String method) throws Exception {
         Path file = project.resolve(kotlin ? "src/main/kotlin/fixture/Api.kt" : "src/main/java/fixture/Api.java");
         Files.createDirectories(file.getParent());
-        Files.writeString(file, kotlin ? "package fixture\nclass Api { fun " + method + "(value: Int) = value }\n"
-                : "package fixture; public class Api { public int " + method + "(int value) { return value; } }\n");
+        boolean first = method.equals("first");
+        String type = first ? "Int" : "Long", javaType = first ? "int" : "long";
+        Files.writeString(file, kotlin ? "package fixture\nclass Api { fun " + method + "(value: " + type + ") = value; fun " + method + "(value: String) = value.length }\n"
+                : "package fixture; public class Api { public " + javaType + " " + method + "(" + javaType + " value) { return value; } public int " + method + "(String value) { return value.length(); } }\n");
+        Path caller = file.resolveSibling(kotlin ? "Caller.kt" : "Caller.java");
+        String argument = first ? "1" : "1L";
+        Files.writeString(caller, kotlin ? "package fixture\nclass Caller { fun run() = Api()." + method + "(" + argument + ") }\n"
+                : "package fixture;\npublic class Caller { public Object run() { return new Api()." + method + "(" + argument + "); } }\n");
+    }
+
+    private void assertCompiler(QuillTools tools, Path root, boolean kotlin, String method, String descriptor) throws Exception {
+        String path = kotlin ? "src/main/kotlin/fixture/Caller.kt" : "src/main/java/fixture/Caller.java";
+        String line = Files.readAllLines(root.resolve(path)).get(1);
+        var answer = JSON.readTree(tools.get_symbol_at_position(path, 2, line.indexOf("." + method) + 2, Optional.of(root.toString())));
+        assertEquals("compiler", answer.path("resolution_basis").asText(), answer.toString());
+        assertEquals("resolved", answer.path("resolution").asText(), answer.toString());
+        assertEquals(descriptor, answer.path("selected").path("descriptor").asText(), answer.toString());
+        assertEquals(ProjectIdentity.resolve(root).projectId(), answer.path("_meta").path("project_id").asText(), answer.toString());
     }
 
     private void initialize(Path project) throws Exception {

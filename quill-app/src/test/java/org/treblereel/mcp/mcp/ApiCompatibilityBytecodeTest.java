@@ -57,7 +57,7 @@ class ApiCompatibilityBytecodeTest {
         assertTrue(run(instance,client,1).contains("IncompatibleClassChangeError"));
         assertTrue(has(ApiCompatibilityQueries.compare(index(old,"old-index-two"),index(instance,"instance-index"),20),"STATIC_INSTANCE_CHANGED"));
     }
-    @Test void bridgePreservesBinaryLinkageDespiteMissingIndexedDeclaredDescriptor() throws Exception {
+    @Test void bridgePreservesIndexedBinaryDescriptor() throws Exception {
         Path old=root.resolve("old"),current=root.resolve("current"),client=root.resolve("client");
         String base="package p; public class Base {public Number value(){return 1;}}";
         assertTrue(compile(old,Map.of("p/Base.java",base,"p/Api.java","package p; public class Api extends Base {public Number value(){return 1;}}"),null));
@@ -65,8 +65,8 @@ class ApiCompatibilityBytecodeTest {
         assertTrue(compile(current,Map.of("p/Base.java",base,"p/Api.java","package p; public class Api extends Base {public Integer value(){return 2;}}"),null));
         assertEquals("2",run(current,client,0).strip());
         JsonNode report=ApiCompatibilityQueries.compare(index(old,"bridge-old"),index(current,"bridge-new"),20);
-        assertTrue(has(report,"MEMBER_REMOVED_OR_DESCRIPTOR_CHANGED"));assertFalse(report.path("compatibility_proven").asBoolean());
-        assertEquals("potentially_breaking",report.path("verdict").asText());
+        assertFalse(has(report,"MEMBER_REMOVED_OR_DESCRIPTOR_CHANGED"));assertFalse(report.path("compatibility_proven").asBoolean());
+        assertEquals("review_required",report.path("verdict").asText());
     }
     @Test void addedOverloadPreservesBinaryConsumerButMakesNullCallSourceAmbiguous() throws Exception {
         Path old=root.resolve("old"),current=root.resolve("current"),client=root.resolve("client"),recompile=root.resolve("recompile");

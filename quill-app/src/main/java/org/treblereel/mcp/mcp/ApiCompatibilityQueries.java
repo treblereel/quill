@@ -266,7 +266,7 @@ final class ApiCompatibilityQueries {
     private static Member member(String kind,String name,String descriptor,String signature,String modifiers,String annotations,String details,String type,String parameters) {
         Set<String> flags=new TreeSet<>();
         for(String token:value(modifiers).replaceAll("[\\[\\],]"," ").split("\\s+")) if(!token.isEmpty()) flags.add(token);
-        Set<String> supported=Set.of("public","private","protected","static","final","abstract","native","synchronized","strictfp","transient","volatile");
+        Set<String> supported=Set.of("public","private","protected","static","final","abstract","native","synchronized","strictfp","transient","volatile","bridge","synthetic","varargs");
         long access=flags.stream().filter(Set.of("public","private","protected")::contains).count();
         boolean valid=validDescriptor(kind,descriptor) && supported.containsAll(flags) && access<=1;
         String canonicalName=kind.equals("CONSTRUCTOR")?"<init>":name;

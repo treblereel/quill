@@ -67,7 +67,7 @@ final class SymbolUsageQueries {
         List<KotlinDeclarationRecord> kotlinDeclarations =
                 IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
-        List<ClassMemberRecord> kindMembers = IndexReader.findClassMembers(jdbi, cls.id()).stream()
+        List<ClassMemberRecord> kindMembers = (requestedSignature == null ? IndexReader.findClassMembers(jdbi, cls.id()) : IndexReader.findJvmClassMembers(jdbi, cls.id())).stream()
                 .filter(member -> member.kind().equals(normalizedKind)).toList();
         List<ClassMemberRecord> namedMembers = kindMembers.stream()
                 .filter(member -> matchesName(
@@ -128,6 +128,7 @@ final class SymbolUsageQueries {
                 jdbi, cls.id(), bytecodeName, selected.descriptor());
         ObjectNode root = base(cls, selected, kotlinDeclaration);
         root.put("usage_scope", "exact_indexed_bytecode_references");
+        root.put("declaration_lookup", "indexed_jvm_method_resolution");
         JavaDispatchEvidence dispatch = new JavaDispatchEvidence(jdbi);
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();

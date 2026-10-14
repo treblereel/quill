@@ -83,7 +83,7 @@ final class CallHierarchyQueries {
                 IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
         List<ClassMemberRecord> candidates = normalizedMethod == null ? List.of()
-                : IndexReader.findClassMembers(jdbi, cls.id()).stream()
+                : (normalizedSignature == null ? IndexReader.findClassMembers(jdbi, cls.id()) : IndexReader.findJvmClassMembers(jdbi, cls.id())).stream()
                         .filter(member -> member.kind().equals("METHOD")
                                 || member.kind().equals("CONSTRUCTOR"))
                         .filter(member -> KotlinMemberNames.matches(

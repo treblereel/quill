@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.JvmMethodResolver;
 import org.treblereel.mcp.db.IndexReader.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
@@ -14,6 +15,7 @@ final class JavaDispatchEvidence {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int OWNER_CAP = 5000, CALL_CAP = 5000, TARGET_LIMIT = 20;
     private final Jdbi db;
+    private JvmMethodResolver resolver;
     private List<ClassRecord> classes;
     private Map<String,List<ClassRecord>> owners;
     private Map<Integer,List<ClassMemberRecord>> members;
@@ -35,6 +37,18 @@ final class JavaDispatchEvidence {
                 .put("invocation_kind", call.invocationKind()).put("execution_proven", false)
                 .put("runtime_target_proven", false).put("candidate_coverage_complete", false);
         result.putObject("declared_target").put("class",call.toClass()).put("name",call.toMethod()).put("descriptor",call.toDescriptor());
+        if (resolver == null) resolver = new JvmMethodResolver(db);
+        var resolution = resolver.resolve(call.toClass(),call.toMethod(),call.toDescriptor());
+        result.put("declaration_resolution",resolution.status());
+        if (resolution.resolved()) {
+            var declaration = result.putObject("resolved_declaration");
+            declaration.put("class",resolution.owner().className()).put("name",call.toMethod())
+                    .put("descriptor",call.toDescriptor()).put("symbol_id",SymbolContract.id(resolution.owner(),
+                            resolution.member().kind(),call.toMethod(),call.toDescriptor()));
+            declaration.set("lookup_path",JSON.valueToTree(resolution.path()));
+            declaration.put("runtime_target_proven",false);
+            appendBridge(declaration,resolution);
+        }
         var values = result.putArray("possible_targets");
         if (!Set.of("virtual","interface").contains(call.invocationKind())) {
             result.put("status", "dynamic".equals(call.invocationKind()) ? "dynamic_reference" : "fixed_symbolic_target");
@@ -44,8 +58,8 @@ final class JavaDispatchEvidence {
         if (classes.size() > OWNER_CAP) return result.put("status","hierarchy_limit").put("truncated",true);
         var bases = owners.getOrDefault(call.toClass(),List.of());
         if (bases.size()!=1) return result.put("status","owner_ambiguous").put("truncated",false);
-        ClassRecord base = bases.getFirst();
-        var declarations = members.getOrDefault(base.id(),List.of()).stream().filter(m -> "METHOD".equals(m.kind())
+        ClassRecord base = resolution.resolved() ? resolution.owner() : bases.getFirst();
+        var declarations = IndexReader.findJvmClassMembers(db,base.id()).stream().filter(m -> "METHOD".equals(m.kind())
                 && call.toMethod().equals(m.name()) && call.toDescriptor().equals(m.descriptor())).toList();
         if (declarations.size()!=1) return result.put("status","declaration_not_indexed").put("truncated",false);
         ClassMemberRecord declaration = declarations.getFirst();
@@ -69,12 +83,24 @@ final class JavaDispatchEvidence {
         return result.put("status","hierarchy_candidates").put("possible_target_count",count)
                 .put("limit",TARGET_LIMIT).put("truncated",count>values.size());
     }
+    private void appendBridge(ObjectNode declaration, JvmMethodResolver.Resolution resolution) {
+        if (!JvmMethodResolver.flag(resolution.member(),"bridge")) return;
+        var bridge=declaration.putObject("bridge").put("evidence_kind","compiler_bridge_bytecode")
+                .put("runtime_target_proven",false);
+        var calls=IndexReader.findMethodCalls(db,resolution.owner().id(),resolution.member().name(),
+                resolution.member().descriptor(),"outbound",21,0);
+        var targets=bridge.putArray("invocation_targets");
+        for (var call : calls.stream().limit(20).toList()) targets.addObject()
+                .put("class",call.toClass()).put("name",call.toMethod()).put("descriptor",call.toDescriptor())
+                .put("invocation_kind",call.invocationKind());
+        bridge.put("truncated",calls.size()>20);
+    }
     void appendPossibleCallers(ObjectNode response, ClassRecord selectedOwner, ClassMemberRecord selected, int limit, int offset) {
         var result = response.putObject("dispatch_context").put("evidence_kind","possible_dispatch_callers")
                 .put("runtime_dispatch_proven",false).put("candidate_coverage_complete",false);
         var values = result.putArray("possible_callers");
         result.putArray("limitations").add("Candidates use indexed ancestry and erased override shapes, without receiver-value analysis")
-                .add("External hierarchy nodes, generic bridges, inherited symbolic owners and framework proxies may add candidates");
+                .add("External hierarchy nodes, erased generic relationships and framework proxies may add candidates");
         if (!"METHOD".equals(selected.kind()) || modifier(selected,"static") || modifier(selected,"private")) {
             result.put("status","not_overriding"); ToolResponseSupport.appendPage(result,0,0,limit,offset); return;
         }

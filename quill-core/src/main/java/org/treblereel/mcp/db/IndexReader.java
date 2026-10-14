@@ -595,6 +595,12 @@ public final class IndexReader {
     }
 
     public static List<ClassMemberRecord> findClassMembers(Jdbi jdbi, int classId) {
+        return findJvmClassMembers(jdbi, classId).stream()
+                .filter(m -> !m.modifiers().contains("bridge") && !m.modifiers().contains("synthetic")).toList();
+    }
+
+    /** Includes compiler bridges required for exact JVM declaration lookup. */
+    public static List<ClassMemberRecord> findJvmClassMembers(Jdbi jdbi, int classId) {
         return jdbi.withHandle(h -> h.createQuery("""
                         SELECT class_id, kind, name, signature, descriptor, type_name, parameter_types,
                                modifiers, annotations, annotation_details
@@ -618,6 +624,7 @@ public final class IndexReader {
                                 SELECT class_id, kind, name, signature, descriptor, type_name, parameter_types,
                                        modifiers, annotations, annotation_details
                                 FROM class_members WHERE class_id IN (<classIds>)
+                                  AND modifiers NOT LIKE '%bridge%' AND modifiers NOT LIKE '%synthetic%'
                                 ORDER BY class_id,
                                          CASE kind WHEN 'FIELD' THEN 0
                                                    WHEN 'CONSTRUCTOR' THEN 1 ELSE 2 END,
@@ -688,6 +695,7 @@ public final class IndexReader {
                            OR (kd.kind = 'PROPERTY' AND kd.jvm_name = m.name
                                AND (kd.descriptor = '' OR kd.descriptor = m.descriptor)))
                     WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                      AND m.modifiers NOT LIKE '%bridge%' AND m.modifiers NOT LIKE '%synthetic%'
                       AND (m.name LIKE :pattern OR m.signature LIKE :pattern
                            OR kd.name LIKE :pattern)
                 )
@@ -755,6 +763,7 @@ public final class IndexReader {
                            OR (kd.kind = 'PROPERTY' AND kd.jvm_name = m.name
                                AND (kd.descriptor = '' OR kd.descriptor = m.descriptor)))
                     WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
+                      AND m.modifiers NOT LIKE '%bridge%' AND m.modifiers NOT LIKE '%synthetic%'
                       AND (m.name LIKE :pattern OR m.signature LIKE :pattern
                            OR kd.name LIKE :pattern)
                 )
@@ -776,8 +785,12 @@ public final class IndexReader {
 
     public static List<MethodCallView> findMethodCalls(Jdbi jdbi, int classId,
             String method, String descriptor, String direction, int limit, int offset) {
+        if ("inbound".equals(direction) && method != null && descriptor != null)
+            return findExactMethodUsages(jdbi,classId,method,descriptor,limit,offset);
         String predicate = methodCallPredicate(
                 direction, method != null, descriptor != null);
+        boolean resolveBoth = "both".equals(direction) && method != null && descriptor != null;
+        if (resolveBoth) predicate=predicate.replace("mc.to_class_id = :classId","mc.to_class_id IN (<ownerIds>)");
         String sql = """
                 SELECT mc.*, source.class_name AS from_class,
                        source.source_file AS from_source,
@@ -800,6 +813,7 @@ public final class IndexReader {
                     .bind("classId", classId)
                     .bind("limit", limit)
                     .bind("offset", offset);
+            if (resolveBoth) query.bindList("ownerIds",new JvmMethodResolver(jdbi).symbolicOwners(classId,method,descriptor));
             if (method != null) query.bind("method", method);
             if (descriptor != null) query.bind("descriptor", descriptor);
             return query.map((rs, ctx) -> new MethodCallView(
@@ -842,12 +856,12 @@ public final class IndexReader {
                 JOIN classes target ON target.id = mc.to_class_id
                 WHERE source.lifecycle = 'current' AND source.origin != 'orphan_output'
                   AND target.lifecycle = 'current' AND target.origin != 'orphan_output'
-                  AND mc.to_class_id = :classId AND mc.to_method = :method
+                  AND mc.to_class_id IN (<ownerIds>) AND mc.to_method = :method
                   AND mc.to_descriptor = :descriptor
                 ORDER BY from_class, from_method, from_descriptor, invocation_kind
                 LIMIT :limit OFFSET :offset""";
         return jdbi.withHandle(handle -> handle.createQuery(sql)
-                .bind("classId", classId)
+                .bindList("ownerIds", new JvmMethodResolver(jdbi).symbolicOwners(classId, method, descriptor))
                 .bind("method", method)
                 .bind("descriptor", descriptor)
                 .bind("limit", limit)
@@ -865,9 +879,9 @@ public final class IndexReader {
                           AND source.origin != 'orphan_output'
                           AND target.lifecycle = 'current'
                           AND target.origin != 'orphan_output'
-                          AND mc.to_class_id = :classId AND mc.to_method = :method
+                          AND mc.to_class_id IN (<ownerIds>) AND mc.to_method = :method
                           AND mc.to_descriptor = :descriptor""")
-                .bind("classId", classId)
+                .bindList("ownerIds", new JvmMethodResolver(jdbi).symbolicOwners(classId, method, descriptor))
                 .bind("method", method)
                 .bind("descriptor", descriptor)
                 .mapTo(Integer.class).one());
@@ -939,10 +953,16 @@ public final class IndexReader {
 
     public static int countMethodCalls(Jdbi jdbi, int classId, String method,
             String descriptor, String direction) {
+        if ("inbound".equals(direction) && method != null && descriptor != null)
+            return countExactMethodUsages(jdbi,classId,method,descriptor);
         String sql = "SELECT count(*) FROM method_calls mc WHERE "
                 + methodCallPredicate(direction, method != null, descriptor != null);
+        boolean resolveBoth="both".equals(direction) && method != null && descriptor != null;
+        if(resolveBoth) sql=sql.replace("mc.to_class_id = :classId","mc.to_class_id IN (<ownerIds>)");
+        String countSql=sql;
         return jdbi.withHandle(handle -> {
-            var query = handle.createQuery(sql).bind("classId", classId);
+            var query = handle.createQuery(countSql).bind("classId", classId);
+            if(resolveBoth) query.bindList("ownerIds",new JvmMethodResolver(jdbi).symbolicOwners(classId,method,descriptor));
             if (method != null) query.bind("method", method);
             if (descriptor != null) query.bind("descriptor", descriptor);
             return query.mapTo(Integer.class).one();
@@ -951,6 +971,8 @@ public final class IndexReader {
 
     public static List<MethodCallView> findAdjacentMethodCalls(Jdbi jdbi, int classId,
             String method, String descriptor, String direction) {
+        if ("inbound".equals(direction) && method != null && descriptor != null)
+            return findExactMethodUsages(jdbi,classId,method,descriptor,Integer.MAX_VALUE,0);
         String endpoint = "inbound".equals(direction) ? "to" : "from";
         StringBuilder predicate = new StringBuilder("mc.")
                 .append(endpoint).append("_class_id = :classId");

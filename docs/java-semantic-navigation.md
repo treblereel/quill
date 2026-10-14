@@ -30,7 +30,7 @@ For a selected override, `dispatch_context.possible_callers` separately reports
 virtual/interface calls to indexed ancestor declarations. These do not increase the
 exact usage/call counts; special `super` calls are excluded. This nested collection
 has its own pagination and continuation request. Hierarchy coverage remains incomplete
-because external nodes, generic bridges, inherited symbolic owners and proxies can
+because external nodes, erased generic relationships and proxies can
 add candidates. Duplicate owner names and missing declarations report explicit statuses.
 
 `invokedynamic` only adds a member-level `callback_reference` for the implementation
@@ -171,3 +171,19 @@ corroboration and coverage checks on that fixture, not a general latency claim. 
 tests and coverage checks passed; one existing annotation-processing test was skipped.
 The first native integration run lacked a locally built standalone extension JAR.
 After preparing it and installing reactor artifacts, all eight cases passed separately.
+
+### Inherited JVM declarations and compiler bridges
+
+Exact method usages and inbound hierarchies include symbolic owners whose indexed
+hierarchy resolves to the selected JVM declaration. The raw bytecode owner remains
+in each edge; `dispatch.resolved_declaration` reports the lookup separately. A call
+to an override is never folded into its parent declaration. Constructors do not
+inherit. Class declarations take precedence over interface defaults; a unique
+maximally specific interface declaration is required. Missing ancestors, duplicate
+owners, cycles, ambiguous interface declarations and the 5,000-owner bound remain
+unknown. This resolves declarations, not access checks or runtime receiver selection.
+
+Compiler bridges are retained for JVM lookup and API comparison. Ordinary member
+navigation hides them; exact descriptor selection can inspect them. Bridge evidence
+reports actual outgoing bytecode instructions rather than inferring a forwarding
+target from erased signatures.

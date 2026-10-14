@@ -821,7 +821,7 @@ projections, extension/context receivers, vararg element types, type aliases, ou
 and flexible platform type bounds. Property types describe the logical property across
 its field/getter/setter bindings; suspend return types remain source return types.
 Missing or invalid type evidence is omitted rather than inferred from erased JVM types.
-The index schema is v28 and requires reindexing older generations.
+The index schema is v29 and requires reindexing older generations.
 
 Java position navigation uses the selected project's JDK compiler when successful
 Maven/Gradle compiler settings are available. It resolves overloads and method

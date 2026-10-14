@@ -23,7 +23,7 @@ public final class IndexWriter {
             "class_external_deps", "external_beans", "cdi_problems",
             "resource_usages", "configuration_usages", "configuration_definitions",
             "dependencies", "field_accesses", "method_calls", "injection_points", "beans", "class_members",
-            "class_annotations",
+            "class_annotations", "jvm_api",
             "class_occurrences", "module_classpath", "kotlin_declarations", "kotlin_source_debug", "classes",
             "files", "metadata"
     };
@@ -62,6 +62,7 @@ public final class IndexWriter {
     private static final TableSpec CLASS_MEMBERS = new TableSpec("class_members",
             "class_id", "kind", "name", "signature", "descriptor", "type_name",
             "parameter_types", "modifiers", "annotations", "annotation_details");
+    private static final TableSpec JVM_API = new TableSpec("jvm_api","class_id","evidence");
     private static final TableSpec METHOD_CALLS = new TableSpec("method_calls",
             "from_class_id", "from_method", "from_descriptor", "to_class_id",
             "to_method", "to_descriptor", "invocation_kind", "occurrence_count",
@@ -106,7 +107,7 @@ public final class IndexWriter {
     private static final TableSpec COMMIT_FILES = new TableSpec("git_commit_files",
             "commit_id", "class_id", "file_path", "change_type");
     private static final List<TableSpec> INSERT_ORDER = List.of(
-            FILES, CLASSES, CLASS_OCCURRENCES, CLASS_ANNOTATIONS, CLASS_MEMBERS,
+            FILES, CLASSES, CLASS_OCCURRENCES, CLASS_ANNOTATIONS, CLASS_MEMBERS, JVM_API,
             METHOD_CALLS, FIELD_ACCESSES, CONFIGURATION_DEFINITIONS, CONFIGURATION_USAGES,
             RESOURCE_USAGES, BEANS,
             INJECTION_POINTS, DEPENDENCIES, METADATA,
@@ -115,7 +116,7 @@ public final class IndexWriter {
             COMMIT_FILES, FILE_STATS, EXTERNAL_DEPS, PROBLEMS, DEPENDENCIES,
             RESOURCE_USAGES, CONFIGURATION_USAGES, CONFIGURATION_DEFINITIONS,
             FIELD_ACCESSES, METHOD_CALLS,
-            INJECTION_POINTS, BEANS, COMMITS, CLASS_MEMBERS, CLASS_ANNOTATIONS, CLASS_OCCURRENCES,
+            INJECTION_POINTS, BEANS, COMMITS, JVM_API, CLASS_MEMBERS, CLASS_ANNOTATIONS, CLASS_OCCURRENCES,
             CLASSES, FILES, METADATA);
 
     public static void writeAll(Jdbi jdbi,
@@ -406,6 +407,7 @@ public final class IndexWriter {
         insertDesiredClassOccurrences(h, snapshot.classOccurrences());
         insertDesiredClassAnnotations(h, snapshot.classAnnotations());
         insertDesiredClassMembers(h, snapshot.classMembers());
+        insertJvmApi(h,"desired_jvm_api",snapshot.jvmApi());
         insertDesiredMethodCalls(h, snapshot.methodCalls());
         insertDesiredFieldAccesses(h, snapshot.fieldAccesses());
         insertDesiredConfigurationDefinitions(h, snapshot.configuration().definitions());
@@ -846,6 +848,7 @@ public final class IndexWriter {
             insertClassOccurrences(h, snapshot.classOccurrences());
             insertClassAnnotations(h, snapshot.classAnnotations());
             insertClassMembers(h, snapshot.classMembers());
+            insertJvmApi(h,"jvm_api",snapshot.jvmApi());
             insertMethodCalls(h, snapshot.methodCalls());
             insertFieldAccesses(h, snapshot.fieldAccesses());
             insertConfigurationDefinitions(h, snapshot.configuration().definitions());
@@ -881,7 +884,7 @@ public final class IndexWriter {
             Map<String, String> metadata) {
         jdbi.useTransaction(h -> {
             for (String table : new String[]{"dependencies", "injection_points", "beans",
-                    "method_calls", "class_members", "class_annotations", "class_occurrences",
+                    "method_calls", "jvm_api", "class_members", "class_annotations", "class_occurrences",
                     "kotlin_source_debug", "classes", "files", "metadata"}) {
                 h.execute("DELETE FROM " + table);
             }
@@ -1107,6 +1110,13 @@ public final class IndexWriter {
                     statement.setString(2, annotation.annotationName());
                     statement.setInt(3, annotation.direct() ? 1 : 0);
                     statement.setString(4, annotation.viaAnnotation());
+                });
+    }
+
+    private static void insertJvmApi(Handle h,String table,Map<Integer,String> evidence) {
+        executeBatch(h,"INSERT INTO " + table + " (class_id,evidence) VALUES (?,?)",
+                evidence.entrySet(),(statement,entry) -> {
+                    statement.setInt(1,entry.getKey()); statement.setString(2,entry.getValue());
                 });
     }
 

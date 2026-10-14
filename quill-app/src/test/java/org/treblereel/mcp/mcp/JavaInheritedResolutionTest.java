@@ -19,6 +19,7 @@ class JavaInheritedResolutionTest {
                 interface Narrow extends Contract { default Number run(){return 1;} }
                 class Base { public Number run(){return 2;} public static void utility(){} }
                 class Child extends Base {}
+                class GrandChild extends Child {public Number run(){return 4;}}
                 class Override extends Base { public Number run(){return 3;} }
                 class Defaults implements Narrow {}
                 class Generic<T> { public T get(){return null;} }
@@ -42,6 +43,7 @@ class JavaInheritedResolutionTest {
         var dispatch=calls.path("calls").get(0).path("dispatch");
         assertEquals("p.Child",dispatch.path("declared_target").path("class").asText());
         assertEquals("p.Base",dispatch.path("resolved_declaration").path("class").asText());
+        assertEquals(java.util.Set.of("p.GrandChild"),new java.util.HashSet<>(dispatch.path("possible_targets").valueStream().map(n->n.path("class").asText()).toList()));
         assertEquals("inherited_class_declaration",dispatch.path("declaration_resolution").asText());
         assertFalse(dispatch.path("runtime_target_proven").asBoolean());
         var inbound=JSON.readTree(new CallHierarchyQueries().getCallHierarchy(db,"p.Base","run",null,"inbound",false,1,20,0));

@@ -31,6 +31,7 @@ import org.treblereel.mcp.core.BeanResolver;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.BytecodeDependencyScanner;
 import org.treblereel.mcp.core.ClassFileSnapshot;
+import org.treblereel.mcp.core.JvmApiScanner;
 import org.treblereel.mcp.core.ClassOccurrenceScanner;
 import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.core.DependencyIndexer;
@@ -720,7 +721,7 @@ public class ProjectInitializer {
                 remappedProblems, gitResult.fileStats(), gitResult.commits(),
                 gitResult.commitFiles(), inventory.files(), classOccurrences,
                 classAnnotations, classMembers, methodCalls, fieldAccesses, configuration,
-                references.resourceUsages());
+                references.resourceUsages(),JvmApiScanner.capture(classFiles,classNameToSqliteId));
 
         long databaseStartedAt = System.nanoTime();
         try {

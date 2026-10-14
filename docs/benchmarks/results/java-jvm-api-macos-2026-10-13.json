@@ -1,0 +1,62 @@
+{
+  "platform": "macOS arm64",
+  "index_schema": 29,
+  "full_reactor_native_verify": "passed",
+  "final_focused_native_verify": {
+    "status": "passed",
+    "focused_unit_tests": 49,
+    "application_integration_tests": 8
+  },
+  "latest_reports": {
+    "surefire-reports": {
+      "tests": 1349,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "failsafe-reports": {
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "report_scope": "Full reactor reports with final focused regression reports refreshed; standalone extension excluded",
+  "native": {
+    "bytes": 69762184,
+    "sha256": "cbbc0c88b9c76e59b273e75a55e32baac0f7901b6e2518b9d5b2a9e198c6dece"
+  },
+  "source_sha256": {
+    "quill-app/src/main/java/org/treblereel/mcp/command/ProjectInitializer.java": "c13ea81c65531514350935cdfb7274edbc941575e4aca3d623fd960d932efd36",
+    "quill-app/src/main/java/org/treblereel/mcp/mcp/ApiCompatibilityQueries.java": "48fda98c2fba5e8da6fe57bb15d4114ccc6b732fbbaf50cafbbeed9747fe5b60",
+    "quill-app/src/main/java/org/treblereel/mcp/mcp/IndexComparisonQueries.java": "dd881ce35058c7485bdd06feced9785ae179f38c2d284081c1e94e0c0e534cc2",
+    "quill-app/src/main/java/org/treblereel/mcp/mcp/JavaDispatchEvidence.java": "eb8eadd7e64e98438fbde996286c16bf4361280a07081455df17daf3219d7b1d",
+    "quill-app/src/test/java/org/treblereel/mcp/mcp/ApiCompatibilityBytecodeTest.java": "10a6dbb564650c9e5ee2c803ced729e4ae5dab2b9b31f4a9f4354760636baaf9",
+    "quill-app/src/test/java/org/treblereel/mcp/mcp/JavaEvidenceFixture.java": "40de64fe9aa2fd24e92432c7dfaed8464f8489603f202b80d1c074d3bc62238d",
+    "quill-app/src/test/java/org/treblereel/mcp/mcp/JavaInheritedResolutionTest.java": "d7098dcc36b0a679f8364ce285b00b0000199c97094025c5e56b634e543952d5",
+    "quill-app/src/test/java/org/treblereel/mcp/mcp/JavaJvmApiCompatibilityTest.java": "c836b60cb2eff6d006243e6f5a9f851639cd84f640f7f7199cc80e5596997ec7",
+    "quill-core/src/main/java/org/treblereel/mcp/core/JvmApiScanner.java": "1d0d3223e9a628a243b5079a8361a9e7aa164058be0fafa7089699fd6ba67afc",
+    "quill-core/src/main/java/org/treblereel/mcp/db/IndexSnapshot.java": "0aeb10b63b2bf18a6fcde48afa57aa66298bde4ae4e7c529b98b5275a32d1dba",
+    "quill-core/src/main/java/org/treblereel/mcp/db/IndexWriter.java": "2e836abe87c1592ec8f243e3add7c073dadad238082da84d9ec20d7ed944ca78",
+    "quill-core/src/main/java/org/treblereel/mcp/db/QuillDatabase.java": "cd9931ea894eff3b6c902291b22502144b67d2ff20a6079752102a2e2543b221",
+    "quill-core/src/test/java/org/treblereel/mcp/core/JvmApiScannerTest.java": "8ed96fbf86798a79ce41b59d40f8610e39e018c6998878431b7534d35cb8f9dc"
+  },
+  "change_session": {
+    "phase": "complete",
+    "gate": "satisfied",
+    "verified": true
+  },
+  "cases": [
+    "inherited class and static method references",
+    "maximally specific interface declarations",
+    "ambiguous owners, missing ancestors and hierarchy cycles",
+    "bridge descriptors and bytecode forwarding",
+    "receiver hierarchy excludes sibling overrides",
+    "class final/abstract binary linkage failures",
+    "generic and throws source contracts",
+    "inlined constants and signed-zero bits",
+    "constant-only structural deltas",
+    "fresh/incremental API persistence",
+    "malformed or missing evidence"
+  ]
+}

@@ -67,6 +67,7 @@ final class JavaDispatchEvidence {
         int count = 0;
         for (var child : classes.stream().sorted(Comparator.comparing(ClassRecord::className).thenComparingInt(ClassRecord::id)).toList()) {
             if (child.id()==base.id()) continue;
+            if(path(child,bases.getFirst()).isEmpty()) continue;
             List<String> path = path(child,base);
             if (path.isEmpty()) continue;
             for (var candidate : members.getOrDefault(child.id(),List.of())) {

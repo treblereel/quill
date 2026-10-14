@@ -34,6 +34,9 @@ class ApiCompatibilityBytecodeTest {
                     .bind("kind",member.kind()).bind("name",member.name()).bind("signature",member.signature()).bind("descriptor",member.descriptor())
                     .bind("type",member.typeName()).bind("flags",member.modifiers()).execute());
         }
+        var snapshot=org.treblereel.mcp.core.ClassFileSnapshot.capture(List.of(classes));
+        var evidence=org.treblereel.mcp.core.JvmApiScanner.capture(snapshot,Map.of("p.Api",1));
+        db.useHandle(h->h.createUpdate("INSERT INTO jvm_api(class_id,evidence) VALUES (1,:evidence)").bind("evidence",evidence.get(1)).execute());
         return db;
     }
     String run(Path api,Path client,int exit) throws Exception {

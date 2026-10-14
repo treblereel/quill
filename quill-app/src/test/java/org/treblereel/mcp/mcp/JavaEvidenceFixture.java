@@ -50,6 +50,9 @@ final class JavaEvidenceFixture {
                                 SourceFileHashes.captureJava(root,List.of(root.resolve("src/main/java"))))),
                 List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),
                 JandexScanner.extractClassMembers(scan.index(),ids),calls,fields);
+        for(var entry:JvmApiScanner.capture(snapshot,ids).entrySet())
+            db.useHandle(h->h.createUpdate("INSERT INTO jvm_api(class_id,evidence) VALUES (:id,:evidence)")
+                    .bind("id",entry.getKey()).bind("evidence",entry.getValue()).execute());
         return db;
     }
 }

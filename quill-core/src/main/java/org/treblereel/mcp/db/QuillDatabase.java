@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 28;
+    static final int SCHEMA_VERSION = 29;
 
     private QuillDatabase() {}
 
@@ -103,6 +103,7 @@ public final class QuillDatabase {
                     annotation_details TEXT NOT NULL DEFAULT '[]',
                     UNIQUE(class_id, kind, signature)
                 )""");
+            h.execute("CREATE TABLE IF NOT EXISTS jvm_api (class_id INTEGER PRIMARY KEY REFERENCES classes(id) ON DELETE CASCADE, evidence TEXT NOT NULL)");
             h.execute("CREATE TABLE IF NOT EXISTS kotlin_source_debug (class_id INTEGER PRIMARY KEY REFERENCES classes(id) ON DELETE CASCADE, data TEXT NOT NULL)");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS kotlin_declarations (

@@ -135,6 +135,16 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
     }
 
     private void cancelPending() { if (pending != null) { pending.cancel(false); pending = null; } }
+    /** Detaches subscriptions without interrupting a worker operation already in progress. */
+    void retireRoot(Path root) {
+        String prefix = org.treblereel.mcp.core.ProjectIdentity.canonical(root) + ":";
+        synchronized (state) {
+            if (active == null || !active.startsWith(prefix)) return;
+            epoch++; cancelPending();
+            if (watcher != null) { watcher.close(); watcher = null; }
+            active = null; provider = null;
+        }
+    }
     @Override public void close() {
         synchronized (state) {
             if (closed) return;

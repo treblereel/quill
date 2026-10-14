@@ -16,6 +16,20 @@ class KotlinWarmupCoordinatorTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     @TempDir Path temp;
     @TempDir Path external;
+    @Test void retiringRootDetachesOnlyItsSubscriptionsAndAllowsAnotherCheckout() throws Exception {
+        var request = request();
+        String key = temp.toRealPath() + ":project:first:main";
+        try (var coordinator = new KotlinWarmupCoordinator(this::result, Duration.ofHours(1))) {
+            coordinator.query(key, () -> request, () -> request);
+            assertFalse(coordinator.watchedDirectories().isEmpty());
+            coordinator.retireRoot(external);
+            assertFalse(coordinator.watchedDirectories().isEmpty());
+            coordinator.retireRoot(temp);
+            assertTrue(coordinator.watchedDirectories().isEmpty());
+            assertEquals("resolved", coordinator.query(temp.toRealPath() + ":project:second:main", () -> request, () -> request).path("status").asText());
+            assertFalse(coordinator.watchedDirectories().isEmpty());
+        }
+    }
     private ObjectNode request() throws Exception {
         Path source = temp.resolve("src/main/kotlin/Caller.kt");
         Files.createDirectories(source.getParent()); Files.writeString(source, "fun run() = 1");

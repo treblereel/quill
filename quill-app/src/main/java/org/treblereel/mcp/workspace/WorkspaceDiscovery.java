@@ -97,6 +97,10 @@ public final class WorkspaceDiscovery {
                 update(digest, repository.relativePath());
                 Path git = repository.root().resolve(".git");
                 updateIdentity(digest, git);
+                try {
+                    var identity = org.treblereel.mcp.core.ProjectIdentity.resolve(repository.root());
+                    update(digest, identity.projectId());
+                } catch (IOException failure) { update(digest, "identity_unknown"); }
                 for (String buildFile : BUILD_FILES) {
                     updateIdentity(digest, repository.root().resolve(buildFile));
                 }

@@ -27,6 +27,8 @@ final class KotlinSemanticQueries {
         if (warmup != null) { warmup.close(); warmup = null; }
     }
 
+    static synchronized void retireRoot(Path root) { if (warmup != null) warmup.retireRoot(root); }
+
     static Runnable startWarmup(ProjectRegistry registry) {
         var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
         var thread = new Thread(() -> {

@@ -68,7 +68,14 @@ final class ProjectQueryExecutor {
     QueryResult executeProject(ProjectRegistry.ProjectEntry project,
             Function<ProjectRegistry.ProjectEntry, String> query) {
         try {
-            return new QueryResult(project.name(), org.treblereel.mcp.db.ReadQueryContext.read(project.jdbi(),()->query.apply(project)), null);
+            return org.treblereel.mcp.db.ReadQueryContext.read(project.jdbi(), () -> {
+                var metadata = org.treblereel.mcp.db.IndexReader.getMetadata(project.jdbi());
+                if (metadata.containsKey("project_root")
+                        && !org.treblereel.mcp.command.ProjectIndexStore.belongsTo(project.root(), metadata)) {
+                    return new QueryResult(project.name(), null, "INDEX_OWNERSHIP_MISMATCH: working copy changed after index resolution");
+                }
+                return new QueryResult(project.name(), query.apply(project), null);
+            });
         } catch (Exception error) {
             return new QueryResult(project.name(), null, ProjectRegistry.safeMessage(error));
         }

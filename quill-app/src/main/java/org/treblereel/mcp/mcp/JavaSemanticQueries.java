@@ -23,6 +23,8 @@ final class JavaSemanticQueries {
         return coordinator;
     }
     static synchronized void close() { if (coordinator != null) { coordinator.close(); coordinator = null; } WORKER.close(); }
+    static synchronized void retireRoot(Path root) { if (coordinator != null) coordinator.retireRoot(root); }
+
     static Runnable startWarmup(ProjectRegistry registry) {
         var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
         Thread thread = new Thread(() -> {

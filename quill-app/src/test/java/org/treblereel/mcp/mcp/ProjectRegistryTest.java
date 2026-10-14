@@ -18,6 +18,23 @@ class ProjectRegistryTest {
     @TempDir Path tempDir;
 
     @Test
+    void removedWorkingCopyRetiresCachedReadersAndReturnsDiagnostic() throws Exception {
+        Path project = Files.createDirectory(tempDir.resolve("removed"));
+        Files.createFile(project.resolve("pom.xml"));
+        createPublishedDatabase(project, "original");
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project);
+        assertEquals(1, registry.resolve().projects().size());
+        try (var files = Files.walk(project)) {
+            for (Path path : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(path);
+        }
+        var removed = registry.resolve();
+        assertTrue(removed.projects().isEmpty());
+        assertEquals("worktree_unavailable", removed.issues().getFirst().code());
+        assertEquals(0, registry.cachedDatabaseCount());
+    }
+
+    @Test
     void registerResolvesToProjectRoot() throws IOException {
         Path project = tempDir.resolve("my-project");
         Files.createDirectories(project);

@@ -62,6 +62,34 @@ class ProjectIdentityTest {
         assertEquals(gitdir.toRealPath(), ProjectIdentity.resolve(main).gitDirectory());
     }
 
+    @Test void movingLockingRemovingAndPruningDoNotReuseCheckoutIdentity() throws Exception {
+        Path main = repository(), linked = temp.resolve("linked"), moved = temp.resolve("moved");
+        git(main, "worktree", "add", "--detach", linked.toString());
+        ProjectIdentity before = ProjectIdentity.resolve(linked);
+        git(main, "worktree", "lock", linked.toString());
+        assertEquals(before, ProjectIdentity.resolve(linked));
+        git(main, "worktree", "unlock", linked.toString());
+        git(main, "worktree", "move", linked.toString(), moved.toString());
+        ProjectIdentity after = ProjectIdentity.resolve(moved);
+        assertEquals(before.repositoryId(), after.repositoryId());
+        assertNotEquals(before.projectId(), after.projectId());
+        assertThrows(IOException.class, () -> ProjectIdentity.resolve(linked));
+        git(main, "worktree", "remove", moved.toString());
+        git(main, "worktree", "prune", "--expire", "now");
+        git(main, "worktree", "add", "--detach", linked.toString());
+        assertNotEquals(before.projectId(), ProjectIdentity.resolve(linked).projectId());
+    }
+
+    @Test void submoduleGitPointerSelectsItsOwnRepository() throws Exception {
+        Path main = repository(), dependency = temp.resolve("dependency");
+        git(temp, "clone", "--no-hardlinks", main.toString(), dependency.toString());
+        git(main, "-c", "protocol.file.allow=always", "submodule", "add", dependency.toString(), "module");
+        ProjectIdentity child = ProjectIdentity.resolve(main.resolve("module"));
+        assertNotEquals(ProjectIdentity.resolve(main).repositoryId(), child.repositoryId());
+        assertEquals(main.resolve("module").toRealPath(), child.worktreeRoot());
+        try (var repository = child.openRepository()) { assertNotNull(repository.resolve("HEAD")); }
+    }
+
     Path repository() throws Exception {
         Path main = Files.createDirectory(temp.resolve("main"));
         git(main, "init");

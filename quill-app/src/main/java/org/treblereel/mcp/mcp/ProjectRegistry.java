@@ -75,6 +75,7 @@ public class ProjectRegistry {
 
     private final ConcurrentHashMap<Path, IndexHandle> databases = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, AtomicLong> projectRoots = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Path, String> projectIdentities = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, Object> schemaRepairLocks = new ConcurrentHashMap<>();
     private final AtomicLong resolutionSequence = new AtomicLong();
     private final AtomicLong readinessScopeRevision = new AtomicLong(Long.MIN_VALUE);
@@ -139,6 +140,25 @@ public class ProjectRegistry {
         for (ProjectScope.Project p : selected) {
             Path projectRoot = p.root().toAbsolutePath().normalize();
             selectedRoots.add(projectRoot);
+            try {
+                String identity = org.treblereel.mcp.core.ProjectIdentity.resolve(projectRoot).projectId();
+                String previous = projectIdentities.put(projectRoot, identity);
+                if (previous != null && !previous.equals(identity)) retireProjectState(projectRoot);
+            } catch (java.io.IOException failure) {
+                retireProjectState(projectRoot);
+                ProjectIssue issue = new ProjectIssue(p.name(), projectRoot, "worktree_unavailable", null,
+                        "Working copy identity is unavailable: " + safeMessage(failure),
+                        "Restore or repair this working copy, or select another project", false);
+                issues.add(issue); errors.add(issue.legacyMessage());
+                continue;
+            }
+            if (ProjectIndexStore.hasOnlyForeignGenerations(projectRoot)) {
+                ProjectIssue issue = new ProjectIssue(p.name(), projectRoot, "index_ownership_mismatch", null,
+                        "The available index belongs to another physical working copy",
+                        "Run quill init for this working copy to create its own index", false);
+                issues.add(issue); errors.add(issue.legacyMessage());
+                continue;
+            }
             if (BuildEventConsumer.hasPendingEvents(projectRoot)) {
                 readiness.invalidate(projectRoot);
             }
@@ -271,13 +291,21 @@ public class ProjectRegistry {
             return evict;
         });
         projectRoots.entrySet().removeIf(entry -> {
-            if (configuredRoots.contains(entry.getKey())
+            if (configuredRoots.contains(entry.getKey()) && java.nio.file.Files.isDirectory(entry.getKey())
                     || entry.getValue().get() >= resolutionId) return false;
-            WorktreeSnapshotCache.shared().invalidate(entry.getKey());
+            retireProjectState(entry.getKey());
+            projectIdentities.remove(entry.getKey());
             schemaRepairLocks.remove(entry.getKey());
             readiness.invalidate(entry.getKey());
             return true;
         });
+    }
+
+    private void retireProjectState(Path root) {
+        WorktreeSnapshotCache.shared().invalidate(root);
+        readiness.invalidate(root);
+        JavaSemanticQueries.retireRoot(root);
+        KotlinSemanticQueries.retireRoot(root);
     }
 
     private void repairOutdatedSchema(ProjectScope.Project project, Path projectRoot,

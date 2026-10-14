@@ -96,7 +96,7 @@ Gradle subprojects without their own marker need further module-resolution suppo
 
 ## Model lifecycle and warmup
 
-A single worker retains one fully attributed source-set model. Sources and classpath
+Each cached source-set model is fully attributed. Sources and classpath
 bytes are hashed before and after resolution. Additions/deletions, equal-size edits
 with restored timestamps and changed dependency bytes invalidate the whole model.
 This is full re-attribution, not incremental javac analysis. A source error does not
@@ -112,9 +112,14 @@ start another. Shutdown removes the temporary worker files. Heap limits do
 not cap total process RSS.
 
 Java reuses the directory-watcher and debounce coordinator used by Kotlin, with its
-own worker and coordinator instance. The active module's source roots, outputs,
-classpath, settings and build inputs are watched. A foreground query waits for a
-running warmup and then recollects inputs. Startup prewarms only when one indexed
+own worker and coordinator instance. Source roots, outputs, classpaths, settings and
+build inputs are watched for up to two recently queried module/source-set contexts,
+including different worktrees. Each has its own debounce and queued warmup. Selecting a
+third context retires the least recently selected subscriptions; background activity
+does not promote a context. A foreground query waits for a running worker operation
+and then recollects its own inputs. An inactive context requiring another JDK is analyzed
+on its next foreground request, avoiding background restarts of the selected worker.
+Startup prewarms only when one indexed
 main Java module is an unambiguous choice; otherwise the first Java query selects
 the active module. Gradle subprojects without their own build script use their indexed
 module context and compiler capture; the worker retains one additional inactive model.

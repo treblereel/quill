@@ -131,6 +131,21 @@ an MCP process serving reads while repeated immutable index generations are publ
 The same gate caps the full MCP catalog at 48 KiB and the three-tool router catalog at 4 KiB;
 the router must remain at most 20% of the full catalog, preventing silent context growth.
 
+For compiler navigation across two disposable Git worktrees, run:
+
+```bash
+python3 scripts/quill_worktree_compiler_benchmark.py \
+  --quill quill-app/target/quill --samples 5
+```
+
+This builds synthetic Maven/Java and Gradle/Kotlin projects, checks compiler-selected
+overload descriptors across A → B → edited A, and reports first-query, warm-return and
+post-edit latency, compiler model reuse and sampled process-tree RSS. It requires Git,
+a JDK 21 or newer and Gradle on PATH; Maven uses this repository's wrapper. It modifies
+only temporary fixtures. The default three-second settle interval gives background
+warmup time to run; reducing `--settle` measures waiting/rebuilding instead. Results are
+informational, not production latency guarantees or peak-memory measurements.
+
 ## Commands
 
 | Command | Description |
@@ -597,9 +612,27 @@ For workspace mode, configure the client command as:
 `--workspace` and `--project` are mutually exclusive. The same stdio process routes each request
 to the selected repository or aggregates it across the workspace when the tool supports that.
 
-Git worktrees keep independent indexes and compiler state. Select a checkout by its
-exact `project_id` or absolute path, and check `_meta.project_root` before using its
-answers. See [worktree setup and limits](docs/worktrees.md).
+Git worktrees keep independent indexes and compiler state. One server can serve a
+working copy that was not configured at startup: pass its absolute JVM project root
+in the optional `project` argument on every project-scoped tool call, including the
+initial `get_overview`:
+
+```json
+{"project": "/absolute/path/to/caseflows-feature"}
+```
+
+The MCP client or agent supplies this path; Quill cannot infer the editor's current
+folder. Build and initialize each copy separately. Existing `.mcp.json` launch settings
+can stay as they are: the request path selects that copy's own index. Missing or foreign
+indexes return an error for the requested copy instead of using another project.
+Compare `_meta.project_root` with the intended physical copy before using its answers.
+
+Omitting `project`, or passing a blank value, preserves the configured default scope:
+a single project is queried directly; repeated-project and workspace configurations
+keep their existing aggregation. A request path does not change later requests or add
+the copy to that default scope. Configured names and exact `project_id` selectors remain
+supported; keep passing the absolute path for copies outside the configured scope.
+See [worktree setup and limits](docs/worktrees.md).
 
 ### Claude Code
 
@@ -677,9 +710,11 @@ claude mcp add --scope local quill -- C:/Tools/quill.exe --mcp --project C:/src/
 codex mcp add quill -- C:/Tools/quill.exe --mcp --project C:/src/my-project
 ```
 
-To serve more than one initialized project, repeat `--project` for each path. If a
-client explicitly starts Quill in the indexed project directory, `--project` may be
-omitted because Quill uses its current directory by default.
+To include several initialized projects in the server's default scope, repeat the
+startup `--project` option for each path. To select a different copy for one tool call,
+pass its absolute path in the request's `project` argument; startup configuration does
+not need to change. If the client starts Quill in the indexed project directory, the
+startup `--project` option may be omitted because Quill uses its process working directory.
 
 If tools do not appear, run `quill status --project /absolute/path/to/project`, use
 an absolute executable path, and restart the client session after changing its MCP
@@ -867,7 +902,8 @@ runtime. Stack exhaustion returns an unavailable result and discards the worker 
 the next query. Requests are serialized. The worker retains at most two module/source-set
 FIR snapshots using LRU eviction and reuses them while compiler inputs match. Returning
 to an unchanged module avoids another frontend run. At 75% of the maximum heap,
-inactive snapshots are discarded; filesystem watching follows the active module.
+inactive snapshots are discarded. Source subscriptions separately retain up to two
+recently queried module/source-set contexts, including different worktrees.
 Content fingerprints cover Kotlin/Java sources, ordered classpaths, compiled outputs,
 the selected JDK, compiler settings and plugin JAR contents. Changed inputs dispose the snapshot and rebuild the module frontend;
 unchanged build outputs keep it reusable. Stable analysis errors are also reused until
@@ -880,12 +916,17 @@ indexes identify exactly one Kotlin main module across the selected projects and
 captured classpath and cached runtime are available. Startup never downloads dependencies
 and does not replace a module already selected by a query. Multiple Kotlin main modules
 retain on-demand startup. A first query waits if its startup warmup is still running.
-After startup warmup or the first semantic query, Quill watches the most recently used module/source set
-and its captured classpath/compiled outputs. Filesystem events are coalesced for 150 ms
-before rebuilding FIR in the background. Position queries wait for an active warmup,
-recollect current inputs and retry if changes raced analysis. A query arriving during
-the debounce takes over the pending analysis. Module switches replace the subscriptions;
-MCP shutdown cancels background work and closes the watcher. Event delivery latency
+After startup warmup or semantic queries, Quill watches up to two recently selected
+module/source-set contexts and their captured classpath/compiled outputs. Each context
+coalesces filesystem events for 150 ms before rebuilding FIR in the background, so
+editing a retained worktree can warm it while another copy is selected. Position queries
+wait for a running worker operation, recollect current inputs and retry if changes raced
+analysis. During debounce, a query takes over its own context's pending analysis.
+Selecting a third context retires the least recently selected subscription and its
+queued warmup; background activity does not change that selection order. An inactive
+warmup requiring a different K2 version waits for a foreground request rather than
+restarting the selected worker in the background. MCP shutdown
+cancels background work and closes all subscriptions. Event delivery latency
 depends on the filesystem/platform; unavailable watching retains foreground analysis.
 Quill uses `directory-watcher` for recursive filesystem events, with FSEvents through
 JNA on macOS (20 ms stream latency) and the JDK event provider elsewhere. On macOS,
@@ -899,8 +940,8 @@ Missed metadata notifications receive a two-second delivery grace period. Failed
 subscriptions retry after 1, 2, 4, 8, 16 and at most 30 seconds; a successful heartbeat
 resets this backoff. Recovery warms current inputs without switching modules. The
 heartbeat is excluded from compiler inputs and removed on close.
-Module switches and shutdown close the
-event streams and cancel background work. K2 response diagnostics include
+Context eviction, worktree retirement and shutdown close the affected
+event streams and cancel their queued background work. K2 response diagnostics include
 `input_detection` (`directory_watcher_fsevents`, `directory_watcher_watch_service`,
 or `metadata_poll_100ms`) to identify the active input watcher.
 Runtime checksums are validated when the worker starts, with file

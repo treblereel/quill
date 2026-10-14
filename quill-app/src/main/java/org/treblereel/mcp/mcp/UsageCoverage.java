@@ -104,11 +104,12 @@ final class UsageCoverage {
             if (!metadata.containsKey("project_root")) return result;
             Path root=Path.of(metadata.get("project_root"));
             if (!Files.isDirectory(root)) return result;
-            var report=CompiledOutputInspector.inspect(root);
+            Instant indexed=Instant.parse(metadata.get("indexed_at"));
+            var observation=CompiledOutputInspector.observe(root,indexed);
+            var report=observation.report();
             result.put("state",report.state().name().toLowerCase(Locale.ROOT));
             result.set("stale_modules",JSON.valueToTree(report.staleModules()));
-            Instant indexed=Instant.parse(metadata.get("indexed_at"));
-            boolean changed=CompiledOutputInspector.outputsChangedAfter(root,indexed);
+            boolean changed=observation.changedAfterIndex();
             result.put("changed_after_index",changed); return result;
         } catch (Exception unavailable) { return result.put("state","unknown"); }
     }
@@ -132,7 +133,7 @@ final class UsageCoverage {
                 if (!entry.getValue().isTextual() || !entry.getValue().asText().matches("[a-f0-9]{64}")) return result;
                 expected.put(entry.getKey(),entry.getValue().asText());
             }
-            result.put("state",expected.equals(SourceFileHashes.captureJava(root,paths)) ? "matching" : "changed");
+            result.put("state",expected.equals(SourceFileHashes.captureJavaCached(root,paths)) ? "matching" : "changed");
             return result;
         } catch (Exception unavailable) { return result; }
     }

@@ -13,20 +13,29 @@ import java.util.TreeMap;
 /** Content evidence for source coordinates; timestamps cannot establish source identity. */
 public final class SourceFileHashes {
     private SourceFileHashes() {}
-    public static Map<String, String> captureJava(Path project, List<Path> roots) {
+    public static Map<String,String> captureJava(Path project,List<Path> roots) {return captureJava(project,roots,false);}
+    /** Live enumeration with guarded content reuse; unsupported volumes retain full SHA checks. */
+    public static Map<String,String> captureJavaCached(Path project,List<Path> roots) {return captureJava(project,roots,true);}
+    private static Map<String, String> captureJava(Path project, List<Path> roots,boolean reuseContent) {
         Path root = project.toAbsolutePath().normalize();
         Map<String, String> hashes = new TreeMap<>();
         try {
             Path realRoot = root.toRealPath();
+            var volume=SourceContentCache.volume(realRoot);
             for (Path sourceRoot : roots) {
                 if (!Files.isDirectory(sourceRoot)) continue;
-                try (var files = Files.walk(sourceRoot)) {
-                    for (Path file : files.filter(Files::isRegularFile).filter(p -> p.toString().endsWith(".java")).toList()) {
-                        Path normalized = file.toAbsolutePath().normalize();
-                        if (normalized.startsWith(root) && normalized.toRealPath().startsWith(realRoot))
-                            hashes.put(root.relativize(normalized).toString().replace('\\', '/'), hash(normalized));
+                Files.walkFileTree(sourceRoot,new java.nio.file.SimpleFileVisitor<Path>() {
+                    @Override public java.nio.file.FileVisitResult visitFile(Path file,java.nio.file.attribute.BasicFileAttributes attributes) throws IOException {
+                        if(!file.getFileName().toString().endsWith(".java") || (!attributes.isRegularFile() && !Files.isRegularFile(file)))
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        Path normalized=file.toAbsolutePath().normalize();
+                        if(!normalized.startsWith(root))return java.nio.file.FileVisitResult.CONTINUE;
+                        Path real=normalized.toRealPath();
+                        if(real.startsWith(realRoot))hashes.put(root.relativize(normalized).toString().replace('\\','/'),
+                                reuseContent?SourceContentCache.hash(real,volume):hash(real));
+                        return java.nio.file.FileVisitResult.CONTINUE;
                     }
-                }
+                });
             }
             return java.util.Collections.unmodifiableMap(hashes);
         } catch (IOException unavailable) { throw new IllegalStateException("Could not capture Java source evidence", unavailable); }

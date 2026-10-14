@@ -102,7 +102,7 @@ public final class WorkspaceManifestStore {
     public static Path normalizeRoot(Path requestedRoot) {
         Path root = requestedRoot == null
                 ? Path.of(System.getProperty("user.dir")) : requestedRoot;
-        root = root.toAbsolutePath().normalize();
+        root = org.treblereel.mcp.core.ProjectIdentity.canonical(root);
         if (!Files.isDirectory(root)) {
             throw new IllegalArgumentException("Workspace root is not a directory: " + root);
         }

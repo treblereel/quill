@@ -129,7 +129,14 @@ public class ProjectRegistry {
                 return seen;
             });
         }
-        for (ProjectScope.Project p : scope.select(snapshot, selector)) {
+        List<ProjectScope.Project> selected = scope.select(snapshot, selector);
+        if (selector != null && !selector.isBlank() && selected.size() > 1) {
+            errors.add("AMBIGUOUS_PROJECT: '" + selector + "' matches multiple projects: "
+                    + selected.stream().map(p -> p.name() + " (" + p.root() + ")").toList()
+                    + ". Select an exact project_id or project root.");
+            return new Resolution(List.of(), errors, issues);
+        }
+        for (ProjectScope.Project p : selected) {
             Path projectRoot = p.root().toAbsolutePath().normalize();
             selectedRoots.add(projectRoot);
             if (BuildEventConsumer.hasPendingEvents(projectRoot)) {

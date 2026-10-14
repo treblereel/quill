@@ -270,7 +270,7 @@ class ProjectRegistryTest {
         assertTrue(resolution.errors().isEmpty());
         assertEquals(1, resolution.projects().size());
         assertEquals("single-project", resolution.projects().getFirst().name());
-        assertEquals(project.toAbsolutePath().normalize(),
+        assertEquals(project.toRealPath(),
                 resolution.projects().getFirst().root());
     }
 

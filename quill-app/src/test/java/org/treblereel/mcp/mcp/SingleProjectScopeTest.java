@@ -46,4 +46,32 @@ class SingleProjectScopeTest {
         Files.createFile(root.resolve("pom.xml"));
         return root;
     }
+
+    @Test
+    void aliasesRegisterOnceAndIdentityAndAbsolutePathsSelectTheProject() throws Exception {
+        Path root = createProject(tempDir.resolve("project"));
+        Path alias = tempDir.resolve("alias");
+        Files.createSymbolicLink(alias, root);
+        SingleProjectScope scope = new SingleProjectScope();
+        scope.register(root);
+        scope.register(alias);
+        assertEquals(1, scope.snapshot().projects().size());
+        assertEquals(1, scope.snapshot().revision());
+        String id = org.treblereel.mcp.core.ProjectIdentity.resolve(root).projectId();
+        assertEquals(1, scope.select(scope.snapshot(), id).size());
+        assertEquals(1, scope.select(scope.snapshot(), alias.toString()).size());
+        assertEquals(0, scope.select(scope.snapshot(), "unknown").size());
+    }
+
+    @Test
+    void ambiguousExplicitSelectorDoesNotOpenAnyIndex() throws Exception {
+        Path a = createProject(tempDir.resolve("one/app"));
+        Path b = createProject(tempDir.resolve("two/App"));
+        ProjectScope scope = () -> new ProjectScope.Snapshot(1, java.util.List.of(
+                new ProjectScope.Project("app", a), new ProjectScope.Project("App", b)));
+        var result = new ProjectRegistry(scope).resolve("app");
+        assertEquals(0, result.projects().size());
+        org.junit.jupiter.api.Assertions.assertTrue(result.errors().getFirst().startsWith("AMBIGUOUS_PROJECT"));
+        org.junit.jupiter.api.Assertions.assertTrue(result.errors().getFirst().contains(a.toRealPath().toString()));
+    }
 }

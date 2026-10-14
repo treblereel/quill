@@ -57,9 +57,8 @@ public final class WorkspaceProjectScope implements ProjectScope {
         if (selector == null || selector.isBlank()) return snapshot.projects();
         String value = selector.strip();
         List<Project> direct = snapshot.projects().stream()
-                .filter(project -> project.name().equalsIgnoreCase(value)
-                        || relativeMatches(project.root(), value)
-                        || containsAbsolute(project.root(), value))
+                .filter(project -> project.matches(value)
+                        || relativeMatches(project.root(), value))
                 .toList();
         if (!direct.isEmpty() || !value.contains(":")) return direct;
 

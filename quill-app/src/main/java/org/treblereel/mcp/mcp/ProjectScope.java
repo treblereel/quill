@@ -11,7 +11,17 @@ public interface ProjectScope {
             if (name == null || name.isBlank()) {
                 throw new IllegalArgumentException("Project name must not be blank");
             }
-            root = root.toAbsolutePath().normalize();
+            root = org.treblereel.mcp.core.ProjectIdentity.canonical(root);
+        }
+        public boolean matches(String selector) {
+            if (name.equalsIgnoreCase(selector)) return true;
+            try {
+                if (org.treblereel.mcp.core.ProjectIdentity.resolve(root).projectId().equals(selector)) return true;
+            } catch (java.io.IOException ignored) { }
+            try {
+                Path path = Path.of(selector);
+                return path.isAbsolute() && org.treblereel.mcp.core.ProjectIdentity.canonical(path).startsWith(root);
+            } catch (RuntimeException invalid) { return false; }
         }
     }
 
@@ -32,7 +42,7 @@ public interface ProjectScope {
         if (selector == null || selector.isBlank()) return snapshot.projects();
         String normalized = selector.strip();
         return snapshot.projects().stream()
-                .filter(project -> project.name().equalsIgnoreCase(normalized))
+                .filter(project -> project.matches(normalized))
                 .toList();
     }
 }

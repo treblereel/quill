@@ -79,7 +79,7 @@ class WorkspaceToolQueriesTest {
     @Test
     void compactOverviewIncludesUnbuiltProjectsWithoutInventingCounts() throws Exception {
         Path root = Files.createDirectories(workspace.resolve("unbuilt"));
-        Files.createDirectories(root.resolve(".git"));
+        initializeGit(root);
         Files.writeString(root.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>test</groupId><artifactId>unbuilt</artifactId><version>1</version></project>");
         tools = new QuillTools(new ProjectRegistry(new WorkspaceProjectScope(workspace)));
         JsonNode result = compact(20, 0);
@@ -249,7 +249,7 @@ class WorkspaceToolQueriesTest {
         Path isolated = Files.createDirectories(workspace.resolve("missing-index-workspace"));
         WorkspaceManifestStore.initialize(isolated, 1);
         Path repository = Files.createDirectories(isolated.resolve("broken"));
-        Files.createDirectories(repository.resolve(".git"));
+        initializeGit(repository);
         Files.writeString(repository.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>broken</artifactId><version>1</version>
@@ -273,7 +273,7 @@ class WorkspaceToolQueriesTest {
     @Test
     void repositoryCatalogExposesBuildRequiredState() throws Exception {
         Path repository = Files.createDirectories(workspace.resolve("unbuilt"));
-        Files.createDirectories(repository.resolve(".git"));
+        initializeGit(repository);
         Files.writeString(repository.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>unbuilt</artifactId><version>1</version>
@@ -1035,7 +1035,7 @@ class WorkspaceToolQueriesTest {
     private void createRepository(String name, String artifact, String className, String extra)
             throws Exception {
         Path root = Files.createDirectories(workspace.resolve(name));
-        Files.createDirectories(root.resolve(".git"));
+        initializeGit(root);
         Files.writeString(root.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>io.casehub</groupId><artifactId>%s</artifactId><version>1.0</version>
@@ -1058,4 +1058,12 @@ class WorkspaceToolQueriesTest {
         });
         Files.writeString(quill.resolve("refs.json"), "{\"@worktree\":\"" + indexId + "\"}");
     }
+    private static void initializeGit(Path root) throws java.io.IOException {
+        try (var git = org.eclipse.jgit.api.Git.init().setDirectory(root.toFile()).call()) {
+            // A real unborn repository exercises identity validation as well as discovery.
+        } catch (org.eclipse.jgit.api.errors.GitAPIException failure) {
+            throw new java.io.IOException(failure);
+        }
+    }
+
 }

@@ -66,8 +66,13 @@ public record ProjectIdentity(Path projectRoot, Path worktreeRoot, Path gitDirec
     }
 
     public static Path canonical(Path path) {
-        try { return path.toRealPath(); }
-        catch (IOException failure) { return path.toAbsolutePath().normalize(); }
+        Path normalized = path.toAbsolutePath().normalize();
+        Path ancestor = normalized;
+        while (ancestor != null && !Files.exists(ancestor)) ancestor = ancestor.getParent();
+        try {
+            return ancestor == null ? normalized
+                    : ancestor.toRealPath().resolve(ancestor.relativize(normalized)).normalize();
+        } catch (IOException failure) { return normalized; }
     }
 
     private static String id(String kind, Path... paths) throws IOException {

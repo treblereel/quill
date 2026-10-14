@@ -384,6 +384,14 @@ final class WorkspaceToolQueries {
         for (ProjectScope.Project project : snapshot.projects().subList(from, to)) {
             ObjectNode node = projects.addObject();
             node.put("name", project.name());
+            node.put("project_root", project.root().toString());
+            try {
+                var identity = org.treblereel.mcp.core.ProjectIdentity.resolve(project.root());
+                node.put("project_id", identity.projectId());
+                node.put("worktree_id", identity.worktreeId());
+                node.put("worktree_root", identity.worktreeRoot().toString());
+                if(identity.repositoryId()!=null) node.put("repository_id", identity.repositoryId());
+            } catch (java.io.IOException failure) { node.put("identity_status", "unknown"); }
             node.put("relative_path", normalize(scope.root().relativize(project.root()).toString()));
             ProjectRegistry.Resolution resolution = registry.resolve(project.name());
             ProjectRegistry.ProjectIssue issue = resolution.issues().stream()
@@ -447,6 +455,14 @@ final class WorkspaceToolQueries {
         for (ProjectScope.Project project : snapshot.projects().subList(from, to)) {
             ObjectNode node = repositories.addObject();
             node.put("name", project.name());
+            node.put("project_root", project.root().toString());
+            try {
+                var identity = org.treblereel.mcp.core.ProjectIdentity.resolve(project.root());
+                node.put("project_id", identity.projectId());
+                node.put("worktree_id", identity.worktreeId());
+                node.put("worktree_root", identity.worktreeRoot().toString());
+                if(identity.repositoryId()!=null) node.put("repository_id", identity.repositoryId());
+            } catch (java.io.IOException failure) { node.put("identity_status", "unknown"); }
             node.put("root", project.root().toString());
             node.put("relative_path", normalize(scope.root().relativize(project.root()).toString()));
             ProjectRegistry.ProjectEntry entry = entries.get(project.name());

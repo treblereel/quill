@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.command.ProjectIndexStore;
 import org.treblereel.mcp.core.WorktreeInspector;
@@ -38,6 +39,10 @@ final class ToolResponseSupport {
         metaNode.set("stale_reasons", JSON.valueToTree(meta.staleReasons()));
         metaNode.put("stale_warning", meta.staleWarning());
         String projectRoot = IndexReader.getMetadata(jdbi).get("project_root");
+        Map<String,String> identityMetadata = IndexReader.getMetadata(jdbi);
+        for (String key : List.of("project_root", "project_id", "worktree_id", "worktree_root", "repository_id")) {
+            if (identityMetadata.get(key) != null) metaNode.put(key, identityMetadata.get(key));
+        }
         appendStaleScope(metaNode, meta, projectRoot, targetSource, targetModule);
         if (projectRoot != null) {
             ProjectIndexStore.readRecovery(Path.of(projectRoot)).ifPresent(recovery -> {

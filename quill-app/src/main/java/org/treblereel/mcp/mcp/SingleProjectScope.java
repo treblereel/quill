@@ -12,7 +12,8 @@ public final class SingleProjectScope implements ProjectScope {
     private long revision;
 
     public synchronized void register(Path projectPath) {
-        Path root = resolveRoot(projectPath);
+        Path root = org.treblereel.mcp.core.ProjectIdentity.canonical(resolveRoot(projectPath));
+        if (projects.stream().anyMatch(project -> project.root().equals(root))) return;
         String baseName = root.getFileName() == null ? root.toString() : root.getFileName().toString();
         projects.add(new Project(deduplicate(baseName), root));
         revision++;

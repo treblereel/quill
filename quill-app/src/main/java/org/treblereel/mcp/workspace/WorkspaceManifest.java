@@ -14,7 +14,7 @@ public record WorkspaceManifest(
     public static final int CURRENT_FORMAT = 1;
 
     public WorkspaceManifest {
-        root = root.toAbsolutePath().normalize();
+        root = org.treblereel.mcp.core.ProjectIdentity.canonical(root);
         excludes = List.copyOf(excludes);
     }
 }

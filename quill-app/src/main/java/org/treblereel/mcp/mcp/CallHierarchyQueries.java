@@ -188,6 +188,8 @@ final class CallHierarchyQueries {
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
         countedClasses.add(cls.id());
+        JavaSourceLocations javaLocations = new JavaSourceLocations(jdbi);
+        java.util.Map<Integer, ClassRecord> callees = new java.util.HashMap<>();
         for (TraversalEdge traversed : page) {
             MethodCallView call = traversed.call();
             ObjectNode edge = edges.addObject();
@@ -200,6 +202,10 @@ final class CallHierarchyQueries {
             edge.put("invocation_kind", call.invocationKind());
             edge.put("occurrence_count", call.occurrenceCount());
             edge.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
+            ClassRecord callee = callees.computeIfAbsent(call.toClassId(), id -> IndexReader.findClassById(jdbi, id).orElse(null));
+            if (callee != null) javaLocations.append(edge, call.fromSource(), call.fromClass(), call.fromMethod(), call.fromDescriptor(),
+                    call.toClass(), call.toMethod(), call.toDescriptor(), "call", SymbolContract.id(callee,
+                            "<init>".equals(call.toMethod()) ? "CONSTRUCTOR" : "METHOD", call.toMethod(), call.toDescriptor()), call.evidenceLines());
             if (transitive) {
                 edge.put("depth", traversed.depth());
                 edge.put("traversal_direction", traversed.direction());

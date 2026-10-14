@@ -331,6 +331,7 @@ public class ProjectInitializer {
         List<ModuleClasspathRecord> moduleClasspath = ModuleClasspathResolver.resolve(
                 root, buildSystem, moduleDirectories);
         List<Path> sourceRoots = ProjectLayout.findSourceRoots(root, moduleDirectories);
+        Map<String, String> javaSourceHashes = org.treblereel.mcp.core.SourceFileHashes.captureJava(root, sourceRoots);
         List<Path> indexingClassDirs = List.copyOf(classesDirs);
         timings.finish("index_setup");
         ClassFileSnapshot classFiles;
@@ -595,6 +596,7 @@ public class ProjectInitializer {
                 Integer.toString(initialWorktree.structuralChanges().size()));
         metadata.put("compiled_before_index", Boolean.toString(compiledBeforeIndex));
         metadata.put("structure_scope", "compiled_snapshot");
+        metadata.put("java_source_hashes", toJson(javaSourceHashes));
         metadata.put("module_discovery_scope", classesDiscovery.moduleScope());
         metadata.put("module_discovery_complete",
                 Boolean.toString(classesDiscovery.complete()));
@@ -751,7 +753,8 @@ public class ProjectInitializer {
             long validationStartedAt = System.nanoTime();
             ProjectIndexStore.validateForPublication(stagedDb);
             boolean headChanged = !headMatches(root, initialHead);
-            boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint());
+            boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint())
+                    || !javaSourceHashes.equals(org.treblereel.mcp.core.SourceFileHashes.captureJava(root, sourceRoots));
             timings.record("publication_validation", elapsedMillis(validationStartedAt));
             if (headChanged || worktreeChanged) {
                 ProjectIndexStore.deleteDatabaseArtifacts(stagedDb);

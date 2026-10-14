@@ -8,6 +8,18 @@ owner and erased JVM descriptor select the corresponding indexed declaration.
 For source declarations, it also reports one-based start and exclusive end coordinates;
 the matched indexed symbol receives these in `location` with `basis: compiler`.
 External binary declarations have no source range.
+`find_symbol_usages` and `get_call_hierarchy` also attach `source_evidence` to Java
+call/field groups. Compiler-selected reference expressions carry start/exclusive-end
+coordinates and the selected indexed `symbol_id`. References must match the exact
+caller and target descriptors and a bytecode evidence line. Java source hashes are
+captured in new index generations and checked before/after compiler analysis;
+changed bytes (including restored timestamps), stale indexes, old indexes without
+hashes, and unavailable compiler captures retain bytecode evidence with an explicit
+source-evidence status. This corroborates the indexed source snapshot; it does not
+prove the compiler that produced the indexed bytecode saw those same source bytes.
+Each response analyzes at most ten Java files and each file retains at most 4,096
+references. Source reference coverage is explicitly incomplete: lambda synthetic
+callers, initializer contexts and unsupported constructor descriptors are not guessed.
 Position results and errors include index freshness metadata. A compiler-selected
 declaration absent from the index reports `semantic_target_not_indexed`.
 

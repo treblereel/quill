@@ -46,6 +46,7 @@ final class JavaWorkerClient implements AutoCloseable {
             String line = read();
             if (line == null) throw new EOFException();
             String[] parts = line.split("\t", -1);
+            if (request.path("offset").asInt() == -2) return references(parts);
             if (parts.length != 12) throw new IOException("Invalid worker response");
             var result = JSON.createObjectNode().put("status", parts[0]).put("backend", "javac");
             String[] keys = {"owner", "kind", "name", "descriptor", "source_file"};
@@ -81,7 +82,36 @@ final class JavaWorkerClient implements AutoCloseable {
         input = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
         output = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         reader = Executors.newSingleThreadExecutor(task -> { var t = new Thread(task, "quill-java-worker-read"); t.setDaemon(true); return t; });
-        if (!"QUILL_JAVA_3".equals(read())) throw new IOException("Worker protocol mismatch");
+        if (!"QUILL_JAVA_4".equals(read())) throw new IOException("Worker protocol mismatch");
+    }
+    private static JsonNode references(String[] parts) throws IOException {
+        if (parts.length != 2 || !parts[0].equals("REFERENCES")) throw new IOException("Invalid references response");
+        Properties values = new Properties();
+        values.load(new StringReader(new String(Base64.getDecoder().decode(parts[1]), StandardCharsets.UTF_8)));
+        int count = Integer.parseInt(values.getProperty("count"));
+        if (count < 0 || count > 4096) throw new IOException("References limit");
+        var result = JSON.createObjectNode().put("status", values.getProperty("status")).put("backend", "javac")
+                .put("generation", Long.parseLong(values.getProperty("generation")));
+        for (String flag : List.of("reused", "truncated")) {
+            if (!Set.of("true", "false").contains(values.getProperty(flag))) throw new IOException("Invalid references flag");
+            result.put(flag, Boolean.parseBoolean(values.getProperty(flag)));
+        }
+        if (values.containsKey("source_hash")) result.put("source_hash", values.getProperty("source_hash"));
+        var references = result.putArray("references");
+        String[] keys = {"owner", "kind", "name", "descriptor", "caller_owner", "caller_name", "caller_descriptor", "access"};
+        String[] coordinates = {"line", "column", "end_line", "end_column"};
+        for (int i = 0; i < count; i++) {
+            String[] reference = values.getProperty("reference." + i).split("\t", -1);
+            if (reference.length != 12) throw new IOException("Invalid reference");
+            var node = references.addObject();
+            for (int j = 0; j < keys.length; j++) node.put(keys[j], reference[j]);
+            for (int j = 0; j < coordinates.length; j++) {
+                int coordinate = Integer.parseInt(reference[j + 8]);
+                if (coordinate < 1) throw new IOException("Invalid reference position");
+                node.put(coordinates[j], coordinate);
+            }
+        }
+        return result;
     }
     private static String encode(String value) { return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8)); }
     private static void copy(Properties settings, String prefix, JsonNode values) {

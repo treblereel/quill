@@ -130,6 +130,7 @@ final class SymbolUsageQueries {
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
+        JavaSourceLocations javaLocations = new JavaSourceLocations(jdbi);
         for (var resolved : page) {
             MethodCallView usage = resolved.call();
             ObjectNode node = values.addObject();
@@ -142,6 +143,8 @@ final class SymbolUsageQueries {
             node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
             appendPath(node, resolved);
             KotlinSourceLocations.append(jdbi, node, usage.fromClassId(), usage.evidenceLines());
+            if (!kotlin) javaLocations.append(node, usage.fromSource(), usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
+                    cls.className(), bytecodeName, selected.descriptor(), "call", root.path("symbol_id").asText(), usage.evidenceLines());
             if (countedClasses.add(usage.fromClassId())) naiveTokens += usage.fromSourceTokens();
         }
         limitations(root).add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
@@ -243,6 +246,7 @@ final class SymbolUsageQueries {
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
+        JavaSourceLocations javaLocations = new JavaSourceLocations(jdbi);
         for (FieldAccessView usage : usages) {
             ObjectNode node = values.addObject();
             appendCaller(node, usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
@@ -252,6 +256,9 @@ final class SymbolUsageQueries {
             node.put("access_kind", usage.accessKind());
             node.put("occurrence_count", usage.occurrenceCount());
             node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
+            javaLocations.append(node, usage.fromSource(), usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
+                    cls.className(), selected.name(), selected.descriptor(), usage.accessKind().startsWith("read_") ? "read" : "write",
+                    root.path("symbol_id").asText(), usage.evidenceLines());
             if (countedClasses.add(usage.fromClassId())) naiveTokens += usage.fromSourceTokens();
         }
         limitations(root);

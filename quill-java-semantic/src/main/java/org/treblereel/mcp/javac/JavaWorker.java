@@ -20,7 +20,7 @@ public final class JavaWorker {
     public static void main(String[] args) throws Exception {
         var models = new LinkedHashMap<String, JavaPositionResolver>(4, 0.75f, true);
         try (var reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
-            System.out.println("QUILL_JAVA_3");
+            System.out.println("QUILL_JAVA_4");
             for (String line; (line = reader.readLine()) != null;) {
                 try {
                     var parts = line.split("\t", -1);
@@ -40,6 +40,26 @@ public final class JavaWorker {
                     }
                     Path file = Path.of(decode(parts[2]));
                     int offset = Integer.parseInt(parts[3]);
+                    if (offset == -2) {
+                        var result = model.references(file);
+                        Properties values = new Properties();
+                        values.setProperty("status", result.status());
+                        values.setProperty("generation", Long.toString(result.generation()));
+                        values.setProperty("reused", Boolean.toString(result.reused()));
+                        values.setProperty("truncated", Boolean.toString(result.truncated()));
+                        if (result.sourceHash() != null) values.setProperty("source_hash", result.sourceHash());
+                        values.setProperty("count", Integer.toString(result.references().size()));
+                        for (int i = 0; i < result.references().size(); i++) {
+                            var reference = result.references().get(i);
+                            values.setProperty("reference." + i, String.join("\t", reference.owner(), reference.kind(), reference.name(),
+                                    reference.descriptor(), reference.callerOwner(), reference.callerName(), reference.callerDescriptor(), reference.access(),
+                                    Integer.toString(reference.line()), Integer.toString(reference.column()),
+                                    Integer.toString(reference.endLine()), Integer.toString(reference.endColumn())));
+                        }
+                        var serialized = new StringWriter(); values.store(serialized, "references");
+                        System.out.println("REFERENCES\t" + encode(serialized.toString()));
+                        continue;
+                    }
                     var result = offset == -1 ? model.warm(file) : model.resolve(file, offset);
                     System.out.println(String.join("\t", result.status(), encode(result.owner()), encode(result.kind()),
                             encode(result.name()), encode(result.descriptor()), encode(result.declarationFile()),

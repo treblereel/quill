@@ -26,6 +26,9 @@ class ProjectConfigurationTest {
         assertTrue(installed.contains("discover only `get_overview`"));
         assertTrue(installed.contains("do not enumerate or print the entire tool catalog"));
         assertTrue(installed.contains("single-project or unknown mode"));
+        assertTrue(installed.contains("as `project` on every"));
+        assertTrue(installed.contains("including the first overview"));
+        assertTrue(installed.contains("Omitting `project` preserves"));
         assertTrue(installed.contains("`retry_with`"));
         assertTrue(installed.contains("`structuredContent`"));
         assertTrue(installed.contains("call `change_session` before editing"));

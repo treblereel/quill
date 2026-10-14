@@ -127,7 +127,7 @@ public final class QuillTools {
             @ToolArg(description = "all, application, or dependency") Optional<String> origin,
             @ToolArg(description = "Page size") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> workspace.enrichDependencyBeans(
                 queries.getBeans(p.jdbi(), class_name.orElse(null), scope.orElse(null),
                         kind.orElse(null), profile.orElse(null), qualifier.orElse(null),
@@ -145,7 +145,7 @@ public final class QuillTools {
             @ToolArg(description = "Page size") Optional<Integer> limit,
             @ToolArg(description = "Offset for depth 1") Optional<Integer> offset,
             @ToolArg(description = "Cursor for depth >1") Optional<String> cursor,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         String requestedDirection = direction.orElse("both");
         int requestedDepth = clamp(depth.orElse(1), 1, 5);
         boolean requestedNodes = include_nodes.orElse(true);
@@ -165,7 +165,7 @@ public final class QuillTools {
             @ToolArg(description = "Include indirect implementations through intermediate types (default: true)") Optional<Boolean> transitive,
             @ToolArg(description = "Logical implementation classes per page (default: 50, max: 100)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         boolean requestedTransitive = transitive.orElse(true);
         int requestedLimit = clamp(limit.orElse(50), 1, 100);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
@@ -182,7 +182,7 @@ public final class QuillTools {
             @ToolArg(description = "Module path filter relative to the project root") Optional<String> module,
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         String requestedKind = usage_kind.orElse(null);
         int requestedLimit = clamp(limit.orElse(50), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
@@ -204,7 +204,7 @@ public final class QuillTools {
                     allowed = {"all", "read", "write"}) Optional<String> access,
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         String requestedName = name.orElse(null);
         String requestedSignature = signature.orElse(null);
         String requestedAccess = access.orElse("all");
@@ -225,7 +225,7 @@ public final class QuillTools {
             @ToolArg(description = "Member kind or all") Optional<String> member_kind,
             @ToolArg(description = "Page size; default 100") Optional<Integer> member_limit,
             @ToolArg(description = "Page offset") Optional<Integer> member_offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         boolean requestedMembers = include_members.orElse(true);
         String requestedKind = member_kind.orElse(null);
         int requestedLimit = clamp(member_limit.orElse(100), 1, 200);
@@ -242,7 +242,7 @@ public final class QuillTools {
             @ToolArg(description = "Classes or source paths (max 10)") List<String> targets,
             @ToolArg(description = "Include declared members; default false") Optional<Boolean> include_members,
             @ToolArg(description = "Members, usages, and tests per section; default 10, max 25") Optional<Integer> limit,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         boolean requestedMembers = include_members.orElse(false);
         int requestedLimit = clamp(limit.orElse(10), 1, 25);
         return forAllProjects(project.orElse(null), p -> queries.getContext(
@@ -255,7 +255,7 @@ public final class QuillTools {
             @ToolArg(description = "Classes or source paths to change (max 10)") List<String> targets,
             @ToolArg(description = "Concise description of the intended change") String change,
             @ToolArg(description = "Members, usages, and tests per section; default 10, max 100") Optional<Integer> limit,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(10), 1, 100);
         return forAllProjects(project.orElse(null), p -> queries.planChange(
                 p.jdbi(), p.root(), targets, change, requestedLimit));
@@ -266,7 +266,7 @@ public final class QuillTools {
     public String verify_change(
             @ToolArg(description = "Changed classes or source paths; omit to infer up to 10 dirty JVM files") Optional<List<String>> targets,
             @ToolArg(description = "Changes, diagnostics, and tests per section; default 20, max 100") Optional<Integer> limit,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
         return forAllProjects(project.orElse(null), p -> queries.verifyChange(
                 p.jdbi(), p.root(), targets.orElse(List.of()), requestedLimit));
@@ -280,7 +280,7 @@ public final class QuillTools {
             @ToolArg(description = "Response detail: summary (default) or full") Optional<String> detail,
             @ToolArg(description = "View: auto (default), plan, verification, or all") Optional<String> view,
             @ToolArg(description = "Evidence per section; default 20, max 100") Optional<Integer> limit,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
         return forAllProjects(project.orElse(null), p -> queries.changeSession(
                 p.jdbi(), p.root(), targets.orElse(List.of()), change, requestedLimit,
@@ -294,7 +294,7 @@ public final class QuillTools {
             @ToolArg(description = "Traversal depth; default 3") Optional<Integer> max_depth,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findImpactedTests(
                 p.jdbi(), targets, transitive.orElse(true),
                 clamp(max_depth.orElse(3), 1, 5),
@@ -309,7 +309,7 @@ public final class QuillTools {
             @ToolArg(description = "Maximum hierarchy depth; default 5") Optional<Integer> max_depth,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         String requestedDirection = direction.orElse("both");
         int requestedDepth = clamp(max_depth.orElse(5), 1, 20);
         int requestedLimit = clamp(limit.orElse(100), 1, 200);
@@ -330,7 +330,7 @@ public final class QuillTools {
                     allowed = {"all", "java", "kotlin"}) Optional<String> language,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.searchSymbols(
                 p.jdbi(), pattern, kind.orElse(null), language.orElse(null),
                 clamp(limit.orElse(50), 1, 200),
@@ -351,7 +351,7 @@ public final class QuillTools {
                     allowed = {"all", "cross_class", "cross_package"}) Optional<String> scope,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         String requestedMethod = method.orElse(null);
         String requestedSignature = signature.orElse(null);
         String requestedDirection = direction.orElse("both");
@@ -418,7 +418,7 @@ public final class QuillTools {
             @ToolArg(description = "Include indirect descendants; default true") Optional<Boolean> transitive,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         String requestedSignature = signature.orElse(null);
         boolean requestedTransitive = transitive.orElse(true);
         int requestedLimit = clamp(limit.orElse(50), 1, 200);
@@ -437,7 +437,7 @@ public final class QuillTools {
             @ToolArg(description = "Include test classes; default false") Optional<Boolean> include_tests,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findUnusedClasses(
                 p.jdbi(), module.orElse(null), include_generated.orElse(false),
                 include_tests.orElse(false), clamp(limit.orElse(50), 1, 200),
@@ -451,7 +451,7 @@ public final class QuillTools {
             @ToolArg(description = "Include test classes; default false") Optional<Boolean> include_tests,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findUnusedMethods(
                 p.jdbi(), module.orElse(null), include_generated.orElse(false),
                 include_tests.orElse(false), clamp(limit.orElse(50), 1, 200),
@@ -466,7 +466,7 @@ public final class QuillTools {
             @ToolArg(description = "Include fields that are written but never read; default false") Optional<Boolean> include_write_only,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findUnusedFields(
                 p.jdbi(), module.orElse(null), include_generated.orElse(false),
                 include_tests.orElse(false), include_write_only.orElse(false),
@@ -482,7 +482,7 @@ public final class QuillTools {
             @ToolArg(description = "Include test classes; default false") Optional<Boolean> include_tests,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findEntryPoints(
                 p.jdbi(), kind.orElse(null), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
@@ -497,7 +497,7 @@ public final class QuillTools {
             @ToolArg(description = "Maximum stored visibility distance (default: 2, max: 10)") Optional<Integer> depth,
             @ToolArg(description = "Relations per page (default: 100, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getModuleGraph(
                 p.jdbi(), module.orElse(null), direction.orElse("both"),
                 clamp(depth.orElse(2), 1, 10), clamp(limit.orElse(100), 1, 200),
@@ -516,7 +516,7 @@ public final class QuillTools {
             @ToolArg(description = "Declared Maven scope or Gradle configuration") Optional<String> scope,
             @ToolArg(description = "Page size; default 100, max 200") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p ->
                 workspace.enrichProjectDependencies(projectDependencies.getProjectDependencies(
                         p.jdbi(), p.root(), module.orElse(null),
@@ -535,7 +535,7 @@ public final class QuillTools {
             @ToolArg(description = "Include deleted or historical indexed paths; default false") Optional<Boolean> include_deleted,
             @ToolArg(description = "Entries per page; default 100, max 500") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> fileNavigation.listProjectTree(
                 p.jdbi(), path.orElse("."), clamp(depth.orElse(2), 1, 10),
                 include_deleted.orElse(false), clamp(limit.orElse(100), 1, 500),
@@ -553,7 +553,7 @@ public final class QuillTools {
             @ToolArg(description = "Include deleted or historical indexed paths; default false") Optional<Boolean> include_deleted,
             @ToolArg(description = "Results per page; default 50, max 200") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> fileNavigation.searchFiles(
                 p.jdbi(), pattern, module.orElse(null), kind.orElse(null),
                 directory.orElse(null), extension.orElse(null),
@@ -567,7 +567,7 @@ public final class QuillTools {
             @ToolArg(description = "Status filter: added, modified, deleted, untracked, or conflicting") Optional<String> status,
             @ToolArg(description = "Results per page; default 100, max 500") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> worktreeStatus.getWorktreeStatus(
                 p.jdbi(), p.root(), status.orElse(null),
                 clamp(limit.orElse(100), 1, 500),
@@ -580,7 +580,7 @@ public final class QuillTools {
             @ToolArg(description = "Repository-relative Java or Kotlin source path") String path,
             @ToolArg(description = "One-based source line") Integer line,
             @ToolArg(description = "One-based source column") Integer column,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> positionSymbols.getSymbolAtPosition(
                 p.jdbi(), p.root(), path, line, column));
     }
@@ -596,7 +596,7 @@ public final class QuillTools {
             @ToolArg(description = "Include full dependency JAR paths; default false") Optional<Boolean> include_occurrences,
             @ToolArg(description = "Results per page; default 50, max 200") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> externalSymbols.search(
                 p.jdbi(), p.root(), pattern, kind.orElse(null), class_name.orElse(null),
                 library.orElse(null), match_mode.orElse("contains"),
@@ -611,7 +611,7 @@ public final class QuillTools {
             @ToolArg(description = "External class short name or FQCN") String class_name,
             @ToolArg(description = "Members per page; default 100, max 200") Optional<Integer> limit,
             @ToolArg(description = "Member page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> externalSymbols.details(
                 p.jdbi(), p.root(), class_name, clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -626,7 +626,7 @@ public final class QuillTools {
             @ToolArg(description = "Include test classes") Optional<Boolean> include_tests,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getPackageGraph(
                 p.jdbi(), package_name.orElse(null), direction.orElse("both"),
                 module.orElse(null), include_generated.orElse(false),
@@ -642,7 +642,7 @@ public final class QuillTools {
             @ToolArg(description = "Comma-separated dependency kinds") Optional<String> kinds,
             @ToolArg(description = "Page size") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findArchitectureViolations(
                 p.jdbi(), scope.orElse("package"), from, forbidden,
                 kinds.map(value -> java.util.Arrays.stream(value.split(","))
@@ -659,7 +659,7 @@ public final class QuillTools {
             @ToolArg(description = "Include test classes") Optional<Boolean> include_tests,
             @ToolArg(description = "Page size; default 20") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findCycles(
                 p.jdbi(), scope.orElse("class"), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
@@ -671,7 +671,7 @@ public final class QuillTools {
     public String compare_index(
             @ToolArg(description = "Index id or commit; default previous") Optional<String> baseline,
             @ToolArg(description = "Details per category; default 50") Optional<Integer> limit,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.compareIndex(
                 p.jdbi(), p.root(), baseline.orElse(null),
                 clamp(limit.orElse(50), 1, 200)));
@@ -679,7 +679,7 @@ public final class QuillTools {
 
     @Tool(readOnly = true, structured = true, description = "Inspect build integration and compiled-index freshness without running a build.")
     public String get_build_status(
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null),
                 p -> queries.getBuildStatus(p.jdbi(), p.root()));
     }
@@ -690,7 +690,7 @@ public final class QuillTools {
             @ToolArg(description = "Exact module filter") Optional<String> module,
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getBuildProblems(
                 p.root(), severity.orElse("all"), module.orElse(null),
                 clamp(limit.orElse(50), 1, 200),
@@ -704,7 +704,7 @@ public final class QuillTools {
             @ToolArg(description = "Severity: all, error, or warning") Optional<String> severity,
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         if (paths.isEmpty()) return errorResponse("paths must not be empty");
         return forAllProjects(project.orElse(null), p -> queries.getFileProblems(
                 p.root(), paths, severity.orElse("all"),
@@ -715,7 +715,7 @@ public final class QuillTools {
     @Tool(readOnly = true, structured = true, description = "Inspect bean injection resolution and candidates.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "list_injection_points",
                 jdbi -> queries.getInjectionPoints(jdbi, target)));
@@ -727,7 +727,7 @@ public final class QuillTools {
             @ToolArg(description = "Only commits after this date, ISO format YYYY-MM-DD") Optional<String> since,
             @ToolArg(description = "Include deleted/historical paths (default: false)") Optional<Boolean> include_historical,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getHotspots(p.jdbi(),
                 clamp(limit.orElse(10), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE), since.orElse(null),
@@ -740,7 +740,7 @@ public final class QuillTools {
             @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
             @ToolArg(description = "Max commits to return (default: 10)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getFileHistory(
                 p.jdbi(), target, clamp(limit.orElse(10), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -749,7 +749,7 @@ public final class QuillTools {
     @Tool(readOnly = true, structured = true, description = "Resolve up to 20 names/paths across the current tree and Git history, including deleted paths.")
     public String resolve_entities(
             @ToolArg(description = "Class names, file names, or repository paths to resolve") List<String> targets,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.resolveEntities(p.jdbi(), targets));
     }
 
@@ -757,7 +757,7 @@ public final class QuillTools {
     public String find_co_changed_files(
             @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
             @ToolArg(description = "Max results (default: 10)") Optional<Integer> limit,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getCoChanges(
                 p.jdbi(), target, clamp(limit.orElse(10), 1, 100)));
     }
@@ -768,7 +768,7 @@ public final class QuillTools {
             @ToolArg(description = "Changed files per page (default: 200, max: 200)") Optional<Integer> file_limit,
             @ToolArg(description = "Changed-file offset (default: 0)") Optional<Integer> file_offset,
             @ToolArg(description = "Include commit and resolved-class details (default: true)") Optional<Boolean> details,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getRecentChanges(
                 p.jdbi(), clamp(commits.orElse(10), 1, 200),
                 clamp(file_limit.orElse(200), 1, 200),
@@ -779,7 +779,7 @@ public final class QuillTools {
     @Tool(readOnly = true, structured = true, description = "Inspect ordered META-INF/services providers with lines and order-sensitivity analysis.")
     public String inspect_service_descriptors(
             @ToolArg(description = "Optional service FQCN or short name, e.g. javax.annotation.processing.Processor") Optional<String> service,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null),
                 p -> queries.inspectServiceDescriptors(p.jdbi(), service.orElse(null)));
     }
@@ -792,7 +792,7 @@ public final class QuillTools {
             @ToolArg(description = "Exact module filter") Optional<String> module,
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findConfigurationReferences(
                 p.jdbi(), key.orElse(null), class_name.orElse(null), kind.orElse("all"),
                 module.orElse(null), clamp(limit.orElse(50), 1, 200),
@@ -806,7 +806,7 @@ public final class QuillTools {
             @ToolArg(description = "Exact module filter") Optional<String> module,
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
-            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findResourceReferences(
                 p.jdbi(), path, class_name.orElse(null), module.orElse(null),
                 clamp(limit.orElse(50), 1, 200),
@@ -814,10 +814,10 @@ public final class QuillTools {
     }
 
     @Tool(readOnly = true, structured = true, output = "overview",
-            description = "Start code analysis here. Omit arguments for single-project or unknown server mode. Only servers launched with --workspace support view=compact for a paginated map, then project=<name> for full details. Follow retry_with on mode errors and change_session for code changes.")
+            description = "Start code analysis here. Pass project as the absolute working-copy path; omit it to preserve the configured default scope. Only servers launched with --workspace support view=compact for a paginated map, then project=<name> for full details. Follow retry_with on mode errors and change_session for code changes.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings (default: false)") Optional<Boolean> details,
-            @ToolArg(description = "Project to query; omit for all") Optional<String> project,
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project,
             @ToolArg(description = "full (default) or compact (workspace map)", allowed = {"full", "compact"}) Optional<String> view,
             @ToolArg(description = "Compact view page size (default 20, max 50)") Optional<Integer> limit,
             @ToolArg(description = "Compact view offset (default 0)") Optional<Integer> offset) {
@@ -846,7 +846,7 @@ public final class QuillTools {
             @ToolArg(description = "Source set filter, e.g. main or test") Optional<String> source_set,
             @ToolArg(description = "Max results (default: 30)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.searchClasses(
                 p.jdbi(), pattern, module.orElse(null), source_set.orElse(null),
                 clamp(limit.orElse(30), 1, 100),
@@ -860,7 +860,7 @@ public final class QuillTools {
             @ToolArg(description = "Include meta-annotation matches (default: true)") Optional<Boolean> include_meta_annotations,
             @ToolArg(description = "Max results (default: 50)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.getAnnotatedClasses(
                 p.jdbi(), annotation, include_meta_annotations.orElse(true),
                 clamp(limit.orElse(50), 1, 100),
@@ -874,7 +874,7 @@ public final class QuillTools {
             @ToolArg(description = "Include type meta-annotation matches (default: true)") Optional<Boolean> include_meta_annotations,
             @ToolArg(description = "Max results (default: 50, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findAnnotatedSymbols(
                 p.jdbi(), annotation, kind.orElse("all"),
                 include_meta_annotations.orElse(true),
@@ -892,7 +892,7 @@ public final class QuillTools {
             @ToolArg(description = "Include tests") Optional<Boolean> include_tests,
             @ToolArg(description = "Limit; max 100") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
-            @ToolArg(description = "Project") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findFrameworkEndpoints(
                 p.jdbi(), framework.orElse(null), http_method.orElse(null),
                 path_prefix.orElse(null), module.orElse(null),
@@ -904,7 +904,7 @@ public final class QuillTools {
     @Tool(readOnly = true, structured = true, description = "Score class/file change risk from coupling, criticality, churn, bus factor, and fan-in/out.")
     public String assess_change_risk(
             @ToolArg(description = "Class name (short or FQCN), or any project/repository file path") String target,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> routeClassQuery(
                 p, target, "assess_change_risk",
                 jdbi -> queries.getRisk(jdbi, target)));
@@ -915,7 +915,7 @@ public final class QuillTools {
             @ToolArg(description = "Class name to inspect (short or FQCN). If omitted, shows project-wide library usage summary.") Optional<String> target,
             @ToolArg(description = "Filter by library package prefix, e.g. 'com.fasterxml.jackson' or 'jakarta.persistence'") Optional<String> library,
             @ToolArg(description = "Max results for library summary (default: 20)") Optional<Integer> limit,
-            @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project) {
         String requestedTarget = target.orElse(null);
         String requestedLibrary = library.orElse(null);
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
@@ -1140,7 +1140,9 @@ public final class QuillTools {
 
     private String routeClassQuery(ProjectRegistry.ProjectEntry project, String target,
             String operation, Function<Jdbi, String> query) {
-        return workspace.routeMissingClassQuery(query.apply(project.jdbi()),
+        String local = query.apply(project.jdbi());
+        if (!workspaceMode() || !registry.isConfiguredRoot(project.root())) return local;
+        return workspace.routeMissingClassQuery(local,
                 project.name(), target, operation, query);
     }
 

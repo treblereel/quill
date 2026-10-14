@@ -358,7 +358,7 @@ class McpStdioIT {
             createWorkspaceRepository(workspace, "platform", "PlatformService");
             assertWorkspaceRepositoryCount(input, output, 20, 2);
 
-            Files.delete(engine.resolve(".git"));
+            deleteTreeWithRetry(engine.resolve(".git"));
             assertWorkspaceRepositoryCount(input, output, 40, 1);
 
             Process clear = new ProcessBuilder("java", "-jar", appJar.toString(),
@@ -468,6 +468,57 @@ class McpStdioIT {
         fail("Expected " + expected + " workspace repositories, last response: " + last);
     }
 
+    @Test
+    void absoluteRequestPathsPreserveDefaultScopeInJvmNativeAndRouterModes() throws Exception {
+        Path jar = resolveAppJar(), nativeImage = resolveNativeImage();
+        Assumptions.assumeTrue(Files.exists(jar) && Files.isExecutable(nativeImage));
+        Path original = createWorkspaceRepository(tempDir, "original", "OriginalService");
+        Path other = createWorkspaceRepository(tempDir, "other space ü", "OtherService");
+        for (List<String> launcher : List.of(List.of("java", "-jar", jar.toString()),
+                List.of(nativeImage.toString()), List.of(nativeImage.toString(), "--tools", "router"))) {
+            boolean router = launcher.contains("router");
+            List<String> command = new ArrayList<>(launcher);
+            command.addAll(List.of("--mcp", "--project", original.toString()));
+            Process process = new ProcessBuilder(command).directory(original.toFile())
+                    .redirectError(ProcessBuilder.Redirect.DISCARD).start();
+            try (var input = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+                    var output = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                sendRequest(input, 1, "initialize", """
+                        {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"path-routing-test","version":"1"}}""");
+                assertNotNull(readResponse(output, 1).get("result"));
+                sendNotification(input, "notifications/initialized", "{}");
+                Set<Integer> ids = new LinkedHashSet<>();
+                for (int i = 0; i < 16; i++) {
+                    ids.add(i + 10);
+                    Map<String, Object> arguments = i % 2 == 0 ? Map.of("project", other.toString()) : Map.of();
+                    Map<String, Object> call = Map.of("name", "get_overview", "arguments", arguments);
+                    writeRequest(input, i + 10, "tools/call", JSON.writeValueAsString(call));
+                }
+                input.flush();
+                var responses = readResponses(output, ids, 30_000);
+                assertEquals(ids, responses.keySet());
+                for (int id : ids) {
+                    JsonNode result = responses.get(id).path("result");
+                    assertFalse(result.path("isError").asBoolean(), result.toString());
+                    assertEquals((id % 2 == 0 ? other : original).toRealPath(),
+                            Path.of(result.path("structuredContent").path("_meta").path("project_root").asText()).toRealPath(), result.toString());
+                }
+                Map<String, Object> args = Map.of("pattern", "OtherService", "project", other.toString());
+                Map<String, Object> call = router
+                        ? Map.of("name", "execute_tool", "arguments", Map.of("name", "search_classes", "arguments", args))
+                        : Map.of("name", "search_classes", "arguments", args);
+                sendRequest(input, 30, "tools/call", JSON.writeValueAsString(call));
+                JsonNode search = readResponse(output, 30).path("result");
+                assertFalse(search.path("isError").asBoolean(), search.toString());
+                assertEquals(1, search.path("structuredContent").path("total").asInt(), search.toString());
+                sendRequest(input, 31, "tools/call", JSON.writeValueAsString(Map.of("name", "get_overview",
+                        "arguments", Map.of("project", tempDir.resolve("missing").toString()))));
+                JsonNode rejected = readResponse(output, 31).path("result");
+                assertEquals("WORKTREE_UNAVAILABLE", rejected.path("structuredContent").path("error_code").asText(), rejected.toString());
+            } finally { stopMcpProcess(process); }
+        }
+    }
+
     private Path createWorkspaceRepository(Path workspace, String name, String className)
             throws Exception {
         return createWorkspaceRepository(workspace, name, className, "");
@@ -476,7 +527,7 @@ class McpStdioIT {
     private Path createWorkspaceRepository(Path workspace, String name, String className,
             String extraPom) throws Exception {
         Path project = Files.createDirectories(workspace.resolve(name));
-        Files.createDirectories(project.resolve(".git"));
+        try (Git ignored = Git.init().setDirectory(project.toFile()).call()) { }
         Files.writeString(project.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>%s</artifactId><version>1</version>

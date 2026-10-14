@@ -27,11 +27,11 @@ final class RouterTools {
     }
 
     @Tool(readOnly = true, structured = true,
-            description = "Start here. Omit arguments for single-project or unknown server mode. Only --workspace servers support view=compact; follow retry_with on mode errors.")
+            description = "Start here. Pass project as the absolute working-copy path; omit it to preserve the configured default scope. Only --workspace servers support view=compact; follow retry_with on mode errors.")
     public String get_overview(
             @ToolArg(description = "Include diagnostic samples and all hub rankings")
                     Optional<Boolean> details,
-            @ToolArg(description = "Project to query; omit for all") Optional<String> project,
+            @ToolArg(description = "Absolute working-copy/project path (opens its context), configured name or project_id; omit for existing default scope") Optional<String> project,
             @ToolArg(description = "full (default) or compact (workspace map)", allowed = {"full", "compact"}) Optional<String> view,
             @ToolArg(description = "Compact page size (default 20, max 50)") Optional<Integer> limit,
             @ToolArg(description = "Compact offset (default 0)") Optional<Integer> offset) {

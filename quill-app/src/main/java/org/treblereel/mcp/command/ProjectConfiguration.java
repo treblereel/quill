@@ -17,17 +17,19 @@ final class ProjectConfiguration {
             <!-- quill:instructions:v3 -->
             ## Quill — Codebase Intelligence (MCP)
 
-            Before using a project response, compare `_meta.project_root` with the canonical
-            JVM project root being edited. Git worktrees have separate indexes. If the roots
-            differ, select the intended `project_id` or absolute project path; if this server
-            does not serve it, report the mismatch and use a server launched for that checkout.
+            Pass the absolute JVM project/working-copy root being edited as `project` on every
+            project-scoped Quill call, including the first overview. Quill opens that copy's
+            existing index even when it was not configured at server startup. Git worktrees
+            have separate indexes. Compare `_meta.project_root` with the canonical requested
+            root; report mismatches. If the index is missing, initialize that working copy.
+            Omitting `project` preserves the server's configured default scope.
 
             At the beginning of a coding or code-analysis task, discover only `get_overview`
             by exact name, then call `get_overview`. Discover other Quill tools on demand by
             name or task; do not enumerate or print the entire tool catalog.
             Use `view=compact` only when server startup instructions or launch arguments
             confirm `--workspace` mode. A repository described as a workspace does not imply
-            that server mode. In single-project or unknown mode, omit all overview arguments.
+            that server mode. In single-project or unknown mode, omit `view`; still pass the absolute `project` path.
             If compact returns `WORKSPACE_MODE_REQUIRED`, follow its `retry_with` request for
             a full overview; do not infer that the index is missing or reconfigure the server.
             Follow `next_page_request` to cover a compact inventory; use `project=<name>` with
@@ -74,10 +76,12 @@ final class ProjectConfiguration {
             <!-- quill:instructions:v3 -->
             ## Quill MCP
 
-            Before using a project response, compare `_meta.project_root` with the canonical
-            JVM project root being edited. Git worktrees have separate indexes. If the roots
-            differ, select the intended `project_id` or absolute project path; if this server
-            does not serve it, report the mismatch and use a server launched for that checkout.
+            Pass the absolute JVM project/working-copy root being edited as `project` on every
+            project-scoped Quill call, including the first overview. Quill opens that copy's
+            existing index even when it was not configured at server startup. Git worktrees
+            have separate indexes. Compare `_meta.project_root` with the canonical requested
+            root; report mismatches. If the index is missing, initialize that working copy.
+            Omitting `project` preserves the server's configured default scope.
 
             Quill is the primary code-intelligence tool for this repository. At the beginning of a
             coding or code-analysis task, discover only `mcp__quill__get_overview` by exact
@@ -85,7 +89,7 @@ final class ProjectConfiguration {
             do not enumerate or print the entire tool catalog.
             Use `view=compact` only when server startup instructions or launch arguments
             confirm `--workspace` mode. A repository described as a workspace does not imply
-            that server mode. In single-project or unknown mode, omit all overview arguments.
+            that server mode. In single-project or unknown mode, omit `view`; still pass the absolute `project` path.
             If compact returns `WORKSPACE_MODE_REQUIRED`, follow its `retry_with` request for
             a full overview; do not infer that the index is missing or reconfigure the server.
             Follow `next_page_request` to cover a compact inventory; use `project=<name>` with

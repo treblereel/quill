@@ -14,21 +14,40 @@ quill init --project /path/to/checkout
 quill --mcp --project /path/to/checkout
 ```
 
-For multiple checkouts, use repeated `--project` options or an initialized workspace.
-Workspace discovery includes working copies under its configured root and discovery
-depth. Worktrees elsewhere are not automatically imported; register their paths
-explicitly with `--project`.
+A client can keep the same server and pass the absolute working-copy/JVM project root
+in each project-scoped tool request. The copy need not have been configured at startup:
 
-The MCP `project` selector accepts a configured name, an absolute project/source path,
-or the exact `project_id` returned in response metadata. Workspace mode additionally
-supports its existing relative paths and Maven coordinates. An explicit selector
-matching multiple projects is rejected; omit the selector only when a tool's documented
-operation intentionally queries all projects.
-Absolute paths select the most specific registered project containing that path, so
-an explicitly registered Maven module takes precedence over its containing reactor.
+```json
+{"project": "/path/to/feature-checkout", "pattern": "MessageHandler"}
+```
 
-The MCP server cannot infer that an editor or agent changed its current directory.
-Select the new checkout explicitly or restart its server with the appropriate path.
+For example, these are arguments for `search_symbols`. Pass `project` on the initial
+`get_overview` and subsequent calls too. The client or agent supplies the path; the
+server cannot infer the caller's current editor directory. Managed AGENTS.md/CLAUDE.md
+instructions installed by `quill init` describe this convention. Existing configuration
+files do not need to be rewritten when selecting a different copy.
+
+Quill canonicalizes the path and opens that copy's own existing index. A missing,
+unavailable or foreign index produces an error for the requested copy, never a fallback
+to the server's original project. Initialize each copy with `quill init` before querying.
+An absolute source-file path can also locate its containing indexed project. Nested
+indexed projects and linked worktrees take precedence over their configured parent.
+An explicit project directory containing Maven/Gradle build metadata selects that
+project itself, even if its index is not yet available.
+
+Without `project` (or with a blank value), the configured default behavior is unchanged:
+one project is queried directly; repeated `--project` options or workspace mode keep
+their existing aggregation. Request-only contexts never enter that default scope or
+workspace inventory. Their database/readiness contexts are cached for up to 32 recent
+roots; eviction retires readers and subscriptions without removing on-disk indexes.
+Parallel requests select their contexts independently; there is no mutable active project.
+
+Configured names and exact `project_id` selectors remain supported. Workspace mode also
+supports its existing relative paths and Maven coordinates. Those selectors address the
+configured scope; use an absolute path for a copy outside it. An ambiguous configured
+selector is rejected. Workspace discovery still only scans its configured root/depth;
+request routing does not automatically discover every Git worktree.
+
 Compare `_meta.project_root` with the working copy being edited.
 
 ## Identity and index ownership

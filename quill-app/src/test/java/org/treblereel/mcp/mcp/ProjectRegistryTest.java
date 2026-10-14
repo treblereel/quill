@@ -350,6 +350,136 @@ class ProjectRegistryTest {
         assertFalse(Files.exists(project.resolve("CLAUDE.md")));
     }
 
+    @Test
+    void explicitPathOpensAnUnregisteredContextWithoutChangingDefaults() throws Exception {
+        Path original = routedProject("original");
+        Path other = routedProject("other space ü");
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(original);
+        var first = registry.resolve(other.toString()).projects().getFirst();
+        assertEquals(other.toRealPath(), first.root());
+        assertSame(first.jdbi(), registry.resolve(other.toString()).projects().getFirst().jdbi());
+        assertEquals(List.of(original.toRealPath()), registry.resolve().projects().stream().map(ProjectRegistry.ProjectEntry::root).toList());
+        assertEquals(List.of("original"), registry.configuredProjectNames());
+        assertEquals(original.toRealPath(), registry.resolve("original").projects().getFirst().root());
+        assertTrue(registry.resolve("other space ü").projects().isEmpty(), "Request contexts are not globally registered");
+        registry.register(other);
+        assertEquals(2, registry.resolve().projects().size(), "Legacy aggregation is unchanged");
+        assertEquals(2, registry.resolve("  ").projects().size());
+        assertEquals(other.toRealPath(), registry.resolve(org.treblereel.mcp.core.ProjectIdentity.resolve(other).projectId()).projects().getFirst().root());
+    }
+
+    @Test
+    void absolutePathsWorkWithoutAnyConfiguredProjectsAndThroughSymlinks() throws Exception {
+        Path other = routedProject("other");
+        Path source = other.resolve("src/main/java/Api.java");
+        Files.createDirectories(source.getParent()); Files.writeString(source, "class Api {}");
+        ProjectRegistry registry = new ProjectRegistry();
+        assertEquals(other.toRealPath(), registry.resolve(source.toString()).projects().getFirst().root());
+        Path alias = tempDir.resolve("alias"); Files.createSymbolicLink(alias, other);
+        assertEquals(other.toRealPath(), registry.resolve(alias.toString()).projects().getFirst().root());
+        assertTrue(registry.resolve().projects().isEmpty());
+        assertTrue(registry.isEmpty());
+    }
+
+    @Test
+    void explicitUnavailableOrForeignPathsNeverFallBackToConfiguredProject() throws Exception {
+        Path original = routedProject("original");
+        ProjectRegistry registry = new ProjectRegistry(); registry.register(original);
+        var missing = registry.resolve(tempDir.resolve("missing").toString());
+        assertTrue(missing.projects().isEmpty());
+        assertEquals("worktree_unavailable", missing.issues().getFirst().code());
+        var nestedMissing = registry.resolve(original.resolve("missing-worktree").toString());
+        assertTrue(nestedMissing.projects().isEmpty());
+        assertEquals("worktree_unavailable", nestedMissing.issues().getFirst().code());
+        Path unindexed = Files.createDirectories(tempDir.resolve("unindexed"));
+        Files.writeString(unindexed.resolve("pom.xml"), "<project/>");
+        assertTrue(registry.resolve(unindexed.toString()).projects().isEmpty());
+        assertFalse(Files.exists(unindexed.resolve(".quill")));
+        Path foreign = Files.createDirectories(tempDir.resolve("foreign/.quill"));
+        Files.writeString(foreign.getParent().resolve("pom.xml"), "<project/>");
+        Path originalDb = org.treblereel.mcp.command.ProjectIndexStore.findBestAvailableDb(original);
+        Files.copy(originalDb, foreign.resolve(originalDb.getFileName()));
+        var copied = registry.resolve(foreign.getParent().toString());
+        assertTrue(copied.projects().isEmpty());
+        assertEquals("index_ownership_mismatch", copied.issues().getFirst().code());
+        assertEquals(original.toRealPath(), registry.resolve().projects().getFirst().root());
+    }
+
+    @Test
+    void nestedUnregisteredIndexedProjectTakesPrecedenceOverConfiguredParent() throws Exception {
+        Path parent = routedProject("parent");
+        Path nested = Files.createDirectories(parent.resolve("nested"));
+        Files.writeString(nested.resolve("pom.xml"), "<project/>");
+        createPublishedDatabase(nested, "nested");
+        ProjectRegistry registry = new ProjectRegistry(); registry.register(parent);
+        assertEquals(nested.toRealPath(), registry.resolve(nested.toString()).projects().getFirst().root());
+        assertEquals(parent.toRealPath(), registry.resolve().projects().getFirst().root());
+        Path unindexed = Files.createDirectories(parent.resolve("unindexed"));
+        Files.writeString(unindexed.resolve("pom.xml"), "<project/>");
+        assertTrue(registry.resolve(unindexed.toString()).projects().isEmpty(), "An explicit unindexed project must not select its parent");
+    }
+
+    @Test
+    void concurrentPathsAndLegacyCallsKeepTheirOwnContext() throws Exception {
+        Path original = routedProject("original"), other = routedProject("other");
+        ProjectRegistry registry = new ProjectRegistry(); registry.register(original);
+        ProjectQueryExecutor queries = new ProjectQueryExecutor(registry);
+        try (var callers = Executors.newFixedThreadPool(8)) {
+            var pending = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+            for (int i = 0; i < 40; i++) {
+                Path expected = i % 2 == 0 ? other.toRealPath() : original.toRealPath();
+                String selector = i % 2 == 0 ? other.toString() : null;
+                pending.add(callers.submit(() -> {
+                    var batch = queries.execute(selector, entry -> entry.root().toString());
+                    assertEquals(1, batch.results().size());
+                    assertNull(batch.results().getFirst().error());
+                    assertEquals(expected.toString(), batch.results().getFirst().json());
+                }));
+            }
+            for (var future : pending) future.get(20, java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void requestContextCacheIsBoundedAndEvictionDoesNotDeleteIndexes() throws Exception {
+        Path first = routedProject("dynamic-0");
+        ProjectRegistry registry = new ProjectRegistry();
+        var initial = registry.resolve(first.toString()).projects().getFirst();
+        for (int i = 1; i <= 32; i++) registry.resolve(routedProject("dynamic-" + i).toString());
+        assertEquals(32, registry.cachedDatabaseCount());
+        assertTrue(Files.isDirectory(first.resolve(".quill")));
+        var reopened = registry.resolve(first.toString()).projects().getFirst();
+        assertNotSame(initial.jdbi(), reopened.jdbi());
+        assertEquals(first.toRealPath(), reopened.root());
+        assertEquals(32, registry.cachedDatabaseCount());
+        assertTrue(registry.configuredProjectNames().isEmpty());
+    }
+
+    @Test
+    void workspaceRequestsOutsideItsDiscoveryRootDoNotChangeInventoryOrDefaults() throws Exception {
+        Path workspaceRoot = Files.createDirectories(tempDir.resolve("workspace"));
+        org.treblereel.mcp.workspace.WorkspaceManifestStore.initialize(workspaceRoot, 1);
+        Path configured = Files.createDirectories(workspaceRoot.resolve("configured"));
+        try (var ignored = org.eclipse.jgit.api.Git.init().setDirectory(configured.toFile()).call()) { }
+        Files.writeString(configured.resolve("pom.xml"), "<project/>");
+        createPublishedDatabase(configured, "configured");
+        Path outside = routedProject("outside");
+        WorkspaceProjectScope scope = new WorkspaceProjectScope(workspaceRoot);
+        ProjectRegistry registry = new ProjectRegistry(scope);
+        assertEquals(outside.toRealPath(), registry.resolve(outside.toString()).projects().getFirst().root());
+        assertEquals(List.of("configured"), registry.configuredProjectNames());
+        assertEquals(configured.toRealPath(), registry.resolve().projects().getFirst().root());
+        assertEquals(1, scope.snapshot().projects().size());
+    }
+
+    private Path routedProject(String name) throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve(name));
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        createPublishedDatabase(project, name.replace(' ', '-'));
+        return project;
+    }
+
     private static Path createPublishedDatabase(Path project, String indexId) throws IOException {
         Path quillDir = Files.createDirectories(project.resolve(".quill"));
         Path database = quillDir.resolve(indexId + ".db");

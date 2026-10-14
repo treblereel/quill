@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -22,6 +23,8 @@ import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
 
 public class ProjectRegistry {
+
+    private static final int MAX_REQUEST_CONTEXTS = 32;
 
     private static final Executor PREWARM_EXECUTOR = Executors.newFixedThreadPool(2, task -> {
         Thread thread = new Thread(task, "quill-mcp-prewarm");
@@ -75,6 +78,8 @@ public class ProjectRegistry {
 
     private final ConcurrentHashMap<Path, IndexHandle> databases = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, AtomicLong> projectRoots = new ConcurrentHashMap<>();
+    // Request-only contexts never enter the configured scope or its default aggregation.
+    private final java.util.LinkedHashMap<Path, Boolean> requestedRoots = new java.util.LinkedHashMap<>(MAX_REQUEST_CONTEXTS, .75f, true);
     private final ConcurrentHashMap<Path, String> projectIdentities = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, Object> schemaRepairLocks = new ConcurrentHashMap<>();
     private final AtomicLong resolutionSequence = new AtomicLong();
@@ -115,9 +120,24 @@ public class ProjectRegistry {
         List<String> errors = new ArrayList<>(snapshot.diagnostics());
         List<ProjectIssue> issues = new ArrayList<>();
         Set<Path> activeDatabases = ConcurrentHashMap.newKeySet();
+        List<ProjectScope.Project> selected = scope.select(snapshot, selector);
+        Path requestPath = absoluteRequestPath(selector);
+        if (requestPath != null) {
+            ProjectScope.Project requested = requestProject(requestPath, selected);
+            selected = List.of(requested);
+        }
         Set<Path> configuredRoots = snapshot.projects().stream()
                 .map(project -> project.root().toAbsolutePath().normalize())
                 .collect(java.util.stream.Collectors.toSet());
+        synchronized (requestedRoots) {
+            if (requestPath != null && selected.size() == 1
+                    && !configuredRoots.contains(selected.getFirst().root())) {
+                requestedRoots.put(selected.getFirst().root(), Boolean.TRUE);
+                while (requestedRoots.size() > MAX_REQUEST_CONTEXTS) requestedRoots.remove(requestedRoots.keySet().iterator().next());
+            }
+            requestedRoots.keySet().removeIf(root -> !Files.isDirectory(root));
+            configuredRoots.addAll(requestedRoots.keySet());
+        }
         long previousReadinessRevision = readinessScopeRevision.getAndAccumulate(
                 snapshot.revision(), Math::max);
         if (snapshot.revision() > previousReadinessRevision) readiness.clear();
@@ -130,7 +150,6 @@ public class ProjectRegistry {
                 return seen;
             });
         }
-        List<ProjectScope.Project> selected = scope.select(snapshot, selector);
         if (selector != null && !selector.isBlank() && selected.size() > 1) {
             errors.add("AMBIGUOUS_PROJECT: '" + selector + "' matches multiple projects: "
                     + selected.stream().map(p -> p.name() + " (" + p.root() + ")").toList()
@@ -203,6 +222,44 @@ public class ProjectRegistry {
         }
         evictInactive(resolutionId, activeDatabases, configuredRoots, selectedRoots);
         return new Resolution(result, errors, issues);
+    }
+
+    private static Path absoluteRequestPath(String selector) {
+        if (selector == null || selector.isBlank()) return null;
+        try {
+            Path path = Path.of(selector.strip());
+            return path.isAbsolute() ? org.treblereel.mcp.core.ProjectIdentity.canonical(path) : null;
+        } catch (RuntimeException invalid) {
+            return null; // Preserve existing name/coordinate selector handling.
+        }
+    }
+
+    private static ProjectScope.Project requestProject(Path path, List<ProjectScope.Project> selected) {
+        Path start = Files.isRegularFile(path) ? path.getParent() : path;
+        if (Files.isDirectory(path) && (Files.isRegularFile(path.resolve("pom.xml"))
+                || BuildSystem.hasGradleMarker(path))) {
+            for (ProjectScope.Project project : selected) if (project.root().equals(path)) return project;
+            return new ProjectScope.Project(projectName(path), path);
+        }
+        if (!Files.exists(start)) return new ProjectScope.Project(projectName(start), start);
+        Path nearestBuild = null;
+        for (Path current = start; current != null; current = current.getParent()) {
+            // Stop at this checkout even if it has no index: never use a parent checkout.
+            if (Files.isDirectory(current.resolve(".quill")) || Files.exists(current.resolve(".git"))) {
+                for (ProjectScope.Project project : selected) if (project.root().equals(current)) return project;
+                return new ProjectScope.Project(projectName(current), current);
+            }
+            if (nearestBuild == null && (Files.isRegularFile(current.resolve("pom.xml"))
+                    || BuildSystem.hasGradleMarker(current))) nearestBuild = current;
+            if (!selected.isEmpty() && current.equals(selected.getFirst().root())) return selected.getFirst();
+            if (!Files.exists(start)) break;
+        }
+        Path root = nearestBuild == null ? start : nearestBuild;
+        return new ProjectScope.Project(projectName(root), root);
+    }
+
+    private static String projectName(Path root) {
+        return root.getFileName() == null ? root.toString() : root.getFileName().toString();
     }
 
     private ProjectIssue unavailableProjectIssue(ProjectScope.Project project) {
@@ -390,6 +447,10 @@ public class ProjectRegistry {
 
     public List<String> configuredProjectNames() {
         return scope.snapshot().projects().stream().map(ProjectScope.Project::name).toList();
+    }
+
+    boolean isConfiguredRoot(Path root) {
+        return scope.snapshot().projects().stream().anyMatch(project -> project.root().equals(root));
     }
 
     WorkspaceProjectScope workspaceScope() {

@@ -45,6 +45,9 @@ class WorktreeIsolationIT {
                     </project>
                     """);
         }
+        Files.writeString(main.resolve(".mcp.json"), JSON.writeValueAsString(java.util.Map.of(
+                "mcpServers", java.util.Map.of("quill", java.util.Map.of("command", "quill",
+                        "args", List.of("--mcp", "--project", main.toString()))))));
         writeSource(main, kotlin, "first");
         git(main, "init"); git(main, "add", ".");
         git(main, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "-m", "fixture");
@@ -61,10 +64,11 @@ class WorktreeIsolationIT {
             run(project, build);
             initialize(project);
         }
+        String unchangedConfiguration = Files.readString(main.resolve(".mcp.json"));
         ProjectIdentity a = ProjectIdentity.resolve(main), b = ProjectIdentity.resolve(linked);
         assertEquals(a.repositoryId(), b.repositoryId());
         assertNotEquals(a.worktreeId(), b.worktreeId());
-        ProjectRegistry registry = new ProjectRegistry(); registry.register(main); registry.register(linked);
+        ProjectRegistry registry = new ProjectRegistry(); registry.register(main);
         QuillTools tools = new QuillTools(registry);
         try (var callers = Executors.newFixedThreadPool(4)) {
             var futures = new ArrayList<java.util.concurrent.Future<?>>();
@@ -74,7 +78,7 @@ class WorktreeIsolationIT {
                     try {
                         var identity = original ? a : b;
                         String method = original ? "first" : "second";
-                        var answer = JSON.readTree(tools.search_symbols(method, Optional.of("method"), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(identity.projectId())));
+                        var answer = JSON.readTree(tools.search_symbols(method, Optional.of("method"), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(identity.projectRoot().toString())));
                         assertTrue(answer.path("total").asInt() > 0, answer.toString());
                         assertEquals(identity.projectId(), answer.path("_meta").path("project_id").asText());
                         assertEquals(identity.worktreeId(), answer.path("_meta").path("worktree_id").asText());
@@ -85,6 +89,13 @@ class WorktreeIsolationIT {
             }
             for (var future : futures) future.get(60, TimeUnit.SECONDS);
         }
+        var legacy = JSON.readTree(tools.search_symbols("first", Optional.of("method"), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+        assertTrue(legacy.path("total").asInt() > 0, legacy.toString());
+        assertEquals(a.projectId(), legacy.path("_meta").path("project_id").asText());
+        var legacyAbsent = JSON.readTree(tools.search_symbols("second", Optional.of("method"), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+        assertEquals(0, legacyAbsent.path("total").asInt(), legacyAbsent.toString());
+        assertEquals(unchangedConfiguration, Files.readString(main.resolve(".mcp.json")));
+        assertEquals(unchangedConfiguration, Files.readString(linked.resolve(".mcp.json")));
         // A copied generation cannot become queryable even at the same Git commit.
         org.treblereel.mcp.workspace.WorkspaceManifestStore.initialize(temp, 1);
         ProjectRegistry workspace = new ProjectRegistry(new org.treblereel.mcp.mcp.WorkspaceProjectScope(temp));
@@ -92,12 +103,15 @@ class WorktreeIsolationIT {
         assertEquals("ambiguous", ambiguous.path("resolution").asText(), ambiguous.toString());
         workspace.resolve().projects().forEach(entry -> org.treblereel.mcp.db.QuillDatabase.retire(entry.jdbi()));
         Path foreign = ProjectIndexStore.findBestAvailableDb(main);
-        registry.resolve().projects().forEach(entry -> org.treblereel.mcp.db.QuillDatabase.retire(entry.jdbi()));
+        registry.resolve(main.toString()).projects().forEach(entry -> org.treblereel.mcp.db.QuillDatabase.retire(entry.jdbi()));
+        registry.resolve(linked.toString()).projects().forEach(entry -> org.treblereel.mcp.db.QuillDatabase.retire(entry.jdbi()));
         try (var entries = Files.list(linked.resolve(".quill"))) {
             for (Path file : entries.filter(path -> path.toString().endsWith(".db")).toList()) Files.delete(file);
         }
         Files.copy(foreign, linked.resolve(".quill").resolve(foreign.getFileName()));
         Files.copy(main.resolve(".quill/refs.json"), linked.resolve(".quill/refs.json"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        var rejected = JSON.readTree(tools.search_symbols("first", Optional.of("method"), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(linked.toString())));
+        assertEquals("INDEX_OWNERSHIP_MISMATCH", rejected.path("error_code").asText(), rejected.toString());
         assertNull(ProjectIndexStore.findBestAvailableDb(linked));
         assertNotNull(ProjectIndexStore.findBestAvailableDb(main));
     }

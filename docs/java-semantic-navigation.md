@@ -20,6 +20,18 @@ prove the compiler that produced the indexed bytecode saw those same source byte
 Each response analyzes at most ten Java files and each file retains at most 4,096
 references. Source reference coverage is explicitly incomplete: lambda synthetic
 callers, initializer contexts and unsupported constructor descriptors are not guessed.
+
+Java bytecode call groups include `dispatch`: the exact symbolic target remains in
+`declared_target`, and bounded `possible_targets` use indexed ancestry and erased
+override shapes. Static, special and final-method references do not expand into
+override candidates. Covariant return descriptors retain distinct symbol identities.
+Candidates never assert that a receiver has that runtime type or that a call executes.
+For a selected override, `dispatch_context.possible_callers` separately reports
+virtual/interface calls to indexed ancestor declarations. These do not increase the
+exact usage/call counts; special `super` calls are excluded. This nested collection
+has its own pagination and continuation request. Hierarchy coverage remains incomplete
+because external nodes, generic bridges, inherited symbolic owners and proxies can
+add candidates. Duplicate owner names and missing declarations report explicit statuses.
 Position results and errors include index freshness metadata. A compiler-selected
 declaration absent from the index reports `semantic_target_not_indexed`.
 

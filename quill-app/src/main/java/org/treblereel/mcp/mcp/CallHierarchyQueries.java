@@ -189,6 +189,9 @@ final class CallHierarchyQueries {
         int naiveTokens = cls.sourceTokens();
         countedClasses.add(cls.id());
         JavaSourceLocations javaLocations = new JavaSourceLocations(jdbi);
+        JavaDispatchEvidence dispatch = new JavaDispatchEvidence(jdbi);
+        if (selected != null && kotlinDeclarations.isEmpty() && !normalizedDirection.equals("outbound"))
+            dispatch.appendPossibleCallers(root, cls, selected, limit, offset);
         java.util.Map<Integer, ClassRecord> callees = new java.util.HashMap<>();
         for (TraversalEdge traversed : page) {
             MethodCallView call = traversed.call();
@@ -200,6 +203,7 @@ final class CallHierarchyQueries {
                     call.toDescriptor(), call.toSource(), call.toSourceLine(),
                     call.toOrigin(), call.toModule());
             edge.put("invocation_kind", call.invocationKind());
+            if (call.fromSource() != null && call.fromSource().endsWith(".java")) dispatch.appendTarget(edge, call);
             edge.put("occurrence_count", call.occurrenceCount());
             edge.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
             ClassRecord callee = callees.computeIfAbsent(call.toClassId(), id -> IndexReader.findClassById(jdbi, id).orElse(null));

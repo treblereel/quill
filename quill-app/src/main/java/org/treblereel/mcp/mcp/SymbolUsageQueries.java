@@ -127,6 +127,8 @@ final class SymbolUsageQueries {
         int total = kotlin ? normalized.usages().size() : IndexReader.countExactMethodUsages(
                 jdbi, cls.id(), bytecodeName, selected.descriptor());
         ObjectNode root = base(cls, selected, kotlinDeclaration);
+        root.put("usage_scope", "exact_indexed_bytecode_references");
+        JavaDispatchEvidence dispatch = new JavaDispatchEvidence(jdbi);
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
@@ -139,6 +141,7 @@ final class SymbolUsageQueries {
                     usage.fromModule());
             node.put("usage_kind", "call");
             node.put("invocation_kind", usage.invocationKind());
+            if (!kotlin) dispatch.appendTarget(node, usage);
             node.put("occurrence_count", usage.occurrenceCount());
             node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
             appendPath(node, resolved);
@@ -150,6 +153,7 @@ final class SymbolUsageQueries {
         limitations(root).add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
         root.put("normalization_truncated", normalized.truncated());
         root.put("answer_complete", !normalized.truncated());
+        if (!kotlin) dispatch.appendPossibleCallers(root, cls, selected, limit, offset);
         appendPage(root, page.size(), total, limit, offset);
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();

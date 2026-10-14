@@ -189,6 +189,8 @@ final class CallHierarchyQueries {
         int naiveTokens = cls.sourceTokens();
         countedClasses.add(cls.id());
         JavaSourceLocations javaLocations = new JavaSourceLocations(jdbi);
+        String dynamicBasis = "2".equals(IndexReader.getMetadata(jdbi).get("invokedynamic_evidence_protocol"))
+                ? "lambda_metafactory" : "legacy_unclassified";
         JavaDispatchEvidence dispatch = new JavaDispatchEvidence(jdbi);
         if (selected != null && kotlinDeclarations.isEmpty() && !normalizedDirection.equals("outbound"))
             dispatch.appendPossibleCallers(root, cls, selected, limit, offset);
@@ -203,6 +205,11 @@ final class CallHierarchyQueries {
                     call.toDescriptor(), call.toSource(), call.toSourceLine(),
                     call.toOrigin(), call.toModule());
             edge.put("invocation_kind", call.invocationKind());
+            edge.put("edge_kind", "dynamic".equals(call.invocationKind())
+                    ? "lambda_metafactory".equals(dynamicBasis) ? "callback_reference" : "dynamic_handle_reference" : "call");
+            edge.put("execution_semantics", "dynamic".equals(call.invocationKind())
+                    ? "lambda_metafactory".equals(dynamicBasis) ? "callback_creation" : "bootstrap_reference_unknown" : "invocation_instruction");
+            if ("dynamic".equals(call.invocationKind())) edge.put("reference_basis",dynamicBasis);
             if (call.fromSource() != null && call.fromSource().endsWith(".java")) dispatch.appendTarget(edge, call);
             edge.put("occurrence_count", call.occurrenceCount());
             edge.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));

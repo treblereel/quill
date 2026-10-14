@@ -32,6 +32,16 @@ exact usage/call counts; special `super` calls are excluded. This nested collect
 has its own pagination and continuation request. Hierarchy coverage remains incomplete
 because external nodes, generic bridges, inherited symbolic owners and proxies can
 add candidates. Duplicate owner names and missing declarations report explicit statuses.
+
+`invokedynamic` only adds a member-level `callback_reference` for the implementation
+slot of a structurally supported standard `LambdaMetafactory`/`altMetafactory` call.
+Other bootstrap method/field handles remain class-level handle references; they do
+not fabricate calls or field reads/writes. Unknown self-owned handles are retained,
+and their owner classes are conservatively excluded from private-member dead-code
+candidates. Callback references carry `execution_semantics: callback_creation`.
+Execution-order analysis lists their creation sites separately and excludes them from
+invocation-order proofs. Older index generations mark dynamic references as
+`legacy_unclassified`; refresh the index to obtain bootstrap classification.
 Position results and errors include index freshness metadata. A compiler-selected
 declaration absent from the index reports `semantic_target_not_indexed`.
 

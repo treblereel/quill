@@ -1045,6 +1045,7 @@ final class WorkspaceToolQueries {
             result.put("usage_group_count", count[0]);
             result.put("usage_occurrence_count", count[1]);
             ArrayNode rows = result.putArray("usages");
+            boolean classifiedDynamic = "2".equals(IndexReader.getMetadata(db).get("invokedynamic_evidence_protocol"));
             handle.createQuery(sql).bind("target", target.id()).bind("name", bytecodeName)
                     .bind("descriptor", reference.descriptor())
                     .bind("module", edge.consumerModule()).bind("sourceSet", edge.sourceSet())
@@ -1056,8 +1057,11 @@ final class WorkspaceToolQueries {
                         node.put("occurrence_count", row.getInt("occurrence_count"));
                         String kind = row.getString("bytecode_kind");
                         node.put(field ? "access_kind" : "invocation_kind", kind);
-                        node.put("usage_kind", field
-                                ? kind.startsWith("read_") ? "read" : "write" : "call");
+                        node.put("usage_kind", field ? kind.startsWith("read_") ? "read" : "write" : "dynamic".equals(kind)
+                                ? classifiedDynamic ? "callback_reference" : "dynamic_handle_reference" : "call");
+                        if (!field) node.put("execution_semantics", "dynamic".equals(kind)
+                                ? classifiedDynamic ? "callback_creation" : "bootstrap_reference_unknown" : "invocation_instruction");
+                        if (!field && "dynamic".equals(kind)) node.put("reference_basis",classifiedDynamic ? "lambda_metafactory" : "legacy_unclassified");
                         try {
                             node.set("evidence_lines", JSON.readTree(row.getString("evidence_lines")));
                         } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {

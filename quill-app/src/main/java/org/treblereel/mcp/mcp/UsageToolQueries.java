@@ -29,7 +29,7 @@ final class UsageToolQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> USAGE_KINDS = Set.of(
             "annotation", "constructor_call", "field_access", "inheritance", "injection",
-            "method_call", "service_loader", "type_reference");
+            "method_call", "service_loader", "type_reference", "callback_reference", "method_handle_reference", "field_handle_reference", "bootstrap_reference");
 
     String findUsages(Jdbi jdbi, String target, String usageKind,
             String module, int limit, int offset) {
@@ -162,6 +162,10 @@ final class UsageToolQueries {
         return switch (indexedKind) {
             case "CONSTRUCTS" -> "constructor_call";
             case "CALLS" -> "method_call";
+            case "CALLBACK_REFERENCE" -> "callback_reference";
+            case "METHOD_HANDLE_REFERENCE" -> "method_handle_reference";
+            case "FIELD_HANDLE_REFERENCE" -> "field_handle_reference";
+            case "BOOTSTRAP_REFERENCE" -> "bootstrap_reference";
             case "FIELD_ACCESS" -> "field_access";
             case "CDI_INJECT", "SPRING_INJECT" -> "injection";
             case "SERVICE_PROVIDES", "SERVICE_CONSUMES" -> "service_loader";

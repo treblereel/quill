@@ -133,13 +133,19 @@ final class SymbolUsageQueries {
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
         JavaSourceLocations javaLocations = new JavaSourceLocations(jdbi);
+        String dynamicBasis = "2".equals(IndexReader.getMetadata(jdbi).get("invokedynamic_evidence_protocol"))
+                ? "lambda_metafactory" : "legacy_unclassified";
         for (var resolved : page) {
             MethodCallView usage = resolved.call();
             ObjectNode node = values.addObject();
             appendCaller(node, usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
                     usage.fromSource(), usage.fromSourceLine(), usage.fromOrigin(),
                     usage.fromModule());
-            node.put("usage_kind", "call");
+            node.put("usage_kind", "dynamic".equals(usage.invocationKind())
+                    ? "lambda_metafactory".equals(dynamicBasis) ? "callback_reference" : "dynamic_handle_reference" : "call");
+            node.put("execution_semantics", "dynamic".equals(usage.invocationKind())
+                    ? "lambda_metafactory".equals(dynamicBasis) ? "callback_creation" : "bootstrap_reference_unknown" : "invocation_instruction");
+            if ("dynamic".equals(usage.invocationKind())) node.put("reference_basis",dynamicBasis);
             node.put("invocation_kind", usage.invocationKind());
             if (!kotlin) dispatch.appendTarget(node, usage);
             node.put("occurrence_count", usage.occurrenceCount());

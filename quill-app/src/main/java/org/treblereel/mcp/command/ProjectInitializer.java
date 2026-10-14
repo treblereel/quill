@@ -694,6 +694,7 @@ public class ProjectInitializer {
         metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
         metadata.put("method_calls", Integer.toString(methodCalls.size()));
+        metadata.put("invokedynamic_evidence_protocol", "2");
         metadata.put("field_accesses", Integer.toString(fieldAccesses.size()));
         metadata.put("framework_endpoints", Integer.toString(frameworkEndpoints.size()));
         metadata.put("configuration_definitions",

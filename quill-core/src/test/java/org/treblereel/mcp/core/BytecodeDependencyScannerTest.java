@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.ServiceLoader;
 import java.util.concurrent.Executor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,70 @@ import org.junit.jupiter.api.io.TempDir;
 class BytecodeDependencyScannerTest {
 
     @TempDir Path tempDir;
+    private static final String LOOKUP = "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;";
+    private static final Handle META = new Handle(Opcodes.H_INVOKESTATIC,"java/lang/invoke/LambdaMetafactory","metafactory",
+            LOOKUP+"Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",false);
+    private static final Handle ALT = new Handle(Opcodes.H_INVOKESTATIC,"java/lang/invoke/LambdaMetafactory","altMetafactory",
+            LOOKUP+"[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;",false);
+    private BytecodeDependencyScanner.ScanResult dynamic(Handle bootstrap,Object... arguments) throws Exception {
+        ClassWriter target=new ClassWriter(0);
+        target.visit(Opcodes.V17,Opcodes.ACC_PUBLIC,"p/Target",null,"java/lang/Object",null); target.visitEnd();
+        Files.write(tempDir.resolve("Target.class"),target.toByteArray());
+        ClassWriter caller=new ClassWriter(0);
+        caller.visit(Opcodes.V17,Opcodes.ACC_PUBLIC,"p/Caller",null,"java/lang/Object",null);
+        var method=caller.visitMethod(Opcodes.ACC_PUBLIC|Opcodes.ACC_STATIC,"create","()V",null,null);
+        method.visitCode(); method.visitInvokeDynamicInsn("run","()Ljava/lang/Runnable;",bootstrap,arguments);
+        method.visitInsn(Opcodes.POP); method.visitInsn(Opcodes.RETURN); method.visitMaxs(1,0); method.visitEnd(); caller.visitEnd();
+        Files.write(tempDir.resolve("Caller.class"),caller.toByteArray());
+        return BytecodeDependencyScanner.analyze(ClassFileSnapshot.capture(List.of(tempDir)));
+    }
+    @Test void standardLambdaBootstrapHasOneCallbackReferenceAndNoExecutionClaim() throws Exception {
+        var handle=new Handle(Opcodes.H_INVOKESTATIC,"p/Target","run","()V",false);
+        for (var bootstrap:List.of(META,ALT)) {
+            var args=new java.util.ArrayList<Object>(List.of(Type.getMethodType("()V"),handle,Type.getMethodType("()V")));
+            if (bootstrap==ALT) args.add(1); // serializable callback
+            var result=dynamic(bootstrap,args.toArray());
+            assertEquals(1,result.methodCalls().size());
+            assertEquals("dynamic",result.methodCalls().get(0).invocationKind());
+            assertEquals("run",result.methodCalls().get(0).toMethod());
+            assertEquals(1,result.dependencies().stream().filter(d -> d.kind().equals("CALLBACK_REFERENCE")).count());
+        }
+    }
+    @Test void unknownBootstrapMethodAndFieldHandlesRemainReferencesWithoutCallsOrAccesses() throws Exception {
+        var bootstrap=new Handle(Opcodes.H_INVOKESTATIC,"p/Bootstrap","create",ALT.getDesc(),false);
+        var result=dynamic(bootstrap,new Handle(Opcodes.H_INVOKESTATIC,"p/Target","unused","()V",false),
+                new Handle(Opcodes.H_GETFIELD,"p/Target","unused","I",false));
+        assertEquals(0,result.methodCalls().size()); assertEquals(0,result.fieldAccesses().size());
+        assertEquals(java.util.Set.of("METHOD_HANDLE_REFERENCE","FIELD_HANDLE_REFERENCE"),result.dependencies().stream()
+                .filter(d -> d.toClass().equals("p.Target") && d.kind().endsWith("HANDLE_REFERENCE"))
+                .map(BytecodeDependencyScanner.StaticDependency::kind).collect(java.util.stream.Collectors.toSet()));
+    }
+    @Test void malformedLambdaSlotsFlagsCountsAndBootstrapDescriptorsDoNotBecomeCalls() throws Exception {
+        var handle=new Handle(Opcodes.H_INVOKESTATIC,"p/Target","run","()V",false);
+        Object sam=Type.getMethodType("()V");
+        for (Object[] args:List.of(new Object[]{sam,handle,sam},new Object[]{sam,handle,sam,8},
+                new Object[]{sam,handle,sam,2,-1},new Object[]{sam,handle,sam,2,1},
+                new Object[]{sam,handle,sam,4,1,Type.getType("Ljava/lang/String;")},
+                new Object[]{handle,sam,sam,0},new Object[]{sam,handle,sam,0,handle})) {
+            assertEquals(0,dynamic(ALT,args).methodCalls().size());
+        }
+        assertEquals(0,dynamic(new Handle(Opcodes.H_INVOKESTATIC,META.getOwner(),META.getName(),ALT.getDesc(),false),sam,handle,sam).methodCalls().size());
+        assertEquals(0,dynamic(META,sam,handle,sam,handle).methodCalls().size());
+        assertEquals(0,dynamic(META,sam,new Handle(Opcodes.H_GETSTATIC,"p/Target","x","I",false),sam).fieldAccesses().size());
+    }
+    @Test void alternateMarkerAndBridgeSlotsAreAcceptedOnlyWhenStructurallyValid() throws Exception {
+        var handle=new Handle(Opcodes.H_INVOKESTATIC,"p/Target","run","()V",false);
+        var result=dynamic(ALT,Type.getMethodType("()V"),handle,Type.getMethodType("()V"),6,
+                1,Type.getType("Ljava/lang/Runnable;"),1,Type.getMethodType("()V"));
+        assertEquals(1,result.methodCalls().size());
+    }
+    @Test void selfOwnedUnknownHandleReferencesAreRetainedWithoutCreatingCallEdges() throws Exception {
+        var bootstrap=new Handle(Opcodes.H_INVOKESTATIC,"p/Bootstrap","create",ALT.getDesc(),false);
+        var result=dynamic(bootstrap,new Handle(Opcodes.H_INVOKESTATIC,"p/Caller","unused","()V",false));
+        assertEquals(0,result.methodCalls().size());
+        assertEquals(1,result.dependencies().stream().filter(d -> d.fromClass().equals("p.Caller") && d.toClass().equals("p.Caller")
+                && d.kind().equals("METHOD_HANDLE_REFERENCE")).count());
+    }
 
     @Test
     void detectsConstructorOnlyDependencyWithoutDoubleCountingInit() throws URISyntaxException {

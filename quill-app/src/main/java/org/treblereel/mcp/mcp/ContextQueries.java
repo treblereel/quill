@@ -81,7 +81,7 @@ final class ContextQueries {
             ObjectNode usage = parse(usages.findUsages(
                     jdbi, cls.className(), null, null, limit, 0, false));
             context.set("usages", compact(usage, List.of(
-                    "usage_group_count", "usage_occurrence_count", "usages", "limitations",
+                    "usage_group_count", "usage_occurrence_count", "usages", "limitations", "coverage", "empty_result", "answer_complete",
                     "showing", "total", "has_more", "next_offset")));
 
             ObjectNode risk = parse(risks.getRisk(jdbi, cls.className()));
@@ -96,8 +96,8 @@ final class ContextQueries {
             ObjectNode impact = parse(tests.findImpactedTests(
                     jdbi, resolvedNames, true, 3, limit, 0));
             root.set("impacted_tests", compact(impact, List.of(
-                    "targets", "test_index_coverage", "answer_complete", "limitations", "tests",
-                    "showing", "total", "has_more", "next_offset")));
+                "targets", "test_index_coverage", "answer_complete", "limitations", "tests",
+                "showing", "total", "limit", "offset", "has_more", "next_offset")));
         }
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();

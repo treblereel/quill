@@ -20,14 +20,17 @@ public final class KotlinWorkerClient implements AutoCloseable {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int MAX_FRAME = 1024 * 1024;
     private static final KotlinWorkerClient SHARED = new KotlinWorkerClient(
-            KotlinRuntime::workerCommand, KotlinRuntime::workerIdentity, Duration.ofSeconds(30));
+            new RuntimeProvider(KotlinRuntime::workerCommand, KotlinRuntime::workerIdentity), Duration.ofSeconds(30));
     static {
         Runtime.getRuntime().addShutdownHook(new Thread(SHARED::close, "quill-k2-shutdown"));
     }
     @FunctionalInterface interface Command { List<String> get() throws IOException; }
     @FunctionalInterface interface Identity { String get() throws IOException; }
-    private final Command command;
-    private final Identity identity;
+    @FunctionalInterface interface VersionedCommand { List<String> get(String version) throws IOException; }
+    @FunctionalInterface interface VersionedIdentity { String get(String version) throws IOException; }
+    record RuntimeProvider(VersionedCommand command, VersionedIdentity identity) {}
+    private final VersionedCommand command;
+    private final VersionedIdentity identity;
     private final long timeoutNanos;
     private final ReentrantLock lock = new ReentrantLock();
     private final java.util.concurrent.atomic.AtomicInteger closing = new java.util.concurrent.atomic.AtomicInteger();
@@ -40,20 +43,25 @@ public final class KotlinWorkerClient implements AutoCloseable {
     private DataOutputStream output;
 
     KotlinWorkerClient(Command command, Identity identity, Duration timeout) {
-        this.command = command;
-        this.identity = identity;
+        this(new RuntimeProvider(version -> command.get(), version -> identity.get()), timeout);
+    }
+    KotlinWorkerClient(RuntimeProvider provider, Duration timeout) {
+        this.command = provider.command();
+        this.identity = provider.identity();
         this.timeoutNanos = timeout.toNanos();
     }
     public static KotlinWorkerClient shared() { return SHARED; }
 
     public JsonNode query(JsonNode request) {
+        String selected = KotlinRuntime.selectVersion(request.path("compilerVersion").asText(""));
+        if (selected == null) return status("compiler_version_unsupported");
         boolean acquired = false;
         try {
             acquired = lock.tryLock(timeoutNanos, TimeUnit.NANOSECONDS);
             if (!acquired) return status("timeout");
             if (closing.get() != 0) return status("unavailable");
             String current;
-            try { current = identity.get(); }
+            try { current = identity.get(selected); }
             catch (IOException missing) { stop(); return status("runtime_missing"); }
             if (process != null) {
                 boolean changed = !process.isAlive() || !current.equals(runtimeIdentity);
@@ -63,7 +71,7 @@ public final class KotlinWorkerClient implements AutoCloseable {
             }
             if (process == null) {
                 List<String> args;
-                try { args = new ArrayList<>(command.get()); }
+                try { args = new ArrayList<>(command.get(selected)); }
                 catch (IOException missing) { return status("runtime_missing"); }
                 int cp = args.indexOf("-cp");
                 runtimeFiles = cp < 0 ? List.of() : java.util.Arrays.stream(args.get(cp + 1)

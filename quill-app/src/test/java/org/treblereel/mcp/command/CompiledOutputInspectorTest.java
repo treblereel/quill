@@ -40,6 +40,21 @@ class CompiledOutputInspectorTest {
     }
 
     @Test
+    void combinedObservationMatchesLiveSeparateChecksAndDetectsNewOutputs() throws Exception {
+        Files.writeString(root.resolve("pom.xml"),"<project/>");
+        Path source=root.resolve("src/main/java/App.java"),compiled=root.resolve("target/classes/App.class");
+        Files.createDirectories(source.getParent());Files.createDirectories(compiled.getParent());
+        Files.writeString(source,"class App {}");Files.write(compiled,new byte[]{1});
+        var indexed=java.time.Instant.now().plusSeconds(2);
+        var first=CompiledOutputInspector.observe(root,indexed);
+        assertEquals(CompiledOutputInspector.inspect(root),first.report());
+        assertEquals(CompiledOutputInspector.outputsChangedAfter(root,indexed),first.changedAfterIndex());
+        Files.write(root.resolve("target/classes/Added.class"),new byte[]{2});
+        Files.setLastModifiedTime(root.resolve("target/classes/Added.class"),FileTime.from(indexed.plusSeconds(1)));
+        org.junit.jupiter.api.Assertions.assertTrue(CompiledOutputInspector.observe(root,indexed).changedAfterIndex());
+    }
+
+    @Test
     void pureParentPomDoesNotRequireCompiledClasses() throws Exception {
         Files.writeString(root.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>

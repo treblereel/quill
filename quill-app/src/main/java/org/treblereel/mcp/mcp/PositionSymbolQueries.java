@@ -57,7 +57,8 @@ final class PositionSymbolQueries {
         } catch (IOException unavailable) { return error(jdbi, "SOURCE_CHANGED", "Source became unavailable while resolving the position"); }
         boolean compilerResolved = semantic != null && semantic.path("status").asText().equals("resolved");
         boolean compilerLocal = semantic != null && java.util.Set.of("local", "unresolved").contains(semantic.path("status").asText());
-        String imported = kotlin ? importedName(code, identifier) : null;
+        String explicitQualified = kotlin ? qualifiedCall(sourceLine, located) : null;
+        String imported = kotlin && explicitQualified == null ? importedName(code, identifier) : null;
         String lookupName = imported == null ? identifier : imported.substring(imported.lastIndexOf('.') + 1);
         if (compilerResolved && semantic.path("name").isTextual()) {
             lookupName = semantic.path("name").asText();
@@ -69,23 +70,25 @@ final class PositionSymbolQueries {
         List<Candidate> candidates = declarations(jdbi, lookupName, normalized);
         if (kotlin) candidates = sourceCallables(jdbi, logicalProperties(jdbi, candidates, lookupName));
         if (compilerLocal) candidates = List.of();
-        if (imported != null && !compilerResolved) {
-            String qualified = imported;
+        if ((imported != null || explicitQualified != null) && !compilerResolved) {
+            String qualified = explicitQualified == null ? imported : explicitQualified;
             String importedMember = lookupName;
-            candidates = candidates.stream().filter(candidate -> candidate.className().replace('$', '.').equals(qualified)
+            List<Candidate> qualifiedCandidates = candidates.stream().filter(candidate -> candidate.className().replace('$', '.').equals(qualified)
                     || (candidate.className().replace('$', '.') + "." + importedMember).equals(qualified)
                     || qualified.equals(candidate.className().substring(0,
                             candidate.className().lastIndexOf('.') + 1) + importedMember)
                         && topLevel(jdbi, candidate.className()))
                     .toList();
+            // A dotted receiver may be an expression rather than a package. Only narrow
+            // explicit source qualification when indexed declarations confirm its owner.
+            if (explicitQualified == null || !qualifiedCandidates.isEmpty()) candidates = qualifiedCandidates;
         }
         if (compilerResolved) candidates = candidates.stream().filter(candidate ->
                 candidate.className().equals(semantic.path("owner").asText())
                         && candidate.kind().equals(semantic.path("kind").asText())
                         && (!semantic.has("descriptor") || java.util.Objects.equals(candidate.descriptor(), semantic.path("descriptor").asText()))
                         && (!semantic.has("source_file") || candidate.sourceFile() != null
-                            && root.resolve(candidate.sourceFile()).toAbsolutePath().normalize()
-                                .equals(Path.of(semantic.path("source_file").asText()).toAbsolutePath().normalize())))
+                            && sameSource(root.resolve(candidate.sourceFile()), Path.of(semantic.path("source_file").asText()))))
                 .toList();
         List<EnclosingClass> enclosing = enclosingClasses(jdbi, normalized, line);
         String suffix = source.substring(lineOffset + located.end()).stripLeading();
@@ -135,11 +138,13 @@ final class PositionSymbolQueries {
         if (decisive) {
             ObjectNode selectedNode = result.putObject("selected");
             addCandidate(selectedNode, selected);
+            if (compilerResolved) applyCompilerLocation(selectedNode, semantic);
         }
         ArrayNode matches = result.putArray("candidates");
         ranked.stream().limit(50).forEach(candidate -> {
             ObjectNode item = matches.addObject();
             addCandidate(item, candidate);
+            if (compilerResolved) applyCompilerLocation(item, semantic);
         });
         if (!enclosing.isEmpty()) {
             EnclosingClass value = enclosing.getFirst();
@@ -247,6 +252,14 @@ final class PositionSymbolQueries {
             }
         }
         return result;
+    }
+
+    private static String qualifiedCall(String sourceLine, Identifier located) {
+        String before = sourceLine.substring(0, located.start());
+        var matcher = java.util.regex.Pattern.compile(
+                "(?:(?:[\\p{L}_$][\\p{L}\\p{N}_$]*|`[^`\\r\\n]+`)\\.)+$").matcher(before);
+        if (!matcher.find()) return null;
+        return (matcher.group() + located.value()).replace("`", "");
     }
 
     private static boolean topLevel(Jdbi jdbi, String className) {
@@ -541,6 +554,21 @@ final class PositionSymbolQueries {
         item.put("same_file", candidate.sameFile());
         item.put("score", ranked.score());
         item.set("ranking_reasons", JSON.valueToTree(ranked.reasons()));
+    }
+
+    private static void applyCompilerLocation(ObjectNode item, com.fasterxml.jackson.databind.JsonNode semantic) {
+        if (!semantic.hasNonNull("source_file") || semantic.path("source_line").asInt() < 1) return;
+        ObjectNode location = item.with("location");
+        location.put("line", semantic.path("source_line").asInt());
+        location.put("basis", "compiler");
+        location.remove("class_declaration_line");
+        if (semantic.hasNonNull("source_column")) location.put("column", semantic.path("source_column").asInt());
+        if (semantic.hasNonNull("source_end_line")) location.put("end_line", semantic.path("source_end_line").asInt());
+        if (semantic.hasNonNull("source_end_column")) location.put("end_column", semantic.path("source_end_column").asInt());
+    }
+    private static boolean sameSource(Path indexed, Path compiler) {
+        try { return Files.isSameFile(indexed, compiler); }
+        catch (IOException unavailable) { return indexed.toAbsolutePath().normalize().equals(compiler.toAbsolutePath().normalize()); }
     }
 
     private static String error(Jdbi jdbi, String code, String message) {

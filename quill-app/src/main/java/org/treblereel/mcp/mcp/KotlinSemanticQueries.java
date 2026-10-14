@@ -59,7 +59,10 @@ final class KotlinSemanticQueries {
         if (selected == null || !Files.isRegularFile(file)) return false;
         final var project = selected; final Path anchor = file;
         JsonNode initial = prepare(project.jdbi(), project.root(), anchor, -1, true);
-        if (!initial.has("sources") || org.treblereel.mcp.kotlin.KotlinRuntime.available().isEmpty()) return false;
+        String selectedVersion = org.treblereel.mcp.kotlin.KotlinRuntime.selectVersion(
+                initial.path("compilerVersion").asText(""));
+        if (!initial.has("sources") || selectedVersion == null
+                || org.treblereel.mcp.kotlin.KotlinRuntime.available(selectedVersion).isEmpty()) return false;
         return warmup().prewarm(key(project.root(), initial),
                 () -> prepare(project.jdbi(), project.root(), anchor, -1, true));
     }

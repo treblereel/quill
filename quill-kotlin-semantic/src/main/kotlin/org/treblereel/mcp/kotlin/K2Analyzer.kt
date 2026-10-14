@@ -88,7 +88,8 @@ object K2Analyzer {
             if (request.path("unsupported_plugins").asText().isNotBlank()) return response("compiler_plugins_unavailable")
             if (!request.path("plugin_classpath").isEmpty || !request.path("plugin_options").isEmpty) {
                 if (!request.path("allow_compiler_plugins").asBoolean(false)) return response("compiler_plugins_disabled")
-                if (request.path("compilerVersion").asText() != "2.4.21") return response("compiler_plugin_version_mismatch")
+                val compilerVersion = request.path("compilerVersion").asText()
+                if (compilerVersion != "2.4.21" && !compilerVersion.startsWith("2.4.21-")) return response("compiler_plugin_version_mismatch")
             }
             val inputs = timings.measure("capture_before") { CompilerInputs.capture(request) }
             key = CacheKey(inputs.moduleHome(), inputs.sourceSet())
@@ -264,7 +265,14 @@ object K2Analyzer {
         } else return response("unavailable")
         if (sourceFile != null) {
             result.put("source_file", sourceFile.virtualFilePath)
-            result.put("source_line", 1 + sourceFile.text.take(declaration.source!!.startOffset).count { it == '\n' })
+            val source = declaration.source!!
+            val text = sourceFile.text
+            if (source.startOffset >= 0 && source.endOffset > source.startOffset && source.endOffset <= text.length) {
+                result.put("source_line", 1 + text.take(source.startOffset).count { it == '\n' })
+                result.put("source_column", source.startOffset - text.lastIndexOf('\n', source.startOffset - 1))
+                result.put("source_end_line", 1 + text.take(source.endOffset).count { it == '\n' })
+                result.put("source_end_column", source.endOffset - text.lastIndexOf('\n', source.endOffset - 1))
+            }
         }
         return result
     }

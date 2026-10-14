@@ -87,7 +87,20 @@ final class ChangePlanQueries {
         copy(impact, testPlan, "tests");
         copy(impact, testPlan, "showing");
         copy(impact, testPlan, "total");
+        copy(impact, testPlan, "limit");
+        copy(impact, testPlan, "offset");
         copy(impact, testPlan, "has_more");
+        copy(impact, testPlan, "next_offset");
+        if (impact.path("has_more").asBoolean() && impact.has("next_offset")) {
+            ObjectNode next = testPlan.putObject("next_page_request");
+            next.put("tool", "find_impacted_tests");
+            ObjectNode arguments = next.putObject("arguments");
+            arguments.set("targets", impact.path("targets").deepCopy());
+            arguments.put("transitive", true);
+            arguments.put("max_depth", 3);
+            arguments.put("limit", impact.path("limit").asInt());
+            arguments.put("offset", impact.path("next_offset").asInt());
+        }
         root.set("verification_plan", new VerificationPlanQueries().plan(
                 projectRoot, context.path("contexts"), impact));
 

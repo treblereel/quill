@@ -65,6 +65,30 @@ class KotlinRuntimeTest {
         assertTrue(KotlinRuntime.workerCommand().contains("-Xss8m"));
     }
 
+    @Test void compilerVersionsHaveSeparateVerifiedWorkersAndOfflineCaches() throws Exception {
+        assertEquals(KotlinRuntime.version(), KotlinRuntime.selectVersion(""));
+        assertEquals("2.1.20", KotlinRuntime.selectVersion("2.1.20-release-217"));
+        assertEquals(KotlinRuntime.version(), KotlinRuntime.selectVersion(KotlinRuntime.version()));
+        assertNull(KotlinRuntime.selectVersion("2.1.21"));
+        assertNull(KotlinRuntime.selectVersion("2.1.20malformed"));
+        assertThrows(java.io.IOException.class, () -> KotlinRuntime.prepareVersion("2.1.21"));
+        String legacy = "2.1.20";
+        artifact("org.jetbrains.kotlin", "kotlin-compiler-embeddable", legacy, "");
+        artifact("org.jetbrains.kotlin", "kotlin-scripting-compiler-embeddable", legacy, "");
+        artifact("org.jetbrains.kotlin", "kotlin-stdlib", legacy, "");
+        var current = KotlinRuntime.prepare();
+        var previous = KotlinRuntime.prepareVersion(legacy);
+        assertNotEquals(current.getFirst(), previous.getFirst());
+        assertNotEquals(KotlinRuntime.directory(KotlinRuntime.cacheRoot()),
+                KotlinRuntime.directory(KotlinRuntime.cacheRoot(), legacy));
+        assertEquals(previous, KotlinRuntime.available(legacy));
+        assertEquals(current, KotlinRuntime.available());
+        property("quill.kotlin.offline", "true");
+        assertEquals(previous, KotlinRuntime.prepareVersion(legacy));
+        assertTrue(KotlinRuntime.workerCommand(legacy).get(3).contains("2.1.20"));
+        assertTrue(KotlinRuntime.available("2.1.21").isEmpty());
+    }
+
     private Path isolatedHomeWithoutMavenSettings() throws Exception {
         Path home = temporary.resolve("home with spaces"); Files.createDirectories(home);
         property("user.home", home.toString());

@@ -38,6 +38,8 @@ final class UnusedMethodQueries {
         }
 
         Map<String, Integer> excluded = new java.util.LinkedHashMap<>();
+        Set<Integer> handleOwners = new HashSet<>(jdbi.withHandle(h -> h.createQuery(
+                "SELECT DISTINCT to_class_id FROM dependencies WHERE kind='METHOD_HANDLE_REFERENCE'").mapTo(Integer.class).list()));
         List<Candidate> candidates = new ArrayList<>();
         int analyzedPrivateMethods = 0;
         for (ClassRecord cls : classes) {
@@ -45,6 +47,7 @@ final class UnusedMethodQueries {
             for (ClassMemberRecord member : members.getOrDefault(cls.id(), List.of())) {
                 if (!"METHOD".equals(member.kind()) || !hasModifier(member, "private")) continue;
                 analyzedPrivateMethods++;
+                if (handleOwners.contains(cls.id())) { increment(excluded,"unclassified_method_handle_reference"); continue; }
                 if (!member.annotations().isEmpty()) {
                     increment(excluded, "annotated_method");
                     continue;

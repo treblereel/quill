@@ -9,9 +9,36 @@ import org.jdbi.v3.core.Jdbi;
 
 public final class QuillDatabase {
 
-    static final int SCHEMA_VERSION = 28;
+    static final int SCHEMA_VERSION = 29;
 
+    private static final java.lang.ref.Cleaner CLEANER=java.lang.ref.Cleaner.create();
+    private static final java.util.Map<Jdbi,ReadOnlyConnectionPool> POOLS=java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private record GenerationStamp(Path path,Object key,long size,java.nio.file.attribute.FileTime modified) {}
+    private static final java.util.Map<Jdbi,GenerationStamp> GENERATIONS=java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private static GenerationStamp stamp(Path path) throws IOException {
+        Path canonical=path.toRealPath();var attributes=Files.readAttributes(canonical,java.nio.file.attribute.BasicFileAttributes.class);
+        return new GenerationStamp(canonical,attributes.fileKey(),attributes.size(),attributes.lastModifiedTime());
+    }
+    public static boolean matchesGeneration(Jdbi database,Path path) {
+        try {var expected=GENERATIONS.get(database);return expected!=null && expected.key()!=null && expected.equals(stamp(path));}
+        catch(IOException missing){return false;}
+    }
     private QuillDatabase() {}
+
+    /** Pool only immutable published indexes, never staging writers or arbitrary writable databases. */
+    public static Jdbi openPooled(Path path) {
+        try {
+            var before=stamp(path);Jdbi database=openExisting(before.path(),true,true);
+            if(!before.equals(stamp(path))) {retire(database);throw new IllegalStateException("Index replaced while opening; retry the request");}
+            GENERATIONS.put(database,before);return database;
+        } catch(IOException missing){throw new IllegalStateException("Cannot inspect immutable index generation",missing);}
+    }
+    public static boolean isPooled(Jdbi database) {return POOLS.containsKey(database);}
+    public static void retire(Jdbi database) {
+        GENERATIONS.remove(database);
+        IndexGenerationCache.invalidate(database);
+        ReadOnlyConnectionPool pool=POOLS.remove(database);if(pool!=null)pool.run();
+    }
 
     public static Jdbi create(Path dbPath) {
         return create(dbPath, true);
@@ -103,6 +130,7 @@ public final class QuillDatabase {
                     annotation_details TEXT NOT NULL DEFAULT '[]',
                     UNIQUE(class_id, kind, signature)
                 )""");
+            h.execute("CREATE TABLE IF NOT EXISTS jvm_api (class_id INTEGER PRIMARY KEY REFERENCES classes(id) ON DELETE CASCADE, evidence TEXT NOT NULL)");
             h.execute("CREATE TABLE IF NOT EXISTS kotlin_source_debug (class_id INTEGER PRIMARY KEY REFERENCES classes(id) ON DELETE CASCADE, data TEXT NOT NULL)");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS kotlin_declarations (
@@ -423,13 +451,14 @@ public final class QuillDatabase {
         return openExisting(dbPath, false);
     }
 
-    private static Jdbi openExisting(Path dbPath, boolean readOnly) {
+    private static Jdbi openExisting(Path dbPath, boolean readOnly) {return openExisting(dbPath,readOnly,false);}
+    private static Jdbi openExisting(Path dbPath, boolean readOnly, boolean pooled) {
         if (!Files.exists(dbPath)) {
             throw new IllegalStateException(
                     "Index not found at " + dbPath + ". Run 'quill init' first.");
         }
-        Jdbi jdbi = createJdbi(dbPath, readOnly);
-        jdbi.useHandle(h -> {
+        Jdbi jdbi = pooled ? pooledJdbi(dbPath) : createJdbi(dbPath, readOnly);
+        try {jdbi.useHandle(h -> {
             int version = h.createQuery("PRAGMA user_version")
                     .mapTo(Integer.class).one();
             if (version > SCHEMA_VERSION) {
@@ -444,8 +473,16 @@ public final class QuillDatabase {
                                 + version + ", current v" + SCHEMA_VERSION
                                 + "). Re-run 'quill init' to rebuild.");
             }
-        });
+        });} catch(RuntimeException error) {retire(jdbi);throw error;}
         return jdbi;
+    }
+
+    private static Jdbi pooledJdbi(Path path) {
+        String url="jdbc:sqlite:"+path.toAbsolutePath().normalize().toUri()+"?mode=ro";
+        var pool=new ReadOnlyConnectionPool(url,4,java.time.Duration.ofSeconds(5));
+        Jdbi database=Jdbi.create(pool::borrow);
+        instrument(database);POOLS.put(database,pool);CLEANER.register(database,pool);
+        return database;
     }
 
     private static Jdbi createJdbi(Path dbPath, boolean readOnly) {
@@ -453,8 +490,9 @@ public final class QuillDatabase {
         String url = readOnly
                 ? "jdbc:sqlite:" + absolutePath.toUri() + "?mode=ro"
                 : "jdbc:sqlite:" + absolutePath;
-        return Jdbi.create(() -> {
+        Jdbi database=Jdbi.create(() -> {
             var conn = DriverManager.getConnection(url);
+            QueryMetrics.connectionOpened();
             try (var stmt = conn.createStatement()) {
                 stmt.execute("PRAGMA foreign_keys=ON");
             } catch (SQLException e) {
@@ -462,6 +500,14 @@ public final class QuillDatabase {
                 throw e;
             }
             return conn;
+        });
+        instrument(database);
+        return database;
+    }
+    private static void instrument(Jdbi database) {
+        database.setSqlLogger(new org.jdbi.v3.core.statement.SqlLogger() {
+            @Override public void logAfterExecution(org.jdbi.v3.core.statement.StatementContext context) {QueryMetrics.statementExecuted();}
+            @Override public void logException(org.jdbi.v3.core.statement.StatementContext context,java.sql.SQLException error) {QueryMetrics.statementExecuted();}
         });
     }
 

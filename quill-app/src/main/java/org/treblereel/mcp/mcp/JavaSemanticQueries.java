@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.util.*;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.db.IndexReader;
 
 /** Compiler-confirmed Java navigation from successful build capture; never executes a build. */
 final class JavaSemanticQueries {
@@ -38,39 +39,56 @@ final class JavaSemanticQueries {
                 }
                 if (selected == null) return;
                 Path root = selected.root(), file = anchor;
-                JsonNode request = prepare(root, file, -1);
+                Jdbi db = selected.jdbi();
+                JsonNode request = prepare(db, root, file, -1);
                 if (!request.has("sources")) return;
                 synchronized (JavaSemanticQueries.class) {
                     if (!cancelled.get()) coordinator().prewarm(request.path("module").asText() + ":" + request.path("source_set").asText(),
-                            () -> prepare(root, file, -1));
+                            () -> prepare(db, root, file, -1));
                 }
             } catch (RuntimeException unavailable) { /* Foreground retains preparation and fallback. */ }
         }, "quill-java-startup");
         thread.setDaemon(true); thread.start();
         return () -> { cancelled.set(true); thread.interrupt(); };
     }
-    static JsonNode resolve(Jdbi unused, Path root, Path file, int offset) {
-        JsonNode request = prepare(root, file, offset);
+    static JsonNode resolve(Jdbi db, Path root, Path file, int offset) {
+        JsonNode request = prepare(db, root, file, offset);
         if (!request.has("sources")) return request;
         String key = request.path("module").asText() + ":" + request.path("source_set").asText();
-        return coordinator().query(key, () -> prepare(root, file, offset), () -> prepare(root, file, -1));
+        return coordinator().query(key, () -> prepare(db, root, file, offset), () -> prepare(db, root, file, -1));
     }
     private static JsonNode queryWorker(JsonNode request) {
         JsonNode result = WORKER.query(request);
-        JsonNode current = prepare(Path.of(request.path("project_root").asText()), Path.of(request.path("file").asText()), request.path("offset").asInt());
+        JsonNode current = prepare(Path.of(request.path("project_root").asText()), Path.of(request.path("file").asText()),
+                request.path("offset").asInt(), Path.of(request.path("module").asText()));
         if (!current.equals(request)) return status("inputs_changed");
         return result;
     }
-    static JsonNode prepare(Path root, Path file, int offset) {
+    static JsonNode prepare(Jdbi db, Path root, Path file, int offset) {
+        Path module = null;
+        try {
+            Path normalizedRoot = root.toAbsolutePath().normalize(), normalizedFile = file.toAbsolutePath().normalize();
+            if (normalizedFile.startsWith(normalizedRoot)) {
+                var indexed = IndexReader.findFileByPath(db, normalizedRoot.relativize(normalizedFile).toString().replace('\\', '/'));
+                if (indexed.isPresent() && indexed.get().module() != null)
+                    module = normalizedRoot.resolve(indexed.get().module()).normalize();
+            }
+        } catch (RuntimeException unavailable) { /* Capture discovery remains available without index context. */ }
+        return prepare(root, file, offset, module);
+    }
+    static JsonNode prepare(Path root, Path file, int offset) { return prepare(root, file, offset, null); }
+    private static JsonNode prepare(Path root, Path file, int offset, Path moduleHint) {
         try {
             root = root.toAbsolutePath().normalize(); file = file.toAbsolutePath().normalize();
             if (!Files.isRegularFile(file)) return status("source_missing");
             if (!file.toRealPath().startsWith(root.toRealPath())) return status("source_outside_root");
-            Path module = file.getParent();
-            while (module != null && module.startsWith(root) && !Files.isRegularFile(module.resolve("pom.xml"))
-                    && !BuildSystem.hasGradleMarker(module)) module = module.getParent();
+            root = root.toRealPath(); file = file.toRealPath();
+            Path module = moduleHint == null ? file.getParent() : canonical(moduleHint);
+            if (moduleHint == null) while (module != null && module.startsWith(root) && !Files.isRegularFile(module.resolve("pom.xml"))
+                    && !BuildSystem.hasGradleMarker(module) && !hasCapture(module)) module = module.getParent();
             if (module == null || !module.startsWith(root)) return status("module_unknown");
-            Path output = module.resolve(BuildSystem.detect(module) == BuildSystem.MAVEN ? "target" : "build");
+            if (!file.startsWith(module)) return status("module_unknown");
+            Path output = module.resolve(Files.isRegularFile(module.resolve("pom.xml")) ? "target" : "build");
             if (!Files.isDirectory(output)) return status("compiler_settings_missing");
             // Choose the capture whose configured source root is most specific. Custom Gradle sets are included.
             Path selected = null; Properties settings = null; int specificity = -1;
@@ -102,7 +120,7 @@ final class JavaSemanticQueries {
             if (release != null && !release.matches("[0-9]+") || release == null
                     && (source == null || target == null || !source.matches("(?:1\\.)?[0-9]+") || !target.matches("(?:1\\.)?[0-9]+")))
                 return status("release_settings_unsupported");
-            Path home = Path.of(settings.getProperty("jdkHome", "")).toAbsolutePath().normalize();
+            Path home = canonical(Path.of(settings.getProperty("jdkHome", "")));
             if (!Files.isRegularFile(home.resolve("release")) || !Files.isExecutable(home.resolve("bin/java"))
                     || !Files.isExecutable(home.resolve("bin/javac"))) return status("jdk_unavailable");
             Properties jdk = load(home.resolve("release"));
@@ -120,11 +138,11 @@ final class JavaSemanticQueries {
             int buildInputs = count(settings, "buildInput");
             if (buildInputs == 0) return status("compiler_build_inputs_missing");
             for (int i = 0; i < buildInputs; i++) {
-                Path input = Path.of(required(settings, "buildInput.path." + i)); watched.add(input.toString());
+                Path input = canonical(Path.of(required(settings, "buildInput.path." + i))); watched.add(input.toString());
                 if (!hash(input).equals(required(settings, "buildInput.sha256." + i))) return status("compiler_settings_stale");
             }
             var roots = new LinkedHashSet<>(paths(settings, "sourceRoot", module));
-            if (settings.containsKey("generatedSourcesDirectory")) roots.add(module.resolve(settings.getProperty("generatedSourcesDirectory")).normalize());
+            if (settings.containsKey("generatedSourcesDirectory")) roots.add(canonical(module.resolve(settings.getProperty("generatedSourcesDirectory"))));
             var sources = request.putArray("sources"); var javaRoots = request.putArray("java_roots");
             Set<Path> files = new TreeSet<>();
             for (Path sourceRoot : roots) {
@@ -150,6 +168,13 @@ final class JavaSemanticQueries {
             return request;
         } catch (Exception unavailable) { return status("compiler_settings_unavailable"); }
     }
+    private static boolean hasCapture(Path module) throws IOException {
+        Path output = module.resolve("build");
+        if (!Files.isDirectory(output)) return false;
+        try (var captures = Files.newDirectoryStream(output, "quill-java-*.properties")) {
+            return captures.iterator().hasNext();
+        }
+    }
     private static Properties load(Path file) throws IOException {
         var values = new Properties(); try (var reader = Files.newBufferedReader(file)) { values.load(reader); } return values;
     }
@@ -164,7 +189,15 @@ final class JavaSemanticQueries {
         List<String> result = new ArrayList<>(); for (int i = 0; i < count(settings, prefix); i++) result.add(required(settings, prefix + "." + i)); return result;
     }
     private static List<Path> paths(Properties settings, String prefix, Path module) throws IOException {
-        return values(settings, prefix).stream().map(value -> module.resolve(value).toAbsolutePath().normalize()).toList();
+        List<Path> result = new ArrayList<>();
+        for (String value : values(settings, prefix)) result.add(canonical(module.resolve(value)));
+        return result;
+    }
+    private static Path canonical(Path path) throws IOException {
+        Path normalized = path.toAbsolutePath().normalize(), parent = normalized;
+        while (parent != null && !Files.exists(parent)) parent = parent.getParent();
+        if (parent == null) return normalized;
+        return parent.toRealPath().resolve(parent.relativize(normalized)).normalize();
     }
     static String hash(Path file) throws Exception {
         if (!Files.isRegularFile(file)) return "absent";

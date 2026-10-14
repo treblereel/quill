@@ -86,6 +86,7 @@ final class ExecutionOrderQueries {
                 selected.descriptor(), "outbound", 10_000, 0);
         List<Event> events = new ArrayList<>();
         for (MethodCallView call : calls) {
+            if ("dynamic".equals(call.invocationKind())) continue;
             String category = category(call.toClass(), call.toMethod(), beforeTerms, afterTerms);
             for (int ordinal : call.instructionOrdinals()) {
                 events.add(new Event(ordinal, category, call.toClass(), call.toMethod(),
@@ -139,6 +140,16 @@ final class ExecutionOrderQueries {
             }
         }
         root.put("event_count", events.size());
+        boolean classifiedDynamic = "2".equals(IndexReader.getMetadata(jdbi).get("invokedynamic_evidence_protocol"));
+        ArrayNode callbacks = root.putArray("dynamic_references");
+        for (MethodCallView call : calls) if ("dynamic".equals(call.invocationKind())) {
+            var callback = callbacks.addObject().put("class",call.toClass()).put("method",call.toMethod())
+                    .put("descriptor",call.toDescriptor()).put("execution_proven",false)
+                    .put("reference_basis",classifiedDynamic ? "lambda_metafactory" : "legacy_unclassified")
+                    .put("execution_semantics",classifiedDynamic ? "callback_creation" : "bootstrap_reference_unknown");
+            callback.set("creation_instruction_ordinals",JSON.valueToTree(call.instructionOrdinals()));
+            callback.set("evidence_lines",JSON.valueToTree(call.evidenceLines()));
+        }
         ArrayNode sequence = root.putArray("bytecode_sequence");
         for (Event event : events) appendEvent(sequence, event, cls.sourceFile());
         ObjectNode relation = root.putObject("ordering_analysis");
@@ -181,6 +192,7 @@ final class ExecutionOrderQueries {
                 .add("Exceptional CFG conservatively connects every protected instruction to its handler")
                 .add("Asynchronous completion, reflection, and external-library internals are not ordered by this analysis")
                 .add("Persistence and dispatch labels are name-based classifications; inspect the listed calls");
+        root.withArray("limitations").add("Callback creation is not invocation of its referenced method; dynamic references are excluded from ordering events");
         appendMeta(root, jdbi, cls.sourceTokens(), cls.sourceFile(), cls.module());
         return root.toString();
     }

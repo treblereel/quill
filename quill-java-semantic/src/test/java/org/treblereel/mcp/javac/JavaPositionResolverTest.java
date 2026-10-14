@@ -65,12 +65,96 @@ class JavaPositionResolverTest {
             assertEquals("p.I",inherited.owner()); assertEquals("()I",inherited.descriptor());
         }
     }
+    @Test void declarationRangesDistinguishOverloadsAndFieldsFromTheirClass() throws Exception {
+        String source = "package p;\nclass Example {\n  int value;\n  int pick(int x) { return x; }\n  int pick(String x) { return 1; }\n  void run() { value = pick(1); pick(\"x\"); }\n}";
+        Path file = write(source);
+        try (var resolver = resolver()) {
+            var field = query(resolver, file, "value =", "value");
+            assertEquals("FIELD", field.kind());
+            assertEquals(3, field.startLine());
+            assertEquals(3, field.startColumn());
+            assertEquals(3, field.endLine());
+            assertEquals(13, field.endColumn());
+            var number = query(resolver, file, "pick(1)", "pick");
+            var text = query(resolver, file, "pick(\"x\")", "pick");
+            assertEquals(4, number.startLine());
+            assertEquals(5, text.startLine());
+            assertTrue(number.endColumn() > number.startColumn());
+            assertEquals(file.toString(), number.declarationFile());
+            var binary = query(resolver, file, "String x)", "String");
+            assertEquals("resolved", binary.status());
+            assertNull(binary.declarationFile());
+            assertEquals(-1, binary.startLine());
+        }
+    }
     @Test void localShadowingDoesNotSelectSameNameField() throws Exception {
         Path file=write("package p; class Example {String value; void run(){String value=\"x\"; value.length();}}");
         try(var resolver=resolver()) {
             var local=query(resolver,file,"value.length()","value");
             assertEquals("local",local.status()); assertNull(local.owner());
             assertEquals("java.lang.String",query(resolver,file,"value.length()","length").owner());
+        }
+    }
+    @Test void referenceRangesSelectOverloadsRepeatedCallsConstructorsAndMethodReferences() throws Exception {
+        String source = "package p;\r\nclass Example {\r\n int field; int pick(int x){return x;} int pick(String x){return 1;}\r\n"
+                + "\tvoid run(){ /* 😀 */ pick(1); pick(2); pick(\"x\"); field=1; field++; field+=2; int n=field;\r\n"
+                + " java.util.function.IntUnaryOperator fn=this::pick; new Example(); }\r\n}";
+        Path file = write(source);
+        try (var resolver = resolver()) {
+            var result = resolver.references(file);
+            assertEquals("resolved", result.status());
+            var calls = result.references().stream().filter(r -> r.name().equals("pick") && r.descriptor().equals("(I)I")).toList();
+            assertEquals(3, calls.size());
+            assertEquals(List.of("call", "call", "method_reference"), calls.stream().map(JavaPositionResolver.Reference::access).toList());
+            assertEquals("run", calls.get(0).callerName());
+            assertEquals("()V", calls.get(0).callerDescriptor());
+            assertEquals(4, calls.get(0).line());
+            assertEquals(source.substring(source.lastIndexOf("\n", source.indexOf("pick(1)")) + 1, source.indexOf("pick(1)")).length() + 1,
+                    calls.get(0).column());
+            assertTrue(calls.get(1).column() > calls.get(0).endColumn());
+            assertEquals(List.of("write", "read_write", "read_write", "read"), result.references().stream()
+                    .filter(r -> r.name().equals("field")).map(JavaPositionResolver.Reference::access).toList());
+            var constructor = result.references().stream().filter(r -> r.kind().equals("CONSTRUCTOR")).findFirst().orElseThrow();
+            assertEquals("<init>", constructor.name());
+            assertEquals("()V", constructor.descriptor());
+            assertTrue(resolver.references(file).reused());
+        }
+    }
+    @Test void referencesExcludeShadowedLocalsAndSyntheticLambdaCallersAndHandleEscapedNames() throws Exception {
+        String escaped = "\\" + "u0070ick";
+        Path file = write("package p; class Example {int field; int pick(){return 1;} void run(){int field=0; field++; this."
+                + escaped + "(); Runnable r=()->pick();} }");
+        try (var resolver = resolver()) {
+            var result = resolver.references(file);
+            assertEquals("resolved", result.status());
+            assertEquals(1, result.references().size());
+            var reference = result.references().get(0);
+            assertEquals("pick", reference.name());
+            String source = Files.readString(file);
+            assertEquals("this." + escaped, source.substring(reference.column() - 1, reference.endColumn() - 1));
+        }
+    }
+    @Test void referenceInputRacesAndCompilerErrorsHaveNoLocations() throws Exception {
+        Path file = write("package p; class Example {void pick(){} void run(){pick();}}");
+        try (var resolver = new JavaPositionResolver(List.of(root), List.of(), "17", () -> {
+            try { Files.writeString(file, Files.readString(file) + " "); } catch (Exception failure) { throw new RuntimeException(failure); }
+        })) {
+            var result = resolver.references(file);
+            assertEquals("inputs_changed", result.status()); assertTrue(result.references().isEmpty());
+        }
+        Files.writeString(file, "class Example { void run(){ missing(); }}");
+        try (var resolver = resolver()) {
+            var result = resolver.references(file);
+            assertEquals("analysis_errors", result.status()); assertTrue(result.references().isEmpty());
+        }
+    }
+    @Test void referenceLimitIsExplicitAndDoesNotDiscardCompilerIdentity() throws Exception {
+        Path file = write("package p; class Example {void pick(){} void run(){" + "pick();".repeat(4100) + "}}");
+        try (var resolver = resolver()) {
+            var result = resolver.references(file);
+            assertEquals("resolved", result.status()); assertTrue(result.truncated());
+            assertEquals(4096, result.references().size());
+            assertTrue(result.references().stream().allMatch(r -> r.descriptor().equals("()V") && r.name().equals("pick")));
         }
     }
     @Test void receiverPositionDoesNotResolveSelectedMethod() throws Exception {

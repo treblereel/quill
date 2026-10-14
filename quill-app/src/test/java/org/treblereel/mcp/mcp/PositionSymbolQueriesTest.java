@@ -166,4 +166,68 @@ class PositionSymbolQueriesTest {
                 result.path("selected").path("location").path("path").asText());
         assertEquals("submitOrder", result.path("selected").path("kotlin_name").asText());
     }
+
+    @Test
+    void qualifiedKotlinTopLevelCallBeatsSameFileMethodInLexicalFallback() throws Exception {
+        String relative = "src/main/kotlin/acme/Search.kt";
+        Path source = temp.resolve(relative);
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, """
+                package acme
+                class Search {
+                  fun createMatcher(pattern: String) = pattern
+                  fun run() {
+                    acme.helpers.createMatcher("qualified")
+                    receiver.createMatcher("unqualified receiver")
+                  }
+                }
+                """);
+        Jdbi jdbi = QuillDatabase.create(temp.resolve("qualified-kotlin.db"));
+        jdbi.useHandle(handle -> {
+            int search = handle.createUpdate("""
+                    INSERT INTO classes(class_name, kind, interfaces, source_file, source_line,
+                                        origin, lifecycle)
+                    VALUES ('acme.Search', 'CLASS', '[]', :path, 2, 'source', 'current')
+                    """).bind("path", relative).executeAndReturnGeneratedKeys("id")
+                    .mapTo(Integer.class).one();
+            int facade = handle.createUpdate("""
+                    INSERT INTO classes(class_name, kind, interfaces, source_file, source_line,
+                                        origin, lifecycle)
+                    VALUES ('acme.helpers.MatchUtilsKt', 'CLASS', '[]',
+                            'src/main/kotlin/acme/helpers/MatchUtils.kt', 1, 'source', 'current')
+                    """).executeAndReturnGeneratedKeys("id").mapTo(Integer.class).one();
+            for (int owner : new int[] {search, facade}) {
+                handle.createUpdate("""
+                        INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                                                  type_name, parameter_types, modifiers, annotations)
+                        VALUES (:owner, 'METHOD', 'createMatcher', 'createMatcher(java.lang.String)',
+                                '(Ljava/lang/String;)Ljava/lang/String;', 'java.lang.String',
+                                '["java.lang.String"]', 'public', '[]')
+                        """).bind("owner", owner).execute();
+                handle.createUpdate("""
+                        INSERT INTO kotlin_declarations
+                          (class_id, kind, name, jvm_name, descriptor, semantic_model)
+                        VALUES (:owner, 'FUNCTION', 'createMatcher', 'createMatcher',
+                                '(Ljava/lang/String;)Ljava/lang/String;', 'kotlin_metadata')
+                        """).bind("owner", owner).execute();
+            }
+            handle.createUpdate("""
+                    INSERT INTO kotlin_declarations
+                      (class_id, kind, name, jvm_name, descriptor, semantic_model)
+                    VALUES (:owner, 'FILE_FACADE', 'MatchUtilsKt', '', '', 'kotlin_metadata')
+                    """).bind("owner", facade).execute();
+        });
+
+        var qualified = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
+                jdbi, temp, relative, 5, 18));
+        assertEquals("lexical_fallback", qualified.path("resolution_basis").asText());
+        assertEquals("resolved", qualified.path("resolution").asText());
+        assertEquals("acme.helpers.MatchUtilsKt",
+                qualified.path("selected").path("class_name").asText());
+
+        var receiver = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
+                jdbi, temp, relative, 6, 14));
+        assertEquals("resolved", receiver.path("resolution").asText());
+        assertEquals("acme.Search", receiver.path("selected").path("class_name").asText());
+    }
 }

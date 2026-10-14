@@ -307,8 +307,7 @@ public final class JandexScanner {
             }
             for (MethodInfo method : classInfo.methods().stream()
                     .filter(value -> !"<clinit>".equals(value.name()))
-                    .filter(value -> !synthetic(value.flags()))
-                    .filter(value -> (value.flags() & 0x0040) == 0)
+                    .filter(value -> !synthetic(value.flags()) || (value.flags() & 0x0040) != 0)
                     .sorted(Comparator.comparing(MethodInfo::name)
                             .thenComparing(value -> value.parameterTypes().toString()))
                     .toList()) {
@@ -327,7 +326,10 @@ public final class JandexScanner {
                         constructor ? "CONSTRUCTOR" : "METHOD", name, signature,
                         method.descriptor(identifier -> resolveTypeVariable(
                                 identifier, method.typeParameters(), classInfo.typeParameters())),
-                        type, parameters, java.lang.reflect.Modifier.toString(method.flags()),
+                        type, parameters, java.lang.reflect.Modifier.toString(method.flags() & ~0x00c0)
+                                + ((method.flags() & 0x0040) != 0 ? " bridge" : "")
+                                + (synthetic(method.flags()) ? " synthetic" : "")
+                                + ((method.flags() & 0x0080) != 0 ? " varargs" : ""),
                         methodAnnotations(method.annotations()),
                         annotationDetails(method.annotations())));
             }

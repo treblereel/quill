@@ -153,7 +153,8 @@ final class ChangeSessionQueries {
         }
         result.set("test_plan", compact(plan.path("test_plan"), List.of(
                 "test_index_coverage", "answer_complete", "limitations", "showing",
-                "total", "has_more")));
+                "total", "limit", "offset", "has_more", "next_offset",
+                "next_page_request")));
         return result;
     }
 

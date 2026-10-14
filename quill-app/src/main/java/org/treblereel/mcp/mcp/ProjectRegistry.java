@@ -155,8 +155,9 @@ public class ProjectRegistry {
                 Path normalizedDb = dbPath.toAbsolutePath().normalize();
                 activeDatabases.add(normalizedDb);
                 IndexHandle handle = databases.compute(normalizedDb, (path, cached) -> {
-                    if (cached == null) {
-                        return new IndexHandle(projectRoot, QuillDatabase.open(path),
+                    if (cached == null || !QuillDatabase.matchesGeneration(cached.jdbi(),path)) {
+                        if(cached!=null)QuillDatabase.retire(cached.jdbi());
+                        return new IndexHandle(projectRoot, QuillDatabase.openPooled(path),
                                 new AtomicLong(resolutionId));
                     }
                     cached.lastSeen().accumulateAndGet(resolutionId, Math::max);
@@ -248,10 +249,13 @@ public class ProjectRegistry {
 
     private void evictInactive(long resolutionId, Set<Path> activeDatabases,
             Set<Path> configuredRoots, Set<Path> selectedRoots) {
-        databases.entrySet().removeIf(entry -> entry.getValue().lastSeen().get() < resolutionId
-                && (!configuredRoots.contains(entry.getValue().projectRoot())
-                || (selectedRoots.contains(entry.getValue().projectRoot())
-                && !activeDatabases.contains(entry.getKey()))));
+        databases.entrySet().removeIf(entry -> {
+            boolean evict=entry.getValue().lastSeen().get() < resolutionId
+                    && (!configuredRoots.contains(entry.getValue().projectRoot())
+                    || (selectedRoots.contains(entry.getValue().projectRoot()) && !activeDatabases.contains(entry.getKey())));
+            if(evict) QuillDatabase.retire(entry.getValue().jdbi());
+            return evict;
+        });
         projectRoots.entrySet().removeIf(entry -> {
             if (configuredRoots.contains(entry.getKey())
                     || entry.getValue().get() >= resolutionId) return false;

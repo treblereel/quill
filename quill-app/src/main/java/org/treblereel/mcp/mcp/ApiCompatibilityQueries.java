@@ -5,6 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
 import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.JvmMethodResolver;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
+import org.treblereel.mcp.model.KotlinDeclarationTypes;
+import org.treblereel.mcp.model.KotlinValueParameter;
 
 /** Conservative declaration deltas, not a complete JVM linkage or source-compatibility proof. */
 final class ApiCompatibilityQueries {
@@ -17,19 +22,31 @@ final class ApiCompatibilityQueries {
         public int compareTo(MemberKey other) { return Comparator.comparing(MemberKey::kind).thenComparing(MemberKey::name)
                 .thenComparing(MemberKey::descriptor).compare(this, other); }
     }
-    private record Member(MemberKey key, String signature, Set<String> flags, String annotations, String types, boolean valid, boolean visibilityKnown) {
+    private record Member(MemberKey key, String signature, Set<String> flags, String annotations, String types, boolean valid, boolean visibilityKnown, JsonNode jvmEvidence) {
         boolean visible() { return flags.contains("public") || flags.contains("protected"); }
+    }
+    private record KotlinKey(String kind, String jvmName, String descriptor) implements Comparable<KotlinKey> {
+        public int compareTo(KotlinKey other) { return Comparator.comparing(KotlinKey::kind).thenComparing(KotlinKey::jvmName)
+                .thenComparing(KotlinKey::descriptor).compare(this, other); }
     }
     private static final class Owner {
         final int id; final OwnerKey key; final String kind, superclass, interfaces;
         final Map<MemberKey, Member> members = new TreeMap<>();
+        final Map<KotlinKey, KotlinDeclarationRecord> kotlin = new TreeMap<>();
         final Set<String> annotations = new TreeSet<>();
         boolean ambiguous;
+        JsonNode jvmEvidence;
         Owner(int id, OwnerKey key, String kind, String superclass, String interfaces) {
             this.id=id; this.key=key; this.kind=kind; this.superclass=superclass; this.interfaces=interfaces;
         }
     }
-    private record Finding(Owner before, Owner after, Member oldMember, Member newMember, String reason, String assessment) {}
+    private record Finding(Owner before, Owner after, Member oldMember, Member newMember,
+                           KotlinDeclarationRecord oldKotlin, KotlinDeclarationRecord newKotlin,
+                           String reason, String assessment) {
+        Finding(Owner before, Owner after, Member oldMember, Member newMember, String reason, String assessment) {
+            this(before, after, oldMember, newMember, null, null, reason, assessment);
+        }
+    }
 
     static ObjectNode compare(Jdbi baseline, Jdbi current, int limit) {
         Map<OwnerKey, Owner> before = owners(baseline), after = owners(current);
@@ -44,6 +61,7 @@ final class ApiCompatibilityQueries {
                 findings.add(new Finding(old,now,null,null,old == null ? "CLASS_ADDED" : "CLASS_REMOVED",
                         old == null ? "review_required" : "potentially_breaking")); continue;
             }
+            compareJvmOwner(old,now,findings);
             if (!old.kind.equals(now.kind)) findings.add(new Finding(old,now,null,null,"CLASS_KIND_CHANGED","potentially_breaking"));
             if (!old.superclass.equals(now.superclass) || !old.interfaces.equals(now.interfaces))
                 findings.add(new Finding(old,now,null,null,"HIERARCHY_CHANGED","potentially_breaking"));
@@ -63,6 +81,7 @@ final class ApiCompatibilityQueries {
                             abstractAdded ? "potentially_breaking" : "review_required")); continue;
                 }
                 if (right == null) { findings.add(new Finding(old,now,left,null,"MEMBER_REMOVED_OR_DESCRIPTOR_CHANGED","potentially_breaking")); continue; }
+                compareJvmMember(old,now,left,right,findings);
                 if (access(right.flags) < access(left.flags)) findings.add(new Finding(old,now,left,right,"VISIBILITY_NARROWED","potentially_breaking"));
                 else if (access(right.flags) > access(left.flags)) findings.add(new Finding(old,now,left,right,"VISIBILITY_WIDENED","review_required"));
                 if (left.flags.contains("static") != right.flags.contains("static")) findings.add(new Finding(old,now,left,right,"STATIC_INSTANCE_CHANGED","potentially_breaking"));
@@ -78,52 +97,149 @@ final class ApiCompatibilityQueries {
                         || left.flags.contains("abstract") && !right.flags.contains("abstract"))
                     findings.add(new Finding(old,now,left,right,"OTHER_MODIFIERS_CHANGED","review_required"));
             }
+            compareKotlin(old, now, findings);
         }
         ObjectNode root = JSON.createObjectNode();
         long breaks = findings.stream().filter(f -> f.assessment.equals("potentially_breaking")).count();
         long unknown = findings.stream().filter(f -> f.assessment.equals("unknown")).count();
         root.put("verdict", breaks > 0 ? "potentially_breaking" : unknown > 0 ? "unknown" : findings.isEmpty() ? "no_detected_changes" : "review_required");
         root.put("scope","indexed_main_and_legacy_unspecified_classes_public_protected_declared_jvm_members");
+        root.put("kotlin_metadata_scope","matched_public_protected_jvm_declarations");
         root.put("compatibility_proven",false); root.put("baseline_class_count",before.size()); root.put("current_class_count",after.size());
         root.put("finding_count",findings.size()); root.put("potentially_breaking_count",breaks); root.put("unknown_count",unknown);
         root.put("review_required_count",findings.size()-breaks-unknown);
         root.put("truncated",findings.size()>limit);
+        var coverage=root.putObject("jvm_api_coverage").put("schema_version",1);
+        coverage.put("baseline_captured_classes",before.values().stream().filter(o->o.jvmEvidence!=null).count());
+        coverage.put("current_captured_classes",after.values().stream().filter(o->o.jvmEvidence!=null).count());
+        coverage.put("baseline_missing_classes",before.values().stream().filter(o->o.jvmEvidence==null).count());
+        coverage.put("current_missing_classes",after.values().stream().filter(o->o.jvmEvidence==null).count());
         var details=root.putArray("findings");
         Map<String,List<ObjectNode>> subtypes = directSubtypes(baseline);
         Map<String,ObjectNode> impacts = new HashMap<>();
+        JvmMethodResolver baselineResolver=new JvmMethodResolver(baseline);
         for (Finding finding : findings.stream().limit(Math.max(0,limit)).toList()) {
             var node=details.addObject(); Owner owner=finding.before != null ? finding.before : finding.after;
             node.put("class_name",owner.key.name); node.put("module",owner.key.module); node.put("source_set",owner.key.sourceSet);
             node.put("reason",finding.reason); node.put("assessment",finding.assessment);
+            if(Set.of("GENERIC_SIGNATURE_CHANGED","CLASS_GENERIC_SIGNATURE_CHANGED","THROWS_CHANGED").contains(finding.reason)) {
+                node.put("binary_effect","jvm_descriptor_unchanged"); node.put("source_effect","review_required");
+            }
+            if(finding.reason.equals("CONSTANT_VALUE_CHANGED")) {
+                node.put("consumer_recompile_required",true).put("inlined_consumer_values_updated",false);
+            }
             if (finding.oldMember == null && finding.newMember == null) {
                 if (finding.before != null) appendOwner(node.putObject("before_class"),finding.before);
                 if (finding.after != null) appendOwner(node.putObject("after_class"),finding.after);
             }
             if (finding.oldMember != null) appendMember(node.putObject("before"),finding.oldMember);
             if (finding.newMember != null) appendMember(node.putObject("after"),finding.newMember);
+            if (finding.oldKotlin != null) appendKotlin(node.putObject("before_kotlin"),finding.oldKotlin);
+            if (finding.newKotlin != null) appendKotlin(node.putObject("after_kotlin"),finding.newKotlin);
             String impactKey=finding.before==null?"absent:"+owner.key:"baseline:"+owner.id+":"+(finding.oldMember==null?"class":finding.oldMember.key.toString());
             node.set("baseline_impact",impacts.computeIfAbsent(impactKey,ignored->{
-                var impact=JSON.createObjectNode();appendImpact(impact,baseline,finding,Math.max(0,limit),subtypes);return impact;
+                var impact=JSON.createObjectNode();appendImpact(impact,baseline,finding,Math.max(0,limit),subtypes,baselineResolver);return impact;
             }));
         }
         root.putArray("limitations")
                 .add("This is a declaration review, not a binary/source compatibility proof or a release approval")
-                .add("Class access/final/abstract flags, constants, exceptions, bridge/synthetic methods and complete generic signatures are not retained")
+                .add("JVM API checks require captured evidence on both sides; missing or ambiguous bytecode evidence remains unknown")
                 .add("Inherited member lookup and replacement artifacts can preserve linkage after a declared member disappears")
-                .add("Kotlin source visibility, nullability, inline bodies and default-argument contracts are not classified")
+                .add("Kotlin checks cover retained metadata declarations with the same JVM identity; source visibility, inline bodies and missing metadata remain unknown")
                 .add("Member additions can affect overload resolution; source compatibility requires recompiling consumers")
-                .add("Impact uses baseline indexed static callers, field accesses, subclasses and dependencies; external consumers and inherited symbolic-owner references are unknown")
+                .add("Impact uses baseline indexed static callers, field accesses, subclasses and dependencies; external consumers and unresolved inherited symbolic-owner references are unknown")
                 .add("Test and custom source sets are excluded; legacy unspecified source sets may contain tests")
-                .add("Missing class visibility means public/protected members of non-public owners may be included");
+                .add("Legacy missing class visibility means public/protected members of non-public owners may be included");
         return root;
     }
     private static void appendOwner(ObjectNode node,Owner owner) {
         node.put("kind",owner.kind);node.put("superclass",owner.superclass);
+        if(owner.jvmEvidence!=null) {
+            ObjectNode evidence=owner.jvmEvidence.deepCopy(); evidence.remove("members"); node.set("jvm_api",evidence);
+        }
         node.put("interfaces",owner.interfaces);node.set("annotation_markers",JSON.valueToTree(owner.annotations));
     }
     private static void appendMember(ObjectNode node, Member member) {
         node.put("kind",member.key.kind); node.put("name",member.key.name); node.put("descriptor",member.key.descriptor);
+        if(member.jvmEvidence!=null) node.set("jvm_api",member.jvmEvidence.deepCopy());
         node.put("signature",member.signature); node.set("modifiers",JSON.valueToTree(new TreeSet<>(member.flags)));
+    }
+    private static void appendKotlin(ObjectNode node, KotlinDeclarationRecord declaration) {
+        node.put("kind", declaration.kind()).put("name", declaration.name());
+        node.put("jvm_name", declaration.jvmName()).put("descriptor", declaration.descriptor());
+        node.put("suspend", declaration.isSuspend()).put("extension", declaration.extension());
+        node.put("has_default_parameters", declaration.hasDefaultParameters());
+        node.put("mutable", declaration.mutable()).put("lateinit", declaration.lateinit());
+        node.put("delegated", declaration.delegated());
+        if (declaration.valueParameters() != null) node.set("value_parameters", JSON.valueToTree(declaration.valueParameters()));
+        if (declaration.declarationTypes() != null) node.set("source_types", JSON.valueToTree(declaration.declarationTypes()));
+    }
+    private static void compareKotlin(Owner old, Owner now, List<Finding> findings) {
+        Set<String> comparedProperties = new HashSet<>();
+        for (var entry : old.kotlin.entrySet()) {
+            KotlinDeclarationRecord left = entry.getValue(), right = now.kotlin.get(entry.getKey());
+            // JVM removals have their own finding. Source checks require matched metadata on both sides.
+            if (right == null || !visibleKotlin(old, left)) continue;
+            if (left.kind().equals("PROPERTY") && !comparedProperties.add(left.name())) continue;
+            if (!left.name().equals(right.name())) kotlinFinding(findings, old, now, left, right,
+                    "KOTLIN_NAME_CHANGED", "potentially_breaking");
+            if (left.isSuspend() != right.isSuspend() || left.extension() != right.extension())
+                kotlinFinding(findings, old, now, left, right, "KOTLIN_CALL_CONVENTION_CHANGED", "potentially_breaking");
+            List<KotlinValueParameter> oldParameters = left.valueParameters(), newParameters = right.valueParameters();
+            if (oldParameters != null && newParameters != null) {
+                if (oldParameters.size() != newParameters.size())
+                    kotlinFinding(findings, old, now, left, right, "KOTLIN_PARAMETERS_CHANGED", "potentially_breaking");
+                else for (int i = 0; i < oldParameters.size(); i++) {
+                    var before = oldParameters.get(i); var after = newParameters.get(i);
+                    if (!before.name().equals(after.name()) || before.vararg() != after.vararg())
+                        kotlinFinding(findings, old, now, left, right, "KOTLIN_PARAMETERS_CHANGED", "potentially_breaking");
+                    if (before.hasDefault() && !after.hasDefault())
+                        kotlinFinding(findings, old, now, left, right, "KOTLIN_DEFAULT_REMOVED", "potentially_breaking");
+                    else if (!before.hasDefault() && after.hasDefault())
+                        kotlinFinding(findings, old, now, left, right, "KOTLIN_DEFAULT_ADDED", "review_required");
+                }
+            } else if (left.hasDefaultParameters() != right.hasDefaultParameters())
+                kotlinFinding(findings, old, now, left, right, "KOTLIN_PARAMETER_EVIDENCE_INCOMPLETE", "unknown");
+            if (left.mutable() && !right.mutable())
+                kotlinFinding(findings, old, now, left, right, "KOTLIN_PROPERTY_BECAME_READ_ONLY", "potentially_breaking");
+            else if (!left.mutable() && right.mutable())
+                kotlinFinding(findings, old, now, left, right, "KOTLIN_PROPERTY_BECAME_MUTABLE", "review_required");
+            if (left.lateinit() != right.lateinit() || left.delegated() != right.delegated())
+                kotlinFinding(findings, old, now, left, right, "KOTLIN_PROPERTY_SEMANTICS_CHANGED", "review_required");
+            KotlinDeclarationTypes beforeTypes = left.declarationTypes(), afterTypes = right.declarationTypes();
+            if (beforeTypes != null && afterTypes != null && !beforeTypes.equals(afterTypes))
+                kotlinFinding(findings, old, now, left, right,
+                        unsafeNullability(beforeTypes, afterTypes) ? "KOTLIN_NULLABILITY_WEAKENED" : "KOTLIN_SOURCE_TYPES_CHANGED",
+                        unsafeNullability(beforeTypes, afterTypes) ? "potentially_breaking" : "review_required");
+        }
+    }
+    private static boolean visibleKotlin(Owner owner, KotlinDeclarationRecord declaration) {
+        Member member = memberForKotlin(owner, declaration);
+        return member != null && member.valid && member.visible();
+    }
+    private static Member memberForKotlin(Owner owner, KotlinDeclarationRecord declaration) {
+        String name = declaration.jvmName();
+        if (name == null || name.isBlank()) return null;
+        String kind = declaration.kind().equals("CONSTRUCTOR") ? "CONSTRUCTOR" : "METHOD";
+        Member member = owner.members.get(new MemberKey(kind, name, declaration.descriptor()));
+        if (member == null && declaration.kind().equals("PROPERTY"))
+            member = owner.members.get(new MemberKey("FIELD", name, declaration.descriptor()));
+        return member;
+    }
+    private static boolean unsafeNullability(KotlinDeclarationTypes before, KotlinDeclarationTypes after) {
+        if (before.result() != null && after.result() != null && !before.result().nullable() && after.result().nullable()) return true;
+        if (before.receiver() != null && after.receiver() != null && before.receiver().nullable() && !after.receiver().nullable()) return true;
+        if (before.parameters().size() != after.parameters().size()) return false;
+        for (int i = 0; i < before.parameters().size(); i++) {
+            if (before.parameters().get(i).type().nullable() && !after.parameters().get(i).type().nullable()) return true;
+        }
+        return false;
+    }
+    private static void kotlinFinding(List<Finding> findings, Owner old, Owner now,
+            KotlinDeclarationRecord left, KotlinDeclarationRecord right, String reason, String assessment) {
+        if (findings.stream().anyMatch(f -> f.oldKotlin == left && f.reason.equals(reason))) return;
+        findings.add(new Finding(old, now, memberForKotlin(old, left), memberForKotlin(now, right),
+                left, right, reason, assessment));
     }
     private static Map<OwnerKey,Owner> owners(Jdbi db) {
         return db.withHandle(h -> {
@@ -141,22 +257,118 @@ final class ApiCompatibilityQueries {
                     .map((r,c) -> Map.entry(r.getInt("class_id"),member(r.getString("kind"),r.getString("name"),r.getString("descriptor"),r.getString("signature"),
                             r.getString("modifiers"),r.getString("annotations"),r.getString("annotation_details"),r.getString("type_name"),r.getString("parameter_types"))))
                     .forEach(entry -> {Owner owner=ids.get(entry.getKey());if(owner!=null && owner.members.putIfAbsent(entry.getValue().key,entry.getValue())!=null)owner.ambiguous=true;});
+            h.createQuery("SELECT class_id,evidence FROM jvm_api ORDER BY class_id")
+                    .map((r,c)->Map.entry(r.getInt("class_id"),r.getString("evidence")))
+                    .forEach(entry -> {Owner owner=ids.get(entry.getKey());if(owner!=null) attachJvm(owner,entry.getValue());});
             h.createQuery("SELECT class_id,annotation_name,direct,via_annotation FROM class_annotations ORDER BY class_id,annotation_name,direct,via_annotation")
                     .map((r,c)->Map.entry(r.getInt("class_id"),r.getString("annotation_name")+"|"+r.getInt("direct")+"|"+value(r.getString("via_annotation"))))
                     .forEach(entry->{if(ids.containsKey(entry.getKey()))ids.get(entry.getKey()).annotations.add(entry.getValue());});
+            h.createQuery("""
+                    SELECT class_id,kind,name,jvm_name,descriptor,semantic_model,is_suspend,is_extension,
+                           has_default_parameters,is_mutable,is_lateinit,is_delegated,is_synthetic,value_parameters,declaration_types
+                    FROM kotlin_declarations ORDER BY class_id,kind,name,jvm_name,descriptor
+                    """).map((r,c) -> new KotlinDeclarationRecord(r.getInt("class_id"), r.getString("kind"), r.getString("name"),
+                            r.getString("jvm_name"), r.getString("descriptor"), r.getString("semantic_model"),
+                            r.getInt("is_suspend") == 1, r.getInt("is_extension") == 1,
+                            r.getInt("has_default_parameters") == 1, r.getInt("is_mutable") == 1,
+                            r.getInt("is_lateinit") == 1, r.getInt("is_delegated") == 1,
+                            r.getInt("is_synthetic") == 1, IndexReader.kotlinParametersFromJson(r.getString("value_parameters")),
+                            IndexReader.kotlinTypesFromJson(r.getString("declaration_types"))))
+                    .forEach(declaration -> {
+                        Owner owner = ids.get(declaration.classId());
+                        if (owner == null || declaration.synthetic() || !"kotlin_metadata".equals(declaration.semanticModel())
+                                || !Set.of("FUNCTION", "PROPERTY", "CONSTRUCTOR").contains(declaration.kind())) return;
+                        String jvmName = declaration.jvmName() == null || declaration.jvmName().isBlank()
+                                ? "source:" + declaration.name() : declaration.jvmName();
+                        KotlinKey key = new KotlinKey(declaration.kind(), jvmName, value(declaration.descriptor()));
+                        if (owner.kotlin.putIfAbsent(key, declaration) != null) owner.ambiguous = true;
+                    });
             return result;
         });
     }
     private static Member member(String kind,String name,String descriptor,String signature,String modifiers,String annotations,String details,String type,String parameters) {
         Set<String> flags=new TreeSet<>();
         for(String token:value(modifiers).replaceAll("[\\[\\],]"," ").split("\\s+")) if(!token.isEmpty()) flags.add(token);
-        Set<String> supported=Set.of("public","private","protected","static","final","abstract","native","synchronized","strictfp","transient","volatile");
+        Set<String> supported=Set.of("public","private","protected","static","final","abstract","native","synchronized","strictfp","transient","volatile","bridge","synthetic","varargs");
         long access=flags.stream().filter(Set.of("public","private","protected")::contains).count();
         boolean valid=validDescriptor(kind,descriptor) && supported.containsAll(flags) && access<=1;
         String canonicalName=kind.equals("CONSTRUCTOR")?"<init>":name;
         // Empty descriptors must not accidentally merge unrelated legacy declarations.
         return new Member(new MemberKey(kind,canonicalName,valid?descriptor:"unknown:"+value(descriptor)+":"+signature),signature,flags,
-                canonical(annotations,true)+"|"+canonical(details,true),value(type)+"|"+canonical(parameters,false),valid,supported.containsAll(flags) && access<=1);
+                canonical(annotations,true)+"|"+canonical(details,true),value(type)+"|"+canonical(parameters,false),valid,supported.containsAll(flags) && access<=1,null);
+    }
+    private static void attachJvm(Owner owner,String raw) {
+        try {
+            JsonNode evidence=JSON.readTree(raw);
+            if(evidence.path("schema_version").asInt()!=1 || !evidence.path("status").asText().equals("captured")
+                    || !evidence.path("access_flags").canConvertToInt() || !evidence.has("generic_signature") || !evidence.path("members").isArray()) return;
+            // Reject an incomplete record as a whole; do not infer missing contracts from defaults.
+            for(JsonNode entry:evidence.path("members")) {
+                String kind=entry.path("kind").asText(),descriptor=entry.path("descriptor").asText();
+                if(!Set.of("METHOD","CONSTRUCTOR","FIELD").contains(kind) || !entry.path("name").isTextual()
+                        || !entry.path("access_flags").canConvertToInt() || !validDescriptor(kind,descriptor)
+                        || !entry.has("generic_signature") || (kind.equals("FIELD") ? !entry.has("constant") : !entry.path("exceptions").isArray())) return;
+            }
+            owner.jvmEvidence=evidence;
+            Set<MemberKey> seen=new HashSet<>();
+            for(JsonNode entry:evidence.path("members")) {
+                MemberKey key=new MemberKey(entry.path("kind").asText(),entry.path("name").asText(),entry.path("descriptor").asText());
+                if(!seen.add(key)) {owner.ambiguous=true;continue;}
+                Member member=owner.members.get(key);
+                Set<String> flags=jvmFlags(entry.path("access_flags").asInt(),entry.path("kind").asText());
+                if(member==null) {
+                    if(!flags.contains("public") && !flags.contains("protected")) continue;
+                    member=member(key.kind,key.name,key.descriptor,key.name+key.descriptor,String.join(" ",flags),"[]","[]","","[]");
+                }
+                owner.members.put(key,new Member(member.key,member.signature,flags,member.annotations,member.types,
+                        member.valid,true,entry));
+            }
+        } catch(Exception malformed) {owner.jvmEvidence=null;}
+    }
+    private static Set<String> jvmFlags(int access,String kind) {
+        Set<String> flags=new TreeSet<>();
+        if((access&1)!=0)flags.add("public");if((access&2)!=0)flags.add("private");if((access&4)!=0)flags.add("protected");
+        if((access&8)!=0)flags.add("static");if((access&16)!=0)flags.add("final");if((access&1024)!=0)flags.add("abstract");
+        if((access&4096)!=0)flags.add("synthetic");
+        if(!kind.equals("CLASS")) {if((access&256)!=0)flags.add("native");if((access&32)!=0)flags.add("synchronized");
+            if((access&2048)!=0)flags.add("strictfp");
+            if(kind.equals("FIELD")) {
+                if((access&64)!=0)flags.add("volatile"); if((access&128)!=0)flags.add("transient");
+            } else {
+                if((access&64)!=0)flags.add("bridge"); if((access&128)!=0)flags.add("varargs");
+            }
+        }
+        return flags;
+    }
+    private static void compareJvmOwner(Owner before,Owner after,List<Finding> findings) {
+        if(before.jvmEvidence==null || after.jvmEvidence==null) {
+            if(before.jvmEvidence!=null || after.jvmEvidence!=null)
+                findings.add(new Finding(before,after,null,null,"JVM_API_EVIDENCE_INCOMPLETE","unknown"));
+            return;
+        }
+        Set<String> left=jvmFlags(before.jvmEvidence.path("access_flags").asInt(),"CLASS");
+        Set<String> right=jvmFlags(after.jvmEvidence.path("access_flags").asInt(),"CLASS");
+        if(access(right)<access(left)) findings.add(new Finding(before,after,null,null,"CLASS_VISIBILITY_NARROWED","potentially_breaking"));
+        else if(access(right)>access(left)) findings.add(new Finding(before,after,null,null,"CLASS_VISIBILITY_WIDENED","review_required"));
+        if(!left.contains("final") && right.contains("final")) findings.add(new Finding(before,after,null,null,"CLASS_FINAL_ADDED","potentially_breaking"));
+        if(!left.contains("abstract") && right.contains("abstract")) findings.add(new Finding(before,after,null,null,"CLASS_ABSTRACT_ADDED","potentially_breaking"));
+        Set<String> leftOther=new TreeSet<>(left),rightOther=new TreeSet<>(right);
+        leftOther.removeAll(Set.of("public","private","protected","final","abstract"));
+        rightOther.removeAll(Set.of("public","private","protected","final","abstract"));
+        if(!leftOther.equals(rightOther) || left.contains("final") && !right.contains("final")
+                || left.contains("abstract") && !right.contains("abstract"))
+            findings.add(new Finding(before,after,null,null,"CLASS_OTHER_MODIFIERS_CHANGED","review_required"));
+        if(!before.jvmEvidence.path("generic_signature").equals(after.jvmEvidence.path("generic_signature")))
+            findings.add(new Finding(before,after,null,null,"CLASS_GENERIC_SIGNATURE_CHANGED","review_required"));
+    }
+    private static void compareJvmMember(Owner before,Owner after,Member left,Member right,List<Finding> findings) {
+        if(left.jvmEvidence==null || right.jvmEvidence==null) return;
+        if(!left.jvmEvidence.path("generic_signature").equals(right.jvmEvidence.path("generic_signature")))
+            findings.add(new Finding(before,after,left,right,"GENERIC_SIGNATURE_CHANGED","review_required"));
+        if(!left.jvmEvidence.path("exceptions").equals(right.jvmEvidence.path("exceptions")))
+            findings.add(new Finding(before,after,left,right,"THROWS_CHANGED","review_required"));
+        if(!left.jvmEvidence.path("constant").equals(right.jvmEvidence.path("constant")))
+            findings.add(new Finding(before,after,left,right,"CONSTANT_VALUE_CHANGED","review_required"));
     }
     private static boolean validDescriptor(String kind,String value) {
         if(value==null || value.isEmpty())return false;
@@ -207,12 +419,13 @@ final class ApiCompatibilityQueries {
         if(node.isArray()) {var result=JSON.createArrayNode();node.forEach(value->result.add(orderedObjects(value)));return result;}
         return node;
     }
-    private static void appendImpact(ObjectNode node,Jdbi baseline,Finding finding,int limit,Map<String,List<ObjectNode>> subtypeMap) {
+    private static void appendImpact(ObjectNode node,Jdbi baseline,Finding finding,int limit,Map<String,List<ObjectNode>> subtypeMap,JvmMethodResolver resolver) {
         node.put("scope","baseline_static_evidence"); node.put("complete",false); node.put("external_consumers_known",false);
         if(finding.before==null || finding.before.ambiguous) {node.put("status","unavailable"); return;}
         Owner owner=finding.before;
         baseline.useHandle(h -> {
             String sql;Map<String,Object> bindings;
+            List<Integer> symbolicOwners=null;
             if(finding.oldMember!=null && finding.oldMember.valid) {
                 Member member=finding.oldMember;
                 sql=member.key.kind.equals("FIELD") ? """
@@ -220,10 +433,14 @@ final class ApiCompatibilityQueries {
                     WHERE a.to_class_id=:id AND a.field_name=:name AND a.field_descriptor=:descriptor AND c.lifecycle='current' AND c.origin!='orphan_output'
                     """ : """
                     SELECT DISTINCT c.id,c.class_name,c.module,c.source_set,a.from_method,a.from_descriptor FROM method_calls a JOIN classes c ON c.id=a.from_class_id
-                    WHERE a.to_class_id=:id AND a.to_method=:name AND a.to_descriptor=:descriptor AND c.lifecycle='current' AND c.origin!='orphan_output'
+                    WHERE a.to_class_id IN (<ownerIds>) AND a.to_method=:name AND a.to_descriptor=:descriptor AND c.lifecycle='current' AND c.origin!='orphan_output'
                     """;
                 bindings=Map.of("id",owner.id,"name",member.key.name,"descriptor",member.key.descriptor);
-                node.put("reference_matching","exact_owner_name_descriptor");
+                if(!member.key.kind.equals("FIELD")) {
+                    symbolicOwners=resolver.symbolicOwners(owner.id,member.key.name,member.key.descriptor);
+                    bindings=Map.of("name",member.key.name,"descriptor",member.key.descriptor);
+                }
+                node.put("reference_matching",member.key.kind.equals("FIELD") ? "exact_owner_name_descriptor" : "resolved_owner_name_descriptor");
             } else {
                 sql="""
                     SELECT DISTINCT c.id,c.class_name,c.module,c.source_set,NULL AS from_method,NULL AS from_descriptor FROM dependencies d JOIN classes c ON c.id=d.from_class_id
@@ -231,9 +448,12 @@ final class ApiCompatibilityQueries {
                     """;
                 bindings=Map.of("id",owner.id);node.put("reference_matching","class_dependency");
             }
-            long count=h.createQuery("SELECT COUNT(*) FROM ("+sql+")").bindMap(bindings).mapTo(Long.class).one();
-            List<ObjectNode> consumers=h.createQuery("SELECT * FROM ("+sql+") ORDER BY class_name,module,source_set,id,from_method,from_descriptor LIMIT :detail_limit")
-                    .bindMap(bindings).bind("detail_limit",limit).map((r,c)->consumer(r)).list();
+            var countQuery=h.createQuery("SELECT COUNT(*) FROM ("+sql+")").bindMap(bindings);
+            var detailQuery=h.createQuery("SELECT * FROM ("+sql+") ORDER BY class_name,module,source_set,id,from_method,from_descriptor LIMIT :detail_limit")
+                    .bindMap(bindings).bind("detail_limit",limit);
+            if(symbolicOwners!=null) {countQuery.bindList("ownerIds",symbolicOwners);detailQuery.bindList("ownerIds",symbolicOwners);}
+            long count=countQuery.mapTo(Long.class).one();
+            List<ObjectNode> consumers=detailQuery.map((r,c)->consumer(r)).list();
             node.put("consumer_count",count);node.set("consumers",JSON.valueToTree(consumers));node.put("consumers_truncated",count>limit);
             // Subclasses matter for final/abstract changes even when no call instruction exists.
             List<ObjectNode> subtypes=subtypeMap.getOrDefault(owner.key.name,List.of());

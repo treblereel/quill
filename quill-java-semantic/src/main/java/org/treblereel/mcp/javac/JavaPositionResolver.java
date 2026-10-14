@@ -26,7 +26,13 @@ import javax.tools.*;
 /** Worker frontend: only public compiler APIs, no processor execution or code generation. */
 public final class JavaPositionResolver implements AutoCloseable {
     public record Result(String status, String owner, String kind, String name,
-                         String descriptor, String declarationFile, long generation, boolean reused) {}
+                         String descriptor, String declarationFile, int startLine, int startColumn,
+                         int endLine, int endColumn, long generation, boolean reused) {}
+    public record Reference(String owner, String kind, String name, String descriptor,
+                            String callerOwner, String callerName, String callerDescriptor,
+                            String access, int line, int column, int endLine, int endColumn) {}
+    public record References(String status, long generation, boolean reused, String sourceHash,
+                             boolean truncated, List<Reference> references) {}
     private record Inputs(Map<Path, String> sources, String fingerprint) {}
     private record Candidate(Element element, long width, int priority) {}
     private static final class Snapshot implements AutoCloseable {
@@ -76,6 +82,115 @@ public final class JavaPositionResolver implements AutoCloseable {
         return analyze(requested, offset);
     }
     public synchronized Result warm(Path requested) throws Exception { return analyze(requested, -1); }
+    /** Enumerates compiler-selected source references once per file, never guessing synthetic callers. */
+    public synchronized References references(Path requested) throws Exception {
+        Path file = requested.toAbsolutePath().normalize();
+        Inputs inputs = capture();
+        String text = inputs.sources().get(file);
+        if (text == null) return new References("source_not_in_module", generation, false, null, false, List.of());
+        boolean reused = snapshot != null && snapshot.fingerprint.equals(inputs.fingerprint());
+        if (!reused) { close(); snapshot = build(inputs); generation++; }
+        List<Reference> references = new ArrayList<>();
+        boolean[] truncated = {false};
+        if (!snapshot.errors) {
+            Snapshot model = snapshot;
+            var unit = model.units.stream().filter(u -> Path.of(u.getSourceFile().toUri()).equals(file)).findFirst().orElseThrow();
+            var positions = model.trees.getSourcePositions();
+            new TreePathScanner<Void, Void>() {
+                void add(Element element, long start, long end, String access) {
+                    if (element == null || start < 0 || end <= start || unit.getLineMap() == null) return;
+                    if (!(element instanceof ExecutableElement) && element.getKind() != ElementKind.FIELD
+                            && element.getKind() != ElementKind.ENUM_CONSTANT) return;
+                    if (element instanceof VariableElement && (element.getSimpleName().contentEquals("this")
+                            || element.getSimpleName().contentEquals("super"))) return;
+                    TreePath caller = getCurrentPath();
+                    while (caller != null && !(caller.getLeaf() instanceof MethodTree)) {
+                        if (caller.getLeaf() instanceof LambdaExpressionTree || caller.getLeaf() instanceof ClassTree) return;
+                        caller = caller.getParentPath();
+                    }
+                    if (caller == null) return;
+                    Element enclosing = model.trees.getElement(caller);
+                    if (!(enclosing instanceof ExecutableElement method)) return;
+                    TypeElement targetOwner = owner(element), callerOwner = owner(method);
+                    if (targetOwner == null || callerOwner == null) return;
+                    String targetDescriptor = memberDescriptor(model, element);
+                    String callerDescriptor = memberDescriptor(model, method);
+                    if (targetDescriptor == null || callerDescriptor == null) return;
+                    if (references.size() >= 4096) { truncated[0] = true; return; }
+                    references.add(new Reference(model.elements.getBinaryName(targetOwner).toString(),
+                            element.getKind() == ElementKind.CONSTRUCTOR ? "CONSTRUCTOR" : element instanceof ExecutableElement ? "METHOD" : "FIELD",
+                            element.getKind() == ElementKind.CONSTRUCTOR ? "<init>" : element.getSimpleName().toString(), targetDescriptor,
+                            model.elements.getBinaryName(callerOwner).toString(),
+                            method.getKind() == ElementKind.CONSTRUCTOR ? "<init>" : method.getSimpleName().toString(), callerDescriptor,
+                            access, (int) unit.getLineMap().getLineNumber(start), rawColumn(unit, start),
+                            (int) unit.getLineMap().getLineNumber(end), rawColumn(unit, end)));
+                }
+                String fieldAccess() {
+                    TreePath parent = getCurrentPath().getParentPath();
+                    if (parent == null) return "read";
+                    Tree leaf = getCurrentPath().getLeaf(), enclosing = parent.getLeaf();
+                    if (enclosing instanceof AssignmentTree assignment && assignment.getVariable() == leaf) return "write";
+                    if (enclosing instanceof CompoundAssignmentTree assignment && assignment.getVariable() == leaf) return "read_write";
+                    if (enclosing instanceof UnaryTree unary && switch (unary.getKind()) {
+                        case PREFIX_INCREMENT, PREFIX_DECREMENT, POSTFIX_INCREMENT, POSTFIX_DECREMENT -> true;
+                        default -> false;
+                    }) return "read_write";
+                    return "read";
+                }
+                public Void visitIdentifier(IdentifierTree tree, Void ignored) {
+                    Element element = model.trees.getElement(getCurrentPath());
+                    add(element, positions.getStartPosition(unit, tree), positions.getEndPosition(unit, tree),
+                            element instanceof ExecutableElement ? "call" : fieldAccess());
+                    return super.visitIdentifier(tree, ignored);
+                }
+                public Void visitMemberSelect(MemberSelectTree tree, Void ignored) {
+                    long end = positions.getEndPosition(unit, tree);
+                    Element element = model.trees.getElement(getCurrentPath());
+                    add(element, positions.getStartPosition(unit, tree), end, element instanceof ExecutableElement ? "call" : fieldAccess());
+                    return super.visitMemberSelect(tree, ignored);
+                }
+                public Void visitMemberReference(MemberReferenceTree tree, Void ignored) {
+                    long end = positions.getEndPosition(unit, tree);
+                    add(model.trees.getElement(getCurrentPath()), positions.getStartPosition(unit, tree), end, "method_reference");
+                    return super.visitMemberReference(tree, ignored);
+                }
+                public Void visitNewClass(NewClassTree tree, Void ignored) {
+                    Tree identifier = tree.getIdentifier();
+                    if (identifier instanceof ParameterizedTypeTree parameterized) identifier = parameterized.getType();
+                    long start = positions.getStartPosition(unit, identifier), end = positions.getEndPosition(unit, identifier);
+                    add(model.trees.getElement(getCurrentPath()), start, end, "call");
+                    return super.visitNewClass(tree, ignored);
+                }
+            }.scan(unit, null);
+        }
+        beforeValidation.run();
+        if (!capture().fingerprint().equals(inputs.fingerprint())) {
+            close(); return new References("inputs_changed", generation, false, null, false, List.of());
+        }
+        String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
+        return new References(snapshot.errors ? "analysis_errors" : "resolved", generation, reused, hash,
+                truncated[0], List.copyOf(references));
+    }
+
+    private static String memberDescriptor(Snapshot model, Element element) {
+        TypeElement owner = owner(element);
+        if (element instanceof ExecutableElement executable) {
+            boolean constructor = element.getKind() == ElementKind.CONSTRUCTOR;
+            if (constructor && (owner.getKind() == ElementKind.ENUM || owner.getNestingKind() == NestingKind.ANONYMOUS
+                    || owner.getNestingKind() == NestingKind.LOCAL)) return null;
+            var erased = (ExecutableType) model.types.erasure(executable.asType());
+            StringBuilder value = new StringBuilder("(");
+            if (constructor && owner.getNestingKind() == NestingKind.MEMBER && !owner.getModifiers().contains(Modifier.STATIC))
+                value.append(descriptor(model, owner.getEnclosingElement().asType()));
+            for (TypeMirror parameter : erased.getParameterTypes()) value.append(descriptor(model, parameter));
+            return value.append(')').append(constructor ? "V" : descriptor(model, erased.getReturnType())).toString();
+        }
+        return descriptor(model, element.asType());
+    }
+    private static int rawColumn(CompilationUnitTree unit, long offset) {
+        long line = unit.getLineMap().getLineNumber(offset);
+        return (int) (offset - unit.getLineMap().getStartPosition(line) + 1);
+    }
     private Result analyze(Path requested, int offset) throws Exception {
         Path file = requested.toAbsolutePath().normalize();
         Inputs inputs = capture();
@@ -222,7 +337,8 @@ public final class JavaPositionResolver implements AutoCloseable {
         if (element.getKind() == ElementKind.LOCAL_VARIABLE || element.getKind() == ElementKind.PARAMETER
                 || element.getKind() == ElementKind.EXCEPTION_PARAMETER || element.getKind() == ElementKind.TYPE_PARAMETER
                 || element.getKind() == ElementKind.BINDING_VARIABLE)
-            return new Result("local", null, element.getKind().name(), element.getSimpleName().toString(), null, null, generation, reused);
+            return new Result("local", null, element.getKind().name(), element.getSimpleName().toString(), null, null,
+                    -1, -1, -1, -1, generation, reused);
         TypeElement owner = owner(element);
         if (owner == null) return status("unresolved", reused);
         String name = element.getSimpleName().toString(), kind;
@@ -246,7 +362,20 @@ public final class JavaPositionResolver implements AutoCloseable {
         } else return status("unresolved", reused);
         TreePath declaration = model.trees.getPath(element);
         String source = declaration == null ? null : Path.of(declaration.getCompilationUnit().getSourceFile().toUri()).toString();
-        return new Result("resolved", model.elements.getBinaryName(owner).toString(), kind, name, descriptor, source, generation, reused);
+        int startLine = -1, startColumn = -1, endLine = -1, endColumn = -1;
+        if (declaration != null) {
+            var declarationUnit = declaration.getCompilationUnit();
+            long start = positions.getStartPosition(declarationUnit, declaration.getLeaf());
+            long end = positions.getEndPosition(declarationUnit, declaration.getLeaf());
+            if (start >= 0 && end > start && declarationUnit.getLineMap() != null) {
+                startLine = (int) declarationUnit.getLineMap().getLineNumber(start);
+                startColumn = (int) declarationUnit.getLineMap().getColumnNumber(start);
+                endLine = (int) declarationUnit.getLineMap().getLineNumber(end);
+                endColumn = (int) declarationUnit.getLineMap().getColumnNumber(end);
+            }
+        }
+        return new Result("resolved", model.elements.getBinaryName(owner).toString(), kind, name, descriptor, source,
+                startLine, startColumn, endLine, endColumn, generation, reused);
     }
 
     private static TypeElement owner(Element element) {
@@ -266,7 +395,7 @@ public final class JavaPositionResolver implements AutoCloseable {
     }
 
     private Result status(String status, boolean reused) {
-        return new Result(status, null, null, null, null, null, generation, reused);
+        return new Result(status, null, null, null, null, null, -1, -1, -1, -1, generation, reused);
     }
     public synchronized int closedSnapshots() { return closedSnapshots; }
     public synchronized void close() throws IOException {

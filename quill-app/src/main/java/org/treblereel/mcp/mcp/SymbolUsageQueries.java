@@ -16,6 +16,7 @@ import java.util.Locale;
 import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.QueryMetrics;
 import org.treblereel.mcp.db.IndexReader.FieldAccessView;
 import org.treblereel.mcp.db.IndexReader.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
@@ -31,6 +32,13 @@ final class SymbolUsageQueries {
 
     String findSymbolUsages(Jdbi jdbi, String target, String name, String kind,
             String signature, String access, int limit, int offset) {
+        try(var metrics=QueryMetrics.start()) {
+            return org.treblereel.mcp.db.ReadQueryContext.read(jdbi,()->findSymbolUsagesInRequest(jdbi,target,name,kind,signature,access,limit,offset));
+        }
+    }
+
+    private String findSymbolUsagesInRequest(Jdbi jdbi,String target,String name,String kind,
+            String signature,String access,int limit,int offset) {
         try {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
             if (reference != null) {
@@ -67,7 +75,7 @@ final class SymbolUsageQueries {
         List<KotlinDeclarationRecord> kotlinDeclarations =
                 IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
-        List<ClassMemberRecord> kindMembers = IndexReader.findClassMembers(jdbi, cls.id()).stream()
+        List<ClassMemberRecord> kindMembers = (requestedSignature == null ? IndexReader.findClassMembers(jdbi, cls.id()) : IndexReader.findJvmClassMembers(jdbi, cls.id())).stream()
                 .filter(member -> member.kind().equals(normalizedKind)).toList();
         List<ClassMemberRecord> namedMembers = kindMembers.stream()
                 .filter(member -> matchesName(
@@ -119,37 +127,52 @@ final class SymbolUsageQueries {
             KotlinDeclarationRecord kotlinDeclaration, int limit, int offset) {
         String bytecodeName = "CONSTRUCTOR".equals(selected.kind()) ? "<init>" : selected.name();
         boolean kotlin = !IndexReader.findKotlinDeclarations(jdbi, cls.id()).isEmpty();
-        var normalized = kotlin ? KotlinUsageNormalizer.inbound(jdbi, cls.id(), bytecodeName, selected.descriptor())
+        var normalized = QueryMetrics.measure("usage_page", () -> kotlin ? KotlinUsageNormalizer.inbound(jdbi, cls.id(), bytecodeName, selected.descriptor())
                 : new KotlinUsageNormalizer.Result(IndexReader.findExactMethodUsages(jdbi, cls.id(),
                     bytecodeName, selected.descriptor(), limit, offset).stream()
-                    .map(call -> new KotlinUsageNormalizer.Usage(call, List.of(call))).toList(), false);
+                    .map(call -> new KotlinUsageNormalizer.Usage(call, List.of(call))).toList(), false));
         var page = kotlin ? normalized.usages().stream().skip(offset).limit(limit).toList() : normalized.usages();
-        int total = kotlin ? normalized.usages().size() : IndexReader.countExactMethodUsages(
-                jdbi, cls.id(), bytecodeName, selected.descriptor());
+        int total = QueryMetrics.measure("usage_count", () -> kotlin ? normalized.usages().size() : IndexReader.countExactMethodUsages(
+                jdbi, cls.id(), bytecodeName, selected.descriptor()));
         ObjectNode root = base(cls, selected, kotlinDeclaration);
+        root.put("usage_scope", "exact_indexed_bytecode_references");
+        root.put("declaration_lookup", "indexed_jvm_method_resolution");
+        JavaDispatchEvidence dispatch = new JavaDispatchEvidence(jdbi);
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
+        JavaSourceLocations javaLocations = new JavaSourceLocations(jdbi);
+        String dynamicBasis = "2".equals(IndexReader.getMetadata(jdbi).get("invokedynamic_evidence_protocol"))
+                ? "lambda_metafactory" : "legacy_unclassified";
         for (var resolved : page) {
             MethodCallView usage = resolved.call();
             ObjectNode node = values.addObject();
             appendCaller(node, usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
                     usage.fromSource(), usage.fromSourceLine(), usage.fromOrigin(),
                     usage.fromModule());
-            node.put("usage_kind", "call");
+            node.put("usage_kind", "dynamic".equals(usage.invocationKind())
+                    ? "lambda_metafactory".equals(dynamicBasis) ? "callback_reference" : "dynamic_handle_reference" : "call");
+            node.put("execution_semantics", "dynamic".equals(usage.invocationKind())
+                    ? "lambda_metafactory".equals(dynamicBasis) ? "callback_creation" : "bootstrap_reference_unknown" : "invocation_instruction");
+            if ("dynamic".equals(usage.invocationKind())) node.put("reference_basis",dynamicBasis);
             node.put("invocation_kind", usage.invocationKind());
+            if (!kotlin) QueryMetrics.measure("dispatch_targets", () -> dispatch.appendTarget(node, usage));
             node.put("occurrence_count", usage.occurrenceCount());
             node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
             appendPath(node, resolved);
             KotlinSourceLocations.append(jdbi, node, usage.fromClassId(), usage.evidenceLines());
+            if (!kotlin) QueryMetrics.measure("source_enrichment", () -> javaLocations.append(node, usage.fromSource(), usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
+                    cls.className(), bytecodeName, selected.descriptor(), "call", root.path("symbol_id").asText(), usage.evidenceLines()));
             if (countedClasses.add(usage.fromClassId())) naiveTokens += usage.fromSourceTokens();
         }
         limitations(root).add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
         root.put("normalization_truncated", normalized.truncated());
         root.put("answer_complete", !normalized.truncated());
+        if (!kotlin) QueryMetrics.measure("dispatch_callers", () -> dispatch.appendPossibleCallers(root, cls, selected, limit, offset));
         appendPage(root, page.size(), total, limit, offset);
+        QueryMetrics.measure("coverage", () -> UsageCoverage.append(root,jdbi,cls.id()));
         appendMeta(root, jdbi, naiveTokens);
-        return root.toString();
+        return QueryMetrics.measure("serialization", root::toString);
     }
 
     private String propertyUsages(Jdbi jdbi, ClassRecord cls, String name, String signature,
@@ -212,6 +235,7 @@ final class SymbolUsageQueries {
         root.set("usages", JSON.valueToTree(page)); root.put("normalization_truncated", truncated);
         root.put("answer_complete", !truncated);
         limitations(root); appendPage(root, page.size(), usages.size(), limit, offset);
+        QueryMetrics.measure("coverage", () -> UsageCoverage.append(root,jdbi,cls.id()));
         appendMeta(root, jdbi, cls.sourceTokens());
         return root.toString();
     }
@@ -243,6 +267,7 @@ final class SymbolUsageQueries {
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
+        JavaSourceLocations javaLocations = new JavaSourceLocations(jdbi);
         for (FieldAccessView usage : usages) {
             ObjectNode node = values.addObject();
             appendCaller(node, usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
@@ -252,10 +277,14 @@ final class SymbolUsageQueries {
             node.put("access_kind", usage.accessKind());
             node.put("occurrence_count", usage.occurrenceCount());
             node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
+            javaLocations.append(node, usage.fromSource(), usage.fromClass(), usage.fromMethod(), usage.fromDescriptor(),
+                    cls.className(), selected.name(), selected.descriptor(), usage.accessKind().startsWith("read_") ? "read" : "write",
+                    root.path("symbol_id").asText(), usage.evidenceLines());
             if (countedClasses.add(usage.fromClassId())) naiveTokens += usage.fromSourceTokens();
         }
         limitations(root);
         appendPage(root, usages.size(), total, limit, offset);
+        QueryMetrics.measure("coverage", () -> UsageCoverage.append(root,jdbi,cls.id()));
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }

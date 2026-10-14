@@ -226,6 +226,7 @@ final class CallHierarchyQueries {
             if (countedClasses.add(call.toClassId())) naiveTokens += call.toSourceTokens();
         }
         appendPage(root, page.size(), filtered.size(), limit, offset);
+        UsageCoverage.append(root,jdbi,cls.id());
         appendMeta(root, jdbi, naiveTokens, cls.sourceFile(), cls.module());
         return root.toString();
     }

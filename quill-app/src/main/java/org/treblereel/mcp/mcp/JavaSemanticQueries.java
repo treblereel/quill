@@ -82,7 +82,8 @@ final class JavaSemanticQueries {
             root = root.toAbsolutePath().normalize(); file = file.toAbsolutePath().normalize();
             if (!Files.isRegularFile(file)) return status("source_missing");
             if (!file.toRealPath().startsWith(root.toRealPath())) return status("source_outside_root");
-            Path module = moduleHint == null ? file.getParent() : moduleHint.toAbsolutePath().normalize();
+            root = root.toRealPath(); file = file.toRealPath();
+            Path module = moduleHint == null ? file.getParent() : canonical(moduleHint);
             if (moduleHint == null) while (module != null && module.startsWith(root) && !Files.isRegularFile(module.resolve("pom.xml"))
                     && !BuildSystem.hasGradleMarker(module) && !hasCapture(module)) module = module.getParent();
             if (module == null || !module.startsWith(root)) return status("module_unknown");
@@ -119,7 +120,7 @@ final class JavaSemanticQueries {
             if (release != null && !release.matches("[0-9]+") || release == null
                     && (source == null || target == null || !source.matches("(?:1\\.)?[0-9]+") || !target.matches("(?:1\\.)?[0-9]+")))
                 return status("release_settings_unsupported");
-            Path home = Path.of(settings.getProperty("jdkHome", "")).toAbsolutePath().normalize();
+            Path home = canonical(Path.of(settings.getProperty("jdkHome", "")));
             if (!Files.isRegularFile(home.resolve("release")) || !Files.isExecutable(home.resolve("bin/java"))
                     || !Files.isExecutable(home.resolve("bin/javac"))) return status("jdk_unavailable");
             Properties jdk = load(home.resolve("release"));
@@ -137,11 +138,11 @@ final class JavaSemanticQueries {
             int buildInputs = count(settings, "buildInput");
             if (buildInputs == 0) return status("compiler_build_inputs_missing");
             for (int i = 0; i < buildInputs; i++) {
-                Path input = Path.of(required(settings, "buildInput.path." + i)); watched.add(input.toString());
+                Path input = canonical(Path.of(required(settings, "buildInput.path." + i))); watched.add(input.toString());
                 if (!hash(input).equals(required(settings, "buildInput.sha256." + i))) return status("compiler_settings_stale");
             }
             var roots = new LinkedHashSet<>(paths(settings, "sourceRoot", module));
-            if (settings.containsKey("generatedSourcesDirectory")) roots.add(module.resolve(settings.getProperty("generatedSourcesDirectory")).normalize());
+            if (settings.containsKey("generatedSourcesDirectory")) roots.add(canonical(module.resolve(settings.getProperty("generatedSourcesDirectory"))));
             var sources = request.putArray("sources"); var javaRoots = request.putArray("java_roots");
             Set<Path> files = new TreeSet<>();
             for (Path sourceRoot : roots) {
@@ -188,7 +189,15 @@ final class JavaSemanticQueries {
         List<String> result = new ArrayList<>(); for (int i = 0; i < count(settings, prefix); i++) result.add(required(settings, prefix + "." + i)); return result;
     }
     private static List<Path> paths(Properties settings, String prefix, Path module) throws IOException {
-        return values(settings, prefix).stream().map(value -> module.resolve(value).toAbsolutePath().normalize()).toList();
+        List<Path> result = new ArrayList<>();
+        for (String value : values(settings, prefix)) result.add(canonical(module.resolve(value)));
+        return result;
+    }
+    private static Path canonical(Path path) throws IOException {
+        Path normalized = path.toAbsolutePath().normalize(), parent = normalized;
+        while (parent != null && !Files.exists(parent)) parent = parent.getParent();
+        if (parent == null) return normalized;
+        return parent.toRealPath().resolve(parent.relativize(normalized)).normalize();
     }
     static String hash(Path file) throws Exception {
         if (!Files.isRegularFile(file)) return "absent";

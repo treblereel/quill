@@ -161,6 +161,7 @@ final class SymbolUsageQueries {
         root.put("answer_complete", !normalized.truncated());
         if (!kotlin) dispatch.appendPossibleCallers(root, cls, selected, limit, offset);
         appendPage(root, page.size(), total, limit, offset);
+        UsageCoverage.append(root,jdbi,cls.id());
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }
@@ -225,6 +226,7 @@ final class SymbolUsageQueries {
         root.set("usages", JSON.valueToTree(page)); root.put("normalization_truncated", truncated);
         root.put("answer_complete", !truncated);
         limitations(root); appendPage(root, page.size(), usages.size(), limit, offset);
+        UsageCoverage.append(root,jdbi,cls.id());
         appendMeta(root, jdbi, cls.sourceTokens());
         return root.toString();
     }
@@ -273,6 +275,7 @@ final class SymbolUsageQueries {
         }
         limitations(root);
         appendPage(root, usages.size(), total, limit, offset);
+        UsageCoverage.append(root,jdbi,cls.id());
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }

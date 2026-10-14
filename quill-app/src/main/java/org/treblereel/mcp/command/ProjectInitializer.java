@@ -597,6 +597,7 @@ public class ProjectInitializer {
         metadata.put("compiled_before_index", Boolean.toString(compiledBeforeIndex));
         metadata.put("structure_scope", "compiled_snapshot");
         metadata.put("java_source_hashes", toJson(javaSourceHashes));
+        metadata.put("java_source_roots", toJson(sourceRoots.stream().map(path -> root.relativize(path.toAbsolutePath().normalize()).toString()).sorted().toList()));
         metadata.put("module_discovery_scope", classesDiscovery.moduleScope());
         metadata.put("module_discovery_complete",
                 Boolean.toString(classesDiscovery.complete()));

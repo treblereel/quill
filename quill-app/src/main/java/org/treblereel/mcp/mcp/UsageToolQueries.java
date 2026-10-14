@@ -80,7 +80,7 @@ final class UsageToolQueries {
         root.set("supported_usage_kinds", JSON.valueToTree(USAGE_KINDS.stream().sorted().toList()));
         root.put("usage_group_count", usages.size());
         root.put("usage_occurrence_count", totalOccurrences);
-        root.putArray("limitations").add("Member-level method and field identities are not indexed yet");
+        root.putArray("limitations").add("Class-level references are aggregated; use find_symbol_usages for exact member identities");
 
         ArrayNode values = root.putArray("usages");
         int naiveTokens = targetClass.sourceTokens();
@@ -101,6 +101,7 @@ final class UsageToolQueries {
             naiveTokens += usage.caller().sourceTokens();
         }
         appendPage(root, page.size(), usages.size(), limit, offset);
+        UsageCoverage.append(root,jdbi,targetClass.id());
         if (includeLiveMeta) appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }

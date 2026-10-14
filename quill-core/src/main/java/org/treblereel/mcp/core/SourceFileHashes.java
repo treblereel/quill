@@ -28,7 +28,7 @@ public final class SourceFileHashes {
                     }
                 }
             }
-            return Map.copyOf(hashes);
+            return java.util.Collections.unmodifiableMap(hashes);
         } catch (IOException unavailable) { throw new IllegalStateException("Could not capture Java source evidence", unavailable); }
     }
     public static String hash(Path file) throws IOException {

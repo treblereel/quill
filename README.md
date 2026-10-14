@@ -454,7 +454,10 @@ does not imply that an executor, reactive stream, or message publication has com
   injection, inheritance, annotations, and ServiceLoader usages with evidence and pagination
 - **find_symbol_usages** — find method, constructor, field, or Kotlin property usages by declaration
   signature/JVM descriptor, including call or read/write evidence and pagination; pass a
-  `symbol_id` as `target` to select an overload without repeating its name or descriptor
+  `symbol_id` as `target` to select an overload without repeating its name or descriptor.
+  Java results can include compiler-confirmed reference ranges, separately labelled dispatch
+  candidates and callback references. Coverage and empty-result explanations state the indexed
+  modules/source sets, freshness and limits; zero indexed references never proves non-use.
 - **get_symbol_details** — inspect hierarchy, annotations, declared members, DI context,
   dependency metrics, implementations, occurrences, and external types for one class
 - **get_context** — assemble a compact change-ready card for up to ten classes: resolution,

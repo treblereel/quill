@@ -88,8 +88,7 @@ final class PositionSymbolQueries {
                         && candidate.kind().equals(semantic.path("kind").asText())
                         && (!semantic.has("descriptor") || java.util.Objects.equals(candidate.descriptor(), semantic.path("descriptor").asText()))
                         && (!semantic.has("source_file") || candidate.sourceFile() != null
-                            && root.resolve(candidate.sourceFile()).toAbsolutePath().normalize()
-                                .equals(Path.of(semantic.path("source_file").asText()).toAbsolutePath().normalize())))
+                            && sameSource(root.resolve(candidate.sourceFile()), Path.of(semantic.path("source_file").asText()))))
                 .toList();
         List<EnclosingClass> enclosing = enclosingClasses(jdbi, normalized, line);
         String suffix = source.substring(lineOffset + located.end()).stripLeading();
@@ -566,6 +565,10 @@ final class PositionSymbolQueries {
         if (semantic.hasNonNull("source_column")) location.put("column", semantic.path("source_column").asInt());
         if (semantic.hasNonNull("source_end_line")) location.put("end_line", semantic.path("source_end_line").asInt());
         if (semantic.hasNonNull("source_end_column")) location.put("end_column", semantic.path("source_end_column").asInt());
+    }
+    private static boolean sameSource(Path indexed, Path compiler) {
+        try { return Files.isSameFile(indexed, compiler); }
+        catch (IOException unavailable) { return indexed.toAbsolutePath().normalize().equals(compiler.toAbsolutePath().normalize()); }
     }
 
     private static String error(Jdbi jdbi, String code, String message) {

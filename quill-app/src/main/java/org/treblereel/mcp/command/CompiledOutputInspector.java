@@ -14,6 +14,17 @@ import org.treblereel.mcp.core.ProjectCodeExpectation;
 /** Classifies whether main compiled outputs are absent, stale, or current. */
 public final class CompiledOutputInspector {
 
+    /** Checks all discovered source-set outputs without running Maven or Gradle. */
+    public static boolean outputsChangedAfter(Path root, java.time.Instant indexedAt) throws IOException {
+        for (Path output : ProjectLayout.discoverClassesDirs(root, false).classesDirectories()) {
+            try (var files = Files.walk(output)) {
+                for (Path file : files.filter(Files::isRegularFile).filter(p -> p.toString().endsWith(".class")).toList())
+                    if (Files.getLastModifiedTime(file).toInstant().isAfter(indexedAt)) return true;
+            }
+        }
+        return false;
+    }
+
     public enum State {
         FRESH,
         MISSING,

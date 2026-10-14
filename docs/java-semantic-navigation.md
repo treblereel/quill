@@ -42,6 +42,26 @@ candidates. Callback references carry `execution_semantics: callback_creation`.
 Execution-order analysis lists their creation sites separately and excludes them from
 invocation-order proofs. Older index generations mark dynamic references as
 `legacy_unclassified`; refresh the index to obtain bootstrap classification.
+
+Usage and call-hierarchy responses include `coverage`: indexed module/source-set
+class counts, module-discovery status, missing test outputs, observed worktree/build
+freshness and paging/traversal limits. It distinguishes a complete indexed result
+from repository-wide completeness, which is never asserted. `empty_result` identifies
+an empty page with a positive total separately from zero matching references. Stale
+or unavailable evidence, missing outputs, unclassified handles and legacy bootstrap
+classification make current usage coverage unknown. Filters are retained in empty
+results. `unused_proven` is always false, including for inlined constants: external
+consumers, reflection, source-only references and runtime dispatch are not exhausted.
+Build freshness checks read files/timestamps; they never invoke a build or claim
+bytecode/source identity. Compiler source ranges keep their separate evidence status.
+Java source-snapshot freshness also hashes captured source roots, detecting additions,
+deletions and edits with restored timestamps even when Git's stat cache misses them.
+This hash evidence explicitly covers Java; worktree/build observations retain their
+own basis and do not exhaust Kotlin or runtime-generated references.
+Compiler capture paths, project/module roots and declaration-source comparisons
+canonicalize symlink aliases, including macOS `/var` and `/private/var`. Missing
+generated directories resolve through their nearest existing parent; paths resolving
+outside the project still fail the source-boundary check.
 Position results and errors include index freshness metadata. A compiler-selected
 declaration absent from the index reports `semantic_target_not_indexed`.
 
@@ -134,3 +154,20 @@ Validation on the final frontend: 32 tests each on JDK 17.0.2 and 21.0.2; the
 focused JDK 25 reactor run passed 32 frontend and 150 application tests. An earlier
 Kotlin semantic regression suite passed 15 tests. Native builds skipped test
 execution; tests were run separately. This is not a full repository-wide suite.
+
+## Java evidence quality follow-up — macOS arm64, 2026-10-13
+
+The [host validation record](benchmarks/results/java-evidence-quality-macos-2026-10-13.json)
+retains unit-test counts, eight passing Maven/Gradle integration cases and seven
+passing native MCP fixture scenarios. The scenarios cover repeated same-line calls,
+exact overload and field coordinates, covariant bridges versus potential dispatch,
+callback creation versus invocation order, qualified empty results, and restored-mtime
+source edits. Source and bytecode hashes were unchanged after restoring the edit.
+The temporary fixture uses normal macOS `/var` and `/private/var` aliases.
+
+The native executable is 69,696,008 bytes. One small Maven fixture's first exact-usage
+request took 360 ms; five following requests took 8.6–10.0 ms. This includes source
+corroboration and coverage checks on that fixture, not a general latency claim. Unit
+tests and coverage checks passed; one existing annotation-processing test was skipped.
+The first native integration run lacked a locally built standalone extension JAR.
+After preparing it and installing reactor artifacts, all eight cases passed separately.

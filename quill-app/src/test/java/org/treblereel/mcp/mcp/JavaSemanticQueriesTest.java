@@ -86,6 +86,30 @@ class JavaSemanticQueriesTest {
         assertEquals("resolved", result.path("status").asText(), result.toString());
         assertEquals("(I)I", result.path("descriptor").asText());
     }
+    @Test void sourceAndCapturePathAliasesUseTheSameCompilerModelAndIndexedDeclaration() throws Exception {
+        Path alias = root.resolve("project-alias"); Files.createSymbolicLink(alias, root.toRealPath());
+        settings.setProperty("sourceRoot.0", root.resolve("src/main/java").toRealPath().toString());
+        settings.setProperty("generatedSourcesDirectory", alias.resolve("target/not-created/generated").toString());
+        settings.setProperty("compileClasspath.count", "1");
+        Files.createDirectories(root.resolve("target/classes"));
+        settings.setProperty("compileClasspath.0", alias.resolve("target/classes").toString()); save();
+        Path aliasedFile = alias.resolve("src/main/java/p/Example.java");
+        var prepared = JavaSemanticQueries.prepare(alias, aliasedFile, offset());
+        assertTrue(prepared.has("sources"), prepared.toString());
+        assertEquals(root.toRealPath().toString(), prepared.path("project_root").asText());
+        assertEquals(root.toRealPath().resolve("target/not-created/generated").toString(), prepared.path("java_roots").get(1).asText());
+        var db = QuillDatabase.create(root.resolve("alias-index.db"));
+        db.useHandle(h -> {
+            h.execute("INSERT INTO classes(id,class_name,kind,interfaces,source_file,source_line,origin,lifecycle) VALUES(1,'p.Example','CLASS','[]','src/main/java/p/Example.java',1,'source','current')");
+            h.execute("INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations) VALUES(1,'METHOD','pick','pick(int):int','(I)I','int','[\"int\"]','','[]')");
+        });
+        String line = Files.readString(file);
+        var result = new ObjectMapper().readTree(new PositionSymbolQueries().getSymbolAtPosition(db,alias,"src/main/java/p/Example.java",1,line.indexOf("pick(1 )")+1));
+        assertEquals("compiler",result.path("resolution_basis").asText(),result.toString());
+        assertEquals("(I)I",result.path("selected").path("descriptor").asText());
+        var refs = JavaSemanticQueries.resolve(db,alias,aliasedFile,-2);
+        assertEquals("resolved",refs.path("status").asText()); assertEquals(1,refs.path("references").size());
+    }
     @Test void restoredTimestampEditCannotReusePreviousOverload() throws Exception {
         try (var client = new JavaWorkerClient()) {
             assertEquals("(I)I", client.query(request()).path("descriptor").asText());

@@ -18,7 +18,6 @@ import org.eclipse.jgit.api.Status;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 
 /** Reads the live worktree state that is intentionally absent from commit history. */
 public final class WorktreeInspector {
@@ -28,7 +27,13 @@ public final class WorktreeInspector {
     public record Change(String projectPath, String repositoryPath, String status) {}
 
     public record Snapshot(String currentCommit, Path repositoryRoot, List<Change> changes,
-            String fingerprint, List<Change> structuralChanges, String structuralFingerprint) {
+            String fingerprint, List<Change> structuralChanges, String structuralFingerprint, String gitStatus) {
+        public Snapshot(String currentCommit, Path repositoryRoot, List<Change> changes,
+                String fingerprint, List<Change> structuralChanges, String structuralFingerprint) {
+            this(currentCommit, repositoryRoot, changes, fingerprint, structuralChanges, structuralFingerprint, "verified");
+        }
+
+        public boolean verified() { return !"unknown".equals(gitStatus); }
         public boolean dirty() {
             return !changes.isEmpty();
         }
@@ -45,22 +50,21 @@ public final class WorktreeInspector {
 
         public static Snapshot empty() {
             String empty = emptyFingerprint();
-            return new Snapshot(null, null, List.of(), empty, List.of(), empty);
+            return new Snapshot(null, null, List.of(), empty, List.of(), empty, "not_git");
         }
     }
 
     public static Snapshot inspect(Path projectRoot) {
-        Path gitDir = GitAnalyzer.findGitDir(projectRoot);
-        if (gitDir == null) return Snapshot.empty();
+        ProjectIdentity identity;
+        try { identity = ProjectIdentity.resolve(projectRoot); }
+        catch (IOException failure) { return unknown(); }
+        if (!identity.hasGit()) return Snapshot.empty();
 
-        try (Repository repository = new FileRepositoryBuilder()
-                .setGitDir(gitDir.toFile())
-                .readEnvironment()
-                .build();
+        try (Repository repository = identity.openRepository();
                 Git git = new Git(repository)) {
             Path repositoryRoot = repository.getWorkTree().toPath().toRealPath();
             Path normalizedProject = projectRoot.toRealPath();
-            if (!normalizedProject.startsWith(repositoryRoot)) return Snapshot.empty();
+            if (!normalizedProject.startsWith(repositoryRoot)) return unknown();
             String projectPrefix = normalize(repositoryRoot.relativize(normalizedProject));
             if (!projectPrefix.isEmpty()) projectPrefix += "/";
 
@@ -97,8 +101,12 @@ public final class WorktreeInspector {
                     List.copyOf(changes), fingerprint(repositoryRoot, changes),
                     structuralChanges, fingerprint(repositoryRoot, structuralChanges));
         } catch (IOException | GitAPIException e) {
-            return Snapshot.empty();
+            return unknown();
         }
+    }
+
+    private static Snapshot unknown() {
+        return new Snapshot(null, null, List.of(), "unknown", List.of(), "unknown", "unknown");
     }
 
     private static void putAll(Map<String, String> target, Iterable<String> paths, String status) {

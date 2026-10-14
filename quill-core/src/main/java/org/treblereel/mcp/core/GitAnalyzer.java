@@ -16,7 +16,6 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
-import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.EmptyTreeIterator;
@@ -53,10 +52,7 @@ public final class GitAnalyzer {
             return GitAnalysisResult.empty();
         }
 
-        try (Repository repo = new FileRepositoryBuilder()
-                .setGitDir(gitDir.toFile())
-                .readEnvironment()
-                .build()) {
+        try (Repository repo = ProjectIdentity.resolve(projectRoot).openRepository()) {
 
             ObjectId head = repo.resolve("HEAD");
             if (head == null) {
@@ -181,10 +177,7 @@ public final class GitAnalyzer {
     public static String resolveHead(Path projectRoot) {
         Path gitDir = findGitDir(projectRoot);
         if (gitDir == null) return null;
-        try (Repository repo = new FileRepositoryBuilder()
-                .setGitDir(gitDir.toFile())
-                .readEnvironment()
-                .build()) {
+        try (Repository repo = ProjectIdentity.resolve(projectRoot).openRepository()) {
             ObjectId head = repo.resolve("HEAD");
             return head != null ? head.getName() : null;
         } catch (IOException e) {
@@ -196,8 +189,7 @@ public final class GitAnalyzer {
     public static String resolveBranch(Path projectRoot) {
         Path gitDir = findGitDir(projectRoot);
         if (gitDir == null) return null;
-        try (Repository repository = new FileRepositoryBuilder()
-                .setGitDir(gitDir.toFile()).readEnvironment().build()) {
+        try (Repository repository = ProjectIdentity.resolve(projectRoot).openRepository()) {
             return repository.getBranch();
         } catch (IOException error) {
             return null;
@@ -207,10 +199,7 @@ public final class GitAnalyzer {
     public static String resolveCurrentBranch(Path projectRoot) {
         Path gitDir = findGitDir(projectRoot);
         if (gitDir == null) return null;
-        try (Repository repo = new FileRepositoryBuilder()
-                .setGitDir(gitDir.toFile())
-                .readEnvironment()
-                .build()) {
+        try (Repository repo = ProjectIdentity.resolve(projectRoot).openRepository()) {
             String branch = repo.getBranch();
             if (branch != null && branch.length() == 40) return null;
             return branch;

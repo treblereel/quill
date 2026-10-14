@@ -42,6 +42,11 @@ public record ProjectIdentity(Path projectRoot, Path worktreeRoot, Path gitDirec
             if (!Files.isRegularFile(git.resolve("HEAD")) || !Files.isDirectory(common.resolve("objects"))) {
                 throw new IOException("Incomplete Git repository: " + marker);
             }
+            String head = Files.readString(git.resolve("HEAD")).strip();
+            if (!head.matches("[0-9a-fA-F]{40}")
+                    && !(head.startsWith("ref: ") && Repository.isValidRefName(head.substring(5)))) {
+                throw new IOException("Invalid Git HEAD: " + git);
+            }
             return new ProjectIdentity(root, directory, git, common, id("repository", common),
                     id("worktree", directory, git), id("project", root, git));
         }

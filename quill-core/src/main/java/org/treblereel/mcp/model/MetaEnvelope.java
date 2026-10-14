@@ -40,9 +40,10 @@ public record MetaEnvelope(
                 && !indexedStructure.equals(worktree.structuralFingerprint());
         boolean compiledSnapshot = Boolean.parseBoolean(
                 meta.getOrDefault("compiled_before_index", "false"));
-        boolean structureStale = commitStale || structureChanged
+        boolean structureStale = !worktree.verified() || commitStale || structureChanged
                 || (worktree.structuralDirty() && !compiledSnapshot);
         List<String> staleReasons = new ArrayList<>();
+        if (!worktree.verified()) staleReasons.add("git_state_unknown");
         if (commitStale) staleReasons.add("commit_changed_after_index");
         if (structureChanged) staleReasons.add("worktree_changed_after_index");
         if (worktree.structuralDirty() && !compiledSnapshot) {

@@ -16,21 +16,19 @@ public final class JvmMethodResolver {
     private final Map<Integer,List<ClassMemberRecord>> members = new HashMap<>();
     private final Map<String,Resolution> cache = new HashMap<>();
     private final boolean limited;
+    private final IndexGenerationCache.Graph graph;
     private final Set<String> ambiguousOccurrences;
     private final Map<String,List<Integer>> aliases=new HashMap<>();
     public JvmMethodResolver(Jdbi db) {
         this.db = db;
-        ambiguousOccurrences=db.withHandle(h -> new HashSet<>(h.createQuery("""
-                SELECT class_name FROM class_occurrences GROUP BY class_name
-                HAVING count(DISTINCT output_directory)>1
-                """).mapTo(String.class).list()));
-        var classes = IndexReader.findAllClasses(db);
-        limited = classes.size() > CAP;
-        if (!limited) for (var c : classes) owners.computeIfAbsent(c.className(), ignored -> new ArrayList<>()).add(c);
+        graph=IndexGenerationCache.get(db);
+        ambiguousOccurrences=graph.ambiguous;
+        limited=graph.classes.size()>CAP;
+        owners.putAll(graph.owners);members.putAll(graph.members);
     }
     private Resolution unknown(String status) { return new Resolution(status,null,null,List.of()); }
     public Resolution resolve(String owner, String name, String descriptor) {
-        return cache.computeIfAbsent(owner + ":" + name + descriptor, ignored -> lookup(owner,name,descriptor));
+        return graph.resolution(owner + ":" + name + descriptor, () -> lookup(owner,name,descriptor));
     }
     private Resolution lookup(String owner, String name, String descriptor) {
         if (limited) return unknown("hierarchy_limit");
@@ -114,7 +112,7 @@ public final class JvmMethodResolver {
     }
     /** Expand only references resolving to the selected exact JVM declaration. Overrides stay separate. */
     public List<Integer> symbolicOwners(int declarationId,String name,String descriptor) {
-        return aliases.computeIfAbsent(declarationId+":"+name+descriptor,ignored->loadSymbolicOwners(declarationId,name,descriptor));
+        return graph.aliases(declarationId+":"+name+descriptor,()->loadSymbolicOwners(declarationId,name,descriptor));
     }
     private List<Integer> loadSymbolicOwners(int declarationId,String name,String descriptor) {
         var ids = new TreeSet<Integer>(); ids.add(declarationId);

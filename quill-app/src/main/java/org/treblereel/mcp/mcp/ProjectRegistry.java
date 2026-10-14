@@ -155,7 +155,8 @@ public class ProjectRegistry {
                 Path normalizedDb = dbPath.toAbsolutePath().normalize();
                 activeDatabases.add(normalizedDb);
                 IndexHandle handle = databases.compute(normalizedDb, (path, cached) -> {
-                    if (cached == null) {
+                    if (cached == null || !QuillDatabase.matchesGeneration(cached.jdbi(),path)) {
+                        if(cached!=null)QuillDatabase.retire(cached.jdbi());
                         return new IndexHandle(projectRoot, QuillDatabase.openPooled(path),
                                 new AtomicLong(resolutionId));
                     }

@@ -13,11 +13,30 @@ public final class QuillDatabase {
 
     private static final java.lang.ref.Cleaner CLEANER=java.lang.ref.Cleaner.create();
     private static final java.util.Map<Jdbi,ReadOnlyConnectionPool> POOLS=java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private record GenerationStamp(Path path,Object key,long size,java.nio.file.attribute.FileTime modified) {}
+    private static final java.util.Map<Jdbi,GenerationStamp> GENERATIONS=java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private static GenerationStamp stamp(Path path) throws IOException {
+        Path canonical=path.toRealPath();var attributes=Files.readAttributes(canonical,java.nio.file.attribute.BasicFileAttributes.class);
+        return new GenerationStamp(canonical,attributes.fileKey(),attributes.size(),attributes.lastModifiedTime());
+    }
+    public static boolean matchesGeneration(Jdbi database,Path path) {
+        try {var expected=GENERATIONS.get(database);return expected!=null && expected.key()!=null && expected.equals(stamp(path));}
+        catch(IOException missing){return false;}
+    }
     private QuillDatabase() {}
 
     /** Pool only immutable published indexes, never staging writers or arbitrary writable databases. */
-    public static Jdbi openPooled(Path path) {return openExisting(path,true,true);}
+    public static Jdbi openPooled(Path path) {
+        try {
+            var before=stamp(path);Jdbi database=openExisting(before.path(),true,true);
+            if(!before.equals(stamp(path))) {retire(database);throw new IllegalStateException("Index replaced while opening; retry the request");}
+            GENERATIONS.put(database,before);return database;
+        } catch(IOException missing){throw new IllegalStateException("Cannot inspect immutable index generation",missing);}
+    }
+    public static boolean isPooled(Jdbi database) {return POOLS.containsKey(database);}
     public static void retire(Jdbi database) {
+        GENERATIONS.remove(database);
+        IndexGenerationCache.invalidate(database);
         ReadOnlyConnectionPool pool=POOLS.remove(database);if(pool!=null)pool.run();
     }
 

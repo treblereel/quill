@@ -16,6 +16,7 @@ final class JavaDispatchEvidence {
     private static final int OWNER_CAP = 5000, CALL_CAP = 5000, TARGET_LIMIT = 20;
     private final Jdbi db;
     private JvmMethodResolver resolver;
+    private org.treblereel.mcp.db.IndexGenerationCache.Graph graph;
     private List<ClassRecord> classes;
     private Map<String,List<ClassRecord>> owners;
     private Map<Integer,List<ClassMemberRecord>> members;
@@ -23,14 +24,17 @@ final class JavaDispatchEvidence {
     JavaDispatchEvidence(Jdbi db) { this.db = db; }
     private void load() {
         if (classes != null) return;
-        classes = IndexReader.findAllClasses(db);
-        owners = new HashMap<>();
-        for (var cls : classes) owners.computeIfAbsent(cls.className(), ignored -> new ArrayList<>()).add(cls);
-        members = classes.size() > OWNER_CAP ? Map.of() : IndexReader.findClassMembers(db, classes.stream().map(ClassRecord::id).toList());
+        graph=org.treblereel.mcp.db.IndexGenerationCache.get(db);
+        classes=graph.classes;owners=graph.owners;
+        members=graph.sourceMembers;
     }
     void appendTarget(ObjectNode edge, MethodCallView call) {
         String key = call.toClassId() + ":" + call.toMethod() + call.toDescriptor() + ":" + call.invocationKind();
-        edge.set("dispatch", targets.computeIfAbsent(key, ignored -> target(call)));
+        edge.set("dispatch", targets.computeIfAbsent(key, ignored -> {
+            load();
+            try {return (ObjectNode)JSON.readTree(graph.dispatch(key,()->target(call).toString()));}
+            catch(java.io.IOException impossible){throw new IllegalStateException(impossible);}
+        }));
     }
     private ObjectNode target(MethodCallView call) {
         var result = JSON.createObjectNode().put("target_basis", "bytecode_symbolic_reference")
@@ -59,13 +63,13 @@ final class JavaDispatchEvidence {
         var bases = owners.getOrDefault(call.toClass(),List.of());
         if (bases.size()!=1) return result.put("status","owner_ambiguous").put("truncated",false);
         ClassRecord base = resolution.resolved() ? resolution.owner() : bases.getFirst();
-        var declarations = IndexReader.findJvmClassMembers(db,base.id()).stream().filter(m -> "METHOD".equals(m.kind())
+        var declarations = graph.members.getOrDefault(base.id(),List.of()).stream().filter(m -> "METHOD".equals(m.kind())
                 && call.toMethod().equals(m.name()) && call.toDescriptor().equals(m.descriptor())).toList();
         if (declarations.size()!=1) return result.put("status","declaration_not_indexed").put("truncated",false);
         ClassMemberRecord declaration = declarations.getFirst();
         if (fixed(declaration)) return result.put("status","fixed_symbolic_target").put("possible_target_count",0).put("truncated",false);
         int count = 0;
-        for (var child : classes.stream().sorted(Comparator.comparing(ClassRecord::className).thenComparingInt(ClassRecord::id)).toList()) {
+        for (var child : graph.descendants(bases.getFirst())) {
             if (child.id()==base.id()) continue;
             if(path(child,bases.getFirst()).isEmpty()) continue;
             List<String> path = path(child,base);
@@ -112,7 +116,7 @@ final class JavaDispatchEvidence {
         }
         List<ObjectNode> found = new ArrayList<>();
         boolean capped = false;
-        outer: for (var ancestor : classes) {
+        outer: for (var ancestor : classes.stream().filter(c->graph.ancestry(selectedOwner).containsKey(c.id())).toList()) {
             if (ancestor.id()==selectedOwner.id()) continue;
             var path = path(selectedOwner,ancestor);
             if (path.isEmpty()) continue;
@@ -146,23 +150,7 @@ final class JavaDispatchEvidence {
             if (!usages) arguments.put("direction",response.path("direction").asText("inbound"));
         }
     }
-    private List<String> path(ClassRecord child, ClassRecord ancestor) {
-        if (owners.getOrDefault(child.className(),List.of()).size()!=1 || owners.getOrDefault(ancestor.className(),List.of()).size()!=1) return List.of();
-        record Step(ClassRecord cls,List<String> path) {}
-        var pending = new ArrayDeque<Step>(); var seen = new HashSet<Integer>();
-        pending.add(new Step(child,List.of(child.className())));
-        while (!pending.isEmpty() && seen.size()<OWNER_CAP) {
-            var step=pending.removeFirst(); if (!seen.add(step.cls().id())) continue;
-            if (step.cls().id()==ancestor.id()) return step.path();
-            var parents=new ArrayList<>(step.cls().interfaces());
-            if (step.cls().superclass()!=null) parents.add(step.cls().superclass());
-            for (var parent : parents) {
-                var matches=owners.getOrDefault(parent,List.of()); if (matches.size()!=1) continue;
-                var next=new ArrayList<>(step.path()); next.add(parent); pending.addLast(new Step(matches.getFirst(),List.copyOf(next)));
-            }
-        }
-        return List.of();
-    }
+    private List<String> path(ClassRecord child,ClassRecord ancestor) {return graph.path(child,ancestor);}
     private static boolean candidate(ClassMemberRecord base,ClassRecord baseOwner,ClassMemberRecord child,ClassRecord childOwner) {
         if (!"METHOD".equals(base.kind()) || !"METHOD".equals(child.kind()) || fixed(base)
                 || modifier(child,"static") || modifier(child,"private") || !base.name().equals(child.name())) return false;

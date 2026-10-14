@@ -50,6 +50,14 @@ class ReadOnlyConnectionPoolTest {
         try(var late=pool.borrow()){assertEquals(1,late.createStatement().executeQuery("SELECT 1").getInt(1));}
         assertEquals(0,pool.idleCount());assertEquals(0,pool.borrowedCount());
     }
+    @Test void retirementDoesNotRemoveTheConcurrencyBoundForLateReaders() throws Exception {
+        var pool=pool(1,Duration.ofMillis(30));
+        try(var active=pool.borrow()) {
+            pool.run();assertThrows(SQLTimeoutException.class,pool::borrow);assertEquals(1,pool.borrowedCount());
+        }
+        try(var late=pool.borrow()){assertEquals(1,pool.borrowedCount());}
+        assertEquals(0,pool.borrowedCount());assertEquals(0,pool.idleCount());
+    }
     @Test void publishedGenerationsNeverShareConnectionsOrRows() throws Exception {
         Path old=root.resolve("old.db"),now=root.resolve("new.db");
         QuillDatabase.create(old).useHandle(h->{h.execute("CREATE TABLE marker(value INTEGER)");h.execute("INSERT INTO marker VALUES(1)");});

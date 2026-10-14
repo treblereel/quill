@@ -26,7 +26,7 @@ final class ReadOnlyConnectionPool implements Runnable {
         Connection connection;
         synchronized(this) {
             long deadline=System.nanoTime()+timeoutNanos;
-            while(!retired && borrowed>=maximum && idle.isEmpty()) {
+            while(borrowed>=maximum && idle.isEmpty()) {
                 long left=deadline-System.nanoTime();if(left<=0) throw new SQLTimeoutException("Read-only index pool exhausted");
                 try {wait(Math.max(1,left/1_000_000));} catch(InterruptedException error) {Thread.currentThread().interrupt();throw new SQLException("Interrupted waiting for an index reader",error);}
             }

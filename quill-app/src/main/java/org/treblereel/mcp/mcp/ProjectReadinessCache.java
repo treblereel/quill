@@ -32,7 +32,7 @@ final class ProjectReadinessCache {
 
     ProjectRegistry.ProjectIssue get(
             Path projectRoot, Supplier<ProjectRegistry.ProjectIssue> loader) {
-        Path root = projectRoot.toAbsolutePath().normalize();
+        Path root = org.treblereel.mcp.core.ProjectIdentity.canonical(projectRoot);
         long now = nanoTime.getAsLong();
         Entry entry = entries.compute(root, (ignored, current) -> {
             if (current != null && now - current.checkedAtNanos() < ttlNanos) return current;
@@ -42,7 +42,7 @@ final class ProjectReadinessCache {
     }
 
     void invalidate(Path projectRoot) {
-        entries.remove(projectRoot.toAbsolutePath().normalize());
+        entries.remove(org.treblereel.mcp.core.ProjectIdentity.canonical(projectRoot));
     }
 
     void clear() {

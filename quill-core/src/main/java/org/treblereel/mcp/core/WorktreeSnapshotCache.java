@@ -54,7 +54,7 @@ public final class WorktreeSnapshotCache {
     }
 
     public WorktreeInspector.Snapshot get(Path projectRoot) {
-        Path key = projectRoot.toAbsolutePath().normalize();
+        Path key = org.treblereel.mcp.core.ProjectIdentity.canonical(projectRoot);
         long now = clock.getAsLong();
         if (entries.size() > 64) {
             entries.entrySet().removeIf(entry -> now >= entry.getValue().expiresAtNanos());
@@ -76,7 +76,7 @@ public final class WorktreeSnapshotCache {
 
     /** Refreshes synchronously for correctness-sensitive workflow gates. */
     public WorktreeInspector.Snapshot refresh(Path projectRoot) {
-        Path key = projectRoot.toAbsolutePath().normalize();
+        Path key = org.treblereel.mcp.core.ProjectIdentity.canonical(projectRoot);
         WorktreeInspector.Snapshot snapshot = inspector.apply(key);
         entries.put(key, new Entry(snapshot, clock.getAsLong() + ttlNanos));
         return snapshot;
@@ -102,6 +102,6 @@ public final class WorktreeSnapshotCache {
     }
 
     public void invalidate(Path projectRoot) {
-        if (projectRoot != null) entries.remove(projectRoot.toAbsolutePath().normalize());
+        if (projectRoot != null) entries.remove(org.treblereel.mcp.core.ProjectIdentity.canonical(projectRoot));
     }
 }

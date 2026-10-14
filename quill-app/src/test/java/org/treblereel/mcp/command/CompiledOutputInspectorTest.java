@@ -13,6 +13,26 @@ class CompiledOutputInspectorTest {
     @TempDir Path root;
 
     @Test
+    void sharedOutputSymlinkCannotProveWorkingCopyFreshness() throws Exception {
+        Files.writeString(root.resolve("pom.xml"), "<project/>");
+        Path source = root.resolve("src/main/java/App.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "class App {}\n");
+        Path external = Files.createTempDirectory("quill-shared-output");
+        try {
+            Files.write(external.resolve("App.class"), new byte[]{1});
+            Files.createDirectories(root.resolve("target"));
+            Files.createSymbolicLink(root.resolve("target/classes"), external);
+            assertEquals(CompiledOutputInspector.State.OWNERSHIP_UNKNOWN,
+                    CompiledOutputInspector.inspect(root).state());
+        } finally {
+            Files.deleteIfExists(root.resolve("target/classes"));
+            Files.deleteIfExists(external.resolve("App.class"));
+            Files.deleteIfExists(external);
+        }
+    }
+
+    @Test
     void distinguishesMissingFreshAndStaleClasses() throws Exception {
         Files.writeString(root.resolve("pom.xml"), "<project/>");
         Path source = root.resolve("src/main/kotlin/org/acme/App.kt");

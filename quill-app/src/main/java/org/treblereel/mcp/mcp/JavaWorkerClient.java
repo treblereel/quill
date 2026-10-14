@@ -32,7 +32,7 @@ final class JavaWorkerClient implements AutoCloseable {
             if (process == null || !process.isAlive() || !nextJdk.equals(jdkHome)) {
                 close(); start(request); jdkHome = nextJdk;
             }
-            String key = request.path("module") + ":" + request.path("source_set") + ":" + request.path("release") + ":"
+            String key = request.path("project_id") + ":" + request.path("worktree_id") + ":" + request.path("module") + ":" + request.path("source_set") + ":" + request.path("release") + ":"
                     + request.path("source") + ":" + request.path("target") + ":" + request.path("java_roots") + ":"
                     + request.path("classpath") + ":" + request.path("settings_sha256");
             Properties settings = new Properties();

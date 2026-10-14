@@ -10,6 +10,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class BuildEventProtocolTest {
+    @Test void foreignIndexDoesNotConsumeOrApplyBuildEvents() throws Exception {
+        Path events = Files.createDirectories(tempDir.resolve(".quill/build-events"));
+        Path event = events.resolve("event.json");
+        Files.writeString(event, "{}");
+        var db = org.treblereel.mcp.db.QuillDatabase.create(tempDir.resolve(".quill/foreign.db"));
+        db.useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('index_id','foreign')");
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('project_root',?)", tempDir.resolve("other").toString());
+        });
+        String error = new BuildEventConsumer().consume(tempDir);
+        assertTrue(error.contains("ownership mismatch"), error);
+        assertTrue(Files.exists(event));
+        assertFalse(Files.exists(tempDir.resolve(".quill/build-state.json")));
+    }
 
     @TempDir
     Path tempDir;

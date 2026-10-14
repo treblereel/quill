@@ -11,6 +11,14 @@ import org.junit.jupiter.api.parallel.ResourceLock;
 @ResourceLock("K2_ANALYZER")
 class CompilerInputsTest {
     @TempDir Path temp;
+    @Test void physicalWorktreeIdentitySeparatesOtherwiseIdenticalCompilerInputs() throws Exception {
+        var a = request().put("project_id", "project:a").put("worktree_id", "worktree:a");
+        var before = CompilerInputs.capture(a, temp).fingerprint();
+        var b = a.deepCopy().put("worktree_id", "worktree:b");
+        assertNotEquals(before, CompilerInputs.capture(b, temp).fingerprint());
+        assertEquals(before, CompilerInputs.capture(a, temp).fingerprint());
+    }
+
     private ObjectNode request() throws Exception {
         Path file = temp.resolve("Caller.kt"); Files.writeString(file, "fun run() = 1");
         return new ObjectMapper().createObjectNode().put("module", temp.toString())

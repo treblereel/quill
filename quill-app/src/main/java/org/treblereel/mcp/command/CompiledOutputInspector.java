@@ -46,6 +46,7 @@ public final class CompiledOutputInspector {
         FRESH,
         MISSING,
         STALE,
+        OWNERSHIP_UNKNOWN,
         NOT_APPLICABLE
     }
 
@@ -68,11 +69,26 @@ public final class CompiledOutputInspector {
         return inspect(root,modules,ProjectLayout.discoverClassesDirs(root,false));
     }
     private static Report inspect(Path root,java.util.Collection<String> modules,ProjectLayout.ClassesDiscovery discovery) {
+        Path physicalRoot = org.treblereel.mcp.core.ProjectIdentity.canonical(root);
+        for (Path module : discovery.moduleDirectories()) {
+            if (modules != null && !modules.contains(moduleName(root, module))) continue;
+            for (String conventional : List.of("target/classes", "build/classes/java/main", "build/classes/kotlin/main")) {
+                Path directory = module.resolve(conventional);
+                if (Files.isDirectory(directory)
+                        && !org.treblereel.mcp.core.ProjectIdentity.canonical(directory).startsWith(physicalRoot)) {
+                    return new Report(State.OWNERSHIP_UNKNOWN, List.of(moduleName(root, module)));
+                }
+            }
+        }
         List<ProjectLayout.CompiledOutput> mainOutputs = discovery.outputs().stream()
                 .filter(output -> output.sourceSet().equals("main"))
                 .filter(output -> modules == null || modules.contains(moduleName(root, output.moduleDirectory())))
                 .toList();
         if (mainOutputs.isEmpty()) return new Report(State.MISSING, List.of());
+        List<String> external = mainOutputs.stream()
+                .filter(output -> !org.treblereel.mcp.core.ProjectIdentity.canonical(output.directory()).startsWith(physicalRoot))
+                .map(output -> moduleName(root, output.moduleDirectory())).distinct().toList();
+        if (!external.isEmpty()) return new Report(State.OWNERSHIP_UNKNOWN, external);
 
         Map<Path, List<ProjectLayout.CompiledOutput>> outputsByModule = mainOutputs.stream()
                 .collect(java.util.stream.Collectors.groupingBy(

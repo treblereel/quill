@@ -432,6 +432,23 @@ public final class ProjectIndexStore {
         } catch (IOException | RuntimeException failure) { return false; }
     }
 
+    /** Copied build events must not rewrite an index whose only readable generations are foreign. */
+    public static boolean hasOnlyForeignGenerations(Path root) {
+        Path directory = root.resolve(".quill");
+        if (!Files.isDirectory(directory)) return false;
+        boolean foreign = false;
+        try (var files = Files.newDirectoryStream(directory, "*.db")) {
+            for (Path path : files) {
+                if (path.getFileName().toString().startsWith(".")) continue;
+                var validated = validatedDatabase(path);
+                if (validated.isEmpty()) continue;
+                if (belongsTo(root, validated.get().metadata())) return false;
+                foreign = true;
+            }
+        } catch (IOException ignored) { return true; }
+        return foreign;
+    }
+
     private static Optional<ValidatedDatabase> validatedDatabase(Path database) {
         Path normalized = database.toAbsolutePath().normalize();
         try {

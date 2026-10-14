@@ -12,6 +12,16 @@ import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
 
 class JavaSemanticQueriesTest {
+    @Test void workerModelsIncludePhysicalProjectIdentity() throws Exception {
+        var a = (com.fasterxml.jackson.databind.node.ObjectNode) JavaSemanticQueries.prepare(root, file, offset());
+        var b = a.deepCopy().put("project_id", "other-checkout");
+        assertTrue(a.has("worktree_id"));
+        try (var client = new JavaWorkerClient()) {
+            assertFalse(client.query(a).path("reused").asBoolean());
+            assertFalse(client.query(b).path("reused").asBoolean());
+            assertTrue(client.query(a).path("reused").asBoolean());
+        }
+    }
     @TempDir Path root;
     Path file, capture;
     Properties settings;

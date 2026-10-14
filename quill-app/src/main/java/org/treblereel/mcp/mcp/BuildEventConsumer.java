@@ -32,7 +32,7 @@ final class BuildEventConsumer {
     private final ConcurrentHashMap<Path, Object> projectLocks = new ConcurrentHashMap<>();
 
     static boolean hasPendingEvents(Path root) {
-        Path directory = root.toAbsolutePath().normalize().resolve(".quill/build-events");
+        Path directory = org.treblereel.mcp.core.ProjectIdentity.canonical(root).resolve(".quill/build-events");
         if (!Files.isDirectory(directory)) return false;
         try (var files = Files.list(directory)) {
             return files.anyMatch(Files::isRegularFile);
@@ -42,13 +42,16 @@ final class BuildEventConsumer {
     }
 
     String consume(Path root) {
-        Path normalized = root.toAbsolutePath().normalize();
+        Path normalized = org.treblereel.mcp.core.ProjectIdentity.canonical(root);
         Object lock = projectLocks.computeIfAbsent(normalized, ignored -> new Object());
         synchronized (lock) {
             Path directory = normalized.resolve(".quill/build-events");
             List<Path> eventFiles;
             try {
                 if (!Files.isDirectory(directory)) return null;
+                if (org.treblereel.mcp.command.ProjectIndexStore.hasOnlyForeignGenerations(normalized)) {
+                    return "Index ownership mismatch: build events cannot refresh a copied index; run quill init for this working copy";
+                }
                 try (var files = Files.list(directory)) {
                     eventFiles = files.filter(Files::isRegularFile)
                             .sorted(Comparator.comparing(Path::toString)).toList();

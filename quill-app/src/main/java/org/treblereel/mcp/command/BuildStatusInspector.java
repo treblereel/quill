@@ -124,6 +124,10 @@ public final class BuildStatusInspector {
                     ? "Run the project's Maven compile/package command"
                     : "Run the project's Gradle classes/build command");
         }
+        if (compiled.state() == CompiledOutputInspector.State.OWNERSHIP_UNKNOWN) {
+            return new Recommendation("build_evidence_unknown", "output_ownership_unknown",
+                    "Use independent compiled output directories inside this working copy; external output ownership cannot be verified");
+        }
         if (compiled.state() == CompiledOutputInspector.State.STALE) {
             return new Recommendation("build_required", "classes_stale",
                     buildSystem == BuildSystem.MAVEN

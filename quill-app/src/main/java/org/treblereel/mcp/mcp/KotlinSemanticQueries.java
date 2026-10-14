@@ -68,7 +68,7 @@ final class KotlinSemanticQueries {
     }
 
     private static String key(Path root, JsonNode request) {
-        return root.toAbsolutePath().normalize() + ":" + request.path("module").asText()
+        return org.treblereel.mcp.core.ProjectIdentity.canonical(root) + ":" + request.path("project_id").asText() + ":" + request.path("module").asText()
                 + ":" + request.path("source_set").asText();
     }
 
@@ -111,7 +111,8 @@ final class KotlinSemanticQueries {
                     && BuildSystem.hasGradleMarker(root) ? BuildSystem.GRADLE : BuildSystem.detect(module);
             Path settingsOutput = system.classpathFile(module).getParent();
             Path captured = test ? system.testClasspathFile(module) : system.classpathFile(module);
-            var request = JSON.createObjectNode();
+            var identity = org.treblereel.mcp.core.ProjectIdentity.resolve(root);
+            var request = JSON.createObjectNode().put("project_id", identity.projectId()).put("worktree_id", identity.worktreeId());
             request.put("file", file.toString()); request.put("offset", offset);
             request.put("module", module.toString()); request.put("source_set", sourceSet);
             KotlinCompilerSettings.apply(module, settingsOutput, sourceSet, request);

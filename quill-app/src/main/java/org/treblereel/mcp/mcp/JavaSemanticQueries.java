@@ -43,7 +43,7 @@ final class JavaSemanticQueries {
                 JsonNode request = prepare(db, root, file, -1);
                 if (!request.has("sources")) return;
                 synchronized (JavaSemanticQueries.class) {
-                    if (!cancelled.get()) coordinator().prewarm(request.path("module").asText() + ":" + request.path("source_set").asText(),
+                    if (!cancelled.get()) coordinator().prewarm(key(root, request),
                             () -> prepare(db, root, file, -1));
                 }
             } catch (RuntimeException unavailable) { /* Foreground retains preparation and fallback. */ }
@@ -54,7 +54,7 @@ final class JavaSemanticQueries {
     static JsonNode resolve(Jdbi db, Path root, Path file, int offset) {
         JsonNode request = prepare(db, root, file, offset);
         if (!request.has("sources")) return request;
-        String key = request.path("module").asText() + ":" + request.path("source_set").asText();
+        String key = key(root, request);
         return coordinator().query(key, () -> prepare(db, root, file, offset), () -> prepare(db, root, file, -1));
     }
     private static JsonNode queryWorker(JsonNode request) {
@@ -64,6 +64,11 @@ final class JavaSemanticQueries {
         if (!current.equals(request)) return status("inputs_changed");
         return result;
     }
+    private static String key(Path root, JsonNode request) {
+        return org.treblereel.mcp.core.ProjectIdentity.canonical(root) + ":" + request.path("project_id").asText()
+                + ":" + request.path("module").asText() + ":" + request.path("source_set").asText();
+    }
+
     static JsonNode prepare(Jdbi db, Path root, Path file, int offset) {
         Path module = null;
         try {
@@ -128,7 +133,9 @@ final class JavaSemanticQueries {
             int major = Integer.parseInt(version.split("[.\\-+]")[0]);
             if (major < 17 || release != null && Integer.parseInt(release) > major) return status("jdk_unsupported");
             if (!version.split("\\+")[0].equals(settings.getProperty("jdkVersion", "").split("\\+")[0])) return status("jdk_changed");
-            var request = JSON.createObjectNode().put("file", file.toString()).put("offset", offset)
+            var identity = org.treblereel.mcp.core.ProjectIdentity.resolve(root);
+            var request = JSON.createObjectNode().put("project_id", identity.projectId())
+                    .put("worktree_id", identity.worktreeId()).put("file", file.toString()).put("offset", offset)
                     .put("project_root", root.toString()).put("module", module.toString())
                     .put("source_set", settings.getProperty("sourceSet", "unknown")).put("jdk_home", home.toString())
                     .put("captured_classpath", selected.toString()).put("settings_sha256", hash(selected));

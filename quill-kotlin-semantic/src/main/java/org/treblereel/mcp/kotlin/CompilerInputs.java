@@ -36,6 +36,8 @@ public record CompilerInputs(String fingerprint, String moduleHome, String jdkHo
         token(digest, "K2-2.4.21-project-settings-scripting");
         String sourceSet = request.path("source_set").asText("main");
         token(digest, module); token(digest, sourceSet);
+        token(digest, request.path("project_id").asText());
+        token(digest, request.path("worktree_id").asText());
         for (String field : List.of("languageVersion", "apiVersion", "jvmTarget", "compilerVersion", "compiler_arguments", "plugin_options", "allow_compiler_plugins", "unsupported_plugins", "friend_paths")) {
             token(digest, field); token(digest, request.path(field).toString());
         }

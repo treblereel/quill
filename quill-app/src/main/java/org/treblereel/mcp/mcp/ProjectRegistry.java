@@ -233,6 +233,13 @@ public class ProjectRegistry {
         }
         CompiledOutputInspector.Report compiled = CompiledOutputInspector.inspect(root);
         if (compiled.state() == CompiledOutputInspector.State.FRESH) return null;
+        if (compiled.state() == CompiledOutputInspector.State.OWNERSHIP_UNKNOWN) {
+            return new ProjectIssue(project.name(), root, "build_evidence_unknown",
+                    buildSystem.name().toLowerCase(java.util.Locale.ROOT),
+                    "Compiled outputs are outside this working copy; ownership cannot be verified",
+                    "Use independent output directories inside this working copy", false,
+                    "output_ownership_unknown", compiled.staleModules());
+        }
         String action = buildSystem == BuildSystem.MAVEN
                 ? "Decide whether to run the project's Maven compile/package command, then retry"
                 : "Decide whether to run the project's Gradle classes/build command, then retry";

@@ -37,7 +37,7 @@ final class JavaDispatchEvidence {
                 .put("invocation_kind", call.invocationKind()).put("execution_proven", false)
                 .put("runtime_target_proven", false).put("candidate_coverage_complete", false);
         result.putObject("declared_target").put("class",call.toClass()).put("name",call.toMethod()).put("descriptor",call.toDescriptor());
-        if (resolver == null) resolver = new JvmMethodResolver(db);
+        if (resolver == null) resolver = org.treblereel.mcp.db.ReadQueryContext.resolver(db);
         var resolution = resolver.resolve(call.toClass(),call.toMethod(),call.toDescriptor());
         result.put("declaration_resolution",resolution.status());
         if (resolution.resolved()) {

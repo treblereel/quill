@@ -612,8 +612,14 @@ public final class IndexReader {
                 .list());
     }
 
-    public static Map<Integer, List<ClassMemberRecord>> findClassMembers(
-            Jdbi jdbi, Collection<Integer> classIds) {
+    public static Map<Integer,List<ClassMemberRecord>> findClassMembers(Jdbi jdbi,Collection<Integer> classIds) {
+        return findClassMembers(jdbi,classIds,false);
+    }
+    public static Map<Integer,List<ClassMemberRecord>> findJvmClassMembers(Jdbi jdbi,Collection<Integer> classIds) {
+        return findClassMembers(jdbi,classIds,true);
+    }
+    private static Map<Integer, List<ClassMemberRecord>> findClassMembers(
+            Jdbi jdbi, Collection<Integer> classIds,boolean includeCompilerMethods) {
         if (classIds == null || classIds.isEmpty()) return Map.of();
         return jdbi.withHandle(handle -> {
             Map<Integer, List<ClassMemberRecord>> result = new LinkedHashMap<>();
@@ -624,12 +630,12 @@ public final class IndexReader {
                                 SELECT class_id, kind, name, signature, descriptor, type_name, parameter_types,
                                        modifiers, annotations, annotation_details
                                 FROM class_members WHERE class_id IN (<classIds>)
-                                  AND modifiers NOT LIKE '%bridge%' AND modifiers NOT LIKE '%synthetic%'
+                                  AND (:compilerMethods OR (modifiers NOT LIKE '%bridge%' AND modifiers NOT LIKE '%synthetic%'))
                                 ORDER BY class_id,
                                          CASE kind WHEN 'FIELD' THEN 0
                                                    WHEN 'CONSTRUCTOR' THEN 1 ELSE 2 END,
                                          name, signature""")
-                        .bindList("classIds", batch)
+                        .bindList("classIds", batch).bind("compilerMethods",includeCompilerMethods)
                         .map((rs, ctx) -> mapClassMember(rs))
                         .forEach(member -> result
                                 .computeIfAbsent(member.classId(), ignored -> new ArrayList<>())
@@ -813,7 +819,7 @@ public final class IndexReader {
                     .bind("classId", classId)
                     .bind("limit", limit)
                     .bind("offset", offset);
-            if (resolveBoth) query.bindList("ownerIds",new JvmMethodResolver(jdbi).symbolicOwners(classId,method,descriptor));
+            if (resolveBoth) query.bindList("ownerIds",ReadQueryContext.resolver(jdbi).symbolicOwners(classId,method,descriptor));
             if (method != null) query.bind("method", method);
             if (descriptor != null) query.bind("descriptor", descriptor);
             return query.map((rs, ctx) -> new MethodCallView(
@@ -861,7 +867,7 @@ public final class IndexReader {
                 ORDER BY from_class, from_method, from_descriptor, invocation_kind
                 LIMIT :limit OFFSET :offset""";
         return jdbi.withHandle(handle -> handle.createQuery(sql)
-                .bindList("ownerIds", new JvmMethodResolver(jdbi).symbolicOwners(classId, method, descriptor))
+                .bindList("ownerIds", ReadQueryContext.resolver(jdbi).symbolicOwners(classId, method, descriptor))
                 .bind("method", method)
                 .bind("descriptor", descriptor)
                 .bind("limit", limit)
@@ -881,7 +887,7 @@ public final class IndexReader {
                           AND target.origin != 'orphan_output'
                           AND mc.to_class_id IN (<ownerIds>) AND mc.to_method = :method
                           AND mc.to_descriptor = :descriptor""")
-                .bindList("ownerIds", new JvmMethodResolver(jdbi).symbolicOwners(classId, method, descriptor))
+                .bindList("ownerIds", ReadQueryContext.resolver(jdbi).symbolicOwners(classId, method, descriptor))
                 .bind("method", method)
                 .bind("descriptor", descriptor)
                 .mapTo(Integer.class).one());
@@ -962,7 +968,7 @@ public final class IndexReader {
         String countSql=sql;
         return jdbi.withHandle(handle -> {
             var query = handle.createQuery(countSql).bind("classId", classId);
-            if(resolveBoth) query.bindList("ownerIds",new JvmMethodResolver(jdbi).symbolicOwners(classId,method,descriptor));
+            if(resolveBoth) query.bindList("ownerIds",ReadQueryContext.resolver(jdbi).symbolicOwners(classId,method,descriptor));
             if (method != null) query.bind("method", method);
             if (descriptor != null) query.bind("descriptor", descriptor);
             return query.mapTo(Integer.class).one();
@@ -1210,6 +1216,9 @@ public final class IndexReader {
     }
 
     public static Map<String, String> getMetadata(Jdbi jdbi) {
+        return ReadQueryContext.metadata(jdbi,()->readMetadata(jdbi));
+    }
+    private static Map<String,String> readMetadata(Jdbi jdbi) {
         return jdbi.withHandle(h -> {
             Map<String, String> result = new LinkedHashMap<>();
             h.createQuery("SELECT key, value FROM metadata")

@@ -33,7 +33,7 @@ final class SymbolUsageQueries {
     String findSymbolUsages(Jdbi jdbi, String target, String name, String kind,
             String signature, String access, int limit, int offset) {
         try(var metrics=QueryMetrics.start()) {
-            return findSymbolUsagesInRequest(jdbi,target,name,kind,signature,access,limit,offset);
+            return org.treblereel.mcp.db.ReadQueryContext.read(jdbi,()->findSymbolUsagesInRequest(jdbi,target,name,kind,signature,access,limit,offset));
         }
     }
 

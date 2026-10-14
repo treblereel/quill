@@ -17,6 +17,7 @@ public final class JvmMethodResolver {
     private final Map<String,Resolution> cache = new HashMap<>();
     private final boolean limited;
     private final Set<String> ambiguousOccurrences;
+    private final Map<String,List<Integer>> aliases=new HashMap<>();
     public JvmMethodResolver(Jdbi db) {
         this.db = db;
         ambiguousOccurrences=db.withHandle(h -> new HashSet<>(h.createQuery("""
@@ -113,6 +114,9 @@ public final class JvmMethodResolver {
     }
     /** Expand only references resolving to the selected exact JVM declaration. Overrides stay separate. */
     public List<Integer> symbolicOwners(int declarationId,String name,String descriptor) {
+        return aliases.computeIfAbsent(declarationId+":"+name+descriptor,ignored->loadSymbolicOwners(declarationId,name,descriptor));
+    }
+    private List<Integer> loadSymbolicOwners(int declarationId,String name,String descriptor) {
         var ids = new TreeSet<Integer>(); ids.add(declarationId);
         if (limited || "<init>".equals(name) || "<clinit>".equals(name)) return List.copyOf(ids);
         var candidates = db.withHandle(h -> h.createQuery("""
@@ -121,6 +125,18 @@ public final class JvmMethodResolver {
                   AND c.lifecycle='current' AND c.origin!='orphan_output'
                 """).bind("name",name).bind("descriptor",descriptor)
                 .map((rs,ctx) -> Map.entry(rs.getInt("id"),rs.getString("class_name"))).list());
+        // Resolve the candidate ancestry before issuing member reads, so one batch replaces
+        // hundreds of small SELECTs. Missing/ambiguous parents still remain unresolved.
+        var pending=new ArrayDeque<String>();candidates.forEach(c->pending.add(c.getValue()));
+        var seen=new HashSet<String>();var idsToLoad=new HashSet<Integer>();
+        while(!pending.isEmpty()) {
+            String owner=pending.removeFirst();if(!seen.add(owner))continue;
+            var matches=owners.getOrDefault(owner,List.of());if(matches.size()!=1)continue;
+            var cls=matches.getFirst();if(!members.containsKey(cls.id()))idsToLoad.add(cls.id());
+            if(cls.superclass()!=null)pending.add(cls.superclass());pending.addAll(cls.interfaces());
+        }
+        var loaded=IndexReader.findJvmClassMembers(db,idsToLoad);
+        idsToLoad.forEach(id->members.put(id,loaded.getOrDefault(id,List.of())));
         for (var candidate : candidates) {
             var resolution=resolve(candidate.getValue(),name,descriptor);
             if (resolution.resolved() && resolution.owner().id()==declarationId) ids.add(candidate.getKey());

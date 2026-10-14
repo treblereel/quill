@@ -84,6 +84,12 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                 }
                 if (!request.has("sources")) return request;
                 JsonNode result = worker.apply(request);
+                if (request.has("project_id") && request.has("project_root")) {
+                    try {
+                        if (!org.treblereel.mcp.core.ProjectIdentity.resolve(Path.of(request.path("project_root").asText()))
+                                .projectId().equals(request.path("project_id").asText())) return status("inputs_changed");
+                    } catch (IOException unavailable) { return status("inputs_changed"); }
+                }
                 synchronized (state) {
                     if (closed) return status("unavailable");
                     if (before == revision && !result.path("status").asText().equals("inputs_changed")) {

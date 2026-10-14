@@ -12,6 +12,14 @@ import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
 
 class JavaSemanticQueriesTest {
+    @Test void foreignIndexCannotSupplyCompilerModuleEvidence() throws Exception {
+        var db = QuillDatabase.create(root.resolve("foreign.db"));
+        db.useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('project_root',?)", root.toRealPath().toString());
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('worktree_id','foreign')");
+        });
+        assertEquals("index_ownership_mismatch", JavaSemanticQueries.prepare(db, root, file, offset()).path("status").asText());
+    }
     @Test void workerModelsIncludePhysicalProjectIdentity() throws Exception {
         var a = (com.fasterxml.jackson.databind.node.ObjectNode) JavaSemanticQueries.prepare(root, file, offset());
         var b = a.deepCopy().put("project_id", "other-checkout");

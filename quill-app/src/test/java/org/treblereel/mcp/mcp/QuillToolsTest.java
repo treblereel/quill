@@ -2343,7 +2343,7 @@ class QuillToolsTest {
                         new ResolutionTrace(List.of(), List.of("TYPE_ASSIGNABILITY"), List.of()))),
                 List.of(new DependencyRecord(1, 3, "CDI_INJECT", 1, 2)),
                 Map.of("index_id", "baseline", "indexed_at", "2026-09-16T10:00:00Z",
-                        "last_commit", "old-commit"));
+                        "project_root", tempDir.toString(), "last_commit", "old-commit"));
         jdbi.useHandle(handle -> {
             handle.execute("INSERT INTO metadata(key, value) VALUES ('index_id', 'current')");
             handle.execute("UPDATE metadata SET value = '2026-09-17T10:00:00Z' "
@@ -2381,7 +2381,7 @@ class QuillToolsTest {
         Jdbi baseline = QuillDatabase.create(tempDir.resolve(".quill/baseline.db"));
         IndexWriter.write(baseline, List.of(), List.of(), List.of(), List.of(),
                 Map.of("index_id", "baseline", "indexed_at", "2026-09-16T10:00:00Z",
-                        "last_commit", "old-commit"));
+                        "project_root", tempDir.toString(), "last_commit", "old-commit"));
         jdbi.useHandle(handle -> handle.execute(
                 "INSERT INTO metadata(key, value) VALUES ('index_id', 'current')"));
 

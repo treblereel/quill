@@ -1156,6 +1156,10 @@ public final class QuillTools {
                 return ProjectAvailabilityResponses.error(resolution.issues().getFirst());
             }
             if (!errors.isEmpty()) {
+                if (errors.stream().anyMatch(error -> error.startsWith("AMBIGUOUS_PROJECT:"))) {
+                    return ToolResponseSupport.appendError(JSON.createObjectNode(), "AMBIGUOUS_PROJECT",
+                            String.join("; ", errors)).toString();
+                }
                 return errorResponse(String.join("; ", errors));
             }
             String filter = projectFilter.strip();

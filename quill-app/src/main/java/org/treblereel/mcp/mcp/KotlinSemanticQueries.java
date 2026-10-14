@@ -84,6 +84,11 @@ final class KotlinSemanticQueries {
     private static JsonNode prepare(Jdbi db, Path root, Path file, int offset, boolean warming) {
         if (file.getFileName().toString().endsWith(".gradle.kts") || file.getFileName().toString().equals("settings.gradle.kts")) return status("script_definition_missing");
         try {
+            var metadata = IndexReader.getMetadata(db);
+            if (metadata.containsKey("project_root")
+                    && !org.treblereel.mcp.command.ProjectIndexStore.belongsTo(root, metadata)) {
+                return status("index_ownership_mismatch");
+            }
             root = root.toAbsolutePath().normalize();
             file = file.toAbsolutePath().normalize();
             if (!file.startsWith(root) || Files.exists(file)
@@ -115,6 +120,7 @@ final class KotlinSemanticQueries {
             Path captured = test ? system.testClasspathFile(module) : system.classpathFile(module);
             var identity = org.treblereel.mcp.core.ProjectIdentity.resolve(root);
             var request = JSON.createObjectNode().put("project_id", identity.projectId()).put("worktree_id", identity.worktreeId());
+            request.put("project_root", root.toString());
             request.put("file", file.toString()); request.put("offset", offset);
             request.put("module", module.toString()); request.put("source_set", sourceSet);
             KotlinCompilerSettings.apply(module, settingsOutput, sourceSet, request);

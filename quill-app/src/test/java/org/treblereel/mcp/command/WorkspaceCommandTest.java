@@ -136,7 +136,7 @@ class WorkspaceCommandTest {
         String installedCodex = Files.readString(codex);
         assertFalse(installedCodex.contains("old-quill"));
         assertTrue(installedCodex.contains("\"--workspace\""));
-        String tomlWorkspacePath = workspace.toAbsolutePath().normalize().toString()
+        String tomlWorkspacePath = workspace.toRealPath().toString()
                 .replace("\\", "\\\\");
         assertTrue(installedCodex.contains(tomlWorkspacePath));
 
@@ -189,7 +189,7 @@ class WorkspaceCommandTest {
         ProjectRegistry.Resolution missingIndex = registry.resolve("engine");
         assertEquals("index_required", missingIndex.issues().getFirst().code());
         assertTrue(missingIndex.issues().getFirst().recommendedAction()
-                .contains("quill workspace refresh --project " + workspace));
+                .contains("quill workspace refresh --project " + workspace.toRealPath()));
 
         Path events = Files.createDirectories(repository.resolve(".quill/build-events"));
         Files.writeString(events.resolve("maven-test.json"), """
@@ -224,7 +224,7 @@ class WorkspaceCommandTest {
     @Test
     void pureParentPomIsMetadataOnlyAndDoesNotInstallBuildIntegration() throws Exception {
         Path repository = Files.createDirectories(workspace.resolve("parent"));
-        Files.createDirectories(repository.resolve(".git"));
+        try (var git = org.eclipse.jgit.api.Git.init().setDirectory(repository.toFile()).call()) {}
         Files.writeString(repository.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>parent</artifactId><version>1</version>
@@ -254,7 +254,7 @@ class WorkspaceCommandTest {
     @Test
     void pomAggregatorWithCodeModuleRemainsPendingBuild() throws Exception {
         Path repository = Files.createDirectories(workspace.resolve("reactor"));
-        Files.createDirectories(repository.resolve(".git"));
+        try (var git = org.eclipse.jgit.api.Git.init().setDirectory(repository.toFile()).call()) {}
         Files.writeString(repository.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>reactor</artifactId><version>1</version>
@@ -288,7 +288,7 @@ class WorkspaceCommandTest {
 
         assertEquals(CommandLine.ExitCode.OK, status.exitCode());
         var json = JSON.readTree(status.stdout());
-        assertEquals(workspace.toAbsolutePath().normalize().toString(),
+        assertEquals(workspace.toRealPath().toString(),
                 json.path("workspace_root").asText());
         assertEquals(2, json.path("discovery_depth").asInt());
         assertTrue(json.path("excludes").isArray());
@@ -413,7 +413,7 @@ class WorkspaceCommandTest {
     void refreshDiscoversRepositoriesWithoutRunningTheirBuilds() throws Exception {
         execute("workspace", "init", "--project", workspace.toString());
         Path repository = Files.createDirectories(workspace.resolve("engine"));
-        Files.createDirectories(repository.resolve(".git"));
+        try (var git = org.eclipse.jgit.api.Git.init().setDirectory(repository.toFile()).call()) {}
         Files.writeString(repository.resolve("pom.xml"), "<project/>");
 
         Captured result = execute("workspace", "refresh", "--project", workspace.toString());
@@ -438,7 +438,9 @@ class WorkspaceCommandTest {
         assertTrue(ProjectIndexStore.findBestAvailableDb(workspace.resolve("engine")) != null);
         assertFalse(Files.exists(workspace.resolve("engine/build-was-invoked")));
 
-        Files.delete(workspace.resolve("engine/.git"));
+        try (var paths = Files.walk(workspace.resolve("engine/.git"))) {
+            for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(path);
+        }
         Captured removed = execute("workspace", "refresh", "--project", workspace.toString());
 
         assertEquals(CommandLine.ExitCode.OK, removed.exitCode(), removed.stderr());
@@ -451,7 +453,7 @@ class WorkspaceCommandTest {
         var quill = JSON.readTree(file.toFile()).path("mcpServers").path("quill");
         assertEquals("--mcp", quill.path("args").get(0).asText());
         assertEquals("--workspace", quill.path("args").get(1).asText());
-        assertEquals(workspace.toAbsolutePath().normalize().toString(),
+        assertEquals(workspace.toRealPath().toString(),
                 quill.path("args").get(2).asText());
         assertTrue(quill.path("alwaysLoad").asBoolean());
     }
@@ -462,7 +464,7 @@ class WorkspaceCommandTest {
 
     private Path createRepository(String name) throws Exception {
         Path repository = Files.createDirectories(workspace.resolve(name));
-        Files.createDirectories(repository.resolve(".git"));
+        try (var git = org.eclipse.jgit.api.Git.init().setDirectory(repository.toFile()).call()) {}
         Files.writeString(repository.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>%s</artifactId><version>1</version>

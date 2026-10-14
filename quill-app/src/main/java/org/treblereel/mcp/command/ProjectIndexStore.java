@@ -449,6 +449,12 @@ public final class ProjectIndexStore {
         return foreign;
     }
 
+    /** Drops validation metadata when a checkout disappears; never deletes its files. */
+    public static void retireRoot(Path root) {
+        Path directory = ProjectIdentity.canonical(root).resolve(".quill");
+        VALID_DATABASES.keySet().removeIf(path -> ProjectIdentity.canonical(path).startsWith(directory));
+    }
+
     private static Optional<ValidatedDatabase> validatedDatabase(Path database) {
         Path normalized = database.toAbsolutePath().normalize();
         try {

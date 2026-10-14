@@ -74,6 +74,11 @@ final class JavaSemanticQueries {
     static JsonNode prepare(Jdbi db, Path root, Path file, int offset) {
         Path module = null;
         try {
+            var metadata = IndexReader.getMetadata(db);
+            if (metadata.containsKey("project_root")
+                    && !org.treblereel.mcp.command.ProjectIndexStore.belongsTo(root, metadata)) {
+                return status("index_ownership_mismatch");
+            }
             Path normalizedRoot = root.toAbsolutePath().normalize(), normalizedFile = file.toAbsolutePath().normalize();
             if (normalizedFile.startsWith(normalizedRoot)) {
                 var indexed = IndexReader.findFileByPath(db, normalizedRoot.relativize(normalizedFile).toString().replace('\\', '/'));

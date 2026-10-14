@@ -150,6 +150,11 @@ public class ProjectInitializer {
         return Math.max(0, (System.nanoTime() - startedAtNanos) / 1_000_000);
     }
 
+    private static boolean identityMatches(Path root, org.treblereel.mcp.core.ProjectIdentity expected) {
+        try { return expected.equals(org.treblereel.mcp.core.ProjectIdentity.resolve(root)); }
+        catch (IOException unavailable) { return false; }
+    }
+
     static final class BackgroundTask<T> implements AutoCloseable {
         private final String threadName;
         private final ExecutorService executor;
@@ -224,6 +229,11 @@ public class ProjectInitializer {
         long startedAtNanos = System.nanoTime();
         PhaseTimings timings = new PhaseTimings();
         try {
+            if (!org.treblereel.mcp.core.ProjectIdentity.canonical(normalizedRoot.resolve(".quill"))
+                    .startsWith(normalizedRoot.toRealPath())) {
+                return InitializationResult.failure(FailureReason.WORKTREE_CHANGED,
+                        "Quill state directory is outside the working copy", startedAtNanos);
+            }
             InitializationResult result = ProjectIndexLock.withLock(normalizedRoot, () -> {
                 timings.finish("lock_wait");
                 return initializeLockedDetailed(normalizedRoot, indexOnly, false,
@@ -283,6 +293,17 @@ public class ProjectInitializer {
     private static InitializationResult initializeLockedDetailed(
             Path root, boolean indexOnly, boolean compiledBeforeIndex, Path incrementalBase,
             long startedAtNanos, PhaseTimings timings) {
+        org.treblereel.mcp.core.ProjectIdentity initialIdentity;
+        try {
+            initialIdentity = org.treblereel.mcp.core.ProjectIdentity.resolve(root);
+            Path stateDirectory = org.treblereel.mcp.core.ProjectIdentity.canonical(root.resolve(".quill"));
+            if (!stateDirectory.startsWith(initialIdentity.projectRoot())) {
+                throw new IOException("Quill state directory is outside the working copy");
+            }
+        } catch (IOException failure) {
+            return InitializationResult.failure(FailureReason.WORKTREE_CHANGED,
+                    "Cannot establish working copy ownership: " + failure.getMessage(), startedAtNanos);
+        }
         ProjectLayout.ClassesDiscovery classesDiscovery =
                 ProjectLayout.discoverClassesDirs(root, true);
         List<Path> classesDirs = classesDiscovery.classesDirectories();
@@ -583,15 +604,13 @@ public class ProjectInitializer {
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("indexed_at", Instant.now().toString());
         metadata.put("index_id", indexId);
-        try {
-            var identity = org.treblereel.mcp.core.ProjectIdentity.resolve(root);
+        {
+            var identity = initialIdentity;
             metadata.put("project_root", identity.projectRoot().toString());
             metadata.put("project_id", identity.projectId());
             metadata.put("worktree_id", identity.worktreeId());
             metadata.put("worktree_root", identity.worktreeRoot().toString());
             if (identity.repositoryId() != null) metadata.put("repository_id", identity.repositoryId());
-        } catch (IOException failure) {
-            throw new IllegalStateException("Cannot determine index ownership for " + root, failure);
         }
         metadata.put("last_commit", lastCommit != null ? lastCommit : "unknown");
         metadata.put("git_scanned_commits", Integer.toString(gitResult.scannedCommits()));
@@ -765,7 +784,8 @@ public class ProjectInitializer {
             long validationStartedAt = System.nanoTime();
             ProjectIndexStore.validateForPublication(stagedDb);
             boolean headChanged = !headMatches(root, initialHead);
-            boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint())
+            boolean worktreeChanged = !identityMatches(root, initialIdentity)
+                    || !worktreeMatches(root, initialWorktree.fingerprint())
                     || !javaSourceHashes.equals(org.treblereel.mcp.core.SourceFileHashes.captureJava(root, sourceRoots));
             timings.record("publication_validation", elapsedMillis(validationStartedAt));
             if (headChanged || worktreeChanged) {
@@ -798,6 +818,11 @@ public class ProjectInitializer {
 
         long validationStartedAt = System.nanoTime();
         boolean headChangedAfterPublication = !headMatches(root, initialHead);
+        if (!identityMatches(root, initialIdentity)) {
+            ProjectIndexStore.deleteDatabaseArtifacts(dbPath);
+            return InitializationResult.failure(FailureReason.WORKTREE_CHANGED,
+                    "Physical working copy changed during index publication; retry indexing", startedAtNanos);
+        }
         timings.record("publication_validation", elapsedMillis(validationStartedAt));
         if (headChangedAfterPublication) {
             ProjectIndexStore.deleteDatabaseArtifacts(dbPath);

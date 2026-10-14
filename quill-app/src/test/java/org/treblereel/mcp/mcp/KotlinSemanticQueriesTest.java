@@ -14,6 +14,16 @@ import org.treblereel.mcp.kotlin.KotlinRuntime;
 
 @ResourceLock("SYSTEM_PROPERTIES")
 class KotlinSemanticQueriesTest {
+    @Test void foreignIndexCannotSupplyCompilerSourceSetEvidence() throws Exception {
+        Path root = Files.createDirectory(temp.resolve("project"));
+        Path file = root.resolve("Caller.kt"); Files.writeString(file, "fun caller() = 1");
+        var db = QuillDatabase.create(root.resolve("foreign.db"));
+        db.useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('project_root',?)", root.toRealPath().toString());
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('worktree_id','foreign')");
+        });
+        assertEquals("index_ownership_mismatch", KotlinSemanticQueries.resolve(db, root, file, 4).path("status").asText());
+    }
     @TempDir Path temp;
     String previousCache, previousOffline;
 

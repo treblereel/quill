@@ -40,6 +40,8 @@ final class ToolResponseSupport {
         metaNode.put("stale_warning", meta.staleWarning());
         String projectRoot = IndexReader.getMetadata(jdbi).get("project_root");
         Map<String,String> identityMetadata = IndexReader.getMetadata(jdbi);
+        metaNode.put("index_identity_status", identityMetadata.containsKey("project_id")
+                && identityMetadata.containsKey("worktree_id") ? "recorded" : "legacy_path_only");
         for (String key : List.of("project_root", "project_id", "worktree_id", "worktree_root", "repository_id")) {
             if (identityMetadata.get(key) != null) metaNode.put(key, identityMetadata.get(key));
         }

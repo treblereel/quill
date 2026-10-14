@@ -42,6 +42,9 @@ final class ProjectAvailabilityResponses {
     static ObjectNode details(ProjectRegistry.ProjectIssue issue) {
         ObjectNode root = JSON.createObjectNode();
         root.put("status", issue.code());
+        if (List.of("index_ownership_mismatch", "worktree_unavailable", "build_evidence_unknown").contains(issue.code())) {
+            root.put("error_code", issue.code().toUpperCase(java.util.Locale.ROOT));
+        }
         root.put("project", issue.project());
         root.put("project_root", issue.projectRoot().toString());
         if (issue.buildSystem() == null) root.putNull("build_system");

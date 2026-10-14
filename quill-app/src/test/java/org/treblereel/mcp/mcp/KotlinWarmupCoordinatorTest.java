@@ -16,6 +16,23 @@ class KotlinWarmupCoordinatorTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     @TempDir Path temp;
     @TempDir Path external;
+    @Test void checkoutReplacementDuringWorkerOperationCannotReturnResolvedEvidence() throws Exception {
+        var request = request();
+        request.put("project_root", temp.toRealPath().toString());
+        request.put("project_id", org.treblereel.mcp.core.ProjectIdentity.resolve(temp).projectId());
+        Path retired = temp.resolveSibling(temp.getFileName() + "-retired");
+        try (var coordinator = new KotlinWarmupCoordinator(input -> {
+            try { Files.move(temp, retired); Files.createDirectory(temp); }
+            catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            return result(input);
+        }, Duration.ofHours(1))) {
+            assertEquals("inputs_changed", coordinator.query(temp.toRealPath() + ":project:main", () -> request, () -> request).path("status").asText());
+        } finally {
+            if (Files.exists(retired)) try (var files = Files.walk(retired)) {
+                for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(file);
+            }
+        }
+    }
     @Test void retiringRootDetachesOnlyItsSubscriptionsAndAllowsAnotherCheckout() throws Exception {
         var request = request();
         String key = temp.toRealPath() + ":project:first:main";

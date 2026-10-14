@@ -17,6 +17,11 @@ final class ProjectConfiguration {
             <!-- quill:instructions:v3 -->
             ## Quill — Codebase Intelligence (MCP)
 
+            Before using a project response, compare `_meta.project_root` with the canonical
+            JVM project root being edited. Git worktrees have separate indexes. If the roots
+            differ, select the intended `project_id` or absolute project path; if this server
+            does not serve it, report the mismatch and use a server launched for that checkout.
+
             At the beginning of a coding or code-analysis task, discover only `get_overview`
             by exact name, then call `get_overview`. Discover other Quill tools on demand by
             name or task; do not enumerate or print the entire tool catalog.
@@ -68,6 +73,11 @@ final class ProjectConfiguration {
             <!-- quill:managed:start -->
             <!-- quill:instructions:v3 -->
             ## Quill MCP
+
+            Before using a project response, compare `_meta.project_root` with the canonical
+            JVM project root being edited. Git worktrees have separate indexes. If the roots
+            differ, select the intended `project_id` or absolute project path; if this server
+            does not serve it, report the mismatch and use a server launched for that checkout.
 
             Quill is the primary code-intelligence tool for this repository. At the beginning of a
             coding or code-analysis task, discover only `mcp__quill__get_overview` by exact

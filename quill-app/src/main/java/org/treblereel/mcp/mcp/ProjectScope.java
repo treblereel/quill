@@ -41,6 +41,16 @@ public interface ProjectScope {
     default List<Project> select(Snapshot snapshot, String selector) {
         if (selector == null || selector.isBlank()) return snapshot.projects();
         String normalized = selector.strip();
+        try {
+            Path path = Path.of(normalized);
+            if (path.isAbsolute()) {
+                Path physical = org.treblereel.mcp.core.ProjectIdentity.canonical(path);
+                List<Project> containing = snapshot.projects().stream()
+                        .filter(project -> physical.startsWith(project.root())).toList();
+                int depth = containing.stream().mapToInt(project -> project.root().getNameCount()).max().orElse(-1);
+                return containing.stream().filter(project -> project.root().getNameCount() == depth).toList();
+            }
+        } catch (RuntimeException invalidPath) { /* Continue with named and ID selectors. */ }
         return snapshot.projects().stream()
                 .filter(project -> project.matches(normalized))
                 .toList();

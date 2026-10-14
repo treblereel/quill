@@ -73,5 +73,20 @@ class SingleProjectScopeTest {
         assertEquals(0, result.projects().size());
         org.junit.jupiter.api.Assertions.assertTrue(result.errors().getFirst().startsWith("AMBIGUOUS_PROJECT"));
         org.junit.jupiter.api.Assertions.assertTrue(result.errors().getFirst().contains(a.toRealPath().toString()));
+        var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                new QuillTools(new ProjectRegistry(scope)).get_overview(java.util.Optional.empty(), java.util.Optional.of("app")));
+        assertEquals("AMBIGUOUS_PROJECT", json.path("error_code").asText());
+    }
+
+    @Test
+    void absoluteModuleAndSourcePathsChooseTheMostSpecificRegisteredProject() throws Exception {
+        Path reactor = createProject(tempDir.resolve("reactor"));
+        Path module = createProject(reactor.resolve("module"));
+        SingleProjectScope scope = new SingleProjectScope();
+        scope.register(reactor); scope.register(module);
+        var snapshot = scope.snapshot();
+        assertEquals(java.util.List.of(module.toRealPath()), scope.select(snapshot, module.toString()).stream().map(ProjectScope.Project::root).toList());
+        assertEquals(java.util.List.of(module.toRealPath()), scope.select(snapshot, module.resolve("src/main/java/New.java").toString()).stream().map(ProjectScope.Project::root).toList());
+        assertEquals(java.util.List.of(reactor.toRealPath()), scope.select(snapshot, reactor.toString()).stream().map(ProjectScope.Project::root).toList());
     }
 }

@@ -149,4 +149,35 @@ class ProjectIndexStoreRecoveryTest {
         });
         return database;
     }
+
+    @Test
+    void recreatedRootCannotUseThePreviousPhysicalOwnersGeneration() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("project"));
+        var identity = org.treblereel.mcp.core.ProjectIdentity.resolve(root);
+        var db = QuillDatabase.create(root.resolve(".quill/owned.db"));
+        db.useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('index_id','owned')");
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('project_root',?)", root.toRealPath().toString());
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('project_id',?)", identity.projectId());
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('worktree_id',?)", identity.worktreeId());
+        });
+        ProjectIndexStore.updateRefs(root, null, "owned");
+        assertNotNull(ProjectIndexStore.findBestAvailableDb(root));
+        Path retired = tempDir.resolve("retired");
+        Files.move(root, retired);
+        Files.createDirectory(root); Files.createDirectory(root.resolve(".quill"));
+        Files.copy(retired.resolve(".quill/owned.db"), root.resolve(".quill/owned.db"));
+        Files.copy(retired.resolve(".quill/refs.json"), root.resolve(".quill/refs.json"));
+        assertNull(ProjectIndexStore.findBestAvailableDb(root));
+    }
+
+    @Test
+    void initializationDoesNotWriteThroughExternalStateDirectory() throws Exception {
+        Path root = Files.createDirectory(tempDir.resolve("project"));
+        Path external = Files.createDirectory(tempDir.resolve("external"));
+        Files.createSymbolicLink(root.resolve(".quill"), external);
+        var result = ProjectInitializer.initializeDetailed(root, true);
+        assertEquals(ProjectInitializer.FailureReason.WORKTREE_CHANGED, result.reason());
+        try (var files = Files.list(external)) { assertEquals(0, files.count()); }
+    }
 }

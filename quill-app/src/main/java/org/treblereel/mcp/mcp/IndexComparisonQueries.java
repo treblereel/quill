@@ -263,6 +263,7 @@ final class IndexComparisonQueries {
             try {
                 Jdbi jdbi = QuillDatabase.open(path);
                 Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+                if (!org.treblereel.mcp.command.ProjectIndexStore.belongsTo(root, metadata)) continue;
                 String indexId = metadata.get("index_id");
                 String fileName = path.getFileName().toString();
                 String fileIndexId = fileName.substring(0, fileName.length() - 3);

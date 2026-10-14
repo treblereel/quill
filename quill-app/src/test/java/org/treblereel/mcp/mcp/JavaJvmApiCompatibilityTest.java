@@ -93,7 +93,7 @@ class JavaJvmApiCompatibilityTest {
         assertTrue(h.compile(old,Map.of("p/Api.java","package p; public class Api {public static final int VALUE=1;}"),null));
         assertTrue(h.compile(now,Map.of("p/Api.java","package p; public class Api {public static final int VALUE=2;}"),null));
         Jdbi before=h.index(old,"baseline"),after=h.index(now,"current");
-        before.useHandle(handle->{handle.execute("INSERT INTO metadata(key,value) VALUES ('index_id','baseline')");handle.execute("INSERT INTO metadata(key,value) VALUES ('indexed_at','2026-10-13T00:00:00Z')");});
+        before.useHandle(handle->{handle.execute("INSERT INTO metadata(key,value) VALUES ('project_root',?)",root.toString());handle.execute("INSERT INTO metadata(key,value) VALUES ('index_id','baseline')");handle.execute("INSERT INTO metadata(key,value) VALUES ('indexed_at','2026-10-13T00:00:00Z')");});
         after.useHandle(handle->handle.execute("INSERT INTO metadata(key,value) VALUES ('index_id','current')"));
         Files.createDirectories(root.resolve(".quill"));Files.copy(root.resolve("baseline.db"),root.resolve(".quill/baseline.db"));
         JsonNode result=new ObjectMapper().readTree(new IndexComparisonQueries().compareIndex(after,root,"baseline",100));
@@ -106,5 +106,21 @@ class JavaJvmApiCompatibilityTest {
         var change=finding(ApiCompatibilityQueries.compare(before,after,100),"MEMBER_REMOVED_OR_DESCRIPTOR_CHANGED");
         assertEquals(1,change.path("baseline_impact").path("consumer_count").asInt(),change.toString());
         assertEquals("p.Use",change.path("baseline_impact").path("consumers").get(0).path("class_name").asText());
+    }
+    @Test void foreignBaselineIsNotUsedForCompatibilityEvidence() throws Exception {
+        var h = helper();
+        Path output = root.resolve("api");
+        assertTrue(h.compile(output, Map.of("p/Api.java", "package p; public class Api {}"), null));
+        Jdbi before = h.index(output, "before"), after = h.index(output, "after");
+        Path other = Files.createDirectory(root.resolve("foreign-root"));
+        before.useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('index_id','baseline')");
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('project_root',?)", other.toString());
+        });
+        Files.createDirectories(root.resolve(".quill"));
+        Files.copy(root.resolve("before.db"), root.resolve(".quill/baseline.db"));
+        var result = new ObjectMapper().readTree(new IndexComparisonQueries().compareIndex(after, root, "baseline", 100));
+        assertTrue(result.path("available_baselines").isEmpty(), result.toString());
+        assertFalse(result.has("api_compatibility"), result.toString());
     }
 }

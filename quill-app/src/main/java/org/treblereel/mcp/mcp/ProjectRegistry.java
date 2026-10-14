@@ -302,6 +302,7 @@ public class ProjectRegistry {
     }
 
     private void retireProjectState(Path root) {
+        ProjectIndexStore.retireRoot(root);
         WorktreeSnapshotCache.shared().invalidate(root);
         readiness.invalidate(root);
         JavaSemanticQueries.retireRoot(root);

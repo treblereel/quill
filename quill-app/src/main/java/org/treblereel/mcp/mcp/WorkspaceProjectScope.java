@@ -56,10 +56,9 @@ public final class WorkspaceProjectScope implements ProjectScope {
     public List<Project> select(Snapshot snapshot, String selector) {
         if (selector == null || selector.isBlank()) return snapshot.projects();
         String value = selector.strip();
-        List<Project> direct = snapshot.projects().stream()
-                .filter(project -> project.matches(value)
-                        || relativeMatches(project.root(), value))
-                .toList();
+        List<Project> direct = ProjectScope.super.select(snapshot, value);
+        if (direct.isEmpty()) direct = snapshot.projects().stream()
+                .filter(project -> relativeMatches(project.root(), value)).toList();
         if (!direct.isEmpty() || !value.contains(":")) return direct;
 
         WorkspaceCoordinateCatalog.Result coordinates =

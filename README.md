@@ -597,6 +597,10 @@ For workspace mode, configure the client command as:
 `--workspace` and `--project` are mutually exclusive. The same stdio process routes each request
 to the selected repository or aggregates it across the workspace when the tool supports that.
 
+Git worktrees keep independent indexes and compiler state. Select a checkout by its
+exact `project_id` or absolute path, and check `_meta.project_root` before using its
+answers. See [worktree setup and limits](docs/worktrees.md).
+
 ### Claude Code
 
 Add Quill for the current project (the default `local` scope keeps the setting

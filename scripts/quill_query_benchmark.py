@@ -22,6 +22,7 @@ def main():
     parser.add_argument('--warmup',type=int,default=5)
     parser.add_argument('--limits',default='1,10,20,100')
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--concurrency',type=int,default=0)
     args=parser.parse_args()
     if args.samples<10 or args.warmup<1:parser.error('Use at least 10 samples and one warmup')
     os.environ['QUILL_QUERY_METRICS']='1'
@@ -39,6 +40,19 @@ def main():
                     hashes.append(hashlib.sha256(json.dumps(semantic(answer),sort_keys=True).encode()).hexdigest())
             result['pages'][str(limit)]={'median_ms':statistics.median(timings),'p95_ms':sorted(timings)[math.ceil(len(timings)*.95)-1],
                 'min_ms':min(timings),'max_ms':max(timings),'response_sha256':sorted(set(hashes)),'total':answer.get('total'),'latency_ms':timings}
+        if args.concurrency:
+            identifiers=set()
+            for _ in range(args.concurrency):
+                identifier=client.next_id;client.next_id+=1;identifiers.add(identifier)
+                client.client.send(identifier,'tools/call',{'name':'find_symbol_usages','arguments':{**arguments,'limit':10}})
+            client.client.flush()
+            responses=client.client.receive(identifiers,180)
+            hashes=[]
+            for response in responses.values():
+                reply=response.get('result',{});answer=reply.get('structuredContent',{})
+                if response.get('error') or reply.get('isError') or answer.get('error_code'):raise RuntimeError(response)
+                hashes.append(hashlib.sha256(json.dumps(semantic(answer),sort_keys=True).encode()).hexdigest())
+            result['concurrent']={'requests':len(responses),'response_sha256':sorted(set(hashes))}
         time.sleep(.05)
         result['metrics']=[json.loads(line) for line in client.client.stderr if line.startswith('{"event":"quill_query_metrics"')]
     args.output.parent.mkdir(parents=True,exist_ok=True)

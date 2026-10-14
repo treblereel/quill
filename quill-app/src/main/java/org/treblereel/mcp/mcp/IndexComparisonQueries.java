@@ -108,6 +108,12 @@ final class IndexComparisonQueries {
                 WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
                 ORDER BY c.class_name, detail
                 """);
+        appendClassDetails(jdbi,classValues,"""
+                SELECT c.class_name, 'JVM_API|' || a.evidence AS detail
+                FROM jvm_api a JOIN classes c ON c.id=a.class_id
+                WHERE c.lifecycle='current' AND c.origin!='orphan_output'
+                ORDER BY c.class_name,detail
+                """);
         Map<String, String> classes = new TreeMap<>();
         classValues.forEach((name, fingerprint) -> classes.put(name, fingerprint.toString()));
 

@@ -39,9 +39,25 @@ public record IndexSnapshot(
         List<MethodCallRecord> methodCalls,
         List<FieldAccessRecord> fieldAccesses,
         ConfigurationScanner.Result configuration,
-        List<ResourceUsageRecord> resourceUsages) {
+        List<ResourceUsageRecord> resourceUsages,
+        Map<Integer,String> jvmApi) {
+
+    public IndexSnapshot(List<ClassRecord> classes, List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
+            Map<String,String> metadata, List<ExternalDepRecord> externalDependencies,
+            List<CdiProblem> problems, List<GitFileStats> gitFileStats,
+            List<GitCommitRecord> gitCommits, List<GitCommitFile> gitCommitFiles,
+            List<FileRecord> files, List<ClassOccurrenceRecord> classOccurrences,
+            List<ClassAnnotationRecord> classAnnotations, List<ClassMemberRecord> classMembers,
+            List<MethodCallRecord> methodCalls, List<FieldAccessRecord> fieldAccesses,
+            ConfigurationScanner.Result configuration, List<ResourceUsageRecord> resourceUsages) {
+        this(classes,beans,injectionPoints,dependencies,metadata,externalDependencies,problems,
+                gitFileStats,gitCommits,gitCommitFiles,files,classOccurrences,classAnnotations,
+                classMembers,methodCalls,fieldAccesses,configuration,resourceUsages,Map.of());
+    }
 
     public IndexSnapshot {
+        jvmApi = Map.copyOf(jvmApi);
         classes = List.copyOf(classes);
         beans = List.copyOf(beans);
         injectionPoints = List.copyOf(injectionPoints);

@@ -36,6 +36,8 @@ final class UnusedFieldQueries {
         }
         Set<String> serializableClasses = serializableClasses(classes);
         Map<String, Integer> excluded = new LinkedHashMap<>();
+        Set<Integer> handleOwners = new HashSet<>(jdbi.withHandle(h -> h.createQuery(
+                "SELECT DISTINCT to_class_id FROM dependencies WHERE kind='FIELD_HANDLE_REFERENCE'").mapTo(Integer.class).list()));
         List<Candidate> candidates = new ArrayList<>();
         int analyzedPrivateFields = 0;
         for (ClassRecord cls : classes) {
@@ -43,6 +45,7 @@ final class UnusedFieldQueries {
             for (ClassMemberRecord member : members.getOrDefault(cls.id(), List.of())) {
                 if (!"FIELD".equals(member.kind()) || !hasModifier(member, "private")) continue;
                 analyzedPrivateFields++;
+                if (handleOwners.contains(cls.id())) { increment(excluded,"unclassified_field_handle_reference"); continue; }
                 if (!member.annotations().isEmpty()) {
                     increment(excluded, "annotated_field");
                     continue;

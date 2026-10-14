@@ -3,12 +3,13 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.treblereel.mcp</groupId>
     <artifactId>quill</artifactId>
-    <version>0.4.0-SNAPSHOT</version>
+    <version>0.4.1-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <modules>
         <module>quill-core</module>
         <module>quill-kotlin-semantic</module>
+        <module>quill-kotlin-semantic-21</module>
         <module>quill-java-semantic</module>
         <module>quill-app</module>
         <module>tests</module>
@@ -45,6 +46,7 @@
         <jackson.version>2.22.2</jackson.version>
         <jandex.version>3.6.0</jandex.version>
         <kotlin.version>2.4.21</kotlin.version>
+        <kotlin21.version>2.1.20</kotlin21.version>
         <sqlite.version>3.53.4.0</sqlite.version>
         <jdbi.version>3.54.0</jdbi.version>
         <jgit.version>7.7.1.202607240634-r</jgit.version>

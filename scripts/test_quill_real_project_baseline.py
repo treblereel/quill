@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from quill_real_project_baseline import (digest, input_state, prepare_case, run_project, score,
+from quill_real_project_baseline import (complete_change_plan_tests, digest, input_state, prepare_case, run_project, score,
                                          select, source_path, typed_equal, validate_manifest)
 
 
@@ -208,6 +208,57 @@ class RealProjectBaselineTest(unittest.TestCase):
             result = score(self.payload(value=True, **extra), [self.assertion()])
             self.assertEqual("unknown", result["status"])
             self.assertEqual("passed", result["observed_fact_status"])
+
+    def test_change_plan_follows_all_test_pages_before_scoring(self):
+        payload = self.payload(indexed=True, test_plan={
+            "tests": [{"class": "A", "file": "A.java"}], "total": 3, "showing": 1,
+            "has_more": True, "answer_complete": True,
+            "test_index_coverage": {"complete": True},
+            "next_page_request": {"tool": "find_impacted_tests", "arguments": {
+                "targets": ["Target"], "transitive": True, "max_depth": 3,
+                "limit": 1, "offset": 1}}})
+        payload["_meta"]["index_id"] = "index-1"
+        calls = []
+        class Client:
+            def call(self, tool, args):
+                calls.append((tool, args["offset"]))
+                offset = args["offset"]
+                return {"_meta": {"index_id": "index-1"}, "targets": ["Target"],
+                        "offset": offset, "total": 3, "showing": 1,
+                        "answer_complete": True, "test_index_coverage": {"complete": True},
+                        "tests": [{"class": chr(ord("A") + offset),
+                                   "file": chr(ord("A") + offset) + ".java"}],
+                        "has_more": offset < 2, "next_offset": offset + 1}, {"latency_ms": 2.5}
+        result, latency = complete_change_plan_tests(Client(), payload)
+        self.assertEqual([("find_impacted_tests", 1), ("find_impacted_tests", 2)], calls)
+        self.assertEqual(5.0, latency)
+        self.assertEqual(3, result["test_plan"]["showing"])
+        self.assertTrue(result["test_plan"]["pagination_complete"])
+        self.assertEqual("passed", score(result, [self.assertion(["indexed"])])["status"])
+
+    def test_change_plan_rejects_missing_stale_and_duplicate_pages(self):
+        base = self.payload(test_plan={"tests": [{"class": "A", "file": "A.java"}],
+            "total": 2, "has_more": True, "next_page_request": {
+                "tool": "find_impacted_tests", "arguments": {
+                    "targets": ["Target"], "limit": 1, "offset": 1}}})
+        base["_meta"]["index_id"] = "index-1"
+        class Client:
+            def __init__(self, page): self.page = page
+            def call(self, *_): return self.page, {"latency_ms": 1.0}
+        for change in ({"_meta": {"index_id": "index-2"}},
+                       {"tests": [{"class": "A", "file": "A.java"}]},
+                       {"total": 3}, {"offset": 0}, {"answer_complete": False}):
+            page = {"_meta": {"index_id": "index-1"}, "targets": ["Target"],
+                    "offset": 1, "total": 2, "showing": 1, "answer_complete": True,
+                    "test_index_coverage": {"complete": True},
+                    "tests": [{"class": "B", "file": "B.java"}], "has_more": False}
+            page.update(change)
+            with self.subTest(change=change), self.assertRaises(RuntimeError):
+                complete_change_plan_tests(Client(page), copy.deepcopy(base))
+        missing = copy.deepcopy(base)
+        del missing["test_plan"]["next_page_request"]
+        with self.assertRaises(RuntimeError):
+            complete_change_plan_tests(Client({}), missing)
 
 
 if __name__ == "__main__":

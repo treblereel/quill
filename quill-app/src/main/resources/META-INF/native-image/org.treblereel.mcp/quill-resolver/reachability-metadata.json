@@ -1923,6 +1923,9 @@
       "glob": "kotlin-worker/worker.jar"
     },
     {
+      "glob": "kotlin-worker/worker-2.1.20.jar"
+    },
+    {
       "glob": "mozilla/public-suffix-list.txt"
     },
     {

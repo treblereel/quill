@@ -96,6 +96,22 @@ class KotlinWorkerClientTest {
             assertFalse(ProcessHandle.of(second).map(ProcessHandle::isAlive).orElse(false));
         }
     }
+    @Test void compilerVersionSwitchRestartsWorkerAndRejectsUnsupportedVersion() {
+        AtomicInteger starts = new AtomicInteger();
+        try (var worker = new KotlinWorkerClient(new KotlinWorkerClient.RuntimeProvider(
+                version -> { starts.incrementAndGet(); return command(); }, version -> version), Duration.ofSeconds(5))) {
+            var legacy = JSON.createObjectNode().put("mode", "ok").put("compilerVersion", "2.1.20");
+            var current = JSON.createObjectNode().put("mode", "ok").put("compilerVersion", KotlinRuntime.version());
+            long first = worker.query(legacy).path("pid").asLong();
+            assertEquals(first, worker.query(legacy).path("pid").asLong());
+            long second = worker.query(current).path("pid").asLong();
+            assertNotEquals(first, second);
+            assertEquals("compiler_version_unsupported", worker.query(JSON.createObjectNode()
+                    .put("mode", "ok").put("compilerVersion", "2.1.21")).path("status").asText());
+            assertEquals(second, worker.query(current).path("pid").asLong());
+            assertEquals(2, starts.get());
+        }
+    }
     @Test void stderrFloodCannotBlockResponse() {
         try (var worker = new KotlinWorkerClient(this::command, () -> "same", Duration.ofSeconds(5))) {
             assertEquals("resolved", worker.query(request("stderr")).path("status").asText());

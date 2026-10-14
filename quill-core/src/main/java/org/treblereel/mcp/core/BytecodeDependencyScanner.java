@@ -284,19 +284,19 @@ public final class BytecodeDependencyScanner {
                     nextInstruction();
                     directClassLiteral = null;
                     addMethodTypes(descriptor);
-                    add(bootstrapMethodHandle.getOwner(), "CALLS");
+                    add(bootstrapMethodHandle.getOwner(), "BOOTSTRAP_REFERENCE");
+                    Handle implementation = lambdaImplementation(bootstrapMethodHandle, bootstrapMethodArguments);
                     for (Object argument : bootstrapMethodArguments) {
                         if (argument instanceof Handle handle) {
                             String accessKind = fieldHandleAccessKind(handle.getTag());
                             if (accessKind == null) {
-                                addCall(handle.getOwner(), handle.getName(), handle.getDesc(),
-                                        "dynamic");
-                                add(handle.getOwner(), "CALLS");
+                                if (handle == implementation) {
+                                    addCall(handle.getOwner(), handle.getName(), handle.getDesc(), "dynamic");
+                                    add(handle.getOwner(), "CALLBACK_REFERENCE");
+                                } else addHandleReference(handle.getOwner(), "METHOD_HANDLE_REFERENCE");
                                 addMethodTypes(handle.getDesc());
                             } else {
-                                addFieldAccess(handle.getOwner(), handle.getName(),
-                                        handle.getDesc(), accessKind);
-                                add(handle.getOwner(), "FIELD_ACCESS");
+                                addHandleReference(handle.getOwner(), "FIELD_HANDLE_REFERENCE");
                                 addType(Type.getType(handle.getDesc()), "TYPE_USE");
                             }
                         } else if (argument instanceof Type type) {
@@ -452,6 +452,10 @@ public final class BytecodeDependencyScanner {
                 private void nextInstruction() {
                     instructionOrdinal++;
                 }
+                private void addHandleReference(String internalName, String kind) {
+                    String target = className(internalName);
+                    if (applicationClasses.contains(target)) edges.computeIfAbsent(new Edge(owner,target,kind), ignored -> new EdgeEvidence()).add(currentLine);
+                }
 
                 private void addCall(String internalName, String methodName,
                         String methodDescriptor, String kind) {
@@ -593,5 +597,33 @@ public final class BytecodeDependencyScanner {
             case Opcodes.H_PUTSTATIC -> "write_static";
             default -> null;
         };
+    }
+
+    /** Only the standard LambdaMetafactory implementation slot denotes a callback target. */
+    private static Handle lambdaImplementation(Handle bootstrap, Object[] arguments) {
+        String prefix = "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;";
+        if (bootstrap.getTag() != Opcodes.H_INVOKESTATIC || !bootstrap.getOwner().equals("java/lang/invoke/LambdaMetafactory")) return null;
+        boolean alternate = bootstrap.getName().equals("altMetafactory")
+                && bootstrap.getDesc().equals(prefix + "[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;");
+        boolean ordinary = bootstrap.getName().equals("metafactory")
+                && bootstrap.getDesc().equals(prefix + "Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;");
+        if (!alternate && !ordinary || arguments.length < 3 || ordinary && arguments.length != 3
+                || !(arguments[0] instanceof Type sam) || sam.getSort() != Type.METHOD
+                || !(arguments[1] instanceof Handle implementation) || implementation.getTag() < Opcodes.H_INVOKEVIRTUAL
+                || implementation.getTag() > Opcodes.H_INVOKEINTERFACE
+                || !(arguments[2] instanceof Type instantiated) || instantiated.getSort() != Type.METHOD) return null;
+        if (alternate) {
+            if (arguments.length < 4 || !(arguments[3] instanceof Integer flags) || (flags & ~7) != 0) return null;
+            int cursor = 4;
+            for (int flag : new int[] {2, 4}) if ((flags & flag) != 0) {
+                if (cursor >= arguments.length || !(arguments[cursor++] instanceof Integer count) || count < 0
+                        || count > 256 || count > arguments.length - cursor) return null;
+                for (int i = 0; i < count; i++) {
+                    if (!(arguments[cursor++] instanceof Type type) || type.getSort() != (flag == 2 ? Type.OBJECT : Type.METHOD)) return null;
+                }
+            }
+            if (cursor != arguments.length) return null;
+        }
+        return implementation;
     }
 }

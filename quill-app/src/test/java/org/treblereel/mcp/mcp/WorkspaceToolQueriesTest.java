@@ -316,6 +316,323 @@ class WorkspaceToolQueriesTest {
     }
 
     @Test
+    void findsExactCrossRepositoryMethodOverloadAndCallerEvidence() throws Exception {
+        String symbol = installMemberFixture("1.0");
+        JsonNode result = memberUsages(symbol, 20);
+
+        assertEquals("member", result.path("granularity").asText(), result.toString());
+        assertEquals(symbol, result.path("symbol_id").asText());
+        assertEquals("(I)V", result.path("descriptor").asText());
+        assertEquals(1, result.path("candidate_consumer_count").asInt());
+        assertEquals(1, result.path("resolved_consumer_count").asInt());
+        assertEquals(0, result.path("unresolved_consumer_count").asInt());
+        assertEquals(1, result.path("total").asInt());
+        JsonNode consumer = result.path("consumers").get(0);
+        assertEquals("platform", consumer.path("repository").asText());
+        assertEquals(".", consumer.path("module").asText());
+        assertEquals("main", consumer.path("source_set").asText());
+        assertEquals("version_match", consumer.path("version_status").asText());
+        JsonNode usage = consumer.path("usage");
+        assertEquals(1, usage.path("usage_group_count").asInt());
+        assertEquals(2, usage.path("usage_occurrence_count").asInt());
+        assertEquals("io.casehub.platform.PlatformService",
+                usage.path("usages").get(0).path("class").asText());
+        assertEquals("run", usage.path("usages").get(0).path("caller_method").asText());
+        assertEquals("()V", usage.path("usages").get(0).path("caller_descriptor").asText());
+        assertEquals(33, usage.path("usages").get(0).path("evidence_lines").get(0).asInt());
+    }
+
+    @Test
+    void findsFieldAccessWithoutConfusingSameNamedFieldsOrDependencyInternalCalls() throws Exception {
+        installMemberFixture("1.0");
+        var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
+        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        for (var db : List.of(engine, platform)) db.useHandle(handle -> {
+            int id = db == engine ? 1 : 2;
+            handle.createUpdate("""
+                    INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,
+                                              parameter_types,modifiers,annotations)
+                    VALUES (:id,'FIELD','state','state:int','I','int','[]','public','[]'),
+                           (:id,'FIELD','state','state:long','J','long','[]','public','[]')""")
+                    .bind("id", id).execute();
+        });
+        platform.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO field_accesses(from_class_id,from_method,from_descriptor,
+                        to_class_id,field_name,field_descriptor,access_kind,occurrence_count,evidence_lines)
+                    VALUES (1,'run','()V',2,'state','I','read_field',1,'[41]'),
+                           (1,'run','()V',2,'state','J','read_field',1,'[42]'),
+                           (2,'internal','()V',2,'state','I','read_field',1,'[43]')""");
+        });
+        var cls = org.treblereel.mcp.db.IndexReader.findClassByName(engine,
+                "io.casehub.engine.EngineService").orElseThrow();
+        JsonNode result = memberUsages(SymbolContract.id(cls, "FIELD", "state", "I"), 20);
+        JsonNode usage = result.path("consumers").get(0).path("usage");
+        assertEquals(1, usage.path("usage_group_count").asInt(), result.toString());
+        assertEquals("read", usage.path("usages").get(0).path("usage_kind").asText());
+        assertEquals(41, usage.path("usages").get(0).path("evidence_lines").get(0).asInt());
+    }
+
+    @Test
+    void findsExactConstructorCallsByJvmDescriptor() throws Exception {
+        installMemberFixture("1.0");
+        var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
+        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        for (var db : List.of(engine, platform)) db.useHandle(handle -> {
+            int id = db == engine ? 1 : 2;
+            handle.createUpdate("""
+                    INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,
+                                              parameter_types,modifiers,annotations)
+                    VALUES (:id,'CONSTRUCTOR','<init>','EngineService(int)','(I)V','void',
+                            '["int"]','public','[]')""").bind("id", id).execute();
+        });
+        platform.useHandle(handle -> handle.execute("""
+                INSERT INTO method_calls(from_class_id,from_method,from_descriptor,to_class_id,
+                    to_method,to_descriptor,invocation_kind,occurrence_count,evidence_lines)
+                VALUES (1,'create','()V',2,'<init>','(I)V','SPECIAL',1,'[61]')"""));
+        var cls = org.treblereel.mcp.db.IndexReader.findClassByName(engine,
+                "io.casehub.engine.EngineService").orElseThrow();
+        JsonNode result = memberUsages(SymbolContract.id(cls, "CONSTRUCTOR", "<init>", "(I)V"), 20);
+        assertEquals("constructor", result.path("kind").asText(), result.toString());
+        assertEquals(1, result.path("total").asInt());
+        assertEquals(61, result.path("consumers").get(0).path("usage")
+                .path("usages").get(0).path("evidence_lines").get(0).asInt());
+    }
+
+    @Test
+    void completeIndexWithNoMatchingCallsReturnsZeroUsages() throws Exception {
+        installMemberFixture("1.0");
+        var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
+        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        for (var db : List.of(engine, platform)) db.useHandle(handle -> {
+            int id = db == engine ? 1 : 2;
+            handle.createUpdate("""
+                    INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,
+                                              parameter_types,modifiers,annotations)
+                    VALUES (:id,'METHOD','unused','unused():void','()V','void',
+                            '[]','public','[]')""").bind("id", id).execute();
+        });
+        var cls = org.treblereel.mcp.db.IndexReader.findClassByName(engine,
+                "io.casehub.engine.EngineService").orElseThrow();
+        JsonNode result = memberUsages(SymbolContract.id(cls, "METHOD", "unused", "()V"), 20);
+        assertEquals(0, result.path("total").asInt(), result.toString());
+        assertEquals(1, result.path("resolved_consumer_count").asInt());
+        assertEquals(0, result.path("unresolved_consumer_count").asInt());
+    }
+
+    @Test
+    void unknownBinaryVersionNeverClaimsAnExactMemberUsage() throws Exception {
+        String symbol = installMemberFixture("2.0");
+        JsonNode result = memberUsages(symbol, 20);
+        assertEquals(0, result.path("total").asInt(), result.toString());
+        assertFalse(result.path("complete").asBoolean(true));
+        assertEquals("version_mismatch", result.path("unresolved_consumers").get(0)
+                .path("status").asText());
+        assertEquals("binary_behind_checkout", result.path("unresolved_consumers").get(0)
+                .path("version_status").asText());
+    }
+
+    @Test
+    void shadowedBinaryClassIsUnknownEvenWhenProviderVersionMatches() throws Exception {
+        String symbol = installMemberFixture("1.0");
+        Path shadow = workspace.resolve("cache/other/shadow/1.0/shadow-1.0.jar");
+        writeClassJar(shadow);
+        Path classpath = workspace.resolve("platform/target/quill-classpath.txt");
+        Files.writeString(classpath, shadow + java.io.File.pathSeparator
+                + Files.readString(classpath));
+        JsonNode result = memberUsages(symbol, 20);
+        assertEquals(0, result.path("total").asInt());
+        assertEquals("consumer_binary_class_shadowed", result.path("unresolved_consumers")
+                .get(0).path("status").asText(), result.toString());
+    }
+
+    @Test
+    void classDirectoryAheadOfProviderJarCannotBeReportedAsExactUsage() throws Exception {
+        String symbol = installMemberFixture("1.0");
+        Path shadow = workspace.resolve("platform/target/shadow-classes");
+        Path classFile = shadow.resolve("io/casehub/engine/EngineService.class");
+        Files.createDirectories(classFile.getParent());
+        Files.write(classFile, new byte[]{0});
+        Path classpath = workspace.resolve("platform/target/quill-classpath.txt");
+        Files.writeString(classpath, shadow + java.io.File.pathSeparator
+                + Files.readString(classpath));
+        JsonNode result = memberUsages(symbol, 20);
+        assertEquals("consumer_binary_class_shadowed", result.path("unresolved_consumers")
+                .get(0).path("status").asText(), result.toString());
+        assertFalse(result.path("complete").asBoolean(true));
+    }
+
+    @Test
+    void includesTestSourceSetWhenItsClasspathMatchesProviderBinary() throws Exception {
+        String symbol = installMemberFixture("1.0");
+        Path mainClasspath = workspace.resolve("platform/target/quill-classpath.txt");
+        Path testClasspath = workspace.resolve("platform/target/quill-test-classpath.txt");
+        Files.writeString(testClasspath, Files.readString(mainClasspath));
+        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes(class_name,kind,origin,module,source_set)
+                    VALUES ('io.casehub.platform.PlatformTest','CLASS','source','.','test')""");
+            handle.execute("""
+                    INSERT INTO method_calls(from_class_id,from_method,from_descriptor,to_class_id,
+                        to_method,to_descriptor,invocation_kind,occurrence_count,evidence_lines)
+                    VALUES (3,'testRun','()V',2,'execute','(I)V','VIRTUAL',1,'[53]')""");
+        });
+        JsonNode result = memberUsages(symbol, 20);
+        assertEquals(2, result.path("candidate_consumer_count").asInt(), result.toString());
+        assertEquals(2, result.path("total").asInt());
+        assertEquals("test", result.path("consumers").get(1).path("source_set").asText());
+        assertEquals(53, result.path("consumers").get(1).path("usage")
+                .path("usages").get(0).path("evidence_lines").get(0).asInt());
+    }
+
+    @Test
+    void missingTestClasspathMakesTestUsageCoverageUnknown() throws Exception {
+        String symbol = installMemberFixture("1.0");
+        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> handle.execute("""
+                INSERT INTO classes(class_name,kind,origin,module,source_set)
+                VALUES ('io.casehub.platform.PlatformTest','CLASS','source','.','test')"""));
+        JsonNode result = memberUsages(symbol, 20);
+        assertEquals(2, result.path("candidate_consumer_count").asInt(), result.toString());
+        assertEquals("test", result.path("unresolved_consumers").get(0)
+                .path("source_set").asText());
+        assertEquals("version_unknown", result.path("unresolved_consumers").get(0)
+                .path("status").asText());
+        assertFalse(result.path("complete").asBoolean(true));
+    }
+
+    @Test
+    void duplicateIndexedBinaryClassAndMissingClasspathStayUnknown() throws Exception {
+        String symbol = installMemberFixture("1.0");
+        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> handle.execute("""
+                INSERT INTO classes(class_name,kind,origin,module,source_set)
+                VALUES ('io.casehub.engine.EngineService','CLASS','dependency','.','main')"""));
+        JsonNode duplicate = memberUsages(symbol, 20);
+        assertEquals("consumer_binary_class_ambiguous", duplicate.path("unresolved_consumers")
+                .get(0).path("status").asText());
+        Files.delete(workspace.resolve("platform/target/quill-classpath.txt"));
+        JsonNode missing = memberUsages(symbol, 20);
+        assertEquals("version_unknown", missing.path("unresolved_consumers")
+                .get(0).path("status").asText());
+    }
+
+    @Test
+    void missingProviderMemberAndMalformedSymbolIdReturnExplicitErrors() throws Exception {
+        installMemberFixture("1.0");
+        var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
+        var cls = org.treblereel.mcp.db.IndexReader.findClassByName(engine,
+                "io.casehub.engine.EngineService").orElseThrow();
+        JsonNode missing = memberUsages(SymbolContract.id(cls, "METHOD", "missing", "()V"), 20);
+        assertEquals("SYMBOL_NOT_FOUND", missing.path("error_code").asText());
+        JsonNode malformed = memberUsages("quill:symbol:v2:bad", 20);
+        assertEquals("MALFORMED_SYMBOL_ID", malformed.path("error_code").asText());
+    }
+
+    @Test
+    void incompleteIndexOrMissingBinaryMemberIsUnknownRatherThanNoUsages() throws Exception {
+        String symbol = installMemberFixture("1.0");
+        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> handle.execute("""
+                UPDATE metadata SET value='degraded' WHERE key='dependency_index'"""));
+        JsonNode incomplete = memberUsages(symbol, 20);
+        assertEquals("dependency_index_incomplete", incomplete.path("unresolved_consumers")
+                .get(0).path("status").asText());
+        platform.useHandle(handle -> {
+            handle.execute("UPDATE metadata SET value='complete' WHERE key='dependency_index'");
+            handle.execute("DELETE FROM class_members WHERE class_id=2 AND descriptor='(I)V'");
+        });
+        JsonNode missing = memberUsages(symbol, 20);
+        assertEquals("consumer_binary_member_missing", missing.path("unresolved_consumers")
+                .get(0).path("status").asText());
+        assertEquals(0, missing.path("total").asInt());
+    }
+
+    @Test
+    void exactMemberPageReportsTruncationWithoutClaimingCompleteness() throws Exception {
+        String symbol = installMemberFixture("1.0");
+        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> handle.execute("""
+                INSERT INTO method_calls(from_class_id,from_method,from_descriptor,to_class_id,
+                    to_method,to_descriptor,invocation_kind,occurrence_count,evidence_lines)
+                VALUES (1,'other','()V',2,'execute','(I)V','VIRTUAL',1,'[34]')"""));
+        JsonNode result = memberUsages(symbol, 1);
+        assertEquals(1, result.path("truncated_consumer_count").asInt());
+        assertFalse(result.path("complete").asBoolean(true));
+        assertEquals(2, result.path("consumers").get(0).path("usage")
+                .path("total").asInt());
+        assertTrue(result.path("consumers").get(0).path("usage")
+                .path("has_more").asBoolean());
+        JsonNode continuation = result.path("next_usage_page_request");
+        assertEquals("find_workspace_usages", continuation.path("tool").asText());
+        assertEquals(1, continuation.path("arguments").path("consumer_offset").asInt());
+        JsonNode next = JSON.readTree(tools.find_workspace_usages(symbol,
+                Optional.of("engine"), Optional.empty(), Optional.of(20), Optional.of(1),
+                Optional.of(1), Optional.empty()));
+        assertEquals(1, next.path("consumers").get(0).path("usage")
+                .path("showing").asInt());
+        assertFalse(next.path("consumers").get(0).path("usage")
+                .path("has_more").asBoolean());
+        assertFalse(next.has("next_usage_page_request"));
+    }
+
+    private JsonNode memberUsages(String symbol, int consumerLimit) throws Exception {
+        return JSON.readTree(tools.find_workspace_usages(symbol, Optional.of("engine"),
+                Optional.empty(), Optional.of(20), Optional.of(consumerLimit), Optional.empty()));
+    }
+
+    private String installMemberFixture(String binaryVersion) throws Exception {
+        Path jar = workspace.resolve("cache/io/casehub/engine-api/" + binaryVersion
+                + "/engine-api-" + binaryVersion + ".jar");
+        writeClassJar(jar);
+        Path classpath = workspace.resolve("platform/target/quill-classpath.txt");
+        Files.createDirectories(classpath.getParent());
+        Files.writeString(classpath, jar.toString());
+        var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
+        engine.useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('compiled_before_index','true')");
+            handle.execute("""
+                INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,
+                                          parameter_types,modifiers,annotations)
+                VALUES (1,'METHOD','execute','execute(int):void','(I)V','void',
+                        '["int"]','public','[]'),
+                       (1,'METHOD','execute','execute(String):void','(Ljava/lang/String;)V',
+                        'void','["java.lang.String"]','public','[]')""");
+        });
+        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(handle -> {
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('dependency_index','complete')");
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('compiled_before_index','true')");
+            handle.execute("""
+                    INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,
+                                              parameter_types,modifiers,annotations)
+                    VALUES (2,'METHOD','execute','execute(int):void','(I)V','void',
+                            '["int"]','public','[]'),
+                           (2,'METHOD','execute','execute(String):void','(Ljava/lang/String;)V',
+                            'void','["java.lang.String"]','public','[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls(from_class_id,from_method,from_descriptor,to_class_id,
+                        to_method,to_descriptor,invocation_kind,occurrence_count,evidence_lines)
+                    VALUES (1,'run','()V',2,'execute','(I)V','VIRTUAL',2,'[33]'),
+                           (1,'run','()V',2,'execute','(Ljava/lang/String;)V','VIRTUAL',1,'[35]')""");
+        });
+        var cls = org.treblereel.mcp.db.IndexReader.findClassByName(engine,
+                "io.casehub.engine.EngineService").orElseThrow();
+        return SymbolContract.id(cls, "METHOD", "execute", "(I)V");
+    }
+
+    private static void writeClassJar(Path jar) throws Exception {
+        Files.createDirectories(jar.getParent());
+        try (var archive = new java.util.jar.JarOutputStream(Files.newOutputStream(jar))) {
+            archive.putNextEntry(new java.util.jar.JarEntry(
+                    "io/casehub/engine/EngineService.class"));
+            archive.write(new byte[]{0});
+            archive.closeEntry();
+        }
+    }
+
+    @Test
     void boundsUsageDetailsPerConsumerAndReportsTruncation() throws Exception {
         var platform = QuillDatabase.openWritable(
                 workspace.resolve("platform/.quill/platform-index.db"));

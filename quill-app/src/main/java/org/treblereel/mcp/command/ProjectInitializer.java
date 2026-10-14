@@ -31,6 +31,7 @@ import org.treblereel.mcp.core.BeanResolver;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.BytecodeDependencyScanner;
 import org.treblereel.mcp.core.ClassFileSnapshot;
+import org.treblereel.mcp.core.JvmApiScanner;
 import org.treblereel.mcp.core.ClassOccurrenceScanner;
 import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.core.DependencyIndexer;
@@ -331,6 +332,7 @@ public class ProjectInitializer {
         List<ModuleClasspathRecord> moduleClasspath = ModuleClasspathResolver.resolve(
                 root, buildSystem, moduleDirectories);
         List<Path> sourceRoots = ProjectLayout.findSourceRoots(root, moduleDirectories);
+        Map<String, String> javaSourceHashes = org.treblereel.mcp.core.SourceFileHashes.captureJava(root, sourceRoots);
         List<Path> indexingClassDirs = List.copyOf(classesDirs);
         timings.finish("index_setup");
         ClassFileSnapshot classFiles;
@@ -595,6 +597,8 @@ public class ProjectInitializer {
                 Integer.toString(initialWorktree.structuralChanges().size()));
         metadata.put("compiled_before_index", Boolean.toString(compiledBeforeIndex));
         metadata.put("structure_scope", "compiled_snapshot");
+        metadata.put("java_source_hashes", toJson(javaSourceHashes));
+        metadata.put("java_source_roots", toJson(sourceRoots.stream().map(path -> root.relativize(path.toAbsolutePath().normalize()).toString()).sorted().toList()));
         metadata.put("module_discovery_scope", classesDiscovery.moduleScope());
         metadata.put("module_discovery_complete",
                 Boolean.toString(classesDiscovery.complete()));
@@ -649,12 +653,38 @@ public class ProjectInitializer {
         metadata.put("kotlin_declarations", Integer.toString(kotlinDeclarations.size()));
         if (!indexOnly && (!kotlinDeclarations.isEmpty() || inventory.files().stream()
                 .anyMatch(file -> file.kind().equals("kotlin") && file.lifecycle().equals("current")))) {
-            try {
-                org.treblereel.mcp.kotlin.KotlinRuntime.prepare();
-                System.err.println("[quill] K2 " + org.treblereel.mcp.kotlin.KotlinRuntime.version() + " runtime ready");
-            } catch (IOException failure) {
-                System.err.println("[quill] K2 runtime unavailable; Kotlin metadata analysis remains available. "
-                        + failure.getMessage());
+            var versions = new java.util.LinkedHashSet<String>();
+            boolean capturedVersion = false;
+            for (Path module : moduleDirectories) {
+                BuildSystem moduleBuild = BuildSystem.hasGradleMarker(module) ? BuildSystem.GRADLE
+                        : Files.isRegularFile(module.resolve("pom.xml")) ? BuildSystem.MAVEN : buildSystem;
+                Path output = moduleBuild.classpathFile(module).getParent();
+                if (!Files.isDirectory(output)) continue;
+                try (var settings = Files.newDirectoryStream(output, "quill-kotlin-*.properties")) {
+                    for (Path file : settings) {
+                        var properties = new java.util.Properties();
+                        try (var input = Files.newInputStream(file)) { properties.load(input); }
+                        String captured = properties.getProperty("compilerVersion", "");
+                        if (!captured.isBlank()) {
+                            capturedVersion = true;
+                            String selected = org.treblereel.mcp.kotlin.KotlinRuntime.selectVersion(captured);
+                            if (selected == null) System.err.println("[quill] K2 " + captured + " is unsupported; semantic analysis will use indexed fallback");
+                            else versions.add(selected);
+                        }
+                    }
+                } catch (IOException failure) {
+                    System.err.println("[quill] Could not read captured Kotlin compiler settings: " + failure.getMessage());
+                }
+            }
+            if (!capturedVersion) versions.add(org.treblereel.mcp.kotlin.KotlinRuntime.version());
+            for (String selected : versions) {
+                try {
+                    org.treblereel.mcp.kotlin.KotlinRuntime.prepareVersion(selected);
+                    System.err.println("[quill] K2 " + selected + " runtime ready");
+                } catch (IOException failure) {
+                    System.err.println("[quill] K2 " + selected + " runtime unavailable; Kotlin metadata analysis remains available. "
+                            + failure.getMessage());
+                }
             }
             timings.finish("kotlin_runtime");
         }
@@ -666,6 +696,7 @@ public class ProjectInitializer {
         metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
         metadata.put("method_calls", Integer.toString(methodCalls.size()));
+        metadata.put("invokedynamic_evidence_protocol", "2");
         metadata.put("field_accesses", Integer.toString(fieldAccesses.size()));
         metadata.put("framework_endpoints", Integer.toString(frameworkEndpoints.size()));
         metadata.put("configuration_definitions",
@@ -690,7 +721,7 @@ public class ProjectInitializer {
                 remappedProblems, gitResult.fileStats(), gitResult.commits(),
                 gitResult.commitFiles(), inventory.files(), classOccurrences,
                 classAnnotations, classMembers, methodCalls, fieldAccesses, configuration,
-                references.resourceUsages());
+                references.resourceUsages(),JvmApiScanner.capture(classFiles,classNameToSqliteId));
 
         long databaseStartedAt = System.nanoTime();
         try {
@@ -725,7 +756,8 @@ public class ProjectInitializer {
             long validationStartedAt = System.nanoTime();
             ProjectIndexStore.validateForPublication(stagedDb);
             boolean headChanged = !headMatches(root, initialHead);
-            boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint());
+            boolean worktreeChanged = !worktreeMatches(root, initialWorktree.fingerprint())
+                    || !javaSourceHashes.equals(org.treblereel.mcp.core.SourceFileHashes.captureJava(root, sourceRoots));
             timings.record("publication_validation", elapsedMillis(validationStartedAt));
             if (headChanged || worktreeChanged) {
                 ProjectIndexStore.deleteDatabaseArtifacts(stagedDb);

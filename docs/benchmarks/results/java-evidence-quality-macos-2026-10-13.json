@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "platform": "macOS arm64",
+  "fixture_root": "/var/folders/df/r7mb2d9n1_s29v94c7zf9gw40000gn/T/quill-java-evidence-native-_qlwvrgs",
+  "binary_sha256": "46586eb69ff6ea41e89671b4e38db3e7c1e3431071cfbcb938efcf77b8da2060",
+  "binary_size": 69696008,
+  "cases": [
+    {
+      "case": "exact_overload_and_two_reference_ranges_on_one_line",
+      "passed": true,
+      "latency_ms": [
+        360.2,
+        9.984,
+        9.733,
+        9.468,
+        8.965,
+        8.645
+      ]
+    },
+    {
+      "case": "field_write_and_increment_ranges",
+      "passed": true
+    },
+    {
+      "case": "virtual_target_and_covariant_dispatch_candidate",
+      "passed": true
+    },
+    {
+      "case": "bridge_exact_use_separate_from_parent_contract_caller",
+      "passed": true
+    },
+    {
+      "case": "callback_creation_not_invocation_order_proof",
+      "passed": true
+    },
+    {
+      "case": "qualified_complete_scoped_zero",
+      "passed": true
+    },
+    {
+      "case": "restored_timestamp_edit_suppresses_source_ranges_and_current_coverage",
+      "passed": true
+    }
+  ],
+  "source_and_bytecode_restored_unchanged": true,
+  "timing_scope": "one javac fixture; first and five warm requests; not a general performance estimate",
+  "unit_test_results": {
+    "quill-core": {
+      "tests": 264,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "quill-app": {
+      "tests": 683,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "quill-java-semantic": {
+      "tests": 37,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "quill-kotlin-semantic": {
+      "tests": 56,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "quill-kotlin-semantic-21": {
+      "tests": 56,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tests/basic-cdi": {
+      "tests": 69,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tests/advanced-cdi": {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tests/basic-spring": {
+      "tests": 46,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tests/advanced-spring": {
+      "tests": 91,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tests/multimodule-maven/verify": {
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tests/annotation-processing/application": {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "quill-maven-extension": {
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "integration_tests": {
+    "tests": 8,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "validation_commands": [
+    "./mvnw verify",
+    "./mvnw verify -Pnative",
+    "./mvnw -f quill-maven-extension/pom.xml verify",
+    "./mvnw -pl quill-app -am install -DskipTests",
+    "./mvnw -pl quill-app -am failsafe:integration-test failsafe:verify -Pnative"
+  ],
+  "validation_notes": "Native verify passed unit tests, coverage checks and binary build, then lacked a standalone extension JAR for two integration cases. After building that prerequisite and installing reactor artifacts, all eight integration cases passed on a separate retry. No production-source changes followed the successful native build.",
+  "fixture_source_evidence": {
+    "src/main/java/p/Child.java": "30574fdd2c29fc4b820299370e88351ce114973be436d5dc5cb51415c72bc220",
+    "src/main/java/p/Caller.java": "32cbac360e6cbb2c8a589e3a6d406e950f5508d0e2b846e026c43402413745d1",
+    "src/main/java/p/Parent.java": "996deb22f2cf720fe999ea11ec1865bad3b0573a35a23dd0fa7221528667b35c",
+    "src/main/java/p/Api.java": "f80a3a5c91c146bab5e1d1c976fc36020f795dde13b033d48d4708d1eeaa2abf"
+  }
+}

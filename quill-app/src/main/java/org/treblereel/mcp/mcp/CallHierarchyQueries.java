@@ -83,7 +83,7 @@ final class CallHierarchyQueries {
                 IndexReader.findKotlinDeclarations(jdbi, cls.id());
 
         List<ClassMemberRecord> candidates = normalizedMethod == null ? List.of()
-                : IndexReader.findClassMembers(jdbi, cls.id()).stream()
+                : (normalizedSignature == null ? IndexReader.findClassMembers(jdbi, cls.id()) : IndexReader.findJvmClassMembers(jdbi, cls.id())).stream()
                         .filter(member -> member.kind().equals("METHOD")
                                 || member.kind().equals("CONSTRUCTOR"))
                         .filter(member -> KotlinMemberNames.matches(
@@ -188,6 +188,13 @@ final class CallHierarchyQueries {
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
         countedClasses.add(cls.id());
+        JavaSourceLocations javaLocations = new JavaSourceLocations(jdbi);
+        String dynamicBasis = "2".equals(IndexReader.getMetadata(jdbi).get("invokedynamic_evidence_protocol"))
+                ? "lambda_metafactory" : "legacy_unclassified";
+        JavaDispatchEvidence dispatch = new JavaDispatchEvidence(jdbi);
+        if (selected != null && kotlinDeclarations.isEmpty() && !normalizedDirection.equals("outbound"))
+            dispatch.appendPossibleCallers(root, cls, selected, limit, offset);
+        java.util.Map<Integer, ClassRecord> callees = new java.util.HashMap<>();
         for (TraversalEdge traversed : page) {
             MethodCallView call = traversed.call();
             ObjectNode edge = edges.addObject();
@@ -198,8 +205,18 @@ final class CallHierarchyQueries {
                     call.toDescriptor(), call.toSource(), call.toSourceLine(),
                     call.toOrigin(), call.toModule());
             edge.put("invocation_kind", call.invocationKind());
+            edge.put("edge_kind", "dynamic".equals(call.invocationKind())
+                    ? "lambda_metafactory".equals(dynamicBasis) ? "callback_reference" : "dynamic_handle_reference" : "call");
+            edge.put("execution_semantics", "dynamic".equals(call.invocationKind())
+                    ? "lambda_metafactory".equals(dynamicBasis) ? "callback_creation" : "bootstrap_reference_unknown" : "invocation_instruction");
+            if ("dynamic".equals(call.invocationKind())) edge.put("reference_basis",dynamicBasis);
+            if (call.fromSource() != null && call.fromSource().endsWith(".java")) dispatch.appendTarget(edge, call);
             edge.put("occurrence_count", call.occurrenceCount());
             edge.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
+            ClassRecord callee = callees.computeIfAbsent(call.toClassId(), id -> IndexReader.findClassById(jdbi, id).orElse(null));
+            if (callee != null) javaLocations.append(edge, call.fromSource(), call.fromClass(), call.fromMethod(), call.fromDescriptor(),
+                    call.toClass(), call.toMethod(), call.toDescriptor(), "call", SymbolContract.id(callee,
+                            "<init>".equals(call.toMethod()) ? "CONSTRUCTOR" : "METHOD", call.toMethod(), call.toDescriptor()), call.evidenceLines());
             if (transitive) {
                 edge.put("depth", traversed.depth());
                 edge.put("traversal_direction", traversed.direction());
@@ -209,6 +226,7 @@ final class CallHierarchyQueries {
             if (countedClasses.add(call.toClassId())) naiveTokens += call.toSourceTokens();
         }
         appendPage(root, page.size(), filtered.size(), limit, offset);
+        UsageCoverage.append(root,jdbi,cls.id());
         appendMeta(root, jdbi, naiveTokens, cls.sourceFile(), cls.module());
         return root.toString();
     }

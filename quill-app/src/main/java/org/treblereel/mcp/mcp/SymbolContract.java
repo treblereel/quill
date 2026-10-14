@@ -70,7 +70,7 @@ final class SymbolContract {
                 node.put("property_symbol_id", id(cls, "PROPERTY", declaration.name(), descriptor));
             }
         }
-        appendLocation(node, cls.sourceFile(), cls.sourceLine());
+        appendMemberLocation(node, cls.sourceFile(), cls.sourceLine());
     }
 
     static void append(ObjectNode node, String className, String kind, String jvmName,
@@ -81,7 +81,8 @@ final class SymbolContract {
         node.put("source_name", sourceName == null ? jvmName : sourceName);
         node.put("jvm_name", jvmName);
         if (descriptor != null) node.put("jvm_descriptor", descriptor);
-        appendLocation(node, sourceFile, sourceLine);
+        if (MEMBER_KINDS.contains(kind)) appendMemberLocation(node, sourceFile, sourceLine);
+        else appendLocation(node, sourceFile, sourceLine);
     }
 
     static String id(String className, String kind, String jvmName, String descriptor) {
@@ -173,6 +174,17 @@ final class SymbolContract {
         else location.put("path", sourceFile);
         if (sourceLine > 0) location.put("line", sourceLine);
         else location.putNull("line");
+        location.put("basis", sourceLine > 0 ? "indexed_class" : "unknown");
+    }
+
+    private static void appendMemberLocation(
+            ObjectNode node, String sourceFile, int classLine) {
+        ObjectNode location = node.putObject("location");
+        if (sourceFile == null) location.putNull("path");
+        else location.put("path", sourceFile);
+        location.putNull("line");
+        location.put("basis", "unknown");
+        if (classLine > 0) location.put("class_declaration_line", classLine);
     }
 
     private static String encode(String value) {

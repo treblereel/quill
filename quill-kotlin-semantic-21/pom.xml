@@ -1,0 +1,41 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>org.treblereel.mcp</groupId><artifactId>quill</artifactId><version>0.4.1-SNAPSHOT</version></parent>
+  <artifactId>quill-kotlin-semantic-21</artifactId>
+  <!-- K2 FIR APIs differ from 2.4.21; this worker is compiled against 2.1.20 and runs in a separate JVM. -->
+  <properties><maven.compiler.release>17</maven.compiler.release></properties>
+  <dependencyManagement><dependencies>
+    <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>${kotlin21.version}</version></dependency>
+  </dependencies></dependencyManagement>
+  <dependencies>
+    <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-compiler-embeddable</artifactId><version>${kotlin21.version}</version></dependency>
+    <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-scripting-compiler-embeddable</artifactId><version>${kotlin21.version}</version></dependency>
+    <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-allopen-compiler-plugin-embeddable</artifactId><version>${kotlin21.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>${kotlin21.version}</version></dependency>
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-api</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-engine</artifactId><scope>test</scope></dependency>
+  </dependencies>
+  <build><plugins>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version>
+      <executions>
+        <execution><id>default-jar</id><phase>process-classes</phase><goals><goal>jar</goal></goals></execution>
+      </executions>
+    </plugin>
+    <plugin>
+      <groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-maven-plugin</artifactId><version>${kotlin21.version}</version>
+      <executions><execution><id>kotlin-compile</id><phase>process-sources</phase><goals><goal>compile</goal></goals></execution></executions>
+      <configuration><jvmTarget>17</jvmTarget><sourceDirs><sourceDir>${project.basedir}/src/main/kotlin</sourceDir></sourceDirs></configuration>
+    </plugin>
+    <plugin>
+    <groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId><version>${shade-plugin.version}</version>
+    <executions><execution><phase>package</phase><goals><goal>shade</goal></goals><configuration>
+      <shadedArtifactAttached>true</shadedArtifactAttached><shadedClassifierName>all</shadedClassifierName>
+      <createDependencyReducedPom>false</createDependencyReducedPom>
+      <filters><filter><artifact>*:*</artifact><excludes><exclude>META-INF/*.SF</exclude><exclude>META-INF/*.RSA</exclude><exclude>META-INF/*.DSA</exclude></excludes></filter></filters>
+      <transformers><transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"><mainClass>org.treblereel.mcp.kotlin.SemanticWorker</mainClass></transformer></transformers>
+    </configuration></execution></executions>
+  </plugin></plugins></build>
+</project>

@@ -39,6 +39,21 @@ class K2SnapshotTest {
         assertFalse(next.path("analysis_reused").asBoolean(), next.toString());
         assertTrue(next.path("analysis_generation").asLong() > first.path("analysis_generation").asLong());
     }
+    @Test void sourceRangesIdentifyOverloadsAndPropertiesWithoutBorrowingClassLines() throws Exception {
+        Path definitions = source("Defs.kt", "package probe\nclass Receiver {\n  val name = \"s\"\n  fun pick(x: Int) = x\n  fun pick(x: String) = x\n}");
+        Path caller = source("Caller.kt", "package probe\nfun run(r: Receiver) { r.pick(1); r.pick(\"x\"); println(r.name) }");
+        var number = resolve(request(caller, "pick(1)", definitions, caller), "(I)I");
+        assertEquals(definitions.toString(), number.path("source_file").asText());
+        assertEquals(4, number.path("source_line").asInt());
+        assertEquals(3, number.path("source_column").asInt());
+        assertEquals(4, number.path("source_end_line").asInt());
+        var text = resolve(request(caller, "pick(\"x\")", definitions, caller), "(Ljava/lang/String;)Ljava/lang/String;");
+        assertEquals(5, text.path("source_line").asInt());
+        var property = K2Analyzer.analyze(request(caller, "name", definitions, caller));
+        assertEquals("PROPERTY", property.path("kind").asText(), property.toString());
+        assertEquals(3, property.path("source_line").asInt());
+        assertTrue(property.path("source_end_column").asInt() > property.path("source_column").asInt());
+    }
     @Test void projectLanguageApiAndJvmTargetInvalidateCachedModels() throws Exception {
         Path caller = source("Call.kt", "fun pick() = 1\nfun run() = pick()");
         var request = request(caller, "pick()", caller).put("languageVersion", "2.3").put("apiVersion", "2.3").put("jvmTarget", "17");
@@ -63,7 +78,7 @@ class K2SnapshotTest {
         assertEquals("analysis_error", K2Analyzer.analyze(request).path("status").asText());
         String jar = Path.of(org.jetbrains.kotlin.allopen.AllOpenComponentRegistrar.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
         request.putArray("plugin_classpath").add(jar); request.putArray("plugin_options").add("plugin:org.jetbrains.kotlin.allopen:annotation=Open");
-        request.put("allow_compiler_plugins", true).put("compilerVersion", "2.4.21");
+        request.put("allow_compiler_plugins", true).put("compilerVersion", "2.4.21-release-1");
         var valid = resolve(request, "()I"); assertEquals("Base", valid.path("owner").asText());
         assertTrue(resolve(request, "()I").path("analysis_reused").asBoolean());
         request.withArray("plugin_options").removeAll();

@@ -40,6 +40,7 @@ class KotlinDistributionIT {
         }
         try (var archive = new JarFile(jar.toFile())) {
             assertNotNull(archive.getJarEntry("kotlin-worker/worker.jar"));
+            assertNotNull(archive.getJarEntry("kotlin-worker/worker-2.1.20.jar"));
             assertNull(archive.getJarEntry("org/jetbrains/kotlin/cli/jvm/compiler/KotlinCoreEnvironment.class"),
                     "Embedding the shared helper must not embed the compiler in Quill");
         }

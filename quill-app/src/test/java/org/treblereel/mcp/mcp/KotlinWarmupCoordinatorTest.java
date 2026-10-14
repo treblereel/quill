@@ -16,6 +16,7 @@ class KotlinWarmupCoordinatorTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     @TempDir Path temp;
     @TempDir Path external;
+    @TempDir Path third;
     @Test void checkoutReplacementDuringWorkerOperationCannotReturnResolvedEvidence() throws Exception {
         var request = request();
         request.put("project_root", temp.toRealPath().toString());
@@ -47,10 +48,11 @@ class KotlinWarmupCoordinatorTest {
             assertFalse(coordinator.watchedDirectories().isEmpty());
         }
     }
-    private ObjectNode request() throws Exception {
-        Path source = temp.resolve("src/main/kotlin/Caller.kt");
+    private ObjectNode request() throws Exception { return request(temp); }
+    private ObjectNode request(Path root) throws Exception {
+        Path source = root.resolve("src/main/kotlin/Caller.kt");
         Files.createDirectories(source.getParent()); Files.writeString(source, "fun run() = 1");
-        var request = JSON.createObjectNode().put("module", temp.toString()).put("source_set", "main")
+        var request = JSON.createObjectNode().put("module", root.toString()).put("source_set", "main")
                 .put("file", source.toString()).put("offset", 4);
         request.putArray("sources").add(source.toString()); request.putArray("classpath");
         return request;
@@ -112,7 +114,8 @@ class KotlinWarmupCoordinatorTest {
             return result(r);
         }, Duration.ZERO)) {
             coordinator.query("main", input, () -> ((ObjectNode) input.get()).put("offset", -1));
-            coordinator.changed(); await(entered);
+            coordinator.query("other", input, input);
+            coordinator.changed("main"); await(entered);
             var pool = Executors.newSingleThreadExecutor();
             try {
                 var queried = new CountDownLatch(1);
@@ -120,7 +123,7 @@ class KotlinWarmupCoordinatorTest {
                         () -> ((ObjectNode) input.get()).put("offset", -1)); });
                 await(queried);
                 assertThrows(TimeoutException.class, () -> answer.get(100, TimeUnit.MILLISECONDS));
-                version.set(2); coordinator.changed(); release.countDown();
+                version.set(2); coordinator.changed("main"); release.countDown();
                 assertEquals(2, answer.get(8, TimeUnit.SECONDS).path("version").asInt());
             } finally { release.countDown(); pool.shutdownNow(); }
         }
@@ -138,25 +141,140 @@ class KotlinWarmupCoordinatorTest {
             assertEquals(2, calls.get());
         }
     }
-    @Test void burstIsCoalescedAndSwitchingModuleCancelsQueuedWarmup() throws Exception {
-        var request = request(); var calls = new AtomicInteger(); var warm = new CountDownLatch(1);
-        var barrier = new CountDownLatch(1);
+    @Test void burstsAreCoalescedPerContextAndSwitchingPreservesQueuedWarmup() throws Exception {
+        var request = request();
+        var warms = new LinkedBlockingQueue<String>();
         try (var coordinator = new KotlinWarmupCoordinator(r -> {
-            calls.incrementAndGet(); if (r.path("offset").asInt() == -1) warm.countDown();
-            if (r.path("barrier").asBoolean()) barrier.countDown(); return result(r);
-        }, Duration.ofMillis(150))) {
-            coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
-            for (int i = 0; i < 20; i++) coordinator.changed();
-            await(warm); assertEquals(2, calls.get());
-            coordinator.changed();
-            coordinator.query("other", () -> request, () -> request.deepCopy().put("offset", -1));
-            assertEquals(3, calls.get());
-            // New module's warmup serves as a deterministic queue barrier after the debounce.
-            coordinator.query("other", () -> request, () -> request.deepCopy().put("barrier", true));
-            coordinator.changed(); await(barrier);
-            assertEquals(5, calls.get());
+            if (r.path("offset").asInt() == -1) warms.add(r.path("context").asText());
+            return result(r);
+        }, Duration.ofMillis(100))) {
+            coordinator.query("a", () -> request, () -> request.deepCopy().put("offset", -1).put("context", "a"));
+            for (int i = 0; i < 20; i++) coordinator.changed("a");
+            coordinator.query("b", () -> request, () -> request.deepCopy().put("offset", -1).put("context", "b"));
+            for (int i = 0; i < 20; i++) coordinator.changed("b");
+            assertEquals(java.util.Set.of("a", "b"), java.util.Set.of(warms.poll(8, TimeUnit.SECONDS), warms.poll(8, TimeUnit.SECONDS)));
+            assertNull(warms.poll(250, TimeUnit.MILLISECONDS), "Each context's burst must produce only one warmup");
         }
     }
+
+    @Test void inactiveContextStillWatchesEditsAndWarmsTheRightInputs() throws Exception {
+        var a = request();
+        Path other = Files.createDirectories(external.resolve("src/main/kotlin"));
+        Path source = other.resolve("Caller.kt"); Files.writeString(source, "fun other() = 1");
+        var b = a.deepCopy().put("module", external.toString()).put("file", source.toString());
+        b.putArray("sources").add(source.toString());
+        var warmed = new CountDownLatch(1);
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1 && r.path("module").asText().equals(temp.toString())) {
+                try { if (Files.readString(Path.of(r.path("file").asText())).contains("changed")) warmed.countDown(); }
+                catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            }
+            return result(r);
+        }, Duration.ofMillis(30))) {
+            coordinator.query("a", () -> a, () -> a.deepCopy().put("offset", -1));
+            coordinator.query("b", () -> b, () -> b.deepCopy().put("offset", -1));
+            assertEquals(2, coordinator.contextCount());
+            Files.writeString(Path.of(a.path("file").asText()), "fun run() = \"changed\"");
+            await(warmed);
+            assertTrue(coordinator.watchedDirectories().stream().anyMatch(path -> path.startsWith(external.toAbsolutePath()) || path.startsWith(org.treblereel.mcp.core.ProjectIdentity.canonical(external))));
+        }
+    }
+
+    @Test void lruEvictionCancelsPendingInputsAndBackgroundDoesNotPromoteContexts() throws Exception {
+        var request = request(); var warmed = new LinkedBlockingQueue<String>();
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1) warmed.add(r.path("context").asText());
+            return result(r);
+        }, Duration.ofMillis(50))) {
+            coordinator.query("a", () -> request, () -> request.deepCopy().put("offset", -1).put("context", "a"));
+            coordinator.query("b", () -> request, () -> request.deepCopy().put("offset", -1).put("context", "b"));
+            coordinator.changed("a"); assertEquals("a", warmed.poll(8, TimeUnit.SECONDS));
+            coordinator.query("c", () -> request, () -> request.deepCopy().put("offset", -1).put("context", "c"));
+            assertEquals(2, coordinator.contextCount());
+            coordinator.changed("a"); coordinator.changed("b");
+            assertEquals("b", warmed.poll(8, TimeUnit.SECONDS), "Background activity must not save A from foreground LRU eviction");
+            assertNull(warmed.poll(200, TimeUnit.MILLISECONDS));
+        }
+    }
+
+    @Test void rootRetirementRemovesAllItsModulesAndQueuedWarmups() throws Exception {
+        var request = request(); var calls = new AtomicInteger();
+        try (var coordinator = new KotlinWarmupCoordinator(r -> { calls.incrementAndGet(); return result(r); }, Duration.ofHours(1))) {
+            String prefix = temp.toRealPath() + ":project:";
+            coordinator.query(prefix + "main", () -> request, () -> { fail("Retired provider must not run"); return request; });
+            coordinator.query(prefix + "test", () -> request, () -> { fail("Retired provider must not run"); return request; });
+            coordinator.changed(prefix + "main"); coordinator.changed(prefix + "test");
+            coordinator.retireRoot(temp);
+            assertEquals(0, coordinator.contextCount()); assertTrue(coordinator.watchedDirectories().isEmpty());
+            coordinator.changed(prefix + "main"); assertEquals(2, calls.get());
+        }
+    }
+
+    @Test void evictionDetachesOldSubscriptionsAndRetirementPreservesAnotherRoot() throws Exception {
+        var a = request(temp); var b = request(external); var c = request(third);
+        String ak = temp.toRealPath() + ":a:main", bk = external.toRealPath() + ":b:main", ck = third.toRealPath() + ":c:main";
+        var warmed = new CountDownLatch(1);
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1) warmed.countDown(); return result(r);
+        }, Duration.ZERO)) {
+            coordinator.query(ak, () -> a, () -> a.deepCopy().put("offset", -1));
+            coordinator.query(bk, () -> b, () -> b.deepCopy().put("offset", -1));
+            coordinator.query(ck, () -> c, () -> c.deepCopy().put("offset", -1));
+            Path oldRoot = temp.toRealPath();
+            assertFalse(coordinator.watchedDirectories().stream().anyMatch(path -> path.startsWith(oldRoot)));
+            coordinator.retireRoot(third);
+            assertEquals(1, coordinator.contextCount());
+            Path remaining = external.toRealPath();
+            assertTrue(coordinator.watchedDirectories().stream().anyMatch(path -> path.startsWith(remaining)));
+            coordinator.changed(ak); coordinator.changed(bk); await(warmed);
+            coordinator.close(); assertEquals(0, coordinator.contextCount()); assertTrue(coordinator.watchedDirectories().isEmpty());
+        }
+    }
+
+    @Test void inactiveWarmupCannotRestartTheSelectedJdkOrKotlinRuntime() throws Exception {
+        for (String property : java.util.List.of("jdk_home", "compilerVersion")) {
+            var a = request().put(property, property.equals("jdk_home") ? temp.toString() : "2.4.21");
+            var b = a.deepCopy().put(property, property.equals("jdk_home") ? external.toString() : "2.1.20");
+            var warms = new LinkedBlockingQueue<String>();
+            try (var coordinator = new KotlinWarmupCoordinator(r -> {
+                if (r.path("offset").asInt() == -1) warms.add(r.path("context").asText()); return result(r);
+            }, Duration.ZERO)) {
+                coordinator.query("a", () -> a, () -> a.deepCopy().put("offset", -1).put("context", "a"));
+                coordinator.query("b", () -> b, () -> b.deepCopy().put("offset", -1).put("context", "b"));
+                coordinator.changed("a"); coordinator.changed("b");
+                assertEquals("b", warms.poll(8, TimeUnit.SECONDS));
+                assertNull(warms.poll(150, TimeUnit.MILLISECONDS));
+                coordinator.query("a", () -> a, () -> a.deepCopy().put("offset", -1).put("context", "a"));
+                coordinator.changed("b"); coordinator.changed("a");
+                assertEquals("a", warms.poll(8, TimeUnit.SECONDS));
+                assertNull(warms.poll(150, TimeUnit.MILLISECONDS));
+            }
+        }
+    }
+
+    @Test void changesInOtherContextDoNotInvalidateForegroundEvidence() throws Exception {
+        var request = request(); var aCalls = new AtomicInteger();
+        var holder = new AtomicReference<KotlinWarmupCoordinator>();
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("context").asText().equals("a")) { aCalls.incrementAndGet(); holder.get().changed("b"); }
+            return result(r);
+        }, Duration.ofHours(1))) {
+            holder.set(coordinator);
+            coordinator.query("b", () -> request, () -> request);
+            coordinator.query("a", () -> request.deepCopy().put("context", "a"), () -> request);
+            assertEquals(1, aCalls.get());
+        }
+    }
+
+    @Test void retiringContextDuringForegroundCannotPublishItsResult() throws Exception {
+        var request = request(); var holder = new AtomicReference<KotlinWarmupCoordinator>();
+        try (var coordinator = new KotlinWarmupCoordinator(r -> { holder.get().retireRoot(temp); return result(r); }, Duration.ZERO)) {
+            holder.set(coordinator);
+            assertEquals("inputs_changed", coordinator.query(temp.toRealPath() + ":project:main", () -> request, () -> request).path("status").asText());
+            assertEquals(0, coordinator.contextCount());
+        }
+    }
+
     @Test void compilerRaceResponseRetriesAndWarmupFailureDoesNotPoisonQueries() throws Exception {
         var request = request(); var calls = new AtomicInteger(); var warmed = new CountDownLatch(1);
         try (var coordinator = new KotlinWarmupCoordinator(r -> {

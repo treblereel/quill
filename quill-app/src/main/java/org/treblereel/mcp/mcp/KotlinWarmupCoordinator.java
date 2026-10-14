@@ -12,23 +12,32 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/** Watches the recently queried module while the worker can retain inactive FIR snapshots. */
+/** Keeps subscriptions for two recently queried compiler contexts; worker operations remain serialized. */
 final class KotlinWarmupCoordinator implements AutoCloseable {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final int MAX_CONTEXTS = 2;
     private final Function<JsonNode, JsonNode> worker;
     private final long debounceMillis;
     private final KotlinDirectoryWatcher.Factory eventFactory;
     private final Object state = new Object();
     private final ReentrantLock operation = new ReentrantLock(true);
+    private final LinkedHashMap<String, Context> contexts = new LinkedHashMap<>(MAX_CONTEXTS, .75f, true);
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(task -> {
         var thread = new Thread(task, "quill-k2-warmup"); thread.setDaemon(true); return thread;
     });
-    private boolean closed;
+    private boolean closed, foregroundSelected;
     private String active;
-    private long epoch, revision;
-    private Supplier<JsonNode> provider;
-    private ScheduledFuture<?> pending;
-    private InputsWatcher watcher;
+
+    private final class Context {
+        final String key;
+        long revision;
+        boolean retired;
+        String runtime;
+        Supplier<JsonNode> provider;
+        ScheduledFuture<?> pending;
+        InputsWatcher watcher;
+        Context(String key) { this.key = key; }
+    }
 
     KotlinWarmupCoordinator(Function<JsonNode, JsonNode> worker, Duration debounce) {
         this(worker, debounce, KotlinDirectoryWatcher.DEFAULT);
@@ -42,22 +51,34 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
 
     boolean prewarm(String key, Supplier<JsonNode> background) {
         synchronized (state) {
-            // Startup must never displace a module already selected by a real query.
-            if (closed || active != null) return false;
-            activate(key); provider = background;
-            long owner = epoch, version = revision;
-            pending = scheduler.schedule(() -> warm(owner, version), 0, TimeUnit.MILLISECONDS);
+            // A late startup task must never displace contexts selected by real queries.
+            if (closed || foregroundSelected || !contexts.isEmpty()) return false;
+            Context context = activate(key);
+            context.provider = background;
+            schedule(context, 0);
             return true;
         }
     }
 
-    // Called with state held; both startup and foreground share the same subscriptions.
-    private void activate(String key) {
-        cancelPending();
-        if (watcher != null) watcher.close();
-        active = key; epoch++; revision = 0;
-        try { watcher = new InputsWatcher(epoch); }
-        catch (IOException | UnsupportedOperationException unsupported) { watcher = null; }
+    // Called with state held. Only foreground selection changes LRU order.
+    private Context activate(String key) {
+        Context context = contexts.get(key);
+        if (context == null) {
+            while (contexts.size() >= MAX_CONTEXTS) {
+                var oldest = contexts.entrySet().iterator();
+                Context evicted = oldest.next().getValue(); oldest.remove(); retire(evicted);
+            }
+            context = new Context(key);
+            contexts.put(key, context);
+            try { context.watcher = new InputsWatcher(context); }
+            catch (IOException | UnsupportedOperationException unsupported) { context.watcher = null; }
+        }
+        active = key;
+        return context;
+    }
+
+    private boolean current(Context context) {
+        return !closed && !context.retired;
     }
 
     JsonNode query(String key, Supplier<JsonNode> foreground, Supplier<JsonNode> background) {
@@ -66,21 +87,24 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
         try {
             acquired = operation.tryLock(30, TimeUnit.SECONDS);
             if (!acquired) return status("timeout");
+            Context context;
             synchronized (state) {
                 if (closed) return status("unavailable");
-                if (!key.equals(active)) activate(key);
-                provider = background;
+                foregroundSelected = true;
+                context = activate(key);
+                context.provider = background;
             }
-            // A query takes over a queued debounce; an already running warmup holds
-            // operation until it completes. Recollect inputs only after that wait.
+            // Running warmups hold operation. Recollect inputs only after that wait;
+            // a foreground query takes over its own queued debounce, preserving other contexts.
             while (System.nanoTime() < deadline) {
                 long before;
                 JsonNode request = foreground.get();
                 synchronized (state) {
-                    if (closed) return status("unavailable");
-                    cancelPending();
-                    if (watcher != null) watcher.configure(request);
-                    before = revision;
+                    if (!current(context)) return status(closed ? "unavailable" : "inputs_changed");
+                    cancelPending(context);
+                    if (context.watcher != null) context.watcher.configure(request);
+                    context.runtime = runtime(request);
+                    before = context.revision;
                 }
                 if (!request.has("sources")) return request;
                 JsonNode result = worker.apply(request);
@@ -91,11 +115,11 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                     } catch (IOException unavailable) { return status("inputs_changed"); }
                 }
                 synchronized (state) {
-                    if (closed) return status("unavailable");
-                    if (before == revision && !result.path("status").asText().equals("inputs_changed")) {
-                        cancelPending();
+                    if (!current(context)) return status(closed ? "unavailable" : "inputs_changed");
+                    if (before == context.revision && !result.path("status").asText().equals("inputs_changed")) {
+                        cancelPending(context);
                         return result instanceof ObjectNode node
-                                ? node.deepCopy().put("input_detection", watchBackend()) : result;
+                                ? node.deepCopy().put("input_detection", watchBackend(context)) : result;
                     }
                 }
             }
@@ -106,71 +130,108 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
         finally { if (acquired) operation.unlock(); }
     }
 
-    // Also used by deterministic concurrency tests; watcher callbacks carry their epoch.
-    void changed() { synchronized (state) { changed(epoch); } }
-    private void changed(long expectedEpoch) {
+    // Deterministic test hooks. Lookup does not promote background activity in the LRU.
+    void changed() { synchronized (state) { changed(find(active)); } }
+    void changed(String key) { synchronized (state) { changed(find(key)); } }
+    private Context find(String key) {
+        for (Context context : contexts.values()) if (context.key.equals(key)) return context;
+        return null;
+    }
+    private void changed(Context context) {
         synchronized (state) {
-            if (closed || expectedEpoch != epoch || provider == null) return;
-            revision++;
-            cancelPending();
-            long version = revision;
-            pending = scheduler.schedule(() -> warm(expectedEpoch, version), debounceMillis, TimeUnit.MILLISECONDS);
+            if (context == null || !current(context) || context.provider == null) return;
+            context.revision++;
+            schedule(context, debounceMillis);
         }
     }
 
-    private void warm(long expectedEpoch, long version) {
+    private void schedule(Context context, long delay) {
+        cancelPending(context);
+        long version = context.revision;
+        context.pending = scheduler.schedule(() -> warm(context, version), delay, TimeUnit.MILLISECONDS);
+    }
+
+    private void warm(Context context, long version) {
         boolean acquired = false;
         try {
             operation.lockInterruptibly(); acquired = true;
             Supplier<JsonNode> source;
             synchronized (state) {
-                if (closed || epoch != expectedEpoch || revision != version) return;
-                source = provider;
+                if (!current(context) || context.revision != version) return;
+                source = context.provider;
             }
             JsonNode request = source.get();
             synchronized (state) {
-                if (closed || epoch != expectedEpoch || revision != version) return;
-                if (watcher != null) watcher.configure(request);
+                if (!current(context) || context.revision != version) return;
+                if (context.watcher != null) context.watcher.configure(request);
             }
             if (!request.has("sources")) return;
+            synchronized (state) {
+                if (!current(context) || context.revision != version) return;
+                context.runtime = runtime(request);
+                Context selected = find(active);
+                // A background edit must not restart a worker using the foreground's JDK/K2.
+                if (selected != null && selected != context && selected.runtime != null
+                        && context.runtime != null && !selected.runtime.equals(context.runtime)) return;
+            }
             JsonNode result = worker.apply(request);
-            if (result.path("status").asText().equals("inputs_changed")) changed(expectedEpoch);
+            if (result.path("status").asText().equals("inputs_changed")) changed(context);
         } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
         catch (Exception unavailable) { /* A foreground query retains the existing fallback. */ }
         finally { if (acquired) operation.unlock(); }
     }
 
-    private void cancelPending() { if (pending != null) { pending.cancel(false); pending = null; } }
-    /** Detaches subscriptions without interrupting a worker operation already in progress. */
+    private static String runtime(JsonNode request) {
+        if (request.hasNonNull("jdk_home")) return "javac:" + request.path("jdk_home").asText();
+        if (request.hasNonNull("compilerVersion")) return "k2:" + request.path("compilerVersion").asText();
+        return null;
+    }
+
+    private void cancelPending(Context context) {
+        if (context.pending != null) { context.pending.cancel(false); context.pending = null; }
+    }
+    private void retire(Context context) {
+        context.retired = true;
+        cancelPending(context);
+        if (context.watcher != null) { context.watcher.close(); context.watcher = null; }
+        context.provider = null;
+    }
+    /** Detaches all this root's contexts without interrupting a running worker operation. */
     void retireRoot(Path root) {
         String prefix = org.treblereel.mcp.core.ProjectIdentity.canonical(root) + ":";
         synchronized (state) {
-            if (active == null || !active.startsWith(prefix)) return;
-            epoch++; cancelPending();
-            if (watcher != null) { watcher.close(); watcher = null; }
-            active = null; provider = null;
+            contexts.entrySet().removeIf(entry -> {
+                if (!entry.getKey().startsWith(prefix)) return false;
+                retire(entry.getValue()); return true;
+            });
+            if (find(active) == null) active = null;
         }
     }
     @Override public void close() {
         synchronized (state) {
             if (closed) return;
-            closed = true; epoch++; cancelPending();
-            if (watcher != null) { watcher.close(); watcher = null; }
-            provider = null;
+            closed = true;
+            contexts.values().forEach(this::retire); contexts.clear(); active = null;
         }
         scheduler.shutdownNow();
     }
-    private static JsonNode status(String value) { return JSON.createObjectNode().put("status", value); }
+    private static ObjectNode status(String value) { return JSON.createObjectNode().put("status", value); }
 
     Set<Path> watchedDirectories() {
         synchronized (state) {
-            if (watcher == null) return Set.of();
-            return watcher.events.active() ? watcher.events.roots() : watcher.polling.directories();
+            Set<Path> directories = new LinkedHashSet<>();
+            for (Context context : contexts.values()) if (context.watcher != null) {
+                var watcher = context.watcher;
+                directories.addAll(watcher.events.active() ? watcher.events.roots() : watcher.polling.directories());
+            }
+            return Set.copyOf(directories);
         }
     }
 
-    String watchBackend() {
-        synchronized (state) { return watcher == null ? "unavailable" : watcher.events.backend(); }
+    int contextCount() { synchronized (state) { return contexts.size(); } }
+    String watchBackend() { synchronized (state) { return watchBackend(find(active)); } }
+    private String watchBackend(Context context) {
+        return context == null || context.watcher == null ? "unavailable" : context.watcher.events.backend();
     }
 
     private final class InputsWatcher implements AutoCloseable {
@@ -183,13 +244,13 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
         private volatile Set<Path> fileAncestors = Set.of();
         private volatile boolean refresh = true;
         private String signature;
-        private final long ownerEpoch;
-        InputsWatcher(long epoch) throws IOException {
-            ownerEpoch = epoch;
+        private final Context owner;
+        InputsWatcher(Context context) throws IOException {
+            owner = context;
             events = new KotlinDirectoryWatcher(eventFactory, () -> {
-                refresh = true; changed(ownerEpoch);
+                refresh = true; changed(owner);
             }, () -> {
-                fallback = true; fallbackReady.release(); refresh = true; changed(ownerEpoch);
+                fallback = true; fallbackReady.release(); refresh = true; changed(owner);
             });
             listener = new Thread(this::listen, "quill-k2-input-watch"); listener.setDaemon(true); listener.start();
         }
@@ -293,12 +354,12 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                     fallbackReady.tryAcquire(fallback ? KotlinPollingWatcher.INTERVAL_MILLIS : 2000, TimeUnit.MILLISECONDS);
                     if (stopped) break;
                     if (fallback) {
-                        if (polling.poll()) { refresh = true; changed(ownerEpoch); }
+                        if (polling.poll()) { refresh = true; changed(owner); }
                         synchronized (state) {
-                            if (stopped || closed || ownerEpoch != epoch) break;
+                            if (stopped || closed || owner.retired) break;
                             if (events.recover()) {
                                 fallback = false; missedSince = 0; observedEvents = events.eventRevision();
-                                refresh = true; changed(ownerEpoch);
+                                refresh = true; changed(owner);
                             }
                         }
                     } else {
@@ -307,7 +368,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                         boolean metadataChanged = polling.poll();
                         // An event in this interval does not prove that every metadata
                         // change was delivered, or that a warmup read the latest save.
-                        if (metadataChanged) { refresh = true; changed(ownerEpoch); }
+                        if (metadataChanged) { refresh = true; changed(owner); }
                         if (currentEvents != observedEvents) missedSince = 0;
                         else if (metadataChanged && missedSince == 0) missedSince = System.nanoTime();
                         if (missedSince != 0 && System.nanoTime() - missedSince >= KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS) {

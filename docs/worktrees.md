@@ -78,7 +78,17 @@ directories, have `ownership_unknown`; timestamp freshness alone cannot establis
 which checkout produced them. Prefer separate output directories inside each checkout.
 
 Java and Kotlin compiler cache keys include the project/worktree identity and compiler
-inputs. Dependency artifacts retain their existing content-based caching. Removing a
+inputs. Each language keeps source subscriptions and independent debounce state for up
+to two recently queried module/source-set contexts, including contexts in different
+worktrees. Editing either retained context schedules background analysis. Selecting a
+third context evicts the least recently selected subscription and cancels its queued
+warmup; background activity does not promote it in the LRU. Returning to an evicted
+context recreates its subscriptions. A request waits for a running worker operation,
+then recollects its own inputs; worker operations remain serialized per language.
+An inactive background warmup does not switch the worker away from the most recently
+queried JDK/K2 version. Copies requiring another runtime are analyzed on their next
+foreground request instead.
+Dependency artifacts retain their existing content-based caching. Removing a
 working copy retires its database readers and detaches its active source subscriptions
 and queued warmup. Shared bounded worker caches may retain inactive models until normal
 eviction; identity keys prevent those models from being reused by a recreated checkout.

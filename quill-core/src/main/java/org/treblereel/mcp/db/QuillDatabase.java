@@ -11,7 +11,15 @@ public final class QuillDatabase {
 
     static final int SCHEMA_VERSION = 29;
 
+    private static final java.lang.ref.Cleaner CLEANER=java.lang.ref.Cleaner.create();
+    private static final java.util.Map<Jdbi,ReadOnlyConnectionPool> POOLS=java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
     private QuillDatabase() {}
+
+    /** Pool only immutable published indexes, never staging writers or arbitrary writable databases. */
+    public static Jdbi openPooled(Path path) {return openExisting(path,true,true);}
+    public static void retire(Jdbi database) {
+        ReadOnlyConnectionPool pool=POOLS.remove(database);if(pool!=null)pool.run();
+    }
 
     public static Jdbi create(Path dbPath) {
         return create(dbPath, true);
@@ -424,13 +432,14 @@ public final class QuillDatabase {
         return openExisting(dbPath, false);
     }
 
-    private static Jdbi openExisting(Path dbPath, boolean readOnly) {
+    private static Jdbi openExisting(Path dbPath, boolean readOnly) {return openExisting(dbPath,readOnly,false);}
+    private static Jdbi openExisting(Path dbPath, boolean readOnly, boolean pooled) {
         if (!Files.exists(dbPath)) {
             throw new IllegalStateException(
                     "Index not found at " + dbPath + ". Run 'quill init' first.");
         }
-        Jdbi jdbi = createJdbi(dbPath, readOnly);
-        jdbi.useHandle(h -> {
+        Jdbi jdbi = pooled ? pooledJdbi(dbPath) : createJdbi(dbPath, readOnly);
+        try {jdbi.useHandle(h -> {
             int version = h.createQuery("PRAGMA user_version")
                     .mapTo(Integer.class).one();
             if (version > SCHEMA_VERSION) {
@@ -445,8 +454,16 @@ public final class QuillDatabase {
                                 + version + ", current v" + SCHEMA_VERSION
                                 + "). Re-run 'quill init' to rebuild.");
             }
-        });
+        });} catch(RuntimeException error) {retire(jdbi);throw error;}
         return jdbi;
+    }
+
+    private static Jdbi pooledJdbi(Path path) {
+        String url="jdbc:sqlite:"+path.toAbsolutePath().normalize().toUri()+"?mode=ro";
+        var pool=new ReadOnlyConnectionPool(url,4,java.time.Duration.ofSeconds(5));
+        Jdbi database=Jdbi.create(pool::borrow);
+        instrument(database);POOLS.put(database,pool);CLEANER.register(database,pool);
+        return database;
     }
 
     private static Jdbi createJdbi(Path dbPath, boolean readOnly) {
@@ -465,11 +482,14 @@ public final class QuillDatabase {
             }
             return conn;
         });
+        instrument(database);
+        return database;
+    }
+    private static void instrument(Jdbi database) {
         database.setSqlLogger(new org.jdbi.v3.core.statement.SqlLogger() {
             @Override public void logAfterExecution(org.jdbi.v3.core.statement.StatementContext context) {QueryMetrics.statementExecuted();}
             @Override public void logException(org.jdbi.v3.core.statement.StatementContext context,java.sql.SQLException error) {QueryMetrics.statementExecuted();}
         });
-        return database;
     }
 
     public static class SchemaVersionException extends RuntimeException {

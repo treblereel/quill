@@ -36,7 +36,7 @@ public final class SourceFileHashes {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             try (var input = Files.newInputStream(file);
                  var sink = new java.security.DigestOutputStream(java.io.OutputStream.nullOutputStream(), digest)) {
-                input.transferTo(sink);
+                org.treblereel.mcp.db.QueryMetrics.sourceRead(input.transferTo(sink));
             }
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }

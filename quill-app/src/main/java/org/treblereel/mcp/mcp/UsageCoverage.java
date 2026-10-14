@@ -25,7 +25,7 @@ final class UsageCoverage {
                 .put("runtime_dispatch_exhaustive",false).put("bytecode_source_identity_proven",false);
         coverage.put("index_id",metadata.getOrDefault("index_id","unknown"));
         coverage.put("indexed_at",metadata.getOrDefault("indexed_at","unknown"));
-        JsonNode sources=sourceFreshness(metadata);
+        JsonNode sources=org.treblereel.mcp.db.QueryMetrics.measure("source_freshness", () -> sourceFreshness(metadata));
         coverage.set("source_snapshot",sources);
         String snapshot=freshness.structureStale() || sources.path("state").asText().equals("changed") ? "stale" : freshness.currentCommit()!=null
                 && metadata.containsKey("index_id") && metadata.containsKey("indexed_at") ? "current_observed_worktree" : "unknown";
@@ -33,7 +33,7 @@ final class UsageCoverage {
         var reasons=coverage.putArray("incomplete_reasons");
         if (!snapshot.equals("current_observed_worktree")) reasons.add(snapshot.equals("stale") ? "stale_index" : "freshness_evidence_unavailable");
         if (!sources.path("state").asText().equals("matching")) reasons.add("indexed_java_source_snapshot_unverified");
-        JsonNode build=buildFreshness(metadata);
+        JsonNode build=org.treblereel.mcp.db.QueryMetrics.measure("build_freshness", () -> buildFreshness(metadata));
         coverage.set("compiled_outputs",build);
         if (!build.path("state").asText().equals("fresh")) reasons.add("compiled_output_coverage_unverified");
         if (build.path("changed_after_index").asBoolean()) reasons.add("compiled_outputs_changed_after_index");

@@ -454,8 +454,9 @@ public final class QuillDatabase {
         String url = readOnly
                 ? "jdbc:sqlite:" + absolutePath.toUri() + "?mode=ro"
                 : "jdbc:sqlite:" + absolutePath;
-        return Jdbi.create(() -> {
+        Jdbi database=Jdbi.create(() -> {
             var conn = DriverManager.getConnection(url);
+            QueryMetrics.connectionOpened();
             try (var stmt = conn.createStatement()) {
                 stmt.execute("PRAGMA foreign_keys=ON");
             } catch (SQLException e) {
@@ -464,6 +465,11 @@ public final class QuillDatabase {
             }
             return conn;
         });
+        database.setSqlLogger(new org.jdbi.v3.core.statement.SqlLogger() {
+            @Override public void logAfterExecution(org.jdbi.v3.core.statement.StatementContext context) {QueryMetrics.statementExecuted();}
+            @Override public void logException(org.jdbi.v3.core.statement.StatementContext context,java.sql.SQLException error) {QueryMetrics.statementExecuted();}
+        });
+        return database;
     }
 
     public static class SchemaVersionException extends RuntimeException {

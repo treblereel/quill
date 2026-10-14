@@ -70,11 +70,15 @@ public record ProjectIdentity(Path projectRoot, Path worktreeRoot, Path gitDirec
         catch (IOException failure) { return path.toAbsolutePath().normalize(); }
     }
 
-    private static String id(String kind, Path... paths) {
+    private static String id(String kind, Path... paths) throws IOException {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             for (Path path : paths) {
                 digest.update(path.toString().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                var attributes = Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes.class);
+                digest.update((attributes.creationTime() + ":" + attributes.fileKey())
+                        .getBytes(StandardCharsets.UTF_8));
                 digest.update((byte) 0);
             }
             return kind + ":" + HexFormat.of().formatHex(digest.digest());

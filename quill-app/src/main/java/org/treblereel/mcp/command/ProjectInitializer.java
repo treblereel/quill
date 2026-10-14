@@ -583,7 +583,16 @@ public class ProjectInitializer {
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("indexed_at", Instant.now().toString());
         metadata.put("index_id", indexId);
-        metadata.put("project_root", root.toString());
+        try {
+            var identity = org.treblereel.mcp.core.ProjectIdentity.resolve(root);
+            metadata.put("project_root", identity.projectRoot().toString());
+            metadata.put("project_id", identity.projectId());
+            metadata.put("worktree_id", identity.worktreeId());
+            metadata.put("worktree_root", identity.worktreeRoot().toString());
+            if (identity.repositoryId() != null) metadata.put("repository_id", identity.repositoryId());
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot determine index ownership for " + root, failure);
+        }
         metadata.put("last_commit", lastCommit != null ? lastCommit : "unknown");
         metadata.put("git_scanned_commits", Integer.toString(gitResult.scannedCommits()));
         metadata.put("git_repository_commits", Integer.toString(gitResult.repositoryCommits()));

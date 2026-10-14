@@ -1,5 +1,8 @@
 package org.treblereel.mcp.command;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -96,6 +99,41 @@ class ProjectIndexStoreRecoveryTest {
         assertTrue(refs.values().stream().noneMatch("outdated"::equals));
         assertEquals(current.toAbsolutePath(), ProjectIndexStore.findBestAvailableDb(tempDir));
         assertTrue(ProjectIndexStore.readRecovery(tempDir).isEmpty());
+    }
+
+    @Test
+    void copiedIndexCannotBeRecoveredIntoAnotherProject() throws Exception {
+        Path database = createDatabase("original", "unknown");
+        ProjectIndexStore.updateRefs(tempDir, null, "original");
+        Path other = Files.createDirectory(tempDir.resolve("other"));
+        Files.createDirectory(other.resolve(".quill"));
+        Files.copy(database, other.resolve(".quill/original.db"));
+        Files.copy(tempDir.resolve(".quill/refs.json"), other.resolve(".quill/refs.json"));
+        assertNull(ProjectIndexStore.findBestAvailableDb(other));
+        assertEquals(database.toAbsolutePath(), ProjectIndexStore.findBestAvailableDb(tempDir));
+    }
+
+    @Test
+    void identityMismatchIsRejectedEvenWithMatchingRootAndCommit() throws Exception {
+        Path database = createDatabase("original", "unknown");
+        ProjectIndexStore.updateRefs(tempDir, null, "original");
+        QuillDatabase.openWritable(database).useHandle(handle -> handle.execute(
+                "INSERT INTO metadata(key,value) VALUES ('worktree_id', 'foreign')"));
+        assertNull(ProjectIndexStore.findBestAvailableDb(tempDir));
+    }
+
+    @Test
+    void legacyRootAliasesAreAcceptedButMissingOwnershipIsRejected() throws Exception {
+        Path database = createDatabase("original", "unknown");
+        ProjectIndexStore.updateRefs(tempDir, null, "original");
+        Path alias = tempDir.resolveSibling(tempDir.getFileName() + "-alias");
+        try {
+            Files.createSymbolicLink(alias, tempDir);
+            assertNotNull(ProjectIndexStore.findBestAvailableDb(alias));
+        } finally { Files.deleteIfExists(alias); }
+        QuillDatabase.openWritable(database).useHandle(handle -> handle.execute(
+                "DELETE FROM metadata WHERE key='project_root'"));
+        assertNull(ProjectIndexStore.findBestAvailableDb(tempDir));
     }
 
     private Path createDatabase(String indexId, String commit) {

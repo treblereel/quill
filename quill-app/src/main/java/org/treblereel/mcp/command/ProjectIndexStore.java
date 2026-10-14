@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Stream;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.GitAnalyzer;
+import org.treblereel.mcp.core.ProjectIdentity;
 import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.QuillDatabase;
 
@@ -323,7 +324,7 @@ public final class ProjectIndexStore {
         database = database.toAbsolutePath().normalize();
         if (!database.startsWith(quillDir) || !Files.isRegularFile(database)) return null;
         ValidatedDatabase validated = validatedDatabase(database).orElse(null);
-        if (validated == null || !indexId.equals(validated.indexId())) return null;
+        if (validated == null || !indexId.equals(validated.indexId()) || !belongsTo(root, validated.metadata())) return null;
         return expectedCommit == null || expectedCommit.equals(validated.lastCommit())
                 ? database : null;
     }
@@ -398,7 +399,7 @@ public final class ProjectIndexStore {
             validatedDatabase(path).ifPresent(validated -> {
                 String name = path.getFileName().toString();
                 String indexId = name.substring(0, name.length() - 3);
-                if (indexId.equals(validated.indexId())) {
+                if (indexId.equals(validated.indexId()) && belongsTo(root, validated.metadata())) {
                     result.add(new DatabaseCandidate(indexId, validated.lastCommit()));
                 }
             });
@@ -418,11 +419,24 @@ public final class ProjectIndexStore {
         }
     }
 
+    public static boolean belongsTo(Path root, Map<String, String> metadata) {
+        try {
+            ProjectIdentity identity = ProjectIdentity.resolve(root);
+            String indexedRoot = metadata.get("project_root");
+            if (indexedRoot == null || !Path.of(indexedRoot).isAbsolute()
+                    || !Path.of(indexedRoot).toRealPath().equals(identity.projectRoot())) return false;
+            String projectId = metadata.get("project_id"), worktreeId = metadata.get("worktree_id");
+            // Pre-identity indexes remain usable only at their original physical root.
+            return (projectId == null || projectId.equals(identity.projectId()))
+                    && (worktreeId == null || worktreeId.equals(identity.worktreeId()));
+        } catch (IOException | RuntimeException failure) { return false; }
+    }
+
     private static Optional<ValidatedDatabase> validatedDatabase(Path database) {
         Path normalized = database.toAbsolutePath().normalize();
         try {
             FileIdentity identity = new FileIdentity(
-                    Files.size(normalized), Files.getLastModifiedTime(normalized).toMillis());
+                    Files.size(normalized), Files.getLastModifiedTime(normalized));
             ValidatedDatabase cached = VALID_DATABASES.get(normalized);
             if (cached != null && cached.identity().equals(identity)) return Optional.of(cached);
 
@@ -434,7 +448,7 @@ public final class ProjectIndexStore {
             String indexId = metadata.get("index_id");
             if (indexId == null || indexId.isBlank()) return Optional.empty();
             ValidatedDatabase validated = new ValidatedDatabase(identity, indexId,
-                    metadata.getOrDefault("last_commit", "unknown"));
+                    metadata.getOrDefault("last_commit", "unknown"), Map.copyOf(metadata));
             VALID_DATABASES.put(normalized, validated);
             return Optional.of(validated);
         } catch (RuntimeException | IOException e) {
@@ -485,8 +499,8 @@ public final class ProjectIndexStore {
 
     public record RecoveryStatus(String reason, String selectedIndexId, String recoveredAt) {}
     private record RefsState(Map<String, String> refs, boolean readable) {}
-    private record FileIdentity(long size, long modifiedAtMillis) {}
-    private record ValidatedDatabase(FileIdentity identity, String indexId, String lastCommit) {}
+    private record FileIdentity(long size, java.nio.file.attribute.FileTime modifiedAt) {}
+    private record ValidatedDatabase(FileIdentity identity, String indexId, String lastCommit, Map<String,String> metadata) {}
     private record DatabaseCandidate(String indexId, String lastCommit) {}
 
     private static String rootMessage(Throwable error) {

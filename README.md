@@ -2,12 +2,33 @@
 
 Pre-computed codebase intelligence for AI coding agents. Quill indexes your Java project's dependency graph (CDI and Spring DI), class structure, and git history into a local SQLite database, then serves it via [MCP](https://modelcontextprotocol.io/) tools.
 
-## Prerequisites
+## Quick Start
 
-- Quill installed using Homebrew or a native release archive (see below)
-- The JDK and Maven or Gradle required to build the indexed project
+Install Quill, compile your Java or Kotlin project, and initialize it:
+
+```bash
+brew install treblereel/quill/quill
+
+cd /path/to/your/project
+./mvnw test-compile              # Maven
+# ./gradlew classes testClasses  # Gradle
+
+quill init --probe-mcp
+```
+
+`quill init` creates the local index and configures supported MCP clients for the
+project. The optional `--probe-mcp` check verifies that the generated MCP transport can
+start Quill and call `get_overview`.
+
+Start a fresh Codex or Claude Code session in the project, then ask:
+
+> Use Quill to give me an architectural overview of this repository.
+
+If setup does not succeed, run `quill doctor` for actionable diagnostics.
 
 ## Installation
+
+Quill requires the JDK and Maven or Gradle needed by the project you want to index.
 
 ### macOS and Linux (recommended: Homebrew)
 
@@ -42,20 +63,6 @@ Download the archive matching your operating system and architecture from the
 SHA-256 checksum against the accompanying `.sha256` file, and extract it.
 Add the directory containing `quill` (or `quill.exe` on Windows) to your `PATH`.
 See [download verification](docs/releasing.md) for checksum and attestation checks.
-
-## Quick Start
-
-```bash
-# 1. Compile the project so Quill can index its bytecode:
-cd /path/to/your/project
-./mvnw compile                 # Maven
-# ./gradlew classes            # Gradle
-
-# 2. Initialize the Quill index (the current directory is used automatically)
-quill init
-
-# 3. Connect Quill to Claude Code or Codex (see below)
-```
 
 ## How It Works
 

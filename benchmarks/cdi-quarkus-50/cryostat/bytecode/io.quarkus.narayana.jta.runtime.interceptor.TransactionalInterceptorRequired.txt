@@ -1,0 +1,186 @@
+Classfile jar:file:///Users/treblereel/.m2/repository/io/quarkus/quarkus-narayana-jta/3.40.1.1/quarkus-narayana-jta-3.40.1.1.jar!/io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired.class
+  Last modified Oct 19, 2026; size 2039 bytes
+  SHA-256 checksum 6690351f62479f993d8b40a70e9d5b58f2c9e3fdad7ed7c89297b4542b41020f
+  Compiled from "TransactionalInterceptorRequired.java"
+public class io.quarkus.narayana.jta.runtime.interceptor.TransactionalInterceptorRequired extends io.quarkus.narayana.jta.runtime.interceptor.TransactionalInterceptorBase
+  minor version: 0
+  major version: 61
+  flags: (0x0021) ACC_PUBLIC, ACC_SUPER
+  this_class: #8                          // io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired
+  super_class: #2                         // io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorBase
+  interfaces: 0, fields: 0, methods: 3, attributes: 3
+Constant pool:
+   #1 = Methodref          #2.#3          // io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorBase."<init>":(Z)V
+   #2 = Class              #4             // io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorBase
+   #3 = NameAndType        #5:#6          // "<init>":(Z)V
+   #4 = Utf8               io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorBase
+   #5 = Utf8               <init>
+   #6 = Utf8               (Z)V
+   #7 = Methodref          #8.#9          // io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired.willReactiveTransactionalInterceptorRun:()Z
+   #8 = Class              #10            // io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired
+   #9 = NameAndType        #11:#12        // willReactiveTransactionalInterceptorRun:()Z
+  #10 = Utf8               io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired
+  #11 = Utf8               willReactiveTransactionalInterceptorRun
+  #12 = Utf8               ()Z
+  #13 = InterfaceMethodref #14.#15        // jakarta/interceptor/InvocationContext.proceed:()Ljava/lang/Object;
+  #14 = Class              #16            // jakarta/interceptor/InvocationContext
+  #15 = NameAndType        #17:#18        // proceed:()Ljava/lang/Object;
+  #16 = Utf8               jakarta/interceptor/InvocationContext
+  #17 = Utf8               proceed
+  #18 = Utf8               ()Ljava/lang/Object;
+  #19 = Methodref          #8.#20         // io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired.checkBlockingAllowed:()V
+  #20 = NameAndType        #21:#22        // checkBlockingAllowed:()V
+  #21 = Utf8               checkBlockingAllowed
+  #22 = Utf8               ()V
+  #23 = Methodref          #2.#24         // io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorBase.intercept:(Ljakarta/interceptor/InvocationContext;)Ljava/lang/Object;
+  #24 = NameAndType        #25:#26        // intercept:(Ljakarta/interceptor/InvocationContext;)Ljava/lang/Object;
+  #25 = Utf8               intercept
+  #26 = Utf8               (Ljakarta/interceptor/InvocationContext;)Ljava/lang/Object;
+  #27 = Methodref          #8.#28         // io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired.invokeInOurTx:(Ljakarta/interceptor/InvocationContext;Ljakarta/transaction/TransactionManager;)Ljava/lang/Object;
+  #28 = NameAndType        #29:#30        // invokeInOurTx:(Ljakarta/interceptor/InvocationContext;Ljakarta/transaction/TransactionManager;)Ljava/lang/Object;
+  #29 = Utf8               invokeInOurTx
+  #30 = Utf8               (Ljakarta/interceptor/InvocationContext;Ljakarta/transaction/TransactionManager;)Ljava/lang/Object;
+  #31 = Methodref          #8.#32         // io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired.invokeInCallerTx:(Ljakarta/interceptor/InvocationContext;Ljakarta/transaction/Transaction;)Ljava/lang/Object;
+  #32 = NameAndType        #33:#34        // invokeInCallerTx:(Ljakarta/interceptor/InvocationContext;Ljakarta/transaction/Transaction;)Ljava/lang/Object;
+  #33 = Utf8               invokeInCallerTx
+  #34 = Utf8               (Ljakarta/interceptor/InvocationContext;Ljakarta/transaction/Transaction;)Ljava/lang/Object;
+  #35 = Utf8               Code
+  #36 = Utf8               LineNumberTable
+  #37 = Utf8               LocalVariableTable
+  #38 = Utf8               this
+  #39 = Utf8               Lio/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired;
+  #40 = Utf8               ic
+  #41 = Utf8               Ljakarta/interceptor/InvocationContext;
+  #42 = Utf8               StackMapTable
+  #43 = Utf8               Exceptions
+  #44 = Class              #45            // java/lang/Exception
+  #45 = Utf8               java/lang/Exception
+  #46 = Utf8               MethodParameters
+  #47 = Utf8               RuntimeVisibleAnnotations
+  #48 = Utf8               Ljakarta/interceptor/AroundInvoke;
+  #49 = Utf8               doIntercept
+  #50 = Utf8               (Ljakarta/transaction/TransactionManager;Ljakarta/transaction/Transaction;Ljakarta/interceptor/InvocationContext;)Ljava/lang/Object;
+  #51 = Utf8               tm
+  #52 = Utf8               Ljakarta/transaction/TransactionManager;
+  #53 = Utf8               tx
+  #54 = Utf8               Ljakarta/transaction/Transaction;
+  #55 = Utf8               SourceFile
+  #56 = Utf8               TransactionalInterceptorRequired.java
+  #57 = Utf8               Ljakarta/interceptor/Interceptor;
+  #58 = Utf8               Ljakarta/transaction/Transactional;
+  #59 = Utf8               value
+  #60 = Utf8               Ljakarta/transaction/Transactional$TxType;
+  #61 = Utf8               REQUIRED
+  #62 = Utf8               Ljakarta/annotation/Priority;
+  #63 = Integer            200
+  #64 = Utf8               InnerClasses
+  #65 = Class              #66            // jakarta/transaction/Transactional$TxType
+  #66 = Utf8               jakarta/transaction/Transactional$TxType
+  #67 = Class              #68            // jakarta/transaction/Transactional
+  #68 = Utf8               jakarta/transaction/Transactional
+  #69 = Utf8               TxType
+{
+  public io.quarkus.narayana.jta.runtime.interceptor.TransactionalInterceptorRequired();
+    descriptor: ()V
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=2, locals=1, args_size=1
+         0: aload_0
+         1: iconst_0
+         2: invokespecial #1                  // Method io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorBase."<init>":(Z)V
+         5: return
+      LineNumberTable:
+        line 20: 0
+        line 21: 5
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       6     0  this   Lio/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired;
+
+  public java.lang.Object intercept(jakarta.interceptor.InvocationContext) throws java.lang.Exception;
+    descriptor: (Ljakarta/interceptor/InvocationContext;)Ljava/lang/Object;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_0
+         1: invokevirtual #7                  // Method willReactiveTransactionalInterceptorRun:()Z
+         4: ifeq          14
+         7: aload_1
+         8: invokeinterface #13,  1           // InterfaceMethod jakarta/interceptor/InvocationContext.proceed:()Ljava/lang/Object;
+        13: areturn
+        14: aload_0
+        15: invokevirtual #19                 // Method checkBlockingAllowed:()V
+        18: aload_0
+        19: aload_1
+        20: invokespecial #23                 // Method io/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorBase.intercept:(Ljakarta/interceptor/InvocationContext;)Ljava/lang/Object;
+        23: areturn
+      LineNumberTable:
+        line 26: 0
+        line 27: 7
+        line 30: 14
+        line 31: 18
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      24     0  this   Lio/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired;
+            0      24     1    ic   Ljakarta/interceptor/InvocationContext;
+      StackMapTable: number_of_entries = 1
+        frame_type = 14 /* same */
+    Exceptions:
+      throws java.lang.Exception
+    MethodParameters:
+      Name                           Flags
+      ic
+    RuntimeVisibleAnnotations:
+      0: #48()
+        jakarta.interceptor.AroundInvoke
+
+  protected java.lang.Object doIntercept(jakarta.transaction.TransactionManager, jakarta.transaction.Transaction, jakarta.interceptor.InvocationContext) throws java.lang.Exception;
+    descriptor: (Ljakarta/transaction/TransactionManager;Ljakarta/transaction/Transaction;Ljakarta/interceptor/InvocationContext;)Ljava/lang/Object;
+    flags: (0x0004) ACC_PROTECTED
+    Code:
+      stack=3, locals=4, args_size=4
+         0: aload_2
+         1: ifnonnull     11
+         4: aload_0
+         5: aload_3
+         6: aload_1
+         7: invokevirtual #27                 // Method invokeInOurTx:(Ljakarta/interceptor/InvocationContext;Ljakarta/transaction/TransactionManager;)Ljava/lang/Object;
+        10: areturn
+        11: aload_0
+        12: aload_3
+        13: aload_2
+        14: invokevirtual #31                 // Method invokeInCallerTx:(Ljakarta/interceptor/InvocationContext;Ljakarta/transaction/Transaction;)Ljava/lang/Object;
+        17: areturn
+      LineNumberTable:
+        line 36: 0
+        line 37: 4
+        line 39: 11
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      18     0  this   Lio/quarkus/narayana/jta/runtime/interceptor/TransactionalInterceptorRequired;
+            0      18     1    tm   Ljakarta/transaction/TransactionManager;
+            0      18     2    tx   Ljakarta/transaction/Transaction;
+            0      18     3    ic   Ljakarta/interceptor/InvocationContext;
+      StackMapTable: number_of_entries = 1
+        frame_type = 11 /* same */
+    Exceptions:
+      throws java.lang.Exception
+    MethodParameters:
+      Name                           Flags
+      tm
+      tx
+      ic
+}
+SourceFile: "TransactionalInterceptorRequired.java"
+RuntimeVisibleAnnotations:
+  0: #57()
+    jakarta.interceptor.Interceptor
+  1: #58(#59=e#60.#61)
+    jakarta.transaction.Transactional(
+      value=Ljakarta/transaction/Transactional$TxType;.REQUIRED
+    )
+  2: #62(#59=I#63)
+    jakarta.annotation.Priority(
+      value=200
+    )
+InnerClasses:
+  public static final #69= #65 of #67;    // TxType=class jakarta/transaction/Transactional$TxType of class jakarta/transaction/Transactional

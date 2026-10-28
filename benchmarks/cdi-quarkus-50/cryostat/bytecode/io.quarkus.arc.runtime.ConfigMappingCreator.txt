@@ -1,0 +1,371 @@
+Classfile jar:file:///Users/treblereel/.m2/repository/io/quarkus/quarkus-arc/3.40.1.1/quarkus-arc-3.40.1.1.jar!/io/quarkus/arc/runtime/ConfigMappingCreator.class
+  Last modified Oct 19, 2026; size 3724 bytes
+  SHA-256 checksum f03735918e437d2cf05747eba032231c265b74b37e96b99491b7dafc3749270e
+  Compiled from "ConfigMappingCreator.java"
+public class io.quarkus.arc.runtime.ConfigMappingCreator extends java.lang.Object implements io.quarkus.arc.BeanCreator<java.lang.Object>
+  minor version: 0
+  major version: 61
+  flags: (0x0021) ACC_PUBLIC, ACC_SUPER
+  this_class: #51                         // io/quarkus/arc/runtime/ConfigMappingCreator
+  super_class: #2                         // java/lang/Object
+  interfaces: 1, fields: 0, methods: 3, attributes: 2
+Constant pool:
+    #1 = Methodref          #2.#3         // java/lang/Object."<init>":()V
+    #2 = Class              #4            // java/lang/Object
+    #3 = NameAndType        #5:#6         // "<init>":()V
+    #4 = Utf8               java/lang/Object
+    #5 = Utf8               <init>
+    #6 = Utf8               ()V
+    #7 = Class              #8            // jakarta/enterprise/inject/spi/InjectionPoint
+    #8 = Utf8               jakarta/enterprise/inject/spi/InjectionPoint
+    #9 = Class              #10           // java/lang/annotation/Annotation
+   #10 = Utf8               java/lang/annotation/Annotation
+   #11 = InterfaceMethodref #12.#13       // io/quarkus/arc/SyntheticCreationalContext.getInjectedReference:(Ljava/lang/Class;[Ljava/lang/annotation/Annotation;)Ljava/lang/Object;
+   #12 = Class              #14           // io/quarkus/arc/SyntheticCreationalContext
+   #13 = NameAndType        #15:#16       // getInjectedReference:(Ljava/lang/Class;[Ljava/lang/annotation/Annotation;)Ljava/lang/Object;
+   #14 = Utf8               io/quarkus/arc/SyntheticCreationalContext
+   #15 = Utf8               getInjectedReference
+   #16 = Utf8               (Ljava/lang/Class;[Ljava/lang/annotation/Annotation;)Ljava/lang/Object;
+   #17 = Class              #18           // java/lang/IllegalStateException
+   #18 = Utf8               java/lang/IllegalStateException
+   #19 = String             #20           // No current injection point found
+   #20 = Utf8               No current injection point found
+   #21 = Methodref          #17.#22       // java/lang/IllegalStateException."<init>":(Ljava/lang/String;)V
+   #22 = NameAndType        #5:#23        // "<init>":(Ljava/lang/String;)V
+   #23 = Utf8               (Ljava/lang/String;)V
+   #24 = InterfaceMethodref #12.#25       // io/quarkus/arc/SyntheticCreationalContext.getParams:()Ljava/util/Map;
+   #25 = NameAndType        #26:#27       // getParams:()Ljava/util/Map;
+   #26 = Utf8               getParams
+   #27 = Utf8               ()Ljava/util/Map;
+   #28 = String             #29           // type
+   #29 = Utf8               type
+   #30 = InterfaceMethodref #31.#32       // java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+   #31 = Class              #33           // java/util/Map
+   #32 = NameAndType        #34:#35       // get:(Ljava/lang/Object;)Ljava/lang/Object;
+   #33 = Utf8               java/util/Map
+   #34 = Utf8               get
+   #35 = Utf8               (Ljava/lang/Object;)Ljava/lang/Object;
+   #36 = Class              #37           // java/lang/Class
+   #37 = Utf8               java/lang/Class
+   #38 = String             #39           // prefix
+   #39 = Utf8               prefix
+   #40 = Class              #41           // java/lang/String
+   #41 = Utf8               java/lang/String
+   #42 = Methodref          #43.#44       // org/eclipse/microprofile/config/ConfigProvider.getConfig:()Lorg/eclipse/microprofile/config/Config;
+   #43 = Class              #45           // org/eclipse/microprofile/config/ConfigProvider
+   #44 = NameAndType        #46:#47       // getConfig:()Lorg/eclipse/microprofile/config/Config;
+   #45 = Utf8               org/eclipse/microprofile/config/ConfigProvider
+   #46 = Utf8               getConfig
+   #47 = Utf8               ()Lorg/eclipse/microprofile/config/Config;
+   #48 = Class              #49           // io/smallrye/config/SmallRyeConfig
+   #49 = Utf8               io/smallrye/config/SmallRyeConfig
+   #50 = Methodref          #51.#52       // io/quarkus/arc/runtime/ConfigMappingCreator.getPrefixFromInjectionPoint:(Ljakarta/enterprise/inject/spi/InjectionPoint;)Ljava/util/Optional;
+   #51 = Class              #53           // io/quarkus/arc/runtime/ConfigMappingCreator
+   #52 = NameAndType        #54:#55       // getPrefixFromInjectionPoint:(Ljakarta/enterprise/inject/spi/InjectionPoint;)Ljava/util/Optional;
+   #53 = Utf8               io/quarkus/arc/runtime/ConfigMappingCreator
+   #54 = Utf8               getPrefixFromInjectionPoint
+   #55 = Utf8               (Ljakarta/enterprise/inject/spi/InjectionPoint;)Ljava/util/Optional;
+   #56 = Methodref          #57.#58       // java/util/Optional.orElse:(Ljava/lang/Object;)Ljava/lang/Object;
+   #57 = Class              #59           // java/util/Optional
+   #58 = NameAndType        #60:#35       // orElse:(Ljava/lang/Object;)Ljava/lang/Object;
+   #59 = Utf8               java/util/Optional
+   #60 = Utf8               orElse
+   #61 = Methodref          #48.#62       // io/smallrye/config/SmallRyeConfig.getConfigMapping:(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/Object;
+   #62 = NameAndType        #63:#64       // getConfigMapping:(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/Object;
+   #63 = Utf8               getConfigMapping
+   #64 = Utf8               (Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/Object;
+   #65 = InterfaceMethodref #7.#66        // jakarta/enterprise/inject/spi/InjectionPoint.getAnnotated:()Ljakarta/enterprise/inject/spi/Annotated;
+   #66 = NameAndType        #67:#68       // getAnnotated:()Ljakarta/enterprise/inject/spi/Annotated;
+   #67 = Utf8               getAnnotated
+   #68 = Utf8               ()Ljakarta/enterprise/inject/spi/Annotated;
+   #69 = Class              #70           // io/smallrye/config/ConfigMapping
+   #70 = Utf8               io/smallrye/config/ConfigMapping
+   #71 = InterfaceMethodref #72.#73       // jakarta/enterprise/inject/spi/Annotated.getAnnotation:(Ljava/lang/Class;)Ljava/lang/annotation/Annotation;
+   #72 = Class              #74           // jakarta/enterprise/inject/spi/Annotated
+   #73 = NameAndType        #75:#76       // getAnnotation:(Ljava/lang/Class;)Ljava/lang/annotation/Annotation;
+   #74 = Utf8               jakarta/enterprise/inject/spi/Annotated
+   #75 = Utf8               getAnnotation
+   #76 = Utf8               (Ljava/lang/Class;)Ljava/lang/annotation/Annotation;
+   #77 = InterfaceMethodref #69.#78       // io/smallrye/config/ConfigMapping.prefix:()Ljava/lang/String;
+   #78 = NameAndType        #39:#79       // prefix:()Ljava/lang/String;
+   #79 = Utf8               ()Ljava/lang/String;
+   #80 = Methodref          #40.#81       // java/lang/String.isEmpty:()Z
+   #81 = NameAndType        #82:#83       // isEmpty:()Z
+   #82 = Utf8               isEmpty
+   #83 = Utf8               ()Z
+   #84 = Methodref          #57.#85       // java/util/Optional.of:(Ljava/lang/Object;)Ljava/util/Optional;
+   #85 = NameAndType        #86:#87       // of:(Ljava/lang/Object;)Ljava/util/Optional;
+   #86 = Utf8               of
+   #87 = Utf8               (Ljava/lang/Object;)Ljava/util/Optional;
+   #88 = Class              #89           // org/eclipse/microprofile/config/inject/ConfigProperties
+   #89 = Utf8               org/eclipse/microprofile/config/inject/ConfigProperties
+   #90 = String             #91           // org.eclipse.microprofile.config.inject.configproperties.unconfiguredprefix
+   #91 = Utf8               org.eclipse.microprofile.config.inject.configproperties.unconfiguredprefix
+   #92 = InterfaceMethodref #88.#78       // org/eclipse/microprofile/config/inject/ConfigProperties.prefix:()Ljava/lang/String;
+   #93 = Methodref          #40.#94       // java/lang/String.equals:(Ljava/lang/Object;)Z
+   #94 = NameAndType        #95:#96       // equals:(Ljava/lang/Object;)Z
+   #95 = Utf8               equals
+   #96 = Utf8               (Ljava/lang/Object;)Z
+   #97 = InterfaceMethodref #7.#98        // jakarta/enterprise/inject/spi/InjectionPoint.getQualifiers:()Ljava/util/Set;
+   #98 = NameAndType        #99:#100      // getQualifiers:()Ljava/util/Set;
+   #99 = Utf8               getQualifiers
+  #100 = Utf8               ()Ljava/util/Set;
+  #101 = InterfaceMethodref #102.#103     // java/util/Set.iterator:()Ljava/util/Iterator;
+  #102 = Class              #104          // java/util/Set
+  #103 = NameAndType        #105:#106     // iterator:()Ljava/util/Iterator;
+  #104 = Utf8               java/util/Set
+  #105 = Utf8               iterator
+  #106 = Utf8               ()Ljava/util/Iterator;
+  #107 = InterfaceMethodref #108.#109     // java/util/Iterator.hasNext:()Z
+  #108 = Class              #110          // java/util/Iterator
+  #109 = NameAndType        #111:#83      // hasNext:()Z
+  #110 = Utf8               java/util/Iterator
+  #111 = Utf8               hasNext
+  #112 = InterfaceMethodref #108.#113     // java/util/Iterator.next:()Ljava/lang/Object;
+  #113 = NameAndType        #114:#115     // next:()Ljava/lang/Object;
+  #114 = Utf8               next
+  #115 = Utf8               ()Ljava/lang/Object;
+  #116 = Methodref          #57.#117      // java/util/Optional.empty:()Ljava/util/Optional;
+  #117 = NameAndType        #118:#119     // empty:()Ljava/util/Optional;
+  #118 = Utf8               empty
+  #119 = Utf8               ()Ljava/util/Optional;
+  #120 = Class              #121          // io/quarkus/arc/BeanCreator
+  #121 = Utf8               io/quarkus/arc/BeanCreator
+  #122 = Utf8               Code
+  #123 = Utf8               LineNumberTable
+  #124 = Utf8               LocalVariableTable
+  #125 = Utf8               this
+  #126 = Utf8               Lio/quarkus/arc/runtime/ConfigMappingCreator;
+  #127 = Utf8               create
+  #128 = Utf8               (Lio/quarkus/arc/SyntheticCreationalContext;)Ljava/lang/Object;
+  #129 = Utf8               context
+  #130 = Utf8               Lio/quarkus/arc/SyntheticCreationalContext;
+  #131 = Utf8               injectionPoint
+  #132 = Utf8               Ljakarta/enterprise/inject/spi/InjectionPoint;
+  #133 = Utf8               interfaceType
+  #134 = Utf8               Ljava/lang/Class;
+  #135 = Utf8               Ljava/lang/String;
+  #136 = Utf8               config
+  #137 = Utf8               Lio/smallrye/config/SmallRyeConfig;
+  #138 = Utf8               LocalVariableTypeTable
+  #139 = Utf8               Lio/quarkus/arc/SyntheticCreationalContext<Ljava/lang/Object;>;
+  #140 = Utf8               Ljava/lang/Class<*>;
+  #141 = Utf8               StackMapTable
+  #142 = Utf8               MethodParameters
+  #143 = Utf8               Signature
+  #144 = Utf8               (Lio/quarkus/arc/SyntheticCreationalContext<Ljava/lang/Object;>;)Ljava/lang/Object;
+  #145 = Utf8               configMapping
+  #146 = Utf8               Lio/smallrye/config/ConfigMapping;
+  #147 = Utf8               configProperties
+  #148 = Utf8               Lorg/eclipse/microprofile/config/inject/ConfigProperties;
+  #149 = Utf8               configPropertiesQualifier
+  #150 = Utf8               qualifier
+  #151 = Utf8               Ljava/lang/annotation/Annotation;
+  #152 = Utf8               annotated
+  #153 = Utf8               Ljakarta/enterprise/inject/spi/Annotated;
+  #154 = Utf8               (Ljakarta/enterprise/inject/spi/InjectionPoint;)Ljava/util/Optional<Ljava/lang/String;>;
+  #155 = Utf8               Ljava/lang/Object;Lio/quarkus/arc/BeanCreator<Ljava/lang/Object;>;
+  #156 = Utf8               SourceFile
+  #157 = Utf8               ConfigMappingCreator.java
+{
+  public io.quarkus.arc.runtime.ConfigMappingCreator();
+    descriptor: ()V
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+         4: return
+      LineNumberTable:
+        line 17: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       5     0  this   Lio/quarkus/arc/runtime/ConfigMappingCreator;
+
+  public java.lang.Object create(io.quarkus.arc.SyntheticCreationalContext<java.lang.Object>);
+    descriptor: (Lio/quarkus/arc/SyntheticCreationalContext;)Ljava/lang/Object;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=4, locals=6, args_size=2
+         0: aload_1
+         1: ldc           #7                  // class jakarta/enterprise/inject/spi/InjectionPoint
+         3: iconst_0
+         4: anewarray     #9                  // class java/lang/annotation/Annotation
+         7: invokeinterface #11,  3           // InterfaceMethod io/quarkus/arc/SyntheticCreationalContext.getInjectedReference:(Ljava/lang/Class;[Ljava/lang/annotation/Annotation;)Ljava/lang/Object;
+        12: checkcast     #7                  // class jakarta/enterprise/inject/spi/InjectionPoint
+        15: astore_2
+        16: aload_2
+        17: ifnonnull     30
+        20: new           #17                 // class java/lang/IllegalStateException
+        23: dup
+        24: ldc           #19                 // String No current injection point found
+        26: invokespecial #21                 // Method java/lang/IllegalStateException."<init>":(Ljava/lang/String;)V
+        29: athrow
+        30: aload_1
+        31: invokeinterface #24,  1           // InterfaceMethod io/quarkus/arc/SyntheticCreationalContext.getParams:()Ljava/util/Map;
+        36: ldc           #28                 // String type
+        38: invokeinterface #30,  2           // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+        43: checkcast     #36                 // class java/lang/Class
+        46: astore_3
+        47: aload_1
+        48: invokeinterface #24,  1           // InterfaceMethod io/quarkus/arc/SyntheticCreationalContext.getParams:()Ljava/util/Map;
+        53: ldc           #38                 // String prefix
+        55: invokeinterface #30,  2           // InterfaceMethod java/util/Map.get:(Ljava/lang/Object;)Ljava/lang/Object;
+        60: checkcast     #40                 // class java/lang/String
+        63: astore        4
+        65: invokestatic  #42                 // Method org/eclipse/microprofile/config/ConfigProvider.getConfig:()Lorg/eclipse/microprofile/config/Config;
+        68: checkcast     #48                 // class io/smallrye/config/SmallRyeConfig
+        71: astore        5
+        73: aload         5
+        75: aload_3
+        76: aload_2
+        77: invokestatic  #50                 // Method getPrefixFromInjectionPoint:(Ljakarta/enterprise/inject/spi/InjectionPoint;)Ljava/util/Optional;
+        80: aload         4
+        82: invokevirtual #56                 // Method java/util/Optional.orElse:(Ljava/lang/Object;)Ljava/lang/Object;
+        85: checkcast     #40                 // class java/lang/String
+        88: invokevirtual #61                 // Method io/smallrye/config/SmallRyeConfig.getConfigMapping:(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/Object;
+        91: areturn
+      LineNumberTable:
+        line 21: 0
+        line 22: 16
+        line 23: 20
+        line 26: 30
+        line 27: 47
+        line 29: 65
+        line 30: 73
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      92     0  this   Lio/quarkus/arc/runtime/ConfigMappingCreator;
+            0      92     1 context   Lio/quarkus/arc/SyntheticCreationalContext;
+           16      76     2 injectionPoint   Ljakarta/enterprise/inject/spi/InjectionPoint;
+           47      45     3 interfaceType   Ljava/lang/Class;
+           65      27     4 prefix   Ljava/lang/String;
+           73      19     5 config   Lio/smallrye/config/SmallRyeConfig;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0      92     1 context   Lio/quarkus/arc/SyntheticCreationalContext<Ljava/lang/Object;>;
+           47      45     3 interfaceType   Ljava/lang/Class<*>;
+      StackMapTable: number_of_entries = 1
+        frame_type = 252 /* append */
+          offset_delta = 30
+          locals = [ class jakarta/enterprise/inject/spi/InjectionPoint ]
+    MethodParameters:
+      Name                           Flags
+      context
+    Signature: #144                         // (Lio/quarkus/arc/SyntheticCreationalContext<Ljava/lang/Object;>;)Ljava/lang/Object;
+
+  private static java.util.Optional<java.lang.String> getPrefixFromInjectionPoint(jakarta.enterprise.inject.spi.InjectionPoint);
+    descriptor: (Ljakarta/enterprise/inject/spi/InjectionPoint;)Ljava/util/Optional;
+    flags: (0x000a) ACC_PRIVATE, ACC_STATIC
+    Code:
+      stack=2, locals=5, args_size=1
+         0: aload_0
+         1: invokeinterface #65,  1           // InterfaceMethod jakarta/enterprise/inject/spi/InjectionPoint.getAnnotated:()Ljakarta/enterprise/inject/spi/Annotated;
+         6: astore_1
+         7: aload_1
+         8: ifnull        89
+        11: aload_1
+        12: ldc           #69                 // class io/smallrye/config/ConfigMapping
+        14: invokeinterface #71,  2           // InterfaceMethod jakarta/enterprise/inject/spi/Annotated.getAnnotation:(Ljava/lang/Class;)Ljava/lang/annotation/Annotation;
+        19: checkcast     #69                 // class io/smallrye/config/ConfigMapping
+        22: astore_2
+        23: aload_2
+        24: ifnull        49
+        27: aload_2
+        28: invokeinterface #77,  1           // InterfaceMethod io/smallrye/config/ConfigMapping.prefix:()Ljava/lang/String;
+        33: invokevirtual #80                 // Method java/lang/String.isEmpty:()Z
+        36: ifne          49
+        39: aload_2
+        40: invokeinterface #77,  1           // InterfaceMethod io/smallrye/config/ConfigMapping.prefix:()Ljava/lang/String;
+        45: invokestatic  #84                 // Method java/util/Optional.of:(Ljava/lang/Object;)Ljava/util/Optional;
+        48: areturn
+        49: aload_1
+        50: ldc           #88                 // class org/eclipse/microprofile/config/inject/ConfigProperties
+        52: invokeinterface #71,  2           // InterfaceMethod jakarta/enterprise/inject/spi/Annotated.getAnnotation:(Ljava/lang/Class;)Ljava/lang/annotation/Annotation;
+        57: checkcast     #88                 // class org/eclipse/microprofile/config/inject/ConfigProperties
+        60: astore_3
+        61: aload_3
+        62: ifnull        89
+        65: ldc           #90                 // String org.eclipse.microprofile.config.inject.configproperties.unconfiguredprefix
+        67: aload_3
+        68: invokeinterface #92,  1           // InterfaceMethod org/eclipse/microprofile/config/inject/ConfigProperties.prefix:()Ljava/lang/String;
+        73: invokevirtual #93                 // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+        76: ifne          89
+        79: aload_3
+        80: invokeinterface #92,  1           // InterfaceMethod org/eclipse/microprofile/config/inject/ConfigProperties.prefix:()Ljava/lang/String;
+        85: invokestatic  #84                 // Method java/util/Optional.of:(Ljava/lang/Object;)Ljava/util/Optional;
+        88: areturn
+        89: aload_0
+        90: invokeinterface #97,  1           // InterfaceMethod jakarta/enterprise/inject/spi/InjectionPoint.getQualifiers:()Ljava/util/Set;
+        95: invokeinterface #101,  1          // InterfaceMethod java/util/Set.iterator:()Ljava/util/Iterator;
+       100: astore_2
+       101: aload_2
+       102: invokeinterface #107,  1          // InterfaceMethod java/util/Iterator.hasNext:()Z
+       107: ifeq          162
+       110: aload_2
+       111: invokeinterface #112,  1          // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+       116: checkcast     #9                  // class java/lang/annotation/Annotation
+       119: astore_3
+       120: aload_3
+       121: instanceof    #88                 // class org/eclipse/microprofile/config/inject/ConfigProperties
+       124: ifeq          159
+       127: aload_3
+       128: checkcast     #88                 // class org/eclipse/microprofile/config/inject/ConfigProperties
+       131: astore        4
+       133: ldc           #90                 // String org.eclipse.microprofile.config.inject.configproperties.unconfiguredprefix
+       135: aload         4
+       137: invokeinterface #92,  1           // InterfaceMethod org/eclipse/microprofile/config/inject/ConfigProperties.prefix:()Ljava/lang/String;
+       142: invokevirtual #93                 // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+       145: ifne          159
+       148: aload         4
+       150: invokeinterface #92,  1           // InterfaceMethod org/eclipse/microprofile/config/inject/ConfigProperties.prefix:()Ljava/lang/String;
+       155: invokestatic  #84                 // Method java/util/Optional.of:(Ljava/lang/Object;)Ljava/util/Optional;
+       158: areturn
+       159: goto          101
+       162: invokestatic  #116                // Method java/util/Optional.empty:()Ljava/util/Optional;
+       165: areturn
+      LineNumberTable:
+        line 34: 0
+        line 35: 7
+        line 36: 11
+        line 37: 23
+        line 38: 27
+        line 39: 39
+        line 43: 49
+        line 44: 61
+        line 45: 65
+        line 46: 79
+        line 51: 89
+        line 52: 120
+        line 53: 127
+        line 54: 133
+        line 55: 148
+        line 58: 159
+        line 60: 162
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+           23      66     2 configMapping   Lio/smallrye/config/ConfigMapping;
+           61      28     3 configProperties   Lorg/eclipse/microprofile/config/inject/ConfigProperties;
+          133      26     4 configPropertiesQualifier   Lorg/eclipse/microprofile/config/inject/ConfigProperties;
+          120      39     3 qualifier   Ljava/lang/annotation/Annotation;
+            0     166     0 injectionPoint   Ljakarta/enterprise/inject/spi/InjectionPoint;
+            7     159     1 annotated   Ljakarta/enterprise/inject/spi/Annotated;
+      StackMapTable: number_of_entries = 5
+        frame_type = 253 /* append */
+          offset_delta = 49
+          locals = [ class jakarta/enterprise/inject/spi/Annotated, class io/smallrye/config/ConfigMapping ]
+        frame_type = 250 /* chop */
+          offset_delta = 39
+        frame_type = 252 /* append */
+          offset_delta = 11
+          locals = [ class java/util/Iterator ]
+        frame_type = 57 /* same */
+        frame_type = 250 /* chop */
+          offset_delta = 2
+    MethodParameters:
+      Name                           Flags
+      injectionPoint                 final
+    Signature: #154                         // (Ljakarta/enterprise/inject/spi/InjectionPoint;)Ljava/util/Optional<Ljava/lang/String;>;
+}
+Signature: #155                         // Ljava/lang/Object;Lio/quarkus/arc/BeanCreator<Ljava/lang/Object;>;
+SourceFile: "ConfigMappingCreator.java"

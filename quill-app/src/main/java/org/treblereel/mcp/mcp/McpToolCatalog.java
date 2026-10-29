@@ -63,8 +63,21 @@ final class McpToolCatalog {
                 throw new IllegalArgumentException("Router profile requires QuillTools");
             }
             RouterTools router = new RouterTools(quillTools);
-            return create(router, RouterTools.class, toolScheduler, responseScheduler,
-                    requestTimeout, McpToolProfile.full());
+            List<AsyncToolSpecification> catalog = new ArrayList<>(create(
+                    router, RouterTools.class, toolScheduler, responseScheduler,
+                    requestTimeout, McpToolProfile.full()));
+            if (!profile.tools().isEmpty()) {
+                catalog.removeIf(spec -> spec.tool().name().equals("get_overview"));
+            }
+            java.util.Arrays.stream(QuillTools.class.getDeclaredMethods())
+                    .filter(method -> method.isAnnotationPresent(Tool.class))
+                    .filter(method -> profile.includes(method.getName())
+                            || (!profile.tools().isEmpty() && method.getName().equals("get_overview")))
+                    .map(method -> specification(quillTools, method, toolScheduler,
+                            responseScheduler, requestTimeout))
+                    .forEach(catalog::add);
+            catalog.sort(Comparator.comparing(spec -> spec.tool().name()));
+            return List.copyOf(catalog);
         }
         return java.util.Arrays.stream(toolType.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(Tool.class))
@@ -127,19 +140,14 @@ final class McpToolCatalog {
         Boolean workspace = tools instanceof QuillTools quill ? quill.workspaceMode()
                 : tools instanceof RouterTools router ? router.workspaceMode() : null;
         if (workspace == null) return annotation.description();
-        // Some clients surface only tools/list, not initialize.instructions. Keep the actual
-        // mode and first request in the advertised tool itself instead of relying on startup text.
+        // Some clients surface only tools/list, so retain mode guidance there too.
         if (method.getName().equals("get_overview")) {
             String mode = workspace
-                    ? "Server mode: workspace (--workspace). First call with view=compact (limit<=50); then project=<name> with view=full. "
-                    : "Server mode: single_project. Call without arguments, not view=compact. ";
-            return mode + "Start here even for narrow symbol tasks; use change_session before edits.";
+                    ? "Server mode: workspace (--workspace). For inventory use view=compact (limit<=50); then project=<name> with view=full. "
+                    : "Server mode: single_project. Overview without arguments, not view=compact. ";
+            return mode + "Optional orientation; known targets can be queried directly. Use change_session before edits.";
         }
-        return switch (method.getName()) {
-            case "search_classes", "find_implementations", "find_annotated_symbols" ->
-                    "After get_overview: " + annotation.description();
-            default -> annotation.description();
-        };
+        return annotation.description();
     }
 
     private static String routedTool(Method method, Map<String, Object> arguments) {

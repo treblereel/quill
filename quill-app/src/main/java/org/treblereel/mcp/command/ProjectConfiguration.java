@@ -14,12 +14,12 @@ final class ProjectConfiguration {
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
     private static final String QUILL_CLAUDE_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v3 -->
+            <!-- quill:instructions:v4 -->
             ## Quill — Codebase Intelligence (MCP)
 
-            At the beginning of a coding or code-analysis task, discover only `get_overview`
-            by exact name, then call `get_overview`. Discover other Quill tools on demand by
-            name or task; do not enumerate or print the entire tool catalog.
+            Discover Quill tools on demand by exact name or task; do not enumerate or print the entire tool catalog.
+            For a known target, query the relevant tool directly. Use `get_overview` for
+            orientation, inventory, or index/build status; it is not a prerequisite for other queries.
             Use `view=compact` only when server startup instructions or launch arguments
             confirm `--workspace` mode. A repository described as a workspace does not imply
             that server mode. In single-project or unknown mode, omit all overview arguments.
@@ -66,13 +66,13 @@ final class ProjectConfiguration {
             """;
     private static final String QUILL_AGENTS_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v3 -->
+            <!-- quill:instructions:v4 -->
             ## Quill MCP
 
-            Quill is the primary code-intelligence tool for this repository. At the beginning of a
-            coding or code-analysis task, discover only `mcp__quill__get_overview` by exact
-            name and call it first. Discover other Quill tools on demand by name or task;
-            do not enumerate or print the entire tool catalog.
+            Quill is the primary code-intelligence tool for this repository. Discover Quill tools
+            on demand by exact name or task; do not enumerate or print the entire tool catalog.
+            For a known target, query the relevant tool directly. Use `mcp__quill__get_overview`
+            for orientation, inventory, or index/build status; it is not a prerequisite for other queries.
             Use `view=compact` only when server startup instructions or launch arguments
             confirm `--workspace` mode. A repository described as a workspace does not imply
             that server mode. In single-project or unknown mode, omit all overview arguments.
@@ -134,6 +134,7 @@ final class ProjectConfiguration {
             ensureAgentsMd(root);
             ClaudeSettingsInstaller.install(root);
             ensureMcpJson(root);
+            PrefetchHooksInstaller.install(root, QuillLauncher.detect());
         }
         ensureCodexConfig(root, indexOnly);
     }

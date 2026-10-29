@@ -10,6 +10,7 @@ import org.treblereel.mcp.command.CleanCommand;
 import org.treblereel.mcp.command.ClientCommand;
 import org.treblereel.mcp.command.DoctorCommand;
 import org.treblereel.mcp.command.InitCommand;
+import org.treblereel.mcp.command.PrefetchCommand;
 import org.treblereel.mcp.command.StatusCommand;
 import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.command.WorkspaceCommand;
@@ -28,7 +29,7 @@ import picocli.CommandLine.Option;
 @Command(name = "quill", mixinStandardHelpOptions = true,
         versionProvider = QuillTopCommand.VersionProvider.class,
         subcommands = {InitCommand.class, UpdateCommand.class, StatusCommand.class,
-                DoctorCommand.class, CleanCommand.class, WorkspaceCommand.class, ClientCommand.class})
+                DoctorCommand.class, CleanCommand.class, WorkspaceCommand.class, ClientCommand.class, PrefetchCommand.class})
 public class QuillTopCommand implements Callable<Integer> {
 
     @Option(names = "--kotlin-semantic-worker", hidden = true)
@@ -43,9 +44,9 @@ public class QuillTopCommand implements Callable<Integer> {
     @Option(names = "--workspace", description = "Initialized workspace root to serve via MCP")
     Path workspace;
 
-    @Option(names = "--tools", description = "MCP tool profiles: full, router, core, code, di, git; "
-            + "comma-separated unions are allowed (default: full)")
-    String toolProfiles = "full";
+    @Option(names = "--tools", description = "MCP tool profiles: full, router, compact, core, code, di, git; "
+            + "comma-separated unions are allowed (default: compact)")
+    String toolProfiles = "compact";
 
     @Option(names = "--debug", description = "Write structured MCP diagnostics to stderr and .quill/debug")
     boolean debug;

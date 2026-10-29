@@ -235,7 +235,7 @@ final class ClaudeSettingsInstaller {
         return parsed instanceof ObjectNode object ? object : null;
     }
 
-    private static void writeAtomically(Path file, ObjectNode root) throws IOException {
+    static void writeAtomically(Path file, ObjectNode root) throws IOException {
         Files.createDirectories(file.getParent());
         Path temporary = Files.createTempFile(file.getParent(), ".settings.json.", ".tmp");
         try {

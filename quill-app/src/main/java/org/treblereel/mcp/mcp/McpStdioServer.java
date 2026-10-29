@@ -101,12 +101,12 @@ public final class McpStdioServer {
 
     static String serverInstructions(McpToolProfile profile, Boolean workspaceMode) {
         String instructions = "Quill supplies read-only code intelligence for indexed JVM projects. "
-                + "Discover only get_overview by exact name first; discover other tools on demand, not the entire catalog. ";
+                + "Discover tools by exact name or task on demand, not the entire catalog. Known targets can be queried directly; get_overview is optional orientation or index/build status. ";
         instructions += workspaceMode == null
-                ? "Use view=compact only if launch arguments confirm --workspace; otherwise call get_overview without arguments. "
+                ? "For get_overview, use view=compact only if launch arguments confirm --workspace; otherwise omit arguments. "
                 : workspaceMode
-                        ? "Server mode: workspace (--workspace). Start with get_overview view=compact, then select a project for full details. "
-                        : "Server mode: single_project (no --workspace). Start with get_overview without arguments, not view=compact. ";
+                        ? "Server mode: workspace (--workspace). For inventory, use get_overview view=compact, then select a project for full details. "
+                        : "Server mode: single_project (no --workspace). If using get_overview, call without arguments, not view=compact. ";
         instructions += "Follow retry_with on mode errors. Read structuredContent even when text is empty. ";
         if (profile.router() || profile.includes("change_session")) {
             instructions += "For a code change, query change_session "
@@ -117,6 +117,10 @@ public final class McpStdioServer {
                 + "or tests. Use source reads for known files and stale/unsupported evidence. "
                 + "Do not infer missing tools from empty resources: this server exposes tools, not resources.";
         if (profile.router()) {
+            if (!profile.tools().isEmpty()) {
+                return instructions + " Call available queries directly. For other operations, "
+                        + "discover their arguments with search_tools, then execute_tool.";
+            }
             return instructions + " This profile exposes get_overview, search_tools and execute_tool; "
                     + "discover change_session and other queries with search_tools, then execute_tool.";
         }

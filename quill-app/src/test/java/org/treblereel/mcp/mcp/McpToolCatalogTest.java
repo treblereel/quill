@@ -89,11 +89,12 @@ class McpToolCatalogTest {
         assertTrue(single.contains("without arguments, not view=compact"));
         assertTrue(workspace.substring(0, 512).contains("Server mode: workspace (--workspace)"));
         assertTrue(workspace.contains("get_overview view=compact"));
-        assertTrue(single.contains("Discover only get_overview by exact name first"));
+        assertTrue(single.contains("Known targets can be queried directly"));
+        assertFalse(single.contains("Discover only get_overview"));
         assertTrue(single.contains("Follow retry_with"));
         assertTrue(single.contains("Read structuredContent even when text is empty"));
         assertTrue(McpStdioServer.serverInstructions(McpToolProfile.full())
-                .contains("otherwise call get_overview without arguments"));
+                .contains("otherwise omit arguments"));
     }
 
     @Test
@@ -108,13 +109,13 @@ class McpToolCatalogTest {
                 var overview = catalog.stream().filter(t -> t.tool().name().equals("get_overview"))
                         .findFirst().orElseThrow().tool().description();
                 assertTrue(overview.startsWith("Server mode: " + (workspace ? "workspace" : "single_project")));
-                assertTrue(overview.contains(workspace ? "with view=compact" : "without arguments, not view=compact"));
-                assertTrue(overview.contains("even for narrow symbol tasks"));
+                assertTrue(overview.contains(workspace ? "view=compact" : "without arguments, not view=compact"));
+                assertTrue(overview.contains("known targets can be queried directly"));
                 if (profile.equals("full")) assertCompactCatalog(catalog);
                 for (var specification : catalog) {
                     if (Set.of("search_classes", "find_implementations", "find_annotated_symbols")
                             .contains(specification.tool().name())) {
-                        assertTrue(specification.tool().description().startsWith("After get_overview: "));
+                        assertFalse(specification.tool().description().startsWith("After get_overview: "));
                     }
                 }
             }
@@ -454,6 +455,37 @@ class McpToolCatalogTest {
         assertTrue(combined.stream().anyMatch(
                 tool -> tool.tool().name().equals("find_git_hotspots")));
         assertThrows(IllegalArgumentException.class, () -> McpToolProfile.parse("unknown"));
+    }
+
+    @Test
+    void compactKeepsDirectSchemasAndRouterFallbackWithoutDuplicates() {
+        QuillTools quill = new QuillTools(new ProjectRegistry());
+        var full = McpToolCatalog.create(quill, workers, responses, Duration.ofSeconds(1));
+        var compact = McpToolCatalog.create(quill, workers, responses,
+                Duration.ofSeconds(1), McpToolProfile.parse("compact"));
+        var names = compact.stream().map(spec -> spec.tool().name()).toList();
+        assertEquals(11, names.size());
+        assertEquals(names.size(), new java.util.HashSet<>(names).size());
+        assertTrue(names.containsAll(Set.of("get_overview", "search_tools", "execute_tool",
+                "get_symbol_details", "list_beans", "find_configuration_references")));
+        for (var spec : compact) {
+            if (!Set.of("search_tools", "execute_tool").contains(spec.tool().name())) {
+                assertEquals(full.stream().filter(f -> f.tool().name().equals(spec.tool().name()))
+                        .findFirst().orElseThrow().tool(), spec.tool());
+            }
+        }
+        assertTrue(catalogCharacters(compact) < catalogCharacters(full) / 2);
+        var search = compact.stream().filter(spec -> spec.tool().name().equals("search_tools"))
+                .findFirst().orElseThrow();
+        var result = search.callHandler().apply(null, new McpSchema.CallToolRequest(
+                "search_tools", Map.of("query", "implementations"), Map.of()))
+                .block(Duration.ofSeconds(2));
+        assertEquals("find_implementations", ((JsonNode) result.structuredContent())
+                .path("tools").get(0).path("name").asText());
+        assertTrue(McpStdioServer.serverInstructions(McpToolProfile.parse("compact"))
+                .contains("Call available queries directly"));
+        assertThrows(IllegalArgumentException.class,
+                () -> McpToolProfile.parse("compact,git"));
     }
 
     @Test

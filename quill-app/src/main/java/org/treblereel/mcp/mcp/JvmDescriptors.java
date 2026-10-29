@@ -8,6 +8,34 @@ final class JvmDescriptors {
 
     private JvmDescriptors() {}
 
+    static boolean matchesSignature(ClassMemberRecord member, String selector) {
+        if (selector == null || selector.isBlank()) return true;
+        String value = selector.strip();
+        if (value.equals(member.signature()) || value.equals(member.descriptor())) return true;
+        if (!"METHOD".equals(member.kind()) && !"CONSTRUCTOR".equals(member.kind())) return false;
+        String descriptor = methodDescriptor(member);
+        if (value.equals(descriptor)) return true;
+        if (descriptor == null) return false;
+        if (value.startsWith(member.name() + "(")) value = value.substring(member.name().length());
+        if ("CONSTRUCTOR".equals(member.kind()) && value.startsWith("<init>(")) {
+            value = value.substring("<init>".length());
+        }
+        String parameters;
+        if (value.startsWith("(") && value.endsWith(")")) {
+            parameters = value.substring(1, value.length() - 1);
+        } else {
+            if (value.contains("(") || value.contains(")")) return false;
+            parameters = value;
+        }
+        String[] requested = parameters.isBlank() ? new String[0] : parameters.split(",", -1);
+        Type[] actual = Type.getArgumentTypes(descriptor);
+        if (requested.length != actual.length) return false;
+        for (int i = 0; i < actual.length; i++) {
+            if (!requested[i].strip().equals(actual[i].getClassName())) return false;
+        }
+        return true;
+    }
+
     static String methodDescriptor(ClassMemberRecord member) {
         if (member.descriptor() != null && !member.descriptor().isBlank()) {
             return member.descriptor();

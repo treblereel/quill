@@ -318,7 +318,7 @@ class McpToolCatalogTest {
         assertFalse(((JsonNode) invalid.structuredContent()).has("error"));
         assertEquals("TOOL_INVOCATION_ERROR",
                 ((JsonNode) invalid.structuredContent()).path("error_code").asText());
-        assertEquals("Unknown argument: unexpected",
+        assertEquals("Unknown argument: unexpected. Accepted arguments: target",
                 ((JsonNode) invalid.structuredContent()).path("message").asText());
     }
 

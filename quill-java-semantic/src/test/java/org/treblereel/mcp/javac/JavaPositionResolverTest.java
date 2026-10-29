@@ -15,6 +15,16 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 class JavaPositionResolverTest {
     @TempDir Path root;
+    @Test void exactDeclarationRangeIncludesWholeBodyAndDoesNotNormalizeBridgeDescriptors() throws Exception {
+        Path file=write("package p; class Example {\n\tString accept(String name) {\n return name.trim();\n }\n int accept(int n) {return n;}\n}");
+        try(var r=resolver()) {
+            var method=r.declaration(file,"p.Example","accept","(Ljava/lang/String;)Ljava/lang/String;");
+            assertEquals("resolved",method.status());assertEquals(2,method.startLine());assertEquals(2,method.startColumn());assertEquals(4,method.endLine());
+            assertEquals("declaration_not_found",r.declaration(file,"p.Example","accept","(Ljava/lang/Object;)Ljava/lang/Object;").status());
+            Files.writeString(file,"package p; class Example {int accept(int n){return n+1;}}");
+            assertEquals("declaration_not_found",r.declaration(file,"p.Example","accept","(Ljava/lang/String;)Ljava/lang/String;").status());
+        }
+    }
     static Stream<Arguments> resolutions() {
         return Stream.of(
             row("static String pick(String x){return x;} static int pick(int x){return x;} void run(){pick(1);}", "pick(1)", "pick", "p.Example", "(I)I"),
@@ -327,6 +337,14 @@ class JavaPositionResolverTest {
         try(var model=new JavaPositionResolver(List.of(sourceRoot),List.of(root.resolve("dependencies")),"17")) {
             assertEquals("analysis_errors",model.resolve(file,Files.readString(file).indexOf("value()")).status());
         }
+    }
+    @Test void moduleExportSpecificationsCannotInjectOtherCompilerOptions() {
+        for (String value : List.of("-proc:full", "-Xplugin:evil", "@args", "java.base/p=ALL-UNNAMED -proc:full")) {
+            assertThrows(IllegalArgumentException.class, () -> new JavaPositionResolver(
+                    List.of(root), List.of(), null, "17", "17", List.of(value)), value);
+        }
+        assertThrows(IllegalArgumentException.class, () -> new JavaPositionResolver(
+                List.of(root), List.of(), "17", null, null, List.of("java.base/p=ALL-UNNAMED")));
     }
     @Test void sourceTargetDoesNotHideNewerJdkApisAndWarmupReusesTheModel() throws Exception {
         Path file=write("package p; class Example {void run(){\"text\".isBlank();}}");

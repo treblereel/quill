@@ -83,9 +83,7 @@ final class SymbolUsageQueries {
         List<ClassMemberRecord> matches = requestedSignature == null
                 || requestedSignature.isBlank()
                 ? namedMembers
-                : namedMembers.stream().filter(member -> member.signature().equals(
-                        requestedSignature.strip())
-                        || member.descriptor().equals(requestedSignature.strip())).toList();
+                : namedMembers.stream().filter(member -> JvmDescriptors.matchesSignature(member, requestedSignature)).toList();
         if (matches.size() != 1) {
             ObjectNode error = JSON.createObjectNode();
             boolean ambiguous = !matches.isEmpty();

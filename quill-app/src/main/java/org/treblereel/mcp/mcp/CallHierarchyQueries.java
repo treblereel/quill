@@ -93,8 +93,7 @@ final class CallHierarchyQueries {
                         .toList();
         List<ClassMemberRecord> matchingMembers = normalizedSignature == null
                 ? candidates
-                : candidates.stream().filter(member -> normalizedSignature.equals(member.signature())
-                        || normalizedSignature.equals(JvmDescriptors.methodDescriptor(member)))
+                : candidates.stream().filter(member -> JvmDescriptors.matchesSignature(member, normalizedSignature))
                         .toList();
         ClassMemberRecord selected = null;
         String descriptor = null;

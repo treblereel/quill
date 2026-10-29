@@ -199,7 +199,7 @@ public final class QuillTools {
             @ToolArg(description = "Member; optional for IDs/constructors") Optional<String> name,
             @ToolArg(description = "Kind; omit for symbol_id",
                     allowed = {"method", "constructor", "field", "property"}) Optional<String> kind,
-            @ToolArg(description = "Signature/descriptor for overloads") Optional<String> signature,
+            @ToolArg(description = "Signature/descriptor or (java.lang.String)") Optional<String> signature,
             @ToolArg(description = "Read/write filter",
                     allowed = {"all", "read", "write"}) Optional<String> access,
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
@@ -237,9 +237,9 @@ public final class QuillTools {
     }
 
     @Tool(readOnly = true, structured = true,
-            description = "Get a compact change-ready context card for one or more classes.")
+            description = "Compact class or exact method context.")
     public String get_context(
-            @ToolArg(description = "Classes or source paths (max 10)") List<String> targets,
+            @ToolArg(description = "Classes, paths or Class#method(qualified.Types); max 10") List<String> targets,
             @ToolArg(description = "Include declared members; default false") Optional<Boolean> include_members,
             @ToolArg(description = "Members, usages, and tests per section; default 10, max 25") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
@@ -342,7 +342,7 @@ public final class QuillTools {
     public String get_call_hierarchy(
             @ToolArg(description = "Class, path, or symbol_id") String target,
             @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
-            @ToolArg(description = "Exact indexed signature or JVM descriptor for overload selection") Optional<String> signature,
+            @ToolArg(description = "Signature/descriptor or (java.lang.String)") Optional<String> signature,
             @ToolArg(description = "Direction",
                     allowed = {"inbound", "outbound", "both"}) Optional<String> direction,
             @ToolArg(description = "Traverse calls; default false") Optional<Boolean> transitive,
@@ -383,7 +383,7 @@ public final class QuillTools {
     public String analyze_execution_order(
             @ToolArg(description = "Class, path, or symbol_id") String target,
             @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
-            @ToolArg(description = "Signature or JVM descriptor for overloads") Optional<String> signature,
+            @ToolArg(description = "Signature/descriptor or (java.lang.String)") Optional<String> signature,
             @ToolArg(description = "Before terms") Optional<String> before_terms,
             @ToolArg(description = "After terms") Optional<String> after_terms,
             @ToolArg(description = "Repo") Optional<String> project) {
@@ -414,7 +414,7 @@ public final class QuillTools {
     public String find_method_overrides(
             @ToolArg(description = "Class, interface, path, or symbol_id") String target,
             @ToolArg(description = "Declared method; omit for symbol_id") Optional<String> method,
-            @ToolArg(description = "Optional exact signature to select one overload") Optional<String> signature,
+            @ToolArg(description = "Signature/descriptor or (java.lang.String)") Optional<String> signature,
             @ToolArg(description = "Include indirect descendants; default true") Optional<Boolean> transitive,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
@@ -886,7 +886,7 @@ public final class QuillTools {
     public String find_framework_endpoints(
             @ToolArg(description = "spring, jax-rs, or all") Optional<String> framework,
             @ToolArg(description = "HTTP method") Optional<String> http_method,
-            @ToolArg(description = "Route path prefix") Optional<String> path_prefix,
+            @ToolArg(description = "Route path prefix") Optional<String> path,
             @ToolArg(description = "Module filter") Optional<String> module,
             @ToolArg(description = "Include generated") Optional<Boolean> include_generated,
             @ToolArg(description = "Include tests") Optional<Boolean> include_tests,
@@ -895,7 +895,7 @@ public final class QuillTools {
             @ToolArg(description = "Project") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findFrameworkEndpoints(
                 p.jdbi(), framework.orElse(null), http_method.orElse(null),
-                path_prefix.orElse(null), module.orElse(null),
+                path.orElse(null), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
                 clamp(limit.orElse(50), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));

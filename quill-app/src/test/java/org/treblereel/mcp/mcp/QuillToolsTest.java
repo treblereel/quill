@@ -235,8 +235,9 @@ class QuillToolsTest {
         var tools = new QuillTools();
         String result = tools.getBeans(jdbi, null, null, null, "dev", null);
         assertTrue(result.contains("AuditService"));
-        assertFalse(result.contains("OrderService"));
-        assertTrue(result.contains("\"total\":1"));
+        assertTrue(result.contains("OrderService"));
+        assertFalse(result.contains("StripePaymentService"));
+        assertTrue(result.contains("\"total\":2"));
     }
 
     @Test
@@ -1295,6 +1296,11 @@ class QuillToolsTest {
                 "inbound", false, 1, 10, 0));
         assertEquals("(I)V", exact.path("descriptor").asText());
         assertEquals("process(int):void", exact.path("signature").asText());
+        JsonNode parameters = JSON.readTree(queries.getCallHierarchy(
+                jdbi, "OrderService", "process", "( int )",
+                "inbound", false, 1, 10, 0));
+        assertEquals(exact.path("symbol_id"), parameters.path("symbol_id"));
+        assertEquals(exact.path("calls"), parameters.path("calls"));
         assertEquals(1, exact.path("total").asInt());
         assertEquals(List.of(31), exact.path("calls").get(0).path("evidence_lines")
                 .valueStream().map(JsonNode::asInt).toList());
@@ -1404,6 +1410,9 @@ class QuillToolsTest {
                 .analyzeExecutionOrder(jdbi, "OrderService", "run", null));
 
         assertEquals(2, result.path("event_count").asInt());
+        JsonNode noArguments = JSON.readTree(new QuillToolQueries()
+                .analyzeExecutionOrder(jdbi, "OrderService", "run", "()"));
+        assertEquals(result.path("bytecode_sequence"), noArguments.path("bytecode_sequence"));
         assertEquals(4, result.path("bytecode_sequence").get(0)
                 .path("instruction_ordinal").asInt());
         assertEquals("proven", result.path("persist_before_dispatch")
@@ -1644,6 +1653,11 @@ class QuillToolsTest {
                 "all", 10, 0));
         assertEquals(1, method.path("total").asInt());
         assertEquals("(Ljava/lang/String;)V", method.path("descriptor").asText());
+        JsonNode byParameters = JSON.readTree(queries.findSymbolUsages(
+                jdbi, "OrderService", "submit", "method", "(java.lang.String)",
+                "all", 10, 0));
+        assertEquals(method.path("symbol_id"), byParameters.path("symbol_id"));
+        assertEquals(method.path("usages"), byParameters.path("usages"));
         assertEquals(List.of(31, 35), method.path("usages").get(0)
                 .path("evidence_lines").valueStream().map(JsonNode::asInt).toList());
         assertEquals("org.acme.StripePaymentService",
@@ -1671,6 +1685,9 @@ class QuillToolsTest {
         assertEquals(1, constructor.path("total").asInt());
         assertEquals("special", constructor.path("usages").get(0)
                 .path("invocation_kind").asText());
+        JsonNode constructorParameters = JSON.readTree(queries.findSymbolUsages(
+                jdbi, "OrderService", null, "constructor", "(java.lang.String)", "all", 10, 0));
+        assertEquals(constructor.path("symbol_id"), constructorParameters.path("symbol_id"));
 
         JsonNode reads = JSON.readTree(queries.findSymbolUsages(
                 jdbi, "OrderService", "status", "field", null, "read", 10, 0));
@@ -1787,6 +1804,9 @@ class QuillToolsTest {
                         && node.path("hierarchy_path").size() == 3));
         assertEquals(1, direct.path("total").asInt());
         assertEquals(1, overload.path("total").asInt());
+        JsonNode parameterOverload = JSON.readTree(tools.findMethodOverrides(
+                jdbi, "PaymentService", "processPayment", "(java.lang.String)", true, 10, 0));
+        assertEquals(overload.path("overrides"), parameterOverload.path("overrides"));
         assertEquals("processPayment(java.lang.String):void",
                 overload.path("overrides").get(0).path("base_signature").asText());
         assertEquals(3, kotlin.path("total").asInt());
@@ -1800,6 +1820,23 @@ class QuillToolsTest {
                 jdbi, symbolId, null, null, true, 10, 0));
         assertEquals(symbolId,
                 byId.path("base_declarations").get(0).path("symbol_id").asText());
+    }
+
+    @Test
+    void parameterSelectorNeverGuessesBetweenJvmReturnOverloads() throws Exception {
+        jdbi.useHandle(h -> h.execute("""
+                INSERT INTO class_members
+                  (class_id, kind, name, signature, descriptor, type_name,
+                   parameter_types, modifiers, annotations)
+                VALUES (2,'METHOD','get','get():java.lang.String','()Ljava/lang/String;',
+                        'java.lang.String','[]','public','[]'),
+                       (2,'METHOD','get','get():java.lang.Object','()Ljava/lang/Object;',
+                        'java.lang.Object','[]','public','[]')"""));
+        JsonNode result = JSON.readTree(new QuillTools().findMethodOverrides(
+                jdbi, "PaymentService", "get", "()", true, 10, 0));
+        assertEquals("AMBIGUOUS_METHOD", result.path("error_code").asText());
+        assertEquals(2, result.path("candidates").size());
+        assertTrue(result.path("retryable").asBoolean());
     }
 
     @Test

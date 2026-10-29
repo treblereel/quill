@@ -322,6 +322,13 @@ Once indexed, Quill exposes these tools via MCP:
 Every tool result includes native MCP `structuredContent` and an advertised object
 `outputSchema`. Quill does not duplicate the JSON payload as text content.
 
+Method queries accept a full indexed signature, a JVM descriptor, or a parameter-only
+selector such as `(java.lang.String, int[])`. Parentheses and a matching method name
+are optional for parameter selectors (`accept(java.lang.String, int[])` or
+`java.lang.String, int[]`). Use exact erased qualified types; short type names
+and parameter variable names are not guessed. Ambiguous declarations still require
+an exact signature or JVM descriptor.
+
 The default `--tools full` profile exposes the complete catalog. To reduce the initial
 `tools/list` context for smaller local models, select `router`, `core`, `code`, `di`, or `git`:
 
@@ -1047,3 +1054,19 @@ download verification.
 ## License
 
 Quill is licensed under the [Apache License 2.0](LICENSE).
+
+### Cumulative CDI and source-context implementation
+
+CDI qualifier identity preserves its qualified annotation name, binding member values
+and defaults, ignoring `@Nonbinding`. `@Typed`, `Object`, array types and primitive/wrapper
+assignment are preserved; different generic arguments are not collapsed into a raw match.
+Profile filters include unconditional beans and exclusions. Producer and declaring-bean
+conditions combine; `+profile` means required, `!profile` means excluded. Static injection
+selection reports `CONTEXT_REQUIRED` if a build profile is needed. Quarkus producer discovery
+requires a successful, fresh, module-owned compiler capture with Quarkus plugin/ArC evidence.
+
+`get_context` accepts `Class#method(qualified.Types)` and returns complete bounded Java
+method source only with an exact compiler declaration, matching indexed source hash,
+and valid project boundary. Missing, changed, oversized or unsupported source has an explicit
+status; no approximate line window is returned. `find_framework_endpoints` uses `path` for
+the route prefix. Argument errors list accepted names without requiring another catalog lookup.

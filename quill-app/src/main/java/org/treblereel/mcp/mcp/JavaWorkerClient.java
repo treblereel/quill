@@ -34,15 +34,18 @@ final class JavaWorkerClient implements AutoCloseable {
             }
             String key = request.path("module") + ":" + request.path("source_set") + ":" + request.path("release") + ":"
                     + request.path("source") + ":" + request.path("target") + ":" + request.path("java_roots") + ":"
-                    + request.path("classpath") + ":" + request.path("settings_sha256");
+                    + request.path("classpath") + ":" + request.path("add_exports") + ":" + request.path("settings_sha256");
             Properties settings = new Properties();
             for (String property : List.of("release", "source", "target"))
                 if (request.has(property)) settings.setProperty(property, request.path(property).asText());
             copy(settings, "roots", request.path("java_roots")); copy(settings, "classpath", request.path("classpath"));
+            copy(settings, "addExports", request.path("add_exports"));
             var serialized = new StringWriter(); settings.store(serialized, "Quill Java inputs");
             input.write(encode(key)); input.write('\t'); input.write(encode(serialized.toString())); input.write('\t');
             input.write(encode(request.path("file").asText()));
-            input.write('\t'); input.write(Integer.toString(request.path("offset").asInt())); input.newLine(); input.flush();
+            input.write('\t'); input.write(Integer.toString(request.path("offset").asInt()));
+            if (request.has("declaration_selector")) {input.write('\t');input.write(encode(request.path("declaration_selector").asText()));}
+            input.newLine(); input.flush();
             String line = read();
             if (line == null) throw new EOFException();
             String[] parts = line.split("\t", -1);
@@ -82,7 +85,7 @@ final class JavaWorkerClient implements AutoCloseable {
         input = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
         output = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         reader = Executors.newSingleThreadExecutor(task -> { var t = new Thread(task, "quill-java-worker-read"); t.setDaemon(true); return t; });
-        if (!"QUILL_JAVA_4".equals(read())) throw new IOException("Worker protocol mismatch");
+        if (!"QUILL_JAVA_6".equals(read())) throw new IOException("Worker protocol mismatch");
     }
     private static JsonNode references(String[] parts) throws IOException {
         if (parts.length != 2 || !parts[0].equals("REFERENCES")) throw new IOException("Invalid references response");

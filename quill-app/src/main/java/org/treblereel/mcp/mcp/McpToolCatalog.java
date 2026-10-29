@@ -212,7 +212,7 @@ final class McpToolCatalog {
             Optional<String> unknown = args.keySet().stream()
                     .filter(name -> !acceptedArguments.contains(name)).findFirst();
             if (unknown.isPresent()) {
-                return new Invocation("Unknown argument: " + unknown.get(), true);
+                return new Invocation("Unknown argument: " + unknown.get() + ". Accepted arguments: " + String.join(", ", acceptedArguments.stream().sorted().toList()), true);
             }
             for (int i = 0; i < parameters.length; i++) {
                 Parameter parameter = parameters[i];

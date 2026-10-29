@@ -36,6 +36,18 @@ class JavaSemanticQueriesTest {
     JsonNode request() throws Exception { return JavaSemanticQueries.prepare(root, file, offset()); }
     String status() throws Exception { return request().path("status").asText(); }
     @AfterEach void stop() { JavaSemanticQueries.close(); }
+    @Test void exactDeclarationSelectorTraversesRealWorkerAndRejectsAnotherOverload() throws Exception {
+        var query=(com.fasterxml.jackson.databind.node.ObjectNode)JavaSemanticQueries.prepare(root,file,-3);
+        query.put("declaration_selector","p.Example\tpick\t(I)I");
+        try(var client=new JavaWorkerClient()) {
+            var result=client.query(query);
+            assertEquals("resolved",result.path("status").asText(),result.toString());
+            assertEquals("(I)I",result.path("descriptor").asText());
+            assertTrue(result.path("source_end_column").asInt()>result.path("source_column").asInt());
+            query.put("declaration_selector","p.Example\tpick\t(J)I");
+            assertEquals("declaration_not_found",client.query(query).path("status").asText());
+        }
+    }
     @Test void servesExactOverloadReusesModelAndRecoversKilledProcess() throws Exception {
         try (var client = new JavaWorkerClient()) {
             JsonNode first = client.query(request()); assertEquals("resolved", first.path("status").asText());
@@ -149,6 +161,42 @@ class JavaSemanticQueriesTest {
         settings.setProperty("jdkVersion", settings.getProperty("jdkVersion") + "+test-build"); save();
         assertFalse(request().has("release")); assertEquals("17",request().path("source").asText());
         try (var client = new JavaWorkerClient()) { assertEquals("resolved",client.query(request()).path("status").asText()); }
+    }
+    @Test void moduleExportsAndBlankReleaseReachTheActualCompilerAndSeparateCachedModels() throws Exception {
+        Files.writeString(file, "package p; import jdk.internal.misc.Unsafe; class Example { int run(){return Unsafe.getUnsafe().addressSize();} }");
+        settings.setProperty("release", ""); settings.setProperty("source", "17"); settings.setProperty("target", "17");
+        settings.setProperty("argument.count", "4"); settings.setProperty("argument.0", "-parameters");
+        settings.setProperty("argument.1", "--add-exports");
+        settings.setProperty("argument.2", "java.base/jdk.internal.misc=ALL-UNNAMED");
+        settings.setProperty("argument.3", "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED"); save();
+        var prepared = JavaSemanticQueries.prepare(root, file, Files.readString(file).indexOf("addressSize"));
+        assertFalse(prepared.has("status"), prepared.toString());
+        assertFalse(prepared.has("release"));
+        assertEquals(List.of("java.base/jdk.internal.misc=ALL-UNNAMED", "java.base/sun.nio.ch=ALL-UNNAMED"),
+                prepared.path("add_exports").valueStream().map(JsonNode::asText).toList());
+        try (var client = new JavaWorkerClient()) {
+            var result = client.query(prepared);
+            assertEquals("resolved", result.path("status").asText(), result.toString());
+            assertEquals("jdk.internal.misc.Unsafe", result.path("owner").asText());
+            assertEquals("()I", result.path("descriptor").asText());
+            var noExports = ((com.fasterxml.jackson.databind.node.ObjectNode) prepared).deepCopy();
+            noExports.remove("add_exports");
+            assertEquals("analysis_errors", client.query(noExports).path("status").asText());
+            assertTrue(client.query(prepared).path("reused").asBoolean());
+        }
+    }
+    @Test void malformedModuleExportsAndReleaseConflictsRemainUnsupported() throws Exception {
+        settings.remove("release"); settings.setProperty("source", "17"); settings.setProperty("target", "17");
+        for (List<String> arguments : List.of(List.of("--add-exports"),
+                List.of("--add-exports", "-proc:full"), List.of("--add-exports=-Xplugin:evil"),
+                List.of("--add-exports", "java.base/p=ALL-UNNAMED -proc:full"))) {
+            settings.setProperty("argument.count", Integer.toString(arguments.size()));
+            for (int i = 0; i < arguments.size(); i++) settings.setProperty("argument."+i, arguments.get(i));
+            save(); assertEquals("compiler_arguments_unsupported", status(), arguments.toString());
+        }
+        settings.setProperty("release", "17"); settings.setProperty("argument.count", "1");
+        settings.setProperty("argument.0", "--add-exports=java.base/p=ALL-UNNAMED"); save();
+        assertEquals("compiler_arguments_unsupported", status());
     }
     @Test void identicalRootsInDifferentSourceSetsRemainAmbiguous() throws Exception {
         Files.copy(capture,capture.resolveSibling("quill-java-test.properties"));

@@ -56,24 +56,36 @@ public final class JavaPositionResolver implements AutoCloseable {
     private final List<Path> classpath;
     private final String release;
     private final String sourceLevel, targetLevel;
+    private final List<String> addExports;
     private final Runnable beforeValidation;
     private Snapshot snapshot;
     private long generation;
     private int closedSnapshots;
 
     public JavaPositionResolver(List<Path> roots, List<Path> classpath, String release) {
-        this(roots, classpath, release, null, null, () -> {});
+        this(roots, classpath, release, null, null, List.of(), () -> {});
     }
     public JavaPositionResolver(List<Path> roots, List<Path> classpath, String release, String source, String target) {
-        this(roots, classpath, release, source, target, () -> {});
+        this(roots, classpath, release, source, target, List.of(), () -> {});
     }
     JavaPositionResolver(List<Path> roots, List<Path> classpath, String release, Runnable beforeValidation) {
-        this(roots, classpath, release, null, null, beforeValidation);
+        this(roots, classpath, release, null, null, List.of(), beforeValidation);
     }
-    private JavaPositionResolver(List<Path> roots, List<Path> classpath, String release, String source, String target, Runnable beforeValidation) {
+    public JavaPositionResolver(List<Path> roots, List<Path> classpath, String release,
+            String source, String target, List<String> addExports) {
+        this(roots, classpath, release, source, target, addExports, () -> {});
+    }
+    private JavaPositionResolver(List<Path> roots, List<Path> classpath, String release,
+            String source, String target, List<String> addExports, Runnable beforeValidation) {
         this.roots = roots.stream().map(p -> p.toAbsolutePath().normalize()).toList();
         this.classpath = classpath.stream().map(p -> p.toAbsolutePath().normalize()).toList();
         this.release = release; this.sourceLevel = source; this.targetLevel = target;
+        this.addExports = List.copyOf(addExports);
+        if (release != null && !addExports.isEmpty()) throw new IllegalArgumentException("Exports conflict with release");
+        for (String value : addExports) {
+            if (!value.matches("[\\w.$]+/[\\w.$]+=(ALL-UNNAMED|[\\w.$]+)(,(ALL-UNNAMED|[\\w.$]+))*"))
+                throw new IllegalArgumentException("Invalid module export");
+        }
         this.beforeValidation = beforeValidation;
     }
 
@@ -191,7 +203,11 @@ public final class JavaPositionResolver implements AutoCloseable {
         long line = unit.getLineMap().getLineNumber(offset);
         return (int) (offset - unit.getLineMap().getStartPosition(line) + 1);
     }
-    private Result analyze(Path requested, int offset) throws Exception {
+    public synchronized Result declaration(Path file, String owner, String name, String descriptor) throws Exception {
+        return analyze(file, -1, new String[]{owner,name,descriptor});
+    }
+    private Result analyze(Path requested, int offset) throws Exception { return analyze(requested,offset,null); }
+    private Result analyze(Path requested, int offset, String[] selector) throws Exception {
         Path file = requested.toAbsolutePath().normalize();
         Inputs inputs = capture();
         String text = inputs.sources().get(file);
@@ -203,7 +219,7 @@ public final class JavaPositionResolver implements AutoCloseable {
             snapshot = build(inputs);
             generation++;
         }
-        Result result = snapshot.errors ? status("analysis_errors", reused) : offset == -1 ? status("warmed", reused) : lookup(snapshot, file, offset, reused);
+        Result result = snapshot.errors ? status("analysis_errors", reused) : selector != null ? declaration(snapshot,file,selector,reused) : offset == -1 ? status("warmed", reused) : lookup(snapshot, file, offset, reused);
         beforeValidation.run();
         if (!capture().fingerprint().equals(inputs.fingerprint())) {
             close();
@@ -279,6 +295,7 @@ public final class JavaPositionResolver implements AutoCloseable {
             List<String> options = new ArrayList<>(List.of("-proc:none", "-implicit:none"));
             if (release != null) options.addAll(List.of("--release", release));
             else options.addAll(List.of("-source", sourceLevel, "-target", targetLevel));
+            for (String value : addExports) options.addAll(List.of("--add-exports", value));
             // An explicit empty classpath avoids inheriting the worker's implementation classes.
             manager.setLocationFromPaths(StandardLocation.CLASS_PATH, classpath);
             // Only explicitly captured source roots participate. Otherwise javac can
@@ -333,7 +350,27 @@ public final class JavaPositionResolver implements AutoCloseable {
         Candidate candidate = candidates.stream().min(Comparator.comparingLong(Candidate::width)
                 .thenComparing(Comparator.comparingInt(Candidate::priority).reversed())).orElse(null);
         if (candidate == null) return status("unresolved", reused);
-        Element element = candidate.element();
+        return describe(model,candidate.element(),reused);
+    }
+
+    private Result declaration(Snapshot model, Path file, String[] selector, boolean reused) {
+        List<Element> matches = new ArrayList<>();
+        for (var unit : model.units) if (Path.of(unit.getSourceFile().toUri()).equals(file)) {
+            new TreePathScanner<Void,Void>() {
+                public Void visitMethod(MethodTree tree, Void ignored) {
+                    Element e=model.trees.getElement(getCurrentPath());
+                    if (e instanceof ExecutableElement && owner(e) != null
+                            && model.elements.getBinaryName(owner(e)).toString().equals(selector[0])
+                            && e.getSimpleName().toString().equals(selector[1])
+                            && selector[2].equals(memberDescriptor(model,e))) matches.add(e);
+                    return super.visitMethod(tree,ignored);
+                }
+            }.scan(unit,null);
+        }
+        return matches.size()==1 ? describe(model,matches.get(0),reused) : status("declaration_not_found",reused);
+    }
+    private Result describe(Snapshot model, Element element, boolean reused) {
+        var positions=model.trees.getSourcePositions();
         if (element.getKind() == ElementKind.LOCAL_VARIABLE || element.getKind() == ElementKind.PARAMETER
                 || element.getKind() == ElementKind.EXCEPTION_PARAMETER || element.getKind() == ElementKind.TYPE_PARAMETER
                 || element.getKind() == ElementKind.BINDING_VARIABLE)
@@ -369,9 +406,9 @@ public final class JavaPositionResolver implements AutoCloseable {
             long end = positions.getEndPosition(declarationUnit, declaration.getLeaf());
             if (start >= 0 && end > start && declarationUnit.getLineMap() != null) {
                 startLine = (int) declarationUnit.getLineMap().getLineNumber(start);
-                startColumn = (int) declarationUnit.getLineMap().getColumnNumber(start);
+                startColumn = rawColumn(declarationUnit, start);
                 endLine = (int) declarationUnit.getLineMap().getLineNumber(end);
-                endColumn = (int) declarationUnit.getLineMap().getColumnNumber(end);
+                endColumn = rawColumn(declarationUnit, end);
             }
         }
         return new Result("resolved", model.elements.getBinaryName(owner).toString(), kind, name, descriptor, source,

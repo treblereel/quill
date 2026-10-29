@@ -48,7 +48,9 @@ final class ContextQueries {
         int naiveTokens = 0;
 
         for (String target : targets) {
-            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
+            int separator = target == null ? -1 : target.indexOf('#');
+            String classTarget = separator < 0 ? target : target.substring(0,separator);
+            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, classTarget);
             if (lookup.error() != null) {
                 ObjectNode failure = unresolved.addObject();
                 failure.put("target", target == null ? "" : target);
@@ -56,6 +58,12 @@ final class ContextQueries {
                 continue;
             }
             ClassRecord cls = lookup.cls();
+            if (separator >= 0) {
+                var context=contexts.addObject().put("requested_target",target);
+                context.set("method_context",new MethodContextQueries().get(jdbi,cls,target.substring(separator+1)));
+                if (!resolvedNames.contains(cls.className())) resolvedNames.add(cls.className());
+                continue;
+            }
             if (resolvedNames.contains(cls.className())) continue;
             resolvedNames.add(cls.className());
             naiveTokens += cls.sourceTokens();
@@ -91,7 +99,8 @@ final class ContextQueries {
 
         root.put("resolved_target_count", resolvedNames.size());
         root.put("unresolved_target_count", unresolved.size());
-        root.put("answer_complete", unresolved.isEmpty());
+        root.put("answer_complete", unresolved.isEmpty() && java.util.stream.StreamSupport.stream(contexts.spliterator(),false)
+                .allMatch(c -> !c.has("method_context") || c.path("method_context").path("source_complete").asBoolean()));
         if (!resolvedNames.isEmpty()) {
             ObjectNode impact = parse(tests.findImpactedTests(
                     jdbi, resolvedNames, true, 3, limit, 0));

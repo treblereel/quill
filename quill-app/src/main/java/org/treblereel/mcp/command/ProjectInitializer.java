@@ -314,13 +314,24 @@ public class ProjectInitializer {
         }
     }
 
+    static List<ProjectLayout.CompiledOutput> independentOutputs(Path root,List<ProjectLayout.CompiledOutput> outputs) {
+        Path owner=repositoryBoundary(root);
+        return outputs.stream().filter(output -> java.util.Objects.equals(owner,repositoryBoundary(output.moduleDirectory()))).toList();
+    }
+    private static Path repositoryBoundary(Path path) {
+        try {path=path.toRealPath();}catch(java.io.IOException unavailable){path=path.toAbsolutePath().normalize();}
+        for(Path at=path;at!=null;at=at.getParent())
+            if(Files.isDirectory(at.resolve(".git")) || Files.isRegularFile(at.resolve(".git")))return at;
+        return null;
+    }
+
     private static InitializationResult initializeLockedDetailed(
             Path root, boolean indexOnly, boolean compiledBeforeIndex, Path incrementalBase,
             long startedAtNanos, PhaseTimings timings) {
         ProjectLayout.ClassesDiscovery classesDiscovery =
                 ProjectLayout.discoverClassesDirs(root, true);
-        List<Path> classesDirs = classesDiscovery.classesDirectories();
-        List<ProjectLayout.CompiledOutput> compiledOutputs = classesDiscovery.outputs();
+        List<ProjectLayout.CompiledOutput> compiledOutputs = independentOutputs(root,classesDiscovery.outputs());
+        List<Path> classesDirs = compiledOutputs.stream().map(ProjectLayout.CompiledOutput::directory).distinct().toList();
         timings.finish("class_discovery");
 
         if (compiledOutputs.stream().allMatch(output -> output.sourceSet().equals("test"))) {
@@ -1001,17 +1012,17 @@ public class ProjectInitializer {
     }
 
     public static List<Path> findClassesDirs(Path root) {
-        return ProjectLayout.findClassesDirs(root, false);
+        return independentOutputs(root,ProjectLayout.discoverClassesDirs(root,false).outputs()).stream().map(ProjectLayout.CompiledOutput::directory).distinct().toList();
     }
 
     public static List<Path> findIndexableClassesDirs(Path root) {
-        return ProjectLayout.discoverClassesDirs(root, false).outputs().stream()
+        return independentOutputs(root,ProjectLayout.discoverClassesDirs(root,false).outputs()).stream()
                 .filter(output -> !output.sourceSet().equals("test"))
                 .map(ProjectLayout.CompiledOutput::directory).toList();
     }
 
     public static List<Path> findMainClassesDirs(Path root) {
-        return ProjectLayout.discoverClassesDirs(root, false).outputs().stream()
+        return independentOutputs(root,ProjectLayout.discoverClassesDirs(root,false).outputs()).stream()
                 .filter(output -> output.sourceSet().equals("main"))
                 .map(ProjectLayout.CompiledOutput::directory).toList();
     }

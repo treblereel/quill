@@ -1158,7 +1158,7 @@ public final class IndexReader {
             String actual = value.startsWith("@") ? value.substring(1) : value;
             int end = actual.indexOf('(');
             String name = end < 0 ? actual : actual.substring(0,end);
-            String simple = name.substring(name.lastIndexOf('.') + 1);
+            String simple = name.substring(Math.max(name.lastIndexOf('.'),name.lastIndexOf('$')) + 1);
             if (selector.equals(actual) || selector.equals(name) || selector.equals(simple)
                     || end >= 0 && selector.equals(simple + actual.substring(end))) return true;
         }

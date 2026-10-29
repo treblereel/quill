@@ -68,6 +68,7 @@ final class ProjectQueryExecutor {
     QueryResult executeProject(ProjectRegistry.ProjectEntry project,
             Function<ProjectRegistry.ProjectEntry, String> query) {
         try {
+            org.treblereel.mcp.core.WorktreeSnapshotCache.shared().refresh(project.root());
             return new QueryResult(project.name(), org.treblereel.mcp.db.ReadQueryContext.read(project.jdbi(),()->query.apply(project)), null);
         } catch (Exception error) {
             return new QueryResult(project.name(), null, ProjectRegistry.safeMessage(error));

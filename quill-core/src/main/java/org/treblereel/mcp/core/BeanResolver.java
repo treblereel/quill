@@ -121,7 +121,7 @@ public final class BeanResolver {
                     ips.add(ip(nextIp++, ownerId, "FIELD", f.type(), qualifiers(f.annotations(), lookup, false), f.name(), f.hasAnnotation(n("jakarta.decorator.Delegate"))));
                 }
             for (MethodInfo m : c.methods()) {
-                boolean injected = methodHas(m, INJECT), producer = producerMethod(m, lookup, frameworkScopes.containsKey(c.name().toString()));
+                boolean injected = (m.flags() & (0x0040 | 0x1000)) == 0 && methodHas(m, INJECT), producer = producerMethod(m, lookup, frameworkScopes.containsKey(c.name().toString()));
                 if (!injected && !producer) continue;
                 int parameterOwner = producer ? producerIds.getOrDefault(m, ownerId) : ownerId;
                 String kind = "<init>".equals(m.name()) ? "CONSTRUCTOR_PARAM" : "METHOD_PARAM";
@@ -169,7 +169,7 @@ public final class BeanResolver {
     }
 
     private static boolean producerMethod(MethodInfo method, IndexView index, boolean quarkus) {
-        if (method.isConstructor() || method.returnType().kind() == Type.Kind.VOID) return false;
+        if (method.isConstructor() || (method.flags() & (0x0040 | 0x1000)) != 0 || method.returnType().kind() == Type.Kind.VOID) return false;
         var annotations = methodAnnotations(method);
         return methodHas(method, PRODUCES) || quarkus && (hasScope(annotations, index)
                 || hasMeta(annotations, STEREOTYPE, index) || hasMeta(annotations, QUALIFIER, index));

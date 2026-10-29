@@ -329,8 +329,9 @@ are optional for parameter selectors (`accept(java.lang.String, int[])` or
 and parameter variable names are not guessed. Ambiguous declarations still require
 an exact signature or JVM descriptor.
 
-The default `--tools full` profile exposes the complete catalog. To reduce the initial
-`tools/list` context for smaller local models, select `router`, `core`, `code`, `di`, or `git`:
+The default `--tools compact` profile exposes eight common queries, including `get_context`,
+plus overview and router fallback. Use `--tools full` for the complete initial catalog,
+or choose `router`, `core`, `code`, `di`, or `git`:
 
 ```bash
 quill --mcp --project /path/to/project --tools core
@@ -1070,3 +1071,29 @@ method source only with an exact compiler declaration, matching indexed source h
 and valid project boundary. Missing, changed, oversized or unsupported source has an explicit
 status; no approximate line window is returned. `find_framework_endpoints` uses `path` for
 the route prefix. Argument errors list accepted names without requiring another catalog lookup.
+
+### Generic prefetch and long sessions
+
+Native project initialization and `client refresh --project` install project-local
+`UserPromptSubmit` and `SessionStart` hooks in `.codex/hooks.json` and `.claude/settings.json`.
+Existing handlers, permissions and host trust settings are preserved. Clients may require
+review/trust of newly installed hooks. The `prefetch --project` helper reads an existing
+index; it never starts MCP, compiles, initializes a project or calls a language model.
+It looks up literal indexed identifiers, not question templates. It emits at most three
+verified class declaration cards, reports ambiguities/stale evidence explicitly, and suppresses
+unchanged facts per session. New sessions, `/clear`, compaction, forks and new index generations
+invalidate delivery state. Workspace-wide automatic prefetch is not installed; use explicit
+repository contexts or normal workspace MCP queries.
+
+Expired worktree snapshots refresh synchronously. Every public project query refreshes live
+worktree evidence before reading its immutable index generation. Schema v30 requires reindexing
+older semantic generations rather than silently reusing pre-fix CDI/qualifier data.
+
+Gitlinks are discovered read-only, including nested and uninitialized submodules. Workspace
+mode indexes initialized submodule repositories independently, including explicit gitlinks beyond
+directory discovery depth. Parent indexes do not absorb compiled outputs from another Git repository.
+Submodule HEAD and structural changes participate in parent freshness; documentation-only changes
+remain dirty without marking structural evidence stale. Quill never clones, fetches or updates a
+submodule checkout. Initialize/build it explicitly first, then use normal project `init`/`update`
+or workspace discovery. Nested traversal beyond eight levels reports a limit rather than claiming
+complete worktree evidence.

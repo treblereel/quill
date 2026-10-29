@@ -82,6 +82,20 @@ class CdiBindingTest {
         assertNull(point.resolvedBeanId());
         assertEquals(org.treblereel.mcp.model.ResolutionStatus.CONTEXT_REQUIRED,point.resolutionStatus());
     }
+    @Test void compilerGeneratedBridgesAreNotAdditionalInitializerInjectionPoints() throws Exception {
+        var result=BeanResolver.resolve(index("""
+            interface Initializer<T>{void set(T value);}
+            @Dependent class Consumer implements Initializer<String> { @Inject public void set(String value){} }
+            """));
+        assertEquals(1,result.injectionPoints().size());assertEquals("java.lang.String",result.injectionPoints().getFirst().targetType());
+    }
+    @Test void compilerGeneratedBridgesAreNotAdditionalProducerBeans() throws Exception {
+        var result=BeanResolver.resolve(index("""
+            interface Maker<T>{T make();}
+            @Dependent class Factory implements Maker<String> { @Produces public String make(){return "";} }
+            """));
+        assertEquals(1,result.beans().stream().filter(b->b.kind().equals("PRODUCER_METHOD")).count());
+    }
     @Test void differentGenericArgumentsNeverResolveByErasure() throws Exception {
         var result=BeanResolver.resolve(index("""
             @Dependent class Factory { @Produces java.util.List<Long> values(){return null;} }

@@ -19,8 +19,9 @@ final class ChangeVerificationQueries {
     private final WorktreeStatusQueries worktree = new WorktreeStatusQueries();
 
     String verifyChange(Jdbi jdbi, Path projectRoot, List<String> targets, int limit) {
+        // Inspect every change; the context/test response budget must not truncate verification scope.
         ObjectNode changes = parse(worktree.getFreshWorktreeStatus(
-                jdbi, projectRoot, null, limit, 0));
+                jdbi, projectRoot, null, Integer.MAX_VALUE, 0));
         boolean inferred = targets == null || targets.isEmpty();
         List<String> candidates = inferred ? inferredTargets(changes) : List.copyOf(targets);
         boolean inferenceTruncated = inferred && candidates.size() > 10;
@@ -36,7 +37,7 @@ final class ChangeVerificationQueries {
     String verifyChangeWithContext(Jdbi jdbi, Path projectRoot, List<String> targets,
             int limit, ObjectNode context) {
         ObjectNode changes = parse(worktree.getFreshWorktreeStatus(
-                jdbi, projectRoot, null, limit, 0));
+                jdbi, projectRoot, null, Integer.MAX_VALUE, 0));
         return verifyChangeWithContext(jdbi, projectRoot, targets, limit, context,
                 changes, false, false);
     }

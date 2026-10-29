@@ -51,8 +51,9 @@ final class ChangeSessionQueries {
         if (change == null || change.isBlank()) {
             return plans.planChange(jdbi, projectRoot, targets, change, limit);
         }
+        // Inspect every change; the context/test response budget must not truncate verification scope.
         ObjectNode changes = parse(worktree.getFreshWorktreeStatus(
-                jdbi, projectRoot, null, limit, 0));
+                jdbi, projectRoot, null, Integer.MAX_VALUE, 0));
         boolean inferred = targets == null || targets.isEmpty();
         List<String> candidates = inferred
                 ? ChangeVerificationQueries.inferredTargets(changes) : List.copyOf(targets);

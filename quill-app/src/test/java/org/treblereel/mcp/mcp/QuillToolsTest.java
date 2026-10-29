@@ -631,6 +631,51 @@ class QuillToolsTest {
     }
 
     @Test
+    void workflowInfersJvmTargetsBeyondPublicStatusPage() throws Exception {
+        writeMinimalPom();
+        Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; class OrderService {}\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            Path notes = Files.createDirectories(tempDir.resolve("a-evidence"));
+            for (int i = 0; i < 150; i++) {
+                Files.writeString(notes.resolve("note-%03d.md".formatted(i)), "unrelated");
+            }
+            Files.writeString(source, "package org.acme; class OrderService { void changed() {} }\n");
+            QuillTools tools = new QuillTools();
+            JsonNode page = JSON.readTree(new WorktreeStatusQueries()
+                    .getFreshWorktreeStatus(jdbi, tempDir, null, 10, 0));
+            assertEquals(10, page.path("showing").asInt());
+            assertTrue(page.path("has_more").asBoolean());
+            JsonNode verified = JSON.readTree(tools.verifyChange(jdbi, tempDir, List.of(), 10));
+            JsonNode session = JSON.readTree(tools.changeSession(jdbi, tempDir, List.of(),
+                    "Change method", 10));
+            assertEquals(1, verified.path("inferred_target_count").asInt());
+            assertFalse(verified.path("worktree").path("has_more").asBoolean());
+            assertEquals("src/main/java/org/acme/OrderService.java",
+                    verified.path("requested_targets").get(0).asText());
+            assertEquals(verified.path("requested_targets"), session.path("requested_targets"));
+            assertFalse(session.path("verification").path("worktree").path("has_more").asBoolean());
+            ObjectNode context = (ObjectNode) JSON.readTree(new ContextQueries()
+                    .getContext(jdbi, List.of("OrderService"), false, 10));
+            JsonNode withContext = JSON.readTree(new ChangeVerificationQueries().verifyChangeWithContext(
+                    jdbi, tempDir, List.of("OrderService"), 10, context));
+            assertFalse(withContext.path("worktree").path("has_more").asBoolean());
+            for (int i = 0; i < 10; i++) {
+                Files.writeString(source.resolveSibling("Unknown%d.java".formatted(i)),
+                        "package org.acme; class Unknown%d {}".formatted(i));
+            }
+            JsonNode tooMany = JSON.readTree(tools.changeSession(jdbi, tempDir, List.of(),
+                    "Change methods", 10));
+            assertTrue(tooMany.path("target_inference_truncated").asBoolean());
+            assertFalse(tooMany.path("verification_receipt").path("verified").asBoolean());
+        }
+    }
+
+    @Test
     void changeSessionSeesAnEditImmediatelyAfterAPlannedSnapshot() throws Exception {
         writeMinimalPom();
         Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");

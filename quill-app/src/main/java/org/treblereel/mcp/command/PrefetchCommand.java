@@ -38,6 +38,7 @@ public final class PrefetchCommand implements Callable<Integer> {
                 var db=QuillDatabase.open(index);
                 ObjectNode data;
                 try {data=PrefetchContext.collect(db,root,hook.path("prompt").asText());}finally{QuillDatabase.retire(db);}
+                // shortcut: cache tracks stdout emission, not host acknowledgement; verify delivery in future CLI captures.
                 ObjectNode delivered=Files.isRegularFile(state)?(ObjectNode)JSON.readTree(state.toFile()):JSON.createObjectNode();
                 ArrayNode fresh=JSON.createArrayNode();
                 for(JsonNode fact:data.path("facts")) {

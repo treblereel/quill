@@ -59,8 +59,11 @@ final class ContextQueries {
             }
             ClassRecord cls = lookup.cls();
             if (separator >= 0) {
-                var context=contexts.addObject().put("requested_target",target);
                 ObjectNode method=(ObjectNode)new MethodContextQueries().get(jdbi,cls,target.substring(separator+1));
+                if(method.has("error") || method.has("error_code") || !method.hasNonNull("descriptor")) {
+                    unresolved.addObject().put("target",target).set("resolution",method);continue;
+                }
+                var context=contexts.addObject().put("requested_target",target);
                 context.set("method_context",method);
                 if(method.hasNonNull("descriptor") && method.hasNonNull("name")) {
                     method.set("outgoing_calls",parse(new CallHierarchyQueries().getCallHierarchy(jdbi,cls.className(),
@@ -109,7 +112,8 @@ final class ContextQueries {
         }
 
         root.set("direct_callee_comparison",DirectCalleeComparison.compare(contexts));
-        root.put("resolved_target_count", resolvedNames.size());
+        root.put("resolved_target_count", contexts.size());
+        root.put("resolved_class_count",resolvedNames.size());
         root.put("unresolved_target_count", unresolved.size());
         root.put("answer_complete", unresolved.isEmpty() && java.util.stream.StreamSupport.stream(contexts.spliterator(),false)
                 .allMatch(c -> !c.has("method_context") || c.path("method_context").path("answer_complete").asBoolean()));

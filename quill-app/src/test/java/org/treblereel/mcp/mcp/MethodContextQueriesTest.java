@@ -22,6 +22,8 @@ class MethodContextQueriesTest {
         var result=new MethodContextQueries().get(db,cls,"pick(int)");
         assertTrue(result.path("source_complete").asBoolean(),result.toString());assertEquals(method,result.path("source").asText());
         assertEquals("(I)I",result.path("descriptor").asText());
+        var contexts=new com.fasterxml.jackson.databind.ObjectMapper().readTree(new ContextQueries().getContext(db,java.util.List.of("p.Fixture#pick(int)","p.Fixture#pick(java.lang.String)","p.Fixture#pick(long)"),false,10));
+        assertEquals(2,contexts.path("resolved_target_count").asInt());assertEquals(1,contexts.path("resolved_class_count").asInt());assertEquals(1,contexts.path("unresolved_target_count").asInt());
         var missing=new MethodContextQueries().get(db,cls,"pick(long)");assertFalse(missing.path("source_complete").asBoolean());
         java.nio.file.Files.writeString(root.resolve("src/main/java/p/Fixture.java"),"package p; class Fixture {}");
         assertFalse(new MethodContextQueries().get(db,cls,"pick(int)").path("source_complete").asBoolean());

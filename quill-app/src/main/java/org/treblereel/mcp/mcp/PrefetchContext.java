@@ -30,6 +30,10 @@ public final class PrefetchContext {
         while(matcher.find() && facts.size()+ambiguous.size()+unavailable.size()<3) {
             String token=matcher.group().replaceAll("\\.+$","");
             List<ClassRecord> matches=names.getOrDefault(token,List.of()).stream().distinct().toList();
+            while(matches.isEmpty() && token.contains(".")) {
+                token=token.substring(0,token.lastIndexOf('.'));
+                matches=names.getOrDefault(token,List.of()).stream().distinct().toList();
+            }
             if(matches.size()>1){ambiguous.addObject().put("identifier",token).put("status","ambiguous");continue;}
             if(matches.size()!=1 || !seen.add(matches.get(0).id()))continue;
             var cls=matches.get(0);String source=cls.sourceFile();

@@ -10,6 +10,7 @@ class PrefetchContextTest {
         var first=PrefetchContext.collect(db,root,"Пожалуйста объясни p.Fixture.");
         assertEquals(1,first.path("facts").size(),first.toString());
         assertEquals(first.path("facts"),PrefetchContext.collect(db,root,"Unrelated wording: Fixture?").path("facts"));
+        assertEquals(1,PrefetchContext.collect(db,root,"p.Fixture.value and Fixture.java").path("facts").size());
         assertEquals(0,PrefetchContext.collect(db,root,"No known identifiers here").path("facts").size());
         Files.writeString(root.resolve("src/main/java/p/Fixture.java"),"package p; class Fixture {long value;}");
         assertEquals(0,PrefetchContext.collect(db,root,"Fixture").path("facts").size());

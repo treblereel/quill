@@ -30,10 +30,30 @@ class WorkspaceCommandTest {
     @TempDir Path workspace;
 
     @Test
-    void explicitPermissionFlagConfiguresWorkspaceAndRepositoriesReversibly() throws Exception {
+    void projectInitGrantsReadOnlyPermissionsAndIndexOnlySkipsClientConfiguration() throws Exception {
+        createCompiledRepository("project");
+        Path project=workspace.resolve("project");
+        Captured result=execute("init","--project",project.toString());
+        assertEquals(CommandLine.ExitCode.OK,result.exitCode(),result.stderr());
+        assertTrue(ClaudeSettingsInstaller.areToolsAllowed(project,
+                org.treblereel.mcp.mcp.ReadOnlyToolNames.all()));
+        String settings=Files.readString(project.resolve(".claude/settings.local.json"));
+        assertFalse(settings.contains("Bash"));
+        assertFalse(settings.contains("mcp__quill__*"));
+        assertTrue(Files.readString(project.resolve(".codex/config.toml"))
+                .contains("default_tools_approval_mode = \"writes\""));
+        assertTrue(result.stdout().contains("/hooks"));
+        createCompiledRepository("index-only");
+        Path indexOnly=workspace.resolve("index-only");
+        assertEquals(CommandLine.ExitCode.OK,execute("init","--project",indexOnly.toString(),"--index-only").exitCode());
+        assertFalse(Files.exists(indexOnly.resolve(".claude")));
+        assertFalse(Files.exists(indexOnly.resolve(".codex")));
+    }
+
+    @Test
+    void defaultInitializationConfiguresWorkspaceAndRepositoryPermissionsReversibly() throws Exception {
         createCompiledRepository("engine");
-        Captured result = execute("workspace", "init", "--project", workspace.toString(),
-                "--allow-quill-tools");
+        Captured result = execute("workspace", "init", "--project", workspace.toString());
         assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
         for (Path target : java.util.List.of(workspace, workspace.resolve("engine"))) {
             assertTrue(ClaudeSettingsInstaller.areToolsAllowed(target,

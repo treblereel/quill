@@ -31,9 +31,32 @@ class CodexConfigInstallerTest {
         assertTrue(Files.isRegularFile(config));
         String content = Files.readString(config);
         assertTrue(content.contains("[mcp_servers.quill]"));
+        assertTrue(content.contains("enabled = true"));
+        assertTrue(content.contains("default_tools_approval_mode = \"writes\""));
         assertTrue(content.contains("args = [\"--mcp\"]"));
         assertTrue(content.contains(
                 "cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
+    }
+
+    @Test
+    void upgradesOwnedRegistrationWithoutChangingExplicitApprovalOrGlobalPolicy() throws Exception {
+        Path config=createConfig("approval_policy = \"on-request\"\n# Added by Quill.\n[mcp_servers.\"quill\"]\ncommand = \"quill\"\nargs = [\"--mcp\"]\n");
+        assertEquals(CodexConfigInstaller.Result.REPLACED,CodexConfigInstaller.installIfPresent(tempDir,null));
+        String upgraded=Files.readString(config);
+        assertTrue(upgraded.startsWith("approval_policy = \"on-request\""));
+        assertTrue(upgraded.contains("default_tools_approval_mode = \"writes\""));
+        assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,CodexConfigInstaller.installIfPresent(tempDir,null));
+        Files.writeString(config,upgraded.replace("\"writes\"","\"prompt\""));
+        String restricted=Files.readString(config);
+        assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,CodexConfigInstaller.installIfPresent(tempDir,null));
+        assertEquals(restricted,Files.readString(config));
+    }
+
+    @Test
+    void workspaceRegistrationPreservesExplicitApprovalMode() throws Exception {
+        Path config=createConfig("[mcp_servers.quill]\ncommand = \"quill\"\ndefault_tools_approval_mode = \"prompt\"\n");
+        CodexConfigInstaller.installWorkspaceIfPresent(tempDir,tempDir.resolve("workspace"),"/opt/quill");
+        assertTrue(Files.readString(config).contains("default_tools_approval_mode = \"prompt\""));
     }
 
     @Test
@@ -114,6 +137,7 @@ class CodexConfigInstallerTest {
                 # Added by Quill.
                 [mcp_servers.quill]
                 command = "%s"
+                default_tools_approval_mode = "prompt"
                 args = ["--mcp"]
                 cwd = "/old"
                 """.formatted(escaped(missing)));
@@ -124,6 +148,7 @@ class CodexConfigInstallerTest {
         String updated = Files.readString(config);
         assertTrue(updated.contains("command = \"" + escaped(replacement.toString()) + "\""));
         assertTrue(updated.contains("cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
+        assertTrue(updated.contains("default_tools_approval_mode = \"prompt\""));
     }
 
     @Test

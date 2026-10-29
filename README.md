@@ -243,21 +243,25 @@ for added and removed repositories, and `workspace clear` removes only entries m
 workspace. Use `workspace clear --repositories` when indexes and build integration should also be
 removed.
 
-Both `quill init` and `quill workspace init` offer one interactive consent question to
-let Claude use Quill's current read-only MCP tools without repeated tool-approval prompts.
-For scripts, pass `--allow-quill-tools` explicitly; without a terminal no permissions are
-granted automatically. Use `--no-allow-quill-tools` to skip the question (it does not revoke
-existing permissions). `--allow-quill-tools` cannot be combined with `--index-only`.
-Workspace consent covers the workspace root and its discovered JVM repositories.
+Both `quill init` and `quill workspace init` configure Claude's current read-only Quill
+tool permissions by default, including non-interactive runs. Use `--no-allow-quill-tools`
+to skip these grants (it does not revoke existing permissions); `--allow-quill-tools`
+remains an explicit equivalent of the default. `--index-only` never grants permissions
+and cannot be combined with explicit `--allow-quill-tools`.
+Workspace initialization covers the workspace root and its discovered JVM repositories.
 
-Consent adds concrete tool names derived from Quill's read-only contracts to each target's
+Initialization adds concrete tool names derived from Quill's read-only contracts to each target's
 `.claude/settings.local.json`, not global or shared permission settings. There is no wildcard
 grant for future tools. Existing rules, including `ask` and `deny`, are preserved and remain
-authoritative. New tools require renewed consent on a later `init`. Ownership is recorded in
+authoritative. Later `init` runs add newly available read-only tools. Ownership is recorded in
 `.claude/quill-permissions.json`; keep that local receipt with the settings, and do not commit
 it. `quill clean` / `workspace clear` remove only permissions Quill added, preserving pre-existing
 rules. Claude's workspace trust and MCP connection approval are separate client checks;
-this option does not bypass them or change Codex permissions.
+this option does not bypass them. Codex registrations created by Quill use
+`default_tools_approval_mode = "writes"`, allowing tools marked read-only without repeated
+approval while retaining prompts for other tools. Existing explicit server approval modes
+are preserved; user-owned project registrations are not overwritten. No global approval,
+shell permission, or sandbox setting is changed.
 
 Manage that choice later without re-indexing, rebuilding, or removing the MCP server:
 
@@ -278,7 +282,7 @@ quill client refresh --workspace /path/to/initialized/workspace
 ```
 
 Refresh preserves content outside Quill's managed instruction blocks, other MCP servers,
-and existing tool permissions. It never indexes, builds, grants tool permissions, or changes
+and existing Claude tool permissions. It never indexes, builds, grants Claude tool permissions, or changes
 global Codex trust. Workspace refresh uses the recorded configured repositories, not discovery.
 Malformed managed markers, unsupported configuration, and symlinked targets require repair
 before refresh. Unmarked legacy instructions are preserved, not silently deleted.
@@ -647,6 +651,8 @@ Alternatively, add a project-scoped entry to `.codex/config.toml`:
 
 ```toml
 [mcp_servers.quill]
+enabled = true
+default_tools_approval_mode = "writes"
 command = "/absolute/path/to/quill"
 args = ["--mcp"]
 cwd = "/absolute/path/to/project"

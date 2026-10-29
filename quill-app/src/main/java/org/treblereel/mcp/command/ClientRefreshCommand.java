@@ -18,7 +18,7 @@ import picocli.CommandLine.Spec;
 
 /** Updates client integration independently of build outputs and index generations. */
 @Command(name = "refresh", mixinStandardHelpOptions = true,
-        description = "Refresh managed instructions and local MCP registration; no index, build, or permission grants")
+        description = "Refresh managed instructions and local MCP registration; no index, build, or Claude tool grants")
 public final class ClientRefreshCommand implements Callable<Integer> {
     private static final ObjectMapper JSON = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
@@ -61,7 +61,7 @@ public final class ClientRefreshCommand implements Callable<Integer> {
                 spec.commandLine().getOut().println(target + ": instructions=" + (current ? "current" : "failed")
                         + ", claude=" + claude + ", mcp=" + mcp + ", codex=" + codex);
             }
-            spec.commandLine().getOut().println("No indexing, builds, tool permission grants, or global trust changes. "
+            spec.commandLine().getOut().println("No indexing, builds, Claude tool permission grants, or global trust changes. "
                     + "Start a fresh client session; live tool activation was not checked.");
             spec.commandLine().getOut().flush();
             return successful ? CommandLine.ExitCode.OK : CommandLine.ExitCode.SOFTWARE;

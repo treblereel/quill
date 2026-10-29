@@ -1013,9 +1013,18 @@ The build produces a thin library JAR and a runnable shaded `-all.jar` for devel
 and diagnostics. Keeping them separate makes repeated Maven builds reproducible and
 avoids shading an already shaded artifact. Quill releases are distributed as native
 executables, so end-user MCP configuration should point to `quill` or `quill.exe`.
-The independently versioned Maven build extension is verified with
-`./mvnw -f quill-maven-extension/pom.xml verify`; it is intentionally outside the
-Quill reactor so only that artifact can be published to Maven Central.
+The independently versioned Maven build extension is intentionally outside the Quill
+reactor. This development branch uses the unpublished `0.1.6-SNAPSHOT`; install it locally
+before the first Quill build (also before using this native candidate on another machine):
+
+```bash
+mvn -Dmaven.multiModuleProjectDirectory="$PWD/quill-maven-extension" -f quill-maven-extension/pom.xml install
+```
+
+The explicit multi-module directory bootstraps the standalone extension without loading
+the repository's `.mvn/extensions.xml`, which already requests the new version.
+Use `verify` instead of `install` for subsequent isolated extension checks. Publishing
+that artifact to Maven Central is a separate release action.
 
 ### Native executable
 

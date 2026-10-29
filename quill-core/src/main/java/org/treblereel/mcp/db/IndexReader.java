@@ -1057,7 +1057,6 @@ public final class IndexReader {
                 if (filter.containsKey("class_name")) sb.append(" AND c.class_name LIKE :className");
                 if (filter.containsKey("scope")) sb.append(" AND b.scope = :scope");
                 if (filter.containsKey("kind")) sb.append(" AND b.kind = :kind");
-                if (filter.containsKey("qualifier")) sb.append(" AND b.qualifiers LIKE :qualifier");
                 if (filter.containsKey("module")) {
                     sb.append(" AND (EXISTS (SELECT 1 FROM class_occurrences co "
                             + "WHERE co.class_id = c.id AND co.module = :module) OR "
@@ -1077,7 +1076,6 @@ public final class IndexReader {
                 if (filter.containsKey("class_name")) q.bind("className", filter.get("class_name").replace("*", "%"));
                 if (filter.containsKey("scope")) q.bind("scope", filter.get("scope"));
                 if (filter.containsKey("kind")) q.bind("kind", filter.get("kind"));
-                if (filter.containsKey("qualifier")) q.bind("qualifier", "%" + filter.get("qualifier") + "%");
                 if (filter.containsKey("module")) q.bind("module", filter.get("module"));
                 if (filter.containsKey("source_set")) q.bind("sourceSet", filter.get("source_set"));
             }
@@ -1091,7 +1089,8 @@ public final class IndexReader {
                         .toList();
             }
 
-            return results;
+            return filter != null && filter.containsKey("qualifier") ? results.stream()
+                    .filter(b -> matchesQualifier(b.qualifiers(), filter.get("qualifier"))).toList() : results;
         });
     }
 
@@ -1103,8 +1102,6 @@ public final class IndexReader {
                 if (filter.containsKey("class_name")) sql.append(" AND class_name LIKE :className");
                 if (filter.containsKey("scope")) sql.append(" AND scope = :scope");
                 if (filter.containsKey("kind")) sql.append(" AND kind = :kind");
-                if (filter.containsKey("profile")) sql.append(" AND profiles LIKE :profile");
-                if (filter.containsKey("qualifier")) sql.append(" AND qualifiers LIKE :qualifier");
             }
             sql.append(" ORDER BY class_name, framework, kind, member_name");
             var query = h.createQuery(sql.toString());
@@ -1117,14 +1114,8 @@ public final class IndexReader {
                 }
                 if (filter.containsKey("scope")) query.bind("scope", filter.get("scope"));
                 if (filter.containsKey("kind")) query.bind("kind", filter.get("kind"));
-                if (filter.containsKey("profile")) {
-                    query.bind("profile", "%\"" + filter.get("profile") + "\"%");
-                }
-                if (filter.containsKey("qualifier")) {
-                    query.bind("qualifier", "%" + filter.get("qualifier") + "%");
-                }
             }
-            return query.map((rs, ctx) -> new ExternalBeanRecord(
+            var beans = query.map((rs, ctx) -> new ExternalBeanRecord(
                     rs.getInt("id"), rs.getString("class_name"), rs.getString("kind"),
                     rs.getString("scope"), fromJson(rs.getString("qualifiers")),
                     fromJson(rs.getString("stereotypes")),
@@ -1134,13 +1125,39 @@ public final class IndexReader {
                     fromJson(rs.getString("bean_types")), rs.getString("framework"),
                     rs.getString("artifact"), rs.getString("jar_path"),
                     externalInjectionsFromJson(rs.getString("injection_points")))).list();
+            return beans.stream()
+                    .filter(b -> filter == null || !filter.containsKey("profile") || matchesProfile(b.profiles(), filter.get("profile")))
+                    .filter(b -> filter == null || !filter.containsKey("qualifier") || matchesQualifier(b.qualifiers(), filter.get("qualifier"))).toList();
         });
     }
 
     static boolean matchesProfile(List<String> beanProfiles, String requestedProfile) {
-        if (beanProfiles == null || beanProfiles.isEmpty()) return false;
+        if (beanProfiles == null || beanProfiles.isEmpty()) return true;
+        boolean restricted = false;
+        boolean included = false;
         for (String p : beanProfiles) {
-            if (p.equals(requestedProfile)) return true;
+            if (p.startsWith("+")) {
+                if (!p.substring(1).equals(requestedProfile)) return false;
+            } else if (p.startsWith("!")) {
+                if (p.substring(1).equals(requestedProfile)) return false;
+            } else {
+                restricted = true;
+                included |= p.equals(requestedProfile);
+            }
+        }
+        return !restricted || included;
+    }
+
+    static boolean matchesQualifier(List<String> available, String requested) {
+        if (available == null || requested == null) return false;
+        String selector = requested.startsWith("@") ? requested.substring(1) : requested;
+        for (String value : available) {
+            String actual = value.startsWith("@") ? value.substring(1) : value;
+            int end = actual.indexOf('(');
+            String name = end < 0 ? actual : actual.substring(0,end);
+            String simple = name.substring(name.lastIndexOf('.') + 1);
+            if (selector.equals(actual) || selector.equals(name) || selector.equals(simple)
+                    || end >= 0 && selector.equals(simple + actual.substring(end))) return true;
         }
         return false;
     }

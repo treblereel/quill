@@ -27,6 +27,7 @@ class JavaCompilerCaptureTest {
         server.setScope("test");assertFalse(JavaCompilerCapture.quarkusRest(project));
         server.setScope("compile");server.setArtifactId("quarkus-rest-client");assertFalse(JavaCompilerCapture.quarkusRest(project));
         server.setArtifactId("quarkus-resteasy");assertFalse(JavaCompilerCapture.quarkusRest(project));
+        server.setArtifactId("quarkus-arc");assertTrue(JavaCompilerCapture.quarkus(project, java.util.Set.of("quarkus-arc")));
         server.setArtifactId("quarkus-rest");build.getPlugins().clear();assertFalse(JavaCompilerCapture.quarkusRest(project));
     }
 

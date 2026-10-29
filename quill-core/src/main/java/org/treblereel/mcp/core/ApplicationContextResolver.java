@@ -72,11 +72,13 @@ public final class ApplicationContextResolver {
         boolean spring = InjectionPointRecord.STATIC_SPRING.equals(point.resolutionStrategy());
         List<BeanRecord> candidates = beans.stream()
                 .filter(bean -> spring || BeanResolver.injectionCandidate(bean))
-                .filter(bean -> bean.beanTypes() != null && bean.beanTypes().contains(point.targetType()))
+                .filter(bean -> BeanResolver.hasBeanType(bean, point.targetType()))
                 .filter(bean -> modulesByClass.getOrDefault(bean.classId(), Set.of()).stream()
                         .anyMatch(visibleModules::contains))
                 .filter(bean -> qualifiersMatch(point.qualifiers(), bean.qualifiers(), spring))
                 .toList();
+        if (!spring && candidates.stream().anyMatch(b -> b.profiles() != null && !b.profiles().isEmpty()))
+            return BeanResolver.profileContext(point);
         Set<Integer> defaultSuppressed = new LinkedHashSet<>();
         if (spring) {
             List<BeanRecord> primaries = candidates.stream().filter(BeanRecord::isAlternative).toList();
@@ -114,7 +116,7 @@ public final class ApplicationContextResolver {
         Set<Integer> eligible = candidates.stream().map(BeanRecord::id)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         List<ResolutionCandidate> traceCandidates = beans.stream()
-                .filter(bean -> bean.beanTypes() != null && bean.beanTypes().contains(point.targetType()))
+                .filter(bean -> BeanResolver.hasBeanType(bean, point.targetType()))
                 .map(bean -> new ResolutionCandidate(bean.id(), className(classesById, bean.classId()),
                         java.util.Objects.equals(bean.id(), selected) ? CandidateDisposition.SELECTED
                                 : eligible.contains(bean.id()) ? CandidateDisposition.ELIGIBLE

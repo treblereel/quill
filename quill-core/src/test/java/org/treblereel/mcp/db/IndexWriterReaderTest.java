@@ -752,9 +752,24 @@ class IndexWriterReaderTest {
         assertTrue(IndexReader.matchesProfile(List.of("dev", "local"), "dev"));
     }
 
+    @Test void qualifierSelectorsMatchQualifiedIdentityWithoutPrefixCollisions() {
+        assertTrue(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "@Flavor"));
+        assertTrue(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "@demo.Flavor"));
+        assertFalse(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "@other.Flavor"));
+        assertFalse(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "@Flav"));
+        assertTrue(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "Flavor(value=red)"));
+        assertFalse(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "Flavor(value=blue)"));
+    }
+
     @Test
     void profileFilterRejectsNegation() {
         assertFalse(IndexReader.matchesProfile(List.of("!dev"), "dev"));
+        assertTrue(IndexReader.matchesProfile(List.of("!dev"), "prod"));
+        assertFalse(IndexReader.matchesProfile(List.of("+dev", "+prod"), "prod"));
+        assertTrue(IndexReader.matchesProfile(List.of("+prod", "!dev"), "prod"));
+        assertFalse(IndexReader.matchesProfile(List.of("prod", "!prod"), "prod"));
+        assertTrue(IndexReader.matchesProfile(List.of("prod", "!dev"), "prod"));
+        assertFalse(IndexReader.matchesProfile(List.of("prod", "!dev"), "test"));
     }
 
     @Test
@@ -764,8 +779,8 @@ class IndexWriterReaderTest {
 
     @Test
     void profileFilterNullOrEmptyProfiles() {
-        assertFalse(IndexReader.matchesProfile(null, "dev"));
-        assertFalse(IndexReader.matchesProfile(List.of(), "dev"));
+        assertTrue(IndexReader.matchesProfile(null, "dev"));
+        assertTrue(IndexReader.matchesProfile(List.of(), "dev"));
     }
 
     @Test
@@ -776,7 +791,9 @@ class IndexWriterReaderTest {
             new ClassRecord(0, "org.acme.NotDevService", "CLASS", "java.lang.Object",
                     List.of(), "NotDevService.java", 1, true, 100),
             new ClassRecord(0, "org.acme.DevStagingService", "CLASS", "java.lang.Object",
-                    List.of(), "DevStagingService.java", 1, true, 100)
+                    List.of(), "DevStagingService.java", 1, true, 100),
+            new ClassRecord(0, "org.acme.UnconditionalService", "CLASS", "java.lang.Object",
+                    List.of(), "UnconditionalService.java", 1, true, 100)
         );
         var beans = List.of(
             new BeanRecord(0, 1, "CLASS", "@Singleton", List.of("@Default"),
@@ -784,13 +801,16 @@ class IndexWriterReaderTest {
             new BeanRecord(0, 2, "CLASS", "@Singleton", List.of("@Default"),
                     List.of(), false, null, List.of("!dev"), null, null, List.of()),
             new BeanRecord(0, 3, "CLASS", "@Singleton", List.of("@Default"),
-                    List.of(), false, null, List.of("dev-staging"), null, null, List.of())
+                    List.of(), false, null, List.of("dev-staging"), null, null, List.of()),
+            new BeanRecord(0, 4, "CLASS", "@Singleton", List.of("@Default"),
+                    List.of(), false, null, null, null, null, List.of())
         );
         IndexWriter.write(jdbi, classes, beans, List.of(), List.of(), Map.of());
 
         var result = IndexReader.findBeans(jdbi, Map.of("profile", "dev"));
-        assertEquals(1, result.size(), "Only exact 'dev' profile should match, not '!dev' or 'dev-staging'");
-        assertEquals(1, result.getFirst().classId());
+        assertEquals(Set.of(1, 4), result.stream().map(BeanRecord::classId).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(Set.of(2, 4), IndexReader.findBeans(jdbi, Map.of("profile", "prod")).stream()
+                .map(BeanRecord::classId).collect(java.util.stream.Collectors.toSet()));
     }
     @Test void kotlinSourceDebugRoundTripsAndRemovesStaleEvidence() {
         var db = QuillDatabase.create(tempDir.resolve("source-debug.db"));

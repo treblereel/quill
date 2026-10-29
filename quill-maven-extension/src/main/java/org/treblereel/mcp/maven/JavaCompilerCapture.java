@@ -29,6 +29,7 @@ final class JavaCompilerCapture {
         values.setProperty("compilerPluginVersion", mojo.getVersion());
         values.setProperty("evidence", "successful_mojo");
         values.setProperty("quarkusRest", Boolean.toString(quarkusRest(project)));
+        values.setProperty("quarkusArc", Boolean.toString(quarkus(project, Set.of("quarkus-arc"))));
         Path module = project.getBasedir().toPath().toAbsolutePath().normalize();
         String executable = value(config, "executable");
         Toolchain toolchain = null;
@@ -77,13 +78,17 @@ final class JavaCompilerCapture {
     }
 
     static boolean quarkusRest(org.apache.maven.project.MavenProject project) {
+        return quarkus(project, Set.of("quarkus-rest", "quarkus-resteasy-reactive"));
+    }
+
+    static boolean quarkus(org.apache.maven.project.MavenProject project, Set<String> artifacts) {
         boolean plugin = project.getBuildPlugins().stream().anyMatch(p ->
                 "quarkus-maven-plugin".equals(p.getArtifactId())
                         && Set.of("io.quarkus", "io.quarkus.platform").contains(p.getGroupId())
                         && (p.isExtensions() || p.getExecutions().stream().anyMatch(e ->
                                 e.getGoals().contains("build") || e.getGoals().contains("generate-code"))));
         return plugin && project.getArtifacts().stream().anyMatch(a -> "io.quarkus".equals(a.getGroupId())
-                && Set.of("quarkus-rest", "quarkus-resteasy-reactive").contains(a.getArtifactId())
+                && artifacts.contains(a.getArtifactId())
                 && !"test".equals(a.getScope()));
     }
 

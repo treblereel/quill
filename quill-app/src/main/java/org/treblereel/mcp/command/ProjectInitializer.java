@@ -244,12 +244,16 @@ public class ProjectInitializer {
     static Map<String, String> quarkusRestScopes(Path root, List<Path> modules, BuildSystem buildSystem,
             IndexView lookup, List<ClassOccurrenceRecord> occurrences) {
         Set<Path> confirmed = new HashSet<>();
+        Set<Path> arc = new HashSet<>();
         for (var capture : JavaCompilerSettings.inspect(modules, buildSystem)) {
             if ("main".equals(capture.path("source_set").asText())
                     && capture.path("compiled_settings_confirmed").asBoolean()
                     && "true".equals(capture.path("settings").path("quarkusRest").asText())) {
                 confirmed.add(Path.of(capture.path("module").asText()).toAbsolutePath().normalize());
             }
+            if ("main".equals(capture.path("source_set").asText()) && capture.path("compiled_settings_confirmed").asBoolean()
+                    && "true".equals(capture.path("settings").path("quarkusArc").asText()))
+                arc.add(Path.of(capture.path("module").asText()).toAbsolutePath().normalize());
         }
         Map<String, Set<Path>> owners = new HashMap<>();
         for (var occurrence : occurrences) {
@@ -261,7 +265,14 @@ public class ProjectInitializer {
         owners.forEach((name, directories) -> {
             if (!directories.isEmpty() && confirmed.containsAll(directories)) eligible.add(name);
         });
-        return org.treblereel.mcp.core.QuarkusRestDiscovery.scopes(lookup, eligible);
+        Map<String,String> scopes = new HashMap<>(org.treblereel.mcp.core.QuarkusRestDiscovery.scopes(lookup, eligible));
+        arc.addAll(confirmed);
+        for (var c : lookup.getKnownClasses()) {
+            Set<Path> directories = owners.getOrDefault(c.name().toString(), Set.of());
+            if (!directories.isEmpty() && arc.containsAll(directories) && BeanResolver.quarkusProducerClass(c, lookup))
+                scopes.putIfAbsent(c.name().toString(), "@Dependent");
+        }
+        return Map.copyOf(scopes);
     }
 
     static boolean initializeLocked(Path root, boolean indexOnly) {
@@ -721,7 +732,7 @@ public class ProjectInitializer {
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
         metadata.put("method_calls", Integer.toString(methodCalls.size()));
         metadata.put("invokedynamic_evidence_protocol", "2");
-        metadata.put("quarkus_rest_discovery_protocol", "1");
+        metadata.put("quarkus_rest_discovery_protocol", "2");
         metadata.put("field_accesses", Integer.toString(fieldAccesses.size()));
         metadata.put("framework_endpoints", Integer.toString(frameworkEndpoints.size()));
         metadata.put("configuration_definitions",

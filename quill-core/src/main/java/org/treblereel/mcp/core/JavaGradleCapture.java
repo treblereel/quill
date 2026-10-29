@@ -30,6 +30,8 @@ public final class JavaGradleCapture {
                             artifact.moduleVersion.id.group == 'io.quarkus' && artifact.name in ['quarkus-rest', 'quarkus-resteasy-reactive']
                         }
                         values.setProperty('quarkusRest', Boolean.toString(rest == true))
+                        def arc = project.plugins.hasPlugin('io.quarkus') && project.configurations.findByName('compileClasspath')?.resolvedConfiguration?.resolvedArtifacts?.any { artifact -> artifact.moduleVersion.id.group == 'io.quarkus' && artifact.name == 'quarkus-arc' }
+                        values.setProperty('quarkusArc', Boolean.toString(arc == true))
                         values.setProperty('compilerId', 'javac')
                         def release = options.release.orNull
                         if (release != null) values.setProperty('release', release.toString())

@@ -774,6 +774,39 @@ class McpToolCatalogTest {
         }
     }
 
+    @Test
+    void nativeGraphSerializationPoolsOnlyGraphResultsAndRoutedGraphs() throws Exception {
+        var catalog = McpToolCatalog.create(new GraphTools(), GraphTools.class, workers, responses,
+                Duration.ofSeconds(2));
+        for (var specification : catalog) {
+            String name = specification.tool().name();
+            var arguments = "execute_tool".equals(name)
+                    ? Map.<String,Object>of("name", "get_call_hierarchy") : Map.<String,Object>of();
+            var result = specification.callHandler().apply(null,
+                    new McpSchema.CallToolRequest(name, arguments, Map.of())).block(Duration.ofSeconds(3));
+            JsonNode data = (JsonNode) result.structuredContent();
+            assertFalse(Boolean.TRUE.equals(result.isError()));
+            if ("other_query".equals(name)) assertEquals(GraphMetadataTest.graph(), data);
+            else {
+                assertTrue(data.has("shared_metadata"));
+                assertEquals("get_context".equals(name) ? new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().set("context",GraphMetadataTest.graph()) : GraphMetadataTest.graph(), GraphMetadataTest.expand(data.toString()));
+            }
+        }
+    }
+
+    static final class GraphTools {
+        @Tool(description = "Graph", structured = true)
+        public String get_call_hierarchy() { return GraphMetadataTest.graph().toString(); }
+        @Tool(description = "Composed context", structured = true)
+        public String get_context() { return new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().set("context",GraphMetadataTest.graph()).toString(); }
+        @Tool(description = "Other", structured = true)
+        public String other_query() { return GraphMetadataTest.graph().toString(); }
+        @Tool(description = "Router", structured = true)
+        public String execute_tool(@ToolArg(description = "Tool name") String name) {
+            return GraphMetadataTest.graph().toString();
+        }
+    }
+
     static final class StructuredTools {
         @Tool(description = "Returns structured data", structured = true)
         public String structured(@ToolArg(description = "Required target") String target) {

@@ -192,7 +192,11 @@ final class McpToolCatalog {
             Invocation invocation = invokeMethod(tools, method, arguments);
             trace.event("tool_result", Map.of(
                     "tool", method.getName(), "is_error", invocation.error()));
-            return result(invocation.text(), invocation.error(), structured);
+            String text = invocation.text();
+            if (!invocation.error() && (graphOutput(method.getName()) || graphOutput(routedTool(method, arguments)))) {
+                text = GraphMetadata.compact(text);
+            }
+            return result(text, invocation.error(), structured);
         } catch (RuntimeException e) {
             trace.failure(e);
             return result("Tool failed: " + ProjectRegistry.safeMessage(e), true, structured);
@@ -200,6 +204,8 @@ final class McpToolCatalog {
             trace.close();
         }
     }
+
+    private static boolean graphOutput(String name) {return name != null && java.util.Set.of("get_call_hierarchy", "get_context", "analyze_execution_order").contains(name);}
 
     static Invocation invokeMethod(
             Object tools, Method method, Map<String, Object> arguments) {

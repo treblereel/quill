@@ -241,6 +241,29 @@ public class ProjectInitializer {
         }
     }
 
+    static Map<String, String> quarkusRestScopes(Path root, List<Path> modules, BuildSystem buildSystem,
+            IndexView lookup, List<ClassOccurrenceRecord> occurrences) {
+        Set<Path> confirmed = new HashSet<>();
+        for (var capture : JavaCompilerSettings.inspect(modules, buildSystem)) {
+            if ("main".equals(capture.path("source_set").asText())
+                    && capture.path("compiled_settings_confirmed").asBoolean()
+                    && "true".equals(capture.path("settings").path("quarkusRest").asText())) {
+                confirmed.add(Path.of(capture.path("module").asText()).toAbsolutePath().normalize());
+            }
+        }
+        Map<String, Set<Path>> owners = new HashMap<>();
+        for (var occurrence : occurrences) {
+            if (!"main".equals(occurrence.sourceSet())) continue;
+            owners.computeIfAbsent(occurrence.className(), ignored -> new HashSet<>())
+                    .add(root.resolve(occurrence.module()).toAbsolutePath().normalize());
+        }
+        Set<String> eligible = new HashSet<>();
+        owners.forEach((name, directories) -> {
+            if (!directories.isEmpty() && confirmed.containsAll(directories)) eligible.add(name);
+        });
+        return org.treblereel.mcp.core.QuarkusRestDiscovery.scopes(lookup, eligible);
+    }
+
     static boolean initializeLocked(Path root, boolean indexOnly) {
         return initializeLockedDetailed(root, indexOnly, false, null, System.nanoTime(),
                 new PhaseTimings()).successful();
@@ -410,7 +433,8 @@ public class ProjectInitializer {
             resolutions.add(SpringResolver.resolve(scanResult.index(), depResult.index()));
         }
         if (isCdi || !isSpring) {
-            resolutions.add(BeanResolver.resolve(scanResult.index(), depResult.index()));
+            resolutions.add(BeanResolver.resolve(scanResult.index(), depResult.index(),
+                    quarkusRestScopes(root, moduleDirectories, buildSystem, annotationLookup, classOccurrences)));
         }
 
         List<PersistedResolution> persistedParts = new ArrayList<>();
@@ -697,6 +721,7 @@ public class ProjectInitializer {
         metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
         metadata.put("method_calls", Integer.toString(methodCalls.size()));
         metadata.put("invokedynamic_evidence_protocol", "2");
+        metadata.put("quarkus_rest_discovery_protocol", "1");
         metadata.put("field_accesses", Integer.toString(fieldAccesses.size()));
         metadata.put("framework_endpoints", Integer.toString(frameworkEndpoints.size()));
         metadata.put("configuration_definitions",

@@ -61,6 +61,11 @@ public final class BeanResolver {
     }
 
     public static ResolutionResult resolve(IndexView applicationIndex, IndexView dependencyIndex) {
+        return resolve(applicationIndex, dependencyIndex, Map.of());
+    }
+
+    public static ResolutionResult resolve(IndexView applicationIndex, IndexView dependencyIndex,
+            Map<String, String> frameworkScopes) {
         IndexView lookup = dependencyIndex == null ? applicationIndex
                 : CompositeIndex.create(applicationIndex, dependencyIndex);
         List<BeanRecord> beans = new ArrayList<>();
@@ -73,11 +78,13 @@ public final class BeanResolver {
                 .sorted(Comparator.comparing(c -> c.name().toString())).toList();
         int nextBean = 1;
         for (ClassInfo c : classes) {
-            if (!isBeanClass(c, lookup)) continue;
+            boolean declared = isBeanClass(c, lookup);
+            String frameworkScope = frameworkScopes.get(c.name().toString());
+            if (!declared && (frameworkScope == null || !frameworkBeanClass(c))) continue;
             int classId = classIds.computeIfAbsent(c.name().toString(), x -> classIds.size() + 1);
             int ownerId = nextBean++;
             classBeanIds.put(c.name(), ownerId);
-            beans.add(new BeanRecord(ownerId, classId, beanKind(c), scope(c.declaredAnnotations(), lookup),
+            beans.add(new BeanRecord(ownerId, classId, beanKind(c), declared ? scope(c.declaredAnnotations(), lookup) : inheritedScope(c, lookup, frameworkScope),
                     qualifiers(c.declaredAnnotations(), lookup, true), stereotypes(c, lookup),
                     hasMeta(c.declaredAnnotations(), ALTERNATIVE, lookup),
                     hasAnnotation(c.declaredAnnotations(), DEFAULT_BEAN),
@@ -111,7 +118,7 @@ public final class BeanResolver {
             if (ownerId == null) continue;
             for (FieldInfo f : c.fields())
                 if (f.hasAnnotation(INJECT)) {
-                    ips.add(ip(nextIp++, ownerId, "FIELD", f.type(), qualifiers(f.annotations(), lookup, false), f.name()));
+                    ips.add(ip(nextIp++, ownerId, "FIELD", f.type(), qualifiers(f.annotations(), lookup, false), f.name(), f.hasAnnotation(n("jakarta.decorator.Delegate"))));
                 }
             for (MethodInfo m : c.methods()) {
                 boolean injected = methodHas(m, INJECT), producer = methodHas(m, PRODUCES);
@@ -120,7 +127,8 @@ public final class BeanResolver {
                 String kind = "<init>".equals(m.name()) ? "CONSTRUCTOR_PARAM" : "METHOD_PARAM";
                 for (int p = 0; p < m.parametersCount(); p++)
                     ips.add(ip(nextIp++, parameterOwner, kind, m.parameterType(p),
-                            qualifiers(parameterAnnotations(m, p), lookup, false), m.name()));
+                            qualifiers(parameterAnnotations(m, p), lookup, false), m.name(),
+                            parameterAnnotations(m, p).stream().anyMatch(a -> a.name().equals(n("jakarta.decorator.Delegate")))));
             }
         }
         Map<Integer, Integer> specializedBeans = specializedBeans(classes, classBeanIds);
@@ -132,13 +140,30 @@ public final class BeanResolver {
         return new ResolutionResult(beans, ips, deps, classIds, List.of());
     }
 
-    private static InjectionPointRecord ip(int id, int owner, String kind, Type type, List<String> qs, String member) {
+    private static InjectionPointRecord ip(int id, int owner, String kind, Type type, List<String> qs, String member, boolean delegate) {
+        if (delegate) return new InjectionPointRecord(id, owner, kind, typeName(type), qs, member,
+                null, ResolutionStatus.UNSUPPORTED_MECHANISM, InjectionPointRecord.STATIC_CDI,
+                "DECORATOR_DELEGATE_CHAIN", ResolutionConfidence.LOW,
+                List.of("Delegate injection follows the enabled decorator chain, not ordinary bean selection."),
+                new ResolutionTrace(List.of(), List.of(), List.of("DECORATOR_DELEGATE_CHAIN")));
         return InjectionPointRecord.staticAnalysis(id, owner, kind, typeName(type), qs,
                 member, null, false, InjectionPointRecord.STATIC_CDI);
     }
 
+    static boolean frameworkBeanClass(ClassInfo c) {
+        return !c.isAnnotation() && !c.isInterface() && !Modifier.isAbstract(c.flags())
+                && (c.enclosingClass() == null || Modifier.isStatic(c.flags())) && c.enclosingMethod() == null
+                && !c.hasDeclaredAnnotation(n("jakarta.enterprise.inject.Vetoed"));
+    }
+
+    static boolean vetoed(ClassInfo c, IndexView index) {
+        ClassInfo pkg = index.getClassByName(n(c.name().packagePrefix() + ".package-info"));
+        return c.hasDeclaredAnnotation(n("jakarta.enterprise.inject.Vetoed"))
+                || pkg != null && pkg.hasDeclaredAnnotation(n("jakarta.enterprise.inject.Vetoed"));
+    }
+
     private static boolean isBeanClass(ClassInfo c, IndexView index) {
-        if (c.isAnnotation() || c.isInterface() || Modifier.isAbstract(c.flags())) return false;
+        if (c.isAnnotation() || c.isInterface() || Modifier.isAbstract(c.flags()) && !c.hasDeclaredAnnotation(DECORATOR) || vetoed(c, index)) return false;
         return hasScope(c.declaredAnnotations(), index) || hasMeta(c.declaredAnnotations(), STEREOTYPE, index)
                 || c.hasDeclaredAnnotation(INTERCEPTOR) || c.hasDeclaredAnnotation(DECORATOR);
     }
@@ -175,6 +200,22 @@ public final class BeanResolver {
             }
         }
         return "@Dependent";
+    }
+
+    private static String inheritedScope(ClassInfo c, IndexView index, String fallback) {
+        Set<DotName> seen = new HashSet<>();
+        while (c.superName() != null && seen.add(c.name())) {
+            c = index.getClassByName(c.superName());
+            if (c == null) break;
+            if (hasScope(c.declaredAnnotations(), index)) {
+                var inherited = c.declaredAnnotations().stream().filter(a -> {
+                    ClassInfo annotation = index.getClassByName(a.name());
+                    return annotation != null && annotation.hasDeclaredAnnotation(n("java.lang.annotation.Inherited"));
+                }).toList();
+                return hasScope(inherited, index) ? scope(inherited, index) : fallback;
+            }
+        }
+        return fallback;
     }
 
     private static List<String> stereotypes(ClassInfo c, IndexView index) {
@@ -297,6 +338,7 @@ public final class BeanResolver {
         }
         for (int i = 0; i < ips.size(); i++) {
             var ip = ips.get(i);
+            if (ip.resolutionStatus() == ResolutionStatus.UNSUPPORTED_MECHANISM) continue;
             if (ip.resolvedBeanId() != null
                     || ip.resolutionStatus() == ResolutionStatus.AMBIGUOUS) continue;
             var candidates = byType.getOrDefault(ip.targetType(), List.of());
@@ -316,14 +358,23 @@ public final class BeanResolver {
     private record Selection(BeanRecord bean, boolean ambiguous, ResolutionTrace trace) {
     }
 
+    static boolean injectionCandidate(BeanRecord bean) {
+        return !"DECORATOR".equals(bean.kind()) && !"INTERCEPTOR".equals(bean.kind());
+    }
+
     private static Selection select(List<BeanRecord> candidates, List<String> requiredQualifiers,
             Map<Integer, Integer> specializedBeans, Map<Integer, String> classNames) {
         List<String> appliedRules = new ArrayList<>(List.of(
                 "TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING", "SPECIALIZATION",
-                "DEFAULT_BEAN_FALLBACK", "ALTERNATIVE_PRIORITY"));
+                "DEFAULT_BEAN_FALLBACK", "ALTERNATIVE_PRIORITY", "CDI_BEAN_KIND"));
         Map<Integer, ResolutionCandidate> evidence = new LinkedHashMap<>();
         List<BeanRecord> qualified = new ArrayList<>();
         for (BeanRecord candidate : candidates) {
+            if (!injectionCandidate(candidate)) {
+                evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
+                        CandidateDisposition.EXCLUDED, "NOT_INJECTION_BEAN", List.of("CDI_BEAN_KIND")));
+                continue;
+            }
             if (qualifiersMatch(requiredQualifiers, candidate.qualifiers())) {
                 qualified.add(candidate);
                 evidence.put(candidate.id(), candidateEvidence(candidate, classNames,

@@ -12,7 +12,7 @@ import org.treblereel.mcp.core.BuildSystem;
 public final class JavaCompilerSettings {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final List<String> FIELDS = List.of("buildTool", "sourceSet", "execution", "evidence", "compilerId",
-            "compilerSettingsProtocol", "producerVersion", "compilerPluginVersion", "source", "target", "release", "enablePreview", "fork", "proc", "parameters",
+            "compilerSettingsProtocol", "quarkusRest", "producerVersion", "compilerPluginVersion", "source", "target", "release", "enablePreview", "fork", "proc", "parameters",
             "encoding", "useModulePath", "modulePathEvidence", "processorPathEvidence", "jdkSelection", "jdkHome",
             "jdkVersion", "jdkVendor", "compilerExecutable", "requestedJdkVersion", "generatedSourcesDirectory", "legacyCompilerArgument");
     private static final List<String> LISTS = List.of("argument", "processor", "processorArtifact", "processorPath", "sourceRoot", "compileClasspath", "activeProfile");

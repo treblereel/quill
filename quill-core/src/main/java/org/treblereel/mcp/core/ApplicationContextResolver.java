@@ -40,6 +40,10 @@ public final class ApplicationContextResolver {
 
         List<InjectionPointRecord> result = new ArrayList<>(injectionPoints.size());
         for (InjectionPointRecord point : injectionPoints) {
+            if (point.resolutionStatus() == ResolutionStatus.UNSUPPORTED_MECHANISM) {
+                result.add(point);
+                continue;
+            }
             BeanRecord owner = beansById.get(point.beanId());
             Set<String> ownerModules = owner == null ? Set.of()
                     : modulesByClass.getOrDefault(owner.classId(), Set.of());
@@ -67,6 +71,7 @@ public final class ApplicationContextResolver {
             Set<String> visibleModules, String context) {
         boolean spring = InjectionPointRecord.STATIC_SPRING.equals(point.resolutionStrategy());
         List<BeanRecord> candidates = beans.stream()
+                .filter(bean -> spring || BeanResolver.injectionCandidate(bean))
                 .filter(bean -> bean.beanTypes() != null && bean.beanTypes().contains(point.targetType()))
                 .filter(bean -> modulesByClass.getOrDefault(bean.classId(), Set.of()).stream()
                         .anyMatch(visibleModules::contains))
@@ -116,6 +121,7 @@ public final class ApplicationContextResolver {
                                 : CandidateDisposition.EXCLUDED,
                         java.util.Objects.equals(bean.id(), selected) ? "UNIQUE_CONTEXT_CANDIDATE"
                                 : eligible.contains(bean.id()) ? "CONTEXT_CANDIDATE"
+                                : !spring && !BeanResolver.injectionCandidate(bean) ? "NOT_INJECTION_BEAN"
                                 : defaultSuppressed.contains(bean.id())
                                         ? "DEFAULT_BEAN_SUPPRESSED"
                                 : visible(visibleModules, modulesByClass.get(bean.classId()))
@@ -123,6 +129,7 @@ public final class ApplicationContextResolver {
                         List.of("APPLICATION_MODULE_CLASSPATH")))
                 .toList();
         List<String> rules = new ArrayList<>(point.resolutionTrace().appliedRules());
+        if (!spring && !rules.contains("CDI_BEAN_KIND")) rules.add("CDI_BEAN_KIND");
         if (!rules.contains("APPLICATION_MODULE_CLASSPATH")) rules.add("APPLICATION_MODULE_CLASSPATH");
         List<String> limitations = new ArrayList<>(point.limitations());
         limitations.add("Resolved in application module context '" + context + "'.");
@@ -195,6 +202,7 @@ public final class ApplicationContextResolver {
         List<String> limitations = new ArrayList<>(original.limitations());
         limitations.add("Resolution differs across application contexts: " + contexts + ".");
         List<String> rules = new ArrayList<>(original.resolutionTrace().appliedRules());
+        if (!InjectionPointRecord.STATIC_SPRING.equals(original.resolutionStrategy()) && !rules.contains("CDI_BEAN_KIND")) rules.add("CDI_BEAN_KIND");
         if (!rules.contains("APPLICATION_MODULE_CLASSPATH")) rules.add("APPLICATION_MODULE_CLASSPATH");
         Set<String> unsupported = new LinkedHashSet<>(original.resolutionTrace().unsupportedRules());
         unsupported.add("APPLICATION_CONTEXT_SELECTION");

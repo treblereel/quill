@@ -7,6 +7,7 @@ import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.isProducer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
@@ -17,6 +18,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -761,6 +763,8 @@ final class StructureToolQueries {
         if (bean.isEmpty()) return errorResponse("Not a bean: " + target);
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
+        root.put("scope", bean.get().scope());
+        root.put("bean_kind", bean.get().kind());
         appendContext(root, cls);
         List<InjectionPointRecord> injectionPoints = IndexReader.findInjectionPoints(
                 jdbi, bean.get().id());
@@ -777,6 +781,10 @@ final class StructureToolQueries {
                 jdbi, referencedBeanIds);
         Map<Integer, ClassRecord> resolvedClasses = IndexReader.findClassesByIds(jdbi,
                 resolvedBeans.values().stream().map(BeanRecord::classId).toList());
+        root.put("injection_points_total", injectionPoints.size());
+        ObjectNode kinds = root.putObject("injection_points_by_kind");
+        for (InjectionPointRecord point : injectionPoints)
+            kinds.put(point.kind(), kinds.path(point.kind()).asInt() + 1);
         ArrayNode result = root.putArray("injection_points");
         ArrayNode unsatisfied = root.putArray("unsatisfied");
         ArrayNode ambiguous = root.putArray("ambiguous");
@@ -801,6 +809,8 @@ final class StructureToolQueries {
             } else if (point.resolvedBeanId() != null) {
                 BeanRecord resolved = resolvedBeans.get(point.resolvedBeanId());
                 if (resolved != null) {
+                    node.put("resolved_scope", resolved.scope());
+                    node.put("resolved_kind", resolved.kind());
                     ClassRecord resolvedClass = resolvedClasses.get(resolved.classId());
                     if (resolvedClass != null) node.put("resolved_to", resolvedClass.className());
                     if (resolved.memberName() != null) {
@@ -822,8 +832,34 @@ final class StructureToolQueries {
                 }
             }
         }
+        shareResolutionContext(root, result);
         appendMeta(root, jdbi, cls.sourceTokens());
         return root.toString();
+    }
+
+    private static void shareResolutionContext(ObjectNode root, ArrayNode points) {
+        if (points.size() < 2) return;
+        ObjectNode context = JSON.createObjectNode();
+        for (String key : List.of("limitations", "applied_rules", "unsupported_rules")) {
+            Set<JsonNode> common = null;
+            for (JsonNode point : points) {
+                JsonNode values = key.equals("limitations") ? point.path(key) : point.path("resolution_trace").path(key);
+                Set<JsonNode> entries = new LinkedHashSet<>(); values.forEach(entries::add);
+                if (common == null) common = entries; else common.retainAll(entries);
+            }
+            if (common == null || common.isEmpty()) continue;
+            ArrayNode shared = context.putArray(key); common.forEach(shared::add);
+            for (JsonNode point : points) {
+                ArrayNode values = (ArrayNode) (key.equals("limitations") ? point.get(key) : point.path("resolution_trace").get(key));
+                List<JsonNode> extra = new ArrayList<>();
+                for (JsonNode value : values) if (!common.contains(value)) extra.add(value);
+                values.removeAll(); extra.forEach(values::add);
+            }
+        }
+        if (!context.isEmpty()) {
+            context.put("applies_to", "All injection_points; per-point lists are additional.");
+            root.set("resolution_context", context);
+        }
     }
 
     private static void appendResolutionTrace(ObjectNode node, InjectionPointRecord point,
@@ -851,6 +887,7 @@ final class StructureToolQueries {
             }
             if (bean != null) {
                 candidateNode.put("kind", bean.kind());
+                candidateNode.put("scope", bean.scope());
                 if (bean.memberName() != null) candidateNode.put("member", bean.memberName());
                 candidateNode.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
             }

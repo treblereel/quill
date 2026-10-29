@@ -14,6 +14,22 @@ class JavaCompilerCaptureTest {
     Properties settings(String xml, boolean test) throws Exception {
         return JavaCompilerCapture.settings(Xpp3DomBuilder.build(new StringReader(xml)), test);
     }
+    @Test void quarkusRestRequiresActivePluginAndServerArtifactNotJustClientLibrary() {
+        var project = new org.apache.maven.project.MavenProject();
+        var build = new org.apache.maven.model.Build(); project.getModel().setBuild(build);
+        var plugin = new org.apache.maven.model.Plugin(); plugin.setGroupId("io.quarkus.platform");
+        plugin.setArtifactId("quarkus-maven-plugin");plugin.setExtensions(true); build.addPlugin(plugin);
+        var server = new org.apache.maven.artifact.DefaultArtifact("io.quarkus", "quarkus-rest", "1", "compile", "jar", "", new org.apache.maven.artifact.handler.DefaultArtifactHandler());
+        project.setArtifacts(Set.of(server));assertTrue(JavaCompilerCapture.quarkusRest(project));
+        plugin.setExtensions(false);assertFalse(JavaCompilerCapture.quarkusRest(project));
+        var execution = new org.apache.maven.model.PluginExecution();execution.addGoal("generate-code");plugin.addExecution(execution);
+        assertTrue(JavaCompilerCapture.quarkusRest(project));
+        server.setScope("test");assertFalse(JavaCompilerCapture.quarkusRest(project));
+        server.setScope("compile");server.setArtifactId("quarkus-rest-client");assertFalse(JavaCompilerCapture.quarkusRest(project));
+        server.setArtifactId("quarkus-resteasy");assertFalse(JavaCompilerCapture.quarkusRest(project));
+        server.setArtifactId("quarkus-rest");build.getPlugins().clear();assertFalse(JavaCompilerCapture.quarkusRest(project));
+    }
+
     @Test void testSettingsOverrideMainWithoutLosingCompilerFlags() throws Exception {
         String config = """
             <configuration><release>17</release><testRelease>21</testRelease><source>11</source><testSource>17</testSource>

@@ -51,6 +51,30 @@ class JavaCompilerSettingsTest {
         assertEquals("unsupported_protocol", future.path("status").asText()); assertFalse(future.has("settings"));
     }
 
+    @Test void frameworkDiscoveryRequiresFreshMainCaptureAndUnambiguousModuleOwnership() throws Exception {
+        Path src = Files.createDirectories(root.resolve("src/fixture"));
+        Files.writeString(src.resolve("Resource.java"), "package fixture; @jakarta.ws.rs.Path public class Resource {}");
+        Path annotation = Files.createDirectories(root.resolve("src/jakarta/ws/rs")).resolve("Path.java");
+        Files.writeString(annotation, "package jakarta.ws.rs; @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Path {}");
+        Path classes = Files.createDirectories(root.resolve("classes"));
+        assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null,
+                "-d", classes.toString(), annotation.toString(), src.resolve("Resource.java").toString()));
+        var indexer = new org.jboss.jandex.Indexer();
+        try (var input = Files.newInputStream(classes.resolve("fixture/Resource.class"))) { indexer.index(input); }
+        var index = indexer.complete();
+        var occurrence = new org.treblereel.mcp.model.ClassOccurrenceRecord(1, 1, "fixture.Resource", ".", "main", "classes", "Resource.class", "Resource.java", "application");
+        var values = values(); values.setProperty("quarkusRest", "true"); save(values);
+        assertEquals(Map.of("fixture.Resource", "@Singleton"), ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)));
+        var duplicate = new org.treblereel.mcp.model.ClassOccurrenceRecord(2, 1, "fixture.Resource", "plain", "main", "classes", "Resource.class", "Resource.java", "application");
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence, duplicate)).isEmpty());
+        values.setProperty("evidence", "configured_task"); save(values);
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)).isEmpty());
+        values.setProperty("evidence", "successful_mojo"); values.setProperty("quarkusRest", "false"); save(values);
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)).isEmpty());
+        values.setProperty("quarkusRest", "true"); save(values); Files.writeString(root.resolve("pom.xml"), "changed");
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)).isEmpty());
+    }
+
     @TestFactory Stream<DynamicTest> malformedMetadataCannotAppearUsable() {
         return Stream.of("negative", "excessive", "incomplete", "bad_sha", "identity", "no_inputs", "unknown_evidence", "bad_count", "unicode")
                 .map(label -> DynamicTest.dynamicTest(label, () -> {

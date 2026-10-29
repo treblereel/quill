@@ -109,6 +109,18 @@ class ApplicationContextResolverTest {
                         && "DEFAULT_BEAN_SUPPRESSED".equals(candidate.reason())));
     }
 
+    @Test void moduleRefinementDoesNotReintroduceDecoratorsOrResolveDelegateChain() {
+        var classes = List.of(cls("example.Consumer", "app"), cls("example.Real", "app"), cls("example.Wrapper", "app"));
+        var decorator = new BeanRecord(3,3,"DECORATOR","@Dependent",List.of("@Default"),List.of(),false,null,null,null,null,List.of("example.Service"));
+        var beans = List.of(bean(1,1,"example.Consumer",false),bean(2,2,"example.Service",false),decorator);
+        var point = InjectionPointRecord.staticAnalysis(1,1,"FIELD","example.Service",List.of("@Default"),"service",null,true,InjectionPointRecord.STATIC_CDI);
+        var delegate = new InjectionPointRecord(2,3,"FIELD","example.Service",List.of("@Default"),"delegate",null,ResolutionStatus.UNSUPPORTED_MECHANISM,InjectionPointRecord.STATIC_CDI,"DECORATOR_DELEGATE_CHAIN",org.treblereel.mcp.model.ResolutionConfidence.LOW,List.of(),org.treblereel.mcp.model.ResolutionTrace.EMPTY);
+        var result = ApplicationContextResolver.refine(List.of(point,delegate),beans,classes,List.of(),List.of(context("app","app",0)));
+        assertEquals(2,result.getFirst().resolvedBeanId());
+        assertTrue(result.getFirst().resolutionTrace().candidates().stream().anyMatch(c -> c.beanId()==3 && c.reason().equals("NOT_INJECTION_BEAN")));
+        assertEquals(delegate,result.get(1));
+    }
+
     private static ModuleClasspathRecord context(String application, String visible, int distance) {
         return new ModuleClasspathRecord(application, visible, distance,
                 distance == 0 ? "self" : "project_dependency");

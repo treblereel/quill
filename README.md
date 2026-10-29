@@ -1085,8 +1085,9 @@ the route prefix. Argument errors list accepted names without requiring another 
 
 Native project initialization and `client refresh --project` install project-local
 `UserPromptSubmit` and `SessionStart` hooks in `.codex/hooks.json` and `.claude/settings.json`.
-Existing handlers, permissions and host trust settings are preserved. Clients may require
-review/trust of newly installed hooks. The `prefetch --project` helper reads an existing
+Existing handlers, permissions and host trust settings are preserved. In Codex, trust the
+project and review new or changed hooks in `/hooks` before they can run. Initialization
+does not grant that trust. The `prefetch --project` helper reads an existing
 index; it never starts MCP, compiles, initializes a project or calls a language model.
 It looks up literal indexed identifiers, not question templates. It emits at most three
 verified class declaration cards, reports ambiguities/stale evidence explicitly, and suppresses

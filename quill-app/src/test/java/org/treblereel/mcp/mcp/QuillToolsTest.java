@@ -286,6 +286,68 @@ class QuillToolsTest {
     }
 
     @Test
+    void classUsagesExposeInvokedMembersWithoutMixingOverloadsOrCallbacks() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO dependencies(from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    VALUES (3, 1, 'CALLS', 6, '[11,12,20,21,22,30]'), (4, 1, 'CALLS', 1, '[40]'),
+                      (3, 1, 'CALLBACK_REFERENCE', 4, '[50]')""");
+            handle.execute("""
+                    INSERT INTO method_calls(from_class_id, from_method, from_descriptor,
+                      to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines)
+                    VALUES (3, 'a', '()V', 1, 'selected', '(I)V', 'virtual', 2, '[11,12]'),
+                      (3, 'b', '()V', 1, 'selected', '(I)V', 'virtual', 3, '[20,21,22]'),
+                      (3, 'c', '()V', 1, 'selected', '(Ljava/lang/String;)V', 'virtual', 1, '[30]'),
+                      (3, 'constructor', '()V', 1, '<init>', '()V', 'special', 1, '[35]'),
+                      (3, 'callback', '()V', 1, 'selected', '(I)V', 'dynamic', 4, '[50]'),
+                      (4, 'otherTarget', '()V', 2, 'notThisTarget', '()V', 'interface', 1, '[60]')""");
+        });
+        QuillTools tools = new QuillTools();
+        JsonNode first = JSON.readTree(tools.findUsages(jdbi, "OrderService", "method_call", null, 1, 0));
+        JsonNode second = JSON.readTree(tools.findUsages(jdbi, "OrderService", "method_call", null, 1, 1));
+        assertEquals(2, first.path("total").asInt());
+        assertTrue(first.path("has_more").asBoolean());
+        assertEquals("org.acme.AuditService", first.path("usages").get(0).path("class").asText());
+        assertFalse(first.path("usages").get(0).has("invoked_members"));
+        JsonNode usage = second.path("usages").get(0);
+        assertEquals("org.acme.StripePaymentService", usage.path("class").asText());
+        assertEquals(2, usage.path("invoked_member_groups").asInt());
+        assertFalse(usage.path("invoked_members_truncated").asBoolean());
+        assertEquals(2, usage.path("invoked_members").size());
+        assertEquals("(I)V", usage.path("invoked_members").get(0).path("descriptor").asText());
+        assertEquals(5, usage.path("invoked_members").get(0).path("instruction_occurrences").asLong());
+        assertEquals("virtual", usage.path("invoked_members").get(0).path("invocation_kind").asText());
+        assertEquals("(Ljava/lang/String;)V", usage.path("invoked_members").get(1).path("descriptor").asText());
+        JsonNode callback = JSON.readTree(tools.findUsages(jdbi, "OrderService", "callback_reference", null, 10, 0));
+        assertFalse(callback.path("usages").get(0).has("invoked_members"));
+        assertTrue(org.treblereel.mcp.db.IndexReader.findInvokedMembers(jdbi, 1, List.of()).isEmpty());
+        var batches = org.treblereel.mcp.db.IndexReader.findInvokedMembers(jdbi, 1,
+                java.util.stream.IntStream.range(1, 1200).boxed().toList());
+        assertEquals(2, batches.get(3).size());
+    }
+
+    @Test
+    void classUsageInvokedMemberDetailsAreBoundedAndExplicitlyTruncated() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO dependencies(from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    VALUES (3, 1, 'CALLS', 40, '[]')""");
+            for (int index = 0; index < 40; index++) {
+                handle.execute("""
+                        INSERT INTO method_calls(from_class_id, from_method, from_descriptor,
+                          to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines)
+                        VALUES (3, 'run', '()V', 1, ?, '()V', 'static', 1, '[]')""", "m" + index);
+            }
+        });
+        JsonNode result = JSON.readTree(new QuillTools().findUsages(
+                jdbi, "OrderService", "method_call", null, 10, 0));
+        JsonNode usage = result.path("usages").get(0);
+        assertEquals(40, usage.path("invoked_member_groups").asInt());
+        assertEquals(32, usage.path("invoked_members").size());
+        assertTrue(usage.path("invoked_members_truncated").asBoolean());
+    }
+
+    @Test
     void findUsagesIncludesInheritanceAndSupportsPagination() throws Exception {
         jdbi.useHandle(handle -> handle.execute("""
                 INSERT INTO dependencies
@@ -969,6 +1031,11 @@ class QuillToolsTest {
         JsonNode result = JSON.readTree(new QuillTools().findImpactedTests(
                 jdbi, List.of("OrderService"), true, 3, 10, 0));
 
+        assertEquals("class", result.path("granularity").asText());
+        assertFalse(result.path("runtime_coverage_measured").asBoolean(true));
+        assertTrue(result.path("limitations").valueStream().map(JsonNode::asText)
+                .anyMatch(value -> value.contains("different member")
+                        && value.contains("does not establish method execution")));
         assertEquals(1, result.path("indexed_test_class_count").asInt());
         assertTrue(result.path("compiled_test_outputs_indexed").asBoolean());
         assertEquals(1, result.path("total").asInt());
@@ -980,6 +1047,143 @@ class QuillToolsTest {
         assertEquals(List.of("org.acme.OrderService", "org.acme.OrderHelper",
                         "org.acme.OrderServiceTest"),
                 test.path("dependency_path").valueStream().map(JsonNode::asText).toList());
+    }
+
+    @Test
+    void methodTestImpactSeparatesExactReferencesFromClassRanking() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes(class_name, kind, superclass, interfaces, source_file,
+                      source_line, is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.OrderServiceTest', 'CLASS', 'java.lang.Object', '[]',
+                      'src/test/java/org/acme/OrderServiceTest.java', 1, 0, 50,
+                      'source', 'current', '.', 'test')""");
+            handle.execute("""
+                    INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                      type_name, parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'process', 'process(int):void', '(I)V',
+                      'void', '["int"]', 'public', '[]'),
+                      (1, 'METHOD', 'process', 'process(java.lang.String):void',
+                      '(Ljava/lang/String;)V', 'void', '["java.lang.String"]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls(from_class_id, from_method, from_descriptor,
+                      to_class_id, to_method, to_descriptor, invocation_kind,
+                      occurrence_count, evidence_lines)
+                    VALUES (3, 'first', '()V', 1, 'process', '(I)V', 'virtual', 3, '[11,12,13]'),
+                      (5, 'testProcess', '()V', 1, 'process', '(I)V', 'virtual', 2, '[20,21]'),
+                      (4, 'differentOverload', '()V', 1, 'process', '(Ljava/lang/String;)V',
+                      'virtual', 1, '[31]')""");
+            handle.execute("""
+                    INSERT INTO dependencies(from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    VALUES (3, 1, 'CALLS', 3, '[11,12,13]'), (5, 1, 'CALLS', 2, '[20,21]'),
+                      (4, 1, 'CALLS', 1, '[31]')""");
+        });
+        var queries = new QuillToolQueries();
+        JsonNode first = JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of(SymbolContract.id("org.acme.OrderService", "METHOD", "process", "(I)V")), true, 3, 1, 0));
+        JsonNode second = JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of(SymbolContract.id("org.acme.OrderService", "METHOD", "process", "(I)V")), true, 3, 1, 1));
+        assertEquals("selected_method_reference_page", first.path("test_ranking_scope").asText());
+        assertFalse(first.path("runtime_coverage_measured").asBoolean(true));
+        JsonNode refs = first.path("selected_method_references");
+        assertEquals("(I)V", refs.path("descriptor").asText());
+        assertEquals(2, refs.path("total").asInt());
+        assertTrue(refs.path("has_more").asBoolean());
+        assertEquals(1, second.path("selected_method_references").path("offset").asInt());
+        assertNotEquals(refs.path("usages").get(0).path("caller"),
+                second.path("selected_method_references").path("usages").get(0).path("caller"));
+        JsonNode all = JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of(SymbolContract.id("org.acme.OrderService", "METHOD", "process", "(I)V")), true, 3, 20, 0));
+        assertEquals(5, all.path("selected_method_references").path("usages").valueStream()
+                .mapToInt(value -> value.path("occurrence_count").asInt()).sum());
+        assertEquals("org.acme.OrderServiceTest", all.path("tests").get(0).path("class").asText());
+        JsonNode old = JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of("OrderService"), true, 3, 20, 0));
+        assertEquals(old.path("tests"), all.path("class_level_candidates").path("tests"));
+        assertEquals(2, all.path("tests").get(0).path("invocation_instruction_occurrences").asInt());
+        assertEquals("AMBIGUOUS_SYMBOL", JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of("OrderService#process"), true, 3, 20, 0)).path("error_code").asText());
+        assertEquals("SYMBOL_NOT_FOUND", JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of(SymbolContract.id("org.acme.OrderService", "METHOD", "process", "(J)V")), true, 3, 20, 0)).path("error_code").asText());
+        assertEquals("INVALID_ARGUMENT", JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of("OrderService#process", "AuditService"), true, 3, 20, 0)).path("error_code").asText());
+        assertEquals("INVALID_ARGUMENT", JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of("OrderService#"), true, 3, 20, 0)).path("error_code").asText());
+        assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of("quill:symbol:v0:any"), true, 3, 20, 0)).path("error_code").asText());
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                  type_name, parameter_types, modifiers, annotations)
+                VALUES (1, 'METHOD', 'unique', 'unique():void', '()V', 'void', '[]', 'public', '[]')"""));
+        JsonNode unique = JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of("OrderService#unique"), true, 3, 20, 0));
+        assertEquals("unique", unique.path("selected_method_references").path("name").asText());
+        assertEquals(0, unique.path("selected_method_references").path("total").asInt());
+        assertEquals(old.path("tests"), unique.path("class_level_candidates").path("tests"));
+        assertTrue(unique.path("tests").isEmpty());
+        JsonNode typed = JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of("OrderService#process( int )"), true, 3, 20, 0));
+        assertEquals("(I)V", typed.path("selected_method_references").path("descriptor").asText());
+        assertEquals("SYMBOL_NOT_FOUND", JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of("OrderService#process(long)"), true, 3, 20, 0)).path("error_code").asText());
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                  type_name, parameter_types, modifiers, annotations)
+                VALUES (1, 'METHOD', 'process', 'process(int):java.lang.String', '(I)Ljava/lang/String;',
+                  'java.lang.String', '["int"]', 'public', '[]')"""));
+        assertEquals("AMBIGUOUS_SYMBOL", JSON.readTree(queries.findImpactedTests(
+                jdbi, List.of("OrderService#process(int)"), true, 3, 20, 0)).path("error_code").asText());
+
+    }
+
+    @Test
+    void methodTestImpactPreservesSourceIdentityForDuplicateClasses() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes(class_name, kind, interfaces, source_file, module, source_set)
+                    VALUES ('org.acme.OrderService', 'CLASS', '[]',
+                      'alt/src/main/java/org/acme/OrderService.java', 'alt', 'main')""");
+            handle.execute("""
+                    INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                      type_name, parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'work', 'work():void', '()V', 'void', '[]', 'public', '[]')""");
+        });
+        var cls = org.treblereel.mcp.db.IndexReader.findClassesByName(jdbi, "org.acme.OrderService")
+                .stream().filter(value -> value.sourceFile().startsWith("src/")).findFirst().orElseThrow();
+        String id = SymbolContract.id(cls, "METHOD", "work", "()V");
+        JsonNode result = JSON.readTree(new QuillToolQueries().findImpactedTests(
+                jdbi, List.of(id), true, 3, 10, 0));
+        assertFalse(result.has("error_code"), result.toString());
+        assertEquals(id, result.path("selected_method_references").path("symbol_id").asText());
+        assertFalse(result.path("answer_complete").asBoolean());
+        assertTrue(result.path("tests").isEmpty());
+    }
+
+    @Test
+    void methodTestImpactDistinguishesCallbackReferencesFromInvocations() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes(class_name, kind, interfaces, source_file, source_set)
+                    VALUES ('org.acme.CallbackTest', 'CLASS', '[]', 'src/test/java/org/acme/CallbackTest.java', 'test')""");
+            handle.execute("""
+                    INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                      type_name, parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'work', 'work():void', '()V', 'void', '[]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls(from_class_id, from_method, from_descriptor,
+                      to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines)
+                    VALUES (5, 'callback', '()V', 1, 'work', '()V', 'dynamic', 1, '[11]'),
+                      (5, 'invoke', '()V', 1, 'work', '()V', 'virtual', 2, '[20,21]')""");
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('invokedynamic_evidence_protocol','2')");
+        });
+        JsonNode result = JSON.readTree(new QuillToolQueries().findImpactedTests(
+                jdbi, List.of("OrderService#work()"), true, 3, 10, 0));
+        assertFalse(result.has("error_code"), result.toString());
+        assertEquals(1, result.path("tests").size());
+        assertEquals(3, result.path("tests").get(0).path("reference_occurrences").asInt());
+        assertEquals(2, result.path("tests").get(0).path("invocation_instruction_occurrences").asInt());
+        assertEquals(2, result.path("tests").get(0).path("reference_indexes").size());
+        assertEquals(0, result.path("unclassified_reference_groups").asInt());
     }
 
     @Test

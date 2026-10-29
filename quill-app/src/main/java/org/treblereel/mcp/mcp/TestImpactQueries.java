@@ -15,6 +15,8 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.JvmSourceFiles;
 import org.treblereel.mcp.db.IndexReader;
@@ -29,6 +31,105 @@ final class TestImpactQueries {
     private static final int MAX_TARGETS = 20;
     private static final int MAX_EXPANDED_CLASSES = 5_000;
 
+    private String methodImpact(Jdbi jdbi, String target, String method,
+            String signature, boolean transitive, int maxDepth, int limit, int offset) {
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
+        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+        ClassRecord owner = lookup.cls();
+        int parameters = method.indexOf('(');
+        if (signature == null && parameters > 0 && method.endsWith(")")) {
+            String selector = method;
+            String name = method.substring(0, parameters).strip();
+            String values = method.substring(parameters + 1, method.length() - 1).strip();
+            List<String> requested = values.isEmpty() ? List.of()
+                    : java.util.Arrays.stream(values.split(",", -1)).map(String::strip).toList();
+            var declarations = IndexReader.findKotlinDeclarations(jdbi, owner.id());
+            List<String> matches = IndexReader.findJvmClassMembers(jdbi, owner.id()).stream()
+                    .filter(member -> "METHOD".equals(member.kind())
+                            && KotlinMemberNames.matches(name, member, declarations))
+                    .map(JvmDescriptors::methodDescriptor).filter(Objects::nonNull)
+                    .filter(descriptor -> java.util.Arrays.stream(org.objectweb.asm.Type.getArgumentTypes(descriptor))
+                            .map(org.objectweb.asm.Type::getClassName).toList().equals(requested)).toList();
+            method = name;
+            // A missing match must remain an error; never fall back to another overload.
+            signature = matches.size() == 1 ? matches.getFirst() : matches.isEmpty() ? selector : null;
+        }
+        try {
+            ObjectNode references = (ObjectNode) JSON.readTree(new SymbolUsageQueries()
+                    .findSymbolUsages(jdbi, target, method, "METHOD",
+                            signature, null, limit, offset));
+            if (references.has("error_code")) return references.toString();
+            String classId = SymbolContract.id(owner, owner.kind(), owner.className(), "");
+            ObjectNode candidates = (ObjectNode) JSON.readTree(findImpactedTests(
+                    jdbi, List.of(classId), transitive, maxDepth, limit, offset));
+            if (candidates.has("error_code")) return candidates.toString();
+            ObjectNode result = JSON.createObjectNode();
+            for (String field : List.of("target", "name", "descriptor", "symbol_id")) {
+                result.set(field, references.get(field));
+            }
+            result.put("test_ranking_scope", "selected_method_reference_page");
+            result.put("runtime_coverage_measured", false);
+            appendDirectTests(jdbi, result, references);
+            if (!candidates.path("test_index_coverage").path("complete").asBoolean()) {
+                result.put("answer_complete", false);
+            }
+            result.set("selected_method_references", references);
+            result.set("class_level_candidates", candidates);
+            result.set("limitations", references.path("limitations").deepCopy());
+            ((ArrayNode) result.get("limitations")).add(
+                    "Direct tests contain selected-member references from this page, not measured runtime coverage; "
+                    + "class_level_candidates ranks class dependencies and history, not selected-method execution");
+            result.set("_meta", candidates.get("_meta"));
+            return result.toString();
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new IllegalStateException("Cannot compose method test evidence", error);
+        }
+    }
+
+    private void appendDirectTests(Jdbi jdbi, ObjectNode result, ObjectNode references) {
+        Map<String, List<ClassRecord>> classes = IndexReader.findAllClasses(jdbi).stream()
+                .collect(Collectors.groupingBy(ClassRecord::className));
+        Map<Integer, ObjectNode> tests = new LinkedHashMap<>();
+        int index = 0;
+        int unclassified = 0;
+        for (var usage : references.path("usages")) {
+            var caller = usage.path("caller");
+            String source = caller.path("source").asText();
+            String module = caller.path("module").asText();
+            List<ClassRecord> matches = classes.getOrDefault(caller.path("class").asText(), List.of()).stream()
+                    .filter(cls -> module.isEmpty() || Objects.equals(module, cls.module()))
+                    .filter(cls -> source.isEmpty() || cls.sourceFile() != null
+                            && (source.equals(cls.sourceFile()) || source.startsWith(cls.sourceFile() + ":"))).toList();
+            int referenceIndex = index++;
+            if (matches.size() != 1) {
+                unclassified++;
+                continue;
+            }
+            ClassRecord cls = matches.getFirst();
+            if (!isTestClass(cls)) continue;
+            ObjectNode test = tests.computeIfAbsent(cls.id(), ignored -> {
+                ObjectNode value = JSON.createObjectNode();
+                value.put("class", cls.className());
+                value.put("file", cls.sourceFile());
+                value.putArray("reference_indexes");
+                value.put("reference_occurrences", 0);
+                value.put("invocation_instruction_occurrences", 0);
+                return value;
+            });
+            ((ArrayNode) test.get("reference_indexes")).add(referenceIndex);
+            int count = usage.path("occurrence_count").asInt();
+            test.put("reference_occurrences", test.path("reference_occurrences").asInt() + count);
+            if ("invocation_instruction".equals(usage.path("execution_semantics").asText())) {
+                test.put("invocation_instruction_occurrences",
+                        test.path("invocation_instruction_occurrences").asInt() + count);
+            }
+        }
+        result.set("tests", JSON.valueToTree(tests.values()));
+        result.put("unclassified_reference_groups", unclassified);
+        result.put("answer_complete", references.path("answer_complete").asBoolean()
+                && !references.path("has_more").asBoolean() && unclassified == 0);
+    }
+
     String findImpactedTests(Jdbi jdbi, List<String> targets,
             boolean transitive, int maxDepth, int limit, int offset) {
         if (targets == null || targets.isEmpty()) {
@@ -36,6 +137,27 @@ final class TestImpactQueries {
         }
         if (targets.size() > MAX_TARGETS) {
             return errorResponse("At most " + MAX_TARGETS + " targets are allowed");
+        }
+        for (String target : targets) {
+            try {
+                var member = SymbolContract.parse(target)
+                        .filter(reference -> "METHOD".equals(reference.kind())).orElse(null);
+                int separator = target == null ? -1 : target.lastIndexOf('#');
+                if (member == null && separator < 0) continue;
+                if (targets.size() != 1) {
+                    return errorResponse("INVALID_ARGUMENT", "A method requires exactly one target");
+                }
+                String owner = member == null ? target.substring(0, separator) : target;
+                String name = member == null ? target.substring(separator + 1) : member.jvmName();
+                if (owner.isBlank() || name.isBlank()) {
+                    return errorResponse("INVALID_ARGUMENT", "Expected Class#method or a method symbol_id");
+                }
+                return methodImpact(jdbi, owner, name,
+                        member == null ? null : member.descriptor(),
+                        transitive, maxDepth, limit, offset);
+            } catch (SymbolContract.ParseException error) {
+                return errorResponse(error.errorCode(), error.getMessage());
+            }
         }
         List<ClassRecord> resolvedTargets = new ArrayList<>();
         for (String target : targets) {
@@ -83,6 +205,8 @@ final class TestImpactQueries {
         ObjectNode root = JSON.createObjectNode();
         root.set("targets", JSON.valueToTree(
                 resolvedTargets.stream().map(ClassRecord::className).toList()));
+        root.put("granularity", "class");
+        root.put("runtime_coverage_measured", false);
         root.put("transitive", transitive);
         root.put("max_depth", effectiveDepth);
         root.put("indexed_test_class_count", indexedTestClasses);
@@ -127,6 +251,8 @@ final class TestImpactQueries {
         if (truncatedTraversal[0]) {
             limitations.add("Static traversal stopped at " + MAX_EXPANDED_CLASSES + " classes");
         }
+
+        limitations.add("Static paths reference classes, not a selected method; a CALLS edge may target a different member. This ranking does not establish method execution or runtime test coverage");
 
         ArrayNode tests = root.putArray("tests");
         int naiveTokens = resolvedTargets.stream().mapToInt(ClassRecord::sourceTokens).sum();

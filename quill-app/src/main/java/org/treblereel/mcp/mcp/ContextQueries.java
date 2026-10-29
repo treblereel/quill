@@ -60,7 +60,18 @@ final class ContextQueries {
             ClassRecord cls = lookup.cls();
             if (separator >= 0) {
                 var context=contexts.addObject().put("requested_target",target);
-                context.set("method_context",new MethodContextQueries().get(jdbi,cls,target.substring(separator+1)));
+                ObjectNode method=(ObjectNode)new MethodContextQueries().get(jdbi,cls,target.substring(separator+1));
+                context.set("method_context",method);
+                if(method.hasNonNull("descriptor") && method.hasNonNull("name")) {
+                    method.set("outgoing_calls",parse(new CallHierarchyQueries().getCallHierarchy(jdbi,cls.className(),
+                            method.path("name").asText(),method.path("descriptor").asText(),"outbound",false,1,limit,0)));
+                    method.set("injection_points",parse(new StructureToolQueries().getInjectionPoints(jdbi,cls.className())));
+                    method.set("test_impact",parse(tests.findImpactedTests(jdbi,List.of(target),false,1,limit,0)));
+                    JsonNode calls=method.path("outgoing_calls");
+                    method.put("answer_complete",method.path("source_complete").asBoolean() && !calls.has("error_code")
+                            && !calls.has("error") && !calls.path("has_more").asBoolean() && !calls.path("traversal_truncated").asBoolean()
+                            && method.path("test_impact").path("answer_complete").asBoolean());
+                }
                 if (!resolvedNames.contains(cls.className())) resolvedNames.add(cls.className());
                 continue;
             }
@@ -97,10 +108,11 @@ final class ContextQueries {
                     "risk_score", "risk_level", "signals", "recommendation")));
         }
 
+        root.set("direct_callee_comparison",DirectCalleeComparison.compare(contexts));
         root.put("resolved_target_count", resolvedNames.size());
         root.put("unresolved_target_count", unresolved.size());
         root.put("answer_complete", unresolved.isEmpty() && java.util.stream.StreamSupport.stream(contexts.spliterator(),false)
-                .allMatch(c -> !c.has("method_context") || c.path("method_context").path("source_complete").asBoolean()));
+                .allMatch(c -> !c.has("method_context") || c.path("method_context").path("answer_complete").asBoolean()));
         if (!resolvedNames.isEmpty()) {
             ObjectNode impact = parse(tests.findImpactedTests(
                     jdbi, resolvedNames, true, 3, limit, 0));
@@ -108,6 +120,7 @@ final class ContextQueries {
                 "targets", "test_index_coverage", "answer_complete", "limitations", "tests",
                 "showing", "total", "limit", "offset", "has_more", "next_offset")));
         }
+        if(root.has("impacted_tests") && !root.path("impacted_tests").path("answer_complete").asBoolean()) root.put("answer_complete",false);
         appendMeta(root, jdbi, naiveTokens);
         return root.toString();
     }

@@ -287,9 +287,9 @@ public final class QuillTools {
                 detail.orElse("summary"), view.orElse("auto")));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Rank tests affected by changed classes.")
+    @Tool(readOnly = true, structured = true, description = "Rank tests; exact method refs.")
     public String find_impacted_tests(
-            @ToolArg(description = "Classes or source paths") List<String> targets,
+            @ToolArg(description = "Class/path, Class#method, symbol_id") List<String> targets,
             @ToolArg(description = "Traverse dependencies; default true") Optional<Boolean> transitive,
             @ToolArg(description = "Traversal depth; default 3") Optional<Integer> max_depth,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,

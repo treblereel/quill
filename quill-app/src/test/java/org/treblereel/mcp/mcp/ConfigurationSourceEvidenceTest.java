@@ -77,4 +77,21 @@ class ConfigurationSourceEvidenceTest {
         file("application.properties","selected=1\nsibling=2\n");definition("selected","property","application.properties",1);definition("sibling","property","application.properties",2);usage("selected","active");usage("sibling","sibling");EndpointPrefetchTest.routes(db,"GET");
         var packet=EndpointPrefetch.collect(db,root,"GET /warehouse/items/{key}");var refs=packet.path("facts").get(1).path("methods").get(0).path("configuration_references");assertEquals(1,refs.path("references").size(),refs.toString());assertEquals("active",refs.path("references").get(0).path("member").asText());assertFalse(refs.toString().contains("\"key\":\"sibling\""));
     }
+    @Test void prefetchUsesExactIndexedKeysWithAnyWordingAndKeepsSourceSafety() throws Exception {
+        file("application.properties","warehouse.cache-enabled=true\n%prod.warehouse.cache-enabled=false\nwarehouse.password=12345\n");
+        definition("warehouse.cache-enabled","property","application.properties",1);
+        definition("%prod.warehouse.cache-enabled","property","application.properties",2);
+        definition("warehouse.password","property","application.properties",3);usage("warehouse.cache-enabled","active");
+        var first=PrefetchContext.collect(db,root,"Объясни `warehouse.cache-enabled`.").path("facts");
+        assertEquals(first,PrefetchContext.collect(db,root,"Quelle valeur: warehouse.cache-enabled?").path("facts"));
+        assertEquals(1,first.size());var evidence=first.get(0).path("evidence");
+        assertEquals(2,evidence.path("definition_count").asInt());assertEquals(1,evidence.path("usage_count").asInt());
+        assertFalse(evidence.path("effective_runtime_values_proven").asBoolean());assertTrue(evidence.toString().contains("declared_value"));
+        assertTrue(PrefetchContext.collect(db,root,"warehouse.cache warehouse.cache-enabled.extra").path("facts").isEmpty());
+        assertFalse(PrefetchContext.collect(db,root,"warehouse.password").toString().contains("12345"));
+        assertTrue(PrefetchContext.collect(db,root,"%prod.warehouse.cache-enabled").path("facts").get(0).path("evidence").path("total").asInt()>0);
+        Files.writeString(root.resolve("src/main/resources/application.properties"),"# moved\nwarehouse.cache-enabled=true\n");
+        var changed=PrefetchContext.collect(db,root,"warehouse.cache-enabled");
+        assertFalse(changed.toString().contains("declared_value"));
+    }
 }

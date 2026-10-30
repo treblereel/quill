@@ -13,6 +13,7 @@ import org.treblereel.mcp.model.*;
 public final class PrefetchContext {
     private static final ObjectMapper JSON=new ObjectMapper();
     private static final Pattern IDENTIFIER=Pattern.compile("[\\p{L}_$][\\p{L}\\p{N}_$.]*");
+    private static final Pattern CONFIG_KEY=Pattern.compile("%?[\\p{L}_][\\p{L}\\p{N}_.-]*");
     private static final Pattern METHOD=Pattern.compile("([\\p{L}_$][\\p{L}\\p{N}_$.]*)#([\\p{L}_$][\\p{L}\\p{N}_$]*\\([^()\\n]*\\))");
     public static ObjectNode collect(Jdbi db,Path root,String prompt) throws Exception {
         return collect(db,root,prompt,null);
@@ -57,6 +58,15 @@ public final class PrefetchContext {
             names.computeIfAbsent(shortName,k->new ArrayList<>()).add(cls);
         }
         var facts=result.putArray("facts");var ambiguous=result.putArray("ambiguities");var unavailable=result.putArray("unavailable");
+        Set<String> configurationKeys=db.withHandle(h->new HashSet<>(h.createQuery("SELECT key FROM configuration_definitions WHERE kind <> 'persistence_unit' UNION SELECT key FROM configuration_usages WHERE kind IN ('config_key','config_prefix')").mapTo(String.class).list()));
+        configurationKeys.stream().map(ConfigurationSourceEvidence::baseKey).toList().forEach(configurationKeys::add);
+        Set<String> emittedKeys=new HashSet<>();var keys=CONFIG_KEY.matcher(prompt);
+        while(keys.find() && facts.size()<3){
+            String key=keys.group().replaceAll("\\.+$","");
+            if(!configurationKeys.contains(key) || !emittedKeys.add(key))continue;
+            ObjectNode evidence=(ObjectNode)JSON.readTree(new ConfigurationReferenceQueries().find(db,key,null,"all",null,12,0,"declared"));
+            evidence.remove("_meta");facts.addObject().put("kind","configuration").set("evidence",evidence);
+        }
         Set<Integer> seen=new HashSet<>();var matcher=IDENTIFIER.matcher(prompt);
         while(matcher.find() && facts.size()+ambiguous.size()+unavailable.size()<3) {
             String token=matcher.group().replaceAll("\\.+$","");

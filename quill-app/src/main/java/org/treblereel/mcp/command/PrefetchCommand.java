@@ -55,6 +55,8 @@ public final class PrefetchCommand implements Callable<Integer> {
                 Path temporary=Files.createTempFile(directory,"pending-",".json");
                 try {JSON.writeValue(temporary.toFile(),delivered);Files.move(temporary,state,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}finally{Files.deleteIfExists(temporary);}
                 if(fresh.isEmpty() && data.path("ambiguities").isEmpty() && data.path("unavailable").isEmpty() && "ready".equals(data.path("status").asText()))return 0;
+                if(!fresh.isEmpty() && "ready".equals(data.path("status").asText()))
+                    data.put("producer","quill.prefetch").put("instructions","These are completed Quill reads for the shown index and query scope. Reuse covered facts, including explicit limits and unknowns; do not rediscover tools or repeat reads just for confirmation. Query tools/read source for missing, stale, ambiguous or truncated evidence. Source declarations do not prove runtime values; another static Quill query cannot establish them.");
                 ObjectNode output=JSON.createObjectNode();output.putObject("hookSpecificOutput").put("hookEventName",event).put("additionalContext",data.toString());
                 System.out.println(output);
             }

@@ -23,7 +23,13 @@ class PrefetchLifecycleTest {
         Files.createDirectories(root.resolve(".quill"));Files.copy(root.resolve("index.db"),root.resolve(".quill/fixture.db"));
         Files.writeString(root.resolve(".quill/refs.json"),"{\"@worktree\":\"fixture\"}");
         assertNotNull(org.treblereel.mcp.command.ProjectIndexStore.findBestAvailableDb(root));
-        assertTrue(hook("UserPromptSubmit","one").contains("additionalContext"));
+        var mapper=new ObjectMapper();
+        var context=mapper.readTree(mapper.readTree(hook("UserPromptSubmit","one")).path("hookSpecificOutput").path("additionalContext").asText());
+        assertEquals("quill.prefetch",context.path("producer").asText());
+        assertEquals("ready",context.path("status").asText());
+        assertTrue(context.path("instructions").asText().contains("missing, stale, ambiguous or truncated"));
+        assertTrue(context.path("instructions").asText().contains("do not prove runtime values"));
+        assertTrue(context.path("instructions").asText().contains("static Quill query cannot establish"));
         assertEquals("",hook("UserPromptSubmit","one"));
         assertTrue(hook("UserPromptSubmit","two").contains("additionalContext"));
         assertEquals("",hook("SessionStart","one"));
@@ -38,7 +44,8 @@ class PrefetchLifecycleTest {
         assertEquals("",hook("UserPromptSubmit","route","What configuration does it use?"));
         var mapper=new ObjectMapper();
         try(var files=Files.list(root.resolve(".quill/prefetch"))){var state=mapper.readTree(files.filter(p->p.toString().endsWith(".json")).findFirst().orElseThrow().toFile());assertEquals("GET /warehouse/items/{key}",state.path("_endpoint").asText());}
-        assertTrue(hook("UserPromptSubmit","route","GET /missing").contains("endpoint_not_found"));
+        var missing=hook("UserPromptSubmit","route","GET /missing");assertTrue(missing.contains("endpoint_not_found"));
+        assertFalse(missing.contains("completed Quill reads"));
         assertEquals("",hook("UserPromptSubmit","route","What configuration does it use?"));
         assertEquals("",hook("SessionStart","route"));assertEquals("",hook("UserPromptSubmit","route","Continue"));
     }

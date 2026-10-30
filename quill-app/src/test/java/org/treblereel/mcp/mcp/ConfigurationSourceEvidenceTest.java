@@ -85,6 +85,11 @@ class ConfigurationSourceEvidenceTest {
         var first=PrefetchContext.collect(db,root,"Объясни `warehouse.cache-enabled`.").path("facts");
         assertEquals(first,PrefetchContext.collect(db,root,"Quelle valeur: warehouse.cache-enabled?").path("facts"));
         assertEquals(1,first.size());var evidence=first.get(0).path("evidence");
+        assertEquals("find_configuration_references",first.get(0).path("tool").asText());
+        assertEquals("warehouse.cache-enabled",first.get(0).path("arguments").path("key").asText());
+        assertTrue(first.get(0).path("query_scope").asText().contains("effective runtime configuration is unsupported"));
+        var queried=(ObjectNode)JSON.readTree(new ConfigurationReferenceQueries().find(db,"warehouse.cache-enabled",null,"all",null,12,0,"declared"));
+        queried.remove("_meta");assertEquals(evidence,queried);
         assertEquals(2,evidence.path("definition_count").asInt());assertEquals(1,evidence.path("usage_count").asInt());
         assertFalse(evidence.path("effective_runtime_values_proven").asBoolean());assertTrue(evidence.toString().contains("declared_value"));
         assertTrue(PrefetchContext.collect(db,root,"warehouse.cache warehouse.cache-enabled.extra").path("facts").isEmpty());

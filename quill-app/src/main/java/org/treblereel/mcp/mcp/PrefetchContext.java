@@ -65,7 +65,10 @@ public final class PrefetchContext {
             String key=keys.group().replaceAll("\\.+$","");
             if(!configurationKeys.contains(key) || !emittedKeys.add(key))continue;
             ObjectNode evidence=(ObjectNode)JSON.readTree(new ConfigurationReferenceQueries().find(db,key,null,"all",null,12,0,"declared"));
-            evidence.remove("_meta");facts.addObject().put("kind","configuration").set("evidence",evidence);
+            evidence.remove("_meta");var fact=facts.addObject().put("kind","configuration").put("tool","find_configuration_references");
+            fact.putObject("arguments").put("key",key).put("view","declared").put("limit",12);
+            fact.put("query_scope","Indexed declarations matching the shown key, including profile declarations; effective runtime configuration is unsupported");
+            fact.set("evidence",evidence);
         }
         Set<Integer> seen=new HashSet<>();var matcher=IDENTIFIER.matcher(prompt);
         while(matcher.find() && facts.size()+ambiguous.size()+unavailable.size()<3) {

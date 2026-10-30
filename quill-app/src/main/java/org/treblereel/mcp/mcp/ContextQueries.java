@@ -33,6 +33,11 @@ final class ContextQueries {
     private final ChangeRiskQueries risks = new ChangeRiskQueries();
 
     String getContext(Jdbi jdbi, List<String> targets, boolean includeMembers, int limit) {
+        return getContext(jdbi,targets,includeMembers,limit,"full");
+    }
+
+    String getContext(Jdbi jdbi, List<String> targets, boolean includeMembers, int limit,String view) {
+        if(!List.of("full","impact").contains(view))return errorResponse("view must be full or impact");
         if (targets == null || targets.isEmpty()) {
             return errorResponse("At least one target is required");
         }
@@ -59,6 +64,14 @@ final class ContextQueries {
             }
             ClassRecord cls = lookup.cls();
             if (separator >= 0) {
+                if(view.equals("impact")){
+                    try {
+                        ObjectNode impact=new MethodImpactQueries().get(jdbi,classTarget,target.substring(separator+1),limit);
+                        if(impact.has("error") || impact.has("error_code"))unresolved.add(impact);
+                        else {contexts.add(impact);resolvedNames.add(cls.className());}
+                    } catch(Exception failure){throw new IllegalStateException("Cannot compose method impact",failure);}
+                    continue;
+                }
                 ObjectNode method=(ObjectNode)new MethodContextQueries().get(jdbi,cls,target.substring(separator+1));
                 if(method.has("error") || method.has("error_code") || !method.hasNonNull("descriptor")) {
                     unresolved.addObject().put("target",target).set("resolution",method);continue;
@@ -78,6 +91,7 @@ final class ContextQueries {
                 if (!resolvedNames.contains(cls.className())) resolvedNames.add(cls.className());
                 continue;
             }
+            if(view.equals("impact")){unresolved.addObject().put("target",target).put("error","impact requires Class#method(signature)");continue;}
             if (resolvedNames.contains(cls.className())) continue;
             resolvedNames.add(cls.className());
             naiveTokens += cls.sourceTokens();
@@ -111,13 +125,14 @@ final class ContextQueries {
                     "risk_score", "risk_level", "signals", "recommendation")));
         }
 
-        root.set("direct_callee_comparison",DirectCalleeComparison.compare(contexts));
+        if(view.equals("full"))root.set("direct_callee_comparison",DirectCalleeComparison.compare(contexts));
         root.put("resolved_target_count", contexts.size());
         root.put("resolved_class_count",resolvedNames.size());
         root.put("unresolved_target_count", unresolved.size());
         root.put("answer_complete", unresolved.isEmpty() && java.util.stream.StreamSupport.stream(contexts.spliterator(),false)
-                .allMatch(c -> !c.has("method_context") || c.path("method_context").path("answer_complete").asBoolean()));
-        if (!resolvedNames.isEmpty()) {
+                .allMatch(c -> view.equals("impact")?c.path("answer_complete").asBoolean():!c.has("method_context") || c.path("method_context").path("answer_complete").asBoolean()));
+        root.put("view",view);
+        if (view.equals("full") && !resolvedNames.isEmpty()) {
             ObjectNode impact = parse(tests.findImpactedTests(
                     jdbi, resolvedNames, true, 3, limit, 0));
             root.set("impacted_tests", compact(impact, List.of(

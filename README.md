@@ -1089,6 +1089,13 @@ the route prefix. Argument errors list accepted names without requiring another 
 
 ### Generic prefetch and long sessions
 
+An explicit `Class#method(qualified.Types)` also supplies a compact direct-impact packet:
+production callers, direct test references, overrides, interface contracts and scoped counts.
+The same packet is available through `get_context(view="impact")`. References are static,
+not runtime test coverage; pagination, missing supertypes and unclassified callers keep
+incompleteness explicit. Full dispatch/source evidence remains available on demand.
+
+
 Native project initialization and `client refresh --project` install project-local
 `UserPromptSubmit` and `SessionStart` hooks in `.codex/hooks.json` and `.claude/settings.json`.
 Existing handlers, permissions and host trust settings are preserved. In Codex, trust the

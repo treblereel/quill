@@ -31,7 +31,11 @@ final class JvmDescriptors {
         Type[] actual = Type.getArgumentTypes(descriptor);
         if (requested.length != actual.length) return false;
         for (int i = 0; i < actual.length; i++) {
-            if (!requested[i].strip().equals(actual[i].getClassName())) return false;
+            String wanted=requested[i].strip().replace("...","[]").replace('$','.');
+            String qualified=actual[i].getClassName().replace('$','.');
+            // Callers still reject multiple matching overloads; a short type never selects one arbitrarily.
+            if (!wanted.equals(qualified) && !(wanted.indexOf('.')<0
+                    && wanted.equals(qualified.substring(qualified.lastIndexOf('.')+1)))) return false;
         }
         return true;
     }

@@ -381,7 +381,7 @@ final class TestImpactQueries {
         return List.copyOf(result);
     }
 
-    private static boolean isTestClass(ClassRecord cls) {
+    static boolean isTestClass(ClassRecord cls) {
         return "test".equals(cls.sourceSet()) || isTestPath(cls.sourceFile());
     }
 

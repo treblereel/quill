@@ -237,16 +237,17 @@ public final class QuillTools {
     }
 
     @Tool(readOnly = true, structured = true,
-            description = "Compact class or exact method context.")
+            description = "Context; impact: direct callers/tests, overrides, counts.")
     public String get_context(
-            @ToolArg(description = "Classes, paths or Class#method(qualified.Types); max 10") List<String> targets,
-            @ToolArg(description = "Include declared members; default false") Optional<Boolean> include_members,
-            @ToolArg(description = "Members, usages, and tests per section; default 10, max 25") Optional<Integer> limit,
+            @ToolArg(description = "Classes/paths or Class#method(Types); max 10") List<String> targets,
+            @ToolArg(description = "Class members; default false") Optional<Boolean> include_members,
+            @ToolArg(description = "Page limit: 10/full,25/impact; max25") Optional<Integer> limit,
+            @ToolArg(description = "full (default) or impact") Optional<String> view,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         boolean requestedMembers = include_members.orElse(false);
-        int requestedLimit = clamp(limit.orElse(10), 1, 25);
+        int requestedLimit = clamp(limit.orElse(view.orElse("full").equals("impact")?25:10), 1, 25);
         return forAllProjects(project.orElse(null), p -> queries.getContext(
-                p.jdbi(), targets, requestedMembers, requestedLimit));
+                p.jdbi(), targets, requestedMembers, requestedLimit,view.orElse("full")));
     }
 
     @Tool(readOnly = true, structured = true,

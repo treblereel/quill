@@ -1087,6 +1087,16 @@ and valid project boundary. Missing, changed, oversized or unsupported source ha
 status; no approximate line window is returned. `find_framework_endpoints` uses `path` for
 the route prefix. Argument errors list accepted names without requiring another catalog lookup.
 
+### Framework provider evidence
+
+`list_beans` resolves an exact class first, then the provided bean type when no
+declaration class matches. Short names do not match unrelated class suffixes;
+explicit wildcards remain available. Scope, qualifier, profile and origin filters
+are retained. Unknown injection points expose bounded dependency declarations,
+producer member/scope/artifact and qualifier-name matches without promoting them
+to a proven CDI/runtime selection. A configuration-mapping annotation alone does
+not prove the generated bean scope. Endpoint prefetch reuses this same evidence.
+
 ### Generic prefetch and long sessions
 
 An explicit `Class#method(qualified.Types)` also supplies a compact direct-impact packet:

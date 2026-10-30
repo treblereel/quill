@@ -196,6 +196,15 @@ final class StructureToolQueries {
         List<ExternalBeanRecord> externalBeans = "application".equals(requestedOrigin)
                 ? List.of()
                 : IndexReader.findExternalBeans(jdbi, filter.isEmpty() ? null : filter);
+        boolean typeLookup = false;
+        if (beans.isEmpty() && externalBeans.isEmpty() && className != null && !className.contains("*")) {
+            Map<String, String> typeFilter = new HashMap<>(filter);
+            typeFilter.remove("class_name");
+            typeFilter.put("bean_type", className);
+            if (!"dependency".equals(requestedOrigin)) beans = IndexReader.findBeans(jdbi, typeFilter);
+            if (!"application".equals(requestedOrigin)) externalBeans = IndexReader.findExternalBeans(jdbi, typeFilter);
+            typeLookup = !beans.isEmpty() || !externalBeans.isEmpty();
+        }
         if (beans.isEmpty() && externalBeans.isEmpty() && lookup != null
                 && lookup.error() != null) {
             return classLookupError(jdbi, lookup, className);
@@ -225,6 +234,8 @@ final class StructureToolQueries {
                                 .map(value -> value.application().classId()).toList());
         ObjectNode root = JSON.createObjectNode();
         ArrayNode arr = root.putArray("beans");
+        if (typeLookup) root.put("lookup_kind", "provided_bean_type").put("requested_type", className)
+                .put("runtime_resolution_proven", false);
         int naiveTokens = 0;
         for (BeanView view : limited) {
             ObjectNode node = arr.addObject();
@@ -791,6 +802,9 @@ final class StructureToolQueries {
         ArrayNode contextRequired = root.putArray("context_required");
         ArrayNode unknown = root.putArray("unknown");
         ArrayNode unsupported = root.putArray("unsupported_mechanism");
+        List<ExternalBeanRecord> providers = injectionPoints.stream()
+                .anyMatch(p -> p.resolutionStatus() == ResolutionStatus.UNKNOWN)
+                ? IndexReader.findExternalBeans(jdbi, null) : List.of();
         for (InjectionPointRecord point : injectionPoints) {
             ObjectNode node = result.addObject();
             node.put("kind", point.kind());
@@ -803,6 +817,9 @@ final class StructureToolQueries {
             node.put("confidence", point.resolutionConfidence().name().toLowerCase());
             node.set("limitations", JSON.valueToTree(point.limitations()));
             appendResolutionTrace(node, point, resolvedBeans, resolvedClasses);
+            if (point.resolutionStatus() == ResolutionStatus.UNKNOWN) {
+                appendProviderEvidence(jdbi, node, point, providers);
+            }
             if (point.resolutionStatus() == ResolutionStatus.AMBIGUOUS) {
                 node.putNull("resolved_to");
                 ambiguous.add(point.fieldName());
@@ -835,6 +852,36 @@ final class StructureToolQueries {
         shareResolutionContext(root, result);
         appendMeta(root, jdbi, cls.sourceTokens());
         return root.toString();
+    }
+
+    private static void appendProviderEvidence(Jdbi db, ObjectNode node, InjectionPointRecord point,
+            List<ExternalBeanRecord> providers) {
+        List<ExternalBeanRecord> matches = providers.stream()
+                .filter(b -> IndexReader.matchesBeanType(b.beanTypes(), point.targetType())).toList();
+        ObjectNode evidence = node.putObject("provider_evidence");
+        evidence.put("scope", "indexed declarations by provided type; not full CDI eligibility or runtime resolution")
+                .put("runtime_resolution_proven", false).put("total", matches.size())
+                .put("showing", Math.min(5, matches.size())).put("has_more", matches.size() > 5);
+        ArrayNode declarations = evidence.putArray("declarations");
+        for (ExternalBeanRecord bean : matches.stream().limit(5).toList()) {
+            ObjectNode declaration = declarations.addObject().put("declaring_class", bean.className())
+                    .put("kind", bean.kind()).put("bean_scope", bean.scope()).put("framework", bean.framework());
+            if (bean.memberName() != null) declaration.put("member", bean.memberName());
+            if (bean.artifact() != null) declaration.put("artifact", bean.artifact());
+            declaration.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+            declaration.set("profiles", JSON.valueToTree(bean.profiles()));
+            declaration.put("qualifier_names_match", point.qualifiers().stream().allMatch(q -> {
+                int end = q.indexOf('(');
+                return IndexReader.matchesQualifier(bean.qualifiers(), end < 0 ? q : q.substring(0, end));
+            }));
+        }
+        var lookup = ClassTargetResolver.resolve(db, point.targetType());
+        if (lookup.error() == null && IndexReader.findClassAnnotations(db, lookup.cls().id()).stream()
+                .anyMatch(a -> a.direct() && a.annotationName().equals("io.smallrye.config.ConfigMapping"))) {
+            evidence.putObject("configuration_mapping_declaration")
+                    .put("class", lookup.cls().className()).put("annotation", "io.smallrye.config.ConfigMapping")
+                    .put("source", lookup.cls().sourceFile()).put("generated_bean_scope", "not_proven");
+        }
     }
 
     private static void shareResolutionContext(ObjectNode root, ArrayNode points) {

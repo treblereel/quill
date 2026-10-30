@@ -115,9 +115,9 @@ public final class QuillTools {
                 provider_repository.orElse(null), clamp(max_depth.orElse(3), 1, 10)));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Find CDI/Spring beans.")
+    @Tool(readOnly = true, structured = true, description = "Beans by class or type.")
     public String list_beans(
-            @ToolArg(description = "Class, path, or wildcard") Optional<String> class_name,
+            @ToolArg(description = "Class/path/bean type or *") Optional<String> class_name,
             @ToolArg(description = "Scope") Optional<String> scope,
             @ToolArg(description = "Bean kind") Optional<String> kind,
             @ToolArg(description = "Build profile") Optional<String> profile,

@@ -132,7 +132,7 @@ class CodexCapture:
     def __enter__(self):
         self.started_at = time.monotonic()
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=False)
-        self.private = tempfile.TemporaryDirectory(prefix='quill-codex-wire-ca-')
+        self.private = tempfile.TemporaryDirectory(prefix='quill-codex-wire-ca-', dir='/tmp')
         with socket.socket() as s:
             s.bind(('127.0.0.1', 0))
             self.port = s.getsockname()[1]
@@ -149,7 +149,7 @@ class CodexCapture:
         self.process = subprocess.Popen(args, stdout=self.log, stderr=subprocess.STDOUT, umask=0o077)
         try:
             deadline = time.monotonic() + 20
-            self.ca = Path(self.private.name) / 'mitmproxy-ca-cert.pem'
+            self.ca = (Path(self.private.name) / 'mitmproxy-ca-cert.pem').resolve()
             while not (self.directory / 'ready.json').exists() or not self.ca.exists():
                 if self.process.poll() is not None or time.monotonic() >= deadline:
                     raise RuntimeError('Body observer failed to start; inspect private observer.log')
@@ -187,6 +187,20 @@ class CodexCapture:
                                               'observer_startup_seconds': getattr(self, 'startup_seconds', None)})
 
 
+def capture_profile(original, ca):
+    ca = Path(ca).resolve()
+    literal = '(literal ' + json.dumps(str(ca)) + ')'
+    directory = '(subpath ' + json.dumps(str(ca.parent)) + ')'
+    marker = '(deny file-read-data (require-all '
+    if marker in original:
+        if original.count(marker) != 1:
+            raise ValueError('Unsupported isolation profile; refuse ambiguous CA read exception')
+        original = original.replace(marker, marker + '(require-not ' + literal + ') ', 1)
+    elif '(deny file-read' in original:
+        raise ValueError('Unsupported read isolation; refusing to broaden permissions')
+    return original + '\n(deny file-read-data (require-all ' + directory + ' (require-not ' + literal + ')))\n(deny file-write* ' + directory + ')\n(deny network-outbound)\n(allow network-outbound (remote ip "localhost:*"))\n'
+
+
 @contextlib.contextmanager
 def instrument_codex(runner, mitmdump):
     """Wrap a NEW runner invocation; immutable historic files/schedules are not edited."""
@@ -204,7 +218,7 @@ def instrument_codex(runner, mitmdump):
                 local = capture.environment(env)
                 local['CODEX_ROLLOUT_TRACE_ROOT'] = str(Path(directory) / 'native-trace')
                 profile = Path(directory) / 'capture-isolation.sb'
-                profile.write_text(Path(sandbox).read_text() + '\n(allow file-read* (literal ' + json.dumps(str(capture.ca)) + '))\n(deny network-outbound)\n(allow network-outbound (remote ip "localhost:*"))\n')
+                profile.write_text(capture_profile(Path(sandbox).read_text(), capture.ca))
                 # Keep the existing CLI/model/MCP argv; add transport env to this child only.
                 keys = ['HTTPS_PROXY','HTTP_PROXY','ALL_PROXY','WSS_PROXY','NO_PROXY','CODEX_CA_CERTIFICATE',
                         'https_proxy','http_proxy','all_proxy','wss_proxy','no_proxy','CODEX_ROLLOUT_TRACE_ROOT']

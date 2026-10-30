@@ -29,7 +29,36 @@ evidence” are different hypotheses. State only what logs establish; model inte
 is unknown unless supported by explicit evidence. Preserve failed attempts and
 original answers; no repairs or rerolls to erase a flag.
 
-Current limitation: the latest short audit detects configuration-query attempts
-in Codex rollout, including client rejection. A general cross-tool, semantic
-coverage audit for both clients remains to be implemented; regex counts alone
-must not be presented as complete detection.
+## Offline implementation
+
+Run `scripts/quill_response_reuse_audit.py SESSION... --output NEW_AUDIT_DIRECTORY`.
+It reads Codex Responses HTTP/SSE/WS and Claude request/SSE captures, matches native
+results to actual model inputs, and audits native prefetch. Saved sessions are
+never modified; the output directory must be separate. No captured command is
+executed and no provider is called.
+
+The report distinguishes `red_flag`, `justified_followup`, `unresolved` and
+`discovery`. Exact covered queries, contained complete configuration queries,
+deterministic repeated errors, unsupported runtime queries and covered source
+ranges have explicit checks. Dynamic arguments, ambiguous cross-tool coverage,
+source overlap without a supplied body/range, changed inputs and capture gaps
+require review. Neither a citation nor a successful hook proves a complete answer.
+
+`review_required` blocks automatic clearance; it is not a correctness score or
+proof that the model misunderstood Quill. Existing acceptance decisions and raw
+answers are not rewritten. Callers must compare old/candidate flags separately
+from accuracy/token/time gates. Do not interpret CLI exit status 0 as acceptance:
+it means the audit report was produced, including unresolved/failed sessions.
+
+Explicit human review can be supplied with `--reviews FILE`. The JSON maps finding
+IDs to `classification`, nonempty `reason` and `evidence`. Original automatic
+classifications remain in the report; coverage failures cannot be cleared by an
+annotation. This supports user-requested verification and semantic cases that
+cannot safely be decided mechanically.
+
+Limitations: this is a conservative detector, not a general proof of natural-language
+intent or arbitrary program equivalence. Literal JS calls are parsed without eval;
+computed dispatch/aliases remain unresolved. Oversized/deep/malformed input cannot
+be declared clean. Integral JSON numbers such as `1`/`1.0` are equivalent for
+matching; booleans remain distinct. Only observed cycle costs are reported; waste
+attribution stays unknown. Unknown/incomplete usage is never counted as zero.

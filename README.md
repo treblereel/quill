@@ -1094,10 +1094,15 @@ Native project initialization and `client refresh --project` install project-loc
 Existing handlers, permissions and host trust settings are preserved. In Codex, trust the
 project and review new or changed hooks in `/hooks` before they can run. Initialization
 does not grant that trust. The `prefetch --project` helper reads an existing
-index; it never starts MCP, compiles, initializes a project or calls a language model.
-It looks up literal indexed identifiers, not question templates. It emits at most three
-verified class declaration cards, reports ambiguities/stale evidence explicitly, and suppresses
-unchanged facts per session. New sessions, `/clear`, compaction, forks and new index generations
+index; it never starts MCP, builds, initializes a project or calls a language model.
+It looks up literal indexed identifiers or exact HTTP method/path operations, not question
+templates. Identifier lookup emits at most three verified class declaration cards. HTTP
+lookup provides the handler declaration and bounded direct-callee DI/configuration evidence;
+its source range may use captured javac settings for read-only semantic analysis. Callee
+bodies remain available on demand and configuration values are not indexed. The selected
+operation is retained for follow-ups without literal identifiers; unchanged context is
+suppressed, not retransmitted on every turn. Ambiguous routes and stale/source-hash failures
+remain explicit. DI uses the indexed default context rather than guessing a runtime profile. New sessions, `/clear`, compaction, forks and new index generations
 invalidate delivery state. Workspace-wide automatic prefetch is not installed; use explicit
 repository contexts or normal workspace MCP queries.
 

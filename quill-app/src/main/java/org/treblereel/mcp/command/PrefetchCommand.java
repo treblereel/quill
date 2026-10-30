@@ -12,7 +12,7 @@ import org.treblereel.mcp.mcp.PrefetchContext;
 import picocli.CommandLine.*;
 
 /** Read an existing index only. This hook never initializes MCP, runs builds or calls a provider. */
-@Command(name="prefetch",mixinStandardHelpOptions=true,description="Read bounded indexed facts for literal identifiers from a client hook")
+@Command(name="prefetch",mixinStandardHelpOptions=true,description="Read bounded indexed facts for literal symbols or HTTP operations from a client hook")
 public final class PrefetchCommand implements Callable<Integer> {
     private static final ObjectMapper JSON=new ObjectMapper().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
     @Option(names="--project",required=true) Path root;
@@ -35,11 +35,15 @@ public final class PrefetchCommand implements Callable<Integer> {
                 if(guard==null)return 0;
                 if(event.equals("SessionStart")){Files.deleteIfExists(state);return 0;}
                 Path index=ProjectIndexStore.findBestAvailableDb(root);if(index==null)return 0;
+                ObjectNode delivered=Files.isRegularFile(state)?(ObjectNode)JSON.readTree(state.toFile()):JSON.createObjectNode();
                 var db=QuillDatabase.open(index);
                 ObjectNode data;
-                try {data=PrefetchContext.collect(db,root,hook.path("prompt").asText());}finally{QuillDatabase.retire(db);}
+                try {data=PrefetchContext.collect(db,root,hook.path("prompt").asText(),delivered.path("_endpoint").asText(null),
+                        org.treblereel.mcp.db.IndexReader.getMetadata(db).getOrDefault("index_id","").equals(delivered.path("_index_id").asText()));}finally{QuillDatabase.retire(db);}
                 // shortcut: cache tracks stdout emission, not host acknowledgement; verify delivery in future CLI captures.
-                ObjectNode delivered=Files.isRegularFile(state)?(ObjectNode)JSON.readTree(state.toFile()):JSON.createObjectNode();
+                if(!data.path("index_id").asText().equals(delivered.path("_index_id").asText()))delivered.removeAll();
+                delivered.put("_index_id",data.path("index_id").asText());
+                if(data.has("endpoint_anchor"))delivered.set("_endpoint",data.get("endpoint_anchor"));else delivered.remove("_endpoint");
                 ArrayNode fresh=JSON.createArrayNode();
                 for(JsonNode fact:data.path("facts")) {
                     ObjectNode identity=((ObjectNode)fact).deepCopy();identity.remove("_meta");

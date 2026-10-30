@@ -14,10 +14,17 @@ public final class PrefetchContext {
     private static final ObjectMapper JSON=new ObjectMapper();
     private static final Pattern IDENTIFIER=Pattern.compile("[\\p{L}_$][\\p{L}\\p{N}_$.]*");
     public static ObjectNode collect(Jdbi db,Path root,String prompt) throws Exception {
+        return collect(db,root,prompt,null);
+    }
+    public static ObjectNode collect(Jdbi db,Path root,String prompt,String previousEndpoint) throws Exception {
+        return collect(db,root,prompt,previousEndpoint,false);
+    }
+    public static ObjectNode collect(Jdbi db,Path root,String prompt,String previousEndpoint,boolean deliveredCurrentIndex) throws Exception {
         WorktreeSnapshotCache.shared().invalidate(root);
         ObjectNode result=JSON.createObjectNode().put("basis","literal indexed identifiers");
         if(MetaEnvelope.from(db,0,0).structureStale())return result.put("status","index_stale");
         var metadata=IndexReader.getMetadata(db);
+        if(EndpointPrefetch.hasRoute(prompt))return EndpointPrefetch.collect(db,root,prompt);
         JsonNode hashes=JSON.readTree(metadata.getOrDefault("java_source_hashes","{}"));
         Map<String,List<ClassRecord>> names=new HashMap<>();
         for(var cls:IndexReader.findAllClasses(db)) if("current".equals(cls.lifecycle()) && !"orphan_output".equals(cls.origin())) {
@@ -46,6 +53,8 @@ public final class PrefetchContext {
             ObjectNode fact=(ObjectNode)JSON.readTree(new SymbolToolQueries().getSymbolDetails(db,cls.className(),false,null,10,0));
             fact.put("source_sha256",hash);facts.add(fact);
         }
+        if(facts.isEmpty() && ambiguous.isEmpty() && unavailable.isEmpty() && previousEndpoint!=null)
+            return EndpointPrefetch.collect(db,root,previousEndpoint,deliveredCurrentIndex);
         result.put("index_id",metadata.getOrDefault("index_id","unknown"));
         return result.put("status","ready");
     }

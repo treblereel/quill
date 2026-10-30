@@ -30,7 +30,8 @@ final class PrefetchHooksInstaller {
                 for(String event:List.of("SessionStart","UserPromptSubmit")) {
                     ArrayNode groups=hooks.has(event)?(ArrayNode)hooks.get(event):hooks.putArray(event);
                     ObjectNode group=groups.addObject();if(event.equals("SessionStart"))group.put("matcher","startup|clear|compact|fork");
-                    group.putArray("hooks").addObject().put("type","command").put("command",command).put("timeout",10);
+                    // Cold source-range analysis can exceed ten seconds on large projects.
+                    group.putArray("hooks").addObject().put("type","command").put("command",command).put("timeout",event.equals("SessionStart")?10:30);
                 }
                 ClaudeSettingsInstaller.writeAtomically(root.resolve(FILES.get(i)),doc);
             }

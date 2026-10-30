@@ -84,3 +84,15 @@ with tempfile.TemporaryDirectory() as tmp:
   f=d/name;f.mkdir();(f/'http.json').write_text(json.dumps({'method':'POST','status':200,'completed':True,'request_unchanged':True}));(f/'request.json').write_text('{}');(f/'response.raw').write_text('data: '+json.dumps({'type':'response.completed','response':{'id':'same-response','usage':{'input_tokens':10,'output_tokens':1,'input_tokens_details':{'cached_tokens':0}}}})+'\n\n')
  ledger=c.wire_usage(d);assert ledger['usage_complete'] is False and ledger['totals'] is None
 print('Duplicate response replay is unknown, not double-counted')
+
+# Per-message indexing stays linear and preserves payload/order without rescanning files.
+with tempfile.TemporaryDirectory() as tmp:
+ a=c.CaptureAddon();a.root=Path(tmp);a.ws_sequence={};a.selected=lambda f:True
+ flow=SimpleNamespace(id='flow',websocket=SimpleNamespace(messages=[]))
+ for i in range(3):
+  flow.websocket.messages.append(SimpleNamespace(content=b'{"n":'+str(i).encode()+b'}',from_client=True,timestamp=float(i)))
+  a.websocket_message(flow)
+ paths=sorted((Path(tmp)/'flow').glob('ws-*.body'));assert [p.name for p in paths]==['ws-00000000.body','ws-00000001.body','ws-00000002.body']
+ assert [p.read_bytes() for p in paths]==[b'{"n":0}',b'{"n":1}',b'{"n":2}']
+ a.websocket_end(flow);assert a.ws_sequence=={}
+print('Linear WS payload sequence and cleanup passed')

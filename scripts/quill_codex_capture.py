@@ -32,6 +32,7 @@ class CaptureAddon:
         self.root = Path(ctx.options.quill_capture_dir)
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.streams = {}
+        self.ws_sequence = {}
         save(self.root / 'ready.json', {'port': ctx.options.listen_port, 'headers_persisted': False})
 
     def selected(self, flow):
@@ -98,8 +99,9 @@ class CaptureAddon:
         d = self.directory(flow)
         # Payload bytes after WS framing/deflate; forward the original message untouched.
         content = message.content
-        count = sum(1 for _ in d.glob('ws-*.body'))
-        name = f'ws-{count:04d}'
+        count = self.ws_sequence.get(flow.id, 0)
+        self.ws_sequence[flow.id] = count + 1
+        name = f'ws-{count:08d}'
         (d / (name + '.body')).write_bytes(content)
         save(d / (name + '.json'), {'from_client': message.from_client,
                                    'timestamp': message.timestamp, 'sha256': sha(content)})
@@ -107,6 +109,7 @@ class CaptureAddon:
     def websocket_end(self, flow):
         if self.selected(flow):
             save(self.directory(flow) / 'websocket-end.json', {'ended': True})
+            self.ws_sequence.pop(flow.id, None)
 
     def error(self, flow):
         if not self.selected(flow):

@@ -20,10 +20,19 @@ import org.jdbi.v3.core.Jdbi;
 final class ConfigurationReferenceQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final String BASE_KEY = "(CASE WHEN d.kind <> 'persistence_unit' AND substr(d.key,1,1)='%' AND instr(d.key,'.')>1 THEN substr(d.key,instr(d.key,'.')+1) ELSE d.key END)";
     private static final Set<String> KINDS = Set.of("all", "property", "prefix", "persistence");
 
     String find(Jdbi jdbi, String key, String className, String kind, String module,
             int limit, int offset) {
+        return find(jdbi,key,className,kind,module,limit,offset,"index");
+    }
+
+    String find(Jdbi jdbi, String key, String className, String kind, String module,
+            int limit, int offset, String view) {
+        if (!Set.of("index","declared").contains(view)) return errorResponse("view must be index or declared");
+        if (view.equals("declared") && (key==null || key.isBlank()) && (className==null || className.isBlank()))
+            return errorResponse("declared view requires a key or consumer class");
         String normalizedKind = kind == null ? "all" : kind.strip().toLowerCase(Locale.ROOT);
         if (!KINDS.contains(normalizedKind)) {
             return errorResponse("Invalid kind: expected all, property, prefix, or persistence");
@@ -43,6 +52,8 @@ final class ConfigurationReferenceQueries {
             putNullable(result, "class", className);
             result.put("kind", normalizedKind);
             putNullable(result, "module", module);
+            result.put("view", view).put("resolution_scope", "indexed declarations, not effective runtime values");
+            ConfigurationSourceEvidence source = view.equals("declared") ? new ConfigurationSourceEvidence(jdbi) : null;
             ArrayNode values = result.putArray("references");
             for (Map<String, Object> reference : references) {
                 ObjectNode node = values.addObject();
@@ -55,6 +66,7 @@ final class ConfigurationReferenceQueries {
                 if (entryType.equals("definition")) {
                     node.put("file", text(reference, "file"));
                     node.put("line", number(reference, "line"));
+                    if (source != null) source.append(node,text(reference,"key"),text(reference,"file"),number(reference,"line"),text(reference,"kind"));
                 } else {
                     node.put("classId", number(reference, "class_id"));
                     node.put("className", text(reference, "class_name"));
@@ -70,7 +82,7 @@ final class ConfigurationReferenceQueries {
                                     new Resolution(0, List.of()));
                     node.put("resolved", !dynamic && resolution.count() > 0);
                     node.put("resolution_status", dynamic ? "unknown"
-                            : resolution.count() > 0 ? "resolved" : "unsatisfied");
+                            : resolution.count() > 0 ? "resolved" : view.equals("declared") ? "no_indexed_definition" : "unsatisfied");
                     node.put("resolution_strategy", dynamic ? "dynamic_programmatic_lookup"
                             : text(reference, "annotation").contains("#")
                                     ? "constant_programmatic_lookup" : "annotation_lookup");
@@ -80,11 +92,12 @@ final class ConfigurationReferenceQueries {
                     resolution.files().forEach(files::add);
                 }
             }
+            if (source != null) source.finish(result);
             result.put("definition_count", definitionCount);
             result.put("usage_count", usageCount);
             result.put("values_indexed", false);
             result.putArray("limitations")
-                    .add("Configuration values are intentionally not stored")
+                    .add("Values are not indexed; declared view emits only bounded non-sensitive scalar source declarations, never environment or evaluated expressions")
                     .add("Consumers cover supported annotations and common programmatic APIs")
                     .add("Environment-variable and YAML list lookups are not resolved")
                     .add("Dynamic programmatic keys are reported as unknown without guessing their value");
@@ -153,10 +166,10 @@ final class ConfigurationReferenceQueries {
             if (key.kind().equals("config_prefix")) {
                 String prefix = "resolved_prefix_" + index;
                 bindings.put(prefix, escapeLike(key.key()) + ".%");
-                relations.add("(d.key = :" + exact + " OR d.key LIKE :" + prefix
+                relations.add("(" + BASE_KEY + " = :" + exact + " OR " + BASE_KEY + " LIKE :" + prefix
                         + " ESCAPE '!')");
             } else {
-                relations.add("d.key = :" + exact);
+                relations.add((key.kind().equals("persistence_unit") ? "d.key" : BASE_KEY) + " = :" + exact);
             }
             index++;
         }
@@ -165,7 +178,7 @@ final class ConfigurationReferenceQueries {
             moduleFilter = " AND d.module = :resolved_module";
             bindings.put("resolved_module", module);
         }
-        String sql = "SELECT d.key, d.file FROM configuration_definitions d WHERE ("
+        String sql = "SELECT d.key, d.kind, d.file FROM configuration_definitions d WHERE ("
                 + String.join(" OR ", relations) + ")" + moduleFilter
                 + " ORDER BY d.key, d.file";
         List<Map<String, Object>> definitions = jdbi.withHandle(handle -> handle.createQuery(sql)
@@ -175,7 +188,7 @@ final class ConfigurationReferenceQueries {
             int count = 0;
             Set<String> files = new LinkedHashSet<>();
             for (Map<String, Object> definition : definitions) {
-                String definitionKey = text(definition, "key");
+                String definitionKey = text(definition,"kind").equals("persistence_unit") ? text(definition,"key") : ConfigurationSourceEvidence.baseKey(text(definition, "key"));
                 boolean matches = definitionKey.equals(key.key())
                         || key.kind().equals("config_prefix")
                                 && definitionKey.startsWith(key.key() + ".");
@@ -196,12 +209,14 @@ final class ConfigurationReferenceQueries {
         String usageKey = "1 = 1";
         if (key != null && !key.isBlank()) {
             bindings.put("key_pattern", wildcardLike(key));
-            int wildcard = key.indexOf('*');
-            String literalPrefix = key.substring(0, wildcard < 0 ? key.length() : wildcard)
+            String usagePattern = ConfigurationSourceEvidence.baseKey(key);
+            bindings.put("usage_key_pattern", wildcardLike(usagePattern));
+            int wildcard = usagePattern.indexOf('*');
+            String literalPrefix = usagePattern.substring(0, wildcard < 0 ? usagePattern.length() : wildcard)
                     .strip();
             bindings.put("literal_prefix", literalPrefix);
-            definitionKey = "d.key LIKE :key_pattern ESCAPE '!'";
-            usageKey = "(u.key LIKE :key_pattern ESCAPE '!' OR "
+            definitionKey = "(d.key LIKE :key_pattern ESCAPE '!' OR " + BASE_KEY + " LIKE :key_pattern ESCAPE '!')";
+            usageKey = "(u.key LIKE :key_pattern ESCAPE '!' OR u.key LIKE :usage_key_pattern ESCAPE '!' OR "
                     + "(u.kind = 'config_prefix' AND "
                     + "(:literal_prefix = u.key OR :literal_prefix LIKE u.key || '.%')))";
         }
@@ -236,8 +251,8 @@ final class ConfigurationReferenceQueries {
         if ((className != null && !className.isBlank()) || kind.equals("prefix")) {
             String relatedUsage = usageWhere.replace("u.", "ru.");
             definitionWhere += " AND EXISTS (SELECT 1 FROM configuration_usages ru WHERE "
-                    + relatedUsage + " AND (d.key = ru.key OR "
-                    + "(ru.kind = 'config_prefix' AND d.key LIKE ru.key || '.%')))";
+                    + relatedUsage + " AND (" + BASE_KEY + " = ru.key OR "
+                    + "(ru.kind = 'config_prefix' AND " + BASE_KEY + " LIKE ru.key || '.%')))";
         }
         return new Filters(definitionWhere, usageWhere, bindings);
     }

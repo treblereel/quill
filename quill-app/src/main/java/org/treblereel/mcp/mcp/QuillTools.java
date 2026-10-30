@@ -785,19 +785,20 @@ public final class QuillTools {
                 p -> queries.inspectServiceDescriptors(p.jdbi(), service.orElse(null)));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Find configuration definitions and annotation/programmatic consumers without exposing values.")
+    @Tool(readOnly = true, structured = true, description = "Config refs; declared view adds safe source scalars.")
     public String find_configuration_references(
-            @ToolArg(description = "Exact key or * wildcard; omit for all") Optional<String> key,
-            @ToolArg(description = "Consumer class FQCN or short name") Optional<String> class_name,
-            @ToolArg(description = "Kind: all, property, prefix, or persistence") Optional<String> kind,
-            @ToolArg(description = "Exact module filter") Optional<String> module,
+            @ToolArg(description = "Key or * wildcard") Optional<String> key,
+            @ToolArg(description = "Consumer class") Optional<String> class_name,
+            @ToolArg(description = "all/property/prefix/persistence") Optional<String> kind,
+            @ToolArg(description = "Module") Optional<String> module,
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
+            @ToolArg(description = "index(default) or declared") Optional<String> view,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), p -> queries.findConfigurationReferences(
                 p.jdbi(), key.orElse(null), class_name.orElse(null), kind.orElse("all"),
                 module.orElse(null), clamp(limit.orElse(50), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE),view.orElse("index")));
     }
 
     @Tool(readOnly = true, structured = true, description = "Find classpath resources and programmatic consumers without reading resource contents.")

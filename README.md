@@ -1097,6 +1097,18 @@ producer member/scope/artifact and qualifier-name matches without promoting them
 to a proven CDI/runtime selection. A configuration-mapping annotation alone does
 not prove the generated bean scope. Endpoint prefetch reuses this same evidence.
 
+### Declared configuration evidence
+
+`find_configuration_references` keeps its no-source `index` default. Explicit
+`view="declared"` adds current source hashes, indexed key/line validation, file/key
+profile conditions and bounded literal boolean/number/duration declarations.
+Values are never indexed. Expressions, sensitive keys and opaque strings are
+not emitted; no environment/system values are read or effective runtime values
+claimed. At most12definitions in5files per page receive source evidence.
+Profiled definitions link to their base consumers without selecting a runtime
+winner. Endpoint prefetch limits configuration candidates to directly indexed
+owned-field/programmatic reads, excluding sibling-member settings.
+
 ### Generic prefetch and long sessions
 
 An explicit `Class#method(qualified.Types)` also supplies a compact direct-impact packet:

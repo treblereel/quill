@@ -371,6 +371,11 @@ public final class QuillToolQueries {
                 jdbi, key, className, kind, module, limit, offset);
     }
 
+    String findConfigurationReferences(Jdbi jdbi, String key, String className,
+            String kind, String module, int limit, int offset, String view) {
+        return configurationReferences.find(jdbi,key,className,kind,module,limit,offset,view);
+    }
+
     String findResourceReferences(Jdbi jdbi, String path, String className,
             String module, int limit, int offset) {
         return resourceReferences.find(jdbi, path, className, module, limit, offset);

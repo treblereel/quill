@@ -58,7 +58,7 @@ final class EndpointPrefetch {
         if(!sourcesCurrent(db,root,owners)){facts.removeAll();result.remove("endpoint_anchor");return result.put("status","source_hash_unavailable_or_changed");}
         result.putArray("limitations").add("Only exact indexed production HTTP routes and at most two direct project callees; static calls do not prove runtime dispatch.")
                 .add("Only the HTTP handler body is preloaded; callee bodies remain available on demand. Compiler-generated helpers are not independent declaration targets.")
-                .add("Injection fields are restricted to declared fields accessed by each method. Configuration references are class-level candidates, not proven method reads; values are not indexed.")
+                .add("Injection fields are restricted to declared fields accessed by each method. Configuration candidates cover directly indexed owned-field/programmatic reads only; indirect framework settings and overload-ambiguous programmatic reads are not inferred.")
                 .add("DI uses the indexed default application context, not an inferred runtime profile. Previously emitted facts are suppressed per session; follow-up questions reuse the selected operation until another explicit target or route is given.");
         return result;
     }
@@ -105,14 +105,21 @@ final class EndpointPrefetch {
             points.add(compact);
         }
         JsonNode config=JSON.readTree(new ConfigurationReferenceQueries().find(db,null,owner,null,null,8,0));
-        var references=node.putObject("configuration_references");
-        for(String key:List.of("has_more","total","error","error_code"))if(config.has(key))references.set(key,config.get(key));
+        var references=node.putObject("configuration_references").put("scope","direct indexed owned-field/programmatic reads only");
+        boolean uniqueMethod=IndexReader.findClassMembers(db,cls.id()).stream().filter(m->m.kind().equals("METHOD") && m.name().equals(name)).count()==1;
+        for(String key:List.of("has_more","error","error_code"))if(config.has(key))references.set(key,config.get(key));
         var entries=references.putArray("references");
         for(var reference:config.path("references")){
+            if (!reference.path("entry_type").asText().equals("usage")) continue;
+            String member=reference.path("member").asText();
+            boolean programmatic=reference.path("annotation").asText().contains("#");
+            if (programmatic ? !uniqueMethod || !member.equals(name) : !fields.contains(member)) continue;
             var compact=entries.addObject();
             for(String key:List.of("entry_type","key","file","line","member","source","annotation","resolution_status"))
                 if(reference.has(key))compact.set(key,reference.get(key));
         }
+        references.put("candidate_count",config.path("total").asInt()).put("showing",entries.size())
+                .put("method_scope_complete",uniqueMethod && !config.path("has_more").asBoolean());
     }
     private EndpointPrefetch(){}
 }

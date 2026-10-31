@@ -12,7 +12,7 @@ import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.core.SourceFileHashes;
 
-/** Current names only: never reads configuration contents or environment values. */
+/** Current resource inventory and bounded properties-key coverage; no process environment reads. */
 final class ConfigurationResourceInventory {
     private static final ObjectMapper JSON=new ObjectMapper();
     static ObjectNode collect(Jdbi db){

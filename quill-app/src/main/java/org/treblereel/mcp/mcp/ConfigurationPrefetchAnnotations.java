@@ -6,15 +6,15 @@ import java.util.*;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
 
-/** Annotation names and configuration keys on exact, directly read indexed fields. */
+/** Explicit annotation literals on exact, directly read indexed fields; defaults remain unknown. */
 final class ConfigurationPrefetchAnnotations {
     private static final ObjectMapper JSON=new ObjectMapper();
     static void append(Jdbi db,ObjectNode evidence) throws Exception {
         Set<String> primary=new HashSet<>();for(var ref:evidence.path("references"))primary.add(ConfigurationSourceEvidence.baseKey(ref.path("key").asText()));
         var context=evidence.putObject("field_annotations").put("status","ready")
-            .put("scope","Direct own-field names/config keys; other attributes and inheritance/runtime unknown");
+            .put("scope","Explicit indexed own-field attributes; defaults/inheritance/runtime unknown");
         var output=context.putArray("classes");Set<String> sites=new HashSet<>(),seen=new HashSet<>(),related=new TreeSet<>();
-        Map<String,ObjectNode> owners=new LinkedHashMap<>();int visited=0;boolean truncated=evidence.path("truncated").asBoolean();
+        Map<Integer,JsonNode> api=new HashMap<>();Map<String,ObjectNode> owners=new LinkedHashMap<>();int visited=0;boolean truncated=evidence.path("truncated").asBoolean();
         for(var ref:evidence.path("references"))for(var site:ref.path("field_reads").path("sites")) {
             if(ref.path("field_reads").path("truncated").asBoolean())truncated=true;
             String owner=site.path("class").asText(ref.path("className").asText()),method=site.path("method").asText(),descriptor=site.path("descriptor").asText();
@@ -43,9 +43,25 @@ final class ConfigurationPrefetchAnnotations {
                 ObjectNode node=owners.get(target);
                 if(node==null){node=output.addObject().put("class",target);node.putObject("annotations");owners.put(target,node);}
                 var annotations=(ObjectNode)node.get("annotations");
+                int id=declaration.get().id();
+                if(!api.containsKey(id)){
+                    String raw=db.withHandle(h->h.createQuery("SELECT evidence FROM jvm_api WHERE class_id=:id").bind("id",id).mapTo(String.class).findOne().orElse("{}"));
+                    api.put(id,JSON.readTree(raw));
+                }
+                var capture=fieldValues(api.get(id),field,type);
                 for(String name:exact.getFirst().annotations()){
-                    var bindings=annotations.withObjectProperty(name);var keys=bindings.withArray(field);
-                    if(!ambiguous && name.equals(annotation) && key!=null && keys.valueStream().noneMatch(k->k.asText().equals(key)))keys.add(key);
+                    var bindings=annotations.withObjectProperty(name);
+                    if(capture.path("version").asInt()==1 && capture.path("explicit").has(name)){
+                        bindings.set(field,capture.path("explicit").get(name));
+                        if(!capture.path("complete").asBoolean())context.put("status","partial");
+                    }else{
+                        bindings.putNull(field);context.put("status","partial");
+                        if(!node.has("unavailable"))node.put("unavailable",capture.path("version").asInt()==1?"Field attribute capture incomplete ("+capture.path("status").asText("capture_limit")+"); null is unknown, not empty.":"Field attribute literals not indexed; reindex required. Null is unknown, not empty.");
+                        if(!ambiguous && name.equals(annotation) && key!=null){
+                            var keys=node.withObjectProperty("indexed_bindings").withArray(field);
+                            if(keys.valueStream().noneMatch(k->k.asText().equals(key)))keys.add(key);
+                        }
+                    }
                 }
                 if(!ambiguous && key!=null && !primary.contains(ConfigurationSourceEvidence.baseKey(key)))related.add(ConfigurationSourceEvidence.baseKey(key));
             }
@@ -53,7 +69,9 @@ final class ConfigurationPrefetchAnnotations {
         Set<String> attached=new HashSet<>();
         for(var ref:evidence.path("references"))if(ref instanceof ObjectNode node){
             String owner=ref.path("className").asText();var annotations=owners.get(owner);
-            if(annotations!=null){node.set("field_annotations",annotations.get("annotations"));attached.add(owner);}
+            if(annotations!=null){node.set("field_annotations",annotations.get("annotations"));
+                if(annotations.has("unavailable"))node.put("field_attribute_unavailable",annotations.path("unavailable").asText());
+                if(annotations.has("indexed_bindings"))node.set("field_annotation_bindings",annotations.get("indexed_bindings"));attached.add(owner);}
         }
         output.removeAll();owners.forEach((owner,node)->{if(!attached.contains(owner))output.add(node);});
         if(output.isEmpty())context.remove("classes");
@@ -80,6 +98,13 @@ final class ConfigurationPrefetchAnnotations {
             declared.remove(java.util.List.of("basis","effective_value_proven"));
             if(node instanceof ObjectNode value && value.path("key").asText().equals(value.path("base_key").asText()))value.remove("base_key");
         }
+    }
+    private static JsonNode fieldValues(JsonNode api,String field,String descriptor){
+        JsonNode found=null;if(!api.path("status").asText().equals("captured"))return JSON.missingNode();
+        for(var member:api.path("members"))if(member.path("kind").asText().equals("FIELD") && member.path("name").asText().equals(field) && member.path("descriptor").asText().equals(descriptor)){
+            if(found!=null)return JSON.missingNode();found=member.path("annotation_values");
+        }
+        return found==null?JSON.missingNode():found;
     }
     static void compact(ObjectNode evidence){
         if(!(evidence.path("related_configuration_declarations") instanceof ArrayNode values))return;

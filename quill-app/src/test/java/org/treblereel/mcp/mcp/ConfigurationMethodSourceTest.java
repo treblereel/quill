@@ -27,7 +27,7 @@ class ConfigurationMethodSourceTest {
         ConfigurationReadSnippets.append(db,e,Map.of("src/main/java/p/Fixture.java",new TreeSet<>(List.of(4,8))));return e;
     }
     @Test void returnsWholeExactOverloadsNotBraceHeuristics() {
-        var e=evidence();ConfigurationMethodSource.append(db,e);var s=e.path("field_read_source");assertTrue(s.path("method_complete").asBoolean(),e.toString());assertFalse(s.path("source_bytecode_identity_proven").asBoolean());
+        var e=evidence();ConfigurationMethodSource.append(db,e);var s=e.path("field_read_source");assertTrue(s.path("method_complete").asBoolean(),e.toString());assertFalse(s.path("source_bytecode_identity_proven").asBoolean());assertFalse(s.has("character_limit"));assertFalse(s.path("truncated").asBoolean());
         var w=s.path("files").get(0).path("windows");assertEquals(2,w.size());assertTrue(w.get(0).path("source").asText().contains("return n>0;"));assertEquals(3,w.get(0).path("start_line").asInt());assertEquals(7,w.get(0).path("end_line").asInt());assertTrue(w.get(1).path("source").asText().startsWith("boolean read(String n)"));
     }
     @Test void missingCompilerCaptureKeepsHonestBoundedFallback() throws Exception {

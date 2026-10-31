@@ -55,6 +55,8 @@ final class ConfigurationMethodSource {
             for(var entry:byFile.entrySet())if(!entry.getValue().path("source_sha256").asText().equals(SourceFileHashes.hash(root.resolve(entry.getKey()))))throw new IllegalStateException("inputs_changed");
             if(MetaEnvelope.from(db,0,0).structureStale())throw new IllegalStateException("index_stale");
             if(!methods.isEmpty()){
+                // Keep complete sources inside the hook budget; unused packing caps are not source facts.
+                complete.remove(List.of("line_limit","character_limit","window_limit","file_limit","unavailable"));
                 String key=evidence.path("key").asText();
                 evidence.set("field_read_source",complete);
                 evidence.remove(List.of("key","class","kind","module","view","resolution_scope","showing","limit","source_definition_limit","source_file_limit","values_indexed"));

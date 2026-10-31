@@ -20,9 +20,20 @@ class ConfigurationPrefetchAnnotationsTest {
     @Test void groupsExactReadFieldAnnotationsAndRelatedDeclaredValues() throws Exception {
         var e=query();ConfigurationPrefetchAnnotations.append(db,e);var c=e.path("field_annotations");assertEquals("ready",c.path("status").asText(),e.toString());
         var a=e.path("references").get(0).path("field_annotations");var bindings=a.path("org.eclipse.microprofile.config.inject.ConfigProperty");
-        assertEquals("warehouse.enabled",bindings.path("enabled").get(0).asText());assertEquals("warehouse.cache",bindings.path("cache").get(0).asText());assertFalse(bindings.has("writeOnly"));
+        assertEquals("warehouse.enabled",bindings.path("enabled").path("name").asText());assertEquals("warehouse.cache",bindings.path("cache").path("name").asText());assertFalse(bindings.has("writeOnly"));
         assertTrue(a.path("java.lang.Deprecated").has("cache"));assertTrue(c.path("scope").asText().contains("unknown"));
         var v=e.path("related_configuration_declarations").get(0);assertEquals("warehouse.cache",v.path("key").asText());assertEquals("false",v.path("declared_source").path("declared_value").asText());assertFalse(v.path("declared_source").path("effective_value_proven").asBoolean());
+    }
+    @Test void missingOptionalCaptureIsUnknownAndKeepsIndexedBindings() throws Exception {
+        db.useHandle(h->h.execute("DELETE FROM jvm_api"));var e=query();ConfigurationPrefetchAnnotations.append(db,e);
+        assertEquals("partial",e.path("field_annotations").path("status").asText());
+        var ref=e.path("references").get(0);assertTrue(ref.path("field_annotations").path("org.eclipse.microprofile.config.inject.ConfigProperty").path("enabled").isNull());
+        assertEquals("warehouse.enabled",ref.path("field_annotation_bindings").path("enabled").get(0).asText());assertTrue(ref.path("field_attribute_unavailable").asText().contains("unknown"));
+    }
+    @Test void markerAnnotationDoesNotInventDeclarationDefaults() throws Exception {
+        var e=query();ConfigurationPrefetchAnnotations.append(db,e);var a=e.path("references").get(0).path("field_annotations");
+        assertTrue(a.path("java.lang.Deprecated").path("cache").isObject());assertTrue(a.path("java.lang.Deprecated").path("cache").isEmpty());
+        assertTrue(e.path("field_annotations").path("scope").asText().contains("defaults"));
     }
     @Test void wrongDescriptorAndWriteOnlyAccessNeverInventAnnotations() throws Exception {
         db.useHandle(h->h.execute("UPDATE field_accesses SET field_descriptor='I' WHERE field_name='cache'"));var e=query();ConfigurationPrefetchAnnotations.append(db,e);

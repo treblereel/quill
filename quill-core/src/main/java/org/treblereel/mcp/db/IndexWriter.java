@@ -52,7 +52,7 @@ public final class IndexWriter {
             "id", "class_id", "class_name", "module", "source_set", "output_directory",
             "class_file", "source_file", "origin");
     private static final TableSpec CLASS_ANNOTATIONS = new TableSpec("class_annotations",
-            "class_id", "annotation_name", "direct", "via_annotation");
+            "class_id", "annotation_name", "direct", "via_annotation", "annotation_values");
     private static final TableSpec CLASS_MEMBERS = new TableSpec("class_members",
             "class_id", "kind", "name", "signature", "descriptor", "type_name",
             "parameter_types", "modifiers", "annotations", "annotation_details");
@@ -328,6 +328,7 @@ public final class IndexWriter {
                     statement.setString(2, annotation.annotationName());
                     statement.setInt(3, annotation.direct() ? 1 : 0);
                     statement.setString(4, annotation.viaAnnotation());
+                    statement.setString(5, annotation.values().isEmpty() ? null : toJson(annotation.values()));
                 });
     }
 
@@ -705,15 +706,19 @@ public final class IndexWriter {
     }
     private static String annotationDetailsJson(ClassMemberRecord member) {
         if (member.annotationDetails().isEmpty()) return "[]";
-        return toJson(member.annotationDetails().stream().map(annotation -> Map.of(
-                "annotationName", annotation.annotationName(),
-                "targetKind", annotation.targetKind(),
-                "parameterIndex", annotation.parameterIndex() == null
-                        ? -1 : annotation.parameterIndex(),
-                "parameterName", annotation.parameterName() == null
-                        ? "" : annotation.parameterName(),
-                "parameterType", annotation.parameterType() == null
-                        ? "" : annotation.parameterType())).toList());
+        return toJson(member.annotationDetails().stream().map(annotation -> {
+            Map<String, Object> detail = new java.util.LinkedHashMap<>();
+            detail.put("annotationName", annotation.annotationName());
+            detail.put("targetKind", annotation.targetKind());
+            detail.put("parameterIndex", annotation.parameterIndex() == null
+                    ? -1 : annotation.parameterIndex());
+            detail.put("parameterName", annotation.parameterName() == null
+                    ? "" : annotation.parameterName());
+            detail.put("parameterType", annotation.parameterType() == null
+                    ? "" : annotation.parameterType());
+            if (!annotation.values().isEmpty()) detail.put("values", annotation.values());
+            return detail;
+        }).toList());
     }
 
 }

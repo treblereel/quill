@@ -248,7 +248,8 @@ public final class JandexScanner {
             for (AnnotationInstance annotation : declared) {
                 String directName = annotation.name().toString();
                 addClassAnnotation(result, seen,
-                        new ClassAnnotationRecord(classId, directName, true, null));
+                        new ClassAnnotationRecord(classId, directName, true, null,
+                                AnnotationValues.of(annotation)));
                 collectMetaAnnotations(classId, annotation.name(), directName, lookupIndex,
                         new HashSet<>(), result, seen);
             }
@@ -395,10 +396,12 @@ public final class JandexScanner {
                         var parameter = annotation.target().asMethodParameter();
                         return new MemberAnnotationRecord(annotation.name().toString(),
                                 "METHOD_PARAMETER", (int) parameter.position(),
-                                parameter.nameOrDefault(), parameter.type().toString());
+                                parameter.nameOrDefault(), parameter.type().toString(),
+                                AnnotationValues.of(annotation));
                     }
                     return new MemberAnnotationRecord(annotation.name().toString(),
-                            annotation.target().kind().name(), null, null, null);
+                            annotation.target().kind().name(), null, null, null,
+                            AnnotationValues.of(annotation));
                 })
                 .sorted(Comparator.comparing(MemberAnnotationRecord::annotationName)
                         .thenComparing(MemberAnnotationRecord::targetKind)

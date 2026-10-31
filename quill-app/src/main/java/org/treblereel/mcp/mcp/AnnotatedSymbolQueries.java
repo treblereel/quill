@@ -71,6 +71,10 @@ final class AnnotatedSymbolQueries {
                 node.put("modifiers", symbol.modifiers());
             }
             node.put("match", symbol.match());
+            if (!symbol.annotationValues().isEmpty()) {
+                // Explicitly written members only; defaults declared by the annotation are absent.
+                node.set("values", JSON.valueToTree(symbol.annotationValues()));
+            }
             node.put("annotation_target", symbol.annotationTarget());
             if (symbol.parameterIndex() != null) {
                 ObjectNode parameter = node.putObject("parameter");

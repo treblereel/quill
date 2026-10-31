@@ -124,7 +124,8 @@ public final class SymbolRepository {
             String origin,
             String module,
             String sourceSet,
-            int sourceTokens) {}
+            int sourceTokens,
+            Map<String, Object> annotationValues) {}
 
     public List<ClassRecord> findAllClasses() {
         if (allClasses == null) allClasses = List.copyOf(readAllClasses());
@@ -192,7 +193,8 @@ public final class SymbolRepository {
                         rs.getString("source_file"),
                         rs.getInt("source_line"), rs.getString("origin"),
                         rs.getString("module"), rs.getString("source_set"),
-                        rs.getInt("source_tokens")))
+                        rs.getInt("source_tokens"),
+                        annotationValuesFromJson(rs.getString("annotation_values"))))
                 .list();
     }
 
@@ -273,7 +275,7 @@ public final class SymbolRepository {
         
             Map<Integer, List<ClassAnnotationRecord>> result = new LinkedHashMap<>();
             handle.createQuery("""
-                            SELECT class_id, annotation_name, direct, via_annotation
+                            SELECT class_id, annotation_name, direct, via_annotation, annotation_values
                             FROM class_annotations
                             WHERE annotation_name = :annotation
                               AND class_id IN (<classIds>)
@@ -284,7 +286,8 @@ public final class SymbolRepository {
                     .bind("includeMeta", includeMetaAnnotations ? 1 : 0)
                     .map((rs, ctx) -> new ClassAnnotationRecord(
                             rs.getInt("class_id"), rs.getString("annotation_name"),
-                            rs.getBoolean("direct"), rs.getString("via_annotation")))
+                            rs.getBoolean("direct"), rs.getString("via_annotation"),
+                            annotationValuesFromJson(rs.getString("annotation_values"))))
                     .forEach(annotation -> result
                             .computeIfAbsent(annotation.classId(), ignored -> new ArrayList<>())
                             .add(annotation));
@@ -294,13 +297,14 @@ public final class SymbolRepository {
 
     public List<ClassAnnotationRecord> findClassAnnotations(int classId) {
         return handle.createQuery("""
-                        SELECT class_id, annotation_name, direct, via_annotation
+                        SELECT class_id, annotation_name, direct, via_annotation, annotation_values
                         FROM class_annotations WHERE class_id = :classId
                         ORDER BY direct DESC, annotation_name, via_annotation""")
                 .bind("classId", classId)
                 .map((rs, ctx) -> new ClassAnnotationRecord(
-                        rs.getInt("class_id"), rs.getString("annotation_name"),
-                        rs.getBoolean("direct"), rs.getString("via_annotation")))
+                            rs.getInt("class_id"), rs.getString("annotation_name"),
+                            rs.getBoolean("direct"), rs.getString("via_annotation"),
+                            annotationValuesFromJson(rs.getString("annotation_values"))))
                 .list();
     }
 
@@ -312,13 +316,14 @@ public final class SymbolRepository {
             for (int from = 0; from < ids.size(); from += 500) {
                 List<Integer> batch = ids.subList(from, Math.min(from + 500, ids.size()));
                 handle.createQuery("""
-                                SELECT class_id, annotation_name, direct, via_annotation
+                                SELECT class_id, annotation_name, direct, via_annotation, annotation_values
                                 FROM class_annotations WHERE class_id IN (<classIds>)
                                 ORDER BY class_id, direct DESC, annotation_name, via_annotation""")
                         .bindList("classIds", batch)
                         .map((rs, ctx) -> new ClassAnnotationRecord(
-                                rs.getInt("class_id"), rs.getString("annotation_name"),
-                                rs.getBoolean("direct"), rs.getString("via_annotation")))
+                            rs.getInt("class_id"), rs.getString("annotation_name"),
+                            rs.getBoolean("direct"), rs.getString("via_annotation"),
+                            annotationValuesFromJson(rs.getString("annotation_values"))))
                         .forEach(annotation -> result
                                 .computeIfAbsent(annotation.classId(), ignored -> new ArrayList<>())
                                 .add(annotation));
@@ -628,6 +633,20 @@ public final class SymbolRepository {
         }
     }
 
+    private static Map<String, Object> annotationValuesFromJson(String json) {
+        if (json == null || json.isBlank()) return Map.of();
+        try {
+            return JSON.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castValues(Map<?, ?> values) {
+        return (Map<String, Object>) values;
+    }
+
     private static List<MemberAnnotationRecord> annotationDetailsFromJson(String json) {
         if (json == null || json.isBlank()) return List.of();
         try {
@@ -641,7 +660,9 @@ public final class SymbolRepository {
                         Objects.toString(value.get("targetKind"), ""),
                         parameterIndex,
                         emptyToNull(Objects.toString(value.get("parameterName"), "")),
-                        emptyToNull(Objects.toString(value.get("parameterType"), "")));
+                        emptyToNull(Objects.toString(value.get("parameterType"), "")),
+                        value.get("values") instanceof Map<?, ?> memberValues
+                                ? castValues(memberValues) : Map.of());
             }).toList();
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
@@ -744,8 +765,8 @@ public final class SymbolRepository {
     }
 
     public List<ClassAnnotationRecord> findApiAnnotations() {
-        return handle.createQuery("SELECT class_id,annotation_name,direct,via_annotation FROM class_annotations ORDER BY class_id,annotation_name,direct,via_annotation")
-                .map((rs, ctx) -> new ClassAnnotationRecord(rs.getInt("class_id"),rs.getString("annotation_name"),rs.getInt("direct")==1,rs.getString("via_annotation"))).list();
+        return handle.createQuery("SELECT class_id,annotation_name,direct,via_annotation,annotation_values FROM class_annotations ORDER BY class_id,annotation_name,direct,via_annotation")
+                .map((rs, ctx) -> new ClassAnnotationRecord(rs.getInt("class_id"),rs.getString("annotation_name"),rs.getInt("direct")==1,rs.getString("via_annotation"),annotationValuesFromJson(rs.getString("annotation_values")))).list();
     }
 
     public List<KotlinDeclarationRecord> findKotlinDeclarationRows() {

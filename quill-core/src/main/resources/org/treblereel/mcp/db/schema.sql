@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS class_annotations (
     annotation_name TEXT NOT NULL,
     direct INTEGER NOT NULL,
     via_annotation TEXT,
+    annotation_values TEXT,
     UNIQUE(class_id, annotation_name, direct, via_annotation)
 );
 

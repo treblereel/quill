@@ -110,7 +110,8 @@ final class ExternalSymbolQueries {
                     .put("reason", "Only JARs on the project's resolved main/test classpaths are indexed; "
                             + "build-time classes (for example Quarkus *-deployment processors) and "
                             + "runtime-generated classes are absent")
-                    .put("next_step", "search_external_symbols pattern=<simple name> to find the actual class")
+                    .set("next_step", JSON.createObjectNode().put("tool", "search_external_symbols")
+                            .set("arguments", JSON.createObjectNode().put("pattern", simpleName(className))))
                     .toString();
         }
         List<String> names = refs.stream().map(ClassRef::className).distinct().toList();

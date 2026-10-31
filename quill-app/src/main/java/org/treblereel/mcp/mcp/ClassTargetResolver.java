@@ -118,15 +118,6 @@ final class ClassTargetResolver {
             ToolResponseSupport.appendRetryWith(root, "target",
                     "Use one candidate's project path or symbol_id");
         }
-        if ("CLASS_NOT_FOUND".equals(lookup.errorCode()) && candidates.isEmpty()
-                && target != null && target.indexOf('.') > 0 && !target.contains("/")) {
-            // Framework and library classes (VertxProducer, jakarta Event, ...) are not part of
-            // the application index; point at the dependency index instead of a dead end.
-            root.put("reason", "Not in indexed application bytecode; it may be a dependency, "
-                    + "build-time (deployment) or runtime-generated class");
-            root.putObject("next_step").put("tool", "get_external_symbol_details")
-                    .putObject("arguments").put("class_name", target);
-        }
         return root;
     }
 }

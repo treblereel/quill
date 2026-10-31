@@ -72,13 +72,13 @@ final class McpToolCatalog {
                 .filter(method -> profile.includes(method.getName()))
                 .sorted(Comparator.comparing(Method::getName))
                 .map(method -> specification(
-                        tools, method, toolScheduler, responseScheduler, requestTimeout))
+                        tools, method, toolScheduler, responseScheduler, requestTimeout, profile))
                 .toList();
     }
 
     private static AsyncToolSpecification specification(
             Object tools, Method method, Scheduler toolScheduler,
-            Scheduler responseScheduler, Duration requestTimeout) {
+            Scheduler responseScheduler, Duration requestTimeout, McpToolProfile profile) {
         Tool annotation = method.getAnnotation(Tool.class);
         McpSchema.Tool.Builder toolBuilder =
                 McpSchema.Tool.builder(method.getName(), inputSchema(method))
@@ -100,7 +100,7 @@ final class McpToolCatalog {
                 .tool(tool)
                 .callHandler((exchange, request) -> {
                     long started = System.nanoTime();
-                    return Mono.fromCallable(() -> invoke(tools, method, request.arguments()))
+                    return Mono.fromCallable(() -> invoke(tools, method, request.arguments(), profile))
                         .subscribeOn(toolScheduler)
                         .timeout(requestTimeout)
                         .onErrorResume(RejectedExecutionException.class,
@@ -201,7 +201,7 @@ final class McpToolCatalog {
     }
 
     private static McpSchema.CallToolResult invoke(
-            Object tools, Method method, Map<String, Object> arguments) {
+            Object tools, Method method, Map<String, Object> arguments, McpToolProfile profile) {
         boolean structured = method.getAnnotation(Tool.class).structured();
         DebugTrace.Trace trace = DebugTrace.start("mcp_tool_call");
         try {
@@ -212,7 +212,8 @@ final class McpToolCatalog {
             Invocation invocation = invokeMethod(tools, method, arguments);
             trace.event("tool_result", Map.of(
                     "tool", method.getName(), "is_error", invocation.error()));
-            return result(invocation.text(), invocation.error(), structured);
+            return result(withoutUnavailableNextStep(invocation.text(), profile),
+                    invocation.error(), structured);
         } catch (RuntimeException e) {
             trace.failure(e);
             return result("Tool failed: " + ProjectRegistry.safeMessage(e), true, structured);
@@ -288,6 +289,23 @@ final class McpToolCatalog {
     }
 
     record Invocation(String text, boolean error) {}
+
+    /**
+     * Drops a next_step that names a tool the active profile does not expose, so an error never
+     * sends the client to a tool it cannot call.
+     */
+    static String withoutUnavailableNextStep(String text, McpToolProfile profile) {
+        if (text == null || profile.router() || !text.contains("\"next_step\"")) return text;
+        try {
+            if (!(JSON.readTree(text) instanceof com.fasterxml.jackson.databind.node.ObjectNode root)) return text;
+            String tool = root.path("next_step").path("tool").asText(null);
+            if (tool == null || profile.includes(tool)) return text;
+            root.remove("next_step");
+            return root.toString();
+        } catch (Exception ignored) {
+            return text;
+        }
+    }
 
     /** Spellings agents used for the router's arguments in recorded sessions. */
     private static final Map<String, Map<String, String>> ARGUMENT_ALIASES = Map.of(

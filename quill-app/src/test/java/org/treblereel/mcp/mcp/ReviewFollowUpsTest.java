@@ -62,6 +62,17 @@ class ReviewFollowUpsTest {
     }
 
     @Test
+    void nextStepIsDroppedWhenTheProfileDoesNotExposeTheTool() {
+        String response = "{\"error_code\":\"CLASS_NOT_FOUND\",\"next_step\":"
+                + "{\"tool\":\"get_external_symbol_details\",\"arguments\":{\"class_name\":\"a.B\"}}}";
+
+        assertFalse(McpToolCatalog.withoutUnavailableNextStep(response, McpToolProfile.parse("core"))
+                .contains("next_step"));
+        assertEquals(response,
+                McpToolCatalog.withoutUnavailableNextStep(response, McpToolProfile.full()));
+    }
+
+    @Test
     void unindexedAnnotationIsAnEmptyResultNotAnError() {
         var response = AnnotatedSymbolQueries.unindexedAnnotation("jakarta.interceptor.Interceptor", "symbols");
 

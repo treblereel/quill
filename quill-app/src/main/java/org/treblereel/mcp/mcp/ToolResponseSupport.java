@@ -182,8 +182,32 @@ final class ToolResponseSupport {
     static String classLookupError(
             ReadQueryContext reader, ClassTargetResolver.Lookup lookup, String target) {
         ObjectNode root = ClassTargetResolver.errorResponse(JSON, lookup, target);
+        appendDependencyHint(root, reader, lookup, target);
         appendMeta(root, reader, 0);
         return root.toString();
+    }
+
+    /**
+     * Framework and library classes (VertxProducer, jakarta Event, ...) are not in the application
+     * index; point at the dependency index instead of a dead end. A miss inside a package the
+     * application itself declares is more likely a misspelled application class.
+     */
+    private static void appendDependencyHint(ObjectNode root, ReadQueryContext reader,
+            ClassTargetResolver.Lookup lookup, String target) {
+        if (!"CLASS_NOT_FOUND".equals(lookup.errorCode()) || !root.path("candidates").isEmpty()
+                || target == null || target.contains("/")) return;
+        int lastDot = target.lastIndexOf('.');
+        if (lastDot <= 0) return;
+        String packageName = target.substring(0, lastDot);
+        if (!reader.symbols.searchClasses(packageName + ".%", 1).isEmpty()) {
+            root.put("reason", "No such class in application package " + packageName
+                    + "; check the name with search_classes");
+            return;
+        }
+        root.put("reason", "Not in indexed application bytecode; it may be a dependency, "
+                + "build-time (deployment) or runtime-generated class");
+        root.putObject("next_step").put("tool", "get_external_symbol_details")
+                .putObject("arguments").put("class_name", target);
     }
 
     static String queryEvidence(String json, String tool, java.util.Map<String, Object> arguments,

@@ -213,9 +213,14 @@ final class ProjectOverviewQueries {
     }
 
     private static List<String> auxiliaryBuildProjects(ReadQueryContext reader) {
-        java.util.Set<String> modules = new java.util.HashSet<>(reader.index.findIndexedModules());
+        return auxiliaryBuildProjects(reader.index.findIndexedModules(), reader.index.findBuildDescriptors());
+    }
+
+    static List<String> auxiliaryBuildProjects(java.util.Collection<String> indexedModules,
+            List<String> buildDescriptors) {
+        java.util.Set<String> modules = new java.util.HashSet<>(indexedModules);
         java.util.TreeSet<String> candidates = new java.util.TreeSet<>();
-        for (String descriptor : reader.index.findBuildDescriptors()) {
+        for (String descriptor : buildDescriptors) {
             int slash = descriptor.lastIndexOf('/');
             if (slash < 0) continue; // the root build itself
             String directory = descriptor.substring(0, slash);

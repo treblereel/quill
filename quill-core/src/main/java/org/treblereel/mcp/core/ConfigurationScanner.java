@@ -47,7 +47,9 @@ public final class ConfigurationScanner {
 
     public record Definition(
             String key, String kind, String file, int line, String module,
-            String sourceSet) {}
+            String sourceSet, String evidence) {
+        public Definition(String key,String kind,String file,int line,String module,String sourceSet) {this(key,kind,file,line,module,sourceSet,"{}");}
+    }
 
     public record Usage(
             String key, String kind, int classId, String className, String member,
@@ -71,6 +73,7 @@ public final class ConfigurationScanner {
         Map<String, ClassRecord> classesByName = classes.stream().collect(
                 java.util.stream.Collectors.toMap(ClassRecord::className, value -> value,
                         (left, right) -> left));
+        if (classFiles != null) definitions.addAll(QuarkusTestProfileOverrides.scan(root,classFiles,classesByName));
         List<Usage> usages = new ArrayList<>();
         Set<String> unique = new LinkedHashSet<>();
         for (ClassInfo classInfo : index.getKnownClasses().stream()

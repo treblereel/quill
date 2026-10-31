@@ -143,7 +143,7 @@ class IndexWriterReaderTest {
         ConfigurationScanner.Result updated = new ConfigurationScanner.Result(List.of(
                 initial.definitions().getFirst(),
                 new ConfigurationScanner.Definition("new.key", "property",
-                        "src/main/resources/application.properties", 2, ".", "main")),
+                        "src/main/resources/application.properties", 2, ".", "main", "{\"owner\":\"updated\"}")),
                 List.of(usage));
         IndexWriter.IncrementalWriteTimings timings =
                 IndexWriter.writeIncrementalWithConfiguration(
@@ -158,6 +158,7 @@ class IndexWriterReaderTest {
                         "SELECT id FROM configuration_definitions WHERE key = 'app.name'")
                 .mapTo(Integer.class).one());
         assertEquals(stableId, updatedStableId);
+        assertEquals("{\"owner\":\"updated\"}", database.withHandle(h -> h.createQuery("SELECT evidence FROM configuration_definitions WHERE key='new.key'").mapTo(String.class).one()));
         assertEquals(List.of("app.name", "new.key"), database.withHandle(handle ->
                 handle.createQuery("SELECT key FROM configuration_definitions ORDER BY key")
                         .mapTo(String.class).list()));

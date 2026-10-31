@@ -66,7 +66,13 @@ final class ConfigurationReferenceQueries {
                 if (entryType.equals("definition")) {
                     node.put("file", text(reference, "file"));
                     node.put("line", number(reference, "line"));
-                    if (source != null) source.append(node,text(reference,"key"),text(reference,"file"),number(reference,"line"),text(reference,"kind"));
+                    if (text(reference,"kind").startsWith("quarkus_test_profile")) {
+                        ObjectNode declaration=(ObjectNode)JSON.readTree(text(reference,"evidence"));
+                        for(String field:List.of("declaring_class","method","status","activation","profile_count")) if(declaration.has(field))node.set(field,declaration.get(field));
+                        var profiles=node.putArray("profile_classes");declaration.path("profile_classes").valueStream().limit(3).forEach(profiles::add);
+                        node.put("configuration_scope","test-profile declaration, not a production-profile default or proven active override");
+                    }
+                    if (source != null) source.append(node,text(reference,"key"),text(reference,"file"),number(reference,"line"),text(reference,"kind"),text(reference,"evidence"));
                 } else {
                     node.put("classId", number(reference, "class_id"));
                     node.put("className", text(reference, "class_name"));
@@ -93,6 +99,10 @@ final class ConfigurationReferenceQueries {
                 }
             }
             if (source != null) source.finish(result);
+            int unknownProfiles=jdbi.withHandle(h->h.createQuery("SELECT count(*) FROM configuration_definitions WHERE kind='quarkus_test_profile_unknown'"+(module==null || module.isBlank()?"":" AND module=:profile_module"))
+                    .bindMap(module==null || module.isBlank()?Map.of():Map.of("profile_module",module)).mapTo(Integer.class).one());
+            result.putObject("test_profile_coverage").put("supported","straight-line literal Map.of/ofEntries, singletonMap and emptyMap declarations")
+                    .put("unknown_declarations",unknownProfiles).put("activation_proven",false).put("runtime_values_proven",false);
             result.put("definition_count", definitionCount);
             result.put("usage_count", usageCount);
             result.put("values_indexed", false);
@@ -104,7 +114,7 @@ final class ConfigurationReferenceQueries {
             appendPage(result, references.size(), total, limit, offset);
             appendMeta(result, jdbi, 0);
             return result.toString();
-        } catch (RuntimeException error) {
+        } catch (Exception error) {
             return errorResponse("Could not query indexed configuration references");
         }
     }
@@ -113,18 +123,18 @@ final class ConfigurationReferenceQueries {
             Jdbi jdbi, Filters filters, int limit, int offset) {
         String sql = """
                 SELECT entry_type, key, kind, file, line, module, source_set,
-                       class_id, class_name, member, parameter_index, annotation, source
+                       class_id, class_name, member, parameter_index, annotation, source, evidence
                 FROM (
                     SELECT 'definition' AS entry_type, 0 AS entry_rank,
                            d.key, d.kind, d.file, d.line, d.module, d.source_set,
                            NULL AS class_id, NULL AS class_name, NULL AS member,
-                           NULL AS parameter_index, NULL AS annotation, NULL AS source
+                           NULL AS parameter_index, NULL AS annotation, NULL AS source, d.evidence
                     FROM configuration_definitions d WHERE %s
                     UNION ALL
                     SELECT 'usage' AS entry_type, 1 AS entry_rank,
                            u.key, u.kind, NULL AS file, NULL AS line, u.module, u.source_set,
                            u.class_id, u.class_name, u.member, u.parameter_index,
-                           u.annotation, u.source
+                           u.annotation, u.source, NULL AS evidence
                     FROM configuration_usages u WHERE %s
                 ) references_page
                 ORDER BY key, entry_rank, COALESCE(file, class_name),
@@ -178,7 +188,7 @@ final class ConfigurationReferenceQueries {
             moduleFilter = " AND d.module = :resolved_module";
             bindings.put("resolved_module", module);
         }
-        String sql = "SELECT d.key, d.kind, d.file FROM configuration_definitions d WHERE ("
+        String sql = "SELECT d.key, d.kind, d.file FROM configuration_definitions d WHERE d.kind NOT IN ('quarkus_test_profile','quarkus_test_profile_unknown') AND ("
                 + String.join(" OR ", relations) + ")" + moduleFilter
                 + " ORDER BY d.key, d.file";
         List<Map<String, Object>> definitions = jdbi.withHandle(handle -> handle.createQuery(sql)
@@ -250,9 +260,11 @@ final class ConfigurationReferenceQueries {
                 definitionKind);
         if ((className != null && !className.isBlank()) || kind.equals("prefix")) {
             String relatedUsage = usageWhere.replace("u.", "ru.");
-            definitionWhere += " AND EXISTS (SELECT 1 FROM configuration_usages ru WHERE "
+            String relatedDefinition="EXISTS (SELECT 1 FROM configuration_usages ru WHERE "
                     + relatedUsage + " AND (" + BASE_KEY + " = ru.key OR "
                     + "(ru.kind = 'config_prefix' AND " + BASE_KEY + " LIKE ru.key || '.%')))";
+            if(className!=null && !className.isBlank()) relatedDefinition += " OR (d.kind LIKE 'quarkus_test_profile%' AND (json_extract(d.evidence,'$.declaring_class')=:class_name OR json_extract(d.evidence,'$.declaring_class') LIKE :class_suffix ESCAPE '!' OR EXISTS (SELECT 1 FROM json_each(d.evidence,'$.profile_classes') p WHERE p.value=:class_name OR p.value LIKE :class_suffix ESCAPE '!')))";
+            definitionWhere += " AND ("+relatedDefinition+")";
         }
         return new Filters(definitionWhere, usageWhere, bindings);
     }

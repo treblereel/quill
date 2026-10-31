@@ -1106,7 +1106,11 @@ Values are never indexed. Expressions, sensitive keys and opaque strings are
 not emitted; no environment/system values are read or effective runtime values
 claimed. At most12definitions in5files per page receive source evidence.
 Profiled definitions link to their base consumers without selecting a runtime
-winner. Endpoint prefetch limits configuration candidates to directly indexed
+winner. Captured application `QuarkusTestProfile#getConfigOverrides()` literal maps
+are also indexed as test-only declarations, including inherited bodies. Declared
+view verifies source and bytecode hashes; dynamic/unsupported bodies and profile
+activation remain unknown. Test declarations never resolve production defaults.
+Index schema31 requires reindexing older projects. Endpoint prefetch limits configuration candidates to directly indexed
 owned-field/programmatic reads, excluding sibling-member settings.
 
 ### Generic prefetch and long sessions

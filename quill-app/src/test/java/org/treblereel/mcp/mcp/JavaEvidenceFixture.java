@@ -14,7 +14,12 @@ import org.treblereel.mcp.model.*;
 /** Real javac output feeds the same scanners and persistence contracts as production. */
 final class JavaEvidenceFixture {
     static Jdbi index(Path root, String source) throws Exception {
-        Path file=root.resolve("src/main/java/p/Fixture.java"); Files.createDirectories(file.getParent()); Files.writeString(file,source);
+        return index(root, Map.of("src/main/java/p/Fixture.java",source));
+    }
+    static Jdbi index(Path root, Map<String,String> sources) throws Exception {
+        List<Path> sourceFiles=new ArrayList<>();
+        for(var entry:sources.entrySet()){Path file=root.resolve(entry.getKey());Files.createDirectories(file.getParent());Files.writeString(file,entry.getValue());sourceFiles.add(file);}
+        var roots=List.of(root.resolve("src/main/java"),root.resolve("src/test/java")).stream().filter(Files::isDirectory).toList();
         Files.writeString(root.resolve("pom.xml"),"<project><modelVersion>4.0.0</modelVersion><groupId>fixture</groupId><artifactId>fixture</artifactId><version>1</version></project>");
         Files.writeString(root.resolve(".gitignore"),"target/\nindex.db*\n");
         String commit;
@@ -26,10 +31,10 @@ final class JavaEvidenceFixture {
         var compiler=ToolProvider.getSystemJavaCompiler();
         try (var manager=compiler.getStandardFileManager(null,null,null)) {
             assertTrue(compiler.getTask(null,manager,null,List.of("--release","17","-g","-proc:none","-d",output.toString()),
-                    null,manager.getJavaFileObjects(file)).call());
+                    null,manager.getJavaFileObjectsFromPaths(sourceFiles)).call());
         }
         var snapshot=ClassFileSnapshot.capture(List.of(output));
-        var scan=JandexScanner.scan(snapshot,List.of(root.resolve("src/main/java")));
+        var scan=JandexScanner.scan(snapshot,roots);
         Map<String,Integer> ids=new HashMap<>();
         for (int i=0;i<scan.classes().size();i++) ids.put(scan.classes().get(i).className(),i+1);
         var bytecode=BytecodeDependencyScanner.analyze(snapshot,ids.keySet());
@@ -42,14 +47,14 @@ final class JavaEvidenceFixture {
                         c.accessKind(),c.occurrences(),c.evidenceLines(),c.instructionOrdinals())).toList();
         Jdbi db=QuillDatabase.create(root.resolve("index.db"));
         var classes=scan.classes().stream().map(c -> new ClassRecord(c.id(),c.className(),c.kind(),c.superclass(),c.interfaces(),c.sourceFile(),c.sourceLine(),
-                c.isBean(),c.sourceTokens(),c.fileId(),c.origin(),c.lifecycle(),".","main")).toList();
-        IndexWriter.writeFresh(db,classes,List.of(),List.of(),List.of(),
+                c.isBean(),c.sourceTokens(),c.fileId(),c.origin(),c.lifecycle(),".",c.sourceFile()!=null && c.sourceFile().contains("src/test/java/")?"test":"main")).toList();
+        IndexWriter.writeFreshWithConfiguration(db,classes,List.of(),List.of(),List.of(),
                 Map.of("index_id","fixture","indexed_at",Instant.now().toString(),"module_discovery_complete","true",
                         "project_root",root.toString(),"last_commit",commit,"missing_test_output_modules","[]","compiled_before_index","true",
-                        "java_source_roots","[\"src/main/java\"]","java_source_hashes",new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(
-                                SourceFileHashes.captureJava(root,List.of(root.resolve("src/main/java"))))),
+                        "java_source_roots",new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(roots.stream().map(root::relativize).map(Path::toString).toList()),"java_source_hashes",new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(
+                                SourceFileHashes.captureJava(root,roots))),
                 List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),
-                JandexScanner.extractClassMembers(scan.index(),ids),calls,fields);
+                JandexScanner.extractClassMembers(scan.index(),ids),calls,fields,ConfigurationScanner.scan(root,List.of(root),scan.index(),ids,classes,snapshot).configuration(),List.of());
         for(var entry:JvmApiScanner.capture(snapshot,ids).entrySet())
             db.useHandle(h->h.createUpdate("INSERT INTO jvm_api(class_id,evidence) VALUES (:id,:evidence)")
                     .bind("id",entry.getKey()).bind("evidence",entry.getValue()).execute());

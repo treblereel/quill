@@ -10,7 +10,7 @@ import org.jdbi.v3.core.Jdbi;
 public final class QuillDatabase {
 
     // Semantic generation boundary: pre-CDI/qualifier fixes must be reindexed, not reused.
-    static final int SCHEMA_VERSION = 30;
+    static final int SCHEMA_VERSION = 31;
 
     private static final java.lang.ref.Cleaner CLEANER=java.lang.ref.Cleaner.create();
     private static final java.util.Map<Jdbi,ReadOnlyConnectionPool> POOLS=java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
@@ -316,7 +316,8 @@ public final class QuillDatabase {
                     line INTEGER NOT NULL,
                     module TEXT NOT NULL,
                     source_set TEXT NOT NULL,
-                    UNIQUE(key, kind, file, line, module, source_set)
+                    evidence TEXT NOT NULL DEFAULT '{}',
+                    UNIQUE(key, kind, file, line, module, source_set, evidence)
                 )""");
             h.execute("""
                 CREATE TABLE IF NOT EXISTS configuration_usages (

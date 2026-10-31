@@ -92,7 +92,7 @@ public final class IndexWriter {
             "class_id", "class_name", "problem_type", "message");
     private static final TableSpec CONFIGURATION_DEFINITIONS = new TableSpec(
             "configuration_definitions", "key", "kind", "file", "line", "module",
-            "source_set");
+            "source_set", "evidence");
     private static final TableSpec CONFIGURATION_USAGES = new TableSpec(
             "configuration_usages", "key", "kind", "class_id", "class_name", "member",
             "parameter_index", "annotation", "source", "module", "source_set");
@@ -738,7 +738,7 @@ public final class IndexWriter {
             Handle h, List<ConfigurationScanner.Definition> definitions) {
         executeBatch(h,
                 "INSERT INTO desired_configuration_definitions "
-                        + "(key, kind, file, line, module, source_set) VALUES (?, ?, ?, ?, ?, ?)",
+                        + "(key, kind, file, line, module, source_set, evidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 definitions, (statement, definition) -> {
                     statement.setString(1, definition.key());
                     statement.setString(2, definition.kind());
@@ -746,6 +746,7 @@ public final class IndexWriter {
                     statement.setInt(4, definition.line());
                     statement.setString(5, definition.module());
                     statement.setString(6, definition.sourceSet());
+                    statement.setString(7, definition.evidence());
                 });
     }
 
@@ -912,7 +913,7 @@ public final class IndexWriter {
             Handle h, List<ConfigurationScanner.Definition> definitions) {
         executeBatch(h,
                 "INSERT INTO configuration_definitions "
-                        + "(key, kind, file, line, module, source_set) VALUES (?, ?, ?, ?, ?, ?)",
+                        + "(key, kind, file, line, module, source_set, evidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 definitions, (statement, definition) -> {
                     statement.setString(1, definition.key());
                     statement.setString(2, definition.kind());
@@ -920,6 +921,7 @@ public final class IndexWriter {
                     statement.setInt(4, definition.line());
                     statement.setString(5, definition.module());
                     statement.setString(6, definition.sourceSet());
+                    statement.setString(7, definition.evidence());
                 });
     }
 

@@ -89,7 +89,7 @@ final class RouterTools {
                 item.put("description", method.getAnnotation(Tool.class).description());
                 Map<String, Object> schema = McpToolCatalog.inputSchema(method);
                 item.set("input_schema", JSON.valueToTree(schema));
-                item.set("required_arguments", JSON.valueToTree(schema.get("required")));
+                item.set("required_arguments", JSON.valueToTree(schema.getOrDefault("required", List.of())));
                 item.put("match_score", candidate.score());
             });
             return result.toString();

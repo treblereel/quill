@@ -146,6 +146,16 @@ public final class IndexRepository {
     }
     public record FileRow(String path, String kind, String origin, String lifecycle,
             String worktreeStatus, String module, String sourceSet) {}
+    /** Current Maven/Gradle build descriptors, as project-relative paths. */
+    public List<String> findBuildDescriptors() {
+        return handle.createQuery("""
+                        SELECT project_path FROM files
+                        WHERE lifecycle = 'current'
+                          AND (project_path = 'pom.xml' OR project_path LIKE '%/pom.xml'
+                               OR project_path LIKE 'build.gradle%' OR project_path LIKE '%/build.gradle%')
+                        ORDER BY project_path
+                        """).mapTo(String.class).list();
+    }
     public List<String> findIndexedModules() {
         List<String> modules = handle.createQuery("""
                         SELECT DISTINCT module FROM (

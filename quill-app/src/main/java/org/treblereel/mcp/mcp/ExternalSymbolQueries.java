@@ -105,7 +105,14 @@ final class ExternalSymbolQueries {
                         || simpleName(candidate.className()).equals(className))
                 .sorted(Comparator.comparing(ClassRef::className)
                         .thenComparing(ClassRef::artifact)).toList();
-        if (refs.isEmpty()) return error("External class not found: " + className);
+        if (refs.isEmpty()) {
+            return JSON.createObjectNode().put("error", "External class not found: " + className)
+                    .put("reason", "Only JARs on the project's resolved main/test classpaths are indexed; "
+                            + "build-time classes (for example Quarkus *-deployment processors) and "
+                            + "runtime-generated classes are absent")
+                    .put("next_step", "search_external_symbols pattern=<simple name> to find the actual class")
+                    .toString();
+        }
         List<String> names = refs.stream().map(ClassRef::className).distinct().toList();
         if (names.size() > 1) return ambiguous(className, names);
         ClassRef ref = refs.get(0);

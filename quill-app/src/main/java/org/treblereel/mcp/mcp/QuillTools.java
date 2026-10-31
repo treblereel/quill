@@ -1292,6 +1292,8 @@ public final class QuillTools {
         try {
             JsonNode parsed = JSON.readTree(json);
             if ("CLASS_NOT_FOUND".equals(parsed.path("error_code").asText())) return true;
+            if (parsed.path("annotation_indexed").isBoolean()
+                    && !parsed.path("annotation_indexed").asBoolean()) return true;
             String message = parsed.path("message").asText();
             if (!message.isBlank()) {
                 return message.startsWith("Annotation not found")

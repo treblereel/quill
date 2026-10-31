@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import org.treblereel.mcp.db.ReadQueryContext;
-import org.objectweb.asm.Type;
 import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.UsageRepository.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
@@ -183,6 +182,9 @@ final class CallHierarchyQueries {
         limitations.add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
         limitations.add("Reflection, generated-at-runtime calls, and framework callbacks are not inferred");
 
+        root.putObject("edge_defaults").put("edge_kind", "call")
+                .put("execution_semantics", "invocation_instruction")
+                .put("omitted_boolean_evidence", false);
         ArrayNode edges = root.putArray("calls");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
@@ -204,11 +206,14 @@ final class CallHierarchyQueries {
                     call.toDescriptor(), call.toSource(), call.toSourceLine(),
                     call.toOrigin(), call.toModule());
             edge.put("invocation_kind", call.invocationKind());
-            edge.put("edge_kind", "dynamic".equals(call.invocationKind())
-                    ? "lambda_metafactory".equals(dynamicBasis) ? "callback_reference" : "dynamic_handle_reference" : "call");
-            edge.put("execution_semantics", "dynamic".equals(call.invocationKind())
-                    ? "lambda_metafactory".equals(dynamicBasis) ? "callback_creation" : "bootstrap_reference_unknown" : "invocation_instruction");
-            if ("dynamic".equals(call.invocationKind())) edge.put("reference_basis",dynamicBasis);
+            // Ordinary calls use the edge_defaults declared once on the root.
+            if ("dynamic".equals(call.invocationKind())) {
+                edge.put("edge_kind", "lambda_metafactory".equals(dynamicBasis)
+                        ? "callback_reference" : "dynamic_handle_reference");
+                edge.put("execution_semantics", "lambda_metafactory".equals(dynamicBasis)
+                        ? "callback_creation" : "bootstrap_reference_unknown");
+                edge.put("reference_basis", dynamicBasis);
+            }
             if (call.fromSource() != null && call.fromSource().endsWith(".java")) dispatch.appendTarget(edge, call);
             edge.put("occurrence_count", call.occurrenceCount());
             edge.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
@@ -333,19 +338,12 @@ final class CallHierarchyQueries {
 
     private static void appendEndpoint(ObjectNode node, String className, String method,
             String descriptor, String source, int sourceLine, String origin, String module) {
+        // Parameter and return types are derivable from the JVM descriptor; repeating them on
+        // both endpoints of every edge roughly doubled the endpoint payload.
         node.put("class", className);
         node.put("method", method);
         node.put("descriptor", descriptor);
-        try {
-            Type methodType = Type.getMethodType(descriptor);
-            node.set("parameters", JSON.valueToTree(java.util.Arrays.stream(
-                    methodType.getArgumentTypes()).map(Type::getClassName).toList()));
-            node.put("return_type", methodType.getReturnType().getClassName());
-        } catch (IllegalArgumentException ignored) {
-            node.set("parameters", JSON.createArrayNode());
-            node.putNull("return_type");
-        }
-        node.put("source", source + ":" + sourceLine);
+        node.put("source", sourceLine > 0 ? source + ":" + sourceLine : source);
         node.put("origin", origin);
         if (module == null) node.putNull("module");
         else node.put("module", module);

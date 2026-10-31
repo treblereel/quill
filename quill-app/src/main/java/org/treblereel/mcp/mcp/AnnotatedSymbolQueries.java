@@ -32,10 +32,14 @@ final class AnnotatedSymbolQueries {
         List<String> names = reader.symbols.findSymbolAnnotationNames(requested);
         String resolved = names.stream().filter(requested::equals).findFirst().orElse(null);
         if (resolved == null && names.size() == 1) resolved = names.getFirst();
+        if (resolved == null && names.isEmpty()) {
+            ObjectNode empty = unindexedAnnotation(requested, "symbols");
+            appendMeta(empty, reader, 0);
+            return empty.toString();
+        }
         if (resolved == null) {
             ObjectNode error = JSON.createObjectNode();
-            error.put("error", names.isEmpty()
-                    ? "Annotation not found" : "Ambiguous annotation name");
+            error.put("error", "Ambiguous annotation name");
             error.put("annotation", requested);
             error.set("candidates", JSON.valueToTree(names));
             appendMeta(error, reader, 0);
@@ -97,6 +101,21 @@ final class AnnotatedSymbolQueries {
         appendPage(root, symbols.size(), total, limit, offset);
         appendMeta(root, reader, naiveTokens);
         return root.toString();
+    }
+
+    /**
+     * An annotation absent from the index is an empty answer, not a failure: the agent should
+     * conclude "no indexed usages" instead of retrying or falling back to source search.
+     */
+    static ObjectNode unindexedAnnotation(String annotation, String resultField) {
+        ObjectNode root = JSON.createObjectNode();
+        root.put("annotation", annotation);
+        root.put("annotation_indexed", false);
+        root.putArray(resultField);
+        root.put("showing", 0).put("total", 0).put("has_more", false);
+        root.put("note", "No indexed declaration carries this annotation. Annotations with "
+                + "SOURCE retention, or used only by external dependencies, are not indexed.");
+        return root;
     }
 
     private static boolean typeKind(String kind) {

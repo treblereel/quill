@@ -1287,8 +1287,9 @@ class QuillToolsTest {
                 .findFirst().orElseThrow();
         assertEquals(List.of(21, 24), outbound.path("evidence_lines").valueStream()
                 .map(JsonNode::asInt).toList());
-        assertEquals("org.acme.Order", outbound.path("callee").path("parameters")
-                .get(0).asText());
+        assertTrue(outbound.path("callee").path("descriptor").asText()
+                .startsWith("(Lorg/acme/Order;"));
+        assertFalse(outbound.path("callee").has("parameters"));
         assertTrue(invalid.path("message").asText().contains("Invalid direction"));
         assertEquals(2, transitive.path("total").asInt());
         assertFalse(transitive.path("direct_only").asBoolean());

@@ -85,10 +85,12 @@ final class StructureToolQueries {
         List<String> names = reader.symbols.findAnnotationNames(requested);
         String resolved = names.stream().filter(requested::equals).findFirst().orElse(null);
         if (resolved == null && names.size() == 1) resolved = names.getFirst();
+        if (resolved == null && names.isEmpty()) {
+            return AnnotatedSymbolQueries.unindexedAnnotation(requested, "classes").toString();
+        }
         if (resolved == null) {
             ObjectNode error = JSON.createObjectNode();
-            error.put("error", names.isEmpty()
-                    ? "Annotation not found" : "Ambiguous annotation name");
+            error.put("error", "Ambiguous annotation name");
             error.put("annotation", requested);
             error.set("candidates", JSON.valueToTree(names));
             return error.toString();
@@ -740,12 +742,41 @@ final class StructureToolQueries {
         }
     }
 
+    /**
+     * Explains why a class has no bean record instead of a bare failure, and names the related
+     * beans (enclosing class, superclass) whose injection points usually answer the question.
+     */
+    private static String notABean(ReadQueryContext reader, ClassRecord cls, String target) {
+        ObjectNode root = JSON.createObjectNode();
+        ToolResponseSupport.appendError(root, "NOT_A_BEAN", "Not a bean: " + target);
+        root.put("target", cls.className());
+        root.put("kind", cls.kind());
+        root.put("reason", "No bean-defining annotation was indexed for this class "
+                + "(abstract, nested helper, or only registered at build time)");
+        ArrayNode related = root.putArray("related_beans");
+        int nested = cls.className().indexOf('$');
+        if (nested > 0) addRelatedBean(reader, related, cls.className().substring(0, nested), "enclosing_class");
+        if (cls.superclass() != null) addRelatedBean(reader, related, cls.superclass(), "superclass");
+        root.putObject("next_step").put("tool", "get_symbol_details")
+                .putObject("arguments").put("target", cls.className());
+        appendMeta(root, reader, 0);
+        return root.toString();
+    }
+
+    private static void addRelatedBean(ReadQueryContext reader, ArrayNode related, String className,
+            String relation) {
+        reader.symbols.findClassByName(className)
+                .filter(candidate -> reader.beans.findBeanByClassId(candidate.id()).isPresent())
+                .ifPresent(candidate -> related.addObject().put("class", candidate.className())
+                        .put("relation", relation));
+    }
+
     String getInjectionPoints(ReadQueryContext reader, String target) {
         var lookup = ClassTargetResolver.resolve(reader, target);
         if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord cls = lookup.cls();
         var bean = reader.beans.findBeanByClassId(cls.id());
-        if (bean.isEmpty()) return errorResponse("Not a bean: " + target);
+        if (bean.isEmpty()) return notABean(reader, cls, target);
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
         appendContext(root, cls);

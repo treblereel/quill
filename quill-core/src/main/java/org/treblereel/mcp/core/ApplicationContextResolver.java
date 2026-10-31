@@ -74,6 +74,7 @@ public final class ApplicationContextResolver {
             Map<Integer, ClassRecord> classesById, Map<Integer, Set<String>> modulesByClass,
             Set<String> visibleModules, String context) {
         boolean spring = InjectionPointRecord.STATIC_SPRING.equals(point.resolutionStrategy());
+        if (point.isCdiBuiltin()) return point.asCdiBuiltin();
         List<BeanRecord> candidates = beans.stream()
                 .filter(bean -> bean.beanTypes() != null && bean.beanTypes().contains(point.targetType()))
                 .filter(bean -> modulesByClass.getOrDefault(bean.classId(), Set.of()).stream()

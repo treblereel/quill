@@ -28,6 +28,17 @@ final class ToolResponseSupport {
         MetaEnvelope meta = org.treblereel.mcp.index.BuildStatusInspector.freshness(reader, 0, 0);
         ObjectNode metaNode = root.putObject("_meta");
         metaNode.put("index_id", meta.indexId());
+        if (fresh(meta)) {
+            // Every response carries _meta; when nothing is stale the full freshness breakdown is
+            // all false/zero/empty, so only the identifying fields and the verdict are kept.
+            metaNode.put("indexed_at", meta.indexedAt());
+            metaNode.put("indexed_commit", meta.lastCommit());
+            metaNode.put("stale_warning", false);
+            metaNode.put("stale_scope", "current");
+            metaNode.put("answer_confidence", "high");
+            appendRecovery(reader, metaNode);
+            return;
+        }
         if (reader.snapshot() != null) {
             metaNode.put("freshness_basis", meta.staleReasons().contains("previous_generation")
                     ? "previous_prepared_generation" : "prepared_input_observation");
@@ -46,14 +57,24 @@ final class ToolResponseSupport {
         metaNode.put("stale_warning", meta.staleWarning());
         String projectRoot = reader.index.getMetadata().get("project_root");
         appendStaleScope(reader, metaNode, meta, projectRoot, targetSource, targetModule);
-        if (projectRoot != null) {
-            ProjectIndexStore.readRecovery(Path.of(projectRoot)).ifPresent(recovery -> {
-                ObjectNode recoveryNode = metaNode.putObject("index_recovery");
-                recoveryNode.put("reason", recovery.reason());
-                recoveryNode.put("selected_index_id", recovery.selectedIndexId());
-                recoveryNode.put("recovered_at", recovery.recoveredAt());
-            });
-        }
+        appendRecovery(reader, metaNode);
+    }
+
+    private static boolean fresh(MetaEnvelope meta) {
+        return !meta.staleWarning() && !meta.structureStale() && !meta.commitStale()
+                && !meta.worktreeDirty() && meta.staleReasons().isEmpty()
+                && meta.currentCommit() != null;
+    }
+
+    private static void appendRecovery(ReadQueryContext reader, ObjectNode metaNode) {
+        String projectRoot = reader.index.getMetadata().get("project_root");
+        if (projectRoot == null) return;
+        ProjectIndexStore.readRecovery(Path.of(projectRoot)).ifPresent(recovery -> {
+            ObjectNode recoveryNode = metaNode.putObject("index_recovery");
+            recoveryNode.put("reason", recovery.reason());
+            recoveryNode.put("selected_index_id", recovery.selectedIndexId());
+            recoveryNode.put("recovered_at", recovery.recoveredAt());
+        });
     }
 
     private static void appendStaleScope(ReadQueryContext reader, ObjectNode metaNode, MetaEnvelope meta,

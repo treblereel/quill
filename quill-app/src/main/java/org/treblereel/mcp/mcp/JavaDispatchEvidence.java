@@ -31,9 +31,28 @@ final class JavaDispatchEvidence {
         String key = call.toClassId() + ":" + call.toMethod() + call.toDescriptor() + ":" + call.invocationKind();
         edge.set("dispatch", targets.computeIfAbsent(key, ignored -> {
             load();
-            try {return (ObjectNode)JSON.readTree(graph.dispatch(key,()->target(call).toString()));}
+            try {return compact((ObjectNode)JSON.readTree(graph.dispatch(key,()->target(call).toString())));}
             catch(java.io.IOException impossible){throw new IllegalStateException(impossible);}
         }));
+    }
+    /**
+     * Drops proof flags that are false and empty candidate lists. Dispatch evidence is repeated on
+     * every edge with the same target, so these defaults dominated call-hierarchy responses;
+     * callers read an omitted flag as false (see edge_defaults.omitted_boolean_evidence).
+     */
+    private static ObjectNode compact(ObjectNode dispatch) {
+        dispatch.remove(java.util.List.of("invocation_kind"));
+        stripFalse(dispatch);
+        return dispatch;
+    }
+    private static void stripFalse(ObjectNode node) {
+        for (var field : java.util.List.copyOf(node.properties())) {
+            var value = field.getValue();
+            if (value.isBoolean() && !value.asBoolean()) node.remove(field.getKey());
+            else if (value.isArray() && value.isEmpty()) node.remove(field.getKey());
+            else if (value instanceof ObjectNode child) stripFalse(child);
+            else if (value.isArray()) value.forEach(item -> { if (item instanceof ObjectNode child) stripFalse(child); });
+        }
     }
     private ObjectNode target(MethodCallView call) {
         var result = JSON.createObjectNode().put("target_basis", "bytecode_symbolic_reference")

@@ -36,7 +36,13 @@ final class ProjectOverviewQueries {
         Map<String, String> meta = reader.index.getMetadata();
         ObjectNode root = JSON.createObjectNode();
 
-        ObjectNode capabilities = root.putObject("capabilities");
+        // The capability contract never changes between calls; the default overview, requested
+        // at the start of every task, only names the contract version.
+        if (!details) {
+            root.putObject("capabilities").put("contract_version", 1)
+                    .put("details_request", "get_overview details=true");
+        }
+        ObjectNode capabilities = details ? root.putObject("capabilities") : JSON.createObjectNode();
         capabilities.put("contract_version", 1);
         capabilities.set("supported_languages", JSON.valueToTree(List.of("java", "kotlin")));
         capabilities.put("stable_symbol_ids", true);
@@ -75,12 +81,20 @@ final class ProjectOverviewQueries {
         project.put("configuration_usages",
                 Integer.parseInt(meta.getOrDefault("configuration_usages", "0")));
 
+        List<String> auxiliary = auxiliaryBuildProjects(reader);
+        if (!auxiliary.isEmpty()) {
+            // Separate builds next to the indexed project (for example a schema generator with its
+            // own pom.xml) are part of the repository inventory but were not indexed.
+            project.set("auxiliary_build_projects", JSON.valueToTree(auxiliary));
+        }
+
         ObjectNode scopeNode = root.putObject("beans_by_scope");
         reader.beans.countBeansByScope().forEach(scopeNode::put);
 
         ObjectNode kindNode = root.putObject("beans_by_kind");
         reader.beans.countBeansByKind().forEach(kindNode::put);
 
+        root.put("architecture_hubs_ranked_by", "combined");
         ArrayNode hubs = root.putArray("architecture_hubs");
         List<UsageRepository.ArchitectureHub> hubMetrics = reader.usages.findArchitectureHubs();
         Map<Integer, ClassRecord> hubClasses = reader.symbols.findClassesByIds(hubMetrics.stream().map(UsageRepository.ArchitectureHub::classId).toList());
@@ -198,6 +212,22 @@ final class ProjectOverviewQueries {
         return root.toString();
     }
 
+    private static List<String> auxiliaryBuildProjects(ReadQueryContext reader) {
+        java.util.Set<String> modules = new java.util.HashSet<>(reader.index.findIndexedModules());
+        java.util.Set<String> result = new java.util.TreeSet<>();
+        for (String descriptor : reader.index.findBuildDescriptors()) {
+            int slash = descriptor.lastIndexOf('/');
+            if (slash < 0) continue; // the root build itself
+            String directory = descriptor.substring(0, slash);
+            if (modules.contains(directory) || directory.contains("/src/")
+                    || directory.startsWith("src/") || directory.contains("/target/")
+                    || directory.startsWith("target/")) continue;
+            result.add(directory);
+            if (result.size() >= 20) break;
+        }
+        return List.copyOf(result);
+    }
+
     private static void writeResolutionGroup(ObjectNode problems, String name,
             List<InjectionPointRecord> points, Map<Integer, BeanRecord> beans,
             Map<Integer, ClassRecord> classes, boolean details) {
@@ -240,9 +270,10 @@ final class ProjectOverviewQueries {
 
     private static void appendHub(ArrayNode result, UsageRepository.ArchitectureHub metrics,
             ClassRecord cls, String rankedBy) {
+        // The ranking is named once by the enclosing list (architecture_hubs_ranked_by or the
+        // architecture_hub_rankings key), not repeated on every hub.
         ObjectNode hub = result.addObject();
         hub.put("class", cls.className());
-        hub.put("ranked_by", rankedBy);
         hub.put("total_dependents", metrics.totalDependents());
         hub.put("source_dependents", metrics.sourceDependents());
         hub.put("generated_dependents", metrics.generatedDependents());

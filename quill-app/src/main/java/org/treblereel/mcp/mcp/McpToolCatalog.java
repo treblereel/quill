@@ -30,7 +30,8 @@ final class McpToolCatalog {
             "type", "object",
             "additionalProperties", true);
     private static final Set<String> SELF_DESCRIBING_ARGUMENTS = Set.of(
-            "project", "limit", "offset", "module", "source_set", "class_name");
+            "project", "limit", "offset", "module", "source_set", "class_name",
+            "include_generated", "include_tests", "include_deleted");
 
     private McpToolCatalog() {}
 
@@ -192,7 +193,9 @@ final class McpToolCatalog {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
-        schema.put("required", required);
+        // An empty "required" array is the JSON Schema default; omitting it keeps the catalog
+        // that clients resend with every model request smaller.
+        if (!required.isEmpty()) schema.put("required", required);
         schema.put("additionalProperties", false);
         return schema;
     }
@@ -220,7 +223,8 @@ final class McpToolCatalog {
 
     static Invocation invokeMethod(
             Object tools, Method method, Map<String, Object> arguments) {
-        Map<String, Object> args = arguments == null ? Map.of() : arguments;
+        Map<String, Object> args = withAliases(method.getName(),
+                arguments == null ? Map.of() : arguments);
         try {
             Object[] values = new Object[method.getParameterCount()];
             Parameter[] parameters = method.getParameters();
@@ -243,7 +247,8 @@ final class McpToolCatalog {
             Optional<String> unknown = args.keySet().stream()
                     .filter(name -> !acceptedArguments.contains(name)).findFirst();
             if (unknown.isPresent()) {
-                return new Invocation("Unknown argument: " + unknown.get(), true);
+                return new Invocation("Unknown argument: " + unknown.get() + ". Accepted arguments: "
+                        + String.join(", ", acceptedArguments.stream().sorted().toList()), true);
             }
             for (int i = 0; i < parameters.length; i++) {
                 Parameter parameter = parameters[i];
@@ -283,6 +288,24 @@ final class McpToolCatalog {
     }
 
     record Invocation(String text, boolean error) {}
+
+    /** Spellings agents used for the router's arguments in recorded sessions. */
+    private static final Map<String, Map<String, String>> ARGUMENT_ALIASES = Map.of(
+            "execute_tool", Map.of("tool_name", "name", "tool", "name",
+                    "args", "arguments", "parameters", "arguments", "input", "arguments"));
+
+    private static Map<String, Object> withAliases(String tool, Map<String, Object> arguments) {
+        Map<String, String> aliases = ARGUMENT_ALIASES.get(tool);
+        if (aliases == null || arguments.keySet().stream().noneMatch(aliases::containsKey)) return arguments;
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        arguments.forEach((key, value) -> {
+            String canonical = aliases.getOrDefault(key, key);
+            // An explicitly named canonical argument always wins over an alias.
+            if (!canonical.equals(key) && arguments.containsKey(canonical)) return;
+            normalized.put(canonical, value);
+        });
+        return normalized;
+    }
 
     private static McpSchema.CallToolResult result(
             String text, boolean error, boolean structured) {

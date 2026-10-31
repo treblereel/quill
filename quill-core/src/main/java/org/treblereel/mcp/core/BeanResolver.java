@@ -32,7 +32,10 @@ public final class BeanResolver {
             INTERCEPTOR = n("jakarta.interceptor.Interceptor"), DECORATOR = n("jakarta.decorator.Decorator"),
             DEFAULT_BEAN = n("io.quarkus.arc.DefaultBean"),
             IF_PROFILE = n("io.quarkus.arc.profile.IfBuildProfile"),
-            UNLESS_PROFILE = n("io.quarkus.arc.profile.UnlessBuildProfile");
+            UNLESS_PROFILE = n("io.quarkus.arc.profile.UnlessBuildProfile"),
+            CONFIG_MAPPING = n("io.smallrye.config.ConfigMapping");
+    /** Provenance recorded as the member of synthetic config-mapping beans. */
+    static final String CONFIG_MAPPING_CREATOR = "synthetic:ConfigMappingCreator";
     private static final Set<DotName> SCOPES = Set.of(n("jakarta.enterprise.context.ApplicationScoped"),
             n("jakarta.enterprise.context.RequestScoped"), n("jakarta.enterprise.context.SessionScoped"),
             n("jakarta.enterprise.context.ConversationScoped"), n("jakarta.enterprise.context.Dependent"),
@@ -105,6 +108,17 @@ public final class BeanResolver {
                             profiles(c), classId, m.name(), typeClosure(m.returnType(), lookup)));
                 }
         }
+        for (ClassInfo c : classes) {
+            // SmallRye Config registers each @ConfigMapping interface as a synthetic bean (Quarkus
+            // ConfigBuildStep, or the SmallRye ConfigExtension elsewhere). No scope is configured,
+            // so the bean is @Dependent with @Default/@Any; the creator, not a bean class, builds it.
+            if (!c.isInterface() || !c.hasDeclaredAnnotation(CONFIG_MAPPING)) continue;
+            int classId = classIds.computeIfAbsent(c.name().toString(), x -> classIds.size() + 1);
+            beans.add(new BeanRecord(nextBean++, classId, "SYNTHETIC", "@Dependent",
+                    qualifiers(List.of(), lookup, true), List.of(), false, false, null,
+                    profiles(c), null, CONFIG_MAPPING_CREATOR,
+                    typeClosure(Type.create(c.name(), Type.Kind.CLASS), lookup)));
+        }
         int nextIp = 1;
         for (ClassInfo c : classes) {
             Integer ownerId = classBeanIds.get(c.name());
@@ -122,14 +136,52 @@ public final class BeanResolver {
                     ips.add(ip(nextIp++, parameterOwner, kind, m.parameterType(p),
                             qualifiers(parameterAnnotations(m, p), lookup, false), m.name()));
             }
+            nextIp = inheritedInjectionPoints(c, ownerId, lookup, ips, nextIp);
         }
         Map<Integer, Integer> specializedBeans = specializedBeans(classes, classBeanIds);
         inheritSpecializedQualifiers(beans, specializedBeans);
         Map<Integer, String> classNames = new HashMap<>();
         classIds.forEach((name, id) -> classNames.put(id, name));
         reResolveUnresolved(beans, ips, deps, specializedBeans, classNames);
+        ips.replaceAll(ip -> ip.resolvedBeanId() == null ? ip.asCdiBuiltin() : ip);
         addNonBeanDependencies(applicationIndex, beans, deps, classIds);
         return new ResolutionResult(beans, ips, deps, classIds, List.of());
+    }
+
+    /**
+     * CDI injects the @Inject fields and initializer methods declared by every superclass of a
+     * bean class (CDI 4.1, 4.2), including superclasses from dependencies. Initializers
+     * overridden lower in the hierarchy are not called through the superclass declaration.
+     */
+    private static int inheritedInjectionPoints(ClassInfo bean, int ownerId, IndexView lookup,
+            List<InjectionPointRecord> ips, int nextIp) {
+        Set<String> overridden = new HashSet<>();
+        bean.methods().forEach(m -> overridden.add(m.name() + m.parameterTypes()));
+        Set<DotName> visited = new HashSet<>();
+        for (DotName superName = bean.superName(); superName != null && visited.add(superName)
+                && !DotName.OBJECT_NAME.equals(superName);) {
+            ClassInfo parent = lookup.getClassByName(superName);
+            if (parent == null) break;
+            for (FieldInfo f : parent.fields())
+                if (f.hasAnnotation(INJECT)) {
+                    ips.add(ip(nextIp++, ownerId, "FIELD", f.type(), qualifiers(f.annotations(), lookup, false),
+                            parent.simpleName() + "." + f.name()));
+                }
+            for (MethodInfo m : parent.methods()) {
+                String signature = m.name() + m.parameterTypes();
+                boolean inherited = !"<init>".equals(m.name()) && !Modifier.isStatic(m.flags())
+                        && (Modifier.isPrivate(m.flags()) || !overridden.contains(signature));
+                if (inherited && methodHas(m, INJECT) && !methodHas(m, PRODUCES)) {
+                    for (int p = 0; p < m.parametersCount(); p++)
+                        ips.add(ip(nextIp++, ownerId, "METHOD_PARAM", m.parameterType(p),
+                                qualifiers(parameterAnnotations(m, p), lookup, false),
+                                parent.simpleName() + "." + m.name()));
+                }
+                if (!Modifier.isPrivate(m.flags())) overridden.add(signature);
+            }
+            superName = parent.superName();
+        }
+        return nextIp;
     }
 
     private static InjectionPointRecord ip(int id, int owner, String kind, Type type, List<String> qs, String member) {

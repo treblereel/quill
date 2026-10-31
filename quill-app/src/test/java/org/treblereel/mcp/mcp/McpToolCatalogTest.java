@@ -320,8 +320,8 @@ class McpToolCatalogTest {
         assertFalse(((JsonNode) invalid.structuredContent()).has("error"));
         assertEquals("TOOL_INVOCATION_ERROR",
                 ((JsonNode) invalid.structuredContent()).path("error_code").asText());
-        assertEquals("Unknown argument: unexpected",
-                ((JsonNode) invalid.structuredContent()).path("message").asText());
+        assertTrue(((JsonNode) invalid.structuredContent()).path("message").asText()
+                .startsWith("Unknown argument: unexpected. Accepted arguments: "));
     }
 
     @Test
@@ -637,7 +637,8 @@ class McpToolCatalogTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> targets = (Map<String, Object>) properties.get("targets");
         @SuppressWarnings("unchecked")
-        List<String> required = (List<String>) verification.tool().inputSchema().get("required");
+        List<String> required = (List<String>) verification.tool().inputSchema()
+                .getOrDefault("required", List.of());
         assertEquals("array", targets.get("type"));
         assertEquals(Map.of("type", "string"), targets.get("items"));
         assertFalse(required.contains("targets"));

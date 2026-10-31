@@ -123,7 +123,9 @@ public final class IndexGeneration implements AutoCloseable {
 
     public boolean matches(Path path) {
         try {
-            return !closed && stamp.key() != null && stamp.equals(Stamp.read(path));
+            // File systems without file keys (Windows) still match on canonical path, size and
+            // modification time; generations are immutable files named by their index id.
+            return !closed && stamp.equals(Stamp.read(path));
         } catch (IOException missing) {
             return false;
         }

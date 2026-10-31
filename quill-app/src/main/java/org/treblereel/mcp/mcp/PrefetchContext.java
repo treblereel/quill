@@ -68,10 +68,10 @@ public final class PrefetchContext {
             ConfigurationPrefetchAnnotations.append(db,evidence);
             ConfigurationMethodSource.append(db,evidence);
             ConfigurationPrefetchAnnotations.compact(evidence);
-            evidence.set("configuration_resources",ConfigurationResourceInventory.collect(db));
+            ConfigurationDeclarationLocations.compact(evidence);
             evidence.remove("_meta");var fact=facts.addObject().put("kind","configuration").put("tool","find_configuration_references");
             fact.putObject("arguments").put("key",key).put("view","declared").put("limit",12);
-            fact.put("query_scope","Indexed declarations; runtime/activation unknown");
+            // Scope is carried by indexed_references_complete, resource coverage and runtime/activation flags.
             fact.set("evidence",evidence);
         }
         Set<Integer> seen=new HashSet<>();var matcher=IDENTIFIER.matcher(prompt);

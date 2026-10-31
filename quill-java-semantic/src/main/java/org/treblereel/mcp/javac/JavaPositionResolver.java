@@ -357,13 +357,20 @@ public final class JavaPositionResolver implements AutoCloseable {
         List<Element> matches = new ArrayList<>();
         for (var unit : model.units) if (Path.of(unit.getSourceFile().toUri()).equals(file)) {
             new TreePathScanner<Void,Void>() {
-                public Void visitMethod(MethodTree tree, Void ignored) {
-                    Element e=model.trees.getElement(getCurrentPath());
-                    if (e instanceof ExecutableElement && owner(e) != null
+                private void consider(Element e) {
+                    if (e != null && owner(e) != null
                             && model.elements.getBinaryName(owner(e)).toString().equals(selector[0])
                             && e.getSimpleName().toString().equals(selector[1])
                             && selector[2].equals(memberDescriptor(model,e))) matches.add(e);
+                }
+                public Void visitMethod(MethodTree tree, Void ignored) {
+                    consider(model.trees.getElement(getCurrentPath()));
                     return super.visitMethod(tree,ignored);
+                }
+                public Void visitVariable(VariableTree tree, Void ignored) {
+                    Element e=model.trees.getElement(getCurrentPath());
+                    if(e != null && e.getKind()==ElementKind.FIELD) consider(e);
+                    return super.visitVariable(tree,ignored);
                 }
             }.scan(unit,null);
         }

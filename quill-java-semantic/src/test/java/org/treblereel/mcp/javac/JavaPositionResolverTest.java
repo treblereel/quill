@@ -15,6 +15,15 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 class JavaPositionResolverTest {
     @TempDir Path root;
+    @Test void fieldDeclarationUsesExactOwnerAndDescriptorNotALocalNamesake() throws Exception {
+        Path file=write("package p; class Example {\n@Deprecated\nboolean flag;\nstatic final String KEY=\"arbitrary.key\";\nvoid flag(){boolean flag=true;}\nclass Inner{int flag;}\n}");
+        try(var r=resolver()){
+            var field=r.declaration(file,"p.Example","flag","Z");assertEquals("resolved",field.status());assertEquals("FIELD",field.kind());assertEquals(2,field.startLine());assertEquals(3,field.endLine());
+            assertEquals(4,r.declaration(file,"p.Example","KEY","Ljava/lang/String;").startLine());
+            assertEquals("declaration_not_found",r.declaration(file,"p.Example","flag","I").status());
+            assertEquals(6,r.declaration(file,"p.Example$Inner","flag","I").startLine());
+        }
+    }
     @Test void exactDeclarationRangeIncludesWholeBodyAndDoesNotNormalizeBridgeDescriptors() throws Exception {
         Path file=write("package p; class Example {\n\tString accept(String name) {\n return name.trim();\n }\n int accept(int n) {return n;}\n}");
         try(var r=resolver()) {

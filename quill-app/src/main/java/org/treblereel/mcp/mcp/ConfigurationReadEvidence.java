@@ -6,11 +6,12 @@ import java.util.*;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
 
-/** Bounded existing bytecode evidence; no compiler startup or application execution in hooks. */
+/** Bounded bytecode reads with optional compiler coordinates; never executes application code. */
 final class ConfigurationReadEvidence {
     private static final ObjectMapper JSON=new ObjectMapper();
     private static final int LIMIT=8;
     static void append(Jdbi db,ObjectNode result) throws Exception {
+        var locations=new ConfigurationDeclarationLocations(db);
         Set<String> keys=new TreeSet<>();
         Map<String,SortedSet<Integer>> sourceLines=new TreeMap<>();
         for(var ref:result.path("references")) {
@@ -26,6 +27,7 @@ final class ConfigurationReadEvidence {
             if(members.stream().anyMatch(m->m.kind().equals("METHOD") && m.name().equals(member) && m.annotations().contains(annotation)))continue;
             if(fields.size()!=1 || fields.getFirst().descriptor().isBlank())continue;
             String descriptor=fields.getFirst().descriptor();
+            locations.append((ObjectNode)ref,ref.path("className").asText(),member,descriptor);
             int total=IndexReader.countExactFieldUsages(db,owner,member,descriptor,"read");
             var rows=IndexReader.findExactFieldUsages(db,owner,member,descriptor,"read",LIMIT,0);
             ObjectNode reads=((ObjectNode)ref).putObject("field_reads").put("basis","indexed bytecode read instructions; exact field owner/name/descriptor")
@@ -61,6 +63,7 @@ final class ConfigurationReadEvidence {
                     .put("field",(String)row.get("field")).put("source",(String)row.get("source_file"))
                     .put("sourceSet",(String)row.get("source_set"));
             item.putNull("line");item.put("location_status","declaration_line_not_indexed");
+            locations.append(item,(String)row.get("class_name"),(String)row.get("field"),"Ljava/lang/String;");
         }
         ConfigurationReadSnippets.append(db,result,sourceLines);
     }

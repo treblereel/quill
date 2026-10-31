@@ -3,11 +3,14 @@ package org.treblereel.mcp.mcp;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.core.ConfigurationScanner;
+import org.treblereel.mcp.core.SourceFileHashes;
 
 /** Current names only: never reads configuration contents or environment values. */
 final class ConfigurationResourceInventory {
@@ -50,6 +53,52 @@ final class ConfigurationResourceInventory {
             }
             found.forEach(files::add);
         }catch(Exception unavailable){files.removeAll();result.put("status","unavailable");missing.addObject().put("status","inventory_unavailable_or_changed");}
+        return result;
+    }
+    /** Empty matches prove absence only in this successfully parsed current file, never at runtime. */
+    static ObjectNode collect(Jdbi db,String key){
+        ObjectNode inventory=collect(db);
+        var result=JSON.createObjectNode().put("status",inventory.path("status").asText())
+                .put("scope","Listed properties; matches=key-profile:lines (empty=checked absence); custom/external/env/runtime unknown")
+                .put("truncated",inventory.path("truncated").asBoolean());
+        var files=result.putObject("files");result.set("unavailable",inventory.path("unavailable"));
+        try {
+            Path root=Path.of(IndexReader.getMetadata(db).get("project_root")).toRealPath();int bytes=0;
+            for(var filename:inventory.path("files")){
+                String name=filename.asText();var row=files.putObject(name);
+                try {
+                    Path path=root.resolve(name).normalize();
+                    if(!path.startsWith(root) || Files.isSymbolicLink(path) || !path.toRealPath().startsWith(root))throw new IOException("outside_or_symlink");
+                    if(!name.endsWith(".properties"))throw new IOException("unsupported_format");
+                    int remaining=Math.min(1_000_000,2_000_000-bytes);
+                    if(Files.size(path)>remaining)throw new IOException("source_limit");
+                    String hash=SourceFileHashes.hash(path);byte[] content;
+                    try(var input=Files.newInputStream(path,LinkOption.NOFOLLOW_LINKS)){content=input.readNBytes(remaining+1);}
+                    bytes+=content.length;
+                    if(content.length>1_000_000 || bytes>2_000_000)throw new IOException("source_limit");
+                    if(!hash.equals(HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(content))))throw new IOException("inputs_changed");
+                    String text=java.nio.charset.StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(content)).toString();
+                    new Properties().load(new StringReader(text));
+                    var properties=ConfigurationScanner.declaredProperties(text.lines().toList(),false);
+                    if(!hash.equals(SourceFileHashes.hash(path)))throw new IOException("inputs_changed");
+                    row.put("sha256",hash);var matches=row.putObject("matches");int count=0;
+                    for(var property:properties)if(ConfigurationSourceEvidence.baseKey(property.key()).equals(ConfigurationSourceEvidence.baseKey(key))){
+                        if(++count>64)throw new IOException("match_limit");
+                        String profile=property.key().startsWith("%")?property.key().substring(0,property.key().indexOf('.')):"default";
+                        matches.withArray(profile).add(property.line());
+                    }
+                }catch(Exception unavailable){row.removeAll();row.put("status","unknown").put("reason",unavailable instanceof IOException?unavailable.getMessage():"parse_failed");result.put("status","partial");}
+            }
+            for(var it=files.fields();it.hasNext();){
+                var entry=it.next();var row=(ObjectNode)entry.getValue();
+                if(!row.has("sha256"))continue;
+                try {Path path=root.resolve(entry.getKey());if(Files.isSymbolicLink(path) || !path.toRealPath().startsWith(root) || !row.path("sha256").asText().equals(SourceFileHashes.hash(path)))throw new IOException();}
+                catch(Exception changed){row.removeAll();row.put("status","unknown").put("reason","inputs_changed");result.put("status","partial");}
+            }
+            var current=collect(db);
+            if(!inventory.path("files").equals(current.path("files")) || !current.path("status").asText().equals("ready")){result.put("status","partial");result.withArray("unavailable").addObject().put("status","inventory_changed_or_partial");}
+        }catch(Exception unavailable){files.removeAll();result.put("status","unavailable");}
+        if(result.path("unavailable").isEmpty())result.remove("unavailable");
         return result;
     }
     private ConfigurationResourceInventory(){}

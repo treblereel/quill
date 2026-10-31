@@ -44,8 +44,8 @@ public class QuillTopCommand implements Callable<Integer> {
     Path workspace;
 
     @Option(names = "--tools", description = "MCP tool profiles: full, router, core, code, di, git; "
-            + "comma-separated unions are allowed (default: " + McpToolProfile.DEFAULT + ")")
-    String toolProfiles = McpToolProfile.DEFAULT;
+            + "comma-separated unions are allowed (default: full)")
+    String toolProfiles = "full";
 
     @Option(names = "--debug", description = "Write structured MCP diagnostics to stderr and .quill/debug")
     boolean debug;

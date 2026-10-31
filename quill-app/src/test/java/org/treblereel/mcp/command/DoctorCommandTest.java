@@ -79,7 +79,7 @@ class DoctorCommandTest {
         assertEquals("pass", checks.get("claude_approval").path("status").asText());
         assertEquals("pass", checks.get("claude_eager_loading").path("status").asText());
         assertTrue(checks.get("claude_tool_profile").path("message").asText()
-                .contains("`router`"));
+                .contains("`full`"));
     }
 
     @Test

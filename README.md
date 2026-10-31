@@ -378,15 +378,13 @@ Once indexed, Quill exposes these tools via MCP:
 Every tool result includes native MCP `structuredContent` and an advertised object
 `outputSchema`. Quill does not duplicate the JSON payload as text content.
 
-The default `--tools router` profile advertises only `get_overview`, `search_tools`, and
-`execute_tool`. Clients resend the tool catalog with every model request, and in paired
-benchmarks the full catalog accounted for about two thirds of Quill's extra input tokens.
-To advertise more tools directly, select `full`, `core`, `code`, `di`, or `git`:
+The default `--tools full` profile exposes the complete catalog. To reduce the initial
+`tools/list` context for smaller local models, select `router`, `core`, `code`, `di`, or `git`:
 
 ```bash
-quill --mcp --project /path/to/project --tools full
-quill --mcp --project /path/to/project --tools core,di
+quill --mcp --project /path/to/project --tools core
 quill --mcp --project /path/to/project --tools core,git
+quill --mcp --project /path/to/project --tools router
 ```
 
 Comma-separated profiles form a union. `core` contains the general navigation, dependency,

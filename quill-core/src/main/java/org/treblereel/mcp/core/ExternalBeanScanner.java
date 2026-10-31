@@ -78,7 +78,7 @@ public final class ExternalBeanScanner {
                         bean.beanTypes(), resolution.framework(), coordinates(jar),
                         jar == null ? null : jar.toString(), externalInjections(
                                 dependencyIndex.getClassByName(className),
-                                injections.getOrDefault(bean.id(), List.of()))));
+                                injections.getOrDefault(bean.id(), List.of()), dependencyIndex)));
             }
         }
         result.sort(Comparator.comparing(ExternalBeanRecord::className)
@@ -98,12 +98,12 @@ public final class ExternalBeanScanner {
     }
 
     private static List<ExternalInjectionPointRecord> externalInjections(
-            ClassInfo owner, List<InjectionPointRecord> injections) {
+            ClassInfo owner, List<InjectionPointRecord> injections, IndexView index) {
         List<ExternalInjectionPointRecord> result = new ArrayList<>();
         Map<String, Integer> parameterCursors = new HashMap<>();
         for (InjectionPointRecord injection : injections) {
             Collection<AnnotationInstance> annotations =
-                    annotations(owner, injection, parameterCursors);
+                    annotations(owner, injection, parameterCursors, index);
             Configuration configuration = configuration(annotations);
             result.add(new ExternalInjectionPointRecord(injection.kind(), injection.targetType(),
                     injection.qualifiers(), injection.fieldName(), annotations.stream()
@@ -115,16 +115,29 @@ public final class ExternalBeanScanner {
 
     private static Collection<AnnotationInstance> annotations(
             ClassInfo owner, InjectionPointRecord injection,
-            Map<String, Integer> parameterCursors) {
+            Map<String, Integer> parameterCursors, IndexView index) {
         if (owner == null) return List.of();
+        // Inherited injection points are labelled Parent.member (see InjectionHierarchy).
+        String member = injection.fieldName();
+        ClassInfo declaring = owner;
+        int dot = member == null ? -1 : member.lastIndexOf('.');
+        if (dot > 0) {
+            String parentName = member.substring(0, dot);
+            member = member.substring(dot + 1);
+            declaring = InjectionHierarchy.superclasses(owner, index).stream()
+                    .filter(parent -> parent.simpleName().equals(parentName))
+                    .findFirst().orElse(null);
+            if (declaring == null) return List.of();
+        }
         if ("FIELD".equals(injection.kind())) {
-            FieldInfo field = owner.field(injection.fieldName());
+            FieldInfo field = declaring.field(member);
             return field == null ? List.of() : field.annotations();
         }
         List<AnnotationInstance> result = new ArrayList<>();
-        for (MethodInfo method : owner.methods()) {
-            if (!method.name().equals(injection.fieldName())) continue;
-            int start = parameterCursors.getOrDefault(method.name(), 0);
+        String cursorKey = injection.fieldName();
+        for (MethodInfo method : declaring.methods()) {
+            if (!method.name().equals(member)) continue;
+            int start = parameterCursors.getOrDefault(cursorKey, 0);
             for (int parameter = start; parameter < method.parametersCount(); parameter++) {
                 String type = method.parameterType(parameter).name() == null
                         ? method.parameterType(parameter).toString()
@@ -137,7 +150,7 @@ public final class ExternalBeanScanner {
                             || (target.kind() == AnnotationTarget.Kind.METHOD_PARAMETER
                             && target.asMethodParameter().position() == selected));
                 }).toList());
-                parameterCursors.put(method.name(), parameter + 1);
+                parameterCursors.put(cursorKey, parameter + 1);
                 return result;
             }
         }

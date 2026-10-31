@@ -12,6 +12,7 @@ final class ConfigurationReadEvidence {
     private static final int LIMIT=8;
     static void append(Jdbi db,ObjectNode result) throws Exception {
         Set<String> keys=new TreeSet<>();
+        Map<String,SortedSet<Integer>> sourceLines=new TreeMap<>();
         for(var ref:result.path("references")) {
             String key=ConfigurationSourceEvidence.baseKey(ref.path("key").asText());
             if(!key.isBlank() && !key.equals("<dynamic>") && !ref.path("kind").asText().equals("persistence_unit"))keys.add(key);
@@ -34,6 +35,7 @@ final class ConfigurationReadEvidence {
                 var site=sites.addObject().put("method",row.fromMethod()).put("descriptor",row.fromDescriptor());
                 if(!row.fromClass().equals(ref.path("className").asText()))site.put("class",row.fromClass()).put("source",row.fromSource());
                 site.set("lines",JSON.valueToTree(row.evidenceLines().stream().limit(LIMIT).toList()));
+                if(row.fromSource()!=null)sourceLines.computeIfAbsent(row.fromSource(),k->new TreeSet<>()).addAll(row.evidenceLines().stream().limit(LIMIT).toList());
                 if(row.evidenceLines().size()>LIMIT)site.put("line_count",row.evidenceLines().size()).put("lines_truncated",true);
             }
         }
@@ -60,5 +62,6 @@ final class ConfigurationReadEvidence {
                     .put("sourceSet",(String)row.get("source_set"));
             item.putNull("line");item.put("location_status","declaration_line_not_indexed");
         }
+        ConfigurationReadSnippets.append(db,result,sourceLines);
     }
 }

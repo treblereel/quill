@@ -1105,7 +1105,11 @@ profile conditions and bounded literal boolean/number/duration declarations.
 Declared view also includes bounded exact-field bytecode read sites (methods,
 descriptors and line tables), plus captured static-final String aliases of the
 shown keys. Constant equality does not prove source binding; declaration lines
-not present in the index remain unknown. No compiler is started by this packet.
+not present in the index remain unknown. Java field-read source windows add
+current indexed-hash-validated neighbouring lines, merge overlaps and expose
+truncation; bounds apply per declared-configuration packet. Windows do not
+claim complete methods, branch paths or bytecode/source identity. No compiler
+is started by this packet.
 Values are never indexed. Expressions, sensitive keys and opaque strings are
 not emitted; no environment/system values are read or effective runtime values
 claimed. At most12definitions in5files per page receive source evidence.

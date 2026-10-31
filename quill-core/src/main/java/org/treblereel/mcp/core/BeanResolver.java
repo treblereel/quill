@@ -167,31 +167,23 @@ public final class BeanResolver {
 
     private static int inheritedInjectionPoints(ClassInfo bean, int ownerId, IndexView lookup,
             List<InjectionPointRecord> ips, int nextIp) {
-        Set<String> overridden = new HashSet<>();
-        bean.methods().forEach(m -> overridden.add(m.name() + m.parameterTypes()));
-        Set<DotName> visited = new HashSet<>();
-        for (DotName superName = bean.superName(); superName != null && visited.add(superName)
-                && !DotName.OBJECT_NAME.equals(superName);) {
-            ClassInfo parent = lookup.getClassByName(superName);
-            if (parent == null) break;
+        List<ClassInfo> superclasses = InjectionHierarchy.superclasses(bean, lookup);
+        for (ClassInfo parent : superclasses) {
             for (FieldInfo f : parent.fields())
-                if (f.hasAnnotation(INJECT)) {
+                if (f.hasAnnotation(INJECT) && !Modifier.isStatic(f.flags())) {
                     ips.add(ip(nextIp++, ownerId, "FIELD", f.type(), qualifiers(f.annotations(), lookup, false),
-                            parent.simpleName() + "." + f.name()));
+                            InjectionHierarchy.inheritedMember(parent, f.name())));
                 }
+            List<ClassInfo> lower = InjectionHierarchy.below(bean, superclasses, parent);
             for (MethodInfo m : parent.methods()) {
-                String signature = m.name() + m.parameterTypes();
-                boolean inherited = !"<init>".equals(m.name()) && !Modifier.isStatic(m.flags())
-                        && (Modifier.isPrivate(m.flags()) || !overridden.contains(signature));
-                if (inherited && methodHas(m, INJECT) && !methodHas(m, PRODUCES)) {
-                    for (int p = 0; p < m.parametersCount(); p++)
-                        ips.add(ip(nextIp++, ownerId, "METHOD_PARAM", m.parameterType(p),
-                                qualifiers(parameterAnnotations(m, p), lookup, false),
-                                parent.simpleName() + "." + m.name()));
-                }
-                if (!Modifier.isPrivate(m.flags())) overridden.add(signature);
+                if ("<init>".equals(m.name()) || Modifier.isStatic(m.flags())) continue;
+                if (!methodHas(m, INJECT) || methodHas(m, PRODUCES)
+                        || InjectionHierarchy.overridden(m, lower)) continue;
+                for (int p = 0; p < m.parametersCount(); p++)
+                    ips.add(ip(nextIp++, ownerId, "METHOD_PARAM", m.parameterType(p),
+                            qualifiers(parameterAnnotations(m, p), lookup, false),
+                            InjectionHierarchy.inheritedMember(parent, m.name())));
             }
-            superName = parent.superName();
         }
         return nextIp;
     }

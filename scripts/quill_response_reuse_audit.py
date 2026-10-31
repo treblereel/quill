@@ -175,7 +175,7 @@ def sse(path, client):
     if not stopped:
         raise ValueError('missing message_stop')
     for index, block in sorted(blocks.items()):
-        if block.get('type') in ['tool_use', 'server_tool_use'] and index in fragments:
+        if block.get('type') in ['tool_use', 'server_tool_use'] and index in fragments and fragments[index].strip():
             try:
                 block['input'] = json.loads(fragments[index])
             except ValueError:
@@ -190,6 +190,10 @@ def cycles(directory, issues):
     for request in sorted((directory / 'transport').glob('*/request.json')):
         try:
             meta = load(request.parent / 'transport.json')
+            if '/models/count-tokens:' in meta.get('path', '') or meta.get('path', '').endswith('/messages/count_tokens'):
+                if not meta.get('completed') or hashlib.sha256(request.read_bytes()).hexdigest() != meta.get('forwarded_body_sha256') or meta.get('incoming_body_sha256') != meta.get('forwarded_body_sha256'):
+                    issues.append('incomplete_or_mutated_claude_token_count:' + str(request))
+                continue
             if not meta.get('completed') or meta.get('status') != 200 or meta.get('incoming_body_sha256') != meta.get('forwarded_body_sha256'):
                 issues.append('incomplete_or_mutated_claude_transport:' + str(request))
             if hashlib.sha256(request.read_bytes()).hexdigest() != meta.get('forwarded_body_sha256'):

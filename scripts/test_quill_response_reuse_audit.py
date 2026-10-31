@@ -210,6 +210,32 @@ class ReuseAuditTest(unittest.TestCase):
             p.write_text(p.read_text().rsplit('\n\n', 1)[0])
             with self.assertRaises(ValueError):a.sse(p, 'claude')
 
+    def test_claude_empty_json_delta_preserves_zero_argument_input(self):
+        events = [{'type': 'message_start', 'message': {'id': 'm', 'usage': {'input_tokens': 1}}},
+                  {'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'tool_use', 'id': 't', 'name': 'mcp__quill__get_overview', 'input': {}}},
+                  {'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'input_json_delta', 'partial_json': ''}},
+                  {'type': 'message_stop'}]
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d, 'response.raw')
+            for fragment, expected in [('', {}), ('  ', {}), ('{"bad":', None)]:
+                events[2]['delta']['partial_json'] = fragment
+                p.write_text('\n\n'.join('data: ' + json.dumps(x) for x in events))
+                self.assertEqual(a.sse(p, 'claude')['content'][0]['input'], expected)
+
+    def test_auxiliary_token_count_is_not_a_generation_with_unknown_usage(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d, 'transport', '001'); p.mkdir(parents=True)
+            raw = b'{"model":"fixture","messages":[]}'
+            (p/'request.json').write_bytes(raw)
+            digest = hashlib.sha256(raw).hexdigest()
+            meta = dict(path='/v1/models/count-tokens:rawPredict', status=400, completed=True,
+                        incoming_body_sha256=digest, forwarded_body_sha256=digest)
+            (p/'transport.json').write_text(json.dumps(meta))
+            issues=[]; self.assertEqual(a.cycles(Path(d),issues),[]); self.assertEqual(issues,[])
+            (p/'request.json').write_bytes(b'{}')
+            issues=[]; a.cycles(Path(d),issues); self.assertTrue(issues)
+
     def test_claude_server_tool_search_is_discovery_not_a_quill_repeat(self):
         f = frame('claude'); f['response']['content'] = [{'type': 'server_tool_use', 'id': 's', 'name': 'tool_search_tool_regex', 'input': {'pattern': 'quill'}}]
         self.assertEqual(self.run_frames([f])['counts'], {'discovery': 1})

@@ -50,3 +50,6 @@ __pycache__/
 /.quarkus/cli/plugins/
 # TLS Certificates
 .certs/
+
+# Raw benchmark archives (kept locally, too large for git history)
+benchmarks/results/**/*.tar.gz

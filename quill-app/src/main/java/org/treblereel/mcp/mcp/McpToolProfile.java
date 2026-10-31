@@ -38,6 +38,12 @@ public final class McpToolProfile {
             "find_co_changed_files", "get_recent_changes", "assess_change_risk",
             "compare_index", "get_build_status", "get_worktree_status");
     private static final Set<String> NAMES = Set.of("full", "router", "core", "code", "di", "git");
+    /**
+     * The catalog is resent with every model request, and the full one cost about 4.4k input
+     * tokens per request in paired benchmarks; router advertises three tools and discovers the
+     * rest on demand. Use --tools full to advertise everything.
+     */
+    public static final String DEFAULT = "router";
 
     private final boolean full;
     private final boolean router;
@@ -54,7 +60,7 @@ public final class McpToolProfile {
     }
 
     public static McpToolProfile parse(String value) {
-        if (value == null || value.isBlank()) return full();
+        if (value == null || value.isBlank()) return parse(DEFAULT);
         Set<String> names = Arrays.stream(value.split(","))
                 .map(String::strip)
                 .map(name -> name.toLowerCase(Locale.ROOT))

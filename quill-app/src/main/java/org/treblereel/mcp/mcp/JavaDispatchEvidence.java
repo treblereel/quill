@@ -19,7 +19,8 @@ final class JavaDispatchEvidence {
     private List<ClassRecord> classes;
     private Map<String,List<ClassRecord>> owners;
     private Map<Integer,List<ClassMemberRecord>> members;
-    private final Map<String,ObjectNode> targets = new HashMap<>();
+    private final Map<String,ObjectNode> targets = new LinkedHashMap<>();
+    private final Map<String,String> refs = new HashMap<>();
     JavaDispatchEvidence(ReadQueryContext db) { this.db = db; }
     private void load() {
         if (classes != null) return;
@@ -27,24 +28,34 @@ final class JavaDispatchEvidence {
         classes=graph.classes;owners=graph.owners;
         members=graph.sourceMembers;
     }
+    /** Links the edge to its dispatch target; the target itself is written once by writeTargets. */
     void appendTarget(ObjectNode edge, MethodCallView call) {
         String key = call.toClassId() + ":" + call.toMethod() + call.toDescriptor() + ":" + call.invocationKind();
-        edge.set("dispatch", targets.computeIfAbsent(key, ignored -> {
+        targets.computeIfAbsent(key, ignored -> {
             load();
             try {return compact((ObjectNode)JSON.readTree(graph.dispatch(key,()->target(call).toString())));}
             catch(java.io.IOException impossible){throw new IllegalStateException(impossible);}
-        }));
+        });
+        edge.put("dispatch_ref", refs.computeIfAbsent(key, ignored -> "d" + (refs.size() + 1)));
     }
     /**
-     * Drops proof flags that are false and empty candidate lists. Dispatch evidence is repeated on
-     * every edge with the same target, so these defaults dominated call-hierarchy responses;
-     * callers read an omitted flag as false (declared by {@link #declareDefaults}).
+     * Writes each distinct dispatch target once as dispatch_targets.{ref}. Many edges share a
+     * target (every call to the same method), so repeating it per edge dominated responses.
      */
+    void writeTargets(ObjectNode root) {
+        if (targets.isEmpty()) return;
+        ObjectNode table = root.putObject("dispatch_targets");
+        targets.forEach((key, target) -> table.set(refs.get(key), target));
+    }
     /** States, once per response, how to read the boolean flags compact() omits. */
     static void declareDefaults(ObjectNode root) {
         root.putObject("evidence_defaults").put("absent_boolean_flags_mean", false)
                 .put("absent_lists_mean", "empty");
     }
+    /**
+     * Drops proof flags that are false and empty candidate lists; callers read an omitted flag as
+     * false (declared by {@link #declareDefaults}).
+     */
     private static ObjectNode compact(ObjectNode dispatch) {
         dispatch.remove(java.util.List.of("invocation_kind"));
         stripFalse(dispatch);

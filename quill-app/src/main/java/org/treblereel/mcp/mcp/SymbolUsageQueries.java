@@ -165,6 +165,7 @@ final class SymbolUsageQueries {
         root.put("normalization_truncated", normalized.truncated());
         root.put("answer_complete", !normalized.truncated());
         if (!kotlin) QueryMetrics.measure("dispatch_callers", () -> dispatch.appendPossibleCallers(root, cls, selected, limit, offset));
+        dispatch.writeTargets(root);
         appendPage(root, page.size(), total, limit, offset);
         QueryMetrics.measure("coverage", () -> UsageCoverage.append(root,reader,cls.id()));
         appendMeta(root, reader, naiveTokens);

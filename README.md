@@ -630,8 +630,9 @@ Responses omit values a client can derive, so read absent fields by these rules:
   freshness breakdown (`current_commit`, `commit_stale`, `worktree_dirty`,
   `structure_stale`, `stale_reasons`, ...) appears whenever anything is stale; an absent
   boolean there means `false`.
-- **Dispatch evidence** in `get_call_hierarchy` and `find_symbol_usages` omits `false`
-  proof flags and empty lists; each response states this in
+- **Dispatch evidence** in `get_call_hierarchy` and `find_symbol_usages` is written once per
+  distinct target in `dispatch_targets`; each edge or usage points to it with
+  `dispatch_ref`. It omits `false` proof flags and empty lists, as stated in
   `evidence_defaults` (`absent_boolean_flags_mean: false`, `absent_lists_mean: "empty"`).
 - **Call edges** omit `edge_kind` and `execution_semantics` for ordinary calls; the values
   are given once in `edge_defaults`. Endpoints no longer repeat `parameters` and

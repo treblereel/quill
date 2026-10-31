@@ -40,13 +40,19 @@ class JavaDispatchEvidenceTest {
     JsonNode usages(String owner,String descriptor,int limit,int offset) throws Exception {
         return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, owner, "value", "method", descriptor, "all", limit, offset)));
     }
+    static JsonNode dispatch(JsonNode response, JsonNode edge) {
+        return response.path("dispatch_targets").path(edge.path("dispatch_ref").asText());
+    }
+    static JsonNode firstDispatch(JsonNode response) {
+        return dispatch(response, response.path("calls").get(0));
+    }
     JsonNode calls(String method) throws Exception {
         return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new CallHierarchyQueries().getCallHierarchy(readScope, "p.Caller", method, null, "outbound", false, 1, 20, 0)));
     }
     @Test void interfaceCallsHaveExactTargetAndSeparateCovariantImplementationCandidates() throws Exception {
         var response=calls("invoke"); var call=response.path("calls").get(0);
         assertEquals("p.Contract",call.path("callee").path("class").asText());
-        var dispatch=call.path("dispatch");
+        var dispatch=dispatch(response,call);
         assertEquals("bytecode_symbolic_reference",dispatch.path("target_basis").asText());
         assertFalse(dispatch.path("runtime_target_proven").asBoolean());
         assertEquals(Set.of("p.Parent","p.Child"),new HashSet<>(dispatch.path("possible_targets").valueStream()
@@ -73,7 +79,7 @@ class JavaDispatchEvidenceTest {
     }
     @Test void finalAndStaticMethodsDoNotExpandAndPossibleCallerPagesHaveTheirOwnCounts() throws Exception {
         for (String method:List.of("fixed","utility")) {
-            var dispatch=calls(method).path("calls").get(0).path("dispatch");
+            var dispatch=firstDispatch(calls(method));
             assertEquals("fixed_symbolic_target",dispatch.path("status").asText()); assertTrue(dispatch.path("possible_targets").isEmpty());
         }
         var first=usages("p.Child","()Ljava/lang/Integer;",1,0).path("dispatch_context");
@@ -87,19 +93,19 @@ class JavaDispatchEvidenceTest {
         String source="package p; interface Contract {int value();} class Caller {int invoke(Contract c){return c.value();}}";
         for (int i=0;i<25;i++) source+="class Child"+i+" implements Contract {public int value(){return "+i+";}}";
         db=JavaEvidenceFixture.index(root.resolve("wide"),source);
-        var first=calls("invoke").path("calls").get(0).path("dispatch");
+        var first=firstDispatch(calls("invoke"));
         assertEquals(25,first.path("possible_target_count").asInt()); assertEquals(20,first.path("possible_targets").size());
         assertTrue(first.path("truncated").asBoolean());
-        assertEquals(first,calls("invoke").path("calls").get(0).path("dispatch"));
+        assertEquals(first,firstDispatch(calls("invoke")));
         db.useHandle(h -> h.execute("UPDATE classes SET superclass='p.Child1' WHERE class_name='p.Child0'"));
         db.useHandle(h -> h.execute("UPDATE classes SET superclass='p.Child0' WHERE class_name='p.Child1'"));
-        assertEquals(25,calls("invoke").path("calls").get(0).path("dispatch").path("possible_target_count").asInt());
+        assertEquals(25,firstDispatch(calls("invoke")).path("possible_target_count").asInt());
     }
     @Test void duplicateOwnersAndMissingDeclarationsCannotProduceConfidentCandidates() throws Exception {
         db.useHandle(h -> h.execute("INSERT INTO classes(class_name,kind,source_file,source_line,is_bean,source_tokens) VALUES('p.Contract','INTERFACE','other.java',1,0,1)"));
-        var dispatch=calls("invoke").path("calls").get(0).path("dispatch");
+        var dispatch=firstDispatch(calls("invoke"));
         assertEquals("owner_ambiguous",dispatch.path("status").asText()); assertTrue(dispatch.path("possible_targets").isEmpty());
         db.useHandle(h -> h.execute("DELETE FROM class_members WHERE name='value' AND class_id IN(SELECT id FROM classes WHERE class_name='p.Parent')"));
-        assertEquals("declaration_not_indexed",calls("parent").path("calls").get(0).path("dispatch").path("status").asText());
+        assertEquals("declaration_not_indexed",firstDispatch(calls("parent")).path("status").asText());
     }
 }

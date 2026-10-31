@@ -41,7 +41,7 @@ class JavaInheritedResolutionTest {
         var next=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "p.Base", "run", "method", "()Ljava/lang/Number;", "all", 1, 1)));
         assertEquals(2,next.path("total").asInt()); assertFalse(next.path("has_more").asBoolean());
         var calls=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new CallHierarchyQueries().getCallHierarchy(readScope, "p.Use", "inherited", null, "outbound", false, 1, 20, 0)));
-        var dispatch=calls.path("calls").get(0).path("dispatch");
+        var dispatch=calls.path("dispatch_targets").path(calls.path("calls").get(0).path("dispatch_ref").asText());
         assertEquals("p.Child",dispatch.path("declared_target").path("class").asText());
         assertEquals("p.Base",dispatch.path("resolved_declaration").path("class").asText());
         assertEquals(java.util.Set.of("p.GrandChild"),new java.util.HashSet<>(dispatch.path("possible_targets").valueStream().map(n->n.path("class").asText()).toList()));

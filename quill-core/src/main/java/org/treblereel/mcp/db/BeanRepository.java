@@ -138,6 +138,18 @@ public final class BeanRepository {
         
     }
 
+    /** Number of injection points resolved to each bean. */
+    public Map<Integer, Integer> countResolvedInjectionPoints(Collection<Integer> beanIds) {
+        if (beanIds == null || beanIds.isEmpty()) return Map.of();
+        Map<Integer, Integer> result = new LinkedHashMap<>();
+        handle.createQuery("SELECT resolved_bean_id, count(*) AS points FROM injection_points "
+                        + "WHERE resolved_bean_id IN (<ids>) GROUP BY resolved_bean_id")
+                .bindList("ids", new LinkedHashSet<>(beanIds))
+                .map((rs, ctx) -> Map.entry(rs.getInt("resolved_bean_id"), rs.getInt("points")))
+                .forEach(entry -> result.put(entry.getKey(), entry.getValue()));
+        return result;
+    }
+
     public Map<Integer, BeanRecord> findBeansByClassIds(Collection<Integer> classIds) {
         if (classIds == null || classIds.isEmpty()) return Map.of();
         

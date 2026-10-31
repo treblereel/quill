@@ -213,6 +213,12 @@ final class StructureToolQueries {
         Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
                 reader.index.findClassOccurrencesByClassIds(limited.stream().filter(value -> value.application() != null)
                                 .map(value -> value.application().classId()).toList());
+        List<Integer> pageBeanIds = limited.stream().filter(value -> value.application() != null)
+                .map(value -> value.application().id()).toList();
+        Map<Integer, Integer> injectedInto = reader.beans.countResolvedInjectionPoints(pageBeanIds);
+        Map<Integer, List<ClassAnnotationRecord>> pageAnnotations = reader.symbols.findClassAnnotations(
+                limited.stream().filter(value -> value.application() != null)
+                        .map(value -> value.application().classId()).toList());
         ObjectNode root = JSON.createObjectNode();
         ArrayNode arr = root.putArray("beans");
         int naiveTokens = 0;
@@ -259,6 +265,9 @@ final class StructureToolQueries {
                 appendOccurrences(node, occurrencesByClass.get(beanClass.id()));
                 naiveTokens += beanClass.sourceTokens();
             }
+            BeanEvidence.appendConditions(node, bean, pageAnnotations.getOrDefault(bean.classId(), List.of()));
+            BeanEvidence.appendRetention(node, bean, injectedInto.getOrDefault(bean.id(), 0),
+                    pageAnnotations.getOrDefault(bean.classId(), List.of()));
         }
         ObjectNode originBreakdown = root.putObject("origin_breakdown");
         originBreakdown.put("application", beans.size());

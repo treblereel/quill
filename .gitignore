@@ -53,3 +53,5 @@ __pycache__/
 
 # Raw benchmark archives (kept locally, too large for git history)
 benchmarks/results/**/*.tar.gz
+# Copies of Quill sources captured by benchmark runs (the repository is the source of truth)
+benchmarks/results/*/sources/

@@ -33,7 +33,8 @@ public final class BeanResolver {
             DEFAULT_BEAN = n("io.quarkus.arc.DefaultBean"),
             IF_PROFILE = n("io.quarkus.arc.profile.IfBuildProfile"),
             UNLESS_PROFILE = n("io.quarkus.arc.profile.UnlessBuildProfile"),
-            CONFIG_MAPPING = n("io.smallrye.config.ConfigMapping");
+            CONFIG_MAPPING = n("io.smallrye.config.ConfigMapping"),
+            CONFIG_ROOT = n("io.quarkus.runtime.annotations.ConfigRoot");
     /** Provenance recorded as the member of synthetic config-mapping beans. */
     static final String CONFIG_MAPPING_CREATOR = "synthetic:ConfigMappingCreator";
     private static final Set<DotName> SCOPES = Set.of(n("jakarta.enterprise.context.ApplicationScoped"),
@@ -112,7 +113,7 @@ public final class BeanResolver {
             // SmallRye Config registers each @ConfigMapping interface as a synthetic bean (Quarkus
             // ConfigBuildStep, or the SmallRye ConfigExtension elsewhere). No scope is configured,
             // so the bean is @Dependent with @Default/@Any; the creator, not a bean class, builds it.
-            if (!c.isInterface() || !c.hasDeclaredAnnotation(CONFIG_MAPPING)) continue;
+            if (!c.isInterface() || !c.hasDeclaredAnnotation(CONFIG_MAPPING) || buildTimeConfigRoot(c)) continue;
             int classId = classIds.computeIfAbsent(c.name().toString(), x -> classIds.size() + 1);
             beans.add(new BeanRecord(nextBean++, classId, "SYNTHETIC", "@Dependent",
                     qualifiers(List.of(), lookup, true), List.of(), false, false, null,
@@ -153,6 +154,17 @@ public final class BeanResolver {
      * bean class (CDI 4.1, 4.2), including superclasses from dependencies. Initializers
      * overridden lower in the hierarchy are not called through the superclass declaration.
      */
+    /**
+     * Quarkus extension config roots whose phase is BUILD_TIME (the @ConfigRoot default) exist only
+     * while the application is built; they are not registered as runtime beans.
+     */
+    private static boolean buildTimeConfigRoot(ClassInfo c) {
+        AnnotationInstance root = c.declaredAnnotation(CONFIG_ROOT);
+        if (root == null) return false;
+        AnnotationValue phase = root.value("phase");
+        return phase == null || "BUILD_TIME".equals(phase.asEnum());
+    }
+
     private static int inheritedInjectionPoints(ClassInfo bean, int ownerId, IndexView lookup,
             List<InjectionPointRecord> ips, int nextIp) {
         Set<String> overridden = new HashSet<>();

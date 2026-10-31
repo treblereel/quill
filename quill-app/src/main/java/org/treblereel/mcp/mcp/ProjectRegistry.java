@@ -151,7 +151,13 @@ public class ProjectRegistry implements AutoCloseable {
     private final org.treblereel.mcp.db.IndexGenerationCache graphCache = new org.treblereel.mcp.db.IndexGenerationCache();
     private final ConcurrentHashMap<Path, IndexHandle> databases = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, AtomicLong> projectRoots = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Path, Object> schemaRepairLocks = new ConcurrentHashMap<>();
+    /** Background rebuilds of outdated indexes; a failure is kept briefly to avoid rebuild loops. */
+    private record SchemaRepair(CompletableFuture<String> result, long startedNanos) {}
+    private static final long FAILED_REPAIR_RETRY_NANOS = Duration.ofMinutes(1).toNanos();
+    private final ConcurrentHashMap<Path, SchemaRepair> schemaRepairs = new ConcurrentHashMap<>();
+    private final java.util.concurrent.ExecutorService schemaRepairWorkers =
+            java.util.concurrent.Executors.newThreadPerTaskExecutor(
+                    Thread.ofVirtual().name("quill-schema-repair-", 0).factory());
     private final AtomicLong resolutionSequence = new AtomicLong();
     private final AtomicLong readinessScopeRevision = new AtomicLong(Long.MIN_VALUE);
     private final BuildEventConsumer buildEvents;
@@ -250,7 +256,13 @@ public class ProjectRegistry implements AutoCloseable {
                 }
                 Path candidateDb = ProjectIndexStore.findBestAvailableDb(p.root());
                 if (candidateDb == null) {
-                    repairOutdatedSchema(p, projectRoot, errors);
+                    ProjectIssue repairIssue = outdatedSchemaRepair(p, projectRoot);
+                    if (repairIssue != null) {
+                        issues.add(repairIssue);
+                        errors.add(repairIssue.legacyMessage());
+                        selectedRoots.remove(projectRoot);
+                        continue;
+                    }
                     candidateDb = ProjectIndexStore.findBestAvailableDb(p.root());
                 }
                 final Path dbPath = candidateDb;
@@ -298,6 +310,8 @@ public class ProjectRegistry implements AutoCloseable {
         try {
             if (closed) return;
             closed = true;
+            // Interrupts any outdated-schema rebuild; the next server start retries it.
+            schemaRepairWorkers.shutdownNow();
             databases.values().forEach(handle -> handle.generation().close());
             databases.clear();
         } finally {
@@ -337,7 +351,7 @@ public class ProjectRegistry implements AutoCloseable {
             projectRoots.keySet().removeIf(root -> {
                 if (roots.contains(root)) return false;
                 WorktreeSnapshotCache.shared().invalidate(root);
-                schemaRepairLocks.remove(root); readiness.invalidate(root); return true;
+                schemaRepairs.remove(root); readiness.invalidate(root); return true;
             });
         } finally { lifecycle.writeLock().unlock(); }
     }
@@ -446,25 +460,48 @@ public class ProjectRegistry implements AutoCloseable {
             if (configuredRoots.contains(entry.getKey())
                     || entry.getValue().get() >= resolutionId) return false;
             WorktreeSnapshotCache.shared().invalidate(entry.getKey());
-            schemaRepairLocks.remove(entry.getKey());
+            schemaRepairs.remove(entry.getKey());
             readiness.invalidate(entry.getKey());
             return true;
         });
     }
 
-    private void repairOutdatedSchema(ProjectScope.Project project, Path projectRoot,
-            List<String> errors) {
-        Object repairLock = schemaRepairLocks.computeIfAbsent(projectRoot, ignored -> new Object());
-        synchronized (repairLock) {
-            if (ProjectIndexStore.findBestAvailableDb(projectRoot) != null) return;
-            if (!ProjectIndexStore.hasOutdatedGenerations(projectRoot)) return;
-            ProjectInitializer.InitializationResult repair =
-                    ProjectInitializer.initializeDetailed(projectRoot, true);
-            if (!repair.successful()) {
-                errors.add("Project '" + project.name()
-                        + "': could not rebuild its outdated index: " + repair.diagnostic());
-            }
+    /**
+     * Rebuilds an index whose only generations use an outdated schema. The rebuild runs in the
+     * background, like a build-triggered refresh, so a request never blocks on a full index
+     * initialization (which can exceed the MCP request timeout); until it finishes the project
+     * reports retryable refresh_pending. Returns null when no repair is needed or it succeeded.
+     */
+    private ProjectIssue outdatedSchemaRepair(ProjectScope.Project project, Path projectRoot) {
+        if (!ProjectIndexStore.hasOutdatedGenerations(projectRoot)) return null;
+        SchemaRepair repair = schemaRepairs.compute(projectRoot, (root, existing) -> {
+            boolean retry = existing != null && existing.result().isDone()
+                    && existing.result().getNow(null) != null
+                    && System.nanoTime() - existing.startedNanos() > FAILED_REPAIR_RETRY_NANOS;
+            if (existing != null && !retry) return existing;
+            return new SchemaRepair(CompletableFuture.supplyAsync(() -> {
+                ProjectInitializer.InitializationResult result =
+                        ProjectInitializer.initializeDetailed(root, true);
+                return result.successful() ? null : result.diagnostic();
+            }, schemaRepairWorkers).exceptionally(ProjectRegistry::safeMessage), System.nanoTime());
+        });
+        if (!repair.result().isDone()) {
+            return new ProjectIssue(project.name(), projectRoot, "refresh_pending", null,
+                    "The index uses an outdated schema and is being rebuilt in the background",
+                    "Retry the same query after the rebuild; no build is required", false)
+                    .readiness(ReadinessReason.INDEX_REFRESH_RUNNING, "rebuilding_outdated_index",
+                            (System.nanoTime() - repair.startedNanos()) / 1_000_000L, 2000L, false);
         }
+        String failure = repair.result().getNow(null);
+        if (failure == null) {
+            schemaRepairs.remove(projectRoot, repair);
+            return null;
+        }
+        return new ProjectIssue(project.name(), projectRoot, "index_refresh_failed", null,
+                "Could not rebuild the outdated index: " + failure,
+                "Inspect the failure, then retry; the rebuild is retried after one minute", false)
+                .readiness(ReadinessReason.INDEX_REFRESH_FAILED, "rebuilding_outdated_index",
+                        null, null, false);
     }
 
     public void upgradeBuildIntegrations() {

@@ -407,7 +407,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    void concurrentFirstRequestsRebuildAnOutdatedSchemaWithoutRunningABuild() throws Exception {
+    void concurrentFirstRequestsRebuildAnOutdatedSchemaInTheBackgroundWithoutRunningABuild() throws Exception {
         Path project = Files.createDirectories(tempDir.resolve("outdated-project"));
         Files.writeString(project.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>
@@ -437,11 +437,22 @@ class ProjectRegistryTest {
             executor.shutdownNow();
         }
 
+        // Concurrent first requests share one background rebuild and either see the rebuilt
+        // index or a retryable refresh_pending; none blocks on the initialization.
         for (var resolution : resolutions) {
-            assertTrue(resolution.get().errors().isEmpty(),
-                    resolution.get().errors().toString());
-            assertEquals(1, resolution.get().projects().size());
+            var resolved = resolution.get();
+            assertTrue(resolved.projects().size() == 1 || resolved.issues().stream()
+                            .allMatch(issue -> issue.code().equals("refresh_pending")),
+                    resolved.issues().toString());
         }
+        ProjectRegistry.Resolution ready = registry.resolve();
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(60).toNanos();
+        while (ready.projects().isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(50);
+            ready = registry.resolve();
+        }
+        assertTrue(ready.errors().isEmpty(), ready.errors().toString());
+        assertEquals(1, ready.projects().size());
         Path current = org.treblereel.mcp.index.ProjectIndexStore
                 .findBestAvailableDb(project);
         assertNotNull(current);

@@ -1102,6 +1102,10 @@ not prove the generated bean scope. Endpoint prefetch reuses this same evidence.
 `find_configuration_references` keeps its no-source `index` default. Explicit
 `view="declared"` adds current source hashes, indexed key/line validation, file/key
 profile conditions and bounded literal boolean/number/duration declarations.
+Declared view also includes bounded exact-field bytecode read sites (methods,
+descriptors and line tables), plus captured static-final String aliases of the
+shown keys. Constant equality does not prove source binding; declaration lines
+not present in the index remain unknown. No compiler is started by this packet.
 Values are never indexed. Expressions, sensitive keys and opaque strings are
 not emitted; no environment/system values are read or effective runtime values
 claimed. At most12definitions in5files per page receive source evidence.

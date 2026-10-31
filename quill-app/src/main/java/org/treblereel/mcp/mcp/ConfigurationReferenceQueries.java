@@ -98,7 +98,7 @@ final class ConfigurationReferenceQueries {
                     resolution.files().forEach(files::add);
                 }
             }
-            if (source != null) source.finish(result);
+            if (source != null) { source.finish(result); ConfigurationReadEvidence.append(jdbi,result); }
             int unknownProfiles=jdbi.withHandle(h->h.createQuery("SELECT count(*) FROM configuration_definitions WHERE kind='quarkus_test_profile_unknown'"+(module==null || module.isBlank()?"":" AND module=:profile_module"))
                     .bindMap(module==null || module.isBlank()?Map.of():Map.of("profile_module",module)).mapTo(Integer.class).one());
             result.putObject("test_profile_coverage").put("supported","straight-line literal Map.of/ofEntries, singletonMap and emptyMap declarations")

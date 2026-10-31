@@ -621,6 +621,47 @@ emitted by the MCP surface.
 Paginated responses use the same `showing`, `total`, `limit`, `offset`, `has_more`,
 `truncated`, and optional `next_offset` fields.
 
+### Response conventions
+
+Responses omit values a client can derive, so read absent fields by these rules:
+
+- **`_meta` on a fresh index** carries only `index_id`, `indexed_at`, `indexed_commit`,
+  `stale_warning: false`, `stale_scope: "current"` and `answer_confidence: "high"`. The full
+  freshness breakdown (`current_commit`, `commit_stale`, `worktree_dirty`,
+  `structure_stale`, `stale_reasons`, ...) appears whenever anything is stale; an absent
+  boolean there means `false`.
+- **Dispatch evidence** in `get_call_hierarchy` and `find_symbol_usages` omits `false`
+  proof flags and empty lists; each response states this in
+  `evidence_defaults` (`absent_boolean_flags_mean: false`, `absent_lists_mean: "empty"`).
+- **Call edges** omit `edge_kind` and `execution_semantics` for ordinary calls; the values
+  are given once in `edge_defaults`. Endpoints no longer repeat `parameters` and
+  `return_type`, which follow from `descriptor`; `source` has no `:0` suffix when the line
+  is unknown.
+- **`get_overview`** names `architecture_hubs_ranked_by` once instead of `ranked_by` on
+  every hub, returns the full `capabilities` contract only with `details=true`, and lists
+  `project.auxiliary_build_projects`: separate Maven/Gradle builds in the repository that
+  are not part of the indexed modules.
+- **Empty results are not errors.** An annotation that no indexed declaration carries
+  returns an empty list with `annotation_indexed: false`.
+- **Error guidance.** `CLASS_NOT_FOUND` and external-class misses explain why in `reason`
+  and may suggest a structured `next_step` (`{tool, arguments}`), only for tools the
+  active profile exposes. A class without a bean record returns `NOT_A_BEAN` with
+  `related_beans` (enclosing class, superclass). Unknown arguments list the accepted ones.
+
+Bean and injection evidence follows CDI and Spring semantics more closely:
+
+- Injection points declared by superclasses (fields and initializer methods, except those
+  overridden lower in the hierarchy) belong to the bean and are labelled
+  `Parent.member`.
+- Each SmallRye `@ConfigMapping` interface is a `SYNTHETIC` `@Dependent` bean with member
+  `synthetic:ConfigMappingCreator`; Quarkus `@ConfigRoot` mappings in the default
+  `BUILD_TIME` phase are not runtime beans and are skipped.
+- Container-provided beans (`Event`, `Instance`, `Provider`, `InjectionPoint`,
+  `BeanManager`, ...) resolve with status `RESOLVED`, reason `BUILTIN_BEAN` and no bean id.
+
+Re-run `quill update` (or `quill init`) after upgrading to rebuild indexes with this
+evidence.
+
 ## Connect Quill to Claude Code or Codex
 
 Initialize the project once before connecting an MCP client. From the project directory:

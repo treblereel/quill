@@ -81,9 +81,13 @@ final class ProjectOverviewQueries {
         ArrayNode hubs = root.putArray("architecture_hubs");
         List<UsageRepository.ArchitectureHub> hubMetrics = reader.usages.findArchitectureHubs();
         Map<Integer, ClassRecord> hubClasses = reader.symbols.findClassesByIds(hubMetrics.stream().map(UsageRepository.ArchitectureHub::classId).toList());
+        if (!details) root.set("architecture_hub_columns", JSON.valueToTree(HUB_COLUMNS));
         topHubs(hubMetrics, UsageRepository.ArchitectureHub::totalDependents).forEach(hub ->
                 Optional.ofNullable(hubClasses.get(hub.classId()))
-                        .ifPresent(cls -> appendHub(hubs, hub, cls)));
+                        .ifPresent(cls -> {
+                            if (details) appendHub(hubs, hub, cls);
+                            else appendHubRow(hubs, hub, cls);
+                        }));
 
         if (details) {
             ObjectNode rankings = root.putObject("architecture_hub_rankings");
@@ -293,6 +297,25 @@ final class ProjectOverviewQueries {
             ClassRecord cls = classes.get(hub.classId());
             if (cls != null) appendHub(result, hub, cls);
         }
+    }
+
+    /** Column order of the compact hub rows returned by the default overview. */
+    static final List<String> HUB_COLUMNS = List.of("class", "total_dependents",
+            "source_dependents", "generated_dependents", "production_dependents",
+            "test_dependents", "is_bean", "module", "source_set");
+
+    /**
+     * The default overview starts every task, so its hubs are rows in HUB_COLUMNS order rather
+     * than objects repeating nine keys each; details=true keeps the object form.
+     */
+    private static void appendHubRow(ArrayNode result, UsageRepository.ArchitectureHub metrics,
+            ClassRecord cls) {
+        ArrayNode row = result.addArray();
+        row.add(cls.className()).add(metrics.totalDependents()).add(metrics.sourceDependents())
+                .add(metrics.generatedDependents()).add(metrics.productionDependents())
+                .add(metrics.testDependents()).add(cls.isBean());
+        if (cls.module() == null) row.addNull(); else row.add(cls.module());
+        if (cls.sourceSet() == null) row.addNull(); else row.add(cls.sourceSet());
     }
 
     private static void appendHub(ArrayNode result, UsageRepository.ArchitectureHub metrics,

@@ -639,7 +639,9 @@ Responses omit values a client can derive, so read absent fields by these rules:
   `return_type`, which follow from `descriptor`; `source` has no `:0` suffix when the line
   is unknown.
 - **`get_overview`** names `architecture_hubs_ranked_by` once instead of `ranked_by` on
-  every hub, returns the full `capabilities` contract only with `details=true`, and lists
+  every hub. Without `details`, each hub is a row in `architecture_hub_columns` order
+  (`details=true` keeps one object per hub). The full `capabilities` contract is returned
+  only with `details=true`. The overview also lists
   `project.auxiliary_build_projects`: separate Maven/Gradle builds in the repository that
   are not part of the indexed modules.
 - **Empty results are not errors.** An annotation that no indexed declaration carries

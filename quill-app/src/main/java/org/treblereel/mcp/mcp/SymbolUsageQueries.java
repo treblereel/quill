@@ -133,6 +133,7 @@ final class SymbolUsageQueries {
         root.put("usage_scope", "exact_indexed_bytecode_references");
         root.put("declaration_lookup", "indexed_jvm_method_resolution");
         JavaDispatchEvidence dispatch = new JavaDispatchEvidence(reader);
+        if (!kotlin) JavaDispatchEvidence.declareDefaults(root);
         ArrayNode values = root.putArray("usages");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();

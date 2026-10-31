@@ -183,8 +183,8 @@ final class CallHierarchyQueries {
         limitations.add("Reflection, generated-at-runtime calls, and framework callbacks are not inferred");
 
         root.putObject("edge_defaults").put("edge_kind", "call")
-                .put("execution_semantics", "invocation_instruction")
-                .put("omitted_boolean_evidence", false);
+                .put("execution_semantics", "invocation_instruction");
+        JavaDispatchEvidence.declareDefaults(root);
         ArrayNode edges = root.putArray("calls");
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();

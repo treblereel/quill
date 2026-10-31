@@ -38,8 +38,13 @@ final class JavaDispatchEvidence {
     /**
      * Drops proof flags that are false and empty candidate lists. Dispatch evidence is repeated on
      * every edge with the same target, so these defaults dominated call-hierarchy responses;
-     * callers read an omitted flag as false (see edge_defaults.omitted_boolean_evidence).
+     * callers read an omitted flag as false (declared by {@link #declareDefaults}).
      */
+    /** States, once per response, how to read the boolean flags compact() omits. */
+    static void declareDefaults(ObjectNode root) {
+        root.putObject("evidence_defaults").put("absent_boolean_flags_mean", false)
+                .put("absent_lists_mean", "empty");
+    }
     private static ObjectNode compact(ObjectNode dispatch) {
         dispatch.remove(java.util.List.of("invocation_kind"));
         stripFalse(dispatch);

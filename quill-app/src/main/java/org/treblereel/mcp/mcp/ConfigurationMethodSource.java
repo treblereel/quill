@@ -15,7 +15,7 @@ final class ConfigurationMethodSource {
     static void append(Jdbi db,ObjectNode evidence) {
         if(!evidence.has("field_read_source"))return;
         ObjectNode complete=JSON.createObjectNode().put("status","ready")
-            .put("scope","Complete current Java declarations of indexed field-reading methods; not runtime paths")
+            .put("scope","Whole compiler methods; dedented; runtime paths unproven")
             .put("range_kind","compiler_method_declaration").put("method_complete",true)
             .put("source_bytecode_identity_proven",false).put("line_limit",120).put("character_limit",9000)
             .put("window_limit",8).put("file_limit",4).put("truncated",false);
@@ -49,7 +49,7 @@ final class ConfigurationMethodSource {
                     if(!hash.equals(output.path("source_sha256").asText()))throw new IllegalStateException("inputs_changed");
                     ((ArrayNode)output.get("windows")).addObject().put("start_line",first).put("end_line",last)
                         
-                        .put("source",source);
+                        .put("source",dedent(source));
                 }
             }
             for(var entry:byFile.entrySet())if(!entry.getValue().path("source_sha256").asText().equals(SourceFileHashes.hash(root.resolve(entry.getKey()))))throw new IllegalStateException("inputs_changed");
@@ -64,14 +64,26 @@ final class ConfigurationMethodSource {
                     ref.remove(List.of("classId","confidence","resolution_strategy","definition_count","definition_files"));
                     if(ref.has("resolution_status"))ref.remove("resolved");
                     if(ref.path("declared_source") instanceof ObjectNode declared)declared.remove(List.of("basis","effective_value_proven"));
-                    if(ref.path("field_reads") instanceof ObjectNode reads)reads.remove("basis");
+                    if(ref.path("field_reads") instanceof ObjectNode reads){
+                        reads.remove("basis");
+                        for(var site:reads.path("sites"))if(site instanceof ObjectNode row)row.remove("descriptor");
+                    }
+                    ref.remove(List.of("module","parameterIndex"));
+                    if(ref.path("kind").asText().equals("config_key") && ref.has("field_annotations"))ref.remove("kind");
+                    if(ref.has("field_annotations"))ref.remove("annotation");
+                    if(ref.path("profile_classes").size()==1 && ref.path("profile_classes").get(0).asText().equals(ref.path("declaring_class").asText()))ref.remove(List.of("profile_classes","profile_count"));
+                    if(ref.has("configuration_scope"))ref.put("configuration_scope","test declaration; activation unknown");
                 }
                 evidence.putArray("limitations").add("Bounded non-sensitive source scalars only; env/evaluated values not indexed")
                     .add("Supported annotation/common API consumers; env/YAML-list lookups unresolved; dynamic keys unknown");
                 if(evidence.path("key_constants") instanceof ObjectNode constants){
-                    constants.put("basis","Indexed key aliases; source binding unproven");
-                    constants.put("coverage","Captured application classes; missing bytecode is not absence");
+                    constants.put("basis","Indexed aliases; source binding unproven");
+                    constants.put("coverage","App classfiles only; missing data is not absence");
+                    for(var node:constants.path("items"))if(node instanceof ObjectNode item){
+                        if(item.path("key").asText().equals(key))item.remove("key");
+                    }
                 }
+                if(evidence.path("test_profile_coverage") instanceof ObjectNode coverage)coverage.remove("runtime_values_proven");
                 complete.put("read_sites_basis","indexed bytecode; exact field owner/name/descriptor");
             }
         }catch(Exception unavailable){failure=unavailable instanceof IllegalStateException?unavailable.getMessage():"compiler_unavailable";}
@@ -83,6 +95,17 @@ final class ConfigurationMethodSource {
                 if(MetaEnvelope.from(db,0,0).structureStale())throw new IllegalStateException();
             }catch(Exception changed){prior.putArray("files");prior.put("status","inputs_changed");}
         }
+    }
+    static String dedent(String source){
+        String[] lines=source.split("\n",-1);String prefix=null;
+        for(int i=1;i<lines.length;i++)if(!lines[i].isBlank()){
+            int n=0;while(n<lines[i].length() && (lines[i].charAt(n)==' ' || lines[i].charAt(n)=='\t'))n++;
+            String indent=lines[i].substring(0,n);
+            if(prefix==null)prefix=indent;else{int common=0;while(common<Math.min(prefix.length(),indent.length()) && prefix.charAt(common)==indent.charAt(common))common++;prefix=prefix.substring(0,common);}
+        }
+        if(prefix==null || prefix.isEmpty())return source;
+        for(int i=1;i<lines.length;i++)if(lines[i].startsWith(prefix))lines[i]=lines[i].substring(prefix.length());
+        return String.join("\n",lines);
     }
     private ConfigurationMethodSource(){}
 }

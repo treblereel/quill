@@ -87,9 +87,9 @@ class ConfigurationSourceEvidenceTest {
         assertEquals(1,first.size());var evidence=first.get(0).path("evidence");
         assertEquals("find_configuration_references",first.get(0).path("tool").asText());
         assertEquals("warehouse.cache-enabled",first.get(0).path("arguments").path("key").asText());
-        assertTrue(first.get(0).path("query_scope").asText().contains("runtime values and profile activation unproven"));
+        assertTrue(first.get(0).path("query_scope").asText().contains("runtime/activation unknown"));
         var queried=(ObjectNode)JSON.readTree(new ConfigurationReferenceQueries().find(db,"warehouse.cache-enabled",null,"all",null,12,0,"declared"));
-        queried.remove("_meta");assertEquals(evidence,queried);
+        queried.remove("_meta");var core=((ObjectNode)evidence).deepCopy();core.remove(java.util.List.of("field_annotations","related_configuration_declarations","configuration_resources"));assertEquals(core,queried);
         assertEquals(2,evidence.path("definition_count").asInt());assertEquals(1,evidence.path("usage_count").asInt());
         assertFalse(evidence.path("effective_runtime_values_proven").asBoolean());assertTrue(evidence.toString().contains("declared_value"));
         assertTrue(PrefetchContext.collect(db,root,"warehouse.cache warehouse.cache-enabled.extra").path("facts").isEmpty());

@@ -188,23 +188,8 @@ public final class SpringResolver {
             List<InjectionPointRecord> ipRecords, List<DependencyRecord> depRecords,
             int ipIdSeq) {
 
-        for (FieldInfo field : ci.fields()) {
-            if (!isInjectionField(field)) continue;
-
-            int ipId = ipIdSeq++;
-            String targetType = field.type().name().toString();
-            List<String> ipQualifiers = extractFieldQualifiers(field, index);
-            Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
-
-            ipRecords.add(InjectionPointRecord.staticAnalysis(
-                    ipId, beanId, "FIELD", targetType, ipQualifiers,
-                    field.name(), r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
-                    .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
-
-            if (r.classId() != null) {
-                depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
-            }
-        }
+        ipIdSeq = resolveFieldInjections(ci, null, classId, beanId, index, candidatesByType,
+                ipRecords, depRecords, ipIdSeq);
 
         MethodInfo injectConstructor = findInjectConstructor(ci);
         if (injectConstructor != null) {
@@ -226,26 +211,82 @@ public final class SpringResolver {
         }
 
         for (MethodInfo method : ci.methods()) {
-            if (method.name().equals("<init>") || method.name().equals("<clinit>")) continue;
-            if (!method.hasAnnotation(AUTOWIRED)) continue;
+            if (!isInjectionMethod(method)) continue;
+            ipIdSeq = resolveMethodInjection(method, method.name(), classId, beanId, index,
+                    candidatesByType, ipRecords, depRecords, ipIdSeq);
+        }
 
-            for (int i = 0; i < method.parametersCount(); i++) {
-                int ipId = ipIdSeq++;
-                String targetType = method.parameterType(i).name().toString();
-                List<String> ipQualifiers = extractParamQualifiers(method, i, index);
-                Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
-
-                ipRecords.add(InjectionPointRecord.staticAnalysis(
-                        ipId, beanId, "METHOD_PARAM", targetType, ipQualifiers,
-                        method.name(), r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
-                        .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
-
-                if (r.classId() != null) {
-                    depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
-                }
+        // AutowiredAnnotationBeanPostProcessor also injects the annotated fields and methods of
+        // every superclass, skipping methods the subclass overrides.
+        List<ClassInfo> superclasses = InjectionHierarchy.superclasses(ci, index);
+        for (ClassInfo parent : superclasses) {
+            ipIdSeq = resolveFieldInjections(parent, parent, classId, beanId, index,
+                    candidatesByType, ipRecords, depRecords, ipIdSeq);
+            List<ClassInfo> lower = InjectionHierarchy.below(ci, superclasses, parent);
+            for (MethodInfo method : parent.methods()) {
+                if (!isInjectionMethod(method) || InjectionHierarchy.overridden(method, lower)) continue;
+                ipIdSeq = resolveMethodInjection(method,
+                        InjectionHierarchy.inheritedMember(parent, method.name()), classId, beanId,
+                        index, candidatesByType, ipRecords, depRecords, ipIdSeq);
             }
         }
 
+        return ipIdSeq;
+    }
+
+    private static boolean isInjectionMethod(MethodInfo method) {
+        if (method.name().equals("<init>") || method.name().equals("<clinit>")) return false;
+        if (java.lang.reflect.Modifier.isStatic(method.flags())) return false;
+        return method.hasAnnotation(AUTOWIRED) || method.hasAnnotation(INJECT)
+                || method.hasAnnotation(INJECT_JAVAX);
+    }
+
+    /** @param declaring the superclass declaring the fields, or null for the bean class itself */
+    private static int resolveFieldInjections(ClassInfo owner, ClassInfo declaring, int classId,
+            int beanId, IndexView index, Map<String, List<BeanCandidate>> candidatesByType,
+            List<InjectionPointRecord> ipRecords, List<DependencyRecord> depRecords,
+            int ipIdSeq) {
+        for (FieldInfo field : owner.fields()) {
+            if (!isInjectionField(field) || java.lang.reflect.Modifier.isStatic(field.flags())) continue;
+
+            int ipId = ipIdSeq++;
+            String targetType = field.type().name().toString();
+            List<String> ipQualifiers = extractFieldQualifiers(field, index);
+            Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
+            String member = declaring == null ? field.name()
+                    : InjectionHierarchy.inheritedMember(declaring, field.name());
+
+            ipRecords.add(InjectionPointRecord.staticAnalysis(
+                    ipId, beanId, "FIELD", targetType, ipQualifiers,
+                    member, r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
+                    .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
+
+            if (r.classId() != null) {
+                depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
+            }
+        }
+        return ipIdSeq;
+    }
+
+    private static int resolveMethodInjection(MethodInfo method, String member, int classId,
+            int beanId, IndexView index, Map<String, List<BeanCandidate>> candidatesByType,
+            List<InjectionPointRecord> ipRecords, List<DependencyRecord> depRecords,
+            int ipIdSeq) {
+        for (int i = 0; i < method.parametersCount(); i++) {
+            int ipId = ipIdSeq++;
+            String targetType = method.parameterType(i).name().toString();
+            List<String> ipQualifiers = extractParamQualifiers(method, i, index);
+            Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
+
+            ipRecords.add(InjectionPointRecord.staticAnalysis(
+                    ipId, beanId, "METHOD_PARAM", targetType, ipQualifiers,
+                    member, r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
+                    .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
+
+            if (r.classId() != null) {
+                depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
+            }
+        }
         return ipIdSeq;
     }
 

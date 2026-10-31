@@ -21,7 +21,6 @@ public final class QuillTools {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> NOT_FOUND_PREFIXES = Set.of(
             "{\"error\":\"Class not found\"",
-            "{\"error\":\"Annotation not found\"",
             "{\"error\":\"Not a bean:");
 
     private final ProjectRegistry registry;
@@ -1295,8 +1294,7 @@ public final class QuillTools {
                     && !parsed.path("annotation_indexed").asBoolean()) return true;
             String message = parsed.path("message").asText();
             if (!message.isBlank()) {
-                return message.startsWith("Annotation not found")
-                        || message.startsWith("Not a bean:");
+                return message.startsWith("Not a bean:");
             }
         } catch (Exception ignored) {
             // Fall through for older internal query payloads that are not valid JSON.

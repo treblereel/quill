@@ -659,7 +659,7 @@ Bean and injection evidence follows CDI and Spring semantics more closely:
 - Container-provided beans (`Event`, `Instance`, `Provider`, `InjectionPoint`,
   `BeanManager`, ...) resolve with status `RESOLVED`, reason `BUILTIN_BEAN` and no bean id.
 
-Re-run `quill update` (or `quill init`) after upgrading to rebuild indexes with this
+Run `quill update --force` after upgrading to rebuild existing indexes with this
 evidence.
 
 ## Connect Quill to Claude Code or Codex

@@ -36,24 +36,7 @@ final class ProjectOverviewQueries {
         Map<String, String> meta = reader.index.getMetadata();
         ObjectNode root = JSON.createObjectNode();
 
-        // The capability contract never changes between calls; the default overview, requested
-        // at the start of every task, only names the contract version.
-        if (!details) {
-            root.putObject("capabilities").put("contract_version", 1)
-                    .put("details_request", "get_overview details=true");
-        }
-        ObjectNode capabilities = details ? root.putObject("capabilities") : JSON.createObjectNode();
-        capabilities.put("contract_version", 1);
-        capabilities.set("supported_languages", JSON.valueToTree(List.of("java", "kotlin")));
-        capabilities.put("stable_symbol_ids", true);
-        capabilities.put("symbol_id_version", 2);
-        capabilities.put("symbol_id_scope", "project");
-        capabilities.put("workspace_symbol_ids_require_project", true);
-        capabilities.put("machine_readable_errors", true);
-        capabilities.put("error_contract_version", 1);
-        capabilities.set("symbol_id_consumers", JSON.valueToTree(List.of(
-                "find_symbol_usages", "get_call_hierarchy",
-                "analyze_execution_order", "find_method_overrides")));
+        appendCapabilities(root.putObject("capabilities"), details);
 
         ObjectNode project = root.putObject("project");
         int classCount = reader.symbols.countClasses();
@@ -100,7 +83,7 @@ final class ProjectOverviewQueries {
         Map<Integer, ClassRecord> hubClasses = reader.symbols.findClassesByIds(hubMetrics.stream().map(UsageRepository.ArchitectureHub::classId).toList());
         topHubs(hubMetrics, UsageRepository.ArchitectureHub::totalDependents).forEach(hub ->
                 Optional.ofNullable(hubClasses.get(hub.classId()))
-                        .ifPresent(cls -> appendHub(hubs, hub, cls, "combined")));
+                        .ifPresent(cls -> appendHub(hubs, hub, cls)));
 
         if (details) {
             ObjectNode rankings = root.putObject("architecture_hub_rankings");
@@ -212,8 +195,18 @@ final class ProjectOverviewQueries {
         return root.toString();
     }
 
+    /** Immutable per index generation; bounded because a server may serve many generations. */
+    private static final Map<String, List<String>> AUXILIARY_BY_INDEX =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     private static List<String> auxiliaryBuildProjects(ReadQueryContext reader) {
-        return auxiliaryBuildProjects(reader.index.findIndexedModules(), reader.index.findBuildDescriptors());
+        String indexId = reader.index.getMetadata().get("index_id");
+        if (indexId == null) {
+            return auxiliaryBuildProjects(reader.index.findIndexedModules(), reader.index.findBuildDescriptors());
+        }
+        if (AUXILIARY_BY_INDEX.size() > 16) AUXILIARY_BY_INDEX.clear();
+        return AUXILIARY_BY_INDEX.computeIfAbsent(indexId, ignored -> auxiliaryBuildProjects(
+                reader.index.findIndexedModules(), reader.index.findBuildDescriptors()));
     }
 
     static List<String> auxiliaryBuildProjects(java.util.Collection<String> indexedModules,
@@ -238,6 +231,28 @@ final class ProjectOverviewQueries {
             if (result.size() >= 20) break;
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * The capability contract never changes between calls; the default overview, requested at the
+     * start of every task, only names the contract version and how to get the rest.
+     */
+    private static void appendCapabilities(ObjectNode capabilities, boolean details) {
+        capabilities.put("contract_version", 1);
+        if (!details) {
+            capabilities.put("details_request", "get_overview details=true");
+            return;
+        }
+        capabilities.set("supported_languages", JSON.valueToTree(List.of("java", "kotlin")));
+        capabilities.put("stable_symbol_ids", true);
+        capabilities.put("symbol_id_version", 2);
+        capabilities.put("symbol_id_scope", "project");
+        capabilities.put("workspace_symbol_ids_require_project", true);
+        capabilities.put("machine_readable_errors", true);
+        capabilities.put("error_contract_version", 1);
+        capabilities.set("symbol_id_consumers", JSON.valueToTree(List.of(
+                "find_symbol_usages", "get_call_hierarchy",
+                "analyze_execution_order", "find_method_overrides")));
     }
 
     private static void writeResolutionGroup(ObjectNode problems, String name,
@@ -276,12 +291,12 @@ final class ProjectOverviewQueries {
         ArrayNode result = rankings.putArray(name);
         for (UsageRepository.ArchitectureHub hub : topHubs(metrics, rankingMetric)) {
             ClassRecord cls = classes.get(hub.classId());
-            if (cls != null) appendHub(result, hub, cls, name);
+            if (cls != null) appendHub(result, hub, cls);
         }
     }
 
     private static void appendHub(ArrayNode result, UsageRepository.ArchitectureHub metrics,
-            ClassRecord cls, String rankedBy) {
+            ClassRecord cls) {
         // The ranking is named once by the enclosing list (architecture_hubs_ranked_by or the
         // architecture_hub_rankings key), not repeated on every hub.
         ObjectNode hub = result.addObject();

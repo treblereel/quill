@@ -252,7 +252,9 @@ final class ToolResponseSupport {
                         coverage.set("indexed_scopes", page);
                         var paging = coverage.putObject("indexed_scopes_page");
                         appendPage(paging, to - from, total, 100, offset);
-                        if (coverage.has("index_id")) paging.set("index_id", coverage.path("index_id").deepCopy());
+                        var indexId = coverage.has("index_id") ? coverage.path("index_id")
+                                : object.path("_meta").path("index_id");
+                        if (!indexId.isMissingNode()) paging.set("index_id", indexId.deepCopy());
                         if (to < total) paging.set("next_page_request", evidenceRequest(tool, arguments, to));
                     } else if (!full) {
                         countOnly(coverage, "indexed_scopes", "indexed_scope_count");

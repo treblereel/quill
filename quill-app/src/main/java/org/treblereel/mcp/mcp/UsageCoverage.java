@@ -16,15 +16,18 @@ import org.treblereel.mcp.core.SourceFileHashes;
 final class UsageCoverage {
     private static final ObjectMapper JSON = new ObjectMapper();
     private UsageCoverage() {}
+    private static final com.fasterxml.jackson.databind.node.ArrayNode NOT_COVERED =
+            new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode()
+                    .add("repository_usage_completeness").add("external_consumers").add("reflection")
+                    .add("source_only_references").add("runtime_dispatch_exhaustiveness")
+                    .add("bytecode_source_identity");
     static void append(ObjectNode response, ReadQueryContext db, int targetId) {
         Map<String,String> metadata=db.index.getMetadata();
         var freshness=org.treblereel.mcp.index.BuildStatusInspector.freshness(db,0,0);
-        var coverage=response.putObject("coverage").put("schema_version",1).put("scope","indexed_application_bytecode")
-                .put("repository_usage_completeness_proven",false).put("external_consumers_covered",false)
-                .put("reflection_covered",false).put("source_only_references_covered",false)
-                .put("runtime_dispatch_exhaustive",false).put("bytecode_source_identity_proven",false);
-        coverage.put("index_id",metadata.getOrDefault("index_id","unknown"));
-        coverage.put("indexed_at",metadata.getOrDefault("indexed_at","unknown"));
+        // The same six guarantees are never proven; name them once instead of six false flags.
+        // index_id and indexed_at are reported by _meta on the same response.
+        var coverage=response.putObject("coverage").put("schema_version",2).put("scope","indexed_application_bytecode");
+        coverage.set("not_covered", NOT_COVERED.deepCopy());
         JsonNode sources=db.sourceFreshness(
                 () -> org.treblereel.mcp.diagnostics.QueryMetrics.measure("source_freshness", () -> sourceFreshness(metadata)));
         coverage.set("source_snapshot",sources.deepCopy());

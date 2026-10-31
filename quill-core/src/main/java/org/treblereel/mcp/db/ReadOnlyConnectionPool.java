@@ -46,10 +46,20 @@ final class ReadOnlyConnectionPool implements Runnable {
             // Retired generations may still have already-resolved requests. Serve these with
             // disposable readers, never reopen an idle pool or mix a newer generation into them.
             connection = idle.pollFirst();
-            if (connection == null) {
-                connection = connections.openConnection();
-            }
+            // Reserve the slot now; a new reader is opened outside the monitor so concurrent
+            // borrowers and returning leases are not serialized behind SQLite file I/O.
             borrowed++;
+        }
+        if (connection == null) {
+            try {
+                connection = connections.openConnection();
+            } catch (SQLException | RuntimeException | Error failure) {
+                synchronized (this) {
+                    borrowed--;
+                    notifyAll();
+                }
+                throw failure;
+            }
         }
         Connection physical = connection;
         AtomicBoolean closed = new AtomicBoolean();

@@ -15,9 +15,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.JvmSourceFiles;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.GitRepository;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.CoChangeRecord;
 import org.treblereel.mcp.model.DependencyRecord;
@@ -26,32 +26,29 @@ import org.treblereel.mcp.model.DependencyRecord;
 final class TestImpactQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final int MAX_TARGETS = 20;
     private static final int MAX_EXPANDED_CLASSES = 5_000;
 
-    String findImpactedTests(Jdbi jdbi, List<String> targets,
+    String findImpactedTests(ReadQueryContext reader, List<String> targets,
             boolean transitive, int maxDepth, int limit, int offset) {
+        GitRepository gitRepository = reader.git;
         if (targets == null || targets.isEmpty()) {
             return errorResponse("At least one target is required");
         }
-        if (targets.size() > MAX_TARGETS) {
-            return errorResponse("At most " + MAX_TARGETS + " targets are allowed");
-        }
         List<ClassRecord> resolvedTargets = new ArrayList<>();
         for (String target : targets) {
-            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
-            if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
+            if (lookup.error() != null) return classLookupError(reader, lookup, target);
             if (resolvedTargets.stream().noneMatch(value -> value.id() == lookup.cls().id())) {
                 resolvedTargets.add(lookup.cls());
             }
         }
 
-        List<ClassRecord> allClasses = IndexReader.findAllClasses(jdbi);
+        List<ClassRecord> allClasses = reader.symbols.findAllClasses();
         Map<Integer, ClassRecord> classesById = new HashMap<>();
         allClasses.forEach(value -> classesById.put(value.id(), value));
         int indexedTestClasses = (int) allClasses.stream()
                 .filter(TestImpactQueries::isTestClass).count();
-        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        Map<String, String> metadata = reader.index.getMetadata();
         List<String> indexedTestModules = metadataList(metadata, "compiled_test_modules");
         if (indexedTestModules.isEmpty() && indexedTestClasses > 0) {
             indexedTestModules = allClasses.stream().filter(TestImpactQueries::isTestClass)
@@ -66,10 +63,11 @@ final class TestImpactQueries {
         Map<String, Candidate> candidates = new LinkedHashMap<>();
         boolean[] truncatedTraversal = {false};
         int effectiveDepth = transitive ? maxDepth : 1;
+        Map<Integer, List<DependencyRecord>> inbound = new HashMap<>();
         for (ClassRecord target : resolvedTargets) {
-            collectStaticCandidates(jdbi, target, effectiveDepth, classesById,
-                    candidates, truncatedTraversal);
-            collectGitCandidates(jdbi, target, classesById, candidates);
+            collectStaticCandidates(reader, target, effectiveDepth, classesById,
+                    candidates, truncatedTraversal, inbound);
+            collectGitCandidates(reader, target, classesById, candidates);
         }
 
         List<Candidate> ranked = candidates.values().stream()
@@ -87,7 +85,7 @@ final class TestImpactQueries {
         root.put("max_depth", effectiveDepth);
         root.put("indexed_test_class_count", indexedTestClasses);
         root.put("compiled_test_outputs_indexed", indexedTestClasses > 0);
-        root.put("git_history_available", IndexReader.hasGitData(jdbi));
+        root.put("git_history_available", gitRepository.hasGitData());
         root.put("traversal_truncated", truncatedTraversal[0]);
         ObjectNode coverage = root.putObject("test_index_coverage");
         boolean incompleteCoverage = !missingTestModules.isEmpty()
@@ -103,13 +101,13 @@ final class TestImpactQueries {
         coverage.put("indexed_test_classes", indexedTestClasses);
         coverage.put("complete", coverageStatus.equals("complete"));
         root.put("static_evidence_available", indexedTestClasses > 0);
-        root.put("historical_evidence_available", IndexReader.hasGitData(jdbi));
+        root.put("historical_evidence_available", gitRepository.hasGitData());
         root.put("answer_complete", coverageStatus.equals("complete") && !truncatedTraversal[0]);
         ArrayNode limitations = root.putArray("limitations");
         if (indexedTestClasses == 0) {
             limitations.add("No compiled test classes are indexed; static impact may be incomplete");
         }
-        if (!IndexReader.hasGitData(jdbi)) {
+        if (!gitRepository.hasGitData()) {
             limitations.add("Git co-change evidence is unavailable");
         }
         if (!missingTestModules.isEmpty()) {
@@ -125,7 +123,7 @@ final class TestImpactQueries {
                     + String.join(", ", staleTestOutputModules));
         }
         if (truncatedTraversal[0]) {
-            limitations.add("Static traversal stopped at " + MAX_EXPANDED_CLASSES + " classes");
+            limitations.add("Static traversal stopped at " + MAX_EXPANDED_CLASSES + " classes across all targets");
         }
 
         ArrayNode tests = root.putArray("tests");
@@ -157,18 +155,17 @@ final class TestImpactQueries {
             }
         }
         appendPage(root, page.size(), ranked.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
-    private void collectStaticCandidates(Jdbi jdbi, ClassRecord target, int maxDepth,
+    private void collectStaticCandidates(ReadQueryContext reader, ClassRecord target, int maxDepth,
             Map<Integer, ClassRecord> classesById, Map<String, Candidate> candidates,
-            boolean[] truncated) {
+            boolean[] truncated, Map<Integer, List<DependencyRecord>> inbound) {
         ArrayDeque<PathNode> queue = new ArrayDeque<>();
         queue.add(new PathNode(target.id(), 0, List.of(target.className()), List.of()));
         Map<Integer, Integer> bestDepth = new HashMap<>();
         bestDepth.put(target.id(), 0);
-        int expanded = 0;
         while (!queue.isEmpty()) {
             PathNode current = queue.removeFirst();
             ClassRecord currentClass = classesById.get(current.classId());
@@ -176,12 +173,12 @@ final class TestImpactQueries {
                 mergeStatic(candidates, currentClass, current, target.className());
             }
             if (current.depth() >= maxDepth) continue;
-            if (++expanded > MAX_EXPANDED_CLASSES) {
+            if (!inbound.containsKey(current.classId()) && inbound.size() >= MAX_EXPANDED_CLASSES) {
                 truncated[0] = true;
                 return;
             }
-            for (DependencyRecord dependency : IndexReader.findDependencies(
-                    jdbi, current.classId(), "inbound")) {
+            for (DependencyRecord dependency : inbound.computeIfAbsent(current.classId(),
+                    id -> reader.usages.findDependencies(id, "inbound"))) {
                 ClassRecord caller = classesById.get(dependency.fromClassId());
                 if (caller == null) continue;
                 int nextDepth = current.depth() + 1;
@@ -195,10 +192,11 @@ final class TestImpactQueries {
         }
     }
 
-    private void collectGitCandidates(Jdbi jdbi, ClassRecord target,
+    private void collectGitCandidates(ReadQueryContext reader, ClassRecord target,
             Map<Integer, ClassRecord> classesById, Map<String, Candidate> candidates) {
-        if (!IndexReader.hasGitData(jdbi)) return;
-        for (CoChangeRecord coChange : IndexReader.findCoChanges(jdbi, target.id(), 500)) {
+        GitRepository gitRepository = reader.git;
+        if (!gitRepository.hasGitData()) return;
+        for (CoChangeRecord coChange : gitRepository.findCoChanges(target.id(), 500)) {
             ClassRecord cls = coChange.classId() == null
                     ? null : classesById.get(coChange.classId());
             if ((cls == null || !isTestClass(cls)) && !isTestPath(coChange.filePath())) continue;
@@ -256,7 +254,7 @@ final class TestImpactQueries {
     }
 
     private static boolean isTestClass(ClassRecord cls) {
-        return "test".equals(cls.sourceSet()) || isTestPath(cls.sourceFile());
+        return cls.inTestSourceSet() || isTestPath(cls.sourceFile());
     }
 
     private static boolean isTestPath(String path) {

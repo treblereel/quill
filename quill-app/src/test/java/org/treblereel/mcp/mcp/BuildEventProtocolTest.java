@@ -15,6 +15,80 @@ class BuildEventProtocolTest {
     Path tempDir;
 
     @Test
+    void eventCleanupToleratesAnotherConsumerAndPreservesNewEvents() throws Exception {
+        Path events = Files.createDirectories(tempDir.resolve(".quill/build-events"));
+        BuildEventConsumer.removeIfEmpty(events);
+        assertFalse(Files.exists(events));
+        assertDoesNotThrow(() -> BuildEventConsumer.removeIfEmpty(events));
+
+        Files.createDirectories(events);
+        Path nextBuild = Files.writeString(events.resolve("next-build.json"), "{}");
+        BuildEventConsumer.removeIfEmpty(events);
+        assertTrue(Files.exists(nextBuild), "Cleanup must preserve events from the next build");
+    }
+
+    @Test
+    void unpublishedTemporaryEventIsLeftToItsWriter() throws Exception {
+        Path directory = Files.createDirectories(tempDir.resolve(".quill/build-events"));
+        Path temporary = Files.writeString(directory.resolve(".maven-writer.tmp"), "{unfinished");
+        var consumer = new BuildEventConsumer(Runnable::run);
+        assertFalse(BuildEventConsumer.hasPendingEvents(tempDir));
+        assertNull(consumer.consume(tempDir));
+        assertEquals("{unfinished", Files.readString(temporary));
+    }
+
+    @Test
+    void asyncConsumptionSharesOneJobAndPersistsFailuresBeforeQueriesResume() throws Exception {
+        Path events = Files.createDirectories(tempDir.resolve(".quill/build-events"));
+        Files.writeString(events.resolve("event.json"),
+                "{\"version\":3,\"buildTool\":\"maven\",\"successful\":false,"
+                        + "\"finishedAt\":" + System.currentTimeMillis()
+                        + ",\"captureScope\":\"exception_chain\","
+                        + "\"failureMessagesBase64\":[],\"diagnosticsBase64\":[]}");
+        var jobs = new java.util.ArrayDeque<Runnable>();
+        var consumer = new BuildEventConsumer(jobs::add);
+        var first = consumer.consumeAsync(tempDir);
+        assertNotNull(first);
+        assertFalse(first.isDone());
+        assertSame(first, consumer.consumeAsync(tempDir));
+        assertEquals(ProjectRegistry.ReadinessReason.BUILD_EVENTS_QUEUED, consumer.reason(tempDir));
+        assertTrue(consumer.elapsedMs(tempDir) >= 0);
+        assertEquals(1, jobs.size());
+        jobs.remove().run();
+        assertTrue(first.isDone());
+        assertNull(first.join());
+        assertNull(consumer.consumeAsync(tempDir));
+        assertFalse(Files.exists(events));
+        JsonNode state = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                tempDir.resolve(".quill/build-state.json").toFile());
+        assertFalse(state.path("successful").asBoolean());
+    }
+
+    @Test
+    void asyncFailureIsReportedAndKeepsTheEventForRetry() throws Exception {
+        Path events = Files.createDirectories(tempDir.resolve(".quill/build-events"));
+        Files.writeString(events.resolve("event.json"),
+                "{\"version\":3,\"buildTool\":\"maven\",\"successful\":false,"
+                        + "\"finishedAt\":" + System.currentTimeMillis()
+                        + ",\"captureScope\":\"exception_chain\","
+                        + "\"failureMessagesBase64\":[],\"diagnosticsBase64\":[]}");
+        Files.createDirectory(tempDir.resolve(".quill/build-state.json"));
+        var jobs = new java.util.ArrayDeque<Runnable>();
+        var consumer = new BuildEventConsumer(jobs::add);
+        var failed = consumer.consumeAsync(tempDir);
+        jobs.remove().run();
+        assertNotNull(failed.join());
+        assertSame(failed, consumer.consumeAsync(tempDir));
+        assertTrue(BuildEventConsumer.hasPendingEvents(tempDir));
+        Files.delete(tempDir.resolve(".quill/build-state.json"));
+        var retry = consumer.consumeAsync(tempDir);
+        assertNotSame(failed, retry);
+        jobs.remove().run();
+        assertNull(retry.join());
+        assertFalse(BuildEventConsumer.hasPendingEvents(tempDir));
+    }
+
+    @Test
     void discardsEventsOutsideVersionThreeContract() throws Exception {
         List<String> invalidEvents = List.of(
                 "not-json",

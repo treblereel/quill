@@ -17,9 +17,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.IndexReader.MethodCallView;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.UsageRepository;
+import org.treblereel.mcp.db.UsageRepository.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.KotlinDeclarationRecord;
@@ -33,11 +33,11 @@ final class ExecutionOrderQueries {
     private static final Set<String> DISPATCH = Set.of(
             "dispatch", "submit", "publish", "send", "enqueue", "worker", "invoke", "execute");
 
-    String analyze(Jdbi jdbi, String target, String method, String signature) {
-        return analyze(jdbi, target, method, signature, PERSISTENCE, DISPATCH);
+    String analyze(ReadQueryContext reader, String target, String method, String signature) {
+        return analyze(reader, target, method, signature, PERSISTENCE, DISPATCH);
     }
 
-    String analyze(Jdbi jdbi, String target, String method, String signature,
+    String analyze(ReadQueryContext reader, String target, String method, String signature,
             Set<String> beforeTerms, Set<String> afterTerms) {
         try {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
@@ -58,12 +58,12 @@ final class ExecutionOrderQueries {
         }
         String requestedMethod = method;
         String requestedSignature = signature;
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
+        if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord cls = lookup.cls();
         List<KotlinDeclarationRecord> kotlinDeclarations =
-                IndexReader.findKotlinDeclarations(jdbi, cls.id());
-        List<ClassMemberRecord> candidates = IndexReader.findClassMembers(jdbi, cls.id()).stream()
+                reader.symbols.findKotlinDeclarations(cls.id());
+        List<ClassMemberRecord> candidates = reader.symbols.findClassMembers(cls.id()).stream()
                 .filter(member -> member.kind().equals("METHOD")
                         || member.kind().equals("CONSTRUCTOR"))
                 .filter(member -> indexedName(member).equals(requestedMethod)
@@ -75,15 +75,14 @@ final class ExecutionOrderQueries {
                 .toList();
         if (candidates.size() != 1) {
             return selectionError(
-                    jdbi, cls, requestedMethod, requestedSignature, candidates);
+                    reader, cls, requestedMethod, requestedSignature, candidates);
         }
 
         ClassMemberRecord selected = candidates.getFirst();
         KotlinDeclarationRecord kotlinDeclaration = KotlinMemberNames
                 .declaration(selected, kotlinDeclarations).orElse(null);
         String indexedMethod = indexedName(selected);
-        List<MethodCallView> calls = IndexReader.findMethodCalls(jdbi, cls.id(), indexedMethod,
-                selected.descriptor(), "outbound", 10_000, 0);
+        List<MethodCallView> calls = reader.usages.findMethodCalls(cls.id(), indexedMethod, selected.descriptor(), "outbound", 10_000, 0, reader.methods().symbolicOwners(cls.id(), indexedMethod, selected.descriptor(), "outbound"));
         List<Event> events = new ArrayList<>();
         for (MethodCallView call : calls) {
             if ("dynamic".equals(call.invocationKind())) continue;
@@ -140,7 +139,7 @@ final class ExecutionOrderQueries {
             }
         }
         root.put("event_count", events.size());
-        boolean classifiedDynamic = "2".equals(IndexReader.getMetadata(jdbi).get("invokedynamic_evidence_protocol"));
+        boolean classifiedDynamic = "2".equals(reader.index.getMetadata().get("invokedynamic_evidence_protocol"));
         ArrayNode callbacks = root.putArray("dynamic_references");
         for (MethodCallView call : calls) if ("dynamic".equals(call.invocationKind())) {
             var callback = callbacks.addObject().put("class",call.toClass()).put("method",call.toMethod())
@@ -193,7 +192,7 @@ final class ExecutionOrderQueries {
                 .add("Asynchronous completion, reflection, and external-library internals are not ordered by this analysis")
                 .add("Persistence and dispatch labels are name-based classifications; inspect the listed calls");
         root.withArray("limitations").add("Callback creation is not invocation of its referenced method; dynamic references are excluded from ordering events");
-        appendMeta(root, jdbi, cls.sourceTokens(), cls.sourceFile(), cls.module());
+        appendMeta(root, reader, cls.sourceTokens(), cls.sourceFile(), cls.module());
         return root.toString();
     }
 
@@ -291,7 +290,7 @@ final class ExecutionOrderQueries {
                 .anyMatch(beforeOrdinals::contains));
     }
 
-    private static String selectionError(Jdbi jdbi, ClassRecord cls, String method,
+    private static String selectionError(ReadQueryContext reader, ClassRecord cls, String method,
             String signature, List<ClassMemberRecord> candidates) {
         ObjectNode root = JSON.createObjectNode();
         boolean ambiguous = !candidates.isEmpty();
@@ -312,7 +311,7 @@ final class ExecutionOrderQueries {
             appendRetryWith(root, "signature",
                     "Use one candidate's exact signature, descriptor, or symbol_id");
         }
-        appendMeta(root, jdbi, cls.sourceTokens(), cls.sourceFile(), cls.module());
+        appendMeta(root, reader, cls.sourceTokens(), cls.sourceFile(), cls.module());
         return root.toString();
     }
 

@@ -29,6 +29,11 @@ public final class WorktreeInspector {
 
     public record Snapshot(String currentCommit, Path repositoryRoot, List<Change> changes,
             String fingerprint, List<Change> structuralChanges, String structuralFingerprint) {
+        public String indexInputFingerprint() {
+            return WorktreeInspector.fingerprint(repositoryRoot == null ? Path.of(".") : repositoryRoot,
+                    changes.stream().filter(change -> isIndexInputPath(change.projectPath())).toList());
+        }
+
         public boolean dirty() {
             return !changes.isEmpty();
         }
@@ -200,6 +205,14 @@ public final class WorktreeInspector {
 
     private static String emptyFingerprint() {
         return fingerprint(Path.of("."), List.of());
+    }
+
+    public static boolean isIndexInputPath(String projectPath) {
+        String path = projectPath.replace('\\', '/');
+        return isStructuralPath(path) || path.startsWith("src/") || path.contains("/src/")
+                || path.endsWith(".java") || path.endsWith(".kt") || path.endsWith(".kts")
+                || path.endsWith(".class") || path.endsWith(".jar")
+                || path.startsWith("target/generated-test-sources/") || path.contains("/target/generated-test-sources/");
     }
 
     public static boolean isStructuralPath(String projectPath) {

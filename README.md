@@ -79,10 +79,24 @@ atomically points each commit and branch at its active generation. This lets an 
 request finish reading the previous snapshot while `quill update` publishes the next
 one, including on Windows where an open SQLite file cannot be replaced safely.
 
+Explicit target lists in `get_context`, `plan_change`, `verify_change` and
+`change_session` are evaluated in full; the ten-target limit applies only to automatic
+inference from dirty sources. Production queries with `include_tests: false` exclude
+both unit-test and integration-test source sets, including their helper classes.
+
+Method control-flow and asynchronous/external-call evidence is stored once per JVM
+method, separately from its outgoing call edges. Schema changes rebuild a new
+generation instead of modifying the active database; a failed replacement leaves
+older databases and their refs intact. Full indexing compacts the disposable staging
+database before integrity validation and atomic publication. Incremental updates
+retain their indexes and never run `VACUUM`.
+
 **Important:** Quill indexes compiled bytecode, not source code, and never runs a Maven
 or Gradle build. Build the project yourself before `quill init`. Successful builds are
 recorded by the integration installed during initialization; Quill consumes that event
-and refreshes the index before the next MCP response. Every MCP response reports the indexed
+and refreshes the index in the background. Requests for that project return retryable
+`REFRESH_PENDING` until the refresh finishes; retry the same query without rebuilding or
+reducing its targets. Every indexed MCP response reports the indexed
 and current commit plus worktree freshness in `_meta`. Dirty and untracked files are
 also exposed as a live overlay by `find_git_hotspots`. Changes to Java or Kotlin sources,
 resources, generated sources, or Maven/Gradle build inputs mark structural answers
@@ -107,6 +121,41 @@ the client input also cancels active workers so the stdio server can terminate c
 Concurrent requests share an expensive Git worktree snapshot for 500 ms. An
 expired snapshot remains available while one background refresh runs, so Git inspection
 does not periodically stall MCP workers; edits appear after that refresh completes.
+
+MCP answers `initialize` and exposes its tool catalog before preparing indexes. Preparation
+runs in the background. Until a prepared generation is available, queries return
+`refresh_pending` with `action: wait` and retry guidance; no build is started.
+
+When a project is unavailable, MCP responses include a stable `reason` and an `action`.
+For `action: wait`, `stage`, `elapsed_ms`, and `retry_after_ms` describe queued preparation,
+build-result processing, or index refresh; `automatic_retry` confirms background work will
+continue. Rebuilding is unnecessary in those states. `action: build` or `fix_build` includes
+`stale_modules` and a `verification_plan` with the working directory and a `quick_compile`
+command (`test-compile` for Maven or `testClasses` for Gradle). Captured build errors are
+included when available. Quill never starts these commands. `get_build_problems` and
+`get_file_problems` can read the last captured diagnostics while the index is unavailable.
+`get_build_status` also returns compact readiness guidance during preparation; use `detail:"full"`
+for the verification plan and captured diagnostics.
+`previous_generation_available` reports whether an earlier index exists; it does not
+mean its answers have been verified against the current inputs.
+
+A Git commit of already indexed content triggers a background index refresh without a build.
+Quill verifies JVM source/resource hashes, bytecode, build inputs and classpaths against the previous
+compiled snapshot before reusing its compilation evidence. Changed or missing evidence never
+becomes fresh merely because the worktree is clean. Older indexes containing Kotlin or resource inputs need one normal index refresh to capture
+complete input hashes; no compilation is needed merely to upgrade this evidence.
+
+After initial preparation,
+queries continue using the last prepared generation during background updates and after
+refresh failures. These responses retain its `index_id`, report `previous_generation` in
+`_meta.stale_reasons`, and include the refresh reason in `project_warnings`. Freshness remains
+unverified until preparation succeeds; `verify_change` and `change_session` cannot issue a
+verified receipt from this fallback. New requests switch only after the replacement is
+prepared; readers already using the previous generation can finish safely. Integrity validation is
+single-flight per immutable file. A verified staging database retains its integrity evidence
+after atomic rename only when file identity, size and modification time match. Changed files
+are validated again. Input preparation stays pinned to its selected generation and reports
+separate stages for type graphs, Git, source/build inputs, compiler outputs and dependencies.
 
 For an informational cold-index and MCP latency benchmark (not part of CI), run:
 
@@ -436,7 +485,11 @@ does not imply that an executor, reactive stream, or message publication has com
   it does not prove compatibility. See [API compatibility review](docs/api-compatibility.md).
 - **get_build_status** — inspect build-result integration, compiled outputs, pending events,
   index freshness, and the next required action without invoking Maven or Gradle; build-required
-  responses distinguish `classes_missing` from `classes_stale` and identify stale modules
+  responses distinguish `classes_missing` from `classes_stale`. The default `detail:"summary"`
+  returns statuses, counts and reasons. Use `detail:"full"`, exact repository-relative `module`
+  and `source_set` filters, and `limit`/`offset` for complete evidence pages. Follow
+  `next_page_request`; pages may shrink to preserve complete rows within the response budget.
+  The source-set filter selects evidence; readiness still covers every source set in the selected module
 - **get_build_problems** — read normalized errors captured from the last Maven or Gradle build,
   including source positions and module filtering, without starting a build
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
@@ -490,14 +543,18 @@ does not imply that an executor, reactive stream, or message publication has com
   while stable action IDs let clients distinguish repeated guidance from a new requirement;
   all views preserve the same directive. Primary actions include their evidence snapshot and any
   external command needed for preparation or retry, even when the corresponding section is omitted;
-  summary detail is the default, while
+  summary detail is the default: inventory lists keep at most five entries with exact
+  `*_count` / `*_has_more` fields and complete source-set status counts. This presentation
+  does not change phase gates, verdicts, reason codes, or executable argv. Use
+  `full_evidence_request` for the complete snapshot;
   full detail preserves the complete plan/verification parity contract, and `view=auto` returns
   only the plan before structural edits or verification evidence afterwards. Dirty changes with
   unresolved contract, target, module, coverage, or pagination evidence enter `review_required`;
   changes needing only build evidence enter `verification_required`. Stateless snapshots may skip
   phases when the newly observed evidence already satisfies them
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
-  with explicit reporting when compiled test outputs are not indexed
+  with explicit reporting when compiled test outputs are not indexed. Related targets share a
+  5,000-class traversal budget; reaching it reports incomplete evidence for review
 - **get_type_hierarchy** — inspect paged ancestor and descendant paths, including external
   ancestors that are referenced by indexed bytecode but are not themselves indexed
 - **get_dependencies** — complete dependency metrics plus an optional relation graph,
@@ -510,11 +567,24 @@ does not imply that an executor, reactive stream, or message publication has com
   `view=compact` for a paginated project map (default `limit=20`, max 50, `offset=0`).
   The map includes unavailable projects, indexed framework/counts and freshness, and
   explicit `next_page_request` / per-project `details_request` calls. Counts describe
-  the index, not a complete endpoint or architecture analysis. Compact mode cannot be
+  the index, not a complete endpoint or architecture analysis. Readiness entries keep reasons,
+  retry guidance and bounded module samples; full build plans and diagnostics are available
+  through the detail request rather than repeated for every project. Compact mode cannot be
   combined with a project selector or `details=true`; use `project=<name>, view=full`
   for details. Pagination applies only to compact mode. Set `details=true` for diagnostic
   samples and per-dimension architecture-hub rankings. Its `capabilities` block advertises
   supported source languages, stable `symbol_id` chaining, and machine-readable errors
+
+Narrow query responses summarize coverage and readiness warnings by default: counts,
+completeness flags, reasons, actions, and retry guidance remain available without repository-wide
+inventories or repeated build plans. Warning `details_request` calls explicitly select `detail:"full"` build status.
+For `get_call_hierarchy`, `find_usages`, `find_symbol_usages`, `get_context`, and
+`find_workspace_usages`, follow `coverage.details_request` or set `evidence_detail=full`
+to inspect full evidence. Scope inventories use pages of 100 entries: follow
+`coverage.indexed_scopes_page.next_page_request` or set `evidence_offset` with full detail.
+This offset is independent of the query's result `offset`/`limit`; each scope page identifies
+its index generation. Presentation never upgrades completeness or non-use claims.
+Build diagnostics and change-workflow tools retain their existing detailed evidence contracts.
 
 MCP startup instructions report the actual server mode: `workspace` for `--workspace`,
 otherwise `single_project`. A repository called a "workspace" in its documentation does
@@ -749,7 +819,7 @@ Producer artifact versions and wire-format versions are independent.
 Java compile settings are exported separately to `target/quill-java-{main,test}.properties`
 for Maven and `build/quill-java-<sourceSet>.properties` for Gradle, including custom source
 sets. These locations stay stable when the project's compiled-output directory changes.
-`get_build_status` exposes `java_compiler_settings` with `captured`, `configuration_only`,
+`get_build_status` with `detail:"full"` exposes paged `java_compiler_settings` with `captured`, `configuration_only`,
 `missing`, `stale`, or `invalid` status. SHA-256 checks cover the build descriptors,
 settings/toolchain files and JDK release metadata; same-size edits with restored mtime
 are detected. Configuration-only discovery never claims that a JDK compiled the project.
@@ -895,17 +965,16 @@ JNA on macOS (20 ms stream latency) and the JDK event provider elsewhere. On mac
 registration waits for the FSEvents stream to start on a serial dispatch queue; closing
 a subscription drains callbacks before releasing its stream and queue. File hashing
 in the watcher is disabled; the worker verifies input contents before and after analysis.
-If event registration fails or its event loop terminates, relevant directory-entry
-metadata is polled with 100 ms between scans. While events are active, a metadata audit
-runs every two seconds and an isolated temporary heartbeat checks event delivery.
-Missed metadata notifications receive a two-second delivery grace period. Failed
+An isolated temporary heartbeat checks event delivery without scanning project files.
+If event registration fails or its event loop terminates, input observation is marked
+unavailable; there is no periodic metadata scan or polling fallback. Failed
 subscriptions retry after 1, 2, 4, 8, 16 and at most 30 seconds; a successful heartbeat
 resets this backoff. Recovery warms current inputs without switching modules. The
 heartbeat is excluded from compiler inputs and removed on close.
 Module switches and shutdown close the
 event streams and cancel background work. K2 response diagnostics include
 `input_detection` (`directory_watcher_fsevents`, `directory_watcher_watch_service`,
-or `metadata_poll_100ms`) to identify the active input watcher.
+or `unavailable`) to identify the active input watcher.
 Runtime checksums are validated when the worker starts, with file
 attributes checked between requests. Crashes, timeouts and runtime changes discard the
 worker; the next request starts a fresh process. MCP shutdown terminates it. When startup
@@ -952,6 +1021,14 @@ arbitrary compiler flags cannot be smuggled through the argument list.
 Kotlin Multiplatform/Android task graphs and custom script definitions need further
 integration; they are not covered by the standard JVM main/test capture.
 Maven build capture requires extension 0.1.3 or newer.
+Content-based compilation freshness requires extension 0.1.4 or newer (or the current
+Gradle capture scripts). Each module/source set records the inputs, active Maven profiles,
+and output fingerprint of successful compilation. A successful incremental/no-op compile
+can confirm existing bytecode without changing its timestamp. Receipts are committed at
+the end of a successful Maven session; unrelated consumer builds do not replace other
+modules' receipts. Missing legacy receipts retain the conservative timestamp fallback.
+Verification commands preserve captured profiles for the requested source sets; conflicting
+profile evidence is reported instead of suggesting the same ineffective command again.
 Compiler-confirmed indexed targets have high confidence; local targets suppress unrelated
 indexed matches. A resolved target absent from the index reports `semantic_target_not_indexed`.
 The earlier fully embedded compiler's native size and runtime costs are recorded in
@@ -997,7 +1074,8 @@ Quill falls back to `gradle` or `mvn` from `PATH`.
 
 ## Building Quill
 
-Building Quill requires JDK 21 through 25. The Maven build rejects newer feature releases until
+Building Quill requires JDK 25. The main application targets Java 25; isolated semantic workers retain Java 17 bytecode
+for compatibility with project toolchains. The Maven build rejects newer feature releases until
 they are explicitly validated; released native executables do not require a local JDK to run.
 
 ```bash

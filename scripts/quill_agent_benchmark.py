@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
@@ -126,8 +127,8 @@ def arguments() -> argparse.Namespace:
                         default="medium")
     parser.add_argument("--quill", default=os.environ.get("QUILL_BIN", "quill"))
     parser.add_argument("--quill-profile", choices=("default", "router"),
-                        default="default",
-                        help="MCP catalog exposed by Quill (default: the normal full catalog)")
+                        default=None,
+                        help="MCP catalog (default: router; suites with tool allowlists keep the full profile)")
     parser.add_argument("--tool-selection", choices=("suite", "all"), default="suite",
                         help="Expose each task's quill_tools allowlist or every tool in the "
                              "selected Quill profile (default: suite)")
@@ -292,6 +293,8 @@ class SourceTools:
 
 class QuillTools:
     def __init__(self, command: list[str], project: Path, timeout: int, output_limit: int):
+        if output_limit < 512:
+            raise ValueError("Quill tool output limit must be at least 512 characters")
         self.client = McpClient(command, project, timeout)
         self.timeout = timeout
         self.output_limit = output_limit
@@ -325,6 +328,8 @@ class QuillTools:
                     "name": f"quill_{name}",
                     "description": tool.get("description", "Quill project-index query"),
                     "parameters": schema,
+                    # Preserve MCP omission semantics; Responses otherwise makes optional fields required.
+                    "strict": False,
                 })
             return self
         except BaseException:
@@ -333,6 +338,25 @@ class QuillTools:
 
     def __exit__(self, *_: object) -> None:
         self.client.close()
+
+    def wait_until_ready(self) -> dict[str, Any]:
+        started = time.perf_counter()
+        attempts = 0
+        while time.perf_counter() - started < self.timeout:
+            attempts += 1
+            result = self._request("tools/call", {"name": "get_overview", "arguments": {}})
+            data = result.get("structuredContent") or {}
+            if data.get("status") == "refresh_pending" or data.get("error_code") == "REFRESH_PENDING":
+                remaining = self.timeout - (time.perf_counter() - started)
+                if remaining > 0:
+                    time.sleep(min(1, remaining))
+                continue
+            if result.get("isError") or not isinstance(data.get("project"), dict):
+                raise RuntimeError(f"Quill readiness failed: {data.get('error_code', 'INVALID_OVERVIEW')}")
+            return {"duration_seconds": round(time.perf_counter() - started, 3),
+                    "overview_requests": attempts,
+                    "index_id": (data.get("_meta") or {}).get("index_id")}
+        raise RuntimeError("Quill readiness timed out before any model request")
 
     def _request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         request_id = self.next_id
@@ -359,7 +383,13 @@ class QuillTools:
                 "arguments": arguments,
             })
             outcome_flags = quill_outcome_flags(result)
-            output = clipped(json.dumps(result, ensure_ascii=False), self.output_limit)
+            output = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+            if len(output) > self.output_limit:
+                outcome_flags = sorted(set(outcome_flags) | {"truncated"})
+                output = json.dumps({"isError": result.get("isError", False), "structuredContent": {
+                    "_response_budget": {"truncated": True, "original_characters": len(output)},
+                    "message": "Evidence omitted: response exceeds the runner limit. Retry with a smaller limit/depth or narrower filters; do not infer facts from this omitted response."
+                }}, separators=(",", ":"))
             return output
         except BaseException as exc:
             error_type = type(exc).__name__
@@ -538,6 +568,14 @@ def json_type(value: Any) -> str:
     return "null"
 
 
+def selected_quill_profile(requested: str | None, selection: str,
+                           tasks: list[dict[str, Any]]) -> str:
+    if requested is not None:
+        return requested
+    # Router hides individual tools, so preserve existing suite allowlist semantics.
+    return "default" if selection == "suite" and any("quill_tools" in t for t in tasks) else "router"
+
+
 def selected_quill_tools(task: dict[str, Any], quill: QuillTools | None,
                          selection: str = "suite") -> list[dict[str, Any]]:
     if quill is None:
@@ -588,6 +626,17 @@ def run_agent(client: ResponsesClient, task: dict[str, Any], mode: str, model: s
                         + json.dumps(expected_shape) + ". Use null for insufficient evidence.")
     if guidance and mode == "with_quill":
         instructions += "\n\nInstalled Quill guidance:\n" + guidance
+    if quill_tools:
+        instructions += (
+            "\nThis benchmark uses --project (single-project mode). "
+            "Call quill_get_overview({}); never use view=compact. "
+            "\nFor Quill, use search_tools then execute_tool when the router is exposed. "
+            "Start with small pages (limit 10-20) and evidence_detail=summary; follow has_more/offset "
+            "for exhaustive questions. Request full "
+            "evidence only when needed. For application beans set origin=application and a "
+            "specific class or explicit * wildcard. Disambiguate overloads with parameter "
+            "types or a returned symbol_id; never guess between candidates."
+        )
     next_input: Any = task["prompt"]
     previous_response_id: str | None = None
     totals = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0,
@@ -716,6 +765,7 @@ def main() -> int:
         raise ValueError("Suite must contain a non-empty tasks array")
     if args.repetitions < 1:
         raise ValueError("--repetitions must be at least 1")
+    args.quill_profile = selected_quill_profile(args.quill_profile, args.tool_selection, tasks)
     project = args.project.resolve()
     guidance = managed_guidance(args.guidance_file) if args.guidance_file else ""
     revision = verify_project(suite, project, args.allow_dirty)
@@ -731,43 +781,59 @@ def main() -> int:
         quill_launch_command.extend(["--tools", "router"])
     captures: dict[str, list[dict[str, Any]]] = {
         "with_quill": [], "without_quill": []}
-    for repetition in range(args.repetitions):
-        paired = {
-            mode: {
-                "mode": mode,
-                "run_index": repetition + 1,
-                "project_revision": revision,
-                "quill_profile": args.quill_profile,
-                "tool_selection": args.tool_selection,
-                "order_schedule": [],
-                "tasks": [],
+    # Independent model conversations share the persistent MCP session used by an editor.
+    with ExitStack() as mcp_stack:
+        quill = None
+        for repetition in range(args.repetitions):
+            paired = {
+                mode: {
+                    "mode": mode,
+                    "run_index": repetition + 1,
+                    "project_revision": revision,
+                    "quill_profile": args.quill_profile,
+                    "tool_selection": args.tool_selection,
+                    "order_schedule": [],
+                    "tasks": [],
+                }
+                for mode in captures
             }
-            for mode in captures
-        }
-        # Flip both task and repetition parity to distribute warm-cache/temporal bias.
-        for index, task in enumerate(tasks):
-            order = (("with_quill", "without_quill")
-                     if (repetition + index) % 2 == 0
-                     else ("without_quill", "with_quill"))
-            for mode in captures:
-                paired[mode]["order_schedule"].append({
-                    "task": task.get("id"), "first_mode": order[0]})
-            for mode in order:
-                print(f"[run {repetition + 1}/{args.repetitions}] "
-                      f"[{mode}] {task.get('id')}...", file=sys.stderr)
-                source = SourceTools(project, args.tool_output_limit)
-                if mode == "with_quill":
-                    with QuillTools(quill_launch_command, project, args.timeout,
-                                    args.tool_output_limit) as quill:
+            # Flip both task and repetition parity to distribute warm-cache/temporal bias.
+            for index, task in enumerate(tasks):
+                order = (("with_quill", "without_quill")
+                         if (repetition + index) % 2 == 0
+                         else ("without_quill", "with_quill"))
+                for mode in captures:
+                    paired[mode]["order_schedule"].append({
+                        "task": task.get("id"), "first_mode": order[0]})
+                for mode in order:
+                    print(f"[run {repetition + 1}/{args.repetitions}] "
+                          f"[{mode}] {task.get('id')}...", file=sys.stderr)
+                    source = SourceTools(project, args.tool_output_limit)
+                    initialization_seconds = 0.0
+                    if mode == "with_quill":
+                        first_use = quill is None
+                        if first_use:
+                            initialization_started = time.perf_counter()
+                            quill = mcp_stack.enter_context(QuillTools(
+                                quill_launch_command, project, args.timeout, args.tool_output_limit))
+                            preparation = quill.wait_until_ready()
+                            initialization_seconds = round(time.perf_counter() - initialization_started, 3)
+                        quill.calls = 0
+                        quill.last_call = None
                         result = run_agent(client, task, mode, args.model,
                                            args.reasoning_effort, source, quill,
                                            args.tool_selection, guidance)
-                else:
-                    result = run_agent(client, task, mode, args.model,
-                                       args.reasoning_effort, source, None)
-                paired[mode]["tasks"].append(result)
-        for mode in captures:
-            captures[mode].append(paired[mode])
+                        if first_use:
+                            result["mcp_preparation"] = preparation
+                    else:
+                        result = run_agent(client, task, mode, args.model,
+                                           args.reasoning_effort, source, None)
+                    result["mcp_initialization_seconds"] = initialization_seconds
+                    result["end_to_end_duration_seconds"] = round(
+                        result["duration_seconds"] + initialization_seconds, 3)
+                    paired[mode]["tasks"].append(result)
+            for mode in captures:
+                captures[mode].append(paired[mode])
     args.output_dir.mkdir(parents=True, exist_ok=True)
     stem = args.suite.stem
     for mode, runs in captures.items():

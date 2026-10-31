@@ -1,5 +1,9 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.BuildStatusInspector;
+import org.treblereel.mcp.index.ProjectIndexStore;
+
+import org.treblereel.mcp.db.IndexSchema;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -7,7 +11,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.BeanRepository;
+import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.MetaEnvelope;
 
@@ -27,13 +33,13 @@ public final class ProjectDiagnostics {
 
         try {
             Jdbi jdbi = QuillDatabase.open(database);
-            Map<String, String> metadata = new LinkedHashMap<>(IndexReader.getMetadata(jdbi));
-            var classes = IndexReader.findAllClasses(jdbi);
-            var beans = IndexReader.findBeans(jdbi, null);
+            Map<String, String> metadata = new LinkedHashMap<>(jdbi.withHandle(repositoryHandle1 -> new IndexRepository(repositoryHandle1).getMetadata()));
+            var classes = jdbi.withHandle(repositoryHandle2 -> new SymbolRepository(repositoryHandle2).findAllClasses());
+            var beans = jdbi.withHandle(repositoryHandle3 -> new BeanRepository(repositoryHandle3).findBeans(null));
             int totalTokens = classes.stream().mapToInt(value -> value.sourceTokens()).sum();
             Statistics statistics = new Statistics(classes.size(), beans.size(), totalTokens,
                     classes.isEmpty() ? 0 : totalTokens / classes.size());
-            MetaEnvelope freshness = MetaEnvelope.from(jdbi, 0, 0);
+            MetaEnvelope freshness = org.treblereel.mcp.index.BuildStatusInspector.freshness(jdbi, 0, 0);
             ProjectIndexStore.RecoveryStatus recovery = ProjectIndexStore.readRecovery(normalizedRoot)
                     .orElse(null);
             String health = health(freshness, recovery);
@@ -62,7 +68,7 @@ public final class ProjectDiagnostics {
         for (Path candidate : databases) {
             try {
                 QuillDatabase.open(candidate);
-            } catch (QuillDatabase.SchemaVersionException incompatible) {
+            } catch (IndexSchema.SchemaVersionException incompatible) {
                 return new Unavailable("incompatible", "INDEX_INCOMPATIBLE",
                         safeMessage(incompatible));
             } catch (RuntimeException ignored) {

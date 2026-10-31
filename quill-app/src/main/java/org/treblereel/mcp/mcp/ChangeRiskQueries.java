@@ -12,10 +12,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.GitRepository;
+import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.model.*;
 
 /** Resolves class and file targets and calculates change-risk signals. */
@@ -23,31 +24,32 @@ final class ChangeRiskQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String getRisk(Jdbi jdbi, String target) {
-        var lookup = ClassTargetResolver.resolve(jdbi, target);
+    String getRisk(ReadQueryContext reader, String target) {
+        var lookup = ClassTargetResolver.resolve(reader, target);
         if (lookup.error() != null) {
             if ("Class not found".equals(lookup.error())) {
-                Optional<FileRiskTarget> file = resolveFileRiskTarget(jdbi, target);
-                if (file.isPresent()) return getFileRisk(jdbi, file.get());
+                Optional<FileRiskTarget> file = resolveFileRiskTarget(reader, target);
+                if (file.isPresent()) return getFileRisk(reader, file.get());
             }
-            return classLookupError(jdbi, lookup, target);
+            return classLookupError(reader, lookup, target);
         }
-        return getClassRisk(jdbi, lookup.cls());
+        return getClassRisk(reader, lookup.cls());
     }
 
-    private String getClassRisk(Jdbi jdbi, ClassRecord cls) {
-        int fanIn = IndexReader.countDependents(jdbi, cls.id());
-        int fanOut = IndexReader.countDependencies(jdbi, cls.id());
-        int incomingEdges = IndexReader.countDependencyEdges(jdbi, cls.id(), true);
-        int outgoingEdges = IndexReader.countDependencyEdges(jdbi, cls.id(), false);
+    private String getClassRisk(ReadQueryContext reader, ClassRecord cls) {
+        GitRepository gitRepository = reader.git;
+        int fanIn = reader.usages.countDependents(cls.id());
+        int fanOut = reader.usages.countDependencies(cls.id());
+        int incomingEdges = reader.usages.countDependencyEdges(cls.id(), true);
+        int outgoingEdges = reader.usages.countDependencyEdges(cls.id(), false);
 
-        boolean hasGit = IndexReader.hasGitData(jdbi);
-        var statsOpt = hasGit ? IndexReader.findFileStatsByClassId(jdbi, cls.id()) : Optional.<GitFileStats>empty();
+        boolean hasGit = gitRepository.hasGitData();
+        var statsOpt = hasGit ? gitRepository.findFileStatsByClassId(cls.id()) : Optional.<GitFileStats>empty();
         int churn = statsOpt.map(GitFileStats::commitCount).orElse(0);
         int authors = statsOpt.map(GitFileStats::distinctAuthors).orElse(0);
         int coChangeCount = 0;
         if (hasGit) {
-            coChangeCount = IndexReader.findCoChanges(jdbi, cls.id(), 100).size();
+            coChangeCount = gitRepository.findCoChanges(cls.id(), 100).size();
         }
 
         double fanInScore = scaleScore(fanIn, 0, 3, 8, 15);
@@ -79,10 +81,10 @@ final class ChangeRiskQueries {
                 "depends on " + fanOut + " unique classes");
         ObjectNode fanInNode = (ObjectNode) signals.get("fan_in");
         fanInNode.put("edges", incomingEdges);
-        appendDependencyBreakdown(fanInNode, IndexReader.dependencyBreakdown(jdbi, cls.id(), true));
+        appendDependencyBreakdown(fanInNode, reader.usages.dependencyBreakdown(cls.id(), true));
         ObjectNode fanOutNode = (ObjectNode) signals.get("fan_out");
         fanOutNode.put("edges", outgoingEdges);
-        appendDependencyBreakdown(fanOutNode, IndexReader.dependencyBreakdown(jdbi, cls.id(), false));
+        appendDependencyBreakdown(fanOutNode, reader.usages.dependencyBreakdown(cls.id(), false));
         if (hasGit) {
             addSignal(signals, "git_churn", churn, churnScore, 0.25,
                     churn + " commits — " + (churn >= 30 ? "high" : churn >= 10 ? "moderate" : "low") + " change frequency");
@@ -98,7 +100,7 @@ final class ChangeRiskQueries {
 
         root.put("recommendation", buildRecommendation(cls, fanIn, churn, authors, level, hasGit));
 
-        appendMeta(root, jdbi, cls.sourceTokens(), cls.sourceFile(), cls.module());
+        appendMeta(root, reader, cls.sourceTokens(), cls.sourceFile(), cls.module());
         return root.toString();
     }
 
@@ -107,11 +109,12 @@ final class ChangeRiskQueries {
 
     private record FileCriticality(int score, String note) {}
 
-    private Optional<FileRiskTarget> resolveFileRiskTarget(Jdbi jdbi, String target) {
+    private Optional<FileRiskTarget> resolveFileRiskTarget(ReadQueryContext reader, String target) {
+        GitRepository gitRepository = reader.git;
         if (target == null || target.isBlank()) return Optional.empty();
         String normalized = target.strip().replace('\\', '/');
         while (normalized.startsWith("./")) normalized = normalized.substring(2);
-        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        Map<String, String> metadata = reader.index.getMetadata();
         WorktreeInspector.Snapshot worktree = worktreeSnapshot(metadata);
 
         String projectPath = normalized;
@@ -134,9 +137,9 @@ final class ChangeRiskQueries {
             // The exact database/worktree lookup below still handles portable path strings.
         }
 
-        Optional<FileRecord> indexed = IndexReader.findFileByPath(jdbi, projectPath);
+        Optional<FileRecord> indexed = reader.index.findFileByPath(projectPath);
         if (indexed.isEmpty() && !repositoryPath.equals(projectPath)) {
-            indexed = IndexReader.findFileByPath(jdbi, repositoryPath);
+            indexed = reader.index.findFileByPath(repositoryPath);
         }
         if (indexed.isPresent()) {
             FileRecord file = indexed.get();
@@ -161,9 +164,9 @@ final class ChangeRiskQueries {
         }
 
         String gitPath = repositoryPath;
-        Optional<GitFileStats> stats = IndexReader.findFileStatsByPath(jdbi, gitPath);
+        Optional<GitFileStats> stats = gitRepository.findFileStatsByPath(gitPath);
         if (stats.isEmpty() && !projectPath.equals(gitPath)) {
-            stats = IndexReader.findFileStatsByPath(jdbi, projectPath);
+            stats = gitRepository.findFileStatsByPath(projectPath);
             if (stats.isPresent()) gitPath = projectPath;
         }
         if (stats.isPresent()) {
@@ -191,13 +194,14 @@ final class ChangeRiskQueries {
         return Optional.empty();
     }
 
-    private String getFileRisk(Jdbi jdbi, FileRiskTarget file) {
-        Optional<GitFileStats> stats = IndexReader.findFileStatsByPath(jdbi, file.repositoryPath());
+    private String getFileRisk(ReadQueryContext reader, FileRiskTarget file) {
+        GitRepository gitRepository = reader.git;
+        Optional<GitFileStats> stats = gitRepository.findFileStatsByPath(file.repositoryPath());
         boolean hasFileHistory = stats.isPresent();
         int churn = stats.map(GitFileStats::commitCount).orElse(0);
         int authors = stats.map(GitFileStats::distinctAuthors).orElse(0);
         List<CoChangeRecord> coChanges = hasFileHistory
-                ? IndexReader.findCoChangesByPath(jdbi, file.repositoryPath(), 100) : List.of();
+                ? gitRepository.findCoChangesByPath(file.repositoryPath(), 100) : List.of();
         int coupling = coChanges.size();
 
         FileCriticality criticality = fileCriticality(file.projectPath());
@@ -248,7 +252,7 @@ final class ChangeRiskQueries {
 
         root.put("recommendation", buildFileRecommendation(file, criticality, churn, authors,
                 coupling, level, hasFileHistory));
-        appendMeta(root, jdbi, 0);
+        appendMeta(root, reader, 0);
         return root.toString();
     }
 
@@ -389,14 +393,14 @@ final class ChangeRiskQueries {
     }
 
     private static void appendDependencyBreakdown(ObjectNode signal,
-            List<IndexReader.DependencyBreakdown> breakdown) {
+            List<UsageRepository.DependencyBreakdown> breakdown) {
         ObjectNode result = signal.putObject("breakdown");
         writeDependencyBreakdown(result, breakdown);
     }
 
     private static void writeDependencyBreakdown(ObjectNode result,
-            List<IndexReader.DependencyBreakdown> breakdown) {
-        for (IndexReader.DependencyBreakdown entry : breakdown) {
+            List<UsageRepository.DependencyBreakdown> breakdown) {
+        for (UsageRepository.DependencyBreakdown entry : breakdown) {
             ObjectNode origin = result.putObject(entry.origin());
             origin.put("classes", entry.classes());
             origin.put("edges", entry.edges());

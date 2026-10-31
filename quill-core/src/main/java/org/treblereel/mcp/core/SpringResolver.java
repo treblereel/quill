@@ -275,15 +275,15 @@ public final class SpringResolver {
             Map<String, List<BeanCandidate>> candidatesByType) {
         List<BeanCandidate> candidates = candidatesByType.getOrDefault(targetType, List.of());
         Map<Integer, ResolutionCandidate> evidence = new LinkedHashMap<>();
-        List<String> appliedRules = List.of(
-                "TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING", "PRIMARY_SELECTION");
+        List<ResolutionRule> appliedRules = List.of(
+                ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING, ResolutionRule.PRIMARY_SELECTION);
 
         if (candidates.isEmpty()) {
             return Resolution.unresolved(springTrace(evidence, appliedRules));
         }
 
         boolean hasNonDefaultQualifier = qualifiers.stream()
-                .anyMatch(q -> !q.equals("@Default"));
+                .anyMatch(q -> !q.equals(BuiltinQualifier.DEFAULT.annotation()));
 
         if (hasNonDefaultQualifier) {
             List<BeanCandidate> matched = candidates.stream()
@@ -293,7 +293,7 @@ public final class SpringResolver {
                 boolean matches = matched.contains(candidate);
                 evidence.put(candidate.beanId(), springCandidate(candidate,
                         matches ? CandidateDisposition.ELIGIBLE : CandidateDisposition.EXCLUDED,
-                        matches ? "QUALIFIERS_MATCHED" : "QUALIFIER_MISMATCH"));
+                        matches ? ResolutionReason.QUALIFIERS_MATCHED : ResolutionReason.QUALIFIER_MISMATCH));
             }
             if (matched.isEmpty()) {
                 return Resolution.unresolved(springTrace(evidence, appliedRules));
@@ -302,14 +302,14 @@ public final class SpringResolver {
         } else {
             for (BeanCandidate candidate : candidates) {
                 evidence.put(candidate.beanId(), springCandidate(candidate,
-                        CandidateDisposition.ELIGIBLE, "TYPE_MATCHED"));
+                        CandidateDisposition.ELIGIBLE, ResolutionReason.TYPE_MATCHED));
             }
         }
 
         if (candidates.size() == 1) {
             BeanCandidate selected = candidates.get(0);
             evidence.put(selected.beanId(), springCandidate(selected,
-                    CandidateDisposition.SELECTED, "UNIQUE_ELIGIBLE_CANDIDATE"));
+                    CandidateDisposition.SELECTED, ResolutionReason.UNIQUE_ELIGIBLE_CANDIDATE));
             return Resolution.unique(selected, springTrace(evidence, appliedRules));
         }
 
@@ -323,7 +323,7 @@ public final class SpringResolver {
                         candidate.beanId() == selected.beanId()
                                 ? CandidateDisposition.SELECTED : CandidateDisposition.EXCLUDED,
                         candidate.beanId() == selected.beanId()
-                                ? "PRIMARY_CANDIDATE" : "NON_PRIMARY_CANDIDATE"));
+                                ? ResolutionReason.PRIMARY_CANDIDATE : ResolutionReason.NON_PRIMARY_CANDIDATE));
             }
             return Resolution.unique(selected, springTrace(evidence, appliedRules));
         }
@@ -331,22 +331,22 @@ public final class SpringResolver {
         for (BeanCandidate candidate : candidates) {
             evidence.put(candidate.beanId(), springCandidate(candidate,
                     CandidateDisposition.ELIGIBLE,
-                    primaries.isEmpty() ? "MULTIPLE_ELIGIBLE_CANDIDATES"
-                            : "MULTIPLE_PRIMARY_CANDIDATES"));
+                    primaries.isEmpty() ? ResolutionReason.MULTIPLE_ELIGIBLE_CANDIDATES
+                            : ResolutionReason.MULTIPLE_PRIMARY_CANDIDATES));
         }
         return Resolution.ambiguous(springTrace(evidence, appliedRules));
     }
 
     private static ResolutionCandidate springCandidate(BeanCandidate candidate,
-            CandidateDisposition disposition, String reason) {
+            CandidateDisposition disposition, ResolutionReason reason) {
         return new ResolutionCandidate(candidate.beanId(), null, disposition, reason,
-                List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING", "PRIMARY_SELECTION"));
+                List.of(ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING, ResolutionRule.PRIMARY_SELECTION));
     }
 
     private static ResolutionTrace springTrace(
-            Map<Integer, ResolutionCandidate> evidence, List<String> appliedRules) {
+            Map<Integer, ResolutionCandidate> evidence, List<ResolutionRule> appliedRules) {
         return new ResolutionTrace(new ArrayList<>(evidence.values()), appliedRules,
-                List.of("CONDITIONAL_BEAN_REGISTRATION", "RUNTIME_BEAN_FACTORY_HOOKS"));
+                List.of(ResolutionRule.CONDITIONAL_BEAN_REGISTRATION, ResolutionRule.RUNTIME_BEAN_FACTORY_HOOKS));
     }
 
     private static boolean isInjectionField(FieldInfo field) {
@@ -373,7 +373,7 @@ public final class SpringResolver {
 
     private static boolean matchesQualifiers(List<String> required, List<String> beanQualifiers) {
         for (String req : required) {
-            if (req.equals("@Default")) continue;
+            if (req.equals(BuiltinQualifier.DEFAULT.annotation())) continue;
             if (beanQualifiers.stream().noneMatch(bq -> bq.equals(req))) return false;
         }
         return true;
@@ -453,7 +453,7 @@ public final class SpringResolver {
             }
         }
 
-        qualifiers.add("@Default");
+        qualifiers.add(BuiltinQualifier.DEFAULT.annotation());
         for (String beanName : extractClassBeanNames(ci, index)) {
             qualifiers.add("@Qualifier(\"" + beanName + "\")");
         }
@@ -486,7 +486,7 @@ public final class SpringResolver {
             }
         }
 
-        qualifiers.add("@Default");
+        qualifiers.add(BuiltinQualifier.DEFAULT.annotation());
 
         for (String beanName : extractBeanMethodNames(method)) {
             qualifiers.add("@Qualifier(\"" + beanName + "\")");
@@ -515,7 +515,7 @@ public final class SpringResolver {
             }
         }
 
-        if (qualifiers.isEmpty()) qualifiers.add("@Default");
+        if (qualifiers.isEmpty()) qualifiers.add(BuiltinQualifier.DEFAULT.annotation());
         return qualifiers;
     }
 
@@ -537,7 +537,7 @@ public final class SpringResolver {
             }
         }
 
-        if (qualifiers.isEmpty()) qualifiers.add("@Default");
+        if (qualifiers.isEmpty()) qualifiers.add(BuiltinQualifier.DEFAULT.annotation());
         return qualifiers;
     }
 

@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.index.BuildStatusInspector;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -7,28 +9,26 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.SourceFileHashes;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.model.MetaEnvelope;
 
 /** Per-response compiler evidence, kept separate from bytecode line evidence. */
 final class JavaSourceLocations {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private final Jdbi db;
+    private final ReadQueryContext db;
     private final Path root;
     private final JsonNode hashes;
     private final boolean fresh;
     private final Map<String, JsonNode> files = new HashMap<>();
-    JavaSourceLocations(Jdbi db) {
+    JavaSourceLocations(ReadQueryContext db) {
         this.db = db;
-        var metadata = IndexReader.getMetadata(db);
+        var metadata = db.index.getMetadata();
         root = metadata.containsKey("project_root") ? Path.of(metadata.get("project_root")).toAbsolutePath().normalize() : null;
         JsonNode evidence;
         try { evidence = JSON.readTree(metadata.getOrDefault("java_source_hashes", "{}")); }
         catch (Exception unavailable) { evidence = JSON.createObjectNode(); }
         hashes = evidence == null || !evidence.isObject() ? JSON.createObjectNode() : evidence;
-        fresh = !MetaEnvelope.from(db, 0, 0).structureStale();
+        fresh = !org.treblereel.mcp.index.BuildStatusInspector.freshness(db, 0, 0).structureStale();
     }
     private JsonNode references(String source) {
         try {

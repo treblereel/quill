@@ -13,6 +13,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.treblereel.mcp</groupId><artifactId>quill-core</artifactId>
+            <version>${project.version}</version><type>test-jar</type><classifier>tests</classifier><scope>test</scope>
+        </dependency>
+
+        <dependency>
             <groupId>org.treblereel.mcp</groupId><artifactId>quill-java-semantic</artifactId>
             <version>${project.version}</version><scope>provided</scope>
         </dependency>

@@ -16,24 +16,115 @@ import org.treblereel.mcp.core.BuildRunnerResolver;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.GradleProjectDiscovery;
 import org.treblereel.mcp.core.MavenProjectDiscovery;
-import org.treblereel.mcp.command.MavenCompileScope;
+import org.treblereel.mcp.index.MavenCompileScope;
 
 /** Produces safe, non-executing focused and fallback build command plans. */
 final class VerificationPlanQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    ObjectNode plan(org.treblereel.mcp.db.ReadQueryContext reader, Path root, JsonNode contexts, JsonNode tests) {
+        return reader.snapshot() == null ? plan(root, contexts, tests)
+                : reader.snapshot().verificationPlan().apply(contexts, tests);
+    }
+
     ObjectNode plan(Path projectRoot, JsonNode contexts, JsonNode testEvidence) {
-        BuildSystem buildSystem = BuildSystem.detect(projectRoot);
-        BuildRunnerResolver.Runner runner = BuildRunnerResolver.resolve(projectRoot, buildSystem);
+        return prepare(projectRoot).apply(contexts, testEvidence);
+    }
+
+    static java.util.function.BiFunction<JsonNode, JsonNode, ObjectNode> prepare(Path projectRoot) {
+        BuildSystem system = BuildSystem.detect(projectRoot);
+        BuildRunnerResolver.Runner runner = BuildRunnerResolver.resolve(projectRoot, system);
+        java.util.function.Function<Set<String>, ModuleSelection> select;
+        java.util.function.Function<Set<String>, MavenCompileScope.Scope> compile;
+        if (system == BuildSystem.MAVEN) {
+            Path root = projectRoot.toAbsolutePath().normalize();
+            var discovery = MavenProjectDiscovery.discover(root);
+            Set<String> available = discovery.moduleDirectories().stream()
+                    .map(module -> module.equals(root) ? "." : root.relativize(module).toString().replace('\\', '/'))
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            select = requested -> selectMavenModules(available, discovery.complete(), requested);
+            compile = MavenCompileScope.prepare(root);
+        } else {
+            Path root = projectRoot.toAbsolutePath().normalize();
+            var discovery = GradleProjectDiscovery.discover(root);
+            Map<String,String> available = new LinkedHashMap<>();
+            discovery.projectPaths().forEach((directory, path) -> {
+                if (directory.startsWith(root)) available.put(directory.equals(root) ? "."
+                        : root.relativize(directory).toString().replace('\\', '/'), path);
+            });
+            select = requested -> selectGradleModules(available, discovery.complete(), requested);
+            compile = requested -> new MavenCompileScope.Scope(List.of(), true, "unknown_or_non_maven_scope");
+        }
+        var selector = select;
+        var compiler = compile;
+        var profiles = new LinkedHashMap<String, List<String>>();
+        var unavailableProfiles = new LinkedHashSet<String>();
+        if (system == BuildSystem.MAVEN) for (Path module : MavenProjectDiscovery.discover(projectRoot).moduleDirectories()) {
+            String name = module.equals(projectRoot) ? "." : projectRoot.relativize(module).toString().replace('\\', '/');
+            for (String set : List.of("main", "test")) {
+                Path file = module.resolve("target/quill-java-" + set + ".properties");
+                Path kotlin = module.resolve("target/quill-kotlin-" + set + ".properties");
+                try {
+                    if (java.nio.file.Files.isRegularFile(kotlin) && (!java.nio.file.Files.isRegularFile(file)
+                            || java.nio.file.Files.getLastModifiedTime(kotlin).compareTo(java.nio.file.Files.getLastModifiedTime(file)) > 0)) file = kotlin;
+                    if (!java.nio.file.Files.isRegularFile(file) || java.nio.file.Files.size(file) > 4 * 1024 * 1024) continue;
+                    var values = new java.util.Properties(); try (var input = java.nio.file.Files.newBufferedReader(file)) { values.load(input); }
+                    int count = Integer.parseInt(values.getProperty("activeProfile.count", "0"));
+                    if (count < 0 || count > 256) continue;
+                    var ids = new ArrayList<String>();
+                    for (int i=0;i<count;i++) {
+                        String id = values.getProperty("activeProfile."+i, "");
+                        if (!id.matches("[A-Za-z0-9_.-]+")) throw new IllegalArgumentException("Invalid profile id");
+                        ids.add(id);
+                    }
+                    profiles.put(name+":"+set, List.copyOf(ids));
+                } catch (java.io.IOException | RuntimeException unavailable) { unavailableProfiles.add(name+":"+set); }
+            }
+        }
+        return (contexts, evidence) -> {
+            var result = compose(projectRoot, system, runner, contexts, evidence, selector, compiler);
+            var selections = new LinkedHashSet<List<String>>();
+            var profileEvidence = result.putObject("profiles_by_source_set");
+            boolean availableProfiles = true;
+            for (var context : contexts) {
+                var resolution = context.path("resolution");
+                String key = resolution.path("module").asText()+":"+capturedSourceSet(system, resolution.path("source_set").asText("main"));
+                if (unavailableProfiles.contains(key)) availableProfiles = false;
+                var selected = profiles.get(key);
+                profileEvidence.set(key, JSON.valueToTree(selected));
+                if (selected != null && !selected.isEmpty()) selections.add(selected);
+            }
+            var selected = selections.stream().max(java.util.Comparator.comparingInt(List::size)).orElse(List.of());
+            boolean compatible = availableProfiles && selections.stream().allMatch(selected::containsAll);
+            result.put("profile_selection_complete", compatible);
+            result.set("active_profiles", JSON.valueToTree(selected));
+            if (!compatible) { result.put("commands_executable", false); result.withArray("commands").removeAll(); }
+            else if (!selected.isEmpty()) for (var command : result.withArray("commands")) {
+                var argv = (ArrayNode) command.path("argv"); argv.add("-P"+String.join(",", selected));
+                ((ObjectNode) command).put("display", argv.valueStream().map(JsonNode::asText).map(VerificationPlanQueries::displayArg)
+                        .collect(java.util.stream.Collectors.joining(" ")));
+            }
+            return result;
+        };
+    }
+
+    static String capturedSourceSet(BuildSystem system, String sourceSet) {
+        // Maven's testCompile also owns profile-added integration-test roots.
+        return system == BuildSystem.MAVEN && sourceSet.equals("integration-test") ? "test" : sourceSet;
+    }
+
+    private static ObjectNode compose(Path projectRoot, BuildSystem buildSystem, BuildRunnerResolver.Runner runner,
+            JsonNode contexts, JsonNode testEvidence,
+            java.util.function.Function<Set<String>, ModuleSelection> select,
+            java.util.function.Function<Set<String>, MavenCompileScope.Scope> compile) {
         Set<String> requestedModules = modules(contexts);
-        ModuleSelection selection = selectModules(projectRoot, buildSystem, requestedModules);
+        ModuleSelection selection = select.apply(requestedModules);
         var scope = buildSystem == BuildSystem.MAVEN && selection.complete()
-                ? MavenCompileScope.resolve(projectRoot, selection.commandModules())
+                ? compile.apply(selection.commandModules())
                 : new MavenCompileScope.Scope(List.of(), true, "unknown_or_non_maven_scope");
         ModuleSelection compileSelection = scope.repository()
-                ? new ModuleSelection(selection.modules(),
-                        Set.of(buildSystem == BuildSystem.MAVEN ? "." : ":"),
+                ? new ModuleSelection(selection.modules(), Set.of(buildSystem == BuildSystem.MAVEN ? "." : ":"),
                         selection.unresolvedModules(), selection.complete()) : selection;
         List<String> tests = tests(testEvidence);
 
@@ -142,41 +233,19 @@ final class VerificationPlanQueries {
         return result;
     }
 
-    private static ModuleSelection selectModules(
-            Path root, BuildSystem system, Set<String> requested) {
+    private static ModuleSelection selectMavenModules(Set<String> available, boolean complete, Set<String> requested) {
         if (requested.isEmpty()) return new ModuleSelection(Set.of(), Set.of(), Set.of(), true);
-        if (system == BuildSystem.MAVEN) return selectMavenModules(root, requested);
-        return selectGradleModules(root, requested);
-    }
-
-    private static ModuleSelection selectMavenModules(Path root, Set<String> requested) {
-        Path normalizedRoot = root.toAbsolutePath().normalize();
-        Set<String> available = new LinkedHashSet<>();
-        MavenProjectDiscovery.Discovery discovery = MavenProjectDiscovery.discover(normalizedRoot);
-        for (Path module : discovery.moduleDirectories()) {
-            available.add(module.equals(normalizedRoot)
-                    ? "." : normalizedRoot.relativize(module).toString().replace('\\', '/'));
-        }
         Set<String> resolved = new LinkedHashSet<>();
         Set<String> unresolved = new LinkedHashSet<>();
         requested.forEach(module -> (available.contains(module) ? resolved : unresolved).add(module));
         Set<String> commandModules = resolved.contains(".") || resolved.isEmpty()
                 ? Set.of(".") : orderedSet(resolved);
         return new ModuleSelection(orderedSet(resolved), commandModules,
-                orderedSet(unresolved), discovery.complete() && unresolved.isEmpty());
+                orderedSet(unresolved), complete && unresolved.isEmpty());
     }
 
-    private static ModuleSelection selectGradleModules(Path root, Set<String> requested) {
-        Path normalizedRoot = root.toAbsolutePath().normalize();
-        GradleProjectDiscovery.Discovery discovery = GradleProjectDiscovery.discover(normalizedRoot);
-        Map<String, String> available = new LinkedHashMap<>();
-        discovery.projectPaths().forEach((directory, projectPath) -> {
-            if (directory.startsWith(normalizedRoot)) {
-                String module = directory.equals(normalizedRoot) ? "."
-                        : normalizedRoot.relativize(directory).toString().replace('\\', '/');
-                available.put(module, projectPath);
-            }
-        });
+    private static ModuleSelection selectGradleModules(Map<String,String> available, boolean complete, Set<String> requested) {
+        if (requested.isEmpty()) return new ModuleSelection(Set.of(), Set.of(), Set.of(), true);
         Set<String> resolved = new LinkedHashSet<>();
         Set<String> commandModules = new LinkedHashSet<>();
         Set<String> unresolved = new LinkedHashSet<>();
@@ -188,7 +257,7 @@ final class VerificationPlanQueries {
                 commandModules.add(projectPath);
             }
         }
-        if (!discovery.complete()) {
+        if (!complete) {
             resolved.clear();
             commandModules.clear();
             commandModules.add(":");
@@ -198,7 +267,7 @@ final class VerificationPlanQueries {
             commandModules.add(":");
         }
         return new ModuleSelection(orderedSet(resolved), orderedSet(commandModules),
-                orderedSet(unresolved), discovery.complete() && unresolved.isEmpty());
+                orderedSet(unresolved), complete && unresolved.isEmpty());
     }
 
     private static Set<String> orderedSet(Set<String> values) {

@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.index.ProjectUpdater;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,9 +18,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.io.CleanupMode;
-import org.treblereel.mcp.command.ProjectInitializer;
+import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.command.UpdateCommand;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.IndexRepository;
 
 class ConfigurationReferenceIntegrationTest {
 
@@ -65,7 +67,7 @@ class ConfigurationReferenceIntegrationTest {
 
         Files.writeString(project.resolve("src/main/resources/application.properties"),
                 "orders.currency=CAD\n");
-        UpdateCommand.updateAfterSuccessfulBuild(project);
+        ProjectUpdater.updateAfterSuccessfulBuild(project);
 
         JsonNode removed = query(project, "orders.region");
         assertEquals(0, removed.path("definition_count").asInt());
@@ -208,6 +210,6 @@ class ConfigurationReferenceIntegrationTest {
         registry.register(project);
         var resolved = registry.resolve();
         assertTrue(resolved.errors().isEmpty(), resolved.errors().toString());
-        return IndexReader.getMetadata(resolved.projects().getFirst().jdbi()).get(key);
+        return resolved.projects().getFirst().jdbi().withHandle(repositoryHandle1 -> new IndexRepository(repositoryHandle1).getMetadata()).get(key);
     }
 }

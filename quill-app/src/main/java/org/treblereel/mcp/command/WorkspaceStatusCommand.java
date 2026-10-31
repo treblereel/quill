@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import org.treblereel.mcp.workspace.WorkspaceManifest;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
-import org.treblereel.mcp.mcp.WorkspaceProjectScope;
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
 import org.treblereel.mcp.workspace.WorkspaceDiscovery;
 import picocli.CommandLine;

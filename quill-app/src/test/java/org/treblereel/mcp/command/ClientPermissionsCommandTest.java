@@ -1,5 +1,8 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ClaudeSettingsInstaller;
+import org.treblereel.mcp.index.McpJsonInstaller;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

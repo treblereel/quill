@@ -1,5 +1,10 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.BuildStatusInspector;
+import org.treblereel.mcp.index.ProjectIndexLock;
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
@@ -16,7 +21,8 @@ import java.util.concurrent.TimeUnit;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.mcp.ProjectRegistry;
 import org.treblereel.mcp.model.MetaEnvelope;
@@ -76,7 +82,7 @@ class ProjectIndexLifecycleTest {
             ProjectRegistry.Resolution resolution = registry.resolve();
             assertTrue(resolution.errors().isEmpty());
             assertEquals(1, resolution.projects().size());
-            MetaEnvelope freshness = MetaEnvelope.from(
+            MetaEnvelope freshness = org.treblereel.mcp.index.BuildStatusInspector.freshness(
                     resolution.projects().getFirst().jdbi(), 0, 0);
             assertTrue(freshness.commitStale());
             assertTrue(freshness.structureStale());
@@ -138,7 +144,7 @@ class ProjectIndexLifecycleTest {
             assertTrue(second.get(60, TimeUnit.SECONDS));
             Path db = ProjectIndexStore.findDbForHead(project);
             assertNotNull(db);
-            assertTrue(IndexReader.countClasses(QuillDatabase.open(db)) > 0);
+            assertTrue(QuillDatabase.open(db).withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).countClasses()).intValue() > 0);
             try (var files = Files.list(quillDir)) {
                 assertTrue(files.noneMatch(path -> path.getFileName().toString().endsWith(".tmp")));
             }
@@ -165,12 +171,12 @@ class ProjectIndexLifecycleTest {
             registry.register(project);
             ProjectRegistry.ProjectEntry firstEntry = registry.resolve().projects().getFirst();
             var oldRead = executor.submit(() -> firstEntry.jdbi().inTransaction(handle -> {
-                String before = IndexReader.getMetadata(firstEntry.jdbi()).get("index_id");
+                String before = firstEntry.jdbi().withHandle(repositoryHandle2 -> new IndexRepository(repositoryHandle2).getMetadata()).get("index_id");
                 oldSnapshotRead.countDown();
                 if (!releaseOldSnapshot.await(30, TimeUnit.SECONDS)) {
                     throw new IllegalStateException("Timed out waiting to release old snapshot");
                 }
-                String after = IndexReader.getMetadata(firstEntry.jdbi()).get("index_id");
+                String after = firstEntry.jdbi().withHandle(repositoryHandle3 -> new IndexRepository(repositoryHandle3).getMetadata()).get("index_id");
                 return List.of(before, after);
             }));
             assertTrue(oldSnapshotRead.await(10, TimeUnit.SECONDS));
@@ -182,7 +188,7 @@ class ProjectIndexLifecycleTest {
                     "An update must publish an immutable database generation");
 
             ProjectRegistry.ProjectEntry secondEntry = registry.resolve().projects().getFirst();
-            String currentIndex = IndexReader.getMetadata(secondEntry.jdbi()).get("index_id");
+            String currentIndex = secondEntry.jdbi().withHandle(repositoryHandle4 -> new IndexRepository(repositoryHandle4).getMetadata()).get("index_id");
             assertEquals(secondDatabase.getFileName().toString().replaceFirst("\\.db$", ""),
                     currentIndex);
 

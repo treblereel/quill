@@ -1,10 +1,12 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.treblereel.mcp.command.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectIndexStore;
 import java.util.Comparator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,8 +14,10 @@ import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.treblereel.mcp.command.ProjectInitializer;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.index.ProjectInitializer;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.BeanRepository;
+import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 
 class MultiModuleCdiTest {
@@ -62,9 +66,9 @@ class MultiModuleCdiTest {
 
     @Test
     void alternativeBeanIsIndexed() {
-        var beans = IndexReader.findBeans(jdbi, null);
+        var beans = jdbi.withHandle(repositoryHandle1 -> new BeanRepository(repositoryHandle1).findBeans(null));
         var smsBeans = beans.stream()
-                .filter(b -> IndexReader.findClassById(jdbi, b.classId())
+                .filter(b -> jdbi.withHandle(repositoryHandle2 -> new SymbolRepository(repositoryHandle2).findClassById(b.classId()))
                         .map(c -> c.className().contains("SmsNotificationService")).orElse(false))
                 .toList();
         assertEquals(1, smsBeans.size());
@@ -141,7 +145,7 @@ class MultiModuleCdiTest {
 
     @Test
     void classesAndResolutionCandidatesExposeModuleContext() throws Exception {
-        var dto = IndexReader.findClassByName(jdbi, "org.acme.common.UserDTO").orElseThrow();
+        var dto = jdbi.withHandle(repositoryHandle3 -> new SymbolRepository(repositoryHandle3).findClassByName("org.acme.common.UserDTO")).orElseThrow();
         assertEquals("common", dto.module());
         assertEquals("main", dto.sourceSet());
 
@@ -157,13 +161,12 @@ class MultiModuleCdiTest {
     void classAndBeanQueriesCanBeScopedToModule() throws Exception {
         var queries = new QuillToolQueries();
         JsonNode commonClasses = JSON.readTree(
-                queries.searchClasses(jdbi, "*", "common", "main", 20));
+                ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.searchClasses(readScope, "*", "common", "main", 20)));
         assertEquals(2, commonClasses.path("classes").size());
         assertTrue(commonClasses.path("classes").toString().contains("UserDTO"));
         assertFalse(commonClasses.path("classes").toString().contains("UserService"));
 
-        JsonNode serviceBeans = JSON.readTree(queries.getBeans(
-                jdbi, null, null, null, null, null, "service", "main", 20));
+        JsonNode serviceBeans = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.getBeans(readScope, null, null, null, null, null, "service", "main", 20)));
         assertEquals(3, serviceBeans.path("beans").size());
         assertTrue(serviceBeans.path("beans").toString().contains("UserService"));
     }
@@ -195,7 +198,7 @@ class MultiModuleCdiTest {
 
     @Test
     void metadataContainsProjectRoot() {
-        var meta = IndexReader.getMetadata(jdbi);
+        var meta = jdbi.withHandle(repositoryHandle4 -> new IndexRepository(repositoryHandle4).getMetadata());
         assertEquals(PROJECT_ROOT.toString(), meta.get("project_root"));
         assertNotNull(meta.get("indexed_at"));
     }

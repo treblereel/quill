@@ -30,6 +30,12 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
 
     @Override
     public void onEvent(Object event) {
+        if (event instanceof ExecutionEvent execution) {
+            try {
+                if (execution.getType() == ExecutionEvent.Type.MojoStarted) CompilationCapture.started(execution);
+                if (execution.getType() == ExecutionEvent.Type.MojoFailed || execution.getType() == ExecutionEvent.Type.MojoSkipped) CompilationCapture.failed(execution);
+            } catch (Exception error) { System.err.println("[quill] Could not capture compiler inputs: " + error.getMessage()); }
+        }
         if (event instanceof ExecutionEvent kotlinEvent && kotlinEvent.getType() == ExecutionEvent.Type.MojoSucceeded) {
             try { KotlinCompilerCapture.capture(kotlinEvent); }
             catch (Exception error) { System.err.println("[quill] Could not capture Kotlin compiler settings: " + error.getMessage()); }
@@ -43,10 +49,10 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
             return;
         }
         MavenSession session = execution.getSession();
-        if (session == null || session.getResult() == null
-                || isInternal(session.getUserProperties())) {
-            return;
-        }
+        if (session == null || session.getResult() == null) { CompilationCapture.clear(); return; }
+        try { CompilationCapture.complete(!session.getResult().hasExceptions()); }
+        catch (Exception failure) { System.err.println("[quill] Could not confirm compilation inputs: " + failure.getMessage()); }
+        if (isInternal(session.getUserProperties())) return;
         Path reactorRoot = session.getRequest().getMultiModuleProjectDirectory() == null
                 ? null : session.getRequest().getMultiModuleProjectDirectory().toPath();
         Path topLevelRoot = session.getTopLevelProject() == null

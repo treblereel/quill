@@ -10,9 +10,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.IndexReader.AnnotatedSymbolResult;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.SymbolRepository.AnnotatedSymbolResult;
 
 /** Finds annotated type and member declarations from the compiled index. */
 final class AnnotatedSymbolQueries {
@@ -21,7 +21,7 @@ final class AnnotatedSymbolQueries {
     private static final Set<String> KINDS =
             Set.of("ALL", "TYPE", "METHOD", "FIELD", "CONSTRUCTOR", "PARAMETER");
 
-    String findAnnotatedSymbols(Jdbi jdbi, String annotation, String kind,
+    String findAnnotatedSymbols(ReadQueryContext reader, String annotation, String kind,
             boolean includeMetaAnnotations, int limit, int offset) {
         String normalizedKind = kind == null ? "ALL" : kind.strip().toUpperCase(Locale.ROOT);
         if (!KINDS.contains(normalizedKind)) {
@@ -29,7 +29,7 @@ final class AnnotatedSymbolQueries {
                     "Invalid kind: expected all, type, method, field, constructor, or parameter");
         }
         String requested = annotation.startsWith("@") ? annotation.substring(1) : annotation;
-        List<String> names = IndexReader.findSymbolAnnotationNames(jdbi, requested);
+        List<String> names = reader.symbols.findSymbolAnnotationNames(requested);
         String resolved = names.stream().filter(requested::equals).findFirst().orElse(null);
         if (resolved == null && names.size() == 1) resolved = names.getFirst();
         if (resolved == null) {
@@ -38,14 +38,12 @@ final class AnnotatedSymbolQueries {
                     ? "Annotation not found" : "Ambiguous annotation name");
             error.put("annotation", requested);
             error.set("candidates", JSON.valueToTree(names));
-            appendMeta(error, jdbi, 0);
+            appendMeta(error, reader, 0);
             return error.toString();
         }
 
-        List<AnnotatedSymbolResult> symbols = IndexReader.findAnnotatedSymbols(
-                jdbi, resolved, normalizedKind, includeMetaAnnotations, limit, offset);
-        int total = IndexReader.countAnnotatedSymbols(
-                jdbi, resolved, normalizedKind, includeMetaAnnotations);
+        List<AnnotatedSymbolResult> symbols = reader.symbols.findAnnotatedSymbols(resolved, normalizedKind, includeMetaAnnotations, limit, offset);
+        int total = reader.symbols.countAnnotatedSymbols(resolved, normalizedKind, includeMetaAnnotations);
         ObjectNode root = JSON.createObjectNode();
         root.put("annotation", resolved);
         root.put("kind", normalizedKind.toLowerCase(Locale.ROOT));
@@ -97,7 +95,7 @@ final class AnnotatedSymbolQueries {
                 .add("Meta-annotation expansion is indexed for type declarations only")
                 .add("Only annotations preserved in compiled bytecode can be discovered");
         appendPage(root, symbols.size(), total, limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 

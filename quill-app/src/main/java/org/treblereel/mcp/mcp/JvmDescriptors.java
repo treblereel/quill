@@ -8,6 +8,31 @@ final class JvmDescriptors {
 
     private JvmDescriptors() {}
 
+    static boolean matchesSignature(ClassMemberRecord member, String signature) {
+        if (signature.equals(member.signature()) || signature.equals(member.descriptor())) return true;
+        if (!member.kind().equals("METHOD") && !member.kind().equals("CONSTRUCTOR")) return false;
+        String descriptor = methodDescriptor(member);
+        if (signature.equals(descriptor)) return true;
+        int open = signature.indexOf('(');
+        if (open < 0 || !signature.endsWith(")")) return false;
+        String name = signature.substring(0, open).trim();
+        if (!name.isEmpty() && !name.equals(member.name())
+                && !(name.equals("<init>") && member.kind().equals("CONSTRUCTOR"))) return false;
+        String parameters = signature.substring(open + 1, signature.length() - 1).trim();
+        String[] requested = parameters.isEmpty() ? new String[0] : parameters.split(",", -1);
+        if (descriptor == null) return false;
+        Type[] actual = Type.getArgumentTypes(descriptor);
+        if (requested.length != actual.length) return false;
+        for (int i = 0; i < requested.length; i++) {
+            String type = requested[i].trim().replace("...", "[]");
+            String indexed = actual[i].getClassName().replace('$', '.');
+            if (!type.equals(indexed) && (type.contains(".")
+                    || !type.equals(indexed.substring(indexed.lastIndexOf('.') + 1)))) return false;
+        }
+        // The caller retains every matching candidate, so simple names never pick an arbitrary overload.
+        return true;
+    }
+
     static String methodDescriptor(ClassMemberRecord member) {
         if (member.descriptor() != null && !member.descriptor().isBlank()) {
             return member.descriptor();

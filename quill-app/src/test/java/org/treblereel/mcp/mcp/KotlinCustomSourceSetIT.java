@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.*;
 import java.util.concurrent.TimeUnit;
@@ -58,33 +60,31 @@ class KotlinCustomSourceSetIT {
         try {
             System.setProperty("quill.kotlin.cache", root.resolve("runtime").toString());
             System.setProperty("quill.kotlin.offline", "true"); KotlinRuntime.prepare();
-            var custom = KotlinSemanticQueries.resolve(db, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize("));
+            var custom = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize(")));
             assertEquals("resolved", custom.path("status").asText(), custom + "\n" + Files.readString(root.resolve("build/quill-kotlin-integrationTest.properties")));
             assertEquals("org.apache.commons.lang3.StringUtils", custom.path("owner").asText());
-            var standardTest = KotlinSemanticQueries.resolve(db, root, root.resolve("src/test/kotlin/Test.kt"), test.lastIndexOf("hidden()"));
+            var standardTest = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, root.resolve("src/test/kotlin/Test.kt"), test.lastIndexOf("hidden()")));
             assertEquals("resolved", standardTest.path("status").asText(), standardTest + "\n" + Files.readString(root.resolve("build/quill-kotlin-test.properties")));
             assertEquals("probe.ApiKt", standardTest.path("owner").asText());
             // The dependency is only on integrationTest; main must fail to resolve it.
             write("src/main/kotlin/Api.kt", integration);
-            assertEquals("analysis_error", KotlinSemanticQueries.resolve(db, root, root.resolve("src/main/kotlin/Api.kt"), integration.lastIndexOf("capitalize(")).path("status").asText());
+            assertEquals("analysis_error", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, root.resolve("src/main/kotlin/Api.kt"), integration.lastIndexOf("capitalize("))).path("status").asText());
             // A broken main source is not part of the custom set's frontend inputs.
             write("src/main/kotlin/Api.kt", "not valid Kotlin");
-            assertEquals("resolved", KotlinSemanticQueries.resolve(db, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize(")).path("status").asText());
+            assertEquals("resolved", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize("))).path("status").asText());
             String initialBuild = Files.readString(root.resolve("build.gradle.kts"));
             write("build.gradle.kts", initialBuild + "\nkotlin.sourceSets.named(\"integrationTest\") { kotlin.exclude(\"**/Probe.kt\") }\n");
             assertTrue(GradleProjectDiscovery.discoverAndWriteClasspath(root).complete());
-            assertEquals("source_not_in_source_set", KotlinSemanticQueries.resolve(db, root,
-                    root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize(")).path("status").asText());
+            assertEquals("source_not_in_source_set", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize("))).path("status").asText());
             write("build.gradle.kts", initialBuild + "\nkotlin.sourceSets.named(\"integrationTest\") { "
                     + "kotlin.exclude(org.gradle.api.specs.Spec<org.gradle.api.file.FileTreeElement> { it.name == \"Future.kt\" }) }\n");
             assertTrue(GradleProjectDiscovery.discoverAndWriteClasspath(root).complete());
-            assertEquals("resolved", KotlinSemanticQueries.resolve(db, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize(")).path("status").asText());
+            assertEquals("resolved", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize("))).path("status").asText());
             write("relocated ü/kotlin/Future.kt", "invalid excluded Kotlin");
-            assertEquals("source_selection_refresh_required", KotlinSemanticQueries.resolve(db, root,
-                    root.resolve("relocated ü/kotlin/Probe.kt"), 0).path("status").asText());
+            assertEquals("source_selection_refresh_required", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, root.resolve("relocated ü/kotlin/Probe.kt"), 0)).path("status").asText());
             // Refresh the evaluated predicate snapshot after source topology changes.
             org.treblereel.mcp.core.GradleProjectDiscovery.discoverAndWriteClasspath(root);
-            assertEquals("resolved", KotlinSemanticQueries.resolve(db, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize(")).path("status").asText());
+            assertEquals("resolved", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, root.resolve("relocated ü/kotlin/Probe.kt"), integration.lastIndexOf("capitalize("))).path("status").asText());
             write("override sources ü/Probe.kt", "package extra\nfun pick() = true\nfun run() = pick()");
             write("override sources ü/Ignored.kt", "invalid excluded Kotlin");
             write("override sources ü/Api.java", "package extra; public class Api { public static String pick() { return \"ok\"; } }");
@@ -98,17 +98,20 @@ class KotlinCustomSourceSetIT {
             db.useHandle(h -> h.execute("INSERT INTO files(project_path,repository_path,kind,origin,lifecycle,module,source_set) "
                     + "VALUES('override sources ü/Probe.kt','override sources ü/Probe.kt','kotlin','source','current','.','integrationTest')"));
             Path override = root.resolve("override sources ü/Probe.kt");
-            assertEquals("()Z", KotlinSemanticQueries.resolve(db, root, override, Files.readString(override).lastIndexOf("pick()")).path("descriptor").asText());
+            int semanticOffset1 = Files.readString(override).lastIndexOf("pick()");
+            assertEquals("()Z", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, override, semanticOffset1)).path("descriptor").asText());
             write("override sources ü/New.kt", "package extra\nfun added() = 123");
             write("override sources ü/Probe.kt", "package extra\nfun run() = added()");
-            assertEquals("()I", KotlinSemanticQueries.resolve(db, root, override, Files.readString(override).lastIndexOf("added()")).path("descriptor").asText());
+            int semanticOffset2 = Files.readString(override).lastIndexOf("added()");
+            assertEquals("()I", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, override, semanticOffset2)).path("descriptor").asText());
             write("override sources ü/Probe.kt", "package extra\nfun run() = Api.pick()");
-            var mixed = KotlinSemanticQueries.resolve(db, root, override, Files.readString(override).lastIndexOf("pick()"));
+            int semanticOffset3 = Files.readString(override).lastIndexOf("pick()");
+            var mixed = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, override, semanticOffset3));
             assertEquals("resolved", mixed.path("status").asText(), mixed.toString());
             assertEquals("extra.Api", mixed.path("owner").asText());
             write("override sources ü/Probe.kt", "package extra\nfun run() = added()");
             Files.delete(root.resolve("override sources ü/New.kt"));
-            assertEquals("analysis_error", KotlinSemanticQueries.resolve(db, root, override, 0).path("status").asText());
+            assertEquals("analysis_error", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, root, override, 0)).path("status").asText());
         } finally {
             KotlinSemanticQueries.closeWarmup(); org.treblereel.mcp.kotlin.KotlinWorkerClient.shared().close();
             if (previousCache == null) System.clearProperty("quill.kotlin.cache"); else System.setProperty("quill.kotlin.cache", previousCache);

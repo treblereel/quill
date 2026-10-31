@@ -376,7 +376,7 @@ class SpringResolverTest {
                 candidate.disposition()
                         == org.treblereel.mcp.model.CandidateDisposition.EXCLUDED));
         assertTrue(r.trace().candidates().stream().allMatch(candidate ->
-                candidate.reason().equals("QUALIFIER_MISMATCH")));
+                candidate.reason() == ResolutionReason.QUALIFIER_MISMATCH));
     }
 
     @Test
@@ -389,7 +389,7 @@ class SpringResolverTest {
         var r = SpringResolver.resolveByType("com.Iface", List.of("@Default"), candidates);
         assertEquals(2, r.beanId());
         assertFalse(r.isAmbiguous());
-        assertEquals("PRIMARY_CANDIDATE", r.trace().candidates().stream()
+        assertEquals(ResolutionReason.PRIMARY_CANDIDATE, r.trace().candidates().stream()
                 .filter(candidate -> candidate.beanId() == 2)
                 .findFirst().orElseThrow().reason());
     }

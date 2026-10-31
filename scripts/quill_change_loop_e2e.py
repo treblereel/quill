@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Any
 
 from quill_workflow_benchmark import WorkflowClient
@@ -19,6 +20,27 @@ from quill_change_session_benchmark import semantic_contract, summary_contract, 
 
 TARGET = "org.example.GreetingService"
 CHANGE = "Add an enthusiastic greeting without changing the public method signature"
+
+
+def change_snapshot(client: WorkflowClient, args: dict[str, Any]) -> tuple[dict, dict]:
+    started = time.perf_counter()
+    retries = 0
+    while True:
+        response = client.request("tools/call", {"name": "change_session", "arguments": args})
+        snapshot = response.get("structuredContent", {})
+        if not isinstance(snapshot, dict):
+            raise RuntimeError(f"Invalid change_session response: {response}")
+        if snapshot.get("error_code") != "REFRESH_PENDING":
+            if response.get("isError"):
+                raise RuntimeError(f"change_session failed: {response}")
+            return snapshot, {"tool": "change_session", "refresh_retries": retries,
+                              "latency_ms": round((time.perf_counter() - started) * 1000, 3),
+                              "response_bytes": len(json.dumps(snapshot, ensure_ascii=False,
+                                                               separators=(",", ":")).encode("utf-8"))}
+        if time.perf_counter() - started >= client.timeout:
+            raise TimeoutError("Index refresh is still pending; retry the same change_session")
+        retries += 1
+        time.sleep(0.1)
 
 
 def assert_snapshot_views(client: WorkflowClient, args: dict[str, Any],
@@ -193,10 +215,10 @@ def main() -> int:
             "detail": "summary", "view": "auto",
         }
         with WorkflowClient([str(quill)], project, args.request_timeout) as client:
-            planned, planned_trace = client.call("change_session", session_args)
+            planned, planned_trace = change_snapshot(client, session_args)
             assert_snapshot_views(client, session_args, planned)
             change_source(project)
-            required, required_trace = client.call("change_session", session_args)
+            required, required_trace = change_snapshot(client, session_args)
             assert_snapshot_views(client, session_args, required)
             primary = required.get("directive", {}).get("primary_action", {})
             if primary.get("action") != "inspect_test_evidence" \
@@ -250,7 +272,7 @@ def main() -> int:
             failed_build = run_unchecked(command["argv"], working_directory)
             if failed_build.returncode == 0:
                 raise RuntimeError("Intentional compiler failure unexpectedly succeeded")
-            blocked, blocked_trace = client.call("change_session", session_args)
+            blocked, blocked_trace = change_snapshot(client, session_args)
             assert_snapshot_views(client, session_args, blocked)
             blocked_receipt = blocked.get("verification_receipt", {})
             blocked_observed = blocked_receipt.get("observed_evidence", {})
@@ -275,7 +297,7 @@ def main() -> int:
                 recovery_failures.append("Repair directive must expose compiler diagnostics")
             # Act on the repair directive, then request the next snapshot before choosing a build.
             repair_source(project)
-            repaired, repaired_trace = client.call("change_session", session_args)
+            repaired, repaired_trace = change_snapshot(client, session_args)
             recovery_command = repaired.get("directive", {}).get("primary_action", {}) \
                 .get("retry_command", {})
             if recovery_command["argv"] != command["argv"]:
@@ -285,7 +307,7 @@ def main() -> int:
                                    + "; ".join(recovery_failures))
 
             build = run(recovery_command["argv"], working_directory)
-            completed, completed_trace = client.call("change_session", session_args)
+            completed, completed_trace = change_snapshot(client, session_args)
             assert_snapshot_views(client, session_args, completed)
 
         post_failures: list[str] = []

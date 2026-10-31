@@ -16,8 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 
 /** Builds paged ancestor and descendant paths for an indexed type. */
@@ -25,18 +24,18 @@ final class TypeHierarchyQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String getTypeHierarchy(Jdbi jdbi, String target, String direction,
+    String getTypeHierarchy(ReadQueryContext reader, String target, String direction,
             int maxDepth, int limit, int offset) {
         String normalizedDirection = normalizeDirection(direction);
         if (normalizedDirection == null) {
             return errorResponse(
                     "Invalid direction: expected ancestors, descendants, or both");
         }
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
+        if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord rootClass = lookup.cls();
 
-        List<ClassRecord> classes = IndexReader.findAllClasses(jdbi);
+        List<ClassRecord> classes = reader.symbols.findAllClasses();
         Map<String, ClassRecord> byName = new HashMap<>();
         Map<String, List<ChildEdge>> children = new HashMap<>();
         for (ClassRecord cls : classes) {
@@ -103,7 +102,7 @@ final class TypeHierarchyQueries {
             }
         }
         appendPage(root, page.size(), ordered.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 

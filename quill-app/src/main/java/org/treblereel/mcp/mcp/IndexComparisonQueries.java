@@ -14,11 +14,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Stream;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.IndexRepository.ComparisonSnapshot;
+import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 
 /** Compares the active immutable index with an earlier local generation. */
@@ -26,8 +26,8 @@ final class IndexComparisonQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String compareIndex(Jdbi current, Path projectRoot, String requestedBaseline, int detailLimit) {
-        Map<String, String> currentMeta = IndexReader.getMetadata(current);
+    String compareIndex(ReadQueryContext current, Path projectRoot, String requestedBaseline, int detailLimit) {
+        Map<String, String> currentMeta = current.index.getMetadata();
         List<Generation> generations = generations(projectRoot,
                 currentMeta.getOrDefault("index_id", ""));
         Generation baseline = selectBaseline(generations, requestedBaseline);
@@ -43,9 +43,9 @@ final class IndexComparisonQueries {
         }
 
         try {
-            Jdbi previous = QuillDatabase.open(baseline.database());
-            Snapshot before = snapshot(previous);
-            Snapshot after = snapshot(current);
+            try (ReadQueryContext previous = ReadQueryContext.openWithGraph( QuillDatabase.open(baseline.database()))) {
+            ComparisonSnapshot before = previous.index.comparisonSnapshot();
+            ComparisonSnapshot after = current.index.comparisonSnapshot();
             ObjectNode root = JSON.createObjectNode();
             appendGeneration(root.putObject("baseline"), baseline.metadata());
             appendGeneration(root.putObject("current"), currentMeta);
@@ -65,117 +65,16 @@ final class IndexComparisonQueries {
                     .add("Git-history tables are intentionally excluded from structural index comparison");
             appendMeta(root, current, 0);
             return root.toString();
-        } catch (RuntimeException error) {
+        }
+} catch (RuntimeException error) {
             return errorResponse("Baseline index is incompatible or unreadable: "
                     + safeMessage(error));
         }
     }
 
-    private static Snapshot snapshot(Jdbi jdbi) {
-        Map<String, StringBuilder> classValues = jdbi.withHandle(handle -> {
-            Map<String, StringBuilder> result = new TreeMap<>();
-            handle.createQuery("""
-                    SELECT id, class_name, kind, superclass, interfaces, source_file,
-                           is_bean, origin, module, source_set
-                    FROM classes
-                    WHERE lifecycle = 'current' AND origin != 'orphan_output'
-                    ORDER BY class_name, id
-                    """).map((rs, ctx) -> Map.entry(rs.getInt("id"), new ClassValue(
-                            rs.getString("class_name"), String.join("|",
-                                    value(rs.getString("kind")),
-                                    value(rs.getString("superclass")),
-                                    value(rs.getString("interfaces")),
-                                    value(rs.getString("source_file")),
-                                    Integer.toString(rs.getInt("is_bean")),
-                                    value(rs.getString("origin")),
-                                    value(rs.getString("module")),
-                                    value(rs.getString("source_set"))))))
-                    .forEach(entry -> result.put(entry.getValue().name(),
-                            new StringBuilder(entry.getValue().fingerprint())));
-            return result;
-        });
-        appendClassDetails(jdbi, classValues, """
-                SELECT c.class_name, 'A|' || a.annotation_name || '|' || a.direct || '|'
-                       || COALESCE(a.via_annotation, '') AS detail
-                FROM class_annotations a JOIN classes c ON c.id = a.class_id
-                WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
-                ORDER BY c.class_name, detail
-                """);
-        appendClassDetails(jdbi, classValues, """
-                SELECT c.class_name, 'M|' || m.kind || '|' || m.signature || '|' || m.descriptor || '|'
-                       || m.type_name || '|' || m.modifiers || '|' || m.annotations || '|' || m.annotation_details AS detail
-                FROM class_members m JOIN classes c ON c.id = m.class_id
-                WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
-                ORDER BY c.class_name, detail
-                """);
-        appendClassDetails(jdbi,classValues,"""
-                SELECT c.class_name, 'JVM_API|' || a.evidence AS detail
-                FROM jvm_api a JOIN classes c ON c.id=a.class_id
-                WHERE c.lifecycle='current' AND c.origin!='orphan_output'
-                ORDER BY c.class_name,detail
-                """);
-        Map<String, String> classes = new TreeMap<>();
-        classValues.forEach((name, fingerprint) -> classes.put(name, fingerprint.toString()));
 
-        Map<String, Integer> dependencies = jdbi.withHandle(handle -> {
-            Map<String, Integer> result = new TreeMap<>();
-            handle.createQuery("""
-                    SELECT source.class_name AS source_name, target.class_name AS target_name,
-                           d.kind, d.occurrence_count
-                    FROM dependencies d
-                    JOIN classes source ON source.id = d.from_class_id
-                    JOIN classes target ON target.id = d.to_class_id
-                    WHERE source.lifecycle = 'current' AND source.origin != 'orphan_output'
-                      AND target.lifecycle = 'current' AND target.origin != 'orphan_output'
-                    ORDER BY source_name, target_name, d.kind
-                    """).map((rs, ctx) -> Map.entry(
-                            rs.getString("source_name") + " -> "
-                                    + rs.getString("target_name") + " ["
-                                    + rs.getString("kind") + "]",
-                            rs.getInt("occurrence_count")))
-                    .forEach(entry -> result.merge(entry.getKey(), entry.getValue(), Integer::sum));
-            return result;
-        });
-        Set<String> beans = jdbi.withHandle(handle -> new TreeSet<>(handle.createQuery("""
-                SELECT c.class_name || ' [' || b.kind || '] ' || COALESCE(b.member_name, '')
-                FROM beans b JOIN classes c ON c.id = b.class_id
-                WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
-                ORDER BY 1
-                """).mapTo(String.class).list()));
-        Map<String, String> injections = jdbi.withHandle(handle -> {
-            Map<String, String> result = new TreeMap<>();
-            handle.createQuery("""
-                    SELECT c.class_name, ip.kind, ip.target_type, ip.field_name,
-                           ip.qualifiers, ip.resolution_status, ip.resolution_reason
-                    FROM injection_points ip
-                    JOIN beans b ON b.id = ip.bean_id
-                    JOIN classes c ON c.id = b.class_id
-                    WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'
-                    ORDER BY c.class_name, ip.kind, ip.target_type, ip.field_name
-                    """).map((rs, ctx) -> Map.entry(
-                            rs.getString("class_name") + "#"
-                                    + value(rs.getString("field_name")) + " ["
-                                    + rs.getString("kind") + ":"
-                                    + rs.getString("target_type") + ":"
-                                    + value(rs.getString("qualifiers")) + "]",
-                            rs.getString("resolution_status") + ":"
-                                    + value(rs.getString("resolution_reason"))))
-                    .forEach(entry -> result.put(entry.getKey(), entry.getValue()));
-            return result;
-        });
-        return new Snapshot(classes, dependencies, beans, injections);
-    }
 
-    private static void appendClassDetails(
-            Jdbi jdbi, Map<String, StringBuilder> classes, String sql) {
-        jdbi.useHandle(handle -> handle.createQuery(sql)
-                .map((rs, ctx) -> Map.entry(
-                        rs.getString("class_name"), rs.getString("detail")))
-                .forEach(entry -> {
-                    StringBuilder fingerprint = classes.get(entry.getKey());
-                    if (fingerprint != null) fingerprint.append('\n').append(entry.getValue());
-                }));
-    }
+
 
     private static void appendClassChanges(ObjectNode node, Map<String, String> before,
             Map<String, String> after, int limit) {
@@ -261,15 +160,16 @@ final class IndexComparisonQueries {
         List<Generation> result = new ArrayList<>();
         for (Path path : paths) {
             try {
-                Jdbi jdbi = QuillDatabase.open(path);
-                Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+                try (ReadQueryContext reader = ReadQueryContext.open( QuillDatabase.open(path))) {
+                Map<String, String> metadata = reader.index.getMetadata();
                 String indexId = metadata.get("index_id");
                 String fileName = path.getFileName().toString();
                 String fileIndexId = fileName.substring(0, fileName.length() - 3);
                 if (indexId == null || !indexId.equals(fileIndexId)
                         || indexId.equals(currentIndexId)) continue;
                 result.add(new Generation(path, indexId, metadata));
-            } catch (RuntimeException ignored) {
+            }
+} catch (RuntimeException ignored) {
                 // Old schema versions and corrupt generations are not valid comparison baselines.
             }
         }
@@ -307,8 +207,7 @@ final class IndexComparisonQueries {
                 : current.getMessage();
     }
 
-    private record ClassValue(String name, String fingerprint) {}
+
     private record Generation(Path database, String indexId, Map<String, String> metadata) {}
-    private record Snapshot(Map<String, String> classes, Map<String, Integer> dependencies,
-                            Set<String> beans, Map<String, String> injections) {}
+
 }

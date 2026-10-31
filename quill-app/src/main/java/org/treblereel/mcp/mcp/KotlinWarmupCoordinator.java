@@ -149,7 +149,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
     Set<Path> watchedDirectories() {
         synchronized (state) {
             if (watcher == null) return Set.of();
-            return watcher.events.active() ? watcher.events.roots() : watcher.polling.directories();
+            return watcher.events.roots();
         }
     }
 
@@ -158,11 +158,10 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
     }
 
     private final class InputsWatcher implements AutoCloseable {
-        private final KotlinPollingWatcher polling = new KotlinPollingWatcher();
         private final KotlinDirectoryWatcher events;
-        private final Semaphore fallbackReady = new Semaphore(0);
+        private final Semaphore recoveryReady = new Semaphore(0);
         private final Thread listener;
-        private volatile boolean stopped, fallback;
+        private volatile boolean stopped;
         private volatile Set<Path> trees = Set.of(), files = Set.of();
         private volatile Set<Path> fileAncestors = Set.of();
         private volatile boolean refresh = true;
@@ -173,7 +172,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
             events = new KotlinDirectoryWatcher(eventFactory, () -> {
                 refresh = true; changed(ownerEpoch);
             }, () -> {
-                fallback = true; fallbackReady.release(); refresh = true; changed(ownerEpoch);
+                recoveryReady.release(); refresh = true; changed(ownerEpoch);
             });
             listener = new Thread(this::listen, "quill-k2-input-watch"); listener.setDaemon(true); listener.start();
         }
@@ -238,7 +237,6 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
             for (Path path : exact) parents(desired, path.getParent(), module);
             Set<Path> canonical = new HashSet<>();
             for (Path path : desired) { try { canonical.add(path.toRealPath()); } catch (IOException ignored) { } }
-            polling.configure(canonical, this::relevant);
             events.configure(canonical, this::relevant);
         }
         private void addReal(Set<Path> values, Path path) {
@@ -269,36 +267,16 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                     || fileAncestors.contains(path);
         }
         private void listen() {
-            long observedEvents = 0;
-            long missedSince = 0;
             try {
                 while (!stopped) {
-                    // Healthy subscriptions only need a low-frequency audit/heartbeat.
-                    fallbackReady.tryAcquire(fallback ? KotlinPollingWatcher.INTERVAL_MILLIS : 2000, TimeUnit.MILLISECONDS);
+                    recoveryReady.tryAcquire(1, TimeUnit.SECONDS);
                     if (stopped) break;
-                    if (fallback) {
-                        if (polling.poll()) { refresh = true; changed(ownerEpoch); }
-                        synchronized (state) {
-                            if (stopped || closed || ownerEpoch != epoch) break;
-                            if (events.recover()) {
-                                fallback = false; missedSince = 0; observedEvents = events.eventRevision();
-                                refresh = true; changed(ownerEpoch);
-                            }
+                    events.checkHealth();
+                    synchronized (state) {
+                        if (stopped || closed || ownerEpoch != epoch) break;
+                        if (!events.active() && events.recover()) {
+                            refresh = true; changed(ownerEpoch);
                         }
-                    } else {
-                        events.checkHealth();
-                        long currentEvents = events.eventRevision();
-                        boolean metadataChanged = polling.poll();
-                        // An event in this interval does not prove that every metadata
-                        // change was delivered, or that a warmup read the latest save.
-                        if (metadataChanged) { refresh = true; changed(ownerEpoch); }
-                        if (currentEvents != observedEvents) missedSince = 0;
-                        else if (metadataChanged && missedSince == 0) missedSince = System.nanoTime();
-                        if (missedSince != 0 && System.nanoTime() - missedSince >= KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS) {
-                            // Give ordinary delivery a grace period before declaring it missing.
-                            events.deliveryMissing(); missedSince = 0;
-                        }
-                        observedEvents = currentEvents;
                     }
                 }
             } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }

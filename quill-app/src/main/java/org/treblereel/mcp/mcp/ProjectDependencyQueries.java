@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.DeclaredDependencyDiscovery;
 import org.treblereel.mcp.core.ProjectCoordinatesDiscovery;
@@ -29,7 +29,7 @@ final class ProjectDependencyQueries {
     private static final ConcurrentHashMap<Path, CachedMetadata> METADATA =
             new ConcurrentHashMap<>();
 
-    String getProjectDependencies(Jdbi jdbi, Path root, String module, String sourceSet, String query,
+    String getProjectDependencies(ReadQueryContext reader, Path root, String module, String sourceSet, String query,
             String directness, String group, String artifactName, String scope,
             int limit, int offset) {
         DebugTrace.Trace trace = DebugTrace.start("get_project_dependencies");
@@ -49,7 +49,7 @@ final class ProjectDependencyQueries {
                 return JSON.createObjectNode().put("error",
                         "directness must be direct, transitive, mixed, or unknown").toString();
             }
-            DependencyMetadata metadata = metadata(jdbi, root);
+            DependencyMetadata metadata = metadata(reader, root);
             List<ClasspathFile> classpaths = metadata.classpaths();
             DeclaredDependencyDiscovery.Result declared = metadata.declared();
             trace.event("metadata_loaded", Map.of(
@@ -224,17 +224,7 @@ final class ProjectDependencyQueries {
         }
     }
 
-    private static List<String> findIndexedModules(Jdbi jdbi) {
-        List<String> modules = jdbi.withHandle(handle -> handle.createQuery("""
-                        SELECT DISTINCT module FROM (
-                          SELECT module FROM files WHERE lifecycle = 'current'
-                          UNION ALL
-                          SELECT module FROM classes WHERE lifecycle = 'current'
-                        ) WHERE module IS NOT NULL AND module != ''
-                        ORDER BY module
-                        """).mapTo(String.class).list());
-        return modules.isEmpty() ? List.of(".") : List.copyOf(modules);
-    }
+
 
     private static List<ClasspathFile> findClasspathFiles(Path root, List<String> modules) {
         BuildSystem buildSystem;
@@ -272,16 +262,28 @@ final class ProjectDependencyQueries {
         }
     }
 
-    static List<Path> resolvedJars(Jdbi jdbi, Path root) {
+    static List<Path> resolvedJars(ReadQueryContext reader, Path root) {
         LinkedHashSet<Path> jars = new LinkedHashSet<>();
-        for (ParsedClasspath classpath : metadata(jdbi, root).parsedClasspaths()) {
+        for (ParsedClasspath classpath : metadata(reader, root).parsedClasspaths()) {
             classpath.jars().forEach(reference -> jars.add(reference.jar()));
         }
         return List.copyOf(jars);
     }
 
-    static void prewarm(Jdbi jdbi, Path root) {
-        metadata(jdbi, root);
+    private static final Map<org.treblereel.mcp.model.ProjectReadSnapshot, DependencyMetadata> PREPARED =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    static void prepareSnapshot(ReadQueryContext reader, Path root, org.treblereel.mcp.model.ProjectReadSnapshot snapshot) {
+        PREPARED.put(snapshot, metadata(reader, root));
+    }
+
+    static void reuseSnapshot(org.treblereel.mcp.model.ProjectReadSnapshot previous,
+            org.treblereel.mcp.model.ProjectReadSnapshot current) {
+        PREPARED.put(current, java.util.Objects.requireNonNull(PREPARED.get(previous), "Prepared dependency evidence"));
+    }
+
+    static void prewarm(ReadQueryContext reader, Path root) {
+        metadata(reader, root);
     }
 
     private static List<ParsedClasspath> effectiveClasspaths(
@@ -366,9 +368,14 @@ final class ProjectDependencyQueries {
                         .contains(value));
     }
 
-    private static DependencyMetadata metadata(Jdbi jdbi, Path root) {
+    private static DependencyMetadata metadata(ReadQueryContext reader, Path root) {
+        if (reader.snapshot() != null) {
+            var prepared = PREPARED.get(reader.snapshot());
+            if (prepared == null) throw new IllegalStateException("Dependency evidence is not prepared for this observation");
+            return prepared.withCacheHit(true);
+        }
         Path key = root.toAbsolutePath().normalize();
-        List<String> indexedModules = findIndexedModules(jdbi);
+        List<String> indexedModules = reader.index.findIndexedModules();
         List<ClasspathFile> classpaths = findClasspathFiles(key, indexedModules);
         String fingerprint = metadataFingerprint(key, indexedModules, classpaths);
         CachedMetadata cached = METADATA.get(key);

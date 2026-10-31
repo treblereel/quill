@@ -18,6 +18,10 @@ public record ClassRecord(
         String module,
         String sourceSet
 ) {
+    public ClassRecord {
+        interfaces = interfaces == null ? List.of() : List.copyOf(interfaces);
+    }
+
     public ClassRecord(int id, String className, String kind, String superclass,
             List<String> interfaces, String sourceFile, int sourceLine, boolean isBean,
             int sourceTokens) {
@@ -30,6 +34,13 @@ public record ClassRecord(
             int sourceTokens, Integer fileId, String origin, String lifecycle) {
         this(id, className, kind, superclass, interfaces, sourceFile, sourceLine, isBean,
                 sourceTokens, fileId, origin, lifecycle, null, null);
+    }
+
+    public static final java.util.Set<String> TEST_SOURCE_SETS =
+            java.util.Set.of("test", "integration-test", "integrationTest");
+
+    public boolean inTestSourceSet() {
+        return sourceSet != null && TEST_SOURCE_SETS.contains(sourceSet);
     }
 
     public ClassRecord withId(int newId) {

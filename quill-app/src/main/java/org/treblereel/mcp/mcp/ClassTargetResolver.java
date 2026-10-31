@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.FileRecord;
 
@@ -30,7 +29,7 @@ final class ClassTargetResolver {
 
     private ClassTargetResolver() {}
 
-    static Lookup resolve(Jdbi jdbi, String target) {
+    static Lookup resolve(ReadQueryContext reader, String target) {
         if (target == null || target.isBlank()) {
             return Lookup.error("MISSING_TARGET", "Class target or symbol_id is required",
                     List.of(), List.of());
@@ -39,7 +38,7 @@ final class ClassTargetResolver {
             var reference = SymbolContract.parse(target);
             if (reference.isPresent()) {
                 var identity = reference.get();
-                var matches = IndexReader.findClassesByName(jdbi, identity.className()).stream()
+                var matches = reader.symbols.findClassesByName(identity.className()).stream()
                         .filter(cls -> identity.sourceFile() == null || identity.sourceFile().isBlank()
                                 || identity.sourceFile().equals(cls.sourceFile())).toList();
                 if (matches.size() == 1) return Lookup.found(matches.getFirst());
@@ -52,19 +51,19 @@ final class ClassTargetResolver {
             return Lookup.error(error.errorCode(), error.getMessage(),
                     List.of(), List.of());
         }
-        var exactNames = IndexReader.findClassesByName(jdbi, target);
+        var exactNames = reader.symbols.findClassesByName(target);
         if (exactNames.size() == 1) return Lookup.found(exactNames.getFirst());
         if (exactNames.size() > 1) {
             return Lookup.error("AMBIGUOUS_CLASS", "Ambiguous class context",
                     exactNames, List.of());
         }
 
-        var exactPath = IndexReader.findClassByPath(jdbi, target);
+        var exactPath = reader.symbols.findClassByPath(target);
         if (exactPath.isPresent()) return Lookup.found(exactPath.get());
 
         if (!target.contains(".")) {
             List<ClassRecord> shortNameCandidates =
-                    IndexReader.findClassesByShortName(jdbi, target);
+                    reader.symbols.findClassesByShortName(target);
             if (shortNameCandidates.size() == 1) {
                 return Lookup.found(shortNameCandidates.getFirst());
             }
@@ -81,8 +80,8 @@ final class ClassTargetResolver {
         }
         return Lookup.error(
                 "CLASS_NOT_FOUND", "Class not found",
-                IndexReader.searchClasses(jdbi, basename, 5),
-                IndexReader.findFileCandidates(jdbi, target, 5));
+                reader.symbols.searchClasses(basename, 5),
+                reader.index.findFileCandidates(target, 5));
     }
 
     static ObjectNode errorResponse(ObjectMapper json, Lookup lookup, String target) {

@@ -1,14 +1,16 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.index.BuildStatusInspector;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
 import java.util.List;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.command.ProjectIndexStore;
+import java.util.Set;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.index.ProjectIndexStore;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
-import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.MetaEnvelope;
 
 final class ToolResponseSupport {
@@ -17,15 +19,20 @@ final class ToolResponseSupport {
 
     private ToolResponseSupport() {}
 
-    static void appendMeta(ObjectNode root, Jdbi jdbi, int naiveTokens) {
-        appendMeta(root, jdbi, naiveTokens, null, null);
+    static void appendMeta(ObjectNode root, ReadQueryContext reader, int naiveTokens) {
+        appendMeta(root, reader, naiveTokens, null, null);
     }
 
-    static void appendMeta(ObjectNode root, Jdbi jdbi, int naiveTokens,
+    static void appendMeta(ObjectNode root, ReadQueryContext reader, int naiveTokens,
             String targetSource, String targetModule) {
-        MetaEnvelope meta = MetaEnvelope.from(jdbi, 0, 0);
+        MetaEnvelope meta = org.treblereel.mcp.index.BuildStatusInspector.freshness(reader, 0, 0);
         ObjectNode metaNode = root.putObject("_meta");
         metaNode.put("index_id", meta.indexId());
+        if (reader.snapshot() != null) {
+            metaNode.put("freshness_basis", meta.staleReasons().contains("previous_generation")
+                    ? "previous_prepared_generation" : "prepared_input_observation");
+            metaNode.set("input_observed_at", reader.snapshot().worktree().path("observed_at").deepCopy());
+        }
         metaNode.put("indexed_at", meta.indexedAt());
         metaNode.put("indexed_commit", meta.lastCommit());
         if (meta.currentCommit() == null) metaNode.putNull("current_commit");
@@ -37,8 +44,8 @@ final class ToolResponseSupport {
         metaNode.put("structure_stale", meta.structureStale());
         metaNode.set("stale_reasons", JSON.valueToTree(meta.staleReasons()));
         metaNode.put("stale_warning", meta.staleWarning());
-        String projectRoot = IndexReader.getMetadata(jdbi).get("project_root");
-        appendStaleScope(metaNode, meta, projectRoot, targetSource, targetModule);
+        String projectRoot = reader.index.getMetadata().get("project_root");
+        appendStaleScope(reader, metaNode, meta, projectRoot, targetSource, targetModule);
         if (projectRoot != null) {
             ProjectIndexStore.readRecovery(Path.of(projectRoot)).ifPresent(recovery -> {
                 ObjectNode recoveryNode = metaNode.putObject("index_recovery");
@@ -49,11 +56,26 @@ final class ToolResponseSupport {
         }
     }
 
-    private static void appendStaleScope(ObjectNode metaNode, MetaEnvelope meta,
+    private static void appendStaleScope(ReadQueryContext reader, ObjectNode metaNode, MetaEnvelope meta,
             String projectRoot, String targetSource, String targetModule) {
         if (!meta.structureStale()) {
             metaNode.put("stale_scope", "current");
             metaNode.put("answer_confidence", "high");
+            return;
+        }
+        if (meta.staleReasons().contains("previous_generation")) {
+            metaNode.put("stale_scope", "repository");
+            metaNode.put("answer_confidence", "low");
+            metaNode.put("recommended_action", "Using the previous prepared generation; retry after background refresh");
+            return;
+        }
+        if (meta.commitStale() && meta.structuralChangedFiles() == 0
+                && !meta.staleReasons().contains("indexed_java_sources_changed")
+                && !meta.staleReasons().contains("indexed_jvm_sources_changed")
+                && !meta.staleReasons().contains("compiled_snapshot_changed")) {
+            metaNode.put("stale_scope", "repository");
+            metaNode.put("answer_confidence", "low");
+            metaNode.put("recommended_action", "Refresh the Quill index at the current commit; rebuilding is unnecessary when inputs are unchanged");
             return;
         }
         if (projectRoot == null || targetSource == null || targetSource.isBlank()) {
@@ -73,15 +95,12 @@ final class ToolResponseSupport {
             return;
         }
 
-        WorktreeInspector.Snapshot snapshot = WorktreeSnapshotCache.shared()
-                .get(Path.of(projectRoot));
         String source = normalize(targetSource);
-        String module = targetModule == null || targetModule.isBlank()
-                ? "." : normalize(targetModule);
-        List<String> changed = snapshot.structuralChanges().stream()
-                .map(WorktreeInspector.Change::projectPath)
-                .map(ToolResponseSupport::normalize)
-                .toList();
+        String module = targetModule == null || targetModule.isBlank() ? "." : normalize(targetModule);
+        List<String> changed = reader.snapshot() == null
+                ? WorktreeSnapshotCache.shared().get(Path.of(projectRoot)).structuralChanges().stream()
+                        .map(WorktreeInspector.Change::projectPath).map(ToolResponseSupport::normalize).toList()
+                : reader.snapshot().structuralPaths();
         boolean targetChanged = changed.stream().anyMatch(path -> path.equals(source));
         boolean moduleChanged = !".".equals(module)
                 && changed.stream().anyMatch(path -> path.equals(module)
@@ -140,10 +159,128 @@ final class ToolResponseSupport {
     }
 
     static String classLookupError(
-            Jdbi jdbi, ClassTargetResolver.Lookup lookup, String target) {
+            ReadQueryContext reader, ClassTargetResolver.Lookup lookup, String target) {
         ObjectNode root = ClassTargetResolver.errorResponse(JSON, lookup, target);
-        appendMeta(root, jdbi, 0);
+        appendMeta(root, reader, 0);
         return root.toString();
+    }
+
+    static String queryEvidence(String json, String tool, java.util.Map<String, Object> arguments,
+            boolean full, int offset) {
+        try {
+            var root = JSON.readTree(json);
+            presentQueryEvidence(root, tool, JSON.valueToTree(arguments), full, offset);
+            return root.toString();
+        } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
+            return json;
+        }
+    }
+
+    private static ObjectNode evidenceRequest(String tool, ObjectNode arguments, int offset) {
+        var request = JSON.createObjectNode().put("tool", tool);
+        var args = arguments.deepCopy().put("evidence_detail", "full").put("evidence_offset", offset);
+        request.set("arguments", args);
+        return request;
+    }
+
+    private static void presentQueryEvidence(com.fasterxml.jackson.databind.JsonNode value, String tool,
+            ObjectNode arguments, boolean full, int offset) {
+        if (value instanceof ObjectNode object) {
+            if (!full && object.path("decision_owner").asText().equals("mcp_client")
+                    && (object.has("verification_plan") || object.has("diagnostics"))) {
+                var summary = ProjectAvailabilityResponses.summary(object);
+                object.removeAll(); object.setAll(summary);
+            }
+            if (!tool.equals("find_workspace_usages") && object.path("project").isTextual()) {
+                arguments = arguments.deepCopy();
+                arguments.set("project", object.path("project").deepCopy());
+            }
+            for (var entry : List.copyOf(object.properties())) {
+                String field = entry.getKey();
+                if (field.equals("coverage") && entry.getValue() instanceof ObjectNode coverage) {
+                    coverage.put("evidence_detail", full ? "full" : "summary");
+                    var scopes = coverage.path("indexed_scopes");
+                    if (full && scopes.isArray()) {
+                        int total = scopes.size(), from = Math.min(offset, total), to = from + Math.min(100, total - from);
+                        var page = JSON.createArrayNode();
+                        scopes.valueStream().skip(from).limit(to - from).forEach(page::add);
+                        coverage.set("indexed_scopes", page);
+                        var paging = coverage.putObject("indexed_scopes_page");
+                        appendPage(paging, to - from, total, 100, offset);
+                        if (coverage.has("index_id")) paging.set("index_id", coverage.path("index_id").deepCopy());
+                        if (to < total) paging.set("next_page_request", evidenceRequest(tool, arguments, to));
+                    } else if (!full) {
+                        countOnly(coverage, "indexed_scopes", "indexed_scope_count");
+                        countOnly(coverage, "missing_test_output_modules", "missing_test_output_module_count");
+                        if (coverage.path("compiled_outputs") instanceof ObjectNode outputs)
+                            countOnly(outputs, "stale_modules", "stale_module_count");
+                        coverage.set("details_request", evidenceRequest(tool, arguments, 0));
+                    }
+                } else if (!full && Set.of("project_warnings", "unavailable_projects").contains(field)
+                        && entry.getValue().isArray()) {
+                    var warnings = JSON.createArrayNode();
+                    entry.getValue().forEach(warning -> warnings.add(ProjectAvailabilityResponses.summary(warning)));
+                    object.set(field, warnings);
+                } else {
+                    presentQueryEvidence(entry.getValue(), tool, arguments, full, offset);
+                }
+            }
+        } else if (value.isArray()) {
+            for (var item : value) presentQueryEvidence(item, tool, arguments, full, offset);
+        }
+    }
+
+    private static void countOnly(ObjectNode object, String field, String count) {
+        var values = object.remove(field);
+        if (values == null) return;
+        if (values.isArray()) {
+            if (!object.has(count)) object.put(count, values.size());
+        } else if (values.isNull()) object.putNull(count);
+    }
+
+    private static final java.util.Set<String> SUMMARY_INVENTORIES = java.util.Set.of(
+            "source_sets", "stale_source_sets", "directories", "indexed_modules", "modules",
+            "requested_modules", "command_modules", "quick_compile_modules", "unresolved_modules",
+            "missing_modules", "missing_classpath_modules", "stale_modules", "repository_stale_modules",
+            "changed_inputs");
+
+    /** Presentation only: call after decisions that require complete inventories. */
+    static List<String> summarizeInventories(ObjectNode root) {
+        var omitted = new java.util.ArrayList<String>();
+        summarizeInventories(root, "", omitted);
+        return List.copyOf(omitted);
+    }
+
+    private static void summarizeInventories(com.fasterxml.jackson.databind.JsonNode value,
+            String path, List<String> omitted) {
+        if (value instanceof ObjectNode object) {
+            for (var entry : List.copyOf(object.properties())) {
+                String field = entry.getKey();
+                var items = object.path(field);
+                String child = path.isEmpty() ? field : path + "." + field;
+                if (items.isArray() && SUMMARY_INVENTORIES.contains(field) && !object.has(field + "_count")) {
+                    object.put(field + "_count", items.size());
+                    object.put(field + "_has_more", items.size() > 5);
+                    if (field.equals("source_sets")) {
+                        var counts = object.putObject("source_sets_status_counts");
+                        for (var item : items) {
+                            String status = item.path("status").asText("unknown");
+                            counts.put(status, counts.path(status).asInt() + 1);
+                        }
+                    }
+                    if (items.size() > 5) {
+                        var sample = JSON.createArrayNode();
+                        items.valueStream().limit(5).forEach(sample::add);
+                        object.set(field, sample);
+                        items = sample;
+                        omitted.add(child + "_after_first_5");
+                    }
+                }
+                summarizeInventories(items, child, omitted);
+            }
+        } else if (value.isArray()) {
+            for (var item : value) summarizeInventories(item, path, omitted);
+        }
     }
 
     static boolean isProducer(String kind) {

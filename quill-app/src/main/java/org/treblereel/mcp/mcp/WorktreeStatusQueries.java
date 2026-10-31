@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.index.BuildStatusInspector;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -8,7 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
@@ -20,28 +22,26 @@ final class WorktreeStatusQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     String getWorktreeStatus(
-            Jdbi jdbi, Path root, String status, int limit, int offset) {
-        return getWorktreeStatus(jdbi, root, status, limit, offset, false);
+            ReadQueryContext reader, Path root, String status, int limit, int offset) {
+        return getWorktreeStatus(reader, root, status, limit, offset, false);
     }
 
     String getFreshWorktreeStatus(
-            Jdbi jdbi, Path root, String status, int limit, int offset) {
-        return getWorktreeStatus(jdbi, root, status, limit, offset, true);
+            ReadQueryContext reader, Path root, String status, int limit, int offset) {
+        return getWorktreeStatus(reader, root, status, limit, offset, true);
     }
 
     private String getWorktreeStatus(
-            Jdbi jdbi, Path root, String status, int limit, int offset, boolean fresh) {
+            ReadQueryContext reader, Path root, String status, int limit, int offset, boolean fresh) {
+        if (reader.snapshot() != null) return page(reader.snapshot().worktree(), status, limit, offset);
         WorktreeInspector.Snapshot snapshot = fresh
-                ? WorktreeSnapshotCache.shared().refresh(root)
-                : WorktreeSnapshotCache.shared().get(root);
-        MetaEnvelope freshness = MetaEnvelope.from(jdbi, 0, 0);
-        String filter = status == null || status.isBlank()
-                ? null : status.strip().toLowerCase(Locale.ROOT);
-        List<WorktreeInspector.Change> changes = snapshot.changes().stream()
-                .filter(change -> filter == null || change.status().equals(filter)).toList();
-        int from = Math.min(offset, changes.size());
-        int to = Math.min(from + limit, changes.size());
+                ? WorktreeSnapshotCache.shared().refresh(root) : WorktreeSnapshotCache.shared().get(root);
+        return page(capture(root, reader.index.getMetadata(), snapshot), status, limit, offset);
+    }
 
+    static ObjectNode capture(Path root, Map<String,String> metadata, WorktreeInspector.Snapshot snapshot) {
+        MetaEnvelope freshness = MetaEnvelope.from(metadata, snapshot.currentCommit(), snapshot.structuralFingerprint(),
+                snapshot.structuralDirty(), snapshot.dirty(), snapshot.changes().size(), snapshot.structuralChanges().size(), 0, 0);
         ObjectNode result = JSON.createObjectNode();
         result.put("branch", GitAnalyzer.resolveBranch(root));
         result.put("repository_root", snapshot.repositoryRoot() == null
@@ -52,15 +52,12 @@ final class WorktreeStatusQueries {
         result.put("commit_stale", freshness.commitStale());
         result.put("dirty", snapshot.dirty());
         result.put("structural_dirty", snapshot.structuralDirty());
-        result.put("total", changes.size());
-        result.put("showing", to - from);
-        result.put("offset", offset);
-        result.put("has_more", to < changes.size());
+        result.put("total", snapshot.changes().size());
         Map<String, Integer> counts = new TreeMap<>();
         snapshot.changes().forEach(change -> counts.merge(change.status(), 1, Integer::sum));
         result.set("counts_by_status", JSON.valueToTree(counts));
         ArrayNode listed = result.putArray("changes");
-        changes.subList(from, to).forEach(change -> {
+        snapshot.changes().forEach(change -> {
             ObjectNode item = listed.addObject();
             item.put("path", change.projectPath());
             item.put("repository_path", change.repositoryPath());
@@ -68,6 +65,19 @@ final class WorktreeStatusQueries {
             item.put("structural", WorktreeInspector.isStructuralPath(change.projectPath()));
         });
         result.put("source", "live_git_worktree");
+        result.put("observed_at", java.time.Instant.now().toString());
+        return result;
+    }
+
+    private static String page(com.fasterxml.jackson.databind.JsonNode snapshot, String status, int limit, int offset) {
+        ObjectNode result = snapshot.deepCopy();
+        String filter = status == null || status.isBlank() ? null : status.strip().toLowerCase(Locale.ROOT);
+        var changes = snapshot.path("changes").valueStream()
+                .filter(change -> filter == null || change.path("status").asText().equals(filter)).toList();
+        int from = Math.min(offset, changes.size()), to = Math.min(from + limit, changes.size());
+        ArrayNode listed = result.putArray("changes");
+        changes.subList(from, to).forEach(change -> listed.add(change.deepCopy()));
+        result.put("total", changes.size()).put("showing", to-from).put("offset", offset).put("has_more", to < changes.size());
         return result.toString();
     }
 }

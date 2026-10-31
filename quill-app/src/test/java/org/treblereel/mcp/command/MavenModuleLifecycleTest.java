@@ -1,5 +1,8 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -11,11 +14,13 @@ import java.util.Optional;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.IndexRepository;
+import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.mcp.ProjectRegistry;
 import org.treblereel.mcp.mcp.QuillTools;
-import org.treblereel.mcp.mcp.SingleProjectScope;
+import org.treblereel.mcp.workspace.SingleProjectScope;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 class MavenModuleLifecycleTest {
@@ -62,18 +67,18 @@ class MavenModuleLifecycleTest {
 
         Path database = ProjectIndexStore.findBestAvailableDb(project);
         var jdbi = QuillDatabase.open(database);
-        var main = IndexReader.findClassByName(jdbi, "example.base.BaseType").orElseThrow();
-        var test = IndexReader.findClassByName(jdbi, "example.base.BaseTypeTest").orElseThrow();
+        var main = jdbi.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findClassByName("example.base.BaseType")).orElseThrow();
+        var test = jdbi.withHandle(repositoryHandle2 -> new SymbolRepository(repositoryHandle2).findClassByName("example.base.BaseTypeTest")).orElseThrow();
         assertEquals("main", main.sourceSet());
         assertEquals("test", test.sourceSet());
-        assertTrue(IndexReader.findDependencies(jdbi, test.id(), "outbound").stream()
+        assertTrue(jdbi.withHandle(repositoryHandle3 -> new UsageRepository(repositoryHandle3).findDependencies(test.id(), "outbound")).stream()
                 .anyMatch(dependency -> dependency.toClassId() == main.id()));
         assertMetadata("compiled_main_output_count", "1");
         assertMetadata("compiled_test_output_count", "1");
         assertMetadata("compiled_test_module_count", "1");
-        assertEquals("[\"base\"]", IndexReader.getMetadata(jdbi)
+        assertEquals("[\"base\"]", jdbi.withHandle(repositoryHandle4 -> new IndexRepository(repositoryHandle4).getMetadata())
                 .get("compiled_test_modules"));
-        assertEquals("[]", IndexReader.getMetadata(jdbi)
+        assertEquals("[]", jdbi.withHandle(repositoryHandle5 -> new IndexRepository(repositoryHandle5).getMetadata())
                 .get("missing_test_output_modules"));
 
         SingleProjectScope scope = new SingleProjectScope();
@@ -106,13 +111,13 @@ class MavenModuleLifecycleTest {
         Path database = ProjectIndexStore.findBestAvailableDb(project);
         assertTrue(database != null && Files.isRegularFile(database));
         assertEquals(expected,
-                IndexReader.findClassByName(QuillDatabase.open(database), className).isPresent());
+                QuillDatabase.open(database).withHandle(repositoryHandle6 -> new SymbolRepository(repositoryHandle6).findClassByName(className)).isPresent());
     }
 
     private void assertMetadata(String key, String expected) {
         Path database = ProjectIndexStore.findBestAvailableDb(project);
         assertEquals(expected,
-                IndexReader.getMetadata(QuillDatabase.open(database)).get(key));
+                QuillDatabase.open(database).withHandle(repositoryHandle7 -> new IndexRepository(repositoryHandle7).getMetadata()).get(key));
     }
 
     private void writeReactor(String... modules) throws Exception {

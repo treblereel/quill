@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,9 +50,8 @@ class ExternalSymbolQueriesTest {
 
     @Test
     void searchesResolvedDependencyJarClasses() throws Exception {
-        var result = JSON.readTree(new ExternalSymbolQueries()
-                .search(jdbi, temp, "Fixture", "class", null, "fixture",
-                        "contains", false, 20, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .search(readScope, temp, "Fixture", "class", null, "fixture", "contains", false, 20, 0)));
 
         assertEquals(1, result.path("total").asInt());
         assertTrue(result.path("symbols").get(0).path("class_name").asText()
@@ -60,9 +61,8 @@ class ExternalSymbolQueriesTest {
 
     @Test
     void searchesMembersWithinAnExplicitExternalClass() throws Exception {
-        var result = JSON.readTree(new ExternalSymbolQueries()
-                .search(jdbi, temp, "greet", "method", "Fixture", null,
-                        "exact", false, 20, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .search(readScope, temp, "greet", "method", "Fixture", null, "exact", false, 20, 0)));
 
         assertEquals(1, result.path("total").asInt());
         assertEquals("method", result.path("symbols").get(0).path("kind").asText());
@@ -72,9 +72,8 @@ class ExternalSymbolQueriesTest {
 
     @Test
     void rejectsUnboundedMemberSearch() throws Exception {
-        var result = JSON.readTree(new ExternalSymbolQueries()
-                .search(jdbi, temp, "greet", "method", null, null,
-                        "contains", false, 20, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .search(readScope, temp, "greet", "method", null, null, "contains", false, 20, 0)));
 
         assertTrue(result.path("error").asText().contains("requires class_name"));
     }
@@ -83,9 +82,7 @@ class ExternalSymbolQueriesTest {
     void exactClassNameDoesNotInspectNestedClasses() throws Exception {
         appendJar("2.0", Fixture.Inner.class);
 
-        var result = JSON.readTree(new ExternalSymbolQueries().search(jdbi, temp,
-                "nestedOnly", "method", Fixture.class.getName(), null,
-                "contains", false, 20, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries().search(readScope, temp, "nestedOnly", "method", Fixture.class.getName(), null, "contains", false, 20, 0)));
 
         assertEquals(0, result.path("total").asInt());
         assertEquals(1, result.path("discovery").path("classes_inspected").asInt());
@@ -95,9 +92,8 @@ class ExternalSymbolQueriesTest {
     void groupsTheSameClassAcrossDependencyVersions() throws Exception {
         appendJar("2.0", Fixture.class);
 
-        var result = JSON.readTree(new ExternalSymbolQueries()
-                .search(jdbi, temp, "Fixture", "class", null, "fixture",
-                        "contains", true, 20, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .search(readScope, temp, "Fixture", "class", null, "fixture", "contains", true, 20, 0)));
 
         assertEquals(1, result.path("total").asInt());
         assertEquals(2, result.path("symbols").get(0).path("version_count").asInt());
@@ -106,8 +102,7 @@ class ExternalSymbolQueriesTest {
 
     @Test
     void compactClassSearchOmitsJarPaths() throws Exception {
-        var result = JSON.readTree(new ExternalSymbolQueries().search(jdbi, temp,
-                "Fixture", "class", null, null, "exact", false, 20, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries().search(readScope, temp, "Fixture", "class", null, null, "exact", false, 20, 0)));
 
         var symbol = result.path("symbols").get(0);
         assertEquals("exact", result.path("match_mode").asText());
@@ -118,8 +113,7 @@ class ExternalSymbolQueriesTest {
 
     @Test
     void validatesMatchMode() throws Exception {
-        var result = JSON.readTree(new ExternalSymbolQueries().search(jdbi, temp,
-                "Fixture", "class", null, null, "fuzzy", false, 20, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries().search(readScope, temp, "Fixture", "class", null, null, "fuzzy", false, 20, 0)));
 
         assertTrue(result.path("error").asText().contains("match_mode"));
     }
@@ -128,8 +122,8 @@ class ExternalSymbolQueriesTest {
     void shortNameAmbiguityReturnsCandidatesInsteadOfChoosingArbitrarily() throws Exception {
         appendJar("2.0", Other.Fixture.class);
 
-        var result = JSON.readTree(new ExternalSymbolQueries()
-                .details(jdbi, temp, "Fixture", 20, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "Fixture", 20, 0)));
 
         assertTrue(result.path("error").asText().contains("ambiguous"));
         assertEquals(2, result.path("candidates").size());
@@ -137,8 +131,8 @@ class ExternalSymbolQueriesTest {
 
     @Test
     void readsMembersOnlyForSelectedExternalClass() throws Exception {
-        var result = JSON.readTree(new ExternalSymbolQueries()
-                .details(jdbi, temp, "Fixture", 20, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "Fixture", 20, 0)));
 
         assertTrue(result.path("class_name").asText().endsWith("$Fixture"));
         assertTrue(result.path("members").toString().contains("greet"));

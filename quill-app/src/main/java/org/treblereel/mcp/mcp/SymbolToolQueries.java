@@ -12,8 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassMemberRecord;
@@ -28,18 +27,18 @@ final class SymbolToolQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> MEMBER_KINDS = Set.of("FIELD", "CONSTRUCTOR", "METHOD");
 
-    String getSymbolDetails(Jdbi jdbi, String target, boolean includeMembers,
+    String getSymbolDetails(ReadQueryContext reader, String target, boolean includeMembers,
             String memberKind, int memberLimit, int memberOffset) {
         String normalizedKind = normalizeMemberKind(memberKind);
         if (normalizedKind != null && !MEMBER_KINDS.contains(normalizedKind)) {
             return errorResponse("INVALID_ARGUMENT",
                     "Invalid member_kind: expected field, constructor, or method");
         }
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
+        if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord cls = lookup.cls();
         List<KotlinDeclarationRecord> kotlinDeclarations =
-                IndexReader.findKotlinDeclarations(jdbi, cls.id());
+                reader.symbols.findKotlinDeclarations(cls.id());
 
         ObjectNode root = JSON.createObjectNode();
         root.put("class", cls.className());
@@ -54,11 +53,11 @@ final class SymbolToolQueries {
         SymbolContract.appendClass(root, cls, kotlinDeclarations);
         if (!kotlinDeclarations.isEmpty()) {
             var properties = root.putArray("properties");
-            KotlinProperties.list(jdbi, cls).forEach(property -> property.append(properties.addObject()));
+            KotlinProperties.list(reader, cls).forEach(property -> property.append(properties.addObject()));
         }
         appendContext(root, cls);
 
-        List<ClassAnnotationRecord> annotations = IndexReader.findClassAnnotations(jdbi, cls.id());
+        List<ClassAnnotationRecord> annotations = reader.symbols.findClassAnnotations(cls.id());
         root.set("annotations", JSON.valueToTree(annotations.stream()
                 .filter(ClassAnnotationRecord::direct)
                 .map(ClassAnnotationRecord::annotationName).distinct().sorted().toList()));
@@ -68,26 +67,25 @@ final class SymbolToolQueries {
         appendKotlinDeclarations(root, kotlinDeclarations);
 
         ObjectNode dependencyMetrics = root.putObject("dependency_metrics");
-        dependencyMetrics.put("fan_in", IndexReader.countDependents(jdbi, cls.id()));
+        dependencyMetrics.put("fan_in", reader.usages.countDependents(cls.id()));
         dependencyMetrics.put("incoming_occurrences",
-                IndexReader.countDependencyEdges(jdbi, cls.id(), true));
-        dependencyMetrics.put("fan_out", IndexReader.countDependencies(jdbi, cls.id()));
+                reader.usages.countDependencyEdges(cls.id(), true));
+        dependencyMetrics.put("fan_out", reader.usages.countDependencies(cls.id()));
         dependencyMetrics.put("outgoing_occurrences",
-                IndexReader.countDependencyEdges(jdbi, cls.id(), false));
+                reader.usages.countDependencyEdges(cls.id(), false));
 
-        IndexReader.findBeanByClassId(jdbi, cls.id())
+        reader.beans.findBeanByClassId(cls.id())
                 .ifPresent(bean -> appendBean(root.putObject("bean"), bean));
-        appendImplementations(root, cls, IndexReader.findAllClasses(jdbi));
-        appendExternalDependencies(root, IndexReader.findExternalDeps(jdbi, cls.id()));
-        appendOccurrences(root, IndexReader.findClassOccurrencesByClassIds(
-                jdbi, List.of(cls.id())).get(cls.id()));
+        appendImplementations(root, cls, reader.symbols.findAllClasses());
+        appendExternalDependencies(root, reader.usages.findExternalDeps(cls.id()));
+        appendOccurrences(root, reader.index.findClassOccurrencesByClassIds(List.of(cls.id())).get(cls.id()));
 
         if (!includeMembers) {
             root.put("members_included", false);
-            appendMeta(root, jdbi, cls.sourceTokens());
+            appendMeta(root, reader, cls.sourceTokens());
             return root.toString();
         }
-        List<ClassMemberRecord> members = IndexReader.findClassMembers(jdbi, cls.id()).stream()
+        List<ClassMemberRecord> members = reader.symbols.findClassMembers(cls.id()).stream()
                 .filter(member -> normalizedKind == null || normalizedKind.equals(member.kind()))
                 .toList();
         int from = Math.min(memberOffset, members.size());
@@ -121,7 +119,7 @@ final class SymbolToolQueries {
             });
         }
         appendPage(root, page.size(), members.size(), memberLimit, memberOffset);
-        appendMeta(root, jdbi, cls.sourceTokens());
+        appendMeta(root, reader, cls.sourceTokens());
         return root.toString();
     }
 

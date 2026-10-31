@@ -15,6 +15,7 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import org.jboss.jandex.CompositeIndex;
@@ -70,7 +71,7 @@ final class ApplicationIndexCache {
         List<List<ClassFileSnapshot.Entry>> result = new ArrayList<>(SHARDS);
         for (int i = 0; i < SHARDS; i++) result.add(new ArrayList<>());
         snapshot.entries().stream()
-                .sorted((left, right) -> key(left).compareTo(key(right)))
+                .sorted(Comparator.comparing(ApplicationIndexCache::key))
                 .forEach(entry -> result.get(Math.floorMod(relativePath(entry).hashCode(), SHARDS))
                         .add(entry));
         return result;

@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -24,8 +26,7 @@ class PositionSymbolQueriesTest {
         Files.writeString(source, "val value = 1\n");
         Jdbi jdbi = QuillDatabase.create(temp.resolve("error-index.db"));
 
-        var result = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
-                jdbi, temp, "Empty.kt", 2, 1));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, temp, "Empty.kt", 2, 1)));
 
         assertFalse(result.has("error"));
         assertEquals("INVALID_POSITION", result.path("error_code").asText());
@@ -65,8 +66,7 @@ class PositionSymbolQueriesTest {
                     """).bind("class", cls).execute();
         });
 
-        var result = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
-                jdbi, temp, "src/main/java/acme/OrderService.java", 3, 9));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, temp, "src/main/java/acme/OrderService.java", 3, 9)));
 
         assertEquals("submit", result.path("identifier").asText());
         assertEquals("resolved", result.path("resolution").asText());
@@ -103,8 +103,7 @@ class PositionSymbolQueriesTest {
                     """).bind("id", task).execute();
         });
 
-        var result = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
-                jdbi, temp, "src/main/java/acme/Factory.java", 3, 34));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, temp, "src/main/java/acme/Factory.java", 3, 34)));
 
         assertEquals("constructor_call", result.path("context").asText());
         assertEquals(2, result.path("argument_count").asInt());
@@ -150,8 +149,7 @@ class PositionSymbolQueriesTest {
                     """).bind("class", cls).execute();
         });
 
-        var result = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
-                jdbi, temp, "src/main/kotlin/acme/Orders.kt", 2, 7));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, temp, "src/main/kotlin/acme/Orders.kt", 2, 7)));
 
         assertEquals("submitOrder", result.path("identifier").asText());
         assertEquals("resolved", result.path("resolution").asText());
@@ -218,15 +216,13 @@ class PositionSymbolQueriesTest {
                     """).bind("owner", facade).execute();
         });
 
-        var qualified = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
-                jdbi, temp, relative, 5, 18));
+        var qualified = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, temp, relative, 5, 18)));
         assertEquals("lexical_fallback", qualified.path("resolution_basis").asText());
         assertEquals("resolved", qualified.path("resolution").asText());
         assertEquals("acme.helpers.MatchUtilsKt",
                 qualified.path("selected").path("class_name").asText());
 
-        var receiver = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(
-                jdbi, temp, relative, 6, 14));
+        var receiver = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, temp, relative, 6, 14)));
         assertEquals("resolved", receiver.path("resolution").asText());
         assertEquals("acme.Search", receiver.path("selected").path("class_name").asText());
     }

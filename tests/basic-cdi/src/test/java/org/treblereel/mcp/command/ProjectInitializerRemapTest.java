@@ -1,5 +1,9 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectInitializer;
+
+import org.treblereel.mcp.db.IndexFixture;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
@@ -176,10 +180,12 @@ class ProjectInitializerRemapTest {
         assertTrue(persisted.dependencies().isEmpty());
 
         var jdbi = QuillDatabase.create(tempDir.resolve("index.db"));
-        IndexWriter.write(jdbi,
-                List.of(new ClassRecord(0, "org.acme.OrderService", "CLASS", null,
-                        List.of(), null, 0, true, 0)),
-                persisted.beans(), persisted.injectionPoints(), persisted.dependencies(), Map.of());
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(List.of(new ClassRecord(0, "org.acme.OrderService", "CLASS", null,
+                        List.of(), null, 0, true, 0)))
+                .beans(persisted.beans())
+                .injectionPoints(persisted.injectionPoints())
+                .dependencies(persisted.dependencies()).snapshot());
     }
 
     @Test

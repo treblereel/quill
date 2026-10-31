@@ -13,14 +13,16 @@ import java.util.concurrent.*;
 import java.util.function.Predicate;
 import org.slf4j.helpers.NOPLogger;
 
-/** Event subscriptions only; the coordinator owns debounce and the polling fallback. */
+/** Event subscriptions only; the coordinator owns debounce and recovery. */
 final class KotlinDirectoryWatcher implements AutoCloseable {
     interface Factory {
-        DirectoryWatcher create(List<Path> roots, DirectoryChangeListener listener, FileTreeVisitor visitor) throws IOException;
+        DirectoryWatcher create(List<Path> roots, DirectoryChangeListener listener, FileTreeVisitor visitor,
+                java.util.function.Consumer<Runnable> deliveryBarrier) throws IOException;
     }
     static final Factory DEFAULT = KotlinDirectoryWatcher::create;
     private final Factory factory;
-    private final Runnable changed, unavailable;
+    private final java.util.function.Consumer<Path> changed;
+    private final Runnable unavailable;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(task -> {
         var thread = new Thread(task, "quill-k2-directory-events"); thread.setDaemon(true); return thread;
     });
@@ -32,19 +34,31 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
     static final long HEALTH_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(2);
     static final long INITIAL_RETRY_NANOS = TimeUnit.SECONDS.toNanos(1);
     private static final long MAX_RETRY_NANOS = TimeUnit.SECONDS.toNanos(30);
-    private volatile Path healthDirectory, healthFile;
+    private volatile Path healthDirectory, healthFile, deliveryFile;
+    private long deliverySequence;
     private volatile boolean healthPending;
     private volatile long eventRevision;
+    private volatile CompletableFuture<Void> delivery;
     private long nextProbe, probeDeadline, retryAfter;
     private volatile long retryDelay = INITIAL_RETRY_NANOS;
     private final java.util.function.LongSupplier clock;
     private volatile DirectoryWatcher subscription;
+    private Runnable nativeBarrier = () -> {};
 
     KotlinDirectoryWatcher(Factory factory, Runnable changed, Runnable unavailable) {
         this(factory, changed, unavailable, System::nanoTime);
     }
 
     KotlinDirectoryWatcher(Factory factory, Runnable changed, Runnable unavailable, java.util.function.LongSupplier clock) {
+        this(factory, path -> changed.run(), unavailable, clock);
+    }
+
+    KotlinDirectoryWatcher(Factory factory, java.util.function.Consumer<Path> changed, Runnable unavailable) {
+        this(factory, changed, unavailable, System::nanoTime);
+    }
+
+    private KotlinDirectoryWatcher(Factory factory, java.util.function.Consumer<Path> changed, Runnable unavailable,
+            java.util.function.LongSupplier clock) {
         this.factory = factory; this.changed = changed; this.unavailable = unavailable; this.clock = clock;
     }
 
@@ -64,14 +78,24 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
                     if (closed || failed || generation != owner) return;
                     if (event.path() != null && healthDirectory != null
                             && event.path().toAbsolutePath().normalize().startsWith(healthDirectory)) {
-                        if (event.path().toAbsolutePath().normalize().equals(healthFile)) {
-                            healthPending = false; retryDelay = INITIAL_RETRY_NANOS;
+                        CompletableFuture<Void> pending = null;
+                        synchronized (KotlinDirectoryWatcher.this) {
+                            Path path = event.path().toAbsolutePath().normalize();
+                            if (path.equals(healthFile) || path.equals(deliveryFile)) {
+                                healthPending = false; retryDelay = INITIAL_RETRY_NANOS;
+                            }
+                            if (path.equals(deliveryFile)) {
+                                pending = delivery; delivery = null; clearDeliveryFile();
+                            }
                         }
+                        if (pending != null) pending.complete(null);
                         return;
                     }
                     if (event.eventType() == DirectoryChangeEvent.EventType.OVERFLOW
                             || event.path() != null && relevant.test(event.path().toAbsolutePath().normalize())) {
-                        eventRevision++; changed.run();
+                        eventRevision++;
+                        changed.accept(event.eventType() == DirectoryChangeEvent.EventType.OVERFLOW ? null
+                                : event.path().toAbsolutePath().normalize());
                     }
                 }
                 @Override public void onException(Exception error) { throw new IllegalStateException("Input watcher failed", error); }
@@ -83,17 +107,36 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
             }
             var paths = new ArrayList<>(minimal);
             if (paths.stream().noneMatch(healthDirectory::startsWith)) paths.add(healthDirectory);
-            subscription = factory.create(paths, listener, visitor());
+            subscription = factory.create(paths, listener, visitor(), barrier -> nativeBarrier = barrier);
             nextProbe = clock.getAsLong() + HEALTH_INTERVAL_NANOS;
             subscription.watchAsync(executor).whenComplete((ignored, error) -> fail(owner));
         } catch (Exception | LinkageError error) { fail(owner); }
         return !failed;
     }
 
+    /** Flushes ordinary queued events before a correctness-sensitive prepared read. */
+    synchronized CompletableFuture<Void> awaitDelivery() {
+        if (!active()) return CompletableFuture.failedFuture(new IOException("Input watcher unavailable"));
+        if (delivery != null) return delivery.thenCompose(ignored -> awaitDelivery());
+        var pending = new CompletableFuture<Void>();
+        delivery = pending;
+        try {
+            // A heartbeat on a separate FSEvents stream cannot order the project streams.
+            nativeBarrier.run();
+            deliveryFile = healthDirectory.resolve("read-" + ++deliverySequence);
+            Files.writeString(deliveryFile, "barrier");
+        } catch (IOException | RuntimeException | LinkageError failure) {
+            delivery = null; clearDeliveryFile(); pending.completeExceptionally(failure);
+        }
+        return pending;
+    }
+
     private void fail(long owner) {
         synchronized (this) {
             if (closed || failed || generation != owner) return;
             failed = true; healthPending = false; closeSubscription();
+            var pending = delivery; delivery = null; clearDeliveryFile();
+            if (pending != null) pending.completeExceptionally(new IOException("Input watcher unavailable"));
             retryAfter = clock.getAsLong() + retryDelay;
             retryDelay = Math.min(MAX_RETRY_NANOS, retryDelay * 2);
         }
@@ -118,7 +161,7 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
                 healthPending = true; probeDeadline = now + HEALTH_TIMEOUT_NANOS;
                 nextProbe = now + HEALTH_INTERVAL_NANOS;
                 try { Files.writeString(healthFile, Long.toString(now)); return; }
-                catch (IOException | SecurityException failure) { /* Activate fallback below. */ }
+                catch (IOException | SecurityException failure) { /* Mark input observation unavailable below. */ }
             } else if (now < probeDeadline) return;
         }
         fail(owner);
@@ -127,6 +170,11 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
     void deliveryMissing() { fail(generation); }
     long eventRevision() { return eventRevision; }
     Path healthFile() { return healthFile; }
+    Path deliveryFile() { return deliveryFile; }
+    private void clearDeliveryFile() {
+        Path path = deliveryFile; deliveryFile = null;
+        if (path != null) try { Files.deleteIfExists(path); } catch (IOException ignored) { }
+    }
     private boolean included(Path path) {
         return healthDirectory != null && path.startsWith(healthDirectory) || relevant.test(path);
     }
@@ -147,7 +195,8 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
         });
     }
 
-    private static DirectoryWatcher create(List<Path> roots, DirectoryChangeListener listener, FileTreeVisitor visitor) throws IOException {
+    private static DirectoryWatcher create(List<Path> roots, DirectoryChangeListener listener, FileTreeVisitor visitor,
+            java.util.function.Consumer<Runnable> deliveryBarrier) throws IOException {
         WatchService service;
         if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac")) {
             service = new QuillMacOSWatchService(new MacOSXListeningWatchService.Config() {
@@ -156,6 +205,7 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
                 @Override public FileTreeVisitor fileTreeVisitor() { return visitor; }
             });
         } else service = FileSystems.getDefault().newWatchService();
+        deliveryBarrier.accept(service instanceof QuillMacOSWatchService mac ? mac::flushPendingEvents : () -> {});
         try {
             return DirectoryWatcher.builder().paths(roots).listener(listener).watchService(service)
                     .fileTreeVisitor(visitor).fileHashing(false).logger(NOPLogger.NOP_LOGGER).build();
@@ -168,16 +218,18 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
     boolean active() { return !closed && !failed && subscription != null; }
     String backend() {
         return active() ? System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac")
-                ? "directory_watcher_fsevents" : "directory_watcher_watch_service" : "metadata_poll_100ms";
+                ? "directory_watcher_fsevents" : "directory_watcher_watch_service" : "unavailable";
     }
     private void closeSubscription() {
         if (subscription == null) return;
         try { subscription.close(); } catch (IOException | RuntimeException | LinkageError ignored) { }
-        subscription = null;
+        subscription = null; nativeBarrier = () -> {};
     }
     @Override public synchronized void close() {
         if (closed) return;
         closed = true; generation++; closeSubscription(); executor.shutdownNow();
+        var pending = delivery; delivery = null; clearDeliveryFile();
+        if (pending != null) pending.completeExceptionally(new IOException("Input watcher closed"));
         if (healthFile != null) try { Files.deleteIfExists(healthFile); } catch (IOException ignored) { }
         if (healthDirectory != null) try { Files.deleteIfExists(healthDirectory); } catch (IOException ignored) { }
     }

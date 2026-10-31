@@ -16,7 +16,16 @@ public final class SourceFileHashes {
     public static Map<String,String> captureJava(Path project,List<Path> roots) {return captureJava(project,roots,false);}
     /** Live enumeration with guarded content reuse; unsupported volumes retain full SHA checks. */
     public static Map<String,String> captureJavaCached(Path project,List<Path> roots) {return captureJava(project,roots,true);}
+    public static Map<String,String> captureJvmCached(Path project, List<Path> roots) {
+        return capture(project, roots, true, true, false);
+    }
+    public static Map<String,String> captureInputsCached(Path project, List<Path> roots) {
+        return capture(project, roots, true, true, true);
+    }
     private static Map<String, String> captureJava(Path project, List<Path> roots,boolean reuseContent) {
+        return capture(project, roots, reuseContent, false, false);
+    }
+    private static Map<String, String> capture(Path project, List<Path> roots, boolean reuseContent, boolean kotlin, boolean allFiles) {
         Path root = project.toAbsolutePath().normalize();
         Map<String, String> hashes = new TreeMap<>();
         try {
@@ -26,7 +35,7 @@ public final class SourceFileHashes {
                 if (!Files.isDirectory(sourceRoot)) continue;
                 Files.walkFileTree(sourceRoot,new java.nio.file.SimpleFileVisitor<Path>() {
                     @Override public java.nio.file.FileVisitResult visitFile(Path file,java.nio.file.attribute.BasicFileAttributes attributes) throws IOException {
-                        if(!file.getFileName().toString().endsWith(".java") || (!attributes.isRegularFile() && !Files.isRegularFile(file)))
+                        if(!(allFiles || file.getFileName().toString().endsWith(".java") || kotlin && file.getFileName().toString().endsWith(".kt")) || (!attributes.isRegularFile() && !Files.isRegularFile(file)))
                             return java.nio.file.FileVisitResult.CONTINUE;
                         Path normalized=file.toAbsolutePath().normalize();
                         if(!normalized.startsWith(root))return java.nio.file.FileVisitResult.CONTINUE;
@@ -45,7 +54,7 @@ public final class SourceFileHashes {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             try (var input = Files.newInputStream(file);
                  var sink = new java.security.DigestOutputStream(java.io.OutputStream.nullOutputStream(), digest)) {
-                org.treblereel.mcp.db.QueryMetrics.sourceRead(input.transferTo(sink));
+                org.treblereel.mcp.diagnostics.QueryMetrics.sourceRead(input.transferTo(sink));
             }
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }

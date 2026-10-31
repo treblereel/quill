@@ -15,8 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 
@@ -26,7 +25,7 @@ final class ModuleGraphQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> DIRECTIONS = Set.of("inbound", "outbound", "both");
 
-    String getModuleGraph(Jdbi jdbi, String module, String direction,
+    String getModuleGraph(ReadQueryContext reader, String module, String direction,
             int depth, int limit, int offset) {
         String normalizedDirection = direction == null
                 ? "both" : direction.strip().toLowerCase(Locale.ROOT);
@@ -34,15 +33,15 @@ final class ModuleGraphQueries {
             return errorResponse("Invalid direction: expected inbound, outbound, or both");
         }
 
-        List<ModuleClasspathRecord> classpath = IndexReader.findAllModuleClasspath(jdbi);
-        List<ClassRecord> classes = IndexReader.findAllClasses(jdbi);
+        List<ModuleClasspathRecord> classpath = reader.index.findAllModuleClasspath();
+        List<ClassRecord> classes = reader.symbols.findAllClasses();
         Set<String> available = availableModules(classpath, classes);
         String selected = resolveModule(module, available);
         if (module != null && selected == null) {
             ObjectNode error = JSON.createObjectNode();
             error.put("error", "Module not found: " + module);
             error.set("available_modules", JSON.valueToTree(available));
-            appendMeta(error, jdbi, 0);
+            appendMeta(error, reader, 0);
             return error.toString();
         }
 
@@ -65,7 +64,7 @@ final class ModuleGraphQueries {
         root.put("transitive_relations", relations.stream()
                 .filter(relation -> relation.distance() > 1).count());
 
-        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        Map<String, String> metadata = reader.index.getMetadata();
         ObjectNode discovery = root.putObject("discovery");
         discovery.put("scope", metadata.getOrDefault("module_discovery_scope", "unknown"));
         discovery.put("complete", Boolean.parseBoolean(
@@ -104,7 +103,7 @@ final class ModuleGraphQueries {
                 .map(summaries::get).filter(summary -> summary != null)
                 .mapToInt(ModuleSummary::sourceTokens).sum();
         appendPage(root, page.size(), relations.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 

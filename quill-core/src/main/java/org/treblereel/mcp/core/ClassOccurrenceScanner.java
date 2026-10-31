@@ -4,14 +4,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 
-/** Preserves every physical occurrence even when Jandex collapses duplicate FQCNs. */
+/**
+ * Preserves every physical occurrence even when Jandex collapses duplicate FQCNs.
+ */
 public final class ClassOccurrenceScanner {
 
-    private ClassOccurrenceScanner() {}
+    private ClassOccurrenceScanner() {
+    }
 
     public static List<ClassOccurrenceRecord> scan(
             Path projectRoot, ClassFileSnapshot snapshot, Map<Path, Path> directoryOwners,
@@ -47,7 +52,7 @@ public final class ClassOccurrenceScanner {
                 .collect(java.util.stream.Collectors.toMap(
                         entry -> entry.getKey().toAbsolutePath().normalize(),
                         Map.Entry::getValue));
-        Map<Path, Map<String, List<Path>>> sourceInventories = new java.util.HashMap<>();
+        Map<Path, Map<String, List<Path>>> sourceInventories = new HashMap<>();
         List<ClassOccurrenceRecord> result = new ArrayList<>();
         for (ClassFileSnapshot.Entry entry : snapshot.entries()) {
             Path output = entry.classesDirectory().toAbsolutePath().normalize();

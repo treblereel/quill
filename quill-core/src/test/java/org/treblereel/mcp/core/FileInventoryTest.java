@@ -116,6 +116,45 @@ class FileInventoryTest {
         assertNull(result.classes().getFirst().sourceSet());
     }
 
+    @Test
+    void prefersCurrentSourceAfterModuleMove() throws Exception {
+        String oldPath = "cbr-jpa/src/integration-test/java/example/MovedTest.java";
+        String currentPath = "cbr-recovery-jpa/src/integration-test/java/example/MovedTest.java";
+        Path current = tempDir.resolve(currentPath);
+        Files.createDirectories(current.getParent());
+        Files.writeString(current, "package example; class MovedTest {}\n");
+        var history = List.of(new GitFileStats(1, oldPath, null, 2,
+                "2026-01-02T00:00:00Z", "Test", "2026-01-01T00:00:00Z", 1));
+
+        for (String source : java.util.Arrays.asList(null, oldPath, currentPath)) {
+            var result = FileInventory.build(tempDir,
+                    List.of(tempDir.resolve("cbr-jpa"), tempDir.resolve("cbr-recovery-jpa")),
+                    List.of(current.getParent().getParent()),
+                    List.of(cls(1, "example.MovedTest", source)), history,
+                    WorktreeInspector.Snapshot.empty());
+            var selected = result.classes().getFirst();
+            assertEquals(currentPath, selected.sourceFile(), "original source: " + source);
+            assertEquals("current", selected.lifecycle());
+            assertEquals("cbr-recovery-jpa", selected.module());
+            assertEquals("integration-test", selected.sourceSet());
+            assertEquals("historical", result.files().stream()
+                    .filter(file -> file.projectPath().equals(oldPath))
+                    .findFirst().orElseThrow().lifecycle());
+        }
+    }
+
+    @Test
+    void retainsHistoricalSourceWhenNoCurrentSourceExists() {
+        String path = "old/src/test/java/example/Removed.java";
+        var history = List.of(new GitFileStats(1, path, null, 2,
+                "2026-01-02T00:00:00Z", "Test", "2026-01-01T00:00:00Z", 1));
+        var result = FileInventory.build(tempDir, List.of(tempDir.resolve("old")), List.of(),
+                List.of(cls(1, "example.Removed", null)), history,
+                WorktreeInspector.Snapshot.empty());
+        assertEquals(path, result.classes().getFirst().sourceFile());
+        assertEquals("historical", result.classes().getFirst().lifecycle());
+    }
+
     private static ClassRecord cls(int id, String name, String source) {
         return new ClassRecord(id, name, "CLASS", "java.lang.Object", List.of(),
                 source, 1, false, 10);

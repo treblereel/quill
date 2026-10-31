@@ -1,5 +1,12 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.BuildIntegrationInstaller;
+import org.treblereel.mcp.index.ClaudeSettingsInstaller;
+import org.treblereel.mcp.index.CodexConfigInstaller;
+import org.treblereel.mcp.index.ProjectConfiguration;
+import org.treblereel.mcp.index.ProjectInitializer;
+import org.treblereel.mcp.index.ProjectUpdater;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -96,7 +103,7 @@ public class DoctorCommand implements Callable<Integer> {
                                 + ": " + String.join(", ", diagnostics.staleReasons()),
                         "Compile structural changes, then run an MCP request or `quill update`"));
             }
-            if (UpdateCommand.hasProjectChanges(normalized, diagnostics.database())) {
+            if (ProjectUpdater.hasProjectChanges(normalized, diagnostics.database())) {
                 checks.add(Check.warning("project_fingerprint",
                         "Compiled outputs or project inputs differ from the active index",
                         "After a successful build, run an MCP request or `quill update`"));

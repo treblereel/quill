@@ -17,9 +17,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.IndexReader.MethodCallView;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.UsageRepository;
+import org.treblereel.mcp.db.UsageRepository.MethodCallView;
 import org.treblereel.mcp.model.ClassRecord;
 
 /** Presents indexed Spring MVC and JAX-RS routes with direct call evidence. */
@@ -29,7 +29,7 @@ final class FrameworkEndpointQueries {
     private static final Set<String> FRAMEWORKS = Set.of("spring", "jax-rs");
     private static final int CALL_DETAIL_LIMIT = 20;
 
-    String findFrameworkEndpoints(Jdbi jdbi, String framework, String httpMethod,
+    String findFrameworkEndpoints(ReadQueryContext reader, String framework, String httpMethod,
             String pathPrefix, String module, boolean includeGenerated,
             boolean includeTests, int limit, int offset) {
         String normalizedFramework = normalize(framework);
@@ -40,17 +40,17 @@ final class FrameworkEndpointQueries {
                 ? null : httpMethod.strip().toUpperCase(Locale.ROOT);
         String normalizedPrefix = pathPrefix == null || pathPrefix.isBlank()
                 ? null : normalizePath(pathPrefix);
-        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        Map<String, String> metadata = reader.index.getMetadata();
         String detail = metadata.get("framework_endpoints_detail");
         if (detail == null) {
             ObjectNode error = JSON.createObjectNode();
             error.put("error", "Framework endpoint metadata is unavailable; rebuild the Quill index");
-            appendMeta(error, jdbi, 0);
+            appendMeta(error, reader, 0);
             return error.toString();
         }
 
         Map<Integer, ClassRecord> classes = new HashMap<>();
-        IndexReader.findAllClasses(jdbi).forEach(cls -> classes.put(cls.id(), cls));
+        reader.symbols.findAllClasses().forEach(cls -> classes.put(cls.id(), cls));
         List<Endpoint> endpoints;
         try {
             endpoints = parse(detail).stream()
@@ -126,8 +126,7 @@ final class FrameworkEndpointQueries {
                 if (cls.sourceSet() != null) node.put("source_set", cls.sourceSet());
                 if (countedClasses.add(cls.id())) naiveTokens += cls.sourceTokens();
             }
-            List<MethodCallView> calls = callsIndexed ? IndexReader.findAdjacentMethodCalls(jdbi,
-                    endpoint.declaringClassId(), endpoint.methodName(), endpoint.descriptor(), "outbound") : List.of();
+            List<MethodCallView> calls = callsIndexed ? reader.usages.findAdjacentMethodCalls(endpoint.declaringClassId(), endpoint.methodName(), endpoint.descriptor(), "outbound", reader.methods().symbolicOwners(endpoint.declaringClassId(), endpoint.methodName(), endpoint.descriptor(), "outbound")) : List.of();
             if (callsIndexed) node.put("direct_project_call_count", calls.size());
             else node.putNull("direct_project_call_count");
             node.put("calls_truncated", calls.size() > CALL_DETAIL_LIMIT);
@@ -145,7 +144,7 @@ final class FrameworkEndpointQueries {
             }
         }
         appendPage(root, page.size(), endpoints.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
@@ -210,7 +209,7 @@ final class FrameworkEndpointQueries {
         if (cls == null) return false;
         if (module != null && !module.equals(cls.module())) return false;
         if (!includeGenerated && "generated".equals(cls.origin())) return false;
-        return includeTests || !"test".equals(cls.sourceSet());
+        return includeTests || !cls.inTestSourceSet();
     }
 
     private static String normalize(String value) {

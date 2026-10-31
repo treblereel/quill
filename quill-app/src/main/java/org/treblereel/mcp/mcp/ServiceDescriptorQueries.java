@@ -9,16 +9,15 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 
 /** Returns the ordered provider declarations captured from META-INF/services. */
 final class ServiceDescriptorQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String inspect(Jdbi jdbi, String serviceFilter) {
-        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+    String inspect(ReadQueryContext reader, String serviceFilter) {
+        Map<String, String> metadata = reader.index.getMetadata();
         String detail = metadata.get("service_registrations_detail");
         if (detail == null) {
             return errorResponse("Service descriptor details are unavailable; re-run 'quill init'");
@@ -61,7 +60,7 @@ final class ServiceDescriptorQueries {
                     : "Quill preserves provider order but does not infer ordering semantics for this service type.");
         }
         root.put("showing", result.size());
-        appendMeta(root, jdbi, 0);
+        appendMeta(root, reader, 0);
         return root.toString();
     }
 

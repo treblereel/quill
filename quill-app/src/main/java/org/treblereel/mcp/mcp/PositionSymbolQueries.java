@@ -10,27 +10,29 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.SymbolRepository.PositionDeclaration;
+import org.treblereel.mcp.db.SymbolRepository.EnclosingClass;
 import org.treblereel.mcp.core.KotlinSourceText;
 import org.treblereel.mcp.model.KotlinValueParameter;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
 
 /** Resolves the identifier under a live source position against indexed declarations. */
 final class PositionSymbolQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String getSymbolAtPosition(Jdbi jdbi, Path root, String sourcePath, int line, int column) {
+    String getSymbolAtPosition(ReadQueryContext reader, Path root, String sourcePath, int line, int column) {
         String normalized = sourcePath.strip().replace('\\', '/');
         Path file = root.resolve(normalized).normalize();
         if (!file.startsWith(root.toAbsolutePath().normalize())) {
-            return error(jdbi, "INVALID_SOURCE_PATH", "Source path escapes the project root");
+            return error(reader, "INVALID_SOURCE_PATH", "Source path escapes the project root");
         }
         String source;
         try { source = Files.readString(file); }
-        catch (IOException failure) { return error(jdbi, "SOURCE_NOT_FOUND", "Could not read source file: " + normalized); }
+        catch (IOException failure) { return error(reader, "SOURCE_NOT_FOUND", "Could not read source file: " + normalized); }
         List<String> lines = source.lines().toList();
-        if (line < 1 || line > lines.size()) return error(jdbi, "INVALID_POSITION", "Line is outside the source file");
+        if (line < 1 || line > lines.size()) return error(reader, "INVALID_POSITION", "Line is outside the source file");
         int lineOffset = 0;
         for (int i = 0; i < line - 1; i++) {
             while (lineOffset < source.length() && source.charAt(lineOffset) != '\n' && source.charAt(lineOffset) != '\r') lineOffset++;
@@ -40,21 +42,21 @@ final class PositionSymbolQueries {
         String code = KotlinSourceText.code(source);
         String sourceLine = code.substring(lineOffset, lineOffset + lines.get(line - 1).length());
         if (column < 1 || column > sourceLine.length() + 1) {
-            return error(jdbi, "INVALID_POSITION", "Column is outside the source line");
+            return error(reader, "INVALID_POSITION", "Column is outside the source line");
         }
         Identifier located = identifierAt(sourceLine, column - 1);
         if (located == null) {
-            return error(jdbi, "SYMBOL_NOT_FOUND",
+            return error(reader, "SYMBOL_NOT_FOUND",
                     "No Java/Kotlin identifier at the requested position");
         }
         String identifier = located.value();
 
         boolean kotlin = normalized.endsWith(".kt") || normalized.endsWith(".kts");
-        var semantic = kotlin ? KotlinSemanticQueries.resolve(jdbi, root, file, lineOffset + located.start())
-                : JavaSemanticQueries.resolve(jdbi, root, file, lineOffset + located.start());
+        var semantic = kotlin ? KotlinSemanticQueries.resolve(reader, root, file, lineOffset + located.start())
+                : JavaSemanticQueries.resolve(reader, root, file, lineOffset + located.start());
         try {
-            if (!Files.readString(file).equals(source)) return error(jdbi, "SOURCE_CHANGED", "Source changed while resolving the position; retry the query");
-        } catch (IOException unavailable) { return error(jdbi, "SOURCE_CHANGED", "Source became unavailable while resolving the position"); }
+            if (!Files.readString(file).equals(source)) return error(reader, "SOURCE_CHANGED", "Source changed while resolving the position; retry the query");
+        } catch (IOException unavailable) { return error(reader, "SOURCE_CHANGED", "Source became unavailable while resolving the position"); }
         boolean compilerResolved = semantic != null && semantic.path("status").asText().equals("resolved");
         boolean compilerLocal = semantic != null && java.util.Set.of("local", "unresolved").contains(semantic.path("status").asText());
         String explicitQualified = kotlin ? qualifiedCall(sourceLine, located) : null;
@@ -67,17 +69,17 @@ final class PositionSymbolQueries {
                 lookupName = owner.substring(Math.max(owner.lastIndexOf('.'), owner.lastIndexOf('$')) + 1);
             }
         }
-        List<Candidate> candidates = declarations(jdbi, lookupName, normalized);
-        if (kotlin) candidates = sourceCallables(jdbi, logicalProperties(jdbi, candidates, lookupName));
+        List<PositionDeclaration> candidates = reader.symbols.findPositionDeclarations( lookupName, normalized);
+        if (kotlin) candidates = sourceCallables(reader, logicalProperties(reader, candidates, lookupName));
         if (compilerLocal) candidates = List.of();
         if ((imported != null || explicitQualified != null) && !compilerResolved) {
             String qualified = explicitQualified == null ? imported : explicitQualified;
             String importedMember = lookupName;
-            List<Candidate> qualifiedCandidates = candidates.stream().filter(candidate -> candidate.className().replace('$', '.').equals(qualified)
+            List<PositionDeclaration> qualifiedCandidates = candidates.stream().filter(candidate -> candidate.className().replace('$', '.').equals(qualified)
                     || (candidate.className().replace('$', '.') + "." + importedMember).equals(qualified)
                     || qualified.equals(candidate.className().substring(0,
                             candidate.className().lastIndexOf('.') + 1) + importedMember)
-                        && topLevel(jdbi, candidate.className()))
+                        && topLevel(reader, candidate.className()))
                     .toList();
             // A dotted receiver may be an expression rather than a package. Only narrow
             // explicit source qualification when indexed declarations confirm its owner.
@@ -90,7 +92,7 @@ final class PositionSymbolQueries {
                         && (!semantic.has("source_file") || candidate.sourceFile() != null
                             && sameSource(root.resolve(candidate.sourceFile()), Path.of(semantic.path("source_file").asText()))))
                 .toList();
-        List<EnclosingClass> enclosing = enclosingClasses(jdbi, normalized, line);
+        List<EnclosingClass> enclosing = reader.symbols.findEnclosingClasses( normalized, line);
         String suffix = source.substring(lineOffset + located.end()).stripLeading();
         SourceContext sourceContext = sourceContext(sourceLine, located);
         if (kotlin && (suffix.startsWith("(") || suffix.startsWith("{")
@@ -157,76 +159,22 @@ final class PositionSymbolQueries {
                 .add("Resolution uses the live identifier text and indexed declarations; local variables are not indexed")
                 .add(compilerResolved ? "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
                         : "Fallback argument-count ranking does not perform full Java or Kotlin overload type inference");
-        ToolResponseSupport.appendMeta(result, jdbi, 0, normalized, null);
+        ToolResponseSupport.appendMeta(result, reader, 0, normalized, null);
         return result.toString();
     }
 
-    private static List<Candidate> declarations(Jdbi jdbi, String identifier, String path) {
-        return jdbi.withHandle(handle -> handle.createQuery("""
-                        SELECT c.class_name, 'CLASS' AS kind, c.class_name AS member_name,
-                               NULL AS signature, NULL AS descriptor, NULL AS parameter_types,
-                               c.source_file, c.source_line,
-                               NULL AS semantic_kind, NULL AS semantic_name,
-                               0 AS is_suspend, 0 AS is_extension, 0 AS has_defaults,
-                               NULL AS value_parameters,
-                               CASE WHEN c.source_file = :path OR f.project_path = :path
-                                          OR f.repository_path = :path THEN 1 ELSE 0 END AS same_file
-                        FROM classes c LEFT JOIN files f ON f.id = c.file_id
-                        WHERE c.lifecycle = 'current'
-                          AND (c.class_name = :identifier
-                               OR c.class_name LIKE '%.' || :identifier
-                               OR c.class_name LIKE '%$' || :identifier)
-                        UNION ALL
-                        SELECT c.class_name, m.kind, m.name, m.signature, m.descriptor,
-                               m.parameter_types, c.source_file, c.source_line,
-                               kd.kind AS semantic_kind,
-                               kd.name AS semantic_name,
-                               COALESCE(kd.is_suspend, 0) AS is_suspend,
-                               COALESCE(kd.is_extension, 0) AS is_extension,
-                               COALESCE(kd.has_default_parameters, 0) AS has_defaults,
-                               kd.value_parameters,
-                               CASE WHEN c.source_file = :path OR f.project_path = :path
-                                          OR f.repository_path = :path THEN 1 ELSE 0 END AS same_file
-                        FROM class_members m JOIN classes c ON c.id = m.class_id
-                        LEFT JOIN files f ON f.id = c.file_id
-                        LEFT JOIN kotlin_declarations kd ON kd.class_id = m.class_id
-                          AND ((kd.kind = 'CONSTRUCTOR' AND m.kind = 'CONSTRUCTOR'
-                                AND kd.jvm_name = '<init>' AND kd.descriptor = m.descriptor)
-                               OR (kd.kind = 'FUNCTION' AND kd.jvm_name = m.name
-                                AND kd.descriptor = m.descriptor)
-                               OR (kd.kind = 'PROPERTY' AND kd.jvm_name = m.name
-                                   AND (kd.descriptor = '' OR kd.descriptor = m.descriptor)))
-                        WHERE c.lifecycle = 'current'
-                          AND (m.name = :identifier OR kd.name = :identifier)
-                        ORDER BY same_file DESC, class_name, kind, signature
-                        LIMIT 200
-                        """)
-                .bind("identifier", identifier).bind("path", path)
-                .map((row, context) -> new Candidate(
-                        row.getString("class_name"), row.getString("kind"),
-                        row.getString("member_name"), row.getString("signature"),
-                        row.getString("descriptor"),
-                        sourceParameterCount(row.getString("parameter_types"),
-                                row.getInt("is_suspend") == 1, row.getInt("is_extension") == 1,
-                                row.getString("value_parameters")),
-                        row.getString("source_file"), row.getInt("source_line"),
-                        row.getInt("same_file") == 1,
-                        row.getString("semantic_kind"), row.getString("semantic_name"),
-                        row.getInt("has_defaults") == 1,
-                        IndexReader.kotlinParametersFromJson(row.getString("value_parameters"))))
-                .list());
-    }
 
-    private static List<Candidate> sourceCallables(Jdbi jdbi, List<Candidate> candidates) {
+
+    private static List<PositionDeclaration> sourceCallables(ReadQueryContext reader, List<PositionDeclaration> candidates) {
         return candidates.stream().filter(candidate -> {
             if (candidate.semanticName() != null
                     || !("METHOD".equals(candidate.kind()) || "CONSTRUCTOR".equals(candidate.kind()))) return true;
-            var owners = IndexReader.findClassesByName(jdbi, candidate.className()).stream()
+            var owners = reader.symbols.findClassesByName(candidate.className()).stream()
                     .filter(owner -> java.util.Objects.equals(owner.sourceFile(), candidate.sourceFile())).toList();
             // Retain uncertain candidates, including duplicate owners with conflicting evidence.
             return owners.isEmpty() || !owners.stream().allMatch(owner -> {
                 String method = "CONSTRUCTOR".equals(candidate.kind()) ? "<init>" : candidate.memberName();
-                var target = KotlinUsageNormalizer.sourceTarget(jdbi, owner.id(), method, candidate.descriptor());
+                var target = KotlinUsageNormalizer.sourceTarget(reader, owner.id(), method, candidate.descriptor());
                 return target.isPresent() && candidates.stream().anyMatch(source -> source.semanticName() != null
                         && source.kind().equals(candidate.kind())
                         && source.className().equals(target.get().className())
@@ -262,24 +210,24 @@ final class PositionSymbolQueries {
         return (matcher.group() + located.value()).replace("`", "");
     }
 
-    private static boolean topLevel(Jdbi jdbi, String className) {
-        return org.treblereel.mcp.db.IndexReader.findClassesByName(jdbi, className).stream()
-                .anyMatch(cls -> org.treblereel.mcp.db.IndexReader.findKotlinDeclarations(jdbi, cls.id()).stream()
+    private static boolean topLevel(ReadQueryContext reader, String className) {
+        return reader.symbols.findClassesByName(className).stream()
+                .anyMatch(cls -> reader.symbols.findKotlinDeclarations(cls.id()).stream()
                         .anyMatch(value -> java.util.Set.of("FILE_FACADE", "MULTIFILE_PART", "MULTIFILE_FACADE")
                                 .contains(value.kind())));
     }
 
-    private static List<Candidate> logicalProperties(Jdbi jdbi, List<Candidate> candidates, String name) {
-        var result = new java.util.LinkedHashMap<String, Candidate>();
+    private static List<PositionDeclaration> logicalProperties(ReadQueryContext reader, List<PositionDeclaration> candidates, String name) {
+        var result = new java.util.LinkedHashMap<String, PositionDeclaration>();
         for (var candidate : candidates) {
             if (!"PROPERTY".equals(candidate.semanticKind()) || !name.equals(candidate.semanticName())) {
                 result.put(candidate.toString(), candidate); continue;
             }
-            for (var owner : org.treblereel.mcp.db.IndexReader.findClassesByName(jdbi, candidate.className())) {
+            for (var owner : reader.symbols.findClassesByName(candidate.className())) {
                 if (!java.util.Objects.equals(owner.sourceFile(), candidate.sourceFile())) continue;
-                for (var property : KotlinProperties.list(jdbi, owner)) {
+                for (var property : KotlinProperties.list(reader, owner)) {
                     if (!property.name().equals(name)) continue;
-                    result.put(property.symbolId(), new Candidate(owner.className(), "PROPERTY", name,
+                    result.put(property.symbolId(), new PositionDeclaration(owner.className(), "PROPERTY", name,
                             null, property.descriptor(), null, owner.sourceFile(), owner.sourceLine(),
                             candidate.sameFile(), "PROPERTY", name, false, null));
                 }
@@ -288,20 +236,7 @@ final class PositionSymbolQueries {
         return List.copyOf(result.values());
     }
 
-    private static List<EnclosingClass> enclosingClasses(Jdbi jdbi, String path, int line) {
-        return jdbi.withHandle(handle -> handle.createQuery("""
-                        SELECT c.class_name, c.source_line
-                        FROM classes c LEFT JOIN files f ON f.id = c.file_id
-                        WHERE c.lifecycle = 'current' AND c.source_line <= :line
-                          AND (c.source_file = :path OR f.project_path = :path
-                               OR f.repository_path = :path)
-                        ORDER BY c.source_line DESC LIMIT 10
-                        """)
-                .bind("line", line).bind("path", path)
-                .map((row, context) -> new EnclosingClass(
-                        row.getString("class_name"), row.getInt("source_line")))
-                .list());
-    }
+
 
     private static Identifier identifierAt(String line, int cursor) {
         if (line.isEmpty()) return null;
@@ -415,7 +350,7 @@ final class PositionSymbolQueries {
         return null;
     }
 
-    private static Applicability applicable(Candidate candidate, List<Argument> arguments) {
+    private static Applicability applicable(PositionDeclaration candidate, List<Argument> arguments) {
         List<KotlinValueParameter> parameters = candidate.valueParameters();
         if (parameters == null || arguments == null) return Applicability.UNKNOWN;
         boolean[] supplied = new boolean[parameters.size()];
@@ -456,7 +391,7 @@ final class PositionSymbolQueries {
     }
 
     private static RankedCandidate rank(
-            Candidate candidate, SourceContext context, String enclosingClass, boolean kotlin) {
+            PositionDeclaration candidate, SourceContext context, String enclosingClass, boolean kotlin) {
         int score = candidate.sameFile() ? 20 : 0;
         List<String> reasons = new ArrayList<>();
         if (candidate.sameFile()) reasons.add("same_file");
@@ -511,25 +446,12 @@ final class PositionSymbolQueries {
         return new RankedCandidate(candidate, score, List.copyOf(reasons));
     }
 
-    private static Integer parameterCount(String json) {
-        if (json == null) return null;
-        try {
-            var parsed = JSON.readTree(json);
-            return parsed.isArray() ? parsed.size() : null;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
 
-    private static Integer sourceParameterCount(String json, boolean suspend, boolean extension, String metadata) {
-        var parameters = IndexReader.kotlinParametersFromJson(metadata);
-        if (parameters != null) return parameters.size();
-        Integer count = parameterCount(json);
-        return count == null ? null : Math.max(0, count - (suspend ? 1 : 0) - (extension ? 1 : 0));
-    }
+
+
 
     private static void addCandidate(ObjectNode item, RankedCandidate ranked) {
-        Candidate candidate = ranked.candidate();
+        PositionDeclaration candidate = ranked.candidate();
         item.put("class_name", candidate.className());
         item.put("kind", candidate.kind());
         if (candidate.memberName() != null) item.put("member_name", candidate.memberName());
@@ -571,9 +493,9 @@ final class PositionSymbolQueries {
         catch (IOException unavailable) { return indexed.toAbsolutePath().normalize().equals(compiler.toAbsolutePath().normalize()); }
     }
 
-    private static String error(Jdbi jdbi, String code, String message) {
+    private static String error(ReadQueryContext reader, String code, String message) {
         var result = ToolResponseSupport.appendError(JSON.createObjectNode(), code, message);
-        ToolResponseSupport.appendMeta(result, jdbi, 0);
+        ToolResponseSupport.appendMeta(result, reader, 0);
         return result.toString();
     }
 
@@ -584,10 +506,7 @@ final class PositionSymbolQueries {
     private record SourceContext(ContextKind kind, List<Argument> arguments) {
         Integer argumentCount() { return arguments == null ? null : arguments.size(); }
     }
-    private record Candidate(String className, String kind, String memberName,
-            String signature, String descriptor, Integer parameterCount, String sourceFile,
-            int sourceLine, boolean sameFile,
-            String semanticKind, String semanticName, boolean hasDefaults, List<KotlinValueParameter> valueParameters) {}
-    private record RankedCandidate(Candidate candidate, int score, List<String> reasons) {}
-    private record EnclosingClass(String className, int sourceLine) {}
+
+    private record RankedCandidate(PositionDeclaration candidate, int score, List<String> reasons) {}
+
 }

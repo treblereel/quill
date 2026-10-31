@@ -17,8 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 
@@ -28,7 +27,7 @@ final class ArchitectureViolationQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> SCOPES = Set.of("package", "module");
 
-    String findArchitectureViolations(Jdbi jdbi, String scope, String from,
+    String findArchitectureViolations(ReadQueryContext reader, String scope, String from,
             List<String> forbidden, List<String> dependencyKinds,
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
         String normalizedScope = scope == null
@@ -54,12 +53,12 @@ final class ArchitectureViolationQueries {
             return errorResponse(invalidPattern.getMessage());
         }
 
-        List<ClassRecord> classes = IndexReader.findAllClasses(jdbi);
+        List<ClassRecord> classes = reader.symbols.findAllClasses();
         Map<Integer, ClassRecord> classesById = new HashMap<>();
         classes.forEach(cls -> classesById.put(cls.id(), cls));
         List<ClassRecord> eligibleClasses = classes.stream()
                 .filter(cls -> includeGenerated || !"generated".equals(cls.origin()))
-                .filter(cls -> includeTests || !"test".equals(cls.sourceSet()))
+                .filter(cls -> includeTests || !cls.inTestSourceSet())
                 .toList();
         long matchedSourceClasses = eligibleClasses.stream()
                 .map(cls -> boundary(cls, normalizedScope)).filter(java.util.Objects::nonNull)
@@ -77,12 +76,11 @@ final class ArchitectureViolationQueries {
             error.set("available_boundaries", JSON.valueToTree(eligibleClasses.stream()
                     .map(cls -> boundary(cls, normalizedScope))
                     .filter(java.util.Objects::nonNull).distinct().sorted().limit(20).toList()));
-            appendMeta(error, jdbi, 0);
+            appendMeta(error, reader, 0);
             return error.toString();
         }
         List<Violation> violations = new ArrayList<>();
-        for (DependencyRecord dependency : IndexReader.findCurrentDependencyGraph(
-                jdbi, null, includeGenerated, includeTests)) {
+        for (DependencyRecord dependency : reader.usages.findCurrentDependencyGraph(null, includeGenerated, includeTests)) {
             ClassRecord source = classesById.get(dependency.fromClassId());
             ClassRecord target = classesById.get(dependency.toClassId());
             if (source == null || target == null) continue;
@@ -160,7 +158,7 @@ final class ArchitectureViolationQueries {
                 .add("Reflection, runtime-generated links, and uncompiled source changes are not inferred")
                 .add("A dependency row may aggregate multiple bytecode occurrences; evidence_lines contains known source-line evidence");
         appendPage(root, page.size(), violations.size(), limit, offset);
-        appendMeta(root, jdbi, countedTokens.values().stream().mapToInt(Integer::intValue).sum());
+        appendMeta(root, reader, countedTokens.values().stream().mapToInt(Integer::intValue).sum());
         return root.toString();
     }
 

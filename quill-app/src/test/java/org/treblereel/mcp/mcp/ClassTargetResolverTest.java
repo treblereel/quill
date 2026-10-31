@@ -1,5 +1,9 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
+import org.treblereel.mcp.db.IndexFixture;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
@@ -22,7 +26,7 @@ class ClassTargetResolverTest {
                 current("io.crysknife.client.BeanManager"),
                 historical("legacy.BeanManager")));
 
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, "BeanManager");
+        ClassTargetResolver.Lookup lookup = ReadQueryContext.readWithGraph(jdbi, readScope -> ClassTargetResolver.resolve(readScope, "BeanManager"));
 
         assertTrue(lookup.found());
         assertEquals("io.crysknife.client.BeanManager", lookup.cls().className());
@@ -34,7 +38,7 @@ class ClassTargetResolverTest {
                 current("first.BeanManager"),
                 current("second.BeanManager")));
 
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, "BeanManager");
+        ClassTargetResolver.Lookup lookup = ReadQueryContext.readWithGraph(jdbi, readScope -> ClassTargetResolver.resolve(readScope, "BeanManager"));
 
         assertFalse(lookup.found());
         assertEquals("AMBIGUOUS_CLASS", lookup.errorCode());
@@ -50,7 +54,7 @@ class ClassTargetResolverTest {
                 current("second.BeanManager")));
 
         ClassTargetResolver.Lookup lookup =
-                ClassTargetResolver.resolve(jdbi, "second.BeanManager");
+                ReadQueryContext.readWithGraph(jdbi, readScope -> ClassTargetResolver.resolve(readScope, "second.BeanManager"));
 
         assertTrue(lookup.found());
         assertEquals("second.BeanManager", lookup.cls().className());
@@ -63,7 +67,7 @@ class ClassTargetResolverTest {
                 current("example.GeneratedRegistry", "applications/two")));
 
         ClassTargetResolver.Lookup lookup =
-                ClassTargetResolver.resolve(jdbi, "example.GeneratedRegistry");
+                ReadQueryContext.readWithGraph(jdbi, readScope -> ClassTargetResolver.resolve(readScope, "example.GeneratedRegistry"));
 
         assertFalse(lookup.found());
         assertEquals("AMBIGUOUS_CLASS", lookup.errorCode());
@@ -74,8 +78,7 @@ class ClassTargetResolverTest {
 
     @Test
     void reportsUnsupportedSymbolIdVersionsWithoutTreatingThemAsClassNames() {
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(
-                database(List.of(current("example.Type"))), "quill:symbol:v3:anything");
+        ClassTargetResolver.Lookup lookup = ReadQueryContext.readWithGraph(database(List.of(current("example.Type"))), readScope -> ClassTargetResolver.resolve(readScope, "quill:symbol:v3:anything"));
 
         assertFalse(lookup.found());
         assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", lookup.errorCode());
@@ -85,8 +88,7 @@ class ClassTargetResolverTest {
 
     @Test
     void reportsMalformedRecognizedSymbolIds() {
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(
-                database(List.of(current("example.Type"))), "quill:symbol:v2:broken");
+        ClassTargetResolver.Lookup lookup = ReadQueryContext.readWithGraph(database(List.of(current("example.Type"))), readScope -> ClassTargetResolver.resolve(readScope, "quill:symbol:v2:broken"));
 
         assertFalse(lookup.found());
         assertEquals("MALFORMED_SYMBOL_ID", lookup.errorCode());
@@ -98,8 +100,7 @@ class ClassTargetResolverTest {
         Jdbi jdbi = database(List.of(
                 current("example.GeneratedRegistry", "applications/one"),
                 current("example.GeneratedRegistry", "applications/two")));
-        List<ClassRecord> duplicates = ClassTargetResolver.resolve(
-                jdbi, "example.GeneratedRegistry").candidates();
+        List<ClassRecord> duplicates = ReadQueryContext.readWithGraph(jdbi, readScope -> ClassTargetResolver.resolve(readScope, "example.GeneratedRegistry")).candidates();
         String firstId = SymbolContract.id(
                 duplicates.get(0), "CLASS", "example.GeneratedRegistry", "");
         String secondId = SymbolContract.id(
@@ -107,15 +108,16 @@ class ClassTargetResolverTest {
 
         assertNotEquals(firstId, secondId);
         assertEquals("applications/one",
-                ClassTargetResolver.resolve(jdbi, firstId).cls().module());
+                ReadQueryContext.readWithGraph(jdbi, readScope -> ClassTargetResolver.resolve(readScope, firstId)).cls().module());
         assertEquals("applications/two",
-                ClassTargetResolver.resolve(jdbi, secondId).cls().module());
+                ReadQueryContext.readWithGraph(jdbi, readScope -> ClassTargetResolver.resolve(readScope, secondId)).cls().module());
     }
 
     private Jdbi database(List<ClassRecord> classes) {
         Jdbi jdbi = QuillDatabase.create(tempDir.resolve("index-" + System.nanoTime() + ".db"));
-        IndexWriter.write(jdbi, classes, List.of(), List.of(), List.of(),
-                Map.of("indexed_at", "2026-09-16T00:00:00Z"));
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(classes)
+                .metadata(Map.of("indexed_at", "2026-09-16T00:00:00Z")).snapshot());
         return jdbi;
     }
 

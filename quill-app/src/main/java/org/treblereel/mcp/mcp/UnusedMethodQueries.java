@@ -13,9 +13,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.IndexReader.MethodInboundUsage;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.UsageRepository;
+import org.treblereel.mcp.db.UsageRepository.MethodInboundUsage;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 
@@ -27,19 +27,17 @@ final class UnusedMethodQueries {
             "readObject", "readObjectNoData", "readResolve",
             "writeObject", "writeReplace", "finalize");
 
-    String findUnusedMethods(Jdbi jdbi, String module, boolean includeGenerated,
+    String findUnusedMethods(ReadQueryContext reader, String module, boolean includeGenerated,
             boolean includeTests, int limit, int offset) {
-        List<ClassRecord> classes = IndexReader.findAllClasses(jdbi);
-        Map<Integer, List<ClassMemberRecord>> members = IndexReader.findClassMembers(
-                jdbi, classes.stream().map(ClassRecord::id).toList());
+        List<ClassRecord> classes = reader.symbols.findAllClasses();
+        Map<Integer, List<ClassMemberRecord>> members = reader.symbols.findClassMembers(classes.stream().map(ClassRecord::id).toList());
         Map<MethodKey, MethodInboundUsage> usages = new HashMap<>();
-        for (MethodInboundUsage usage : IndexReader.findMethodInboundUsages(jdbi)) {
+        for (MethodInboundUsage usage : reader.usages.findMethodInboundUsages()) {
             usages.put(new MethodKey(usage.classId(), usage.method(), usage.descriptor()), usage);
         }
 
         Map<String, Integer> excluded = new java.util.LinkedHashMap<>();
-        Set<Integer> handleOwners = new HashSet<>(jdbi.withHandle(h -> h.createQuery(
-                "SELECT DISTINCT to_class_id FROM dependencies WHERE kind='METHOD_HANDLE_REFERENCE'").mapTo(Integer.class).list()));
+        Set<Integer> handleOwners = new HashSet<>(reader.usages.findHandleReferenceOwners("METHOD_HANDLE_REFERENCE"));
         List<Candidate> candidates = new ArrayList<>();
         int analyzedPrivateMethods = 0;
         for (ClassRecord cls : classes) {
@@ -130,7 +128,7 @@ final class UnusedMethodQueries {
             if (countedClasses.add(cls.id())) naiveTokens += cls.sourceTokens();
         }
         appendPage(root, page.size(), candidates.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
@@ -148,7 +146,7 @@ final class UnusedMethodQueries {
             increment(excluded, "generated_class");
             return false;
         }
-        if (!includeTests && "test".equals(cls.sourceSet())) {
+        if (!includeTests && cls.inTestSourceSet()) {
             increment(excluded, "test_class");
             return false;
         }

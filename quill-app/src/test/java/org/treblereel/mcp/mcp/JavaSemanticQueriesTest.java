@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -82,7 +84,7 @@ class JavaSemanticQueriesTest {
                 INSERT INTO files(project_path,repository_path,kind,origin,lifecycle,module,source_set)
                 VALUES(?,?,'java','source','current','child','main')
                 """, root.relativize(source).toString(), root.relativize(source).toString()));
-        JsonNode result = JavaSemanticQueries.resolve(db, root, source, expected.path("offset").asInt());
+        JsonNode result = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> JavaSemanticQueries.resolve(readScope, root, source, expected.path("offset").asInt()));
         assertEquals("resolved", result.path("status").asText(), result.toString());
         assertEquals("(I)I", result.path("descriptor").asText());
     }
@@ -104,10 +106,10 @@ class JavaSemanticQueriesTest {
             h.execute("INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations) VALUES(1,'METHOD','pick','pick(int):int','(I)I','int','[\"int\"]','','[]')");
         });
         String line = Files.readString(file);
-        var result = new ObjectMapper().readTree(new PositionSymbolQueries().getSymbolAtPosition(db,alias,"src/main/java/p/Example.java",1,line.indexOf("pick(1 )")+1));
+        var result = new ObjectMapper().readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, alias, "src/main/java/p/Example.java", 1, line.indexOf("pick(1 )")+1)));
         assertEquals("compiler",result.path("resolution_basis").asText(),result.toString());
         assertEquals("(I)I",result.path("selected").path("descriptor").asText());
-        var refs = JavaSemanticQueries.resolve(db,alias,aliasedFile,-2);
+        var refs = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> JavaSemanticQueries.resolve(readScope, alias, aliasedFile, -2));
         assertEquals("resolved",refs.path("status").asText()); assertEquals(1,refs.path("references").size());
     }
     @Test void restoredTimestampEditCannotReusePreviousOverload() throws Exception {
@@ -213,7 +215,7 @@ class JavaSemanticQueriesTest {
                     .bind("id",id).bind("descriptor",descriptor).execute();
         });
         String line=source.lines().toList().get(3);
-        JsonNode result=new ObjectMapper().readTree(new PositionSymbolQueries().getSymbolAtPosition(db,root,"src/main/java/p/Example.java",4,line.indexOf("pick(1)")+1));
+        JsonNode result=new ObjectMapper().readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, root, "src/main/java/p/Example.java", 4, line.indexOf("pick(1)")+1)));
         assertEquals("resolved",result.path("resolution").asText());
         assertEquals("(I)I",result.path("selected").path("descriptor").asText());
         assertEquals(3,result.path("selected").path("location").path("line").asInt());

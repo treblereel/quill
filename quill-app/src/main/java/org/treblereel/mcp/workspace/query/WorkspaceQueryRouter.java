@@ -3,7 +3,7 @@ package org.treblereel.mcp.workspace.query;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import org.treblereel.mcp.mcp.WorkspaceProjectScope;
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
 import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
 

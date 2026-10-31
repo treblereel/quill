@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -57,9 +59,8 @@ class ProjectDependencyQueriesTest {
         module(jdbi, "api");
         module(jdbi, "worker");
 
-        var result = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null, null,
-                        null, null, null, null, 100, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
+                .getProjectDependencies(readScope, temp, null, null, null, null, null, null, null, 100, 0)));
 
         assertEquals(2, result.path("total").asInt());
         assertFalse(result.path("discovery").path("build_invoked").asBoolean());
@@ -95,9 +96,8 @@ class ProjectDependencyQueriesTest {
         Jdbi jdbi = database();
         module(jdbi, ".");
 
-        var filtered = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, ".", null, "beta",
-                        null, null, null, null, 1, 0));
+        var filtered = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
+                .getProjectDependencies(readScope, temp, ".", null, "beta", null, null, null, null, 1, 0)));
 
         assertEquals(1, filtered.path("total").asInt());
         assertEquals("b:beta:2", filtered.path("dependencies").get(0).path("id").asText());
@@ -126,9 +126,8 @@ class ProjectDependencyQueriesTest {
         Jdbi jdbi = database();
         module(jdbi, ".");
 
-        var result = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null, null,
-                        "direct", "acme", "widget", "runtime", 100, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
+                .getProjectDependencies(readScope, temp, null, null, null, "direct", "acme", "widget", "runtime", 100, 0)));
 
         assertEquals(1, result.path("total").asInt());
         assertEquals("com.acme:widget:1",
@@ -151,16 +150,14 @@ class ProjectDependencyQueriesTest {
         Jdbi jdbi = database();
         module(jdbi, ".");
 
-        ProjectDependencyQueries.prewarm(jdbi, temp);
-        var warm = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null, null,
-                        null, null, null, null, 100, 0));
+        ReadQueryContext.readWithGraph(jdbi, readScope -> { ProjectDependencyQueries.prewarm(readScope, temp); return null; });
+        var warm = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
+                .getProjectDependencies(readScope, temp, null, null, null, null, null, null, null, 100, 0)));
         assertEquals("hit", warm.path("discovery").path("metadata_cache").asText());
 
         Files.writeString(classpath, alpha + java.io.File.pathSeparator + beta);
-        var refreshed = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, null, null, null,
-                        null, null, null, null, 100, 0));
+        var refreshed = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
+                .getProjectDependencies(readScope, temp, null, null, null, null, null, null, null, 100, 0)));
         assertEquals("miss", refreshed.path("discovery").path("metadata_cache").asText());
         assertEquals(2, refreshed.path("total").asInt());
     }
@@ -199,9 +196,8 @@ class ProjectDependencyQueriesTest {
         module(jdbi, "persistence-memory");
         module(jdbi, "support-core");
 
-        var result = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, "planning", null, "connectors-core",
-                        null, null, null, null, 100, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
+                .getProjectDependencies(readScope, temp, "planning", null, "connectors-core", null, null, null, null, 100, 0)));
 
         assertEquals(1, result.path("total").asInt());
         assertFalse(result.path("answer_complete").asBoolean());
@@ -238,9 +234,8 @@ class ProjectDependencyQueriesTest {
         Jdbi jdbi = database();
         module(jdbi, ".");
 
-        var result = JSON.readTree(new ProjectDependencyQueries()
-                .getProjectDependencies(jdbi, temp, ".", "test", "test-helper",
-                        null, null, null, null, 100, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
+                .getProjectDependencies(readScope, temp, ".", "test", "test-helper", null, null, null, null, 100, 0)));
 
         assertEquals(1, result.path("total").asInt());
         assertTrue(result.path("answer_complete").asBoolean());
@@ -265,9 +260,8 @@ class ProjectDependencyQueriesTest {
         DebugTrace.configure(true, temp);
         DebugTrace.Trace parent = DebugTrace.start("mcp_tool_call");
         try {
-            var result = JSON.readTree(new ProjectDependencyQueries()
-                    .getProjectDependencies(jdbi, temp, ".", "main", "alpha",
-                            null, null, null, "runtime", 100, 0));
+            var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
+                    .getProjectDependencies(readScope, temp, ".", "main", "alpha", null, null, null, "runtime", 100, 0)));
 
             String traceId = result.path("debug").path("trace_id").asText();
             assertFalse(traceId.isBlank());

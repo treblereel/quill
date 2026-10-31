@@ -20,8 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
@@ -33,7 +32,7 @@ final class CycleQueries {
     private static final Set<String> SCOPES = Set.of("class", "module");
     private static final int DETAIL_LIMIT = 100;
 
-    String findCycles(Jdbi jdbi, String scope, String module,
+    String findCycles(ReadQueryContext reader, String scope, String module,
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
         String normalizedScope = scope == null
                 ? "class" : scope.strip().toLowerCase(Locale.ROOT);
@@ -41,20 +40,19 @@ final class CycleQueries {
             return errorResponse("Invalid scope: expected class or module");
         }
         return "module".equals(normalizedScope)
-                ? findModuleCycles(jdbi, limit, offset)
-                : findClassCycles(jdbi, module, includeGenerated, includeTests, limit, offset);
+                ? findModuleCycles(reader, limit, offset)
+                : findClassCycles(reader, module, includeGenerated, includeTests, limit, offset);
     }
 
-    private String findClassCycles(Jdbi jdbi, String module,
+    private String findClassCycles(ReadQueryContext reader, String module,
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
-        List<DependencyRecord> edges = IndexReader.findCurrentDependencyGraph(
-                jdbi, module, includeGenerated, includeTests);
+        List<DependencyRecord> edges = reader.usages.findCurrentDependencyGraph(module, includeGenerated, includeTests);
         Set<Integer> ids = new LinkedHashSet<>();
         edges.forEach(edge -> {
             ids.add(edge.fromClassId());
             ids.add(edge.toClassId());
         });
-        Map<Integer, ClassRecord> classes = IndexReader.findClassesByIds(jdbi, List.copyOf(ids));
+        Map<Integer, ClassRecord> classes = reader.symbols.findClassesByIds(List.copyOf(ids));
         List<ClassEdge> classEdges = collapseNestedClasses(edges, classes);
         Map<Integer, List<Integer>> graph = adjacency(classEdges.stream()
                 .map(edge -> new Pair<>(edge.from(), edge.to())).toList());
@@ -74,12 +72,12 @@ final class CycleQueries {
         for (List<Integer> component : page(components, limit, offset)) {
             appendClassCycle(values, component, classes, classEdges, graph);
         }
-        appendMeta(root, jdbi, 0);
+        appendMeta(root, reader, 0);
         return root.toString();
     }
 
-    private String findModuleCycles(Jdbi jdbi, int limit, int offset) {
-        List<ModuleClasspathRecord> records = IndexReader.findAllModuleClasspath(jdbi);
+    private String findModuleCycles(ReadQueryContext reader, int limit, int offset) {
+        List<ModuleClasspathRecord> records = reader.index.findAllModuleClasspath();
         List<Pair<String>> edges = records.stream()
                 .filter(record -> record.distance() == 1)
                 .filter(record -> !record.applicationModule().equals(record.visibleModule()))
@@ -117,7 +115,7 @@ final class CycleQueries {
         root.putArray("limitations")
                 .add("Only direct project dependencies discovered without running the target build are considered")
                 .add("Dynamic Gradle declarations and build-plugin mutations may be absent");
-        appendMeta(root, jdbi, 0);
+        appendMeta(root, reader, 0);
         return root.toString();
     }
 

@@ -26,7 +26,7 @@ class ProjectQueryExecutorTest {
         registry.register(second);
         ProjectQueryExecutor executor = new ProjectQueryExecutor(registry);
 
-        ProjectQueryExecutor.Batch batch = executor.execute((String) null, project -> {
+        ProjectQueryExecutor.Batch batch = executor.execute((String) null, (project, context) -> {
             if (project.name().equals("zeta")) throw new IllegalStateException("broken query");
             return "{\"ok\":true}";
         });
@@ -49,7 +49,8 @@ class ProjectQueryExecutorTest {
         CyclicBarrier barrier = new CyclicBarrier(2);
 
         ProjectQueryExecutor.Batch batch = new ProjectQueryExecutor(registry).execute(
-                (String) null, project -> {
+                (String) null, (project, context) -> {
+                    assertTrue(Thread.currentThread().isVirtual());
                     int current = active.incrementAndGet();
                     maximum.accumulateAndGet(current, Math::max);
                     try {
@@ -65,6 +66,61 @@ class ProjectQueryExecutorTest {
         assertEquals(2, batch.results().size());
         assertEquals(2, maximum.get());
         assertEquals("alpha", batch.results().get(0).project());
+    }
+
+    @Test void nestedFanOutDoesNotWaitForAnAdditionalAdmissionSlot() throws Exception {
+        ProjectRegistry registry = new ProjectRegistry();
+        registry.register(project("alpha")); registry.register(project("zeta"));
+        var projects = registry.resolve().projects();
+        var executor = new ProjectQueryExecutor(registry);
+        int parallel = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors()));
+        var barrier = new CyclicBarrier(parallel);
+        try (registry; var requests = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var pending = new java.util.ArrayList<java.util.concurrent.Future<ProjectQueryExecutor.QueryResult>>();
+            try {
+                for (int i = 0; i < parallel; i++) pending.add(requests.submit(() -> executor.executeProject(
+                        projects.getFirst(), (parent, context) -> {
+                            try { barrier.await(2, TimeUnit.SECONDS); }
+                            catch (Exception failure) { throw new IllegalStateException(failure); }
+                            Thread owner = Thread.currentThread();
+                            var nested = executor.executeProjects(projects, (child, reader) -> {
+                                assertEquals(owner, Thread.currentThread());
+                                return reader.index.getMetadata().get("index_id");
+                            }, true);
+                            assertTrue(nested.stream().allMatch(ProjectQueryExecutor.QueryResult::successful));
+                            assertEquals("alpha-index", context.index.getMetadata().get("index_id"));
+                            return "ok";
+                        })));
+                for (var task : pending) {
+                    var result = task.get(3, TimeUnit.SECONDS);
+                    assertTrue(result.successful(), result.error()); assertEquals("ok", result.json());
+                }
+            } finally { pending.forEach(task -> task.cancel(true)); }
+        }
+    }
+
+    @Test void onlyGraphOperationsPrepareTypeEvidence() throws Exception {
+        try (var registry = new ProjectRegistry()) {
+            registry.register(project("selected"));
+            var entry = registry.resolve().projects().getFirst();
+            var inventories = new AtomicInteger();
+            entry.jdbi().setSqlLogger(new org.jdbi.v3.core.statement.SqlLogger() {
+                @Override public void logBeforeExecution(org.jdbi.v3.core.statement.StatementContext context) {
+                    if (context.getRawSql().startsWith("SELECT * FROM classes WHERE lifecycle")) inventories.incrementAndGet();
+                }
+            });
+            var executor = new ProjectQueryExecutor(registry);
+            assertTrue(executor.execute(null, (p, context) -> {
+                assertTrue(!context.hasGraph());
+                return context.index.getMetadata().get("index_id");
+            }).results().getFirst().successful());
+            assertEquals(0, inventories.get());
+            assertTrue(executor.execute(null, (p, context) -> {
+                assertTrue(context.hasGraph());
+                return context.index.getMetadata().get("index_id");
+            }, true).results().getFirst().successful());
+            assertEquals(1, inventories.get());
+        }
     }
 
     private Path project(String name) throws Exception {

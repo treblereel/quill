@@ -17,8 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.KotlinDeclarationRecord;
@@ -28,7 +27,7 @@ final class MethodOverrideQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String findMethodOverrides(Jdbi jdbi, String target, String method,
+    String findMethodOverrides(ReadQueryContext reader, String target, String method,
             String signature, boolean transitive, int limit, int offset) {
         try {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
@@ -46,16 +45,15 @@ final class MethodOverrideQueries {
         if (method == null || method.isBlank()) {
             return errorResponse("MISSING_METHOD", "Method name or symbol_id must be provided");
         }
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
+        if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord base = lookup.cls();
         String methodName = method.trim();
         String requestedSignature = signature == null || signature.isBlank()
                 ? null : signature.trim();
         List<KotlinDeclarationRecord> kotlinDeclarations =
-                IndexReader.findKotlinDeclarations(jdbi, base.id());
-        List<ClassMemberRecord> namedDeclarations = IndexReader.findClassMembers(
-                jdbi, base.id()).stream()
+                reader.symbols.findKotlinDeclarations(base.id());
+        List<ClassMemberRecord> namedDeclarations = reader.symbols.findClassMembers(base.id()).stream()
                 .filter(member -> "METHOD".equals(member.kind()))
                 .filter(member -> KotlinMemberNames.matches(
                         methodName, member, kotlinDeclarations))
@@ -76,13 +74,12 @@ final class MethodOverrideQueries {
             return error.toString();
         }
 
-        List<ClassRecord> classes = IndexReader.findAllClasses(jdbi);
+        List<ClassRecord> classes = reader.symbols.findAllClasses();
         Map<String, DescendantPath> paths = descendantPaths(classes, base.className(), transitive);
         List<ClassRecord> descendants = classes.stream()
                 .filter(candidate -> paths.containsKey(candidate.className()))
                 .toList();
-        Map<Integer, List<ClassMemberRecord>> members = IndexReader.findClassMembers(
-                jdbi, descendants.stream().map(ClassRecord::id).toList());
+        Map<Integer, List<ClassMemberRecord>> members = reader.symbols.findClassMembers(descendants.stream().map(ClassRecord::id).toList());
         List<OverrideMatch> matches = new ArrayList<>();
         for (ClassRecord descendant : descendants) {
             for (ClassMemberRecord candidate : members.getOrDefault(
@@ -149,7 +146,7 @@ final class MethodOverrideQueries {
         for (OverrideMatch match : page) {
             ObjectNode node = overrides.addObject();
             SymbolContract.appendMember(node, match.owner(), match.member(),
-                    IndexReader.findKotlinDeclarations(jdbi, match.owner().id()));
+                    reader.symbols.findKotlinDeclarations(match.owner().id()));
             node.put("class", match.owner().className());
             node.put("signature", match.member().signature());
             node.set("parameters", JSON.valueToTree(match.member().parameterTypes()));
@@ -168,7 +165,7 @@ final class MethodOverrideQueries {
             }
         }
         appendPage(root, page.size(), matches.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 

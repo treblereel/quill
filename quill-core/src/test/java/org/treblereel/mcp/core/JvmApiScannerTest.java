@@ -53,8 +53,9 @@ class JvmApiScannerTest {
     }
     IndexSnapshot snapshot(Map<Integer,String> api,boolean includeClass) {
         var classes=includeClass?List.of(new ClassRecord(1,"p.Api","CLASS","java.lang.Object",List.of(),null,0,false,0)):List.<ClassRecord>of();
-        return new IndexSnapshot(classes,List.of(),List.of(),List.of(),Map.of(),List.of(),List.of(),List.of(),List.of(),List.of(),
-                List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),null,List.of(),api);
+        return new IndexFixture()
+                .classes(classes)
+                .jvmApi(api).snapshot();
     }
     @Test void apiEvidenceParticipatesInAtomicFreshAndIncrementalSnapshots() throws Exception {
         var db=QuillDatabase.create(root.resolve("index.db"));

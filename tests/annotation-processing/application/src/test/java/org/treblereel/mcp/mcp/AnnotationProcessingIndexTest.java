@@ -12,7 +12,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.treblereel.mcp.command.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectIndexStore;
 import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
 import org.jdbi.v3.core.Jdbi;
@@ -20,9 +20,11 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.treblereel.mcp.command.ProjectInitializer;
+import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.core.BuildSystem;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.IndexRepository;
+import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 
 class AnnotationProcessingIndexTest {
@@ -53,7 +55,7 @@ class AnnotationProcessingIndexTest {
 
     @Test
     void indexesGeneratedClassesFromMultipleProcessingRounds() {
-        var classes = IndexReader.findAllClasses(jdbi);
+        var classes = jdbi.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findAllClasses());
         var first = classes.stream()
                 .filter(cls -> cls.className().endsWith("FirstGenerated"))
                 .findFirst().orElseThrow();
@@ -95,24 +97,22 @@ class AnnotationProcessingIndexTest {
 
     @Test
     void inventoriesAnnotationProcessorServiceDescriptor() {
-        assertTrue(IndexReader.findFileByPath(jdbi,
-                "processor/src/main/resources/META-INF/services/javax.annotation.processing.Processor")
+        assertTrue(jdbi.withHandle(repositoryHandle2 -> new IndexRepository(repositoryHandle2).findFileByPath("processor/src/main/resources/META-INF/services/javax.annotation.processing.Processor"))
                 .filter(file -> file.kind().equals("service_descriptor"))
                 .isPresent());
     }
 
     @Test
     void indexesServiceDescriptorProviderSemantics() {
-        var provider = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.processor.FirstRoundProcessor")
+        var provider = jdbi.withHandle(repositoryHandle3 -> new SymbolRepository(repositoryHandle3).findClassByName("org.treblereel.mcp.fixture.processor.FirstRoundProcessor"))
                 .orElseThrow();
 
-        assertTrue(IndexReader.findExternalDeps(jdbi, provider.id()).stream()
+        assertTrue(jdbi.withHandle(repositoryHandle4 -> new UsageRepository(repositoryHandle4).findExternalDeps(provider.id())).stream()
                 .anyMatch(dependency -> dependency.externalType()
                                 .equals("javax.annotation.processing.Processor")
                         && dependency.usageKind().equals("SERVICE_PROVIDES")));
-        assertEquals("1", IndexReader.getMetadata(jdbi).get("service_descriptors"));
-        assertEquals("2", IndexReader.getMetadata(jdbi).get("service_registrations"));
+        assertEquals("1", jdbi.withHandle(repositoryHandle5 -> new IndexRepository(repositoryHandle5).getMetadata()).get("service_descriptors"));
+        assertEquals("2", jdbi.withHandle(repositoryHandle6 -> new IndexRepository(repositoryHandle6).getMetadata()).get("service_registrations"));
     }
 
     @Test

@@ -1,5 +1,9 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.BuildIntegrationInstaller;
+import org.treblereel.mcp.index.ClaudeSettingsInstaller;
+import org.treblereel.mcp.index.ProjectIndexStore;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,7 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.QuillTopCommand;
 import org.treblereel.mcp.mcp.ProjectRegistry;
-import org.treblereel.mcp.mcp.WorkspaceProjectScope;
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 import org.treblereel.mcp.workspace.WorkspaceLock;
 import picocli.CommandLine;
@@ -199,6 +203,12 @@ class WorkspaceCommandTest {
                 """.formatted(System.currentTimeMillis()));
 
         ProjectRegistry.Resolution resolution = registry.resolve("engine");
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+        while (resolution.issues().stream().anyMatch(issue -> issue.code().equals("refresh_pending"))
+                && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+            resolution = registry.resolve("engine");
+        }
 
         assertTrue(resolution.errors().isEmpty(), String.join("; ", resolution.errors()));
         assertEquals(1, resolution.projects().size());
@@ -298,8 +308,8 @@ class WorkspaceCommandTest {
         assertTrue(repository.path("supported").asBoolean());
         assertTrue(repository.path("compiled").asBoolean());
         assertTrue(repository.path("indexed").asBoolean());
-        assertEquals(org.treblereel.mcp.db.QuillDatabase.currentSchemaVersion(), repository.path("indexSchema").asInt());
-        assertEquals(org.treblereel.mcp.db.QuillDatabase.currentSchemaVersion(), repository.path("currentSchema").asInt());
+        assertEquals(org.treblereel.mcp.db.IndexSchema.VERSION, repository.path("indexSchema").asInt());
+        assertEquals(org.treblereel.mcp.db.IndexSchema.VERSION, repository.path("currentSchema").asInt());
         assertEquals("installed", repository.path("buildIntegration").asText());
         assertTrue(repository.path("queryReady").asBoolean());
     }

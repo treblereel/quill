@@ -1,5 +1,10 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.index.MavenExtensionUpdater;
+import org.treblereel.mcp.workspace.ProjectScope;
+import org.treblereel.mcp.workspace.SingleProjectScope;
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
+
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -9,27 +14,32 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.command.CompiledOutputInspector;
-import org.treblereel.mcp.command.ProjectIndexStore;
-import org.treblereel.mcp.command.ProjectInitializer;
+import org.treblereel.mcp.index.CompiledOutputInspector;
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ProjectCodeExpectation;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
-import org.treblereel.mcp.db.QuillDatabase;
-import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
+import org.treblereel.mcp.db.IndexGeneration;
 
-public class ProjectRegistry {
+public class ProjectRegistry implements AutoCloseable {
 
-    private static final Executor PREWARM_EXECUTOR = Executors.newFixedThreadPool(2, task -> {
-        Thread thread = new Thread(task, "quill-mcp-prewarm");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
 
-    public record ProjectEntry(String name, Path root, Jdbi jdbi) {}
+    public record ProjectEntry(String name, Path root, IndexGeneration generation,
+            org.treblereel.mcp.model.ProjectReadSnapshot observations) {
+        public ProjectEntry(String name, Path root, IndexGeneration generation) { this(name, root, generation, null); }
+        public ProjectEntry { Objects.requireNonNull(generation, "generation"); }
+        public Jdbi jdbi() { return generation.jdbi(); }
+        public <T> T read(java.util.function.Function<org.treblereel.mcp.db.ReadQueryContext,T> work) {
+            return generation.read(context -> { context.useSnapshot(observations); return work.apply(context); });
+        }
+        public <T> T readWithGraph(java.util.function.Function<org.treblereel.mcp.db.ReadQueryContext,T> work) {
+            return generation.readWithGraph(context -> { context.useSnapshot(observations); return work.apply(context); });
+        }
+    }
     public record ProjectIssue(
             String project,
             Path projectRoot,
@@ -39,7 +49,36 @@ public class ProjectRegistry {
             String recommendedAction,
             boolean buildWasStarted,
             String buildReason,
-            List<String> staleModules) {
+            List<String> staleModules,
+            ReadinessReason reason,
+            String stage,
+            Long elapsedMs,
+            Long retryAfterMs,
+            boolean previousGenerationAvailable,
+            com.fasterxml.jackson.databind.JsonNode verificationPlan,
+            com.fasterxml.jackson.databind.JsonNode diagnostics) {
+
+        public ProjectIssue(String project, Path projectRoot, String code, String buildSystem,
+                String message, String recommendedAction, boolean buildWasStarted,
+                String buildReason, List<String> staleModules) {
+            this(project, projectRoot, code, buildSystem, message, recommendedAction, buildWasStarted,
+                    buildReason, staleModules, ReadinessReason.forCode(code, buildReason), null,
+                    null, null, false, null, null);
+        }
+
+        ProjectIssue readiness(ReadinessReason reason, String stage, Long elapsedMs, Long retryAfterMs,
+                boolean previousGenerationAvailable) {
+            return new ProjectIssue(project, projectRoot, code, buildSystem, message, recommendedAction,
+                    buildWasStarted, buildReason, staleModules, reason, stage, elapsedMs, retryAfterMs,
+                    previousGenerationAvailable, verificationPlan, diagnostics);
+        }
+
+        ProjectIssue buildEvidence(com.fasterxml.jackson.databind.JsonNode plan,
+                com.fasterxml.jackson.databind.JsonNode diagnostics) {
+            return new ProjectIssue(project, projectRoot, code, buildSystem, message, recommendedAction,
+                    buildWasStarted, buildReason, staleModules, reason, stage, elapsedMs, retryAfterMs,
+                    previousGenerationAvailable, plan, diagnostics);
+        }
 
         public ProjectIssue(String project, Path projectRoot, String code, String buildSystem,
                 String message, String recommendedAction, boolean buildWasStarted) {
@@ -56,6 +95,38 @@ public class ProjectRegistry {
         }
     }
 
+    enum ReadinessReason {
+        PREPARATION_QUEUED("wait"), INPUT_PREPARATION_RUNNING("wait"),
+        INPUTS_CHANGING("wait"), INPUT_OBSERVATION_RECOVERING("wait"),
+        PREPARATION_RETRY_SCHEDULED("wait"), BUILD_EVENTS_QUEUED("wait"),
+        BUILD_EVENTS_PROCESSING("wait"), INDEX_REFRESH_RUNNING("wait"),
+        INDEX_REFRESH_FAILED("inspect_error"), BUILD_EVENT_PROCESSING_FAILED("inspect_error"),
+        BUILD_FAILED("fix_build"), INPUTS_CHANGED_AFTER_BUILD("build"),
+        TEST_EVIDENCE_MISSING("build"), SOURCE_SET_INPUTS_CHANGED("build"), READY("none"), INDEX_OUTDATED("refresh_index"),
+        BUILD_INTEGRATION_REQUIRED("repair_integration"),
+        CLASSES_MISSING("build"), CLASSES_STALE("build"),
+        INDEX_MISSING("initialize_index"), METADATA_ONLY("none"),
+        UNSUPPORTED_PROJECT("select_project"), INDEX_UNAVAILABLE("inspect_error");
+
+        final String action;
+        ReadinessReason(String action) { this.action = action; }
+        String code() { return name().toLowerCase(java.util.Locale.ROOT); }
+
+        static ReadinessReason forCode(String code, String buildReason) {
+            return switch (code) {
+                case "build_required" -> "source_set_inputs_changed".equals(buildReason) ? SOURCE_SET_INPUTS_CHANGED
+                        : "classes_stale".equals(buildReason) ? CLASSES_STALE : CLASSES_MISSING;
+                case "build_failed" -> BUILD_FAILED;
+                case "refresh_pending" -> PREPARATION_QUEUED;
+                case "index_refresh_failed" -> INDEX_REFRESH_FAILED;
+                case "index_required" -> INDEX_MISSING;
+                case "metadata_only" -> METADATA_ONLY;
+                case "unsupported_project" -> UNSUPPORTED_PROJECT;
+                default -> INDEX_UNAVAILABLE;
+            };
+        }
+    }
+
     public record Resolution(
             List<ProjectEntry> projects, List<String> errors, List<ProjectIssue> issues) {
         public Resolution(List<ProjectEntry> projects, List<String> errors) {
@@ -69,16 +140,21 @@ public class ProjectRegistry {
         }
     }
 
+    private final java.util.concurrent.locks.ReentrantReadWriteLock lifecycle =
+            new java.util.concurrent.locks.ReentrantReadWriteLock();
+    private boolean closed;
+    private volatile ProjectPreparation preparation;
     private final ProjectScope scope;
     private final SingleProjectScope mutableScope;
-    private record IndexHandle(Path projectRoot, Jdbi jdbi, AtomicLong lastSeen) {}
+    private record IndexHandle(Path projectRoot, IndexGeneration generation, AtomicLong lastSeen) {}
 
+    private final org.treblereel.mcp.db.IndexGenerationCache graphCache = new org.treblereel.mcp.db.IndexGenerationCache();
     private final ConcurrentHashMap<Path, IndexHandle> databases = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, AtomicLong> projectRoots = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, Object> schemaRepairLocks = new ConcurrentHashMap<>();
     private final AtomicLong resolutionSequence = new AtomicLong();
     private final AtomicLong readinessScopeRevision = new AtomicLong(Long.MIN_VALUE);
-    private final BuildEventConsumer buildEvents = new BuildEventConsumer();
+    private final BuildEventConsumer buildEvents;
     private final ProjectReadinessCache readiness =
             new ProjectReadinessCache(Duration.ofSeconds(5));
 
@@ -87,6 +163,11 @@ public class ProjectRegistry {
     }
 
     public ProjectRegistry(ProjectScope scope) {
+        this(scope, new BuildEventConsumer());
+    }
+
+    ProjectRegistry(ProjectScope scope, BuildEventConsumer buildEvents) {
+        this.buildEvents = Objects.requireNonNull(buildEvents, "buildEvents");
         this.scope = Objects.requireNonNull(scope, "scope");
         this.mutableScope = scope instanceof SingleProjectScope single ? single : null;
     }
@@ -108,74 +189,120 @@ public class ProjectRegistry {
     }
 
     public Resolution resolve(String selector) {
-        long resolutionId = resolutionSequence.incrementAndGet();
-        List<ProjectEntry> result = new ArrayList<>();
-        ProjectScope.Snapshot snapshot = scope.snapshot();
-        List<String> errors = new ArrayList<>(snapshot.diagnostics());
-        List<ProjectIssue> issues = new ArrayList<>();
-        Set<Path> activeDatabases = ConcurrentHashMap.newKeySet();
-        Set<Path> configuredRoots = snapshot.projects().stream()
-                .map(project -> project.root().toAbsolutePath().normalize())
-                .collect(java.util.stream.Collectors.toSet());
-        long previousReadinessRevision = readinessScopeRevision.getAndAccumulate(
-                snapshot.revision(), Math::max);
-        if (snapshot.revision() > previousReadinessRevision) readiness.clear();
-        readiness.retain(configuredRoots);
-        Set<Path> selectedRoots = ConcurrentHashMap.newKeySet();
-        for (Path projectRoot : configuredRoots) {
-            projectRoots.compute(projectRoot, (ignored, seen) -> {
-                if (seen == null) return new AtomicLong(resolutionId);
-                seen.accumulateAndGet(resolutionId, Math::max);
-                return seen;
-            });
-        }
-        for (ProjectScope.Project p : scope.select(snapshot, selector)) {
-            Path projectRoot = p.root().toAbsolutePath().normalize();
-            selectedRoots.add(projectRoot);
-            if (BuildEventConsumer.hasPendingEvents(projectRoot)) {
-                readiness.invalidate(projectRoot);
-            }
-            String buildEventError = buildEvents.consume(p.root());
-            if (buildEventError != null) {
-                errors.add("Project '" + p.name() + "': " + buildEventError);
-            }
-            Path candidateDb = ProjectIndexStore.findBestAvailableDb(p.root());
-            if (candidateDb == null) {
-                repairOutdatedSchema(p, projectRoot, errors);
-                candidateDb = ProjectIndexStore.findBestAvailableDb(p.root());
-            }
-            final Path dbPath = candidateDb;
-            if (dbPath == null) {
-                ProjectIssue issue = unavailableProjectIssue(p);
-                issues.add(issue);
-                errors.add(issue.legacyMessage());
-                continue;
-            }
-            try {
-                Path normalizedDb = dbPath.toAbsolutePath().normalize();
-                activeDatabases.add(normalizedDb);
-                IndexHandle handle = databases.compute(normalizedDb, (path, cached) -> {
-                    if (cached == null || !QuillDatabase.matchesGeneration(cached.jdbi(),path)) {
-                        if(cached!=null)QuillDatabase.retire(cached.jdbi());
-                        return new IndexHandle(projectRoot, QuillDatabase.openPooled(path),
-                                new AtomicLong(resolutionId));
-                    }
-                    cached.lastSeen().accumulateAndGet(resolutionId, Math::max);
-                    return cached;
+        ProjectPreparation prepared = preparation;
+        return prepared == null ? resolveUnprepared(selector, false) : prepared.resolve(selector);
+    }
+
+    Resolution resolveUnprepared(String selector, boolean retainPrevious) {
+        lifecycle.readLock().lock();
+        try {
+            if (closed) throw new IllegalStateException("Project registry is closed");
+            long resolutionId = resolutionSequence.incrementAndGet();
+            List<ProjectEntry> result = new ArrayList<>();
+            ProjectScope.Snapshot snapshot = scope.snapshot();
+            List<String> errors = new ArrayList<>(snapshot.diagnostics());
+            List<ProjectIssue> issues = new ArrayList<>();
+            Set<Path> activeDatabases = ConcurrentHashMap.newKeySet();
+            Set<Path> configuredRoots = snapshot.projects().stream()
+                    .map(project -> project.root().toAbsolutePath().normalize())
+                    .collect(java.util.stream.Collectors.toSet());
+            long previousReadinessRevision = readinessScopeRevision.getAndAccumulate(
+                    snapshot.revision(), Math::max);
+            if (snapshot.revision() > previousReadinessRevision) readiness.clear();
+            readiness.retain(configuredRoots);
+            Set<Path> selectedRoots = ConcurrentHashMap.newKeySet();
+            for (Path projectRoot : configuredRoots) {
+                projectRoots.compute(projectRoot, (ignored, seen) -> {
+                    if (seen == null) return new AtomicLong(resolutionId);
+                    seen.accumulateAndGet(resolutionId, Math::max);
+                    return seen;
                 });
-                result.add(new ProjectEntry(p.name(), p.root(), handle.jdbi()));
-                ProjectIssue buildIssue = buildRequiredIssue(p);
-                if (buildIssue != null) issues.add(buildIssue);
-            } catch (RuntimeException e) {
-                ProjectIssue issue = new ProjectIssue(p.name(), projectRoot,
-                        "index_unavailable", buildSystem(projectRoot), safeMessage(e),
-                        "Repair or recreate the Quill index, then retry the MCP request", false);
-                issues.add(issue);
-                errors.add(issue.legacyMessage());
             }
+            for (ProjectScope.Project p : scope.select(snapshot, selector)) {
+                Path projectRoot = p.root().toAbsolutePath().normalize();
+                selectedRoots.add(projectRoot);
+                boolean refreshing = false;
+                CompletableFuture<String> refresh = buildEvents.consumeAsync(projectRoot);
+                if (refresh != null) {
+                    readiness.invalidate(projectRoot);
+                    boolean pending = !refresh.isDone();
+                    String error = pending ? null : refresh.getNow(null);
+                    if (pending || error != null) {
+                        ProjectIssue issue = new ProjectIssue(p.name(), projectRoot,
+                                pending ? "refresh_pending" : "index_refresh_failed", null,
+                                pending ? "A build result is queued or being processed in the background" : error,
+                                pending ? "Retry the same query after index refresh; do not narrow targets or start another build"
+                                        : "Inspect the refresh failure, then retry the same query; rebuilding is not required unless inputs changed", false)
+                                .readiness(pending ? buildEvents.reason(projectRoot)
+                                                : buildEvents.stage(projectRoot).equals("refreshing_index")
+                                                        ? ReadinessReason.INDEX_REFRESH_FAILED : ReadinessReason.BUILD_EVENT_PROCESSING_FAILED,
+                                        buildEvents.stage(projectRoot),
+                                        buildEvents.elapsedMs(projectRoot), pending ? 2000L : null,
+                                        ProjectIndexStore.findBestAvailableDb(projectRoot) != null);
+                        issues.add(issue);
+                        errors.add(issue.legacyMessage());
+                        if (!retainPrevious || !issue.previousGenerationAvailable()) {
+                            selectedRoots.remove(projectRoot);
+                            continue;
+                        }
+                        refreshing = true;
+                    }
+                }
+                Path candidateDb = ProjectIndexStore.findBestAvailableDb(p.root());
+                if (candidateDb == null) {
+                    repairOutdatedSchema(p, projectRoot, errors);
+                    candidateDb = ProjectIndexStore.findBestAvailableDb(p.root());
+                }
+                final Path dbPath = candidateDb;
+                if (dbPath == null) {
+                    ProjectIssue issue = unavailableProjectIssue(p);
+                    issues.add(issue);
+                    errors.add(issue.legacyMessage());
+                    continue;
+                }
+                try {
+                    Path normalizedDb = dbPath.toAbsolutePath().normalize();
+                    activeDatabases.add(normalizedDb);
+                    IndexHandle handle = databases.compute(normalizedDb, (path, cached) -> {
+                        if (cached == null || !cached.generation().matches(path)) {
+                            if(cached!=null)cached.generation().close();
+                            return new IndexHandle(projectRoot, IndexGeneration.open(path, graphCache),
+                                    new AtomicLong(resolutionId));
+                        }
+                        cached.lastSeen().accumulateAndGet(resolutionId, Math::max);
+                        return cached;
+                    });
+                    result.add(new ProjectEntry(p.name(), p.root(), handle.generation()));
+                    ProjectIssue buildIssue = refreshing ? null : buildRequiredIssue(p);
+                    if (buildIssue != null) issues.add(buildIssue);
+                } catch (RuntimeException e) {
+                    ProjectIssue issue = new ProjectIssue(p.name(), projectRoot,
+                            "index_unavailable", buildSystem(projectRoot), safeMessage(e),
+                            "Repair or recreate the Quill index, then retry the MCP request", false);
+                    issues.add(issue);
+                    errors.add(issue.legacyMessage());
+                }
+            }
+            evictInactive(resolutionId, activeDatabases, configuredRoots, retainPrevious ? Set.of() : selectedRoots);
+            return new Resolution(result, errors, issues);
+        } finally {
+            lifecycle.readLock().unlock();
         }
-        evictInactive(resolutionId, activeDatabases, configuredRoots, selectedRoots);
-        return new Resolution(result, errors, issues);
+    }
+
+    @Override
+    public void close() {
+        ProjectPreparation prepared = preparation;
+        if (prepared != null) prepared.close();
+        lifecycle.writeLock().lock();
+        try {
+            if (closed) return;
+            closed = true;
+            databases.values().forEach(handle -> handle.generation().close());
+            databases.clear();
+        } finally {
+            lifecycle.writeLock().unlock();
+        }
     }
 
     private ProjectIssue unavailableProjectIssue(ProjectScope.Project project) {
@@ -199,6 +326,23 @@ public class ProjectRegistry {
                         : "Run quill init for this project, then retry the MCP request",
                 false);
     }
+
+    void retireRemoved(Set<Path> roots) {
+        lifecycle.writeLock().lock();
+        try {
+            databases.entrySet().removeIf(entry -> {
+                if (roots.contains(entry.getValue().projectRoot())) return false;
+                entry.getValue().generation().close(); return true;
+            });
+            projectRoots.keySet().removeIf(root -> {
+                if (roots.contains(root)) return false;
+                WorktreeSnapshotCache.shared().invalidate(root);
+                schemaRepairLocks.remove(root); readiness.invalidate(root); return true;
+            });
+        } finally { lifecycle.writeLock().unlock(); }
+    }
+
+    void invalidateReadiness(Path root) { readiness.invalidate(root); }
 
     private ProjectIssue buildRequiredIssue(ProjectScope.Project project) {
         try {
@@ -225,18 +369,48 @@ public class ProjectRegistry {
                     "No build or Quill code index is required unless JVM modules are added", false);
         }
         CompiledOutputInspector.Report compiled = CompiledOutputInspector.inspect(root);
-        if (compiled.state() == CompiledOutputInspector.State.FRESH) return null;
-        String action = buildSystem == BuildSystem.MAVEN
-                ? "Decide whether to run the project's Maven compile/package command, then retry"
-                : "Decide whether to run the project's Gradle classes/build command, then retry";
+        com.fasterxml.jackson.databind.JsonNode diagnostics;
+        try {
+            diagnostics = JSON.readTree(
+                    org.treblereel.mcp.index.BuildProblemInspector.inspect(root, "all", null, 20, 0));
+        } catch (java.io.IOException unavailable) { throw new IllegalStateException(unavailable); }
+        boolean failed = diagnostics.path("build_status").asText().equals("failed");
+        com.fasterxml.jackson.databind.JsonNode state;
+        try {
+            Path file = root.resolve(".quill/build-state.json");
+            state = java.nio.file.Files.isRegularFile(file)
+                    ? JSON.readTree(file.toFile()) : null;
+        } catch (java.io.IOException unreadable) { state = null; }
+        boolean newerInputs = state != null && state.path("indexRefreshReason").asText().equals("inputs_changed_after_build");
+        if (compiled.state() == CompiledOutputInspector.State.FRESH && !failed && !newerInputs) return null;
+        String action = "Run the quick_compile command in verification_plan, then retry the same query";
         boolean stale = compiled.state() == CompiledOutputInspector.State.STALE;
         String reason = stale ? "classes_stale" : "classes_missing";
         String message = stale
                 ? "Compiled main classes are older than project build inputs"
                 : "No compiled main classes were found; Quill did not start a build";
+        var modules = new java.util.ArrayList<>(compiled.staleModules());
+        if (newerInputs && modules.isEmpty()) {
+            Path input = root.resolve(state.path("changedInput").asText()).normalize();
+            org.treblereel.mcp.index.ProjectLayout.discoverClassesDirs(root, false).moduleDirectories().stream()
+                    .filter(input::startsWith).max(java.util.Comparator.comparingInt(Path::getNameCount))
+                    .ifPresent(module -> modules.add(module.equals(root) ? "." : root.relativize(module).toString().replace('\\', '/')));
+        }
+        var contexts = JSON.createArrayNode();
+        modules.forEach(module -> contexts.addObject().putObject("resolution").put("module", module));
+        var plan = new VerificationPlanQueries().plan(root, contexts,
+                JSON.createObjectNode());
         return new ProjectIssue(project.name(), root, "build_required",
-                buildSystem.name().toLowerCase(java.util.Locale.ROOT), message,
-                action, false, reason, compiled.staleModules());
+                buildSystem.name().toLowerCase(java.util.Locale.ROOT),
+                failed ? "The last build failed; inspect captured diagnostics before rebuilding"
+                        : newerInputs ? "Indexed inputs changed after the last successful build: " + state.path("changedInput").asText() : message,
+                failed ? "Fix the reported build errors, run the supplied quick_compile command, then retry"
+                        : action,
+                false, failed ? "last_build_failed" : newerInputs ? "inputs_changed_after_build" : reason, modules)
+                .readiness(failed ? ReadinessReason.BUILD_FAILED : newerInputs ? ReadinessReason.INPUTS_CHANGED_AFTER_BUILD
+                                : stale ? ReadinessReason.CLASSES_STALE : ReadinessReason.CLASSES_MISSING,
+                        null, null, null, ProjectIndexStore.findBestAvailableDb(root) != null)
+                .buildEvidence(plan, failed ? diagnostics : null);
     }
 
     private static String buildSystem(Path root) {
@@ -247,13 +421,25 @@ public class ProjectRegistry {
         }
     }
 
+    void retireSuperseded(ProjectEntry active) {
+        lifecycle.readLock().lock();
+        try {
+            databases.entrySet().removeIf(entry -> {
+                boolean obsolete = entry.getValue().projectRoot().equals(active.root().toAbsolutePath().normalize())
+                        && entry.getValue().generation() != active.generation();
+                if (obsolete) entry.getValue().generation().close();
+                return obsolete;
+            });
+        } finally { lifecycle.readLock().unlock(); }
+    }
+
     private void evictInactive(long resolutionId, Set<Path> activeDatabases,
             Set<Path> configuredRoots, Set<Path> selectedRoots) {
         databases.entrySet().removeIf(entry -> {
             boolean evict=entry.getValue().lastSeen().get() < resolutionId
                     && (!configuredRoots.contains(entry.getValue().projectRoot())
                     || (selectedRoots.contains(entry.getValue().projectRoot()) && !activeDatabases.contains(entry.getKey())));
-            if(evict) QuillDatabase.retire(entry.getValue().jdbi());
+            if(evict) entry.getValue().generation().close();
             return evict;
         });
         projectRoots.entrySet().removeIf(entry -> {
@@ -283,22 +469,23 @@ public class ProjectRegistry {
 
     public void upgradeBuildIntegrations() {
         scope.snapshot().projects().stream().map(ProjectScope.Project::root).distinct()
-                .forEach(org.treblereel.mcp.command.MavenExtensionUpdater::upgrade);
+                .forEach(org.treblereel.mcp.index.MavenExtensionUpdater::upgrade);
     }
 
     public void prewarm() {
-        if (scope instanceof WorkspaceProjectScope workspace) {
-            // The dependency graph (which also builds the coordinate catalog) and the SQLite
-            // registry are independent. Keep both on the startup critical path so the first MCP
-            // request stays fast, but prepare them concurrently.
-            CompletableFuture<Void> graph = CompletableFuture.runAsync(
-                    () -> WorkspaceDependencyGraph.discover(workspace.manifest()),
-                    PREWARM_EXECUTOR);
-            CompletableFuture<Resolution> indexes = CompletableFuture.supplyAsync(
-                    this::resolve, PREWARM_EXECUTOR);
-            CompletableFuture.allOf(graph, indexes).join();
-        }
-        prewarm(PREWARM_EXECUTOR);
+        prewarmAsync().join();
+    }
+
+    public synchronized CompletableFuture<Void> prewarmAsync() {
+        lifecycle.readLock().lock();
+        try {
+            if (closed) throw new IllegalStateException("Project registry is closed");
+            if (preparation == null) {
+                preparation = new ProjectPreparation(this, scope);
+                preparation.startAsync();
+            }
+            return preparation.initialPreparation();
+        } finally { lifecycle.readLock().unlock(); }
     }
 
     void prewarm(Executor executor) {
@@ -307,7 +494,7 @@ public class ProjectRegistry {
             try {
                 Resolution resolution = resolve();
                 resolution.projects().forEach(entry ->
-                        ProjectDependencyQueries.prewarm(entry.jdbi(), entry.root()));
+                        entry.read(context -> { ProjectDependencyQueries.prewarm(context, entry.root()); return null; }));
             } catch (RuntimeException ignored) {
                 // A normal request will report the same project-specific error.
             }
@@ -321,6 +508,14 @@ public class ProjectRegistry {
                 }
             });
         }
+    }
+
+    List<ProjectScope.Project> configuredProjects(String selector) {
+        lifecycle.readLock().lock();
+        try {
+            if (closed) throw new IllegalStateException("Project registry is closed");
+            return preparation == null ? scope.select(scope.snapshot(), selector) : preparation.selectedProjects(selector);
+        } finally { lifecycle.readLock().unlock(); }
     }
 
     public List<String> uninitializedErrors() {
@@ -342,11 +537,11 @@ public class ProjectRegistry {
     }
 
     public boolean isEmpty() {
-        return scope.snapshot().projects().isEmpty();
+        return preparation == null ? scope.snapshot().projects().isEmpty() : preparation.projectNames().isEmpty();
     }
 
     public List<String> configuredProjectNames() {
-        return scope.snapshot().projects().stream().map(ProjectScope.Project::name).toList();
+        return preparation == null ? scope.snapshot().projects().stream().map(ProjectScope.Project::name).toList() : preparation.projectNames();
     }
 
     WorkspaceProjectScope workspaceScope() {

@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,8 +15,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.treblereel.mcp.command.ProjectIndexStore;
-import org.treblereel.mcp.command.ProjectInitializer;
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.db.QuillDatabase;
 
 @Tag("e2e")
@@ -44,8 +46,7 @@ class CaseFlowExecutionOrderIT {
     @Test
     void provesDurabilityBeforeDispatchAndReportsAsyncRecovery() throws Exception {
         QuillToolQueries queries = new QuillToolQueries();
-        JsonNode order = JSON.readTree(queries.analyzeExecutionOrder(jdbi,
-                "CaseFlowEngine", "execute", null));
+        JsonNode order = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.analyzeExecutionOrder(readScope, "CaseFlowEngine", "execute", null)));
 
         assertEquals("invocation_order_proven_completion_unknown",
                 order.path("ordering_analysis").path("runtime_order_status").asText());
@@ -57,7 +58,7 @@ class CaseFlowExecutionOrderIT {
                         && event.path("callee_class").asText().contains("Executor")));
 
         JsonNode lifecycle = JSON.readTree(
-                queries.traceStateLifecycle(jdbi, "CaseFlowState", 50));
+                ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.traceStateLifecycle(readScope, "CaseFlowState", 50)));
         assertTrue(lifecycle.path("inferred_roles").valueStream().anyMatch(role ->
                 role.asText().equals("durable_execution_state_candidate")));
         assertTrue(lifecycle.path("inferred_roles").valueStream().anyMatch(role ->

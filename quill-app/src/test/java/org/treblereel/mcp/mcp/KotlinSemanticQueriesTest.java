@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +16,8 @@ import org.treblereel.mcp.kotlin.KotlinRuntime;
 
 @ResourceLock("SYSTEM_PROPERTIES")
 class KotlinSemanticQueriesTest {
+    @org.junit.jupiter.api.extension.RegisterExtension
+    final ProjectEntryFixture projectEntries = new ProjectEntryFixture();
     @TempDir Path temp;
     String previousCache, previousOffline;
 
@@ -42,9 +46,9 @@ class KotlinSemanticQueriesTest {
                 VALUES(1,'custom sources/Probe.kt','custom sources/Probe.kt','kotlin','source','current','clean','.','integrationTest')
                 """).execute());
         assertEquals("compiler_settings_missing",
-                KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
+                ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, 4)).path("status").asText());
         db.useHandle(h -> h.execute("UPDATE files SET source_set = NULL"));
-        assertEquals("source_set_unknown", KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
+        assertEquals("source_set_unknown", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, 4)).path("status").asText());
         assertFalse(Files.exists(temp.resolve("build")), "Fallback must not trigger a build");
     }
 
@@ -61,31 +65,33 @@ class KotlinSemanticQueriesTest {
         Path settings = module.resolve("build/quill-kotlin-integrationTest.properties"); Files.createDirectories(settings.getParent());
         writeInputs(settings, sources, Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()));
         addStartupFile(db, "custom sources ü/Probe.kt", "module without build marker", "integrationTest", "current");
-        var result = KotlinSemanticQueries.resolve(db, temp, file, text.lastIndexOf("pick("));
+        var result = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, text.lastIndexOf("pick(")));
         assertEquals("resolved", result.path("status").asText(), result.toString());
         assertEquals("(Ljava/lang/String;)Ljava/lang/String;", result.path("descriptor").asText());
         // A newly added file is collected from captured roots without another Gradle run.
         Files.writeString(sources.resolve("Extra.kt"), "package custom\nfun added() = true");
         Files.writeString(file, "package custom\nfun run() = added()");
-        assertEquals("()Z", KotlinSemanticQueries.resolve(db, temp, file, Files.readString(file).lastIndexOf("added()")).path("descriptor").asText());
+        int semanticOffset1 = Files.readString(file).lastIndexOf("added()");
+        assertEquals("()Z", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, semanticOffset1)).path("descriptor").asText());
         Path absentOutput = temp.resolve("absent java output");
         var optional = new java.util.Properties();
         try (var reader = Files.newBufferedReader(settings)) { optional.load(reader); }
         optional.setProperty("compileClasspath.count", "2"); optional.setProperty("compileClasspath.1", absentOutput.toString());
         optional.setProperty("optionalOutput.count", "1"); optional.setProperty("optionalOutput.0", absentOutput.toString());
         try (var writer = Files.newBufferedWriter(settings)) { optional.store(writer, "fixture"); }
-        assertEquals("()Z", KotlinSemanticQueries.resolve(db, temp, file, Files.readString(file).lastIndexOf("added()")).path("descriptor").asText());
+        int semanticOffset2 = Files.readString(file).lastIndexOf("added()");
+        assertEquals("()Z", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, semanticOffset2)).path("descriptor").asText());
         writeInputs(settings, sources, temp.resolve("missing.jar"));
-        assertEquals("classpath_missing", KotlinSemanticQueries.resolve(db, temp, file, 0).path("status").asText());
+        assertEquals("classpath_missing", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, 0)).path("status").asText());
         var missingFriend = new java.util.Properties();
         try (var reader = Files.newBufferedReader(settings)) { missingFriend.load(reader); }
         missingFriend.setProperty("optionalFriendPath.count", "1"); missingFriend.setProperty("optionalFriendPath.0", temp.resolve("missing.jar").toString());
         try (var writer = Files.newBufferedWriter(settings)) { missingFriend.store(writer, "fixture"); }
-        assertEquals("classpath_missing", KotlinSemanticQueries.resolve(db, temp, file, 0).path("status").asText(), "An optional friend JAR must not hide a missing compile dependency");
+        assertEquals("classpath_missing", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, 0)).path("status").asText(), "An optional friend JAR must not hide a missing compile dependency");
         writeInputs(settings, temp.resolve("different root"), Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()));
-        assertEquals("source_not_in_source_set", KotlinSemanticQueries.resolve(db, temp, file, 0).path("status").asText());
+        assertEquals("source_not_in_source_set", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, 0)).path("status").asText());
         db.useHandle(h -> h.execute("UPDATE files SET module = '../outside'"));
-        assertEquals("module_unknown", KotlinSemanticQueries.resolve(db, temp, file, 0).path("status").asText());
+        assertEquals("module_unknown", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, 0)).path("status").asText());
     }
 
     @Test void relocatedTestUsesIndexedSourceSetAndCapturedClasspath() throws Exception {
@@ -97,7 +103,7 @@ class KotlinSemanticQueriesTest {
         Path settings = temp.resolve("build/quill-kotlin-test.properties"); Files.createDirectories(settings.getParent());
         writeInputs(settings, sources, Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()));
         addStartupFile(db, "relocated test/Test.kt", ".", "test", "current");
-        assertEquals("()Z", KotlinSemanticQueries.resolve(db, temp, file, text.lastIndexOf("pick()")).path("descriptor").asText());
+        assertEquals("()Z", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, text.lastIndexOf("pick()"))).path("descriptor").asText());
         assertFalse(Files.exists(temp.resolve("build/quill-classpath.txt")));
     }
 
@@ -108,7 +114,7 @@ class KotlinSemanticQueriesTest {
         Path settings = temp.resolve("build/quill-kotlin-integrationTest.properties"); Files.createDirectories(settings.getParent());
         writeInputs(settings, temp.getParent(), Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI()));
         addStartupFile(db, "Probe.kt", ".", "integrationTest", "current");
-        assertEquals("source_outside_root", KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
+        assertEquals("source_outside_root", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, 4)).path("status").asText());
     }
 
     private void writeInputs(Path settings, Path sources, Path classpath) throws Exception {
@@ -137,25 +143,27 @@ class KotlinSemanticQueriesTest {
         properties.setProperty("sourceSelection", json.toString());
         try (var writer = Files.newBufferedWriter(settings)) { properties.store(writer, "fixture"); }
         addStartupFile(db, "src/main/kotlin/A.kt", ".", "main", "current");
-        assertEquals("source_not_in_source_set", KotlinSemanticQueries.resolve(db, temp, excluded, 0).path("status").asText());
-        var method = KotlinSemanticQueries.class.getDeclaredMethod("prepare", org.jdbi.v3.core.Jdbi.class, Path.class, Path.class, int.class, boolean.class);
+        assertEquals("source_not_in_source_set", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, excluded, 0)).path("status").asText());
+        var method = KotlinSemanticQueries.class.getDeclaredMethod("prepare", ReadQueryContext.class, Path.class, Path.class, int.class, boolean.class);
         method.setAccessible(true);
-        var request = (com.fasterxml.jackson.databind.JsonNode) method.invoke(null, db, temp, excluded, -1, true);
-        assertEquals(selected.toRealPath().toString(), request.path("file").asText(), request.toString());
-        assertEquals(1, request.path("sources").size());
+        try (var context = ReadQueryContext.openWithGraph(db)) {
+            var request = (com.fasterxml.jackson.databind.JsonNode) method.invoke(null, context, temp, excluded, -1, true);
+            assertEquals(selected.toRealPath().toString(), request.path("file").asText(), request.toString());
+            assertEquals(1, request.path("sources").size());
+        }
     }
 
     @Test void missingProjectEvidenceKeepsFallbackWithoutExecutingBuilds() throws Exception {
         var db = QuillDatabase.create(temp.resolve("index.db"));
         Path file = temp.resolve("Example.kt"); Files.writeString(file, "fun run() = 1");
-        assertEquals("module_unknown", KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
+        assertEquals("module_unknown", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, 4)).path("status").asText());
         Files.writeString(temp.resolve("pom.xml"), "<project/>");
-        assertEquals("classpath_missing", KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
+        assertEquals("classpath_missing", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, 4)).path("status").asText());
         assertFalse(Files.exists(temp.resolve("target")));
         Files.createDirectories(temp.resolve("target"));
         Files.writeString(temp.resolve("target/quill-classpath.txt"), "missing-dependency.jar");
-        assertEquals("classpath_missing", KotlinSemanticQueries.resolve(db, temp, file, 4).path("status").asText());
-        assertEquals("classpath_missing", KotlinSemanticQueries.resolve(db, temp, temp.resolve("script.kts"), 0).path("status").asText());
+        assertEquals("classpath_missing", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, 4)).path("status").asText());
+        assertEquals("classpath_missing", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, temp.resolve("script.kts"), 0)).path("status").asText());
     }
 
     @Test void ordinaryScriptAndProjectSettingsReachWorkerButGradleDslRequiresDefinition() throws Exception {
@@ -165,9 +173,9 @@ class KotlinSemanticQueriesTest {
         Path stdlib = Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         Files.writeString(temp.resolve("target/quill-classpath.txt"), stdlib.toString());
         Files.writeString(temp.resolve("target/quill-kotlin-main.properties"), "languageVersion=2.3\napiVersion=2.3\njvmTarget=17\n");
-        var result = KotlinSemanticQueries.resolve(db, temp, script, text.lastIndexOf("pick()"));
+        var result = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, script, text.lastIndexOf("pick()")));
         assertEquals("resolved", result.path("status").asText(), result.toString()); assertEquals("2.3", result.path("language_version").asText());
-        assertEquals("script_definition_missing", KotlinSemanticQueries.resolve(db, temp, temp.resolve("build.gradle.kts"), 0).path("status").asText());
+        assertEquals("script_definition_missing", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, temp.resolve("build.gradle.kts"), 0)).path("status").asText());
     }
     @Test void testSourcesUseTestClasspathAndSeeMainDeclarations() throws Exception {
         var db = QuillDatabase.create(temp.resolve("index.db"));
@@ -181,11 +189,11 @@ class KotlinSemanticQueriesTest {
         Files.createDirectories(temp.resolve("target"));
         Path stdlib = Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         Files.writeString(temp.resolve("target/quill-test-classpath.txt"), stdlib.toString());
-        var result = KotlinSemanticQueries.resolve(db, temp, test, source.lastIndexOf("pick("));
+        var result = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, test, source.lastIndexOf("pick(")));
         assertEquals("resolved", result.path("status").asText(), result.toPrettyString());
         assertEquals("probe.MainKt", result.path("owner").asText());
         Files.writeString(test, "package probe\nfun run() = pick(\"bad\")");
-        assertEquals("analysis_error", KotlinSemanticQueries.resolve(db, temp, test, 25).path("status").asText());
+        assertEquals("analysis_error", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, test, 25)).path("status").asText());
         assertFalse(Files.exists(temp.resolve("target/test-classes")));
     }
 
@@ -197,7 +205,7 @@ class KotlinSemanticQueriesTest {
         Files.createDirectories(temp.resolve("target"));
         Path stdlib = Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         Files.writeString(temp.resolve("target/quill-classpath.txt"), stdlib.toString());
-        var result = KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick("));
+        var result = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, source.lastIndexOf("pick(")));
         assertEquals("resolved", result.path("status").asText(), result.toPrettyString());
         assertEquals("kotlin_k2_fir", result.path("backend").asText());
         assertEquals("(I)I", result.path("descriptor").asText());
@@ -207,7 +215,7 @@ class KotlinSemanticQueriesTest {
             String changed = source.replace("pick(1)", i % 2 == 0 ? "pick(2)" : "pick(3)");
             Files.writeString(file, changed);
             long started = System.nanoTime();
-            var warm = KotlinSemanticQueries.resolve(db, temp, file, changed.lastIndexOf("pick("));
+            var warm = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, changed.lastIndexOf("pick(")));
             timings.add((System.nanoTime() - started) / 1_000_000.0);
             assertEquals("(I)I", warm.path("descriptor").asText(), warm.toString());
         }
@@ -215,7 +223,7 @@ class KotlinSemanticQueriesTest {
         long generation = -1;
         for (int i = 0; i < 12; i++) {
             long started = System.nanoTime();
-            var cached = KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick("));
+            var cached = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, source.lastIndexOf("pick(")));
             cachedTimings.add((System.nanoTime() - started) / 1_000_000.0);
             assertTrue(cached.path("analysis_reused").asBoolean(), cached.toString());
             if (generation == -1) generation = cached.path("analysis_generation").asLong();
@@ -233,11 +241,10 @@ class KotlinSemanticQueriesTest {
         Files.writeString(other.resolve("target/quill-classpath.txt"), stdlib.toString());
         String otherSource = "package other\nfun pick(x: String) = x\nfun run() = pick(\"s\")";
         Files.writeString(otherFile, otherSource);
-        var otherResult = KotlinSemanticQueries.resolve(db, other, otherFile, otherSource.lastIndexOf("pick("));
+        var otherResult = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, other, otherFile, otherSource.lastIndexOf("pick(")));
         assertEquals("other.ExampleKt", otherResult.path("owner").asText(), otherResult.toString());
         assertEquals("(Ljava/lang/String;)Ljava/lang/String;", otherResult.path("descriptor").asText());
-        assertEquals("probe.ExampleKt", KotlinSemanticQueries.resolve(db, temp, file,
-                source.lastIndexOf("pick(")).path("owner").asText());
+        assertEquals("probe.ExampleKt", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, source.lastIndexOf("pick("))).path("owner").asText());
     }
 
     @Test void nativeAndJvmUseThePreparedRuntime() throws Exception {
@@ -257,11 +264,11 @@ class KotlinSemanticQueriesTest {
         Files.createDirectories(temp.resolve("build"));
         Path stdlib = Path.of(kotlin.Unit.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         Files.writeString(temp.resolve("build/quill-classpath.txt"), stdlib.toString());
-        assertEquals("compiler_settings_missing", KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick(")).path("status").asText());
+        assertEquals("compiler_settings_missing", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, source.lastIndexOf("pick("))).path("status").asText());
         Files.writeString(temp.resolve("build/quill-kotlin-main.properties"), "languageVersion=2.4\n");
-        assertEquals("resolved", KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick(")).path("status").asText());
+        assertEquals("resolved", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, source.lastIndexOf("pick("))).path("status").asText());
         System.setProperty("quill.kotlin.cache", temp.resolve("absent runtime").toString());
-        assertEquals("runtime_missing", KotlinSemanticQueries.resolve(db, temp, file, source.lastIndexOf("pick(")).path("status").asText());
+        assertEquals("runtime_missing", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, source.lastIndexOf("pick("))).path("status").asText());
         assertFalse(Files.exists(temp.resolve("absent runtime")));
         assertFalse(Files.exists(temp.resolve("build/classes")));
     }
@@ -344,28 +351,29 @@ class KotlinSemanticQueriesTest {
 
     @Test void soleGradleMainModuleIsScheduledButSecondStartupDoesNotDisplaceIt() throws Exception {
         var db = startupIndex("build.gradle.kts", ".", "main");
-        var projects = List.of(new ProjectRegistry.ProjectEntry("gradle", temp, db));
+        var projects = List.of(projectEntries.entry("gradle", temp, db));
         assertTrue(KotlinSemanticQueries.prewarm(projects));
         assertFalse(KotlinSemanticQueries.prewarm(projects));
         Path file = temp.resolve("src/main/kotlin/Caller.kt");
-        var first = KotlinSemanticQueries.resolve(db, temp, file, Files.readString(file).lastIndexOf("pick()"));
+        int semanticOffset3 = Files.readString(file).lastIndexOf("pick()");
+        var first = ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, semanticOffset3));
         assertEquals("resolved", first.path("status").asText(), first.toString()); assertEquals("()I", first.path("descriptor").asText());
     }
 
     @Test void ambiguousModulesAndProjectsAreNotSpeculativelyWarmed() throws Exception {
         var db = startupIndex("pom.xml", ".", "main");
         addStartupFile(db, "other/src/main/kotlin/Other.kt", "other", "main", "current");
-        assertFalse(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("multi", temp, db))));
+        assertFalse(KotlinSemanticQueries.prewarm(List.of(projectEntries.entry("multi", temp, db))));
         db.useHandle(h -> h.execute("DELETE FROM files WHERE module = 'other'"));
-        assertFalse(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("a", temp, db),
-                new ProjectRegistry.ProjectEntry("b", temp, db))));
+        assertFalse(KotlinSemanticQueries.prewarm(List.of(projectEntries.entry("a", temp, db),
+                projectEntries.entry("b", temp, db))));
     }
 
     @Test void testOnlyDeletedAndScriptFilesDoNotSelectAStartupModule() throws Exception {
         var db = startupIndex("pom.xml", ".", "test");
         addStartupFile(db, "src/main/kotlin/Deleted.kt", ".", "main", "deleted");
         addStartupFile(db, "build.gradle.kts", ".", "main", "current");
-        assertFalse(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("ignored", temp, db))));
+        assertFalse(KotlinSemanticQueries.prewarm(List.of(projectEntries.entry("ignored", temp, db))));
         assertFalse(KotlinSemanticQueries.prewarm(List.of()));
     }
 
@@ -373,21 +381,22 @@ class KotlinSemanticQueriesTest {
         var db = startupIndex("pom.xml", "app", "main");
         db.useHandle(h -> h.execute("INSERT INTO files(project_path,repository_path,kind,origin,lifecycle,module,source_set) "
                 + "VALUES('src/main/java/JavaOnly.java','src/main/java/JavaOnly.java','java','source','current','.','main')"));
-        assertTrue(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("maven", temp, db))));
+        assertTrue(KotlinSemanticQueries.prewarm(List.of(projectEntries.entry("maven", temp, db))));
         Path file = temp.resolve("app/src/main/kotlin/Caller.kt");
-        assertEquals("()I", KotlinSemanticQueries.resolve(db, temp, file, Files.readString(file).lastIndexOf("pick()")).path("descriptor").asText());
+        int semanticOffset4 = Files.readString(file).lastIndexOf("pick()");
+        assertEquals("()I", ReadQueryContext.<com.fasterxml.jackson.databind.JsonNode>readWithGraph(db, readScope -> KotlinSemanticQueries.resolve(readScope, temp, file, semanticOffset4)).path("descriptor").asText());
     }
 
     @Test void indexedAnchorOutsideProjectCannotSelectAStartupModule() throws Exception {
         var db = startupIndex("pom.xml", ".", "main");
         db.useHandle(h -> h.execute("UPDATE files SET repository_path = '../src/main/kotlin/Caller.kt'"));
         Path restrictedRoot = temp.resolve("project"); Files.createDirectories(restrictedRoot);
-        assertFalse(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("restricted", restrictedRoot, db))));
+        assertFalse(KotlinSemanticQueries.prewarm(List.of(projectEntries.entry("restricted", restrictedRoot, db))));
     }
 
     @Test void missingRuntimeSourceAndClasspathSkipStartupWithoutDownloading() throws Exception {
         var db = startupIndex("pom.xml", ".", "main");
-        var projects = List.of(new ProjectRegistry.ProjectEntry("missing", temp, db));
+        var projects = List.of(projectEntries.entry("missing", temp, db));
         System.setProperty("quill.kotlin.cache", temp.resolve("missing runtime").toString());
         assertFalse(KotlinSemanticQueries.prewarm(projects)); assertFalse(Files.exists(temp.resolve("missing runtime")));
         System.setProperty("quill.kotlin.cache", temp.resolve("runtime with spaces").toString());
@@ -406,7 +415,7 @@ class KotlinSemanticQueriesTest {
                 while (release.getCount() != 0) {
                     try { release.await(); } catch (InterruptedException ignored) { }
                 }
-                finished.countDown(); return List.of(new ProjectEntry("late", temp, db));
+                finished.countDown(); return List.of(projectEntries.entry("late", temp, db));
             }
         };
         Runnable cancel = KotlinSemanticQueries.startWarmup(registry);
@@ -415,7 +424,7 @@ class KotlinSemanticQueriesTest {
             KotlinSemanticQueries.closeWarmup(); release.countDown();
             assertTrue(finished.await(8, java.util.concurrent.TimeUnit.SECONDS));
             // A direct startup must still be able to select the module after the cancelled task.
-            assertTrue(KotlinSemanticQueries.prewarm(List.of(new ProjectRegistry.ProjectEntry("explicit", temp, db))));
+            assertTrue(KotlinSemanticQueries.prewarm(List.of(projectEntries.entry("explicit", temp, db))));
         } finally { cancel.run(); release.countDown(); }
     }
 }

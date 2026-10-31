@@ -18,6 +18,47 @@ class VerificationPlanQueriesTest {
     @TempDir Path tempDir;
 
     @Test
+    void combinesInheritedProfileSubsetsButRejectsUnrelatedVariants() throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>t</groupId><artifactId>root</artifactId><version>1</version><packaging>pom</packaging><modules><module>a</module><module>b</module></modules></project>");
+        var wrapper = Files.writeString(tempDir.resolve("mvnw"), "#!/bin/sh\n"); assertTrue(wrapper.toFile().setExecutable(true));
+        for (String name : List.of("a", "b")) {
+            var module = Files.createDirectories(tempDir.resolve(name));
+            Files.writeString(module.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>t</groupId><artifactId>"+name+"</artifactId><version>1</version></project>");
+            Files.createDirectories(module.resolve("target"));
+        }
+        var a=tempDir.resolve("a/target/quill-java-main.properties"); var b=tempDir.resolve("b/target/quill-java-test.properties");
+        Files.writeString(a,"activeProfile.count=1\nactiveProfile.0=shared\n");
+        Files.writeString(b,"activeProfile.count=2\nactiveProfile.0=integration-tests\nactiveProfile.1=shared\n");
+        var contexts=JSON.readTree("[{\"resolution\":{\"module\":\"a\",\"source_set\":\"main\"}},{\"resolution\":{\"module\":\"b\",\"source_set\":\"test\"}}]");
+        var result=new VerificationPlanQueries().plan(tempDir,contexts,JSON.createObjectNode());
+        assertTrue(result.path("profile_selection_complete").asBoolean());
+        assertEquals(List.of("integration-tests","shared"),strings(result.path("active_profiles")));
+        Files.writeString(a,"activeProfile.count=1\nactiveProfile.0=other-variant\n");
+        result=new VerificationPlanQueries().plan(tempDir,contexts,JSON.createObjectNode());
+        assertFalse(result.path("profile_selection_complete").asBoolean());
+        assertFalse(result.path("commands_executable").asBoolean()); assertTrue(result.path("commands").isEmpty());
+    }
+
+    @Test
+    void preservesTheProfilesOfTheRequestedTestSourceSet() throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>t</groupId><artifactId>app</artifactId><version>1</version></project>");
+        var wrapper = Files.writeString(tempDir.resolve("mvnw"), "#!/bin/sh\n");
+        assertTrue(wrapper.toFile().setExecutable(true));
+        var capture = tempDir.resolve("target/quill-java-test.properties"); Files.createDirectories(capture.getParent());
+        Files.writeString(capture, "sourceSet=test\nactiveProfile.count=1\nactiveProfile.0=integration-tests\n");
+        var contexts = JSON.readTree("[{\"resolution\":{\"module\":\".\",\"source_set\":\"test\"}}]");
+        var result = new VerificationPlanQueries().plan(tempDir, contexts, JSON.createObjectNode());
+        assertEquals(List.of("integration-tests"), strings(result.path("active_profiles")));
+        assertTrue(result.path("profile_selection_complete").asBoolean());
+        assertEquals(List.of(wrapper.toString(), "test-compile", "-Pintegration-tests"), strings(result.path("commands").get(0).path("argv")));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) contexts.get(0).path("resolution")).put("source_set", "integration-test");
+        result = new VerificationPlanQueries().plan(tempDir, contexts, JSON.createObjectNode());
+        assertEquals(List.of("integration-tests"), strings(result.path("active_profiles")));
+        assertEquals(List.of(wrapper.toString(), "test-compile", "-Pintegration-tests"), strings(result.path("commands").get(0).path("argv")));
+        assertEquals("integration-test", VerificationPlanQueries.capturedSourceSet(org.treblereel.mcp.core.BuildSystem.GRADLE, "integration-test"));
+    }
+
+    @Test
     void buildsFocusedAndFallbackMavenArgvFromWrapper() throws Exception {
         Files.writeString(tempDir.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion><groupId>org.acme</groupId>

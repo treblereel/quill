@@ -1,0 +1,288 @@
+{
+  "schema_version": 1,
+  "name": "quarkus orders base effectiveness v2",
+  "project_revision": "PREPARE_WITH_quill_framework_benchmark.py",
+  "framework": "quarkus",
+  "oracle_version": 2,
+  "fixture_sha256": "cb47456526838743f40ecdabd6f470c4f127b6d6d85d7fc65726fecab2db89ae",
+  "tasks": [
+    {
+      "id": "quarkus-v2-known-literal",
+      "category": "source-control",
+      "prompt": "Read service/src/main/java/org/example/orders/OrderService.java. What string prefix does place(long) prepend to its numeric argument? Include the colon.",
+      "expected": {
+        "prefix": "numeric:"
+      },
+      "oracle": {
+        "source_files": [
+          "service/src/main/java/org/example/orders/OrderService.java"
+        ],
+        "rationale": "The numeric overload returns a literal plus its argument; no framework interpretation is required.",
+        "runtime_test": null,
+        "runtime_observations": {}
+      }
+    },
+    {
+      "id": "quarkus-v2-overload-usages",
+      "category": "symbol-usages",
+      "prompt": "Find every direct source caller of org.example.orders.OrderService.place(String), in production and standard JUnit test sources. Exclude constructors, place(long), generated classes and textual mentions. Return callers as fully qualified Class.method(parameterTypes). Qualify the declaring class with its package, but use simple parameter type names (String and OrderPlaced, without package prefixes), omit parameter names and use empty parentheses for no parameters. Return each array in lexicographic order, without duplicates.",
+      "expected": {
+        "callers": [
+          "org.example.orders.OrderResource.place(String)",
+          "org.example.orders.OrderServiceTest.placesCardOrder()",
+          "org.example.orders.ReorderService.repeat(String)"
+        ]
+      },
+      "oracle": {
+        "source_files": [
+          "service/src/main/java/org/example/orders/OrderService.java",
+          "service/src/main/java/org/example/orders/ReorderService.java",
+          "service/src/main/java/org/example/orders/PreviewService.java",
+          "api/src/main/java/org/example/orders/OrderResource.java",
+          "service/src/test/java/org/example/orders/OrderServiceTest.java",
+          "service/src/test/java/org/example/orders/ReorderServiceTest.java",
+          "service/src/test/java/org/example/orders/PreviewServiceTest.java"
+        ],
+        "rationale": "Only the endpoint, ReorderService and OrderServiceTest directly invoke the String overload; PreviewService invokes long.",
+        "runtime_test": null,
+        "runtime_observations": {}
+      }
+    },
+    {
+      "id": "quarkus-v2-request-chain",
+      "category": "execution-flow",
+      "prompt": "Trace only the source call path from org.example.orders.OrderResource.place(String) to OrderRepository.save(String). Return the adjacent directed edges as fully qualified Class.method(parameterTypes) -> Class.method(parameterTypes). Exclude configuration, payment, event and JDK side calls. Qualify the declaring class with its package, but use simple parameter type names (String and OrderPlaced, without package prefixes), omit parameter names and use empty parentheses for no parameters. Return each array in lexicographic order, without duplicates.",
+      "expected": {
+        "edges": [
+          "org.example.orders.OrderResource.place(String) -> org.example.orders.OrderService.place(String)",
+          "org.example.orders.OrderService.place(String) -> org.example.orders.OrderRepository.save(String)"
+        ]
+      },
+      "oracle": {
+        "source_files": [
+          "api/src/main/java/org/example/orders/OrderResource.java",
+          "service/src/main/java/org/example/orders/OrderService.java",
+          "persistence/src/main/java/org/example/orders/OrderRepository.java"
+        ],
+        "rationale": "The endpoint delegates to the String service overload, which directly calls repository.save.",
+        "runtime_test": "api/src/test/java/org/example/orders/OrderHttpTest.java",
+        "runtime_observations": {
+          "http_status": "200",
+          "http_body": "test:card:A-1"
+        }
+      }
+    },
+    {
+      "id": "quarkus-v2-qualified-bean",
+      "category": "dependency-injection",
+      "prompt": "For the PaymentGateway constructor parameter of org.example.orders.OrderService, identify the selected source implementation and the other source implementation excluded by its qualifier. Return fully qualified source class names; exclude proxy classes. Return each array in lexicographic order, without duplicates.",
+      "expected": {
+        "selected": "org.example.orders.CardGateway",
+        "excluded": [
+          "org.example.orders.CashGateway"
+        ]
+      },
+      "oracle": {
+        "source_files": [
+          "service/src/main/java/org/example/orders/OrderService.java",
+          "service/src/main/java/org/example/orders/CardGateway.java",
+          "service/src/main/java/org/example/orders/CashGateway.java"
+        ],
+        "rationale": "The card qualifier selects CardGateway. The runtime test independently asserts its type and behavior.",
+        "runtime_test": "api/src/test/java/org/example/orders/OrderHttpTest.java",
+        "runtime_observations": {
+          "gateway": "card:A-1"
+        }
+      }
+    },
+    {
+      "id": "quarkus-v2-conditional-bean",
+      "category": "conditional-injection",
+      "prompt": "In the test application context (Quarkus test build profile), which source implementation of DeliveryChannel is selected and which is excluded? Return fully qualified source class names. Return each array in lexicographic order, without duplicates.",
+      "expected": {
+        "selected": "org.example.orders.TestDelivery",
+        "excluded": [
+          "org.example.orders.LiveDelivery"
+        ]
+      },
+      "oracle": {
+        "source_files": [
+          "service/src/main/java/org/example/orders/TestDelivery.java",
+          "service/src/main/java/org/example/orders/LiveDelivery.java"
+        ],
+        "rationale": "The test condition enables TestDelivery and disables LiveDelivery; the runtime test asserts the selected type.",
+        "runtime_test": "api/src/test/java/org/example/orders/OrderHttpTest.java",
+        "runtime_observations": {
+          "delivery": "test"
+        }
+      }
+    },
+    {
+      "id": "quarkus-v2-missing-bean",
+      "category": "di-diagnostics",
+      "prompt": "Inspect org.example.orders.DiagnosticProbe and AuditPort in the test application context. Does its lazy AuditPort lookup have no matching bean? Return unsatisfied as a boolean and candidate source implementations as fully qualified class names. Do not interpret the lazy lookup as a mandatory injection that must fail application startup. Return each array in lexicographic order, without duplicates.",
+      "expected": {
+        "unsatisfied": true,
+        "candidates": []
+      },
+      "oracle": {
+        "source_files": [
+          "service/src/main/java/org/example/orders/DiagnosticProbe.java",
+          "service/src/main/java/org/example/orders/AuditPort.java"
+        ],
+        "rationale": "There is no AuditPort implementation; the framework lazy lookup is unsatisfied while startup succeeds.",
+        "runtime_test": "api/src/test/java/org/example/orders/OrderHttpTest.java",
+        "runtime_observations": {
+          "audit_unsatisfied": "true"
+        }
+      }
+    },
+    {
+      "id": "quarkus-v2-http-route",
+      "category": "framework-endpoints",
+      "prompt": "Identify the production HTTP handler for /orders/{id}. Return the HTTP method, full path and fully qualified source Class.method(parameterTypes). Combine class-level and method-level mappings; exclude generated methods. Qualify the declaring class with its package, but use simple parameter type names (String and OrderPlaced, without package prefixes), omit parameter names and use empty parentheses for no parameters.",
+      "expected": {
+        "http_method": "POST",
+        "path": "/orders/{id}",
+        "handler": "org.example.orders.OrderResource.place(String)"
+      },
+      "oracle": {
+        "source_files": [
+          "api/src/main/java/org/example/orders/OrderResource.java"
+        ],
+        "rationale": "Class and method annotations compose the route; a real HTTP POST checks dispatch.",
+        "runtime_test": "api/src/test/java/org/example/orders/OrderHttpTest.java",
+        "runtime_observations": {
+          "http_status": "200",
+          "http_body": "test:card:A-1"
+        }
+      }
+    },
+    {
+      "id": "quarkus-v2-configuration",
+      "category": "configuration",
+      "prompt": "For the exact key orders.prefix, list repository-relative application configuration files that define it (including test profile overrides), fully qualified production classes that inject it, and its effective value in the test application context. Exclude orders.prefix-preview. Return each array in lexicographic order, without duplicates.",
+      "expected": {
+        "definitions": [
+          "api/src/main/resources/application.properties"
+        ],
+        "consumers": [
+          "org.example.orders.OrderSettings"
+        ],
+        "test_value": "test"
+      },
+      "oracle": {
+        "source_files": [
+          "api/src/main/resources/application.properties",
+          "service/src/main/java/org/example/orders/OrderSettings.java"
+        ],
+        "rationale": "The exact injected key has a test override; the similarly named preview key is a negative control.",
+        "runtime_test": "api/src/test/java/org/example/orders/OrderHttpTest.java",
+        "runtime_observations": {
+          "prefix": "test"
+        }
+      }
+    },
+    {
+      "id": "quarkus-v2-event-flow",
+      "category": "implicit-execution",
+      "prompt": "For the OrderPlaced event emitted during OrderService.place(String), identify the fully qualified source event type, the concrete project source method implementing OrderEvents.publish, and the subscribed project source listener method. The publisher field must identify the project wrapper declaration; the underlying framework event API invocation inside that wrapper is outside this question. Use Class.method(parameterTypes) for methods. Do not invent a direct Java call from publisher to listener. Qualify the declaring class with its package, but use simple parameter type names (String and OrderPlaced, without package prefixes), omit parameter names and use empty parentheses for no parameters.",
+      "expected": {
+        "event_type": "org.example.orders.OrderPlaced",
+        "publisher": "org.example.orders.FrameworkOrderEvents.publish(OrderPlaced)",
+        "listener": "org.example.orders.ReceiptListener.onPlaced(OrderPlaced)"
+      },
+      "oracle": {
+        "source_files": [
+          "service/src/main/java/org/example/orders/OrderService.java",
+          "service/src/main/java/org/example/orders/OrderPlaced.java",
+          "service/src/main/java/org/example/orders/FrameworkOrderEvents.java",
+          "service/src/main/java/org/example/orders/ReceiptListener.java"
+        ],
+        "rationale": "The publisher is the concrete project wrapper FrameworkOrderEvents.publish declared in the listed source file. Its framework API invocation is a separate method. The framework event binding reaches ReceiptListener; the HTTP test asserts the received receipt.",
+        "runtime_test": "api/src/test/java/org/example/orders/OrderHttpTest.java",
+        "runtime_observations": {
+          "event_receipt": "test:card:A-1"
+        }
+      }
+    },
+    {
+      "id": "quarkus-v2-module-impact",
+      "category": "dependency-impact",
+      "prompt": "If the return behavior of OrderRepository.save(String) changes without a signature change, which Maven module directories contain its declaration or production methods that call it directly/transitively? Also list those production caller classes (exclude the declaration class itself). Use source method calls, not merely constructor/type dependencies; exclude independent modules and the numeric-only PreviewService path. Return each array in lexicographic order, without duplicates.",
+      "expected": {
+        "modules": [
+          "api",
+          "persistence",
+          "service"
+        ],
+        "callers": [
+          "org.example.orders.OrderResource",
+          "org.example.orders.OrderService",
+          "org.example.orders.ReorderService"
+        ]
+      },
+      "oracle": {
+        "source_files": [
+          "persistence/src/main/java/org/example/orders/OrderRepository.java",
+          "service/src/main/java/org/example/orders/OrderService.java",
+          "service/src/main/java/org/example/orders/ReorderService.java",
+          "service/src/main/java/org/example/orders/PreviewService.java",
+          "api/src/main/java/org/example/orders/OrderResource.java",
+          "pom.xml",
+          "api/pom.xml",
+          "service/pom.xml",
+          "unrelated/pom.xml"
+        ],
+        "rationale": "The save call is only in place(String); the numeric preview and independent module cannot reach it.",
+        "runtime_test": null,
+        "runtime_observations": {}
+      }
+    },
+    {
+      "id": "quarkus-v2-impacted-tests",
+      "category": "test-impact",
+      "prompt": "Which existing JUnit source test classes exercise OrderRepository.save(String) directly or through the production call path and should be reviewed if its returned receipt changes? Return fully qualified class names. Include the real HTTP test; exclude numeric-only preview tests, independent-module tests and generated classes. This asks for review candidates, not proof that every possible change fails a test. Return each array in lexicographic order, without duplicates.",
+      "expected": {
+        "tests": [
+          "org.example.orders.OrderHttpTest",
+          "org.example.orders.OrderRepositoryTest",
+          "org.example.orders.OrderServiceTest",
+          "org.example.orders.ReorderServiceTest"
+        ]
+      },
+      "oracle": {
+        "source_files": [
+          "persistence/src/test/java/org/example/orders/OrderRepositoryTest.java",
+          "service/src/test/java/org/example/orders/OrderServiceTest.java",
+          "service/src/test/java/org/example/orders/ReorderServiceTest.java",
+          "api/src/test/java/org/example/orders/OrderHttpTest.java",
+          "service/src/test/java/org/example/orders/PreviewServiceTest.java",
+          "unrelated/src/test/java/org/example/orders/HealthServiceTest.java"
+        ],
+        "rationale": "Four real tests assert receipts on the save path. The review set is independently traced in source; numeric-only and unrelated tests are negative controls.",
+        "runtime_test": null,
+        "runtime_observations": {}
+      }
+    },
+    {
+      "id": "quarkus-v2-dynamic-unknown",
+      "category": "uncertainty",
+      "prompt": "What value will org.example.orders.UnknownLookup.lookup(String key) return when the caller-supplied key and deployment environment are both unspecified? Return value as null when it cannot be determined and statically_determined as a boolean. Do not substitute a known configuration key or assume the missing-key probe is the deployment value. Use JSON null and boolean literals, not quoted strings.",
+      "expected": {
+        "value": null,
+        "statically_determined": false
+      },
+      "oracle": {
+        "source_files": [
+          "service/src/main/java/org/example/orders/UnknownLookup.java"
+        ],
+        "rationale": "The parameter and external configuration are unspecified. A runtime absent-key check calibrates the lookup, not all deployments.",
+        "runtime_test": "api/src/test/java/org/example/orders/OrderHttpTest.java",
+        "runtime_observations": {
+          "missing_dynamic": "true"
+        }
+      }
+    }
+  ]
+}

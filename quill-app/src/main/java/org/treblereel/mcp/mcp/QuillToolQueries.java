@@ -3,9 +3,9 @@ package org.treblereel.mcp.mcp;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.command.BuildProblemInspector;
-import org.treblereel.mcp.command.BuildStatusInspector;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.index.BuildProblemInspector;
+import org.treblereel.mcp.index.BuildStatusInspector;
 
 /** Routes tool calls to focused query components. */
 public final class QuillToolQueries {
@@ -48,202 +48,222 @@ public final class QuillToolQueries {
     private final DesignImpactQueries designImpact = new DesignImpactQueries();
     private final ResourceReferenceQueries resourceReferences = new ResourceReferenceQueries();
 
-    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+    String getBeans(ReadQueryContext reader, String className, String scope, String kind,
             String profile, String qualifier) {
-        return structure.getBeans(jdbi, className, scope, kind, profile, qualifier, 50);
+        return structure.getBeans(reader, className, scope, kind, profile, qualifier, 50);
     }
 
-    String searchClasses(Jdbi jdbi, String pattern, int limit) {
-        return structure.searchClasses(jdbi, pattern, null, null, limit);
+    String searchClasses(ReadQueryContext reader, String pattern, int limit) {
+        return structure.searchClasses(reader, pattern, null, null, limit);
     }
 
-    String searchClasses(Jdbi jdbi, String pattern, String module, String sourceSet, int limit) {
-        return structure.searchClasses(jdbi, pattern, module, sourceSet, limit);
+    String searchClasses(ReadQueryContext reader, String pattern, String module, String sourceSet, int limit) {
+        return structure.searchClasses(reader, pattern, module, sourceSet, limit);
     }
 
-    String searchClasses(Jdbi jdbi, String pattern, String module, String sourceSet,
+    String searchClasses(ReadQueryContext reader, String pattern, String module, String sourceSet,
             int limit, int offset) {
-        return structure.searchClasses(jdbi, pattern, module, sourceSet, limit, offset);
+        return structure.searchClasses(reader, pattern, module, sourceSet, limit, offset);
     }
 
-    String getAnnotatedClasses(Jdbi jdbi, String annotation,
+    String getAnnotatedClasses(ReadQueryContext reader, String annotation,
             boolean includeMetaAnnotations, int limit, int offset) {
         return structure.getAnnotatedClasses(
-                jdbi, annotation, includeMetaAnnotations, limit, offset);
+                reader, annotation, includeMetaAnnotations, limit, offset);
     }
 
-    String findUsages(Jdbi jdbi, String target, String usageKind,
+    String findUsages(ReadQueryContext reader, String target, String usageKind,
             String module, int limit, int offset) {
-        return usages.findUsages(jdbi, target, usageKind, module, limit, offset);
+        return usages.findUsages(reader, target, usageKind, module, limit, offset);
     }
 
-    String getSymbolDetails(Jdbi jdbi, String target, boolean includeMembers,
+    String getSymbolDetails(ReadQueryContext reader, String target, boolean includeMembers,
             String memberKind, int memberLimit, int memberOffset) {
         return symbols.getSymbolDetails(
-                jdbi, target, includeMembers, memberKind, memberLimit, memberOffset);
+                reader, target, includeMembers, memberKind, memberLimit, memberOffset);
     }
 
-    String findImpactedTests(Jdbi jdbi, List<String> targets,
+    String findImpactedTests(ReadQueryContext reader, List<String> targets,
             boolean transitive, int maxDepth, int limit, int offset) {
         return testImpact.findImpactedTests(
-                jdbi, targets, transitive, maxDepth, limit, offset);
+                reader, targets, transitive, maxDepth, limit, offset);
     }
 
-    String getContext(Jdbi jdbi, List<String> targets, boolean includeMembers, int limit) {
-        return context.getContext(jdbi, targets, includeMembers, limit);
+    String getContext(ReadQueryContext reader, List<String> targets, boolean includeMembers, int limit) {
+        return context.getContext(reader, targets, includeMembers, limit);
     }
 
-    String planChange(Jdbi jdbi, Path projectRoot, List<String> targets,
+    String planChange(ReadQueryContext reader, Path projectRoot, List<String> targets,
             String change, int limit) {
-        return changePlan.planChange(jdbi, projectRoot, targets, change, limit);
+        return changePlan.planChange(reader, projectRoot, targets, change, limit);
     }
 
-    String verifyChange(Jdbi jdbi, Path projectRoot, List<String> targets, int limit) {
-        return changeVerification.verifyChange(jdbi, projectRoot, targets, limit);
+    String verifyChange(ReadQueryContext reader, Path projectRoot, List<String> targets, int limit) {
+        return changeVerification.verifyChange(reader, projectRoot, targets, limit);
     }
 
-    String changeSession(Jdbi jdbi, Path projectRoot, List<String> targets,
+    String changeSession(ReadQueryContext reader, Path projectRoot, List<String> targets,
             String change, int limit, String detail, String view) {
-        return changeSession.snapshot(jdbi, projectRoot, targets, change, limit, detail, view);
+        return changeSession.snapshot(reader, projectRoot, targets, change, limit, detail, view);
     }
 
-    String getTypeHierarchy(Jdbi jdbi, String target, String direction,
+    String getTypeHierarchy(ReadQueryContext reader, String target, String direction,
             int maxDepth, int limit, int offset) {
         return typeHierarchy.getTypeHierarchy(
-                jdbi, target, direction, maxDepth, limit, offset);
+                reader, target, direction, maxDepth, limit, offset);
     }
 
-    String searchSymbols(Jdbi jdbi, String pattern, String kind, int limit, int offset) {
-        return symbolSearch.searchSymbols(jdbi, pattern, kind, limit, offset);
+    String searchSymbols(ReadQueryContext reader, String pattern, String kind, int limit, int offset) {
+        return symbolSearch.searchSymbols(reader, pattern, kind, limit, offset);
     }
 
-    String searchSymbols(Jdbi jdbi, String pattern, String kind, String language,
+    String searchSymbols(ReadQueryContext reader, String pattern, String kind, String language,
             int limit, int offset) {
-        return symbolSearch.searchSymbols(jdbi, pattern, kind, language, limit, offset);
+        return symbolSearch.searchSymbols(reader, pattern, kind, language, limit, offset);
     }
 
-    String findAnnotatedSymbols(Jdbi jdbi, String annotation, String kind,
+    String findAnnotatedSymbols(ReadQueryContext reader, String annotation, String kind,
             boolean includeMetaAnnotations, int limit, int offset) {
         return annotatedSymbols.findAnnotatedSymbols(
-                jdbi, annotation, kind, includeMetaAnnotations, limit, offset);
+                reader, annotation, kind, includeMetaAnnotations, limit, offset);
     }
 
-    String findFrameworkEndpoints(Jdbi jdbi, String framework, String httpMethod,
+    String findFrameworkEndpoints(ReadQueryContext reader, String framework, String httpMethod,
             String pathPrefix, String module, boolean includeGenerated,
             boolean includeTests, int limit, int offset) {
-        return frameworkEndpoints.findFrameworkEndpoints(jdbi, framework, httpMethod,
+        return frameworkEndpoints.findFrameworkEndpoints(reader, framework, httpMethod,
                 pathPrefix, module, includeGenerated, includeTests, limit, offset);
     }
 
-    String findSymbolUsages(Jdbi jdbi, String target, String name, String kind,
+    String findSymbolUsages(ReadQueryContext reader, String target, String name, String kind,
             String signature, String access, int limit, int offset) {
         return symbolUsages.findSymbolUsages(
-                jdbi, target, name, kind, signature, access, limit, offset);
+                reader, target, name, kind, signature, access, limit, offset);
     }
 
-    String getCallHierarchy(Jdbi jdbi, String target, String method,
+    String getCallHierarchy(ReadQueryContext reader, String target, String method,
             String direction, int limit, int offset) {
         return callHierarchy.getCallHierarchy(
-                jdbi, target, method, null, direction, false, 1, limit, offset);
+                reader, target, method, null, direction, false, 1, limit, offset);
     }
 
-    String getCallHierarchy(Jdbi jdbi, String target, String method,
+    String getCallHierarchy(ReadQueryContext reader, String target, String method,
             String direction, boolean transitive, int maxDepth, int limit, int offset) {
-        return getCallHierarchy(jdbi, target, method, null, direction,
+        return getCallHierarchy(reader, target, method, null, direction,
                 transitive, maxDepth, limit, offset);
     }
 
-    String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
+    String getCallHierarchy(ReadQueryContext reader, String target, String method, String signature,
             String direction, boolean transitive, int maxDepth, int limit, int offset) {
-        return callHierarchy.getCallHierarchy(jdbi, target, method, signature, direction,
+        return callHierarchy.getCallHierarchy(reader, target, method, signature, direction,
                 transitive, maxDepth, limit, offset);
     }
 
-    String traceStateLifecycle(Jdbi jdbi, String target, int evidenceLimit) {
-        return stateLifecycle.trace(jdbi, target, evidenceLimit);
+    String traceStateLifecycle(ReadQueryContext reader, String target, int evidenceLimit) {
+        return stateLifecycle.trace(reader, target, evidenceLimit);
     }
 
-    String analyzeExecutionOrder(Jdbi jdbi, String target, String method, String signature) {
-        return executionOrder.analyze(jdbi, target, method, signature);
+    String analyzeExecutionOrder(ReadQueryContext reader, String target, String method, String signature) {
+        return executionOrder.analyze(reader, target, method, signature);
     }
 
-    String analyzeExecutionOrder(Jdbi jdbi, String target, String method, String signature,
+    String analyzeExecutionOrder(ReadQueryContext reader, String target, String method, String signature,
             Set<String> beforeTerms, Set<String> afterTerms) {
-        return executionOrder.analyze(jdbi, target, method, signature, beforeTerms, afterTerms);
+        return executionOrder.analyze(reader, target, method, signature, beforeTerms, afterTerms);
     }
 
-    String compareDesignImpact(Jdbi jdbi, List<String> candidates, int testDepth) {
-        return designImpact.compare(jdbi, candidates, testDepth);
+    String compareDesignImpact(ReadQueryContext reader, List<String> candidates, int testDepth) {
+        return designImpact.compare(reader, candidates, testDepth);
     }
 
-    String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
+    String getCallHierarchy(ReadQueryContext reader, String target, String method, String signature,
             String direction, boolean transitive, int maxDepth, String scope,
             int limit, int offset) {
-        return callHierarchy.getCallHierarchy(jdbi, target, method, signature, direction,
+        return callHierarchy.getCallHierarchy(reader, target, method, signature, direction,
                 transitive, maxDepth, scope, limit, offset);
     }
 
-    String findMethodOverrides(Jdbi jdbi, String target, String method,
+    String findMethodOverrides(ReadQueryContext reader, String target, String method,
             String signature, boolean transitive, int limit, int offset) {
         return methodOverrides.findMethodOverrides(
-                jdbi, target, method, signature, transitive, limit, offset);
+                reader, target, method, signature, transitive, limit, offset);
     }
 
-    String findUnusedClasses(Jdbi jdbi, String module, boolean includeGenerated,
+    String findUnusedClasses(ReadQueryContext reader, String module, boolean includeGenerated,
             boolean includeTests, int limit, int offset) {
         return unusedClasses.findUnusedClasses(
-                jdbi, module, includeGenerated, includeTests, limit, offset);
+                reader, module, includeGenerated, includeTests, limit, offset);
     }
 
-    String findUnusedMethods(Jdbi jdbi, String module, boolean includeGenerated,
+    String findUnusedMethods(ReadQueryContext reader, String module, boolean includeGenerated,
             boolean includeTests, int limit, int offset) {
         return unusedMethods.findUnusedMethods(
-                jdbi, module, includeGenerated, includeTests, limit, offset);
+                reader, module, includeGenerated, includeTests, limit, offset);
     }
 
-    String findUnusedFields(Jdbi jdbi, String module, boolean includeGenerated,
+    String findUnusedFields(ReadQueryContext reader, String module, boolean includeGenerated,
             boolean includeTests, boolean includeWriteOnly, int limit, int offset) {
-        return unusedFields.findUnusedFields(jdbi, module, includeGenerated,
+        return unusedFields.findUnusedFields(reader, module, includeGenerated,
                 includeTests, includeWriteOnly, limit, offset);
     }
 
-    String findEntryPoints(Jdbi jdbi, String kind, String module,
+    String findEntryPoints(ReadQueryContext reader, String kind, String module,
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
-        return entryPoints.findEntryPoints(jdbi, kind, module,
+        return entryPoints.findEntryPoints(reader, kind, module,
                 includeGenerated, includeTests, limit, offset);
     }
 
-    String getModuleGraph(Jdbi jdbi, String module, String direction,
+    String getModuleGraph(ReadQueryContext reader, String module, String direction,
             int depth, int limit, int offset) {
-        return moduleGraph.getModuleGraph(jdbi, module, direction, depth, limit, offset);
+        return moduleGraph.getModuleGraph(reader, module, direction, depth, limit, offset);
     }
 
-    String getPackageGraph(Jdbi jdbi, String packageName, String direction,
+    String getPackageGraph(ReadQueryContext reader, String packageName, String direction,
             String module, boolean includeGenerated, boolean includeTests,
             int limit, int offset) {
-        return packageGraph.getPackageGraph(jdbi, packageName, direction, module,
+        return packageGraph.getPackageGraph(reader, packageName, direction, module,
                 includeGenerated, includeTests, limit, offset);
     }
 
-    String findArchitectureViolations(Jdbi jdbi, String scope, String from,
+    String findArchitectureViolations(ReadQueryContext reader, String scope, String from,
             List<String> forbidden, List<String> dependencyKinds,
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
-        return architectureViolations.findArchitectureViolations(jdbi, scope, from,
+        return architectureViolations.findArchitectureViolations(reader, scope, from,
                 forbidden, dependencyKinds, includeGenerated, includeTests, limit, offset);
     }
 
-    String findCycles(Jdbi jdbi, String scope, String module,
+    String findCycles(ReadQueryContext reader, String scope, String module,
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
-        return cycles.findCycles(jdbi, scope, module,
+        return cycles.findCycles(reader, scope, module,
                 includeGenerated, includeTests, limit, offset);
     }
 
-    String compareIndex(Jdbi jdbi, Path projectRoot, String baseline, int detailLimit) {
-        return indexComparison.compareIndex(jdbi, projectRoot, baseline, detailLimit);
+    String compareIndex(ReadQueryContext reader, Path projectRoot, String baseline, int detailLimit) {
+        return indexComparison.compareIndex(reader, projectRoot, baseline, detailLimit);
     }
 
-    String getBuildStatus(Jdbi jdbi, Path projectRoot) {
-        return BuildStatusInspector.inspect(projectRoot, jdbi);
+    String getBuildStatus(ReadQueryContext reader, Path projectRoot) {
+        return getBuildStatus(reader, projectRoot, null);
+    }
+
+    String getBuildStatus(ReadQueryContext reader, Path projectRoot, String module) {
+        try {
+            var json = new com.fasterxml.jackson.databind.ObjectMapper();
+            var result = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(BuildStatusInspector.inspect(projectRoot, reader, module == null ? null : List.of(module)));
+            if (module != null && result.path("compiled_outputs").path("count").asInt() == 0
+                    && result.path("java_compiler_settings").isEmpty())
+                return ToolResponseSupport.errorResponse("Unknown module: " + module);
+            var diagnostics = json.readTree(BuildProblemInspector.inspect(projectRoot, "all", module, 20, 0));
+            ProjectAvailabilityResponses.appendBuildGuidance(result, diagnostics);
+            if (result.path("action").asText().equals("build") || result.path("action").asText().equals("fix_build")) {
+                var contexts = json.createArrayNode();
+                result.path("compiled_outputs").path("stale_modules").forEach(staleModule ->
+                        contexts.addObject().putObject("resolution").put("module", staleModule.asText()));
+                result.set("verification_plan", new VerificationPlanQueries().plan(reader, projectRoot, contexts, json.createObjectNode()));
+                if (result.path("action").asText().equals("fix_build")) result.set("diagnostics", diagnostics);
+            }
+            return result.toString();
+        } catch (java.io.IOException malformed) { throw new IllegalStateException(malformed); }
     }
 
     String getBuildProblems(Path projectRoot, String severity, String module,
@@ -257,118 +277,118 @@ public final class QuillToolQueries {
                 projectRoot, severity, null, paths, limit, offset);
     }
 
-    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+    String getBeans(ReadQueryContext reader, String className, String scope, String kind,
             String profile, String qualifier, int limit) {
-        return structure.getBeans(jdbi, className, scope, kind, profile, qualifier, limit);
+        return structure.getBeans(reader, className, scope, kind, profile, qualifier, limit);
     }
 
-    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+    String getBeans(ReadQueryContext reader, String className, String scope, String kind,
             String profile, String qualifier, String module, String sourceSet, int limit) {
-        return structure.getBeans(jdbi, className, scope, kind, profile, qualifier,
+        return structure.getBeans(reader, className, scope, kind, profile, qualifier,
                 module, sourceSet, limit);
     }
 
-    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+    String getBeans(ReadQueryContext reader, String className, String scope, String kind,
             String profile, String qualifier, String module, String sourceSet,
             int limit, int offset) {
-        return structure.getBeans(jdbi, className, scope, kind, profile, qualifier,
+        return structure.getBeans(reader, className, scope, kind, profile, qualifier,
                 module, sourceSet, limit, offset);
     }
 
-    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+    String getBeans(ReadQueryContext reader, String className, String scope, String kind,
             String profile, String qualifier, String module, String sourceSet,
             String origin, int limit, int offset) {
-        return structure.getBeans(jdbi, className, scope, kind, profile, qualifier,
+        return structure.getBeans(reader, className, scope, kind, profile, qualifier,
                 module, sourceSet, origin, limit, offset);
     }
 
-    String getDependencies(Jdbi jdbi, String target, String direction, int depth) {
-        return structure.getDependencies(jdbi, target, direction, depth);
+    String getDependencies(ReadQueryContext reader, String target, String direction, int depth) {
+        return structure.getDependencies(reader, target, direction, depth);
     }
 
-    String getDependencies(Jdbi jdbi, String target, String direction, int depth,
+    String getDependencies(ReadQueryContext reader, String target, String direction, int depth,
             boolean includeNodes, int limit, int offset, String cursor) {
-        return structure.getDependencies(jdbi, target, direction, depth,
+        return structure.getDependencies(reader, target, direction, depth,
                 includeNodes, limit, offset, cursor);
     }
 
-    String findImplementations(Jdbi jdbi, String target, boolean transitive,
+    String findImplementations(ReadQueryContext reader, String target, boolean transitive,
             String module, String sourceSet, int limit, int offset) {
         return structure.findImplementations(
-                jdbi, target, transitive, module, sourceSet, limit, offset);
+                reader, target, transitive, module, sourceSet, limit, offset);
     }
 
-    String getInjectionPoints(Jdbi jdbi, String target) {
-        return structure.getInjectionPoints(jdbi, target);
+    String getInjectionPoints(ReadQueryContext reader, String target) {
+        return structure.getInjectionPoints(reader, target);
     }
 
-    String getHotspots(Jdbi jdbi, int limit, String since) {
-        return git.getHotspots(jdbi, limit, since);
+    String getHotspots(ReadQueryContext reader, int limit, String since) {
+        return git.getHotspots(reader, limit, since);
     }
 
     String getHotspots(
-            Jdbi jdbi, int limit, String since, boolean includeHistorical) {
-        return git.getHotspots(jdbi, limit, since, includeHistorical);
+            ReadQueryContext reader, int limit, String since, boolean includeHistorical) {
+        return git.getHotspots(reader, limit, since, includeHistorical);
     }
 
-    String getHotspots(Jdbi jdbi, int limit, int offset, String since,
+    String getHotspots(ReadQueryContext reader, int limit, int offset, String since,
             boolean includeHistorical) {
-        return git.getHotspots(jdbi, limit, offset, since, includeHistorical);
+        return git.getHotspots(reader, limit, offset, since, includeHistorical);
     }
 
-    String getFileHistory(Jdbi jdbi, String target, int limit) {
-        return git.getFileHistory(jdbi, target, limit);
+    String getFileHistory(ReadQueryContext reader, String target, int limit) {
+        return git.getFileHistory(reader, target, limit);
     }
 
-    String getFileHistory(Jdbi jdbi, String target, int limit, int offset) {
-        return git.getFileHistory(jdbi, target, limit, offset);
+    String getFileHistory(ReadQueryContext reader, String target, int limit, int offset) {
+        return git.getFileHistory(reader, target, limit, offset);
     }
 
-    String resolveEntities(Jdbi jdbi, List<String> targets) {
-        return git.resolveEntities(jdbi, targets);
+    String resolveEntities(ReadQueryContext reader, List<String> targets) {
+        return git.resolveEntities(reader, targets);
     }
 
-    String getCoChanges(Jdbi jdbi, String target, int limit) {
-        return git.getCoChanges(jdbi, target, limit);
+    String getCoChanges(ReadQueryContext reader, String target, int limit) {
+        return git.getCoChanges(reader, target, limit);
     }
 
-    String getRecentChanges(Jdbi jdbi, int commitCount) {
-        return git.getRecentChanges(jdbi, commitCount);
+    String getRecentChanges(ReadQueryContext reader, int commitCount) {
+        return git.getRecentChanges(reader, commitCount);
     }
 
-    String getRecentChanges(Jdbi jdbi, int commitCount, int fileLimit, int fileOffset,
+    String getRecentChanges(ReadQueryContext reader, int commitCount, int fileLimit, int fileOffset,
             boolean details) {
-        return git.getRecentChanges(jdbi, commitCount, fileLimit, fileOffset, details);
+        return git.getRecentChanges(reader, commitCount, fileLimit, fileOffset, details);
     }
 
-    String getOverview(Jdbi jdbi) {
-        return overview.getOverview(jdbi);
+    String getOverview(ReadQueryContext reader) {
+        return overview.getOverview(reader);
     }
 
-    String getOverview(Jdbi jdbi, boolean details) {
-        return overview.getOverview(jdbi, details);
+    String getOverview(ReadQueryContext reader, boolean details) {
+        return overview.getOverview(reader, details);
     }
 
-    String getRisk(Jdbi jdbi, String target) {
-        return risk.getRisk(jdbi, target);
+    String getRisk(ReadQueryContext reader, String target) {
+        return risk.getRisk(reader, target);
     }
 
-    String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {
-        return externalDependencies.getExternalDeps(jdbi, target, library, limit);
+    String getExternalDeps(ReadQueryContext reader, String target, String library, int limit) {
+        return externalDependencies.getExternalDeps(reader, target, library, limit);
     }
 
-    String inspectServiceDescriptors(Jdbi jdbi, String service) {
-        return serviceDescriptors.inspect(jdbi, service);
+    String inspectServiceDescriptors(ReadQueryContext reader, String service) {
+        return serviceDescriptors.inspect(reader, service);
     }
 
-    String findConfigurationReferences(Jdbi jdbi, String key, String className,
+    String findConfigurationReferences(ReadQueryContext reader, String key, String className,
             String kind, String module, int limit, int offset) {
         return configurationReferences.find(
-                jdbi, key, className, kind, module, limit, offset);
+                reader, key, className, kind, module, limit, offset);
     }
 
-    String findResourceReferences(Jdbi jdbi, String path, String className,
+    String findResourceReferences(ReadQueryContext reader, String path, String className,
             String module, int limit, int offset) {
-        return resourceReferences.find(jdbi, path, className, module, limit, offset);
+        return resourceReferences.find(reader, path, className, module, limit, offset);
     }
 }

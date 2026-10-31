@@ -16,7 +16,7 @@ import org.treblereel.mcp.command.WorkspaceCommand;
 import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.diagnostics.UxTelemetry;
 import org.treblereel.mcp.mcp.ProjectRegistry;
-import org.treblereel.mcp.mcp.WorkspaceProjectScope;
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 import org.treblereel.mcp.mcp.McpStdioServer;
 import org.treblereel.mcp.mcp.McpToolProfile;
 import org.treblereel.mcp.workspace.WorkspaceLock;

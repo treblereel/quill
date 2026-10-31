@@ -1,12 +1,15 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 import subprocess
+from unittest.mock import patch
 
-from quill_agent_benchmark import (ResponsesClient, SourceTools, json_type, parse_final_json,
+from quill_agent_benchmark import (QuillTools, ResponsesClient, SourceTools, arguments, json_type, parse_final_json,
                                    quill_outcome_flags, run_agent, selected_quill_tools,
-                                   source_fallbacks, tool_usage_diagnostics)
+                                   selected_quill_profile, source_fallbacks, tool_usage_diagnostics)
 from quill_agent_benchmark import managed_guidance
+from quill_agent_benchmark import main
 
 
 class FakeResponses:
@@ -37,6 +40,181 @@ class FakeResponses:
 
 
 class QuillAgentBenchmarkTest(unittest.TestCase):
+
+    def test_readiness_waits_locally_without_charging_agent_tool_calls(self):
+        with patch("quill_agent_benchmark.McpClient"):
+            quill = QuillTools(["unused"], Path("."), 10, 1000)
+        responses = [{"isError": True, "structuredContent": {"status": "refresh_pending"}},
+                     {"structuredContent": {"project": {"classes": 100},
+                                            "_meta": {"index_id": "ready-index"}}}]
+        with patch.object(quill, "_request", side_effect=responses) as request, \
+                patch("quill_agent_benchmark.time.sleep") as sleep:
+            receipt = quill.wait_until_ready()
+        self.assertEqual(2, receipt["overview_requests"])
+        self.assertEqual("ready-index", receipt["index_id"])
+        self.assertEqual(0, quill.calls)
+        self.assertIsNone(quill.last_call)
+        sleep.assert_called_once()
+        for call in request.call_args_list:
+            self.assertEqual(("tools/call", {"name": "get_overview", "arguments": {}}), call.args)
+
+    def test_readiness_rejects_errors_invalid_overviews_and_timeouts(self):
+        with patch("quill_agent_benchmark.McpClient"):
+            quill = QuillTools(["unused"], Path("."), 1, 1000)
+        for response in [{"isError": True, "structuredContent": {"error_code": "BUILD_FAILED"}},
+                         {"structuredContent": {"ready": True}}]:
+            with patch.object(quill, "_request", return_value=response), \
+                    self.assertRaisesRegex(RuntimeError, "readiness failed"):
+                quill.wait_until_ready()
+        with patch.object(quill, "_request") as request, \
+                patch("quill_agent_benchmark.time.perf_counter", side_effect=[0, 2]), \
+                self.assertRaisesRegex(RuntimeError, "before any model request"):
+            quill.wait_until_ready()
+        request.assert_not_called()
+
+    def test_main_never_calls_model_when_mcp_preparation_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            suite = Path(directory) / "suite.json"
+            suite.write_text(json.dumps({"tasks": [{"id": "one", "expected": {"ok": True}}]}))
+            with patch("sys.argv", ["runner", "--suite", str(suite), "--project", directory]), \
+                    patch.dict("os.environ", {"OPENAI_API_KEY": "offline-test-key"}), \
+                    patch("quill_agent_benchmark.verify_project", return_value="revision"), \
+                    patch("quill_agent_benchmark.ResponsesClient") as client, \
+                    patch("quill_agent_benchmark.QuillTools") as quill, \
+                    patch("quill_agent_benchmark.run_agent") as agent:
+                quill.return_value.__enter__.return_value.wait_until_ready.side_effect = RuntimeError("not ready")
+                with self.assertRaisesRegex(RuntimeError, "not ready"):
+                    main()
+                client.return_value.create.assert_not_called()
+                agent.assert_not_called()
+
+    def test_main_reuses_ready_mcp_and_resets_per_task_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            suite = root / "suite.json"
+            suite.write_text(json.dumps({"tasks": [{"id": id, "expected": {"ok": True}}
+                                                   for id in ("one", "two")]}))
+            starts = []
+
+            def run(*args):
+                quill = args[6]
+                if quill is not None:
+                    starts.append(quill.calls)
+                    quill.calls += 1
+                return {"id": args[1]["id"], "duration_seconds": 1, "observed": {"ok": True}}
+
+            with patch("sys.argv", ["runner", "--suite", str(suite), "--project", directory,
+                                    "--output-dir", str(root / "out"), "--repetitions", "2"]), \
+                    patch.dict("os.environ", {"OPENAI_API_KEY": "offline-test-key"}), \
+                    patch("quill_agent_benchmark.verify_project", return_value="revision"), \
+                    patch("quill_agent_benchmark.ResponsesClient"), \
+                    patch("quill_agent_benchmark.QuillTools") as factory, \
+                    patch("quill_agent_benchmark.time.perf_counter", side_effect=[10, 12]), \
+                    patch("quill_agent_benchmark.run_agent", side_effect=run):
+                factory.return_value.__enter__.return_value.wait_until_ready.return_value = {
+                    "duration_seconds": 1, "overview_requests": 2, "index_id": "ready-index"}
+                main()
+            factory.assert_called_once()
+            factory.return_value.__enter__.return_value.wait_until_ready.assert_called_once()
+            factory.return_value.__exit__.assert_called_once()
+            self.assertEqual([0, 0, 0, 0], starts)
+            capture = json.loads((root / "out/suite-with-quill.json").read_text())
+            self.assertEqual([2, 0, 0, 0], [t["mcp_initialization_seconds"]
+                                          for r in capture["runs"] for t in r["tasks"]])
+
+    def test_router_default_keeps_explicit_full_catalog_available(self):
+        for extra, expected in (([], "router"), (["--quill-profile", "default"], "default")):
+            with patch("sys.argv", ["runner", "--suite", "s.json", "--project", ".", *extra]):
+                args = arguments()
+                self.assertEqual(expected, selected_quill_profile(
+                    args.quill_profile, args.tool_selection, [{"id": "one"}]))
+        restricted = [{"id": "one", "quill_tools": ["get_dependencies"]}]
+        self.assertEqual("default", selected_quill_profile(None, "suite", restricted))
+        self.assertEqual("router", selected_quill_profile(None, "all", restricted))
+        self.assertEqual("default", selected_quill_profile("default", "all", []))
+
+    def test_large_mcp_results_remain_valid_json_and_report_omitted_evidence(self):
+        with patch("quill_agent_benchmark.McpClient"):
+            quill = QuillTools(["unused"], Path("."), 1, 512)
+        results = [{"isError": False, "structuredContent": {"classes": ["x" * 2000]}},
+                   {"isError": True, "structuredContent": {"message": "x" * 2000}},
+                   {"isError": False, "structuredContent": {"selected": "KeepThis"}}]
+        for result in results:
+            with patch.object(quill, "_request", return_value=result):
+                output = quill.call("quill_list_beans", {"limit": 100})
+            self.assertLessEqual(len(output), 512)
+            parsed = json.loads(output)
+            self.assertEqual(result["isError"], parsed["isError"])
+            if "selected" in result["structuredContent"]:
+                self.assertEqual(result, parsed)
+                self.assertNotIn("truncated", quill.last_call.get("outcome_flags", []))
+            else:
+                self.assertTrue(parsed["structuredContent"]["_response_budget"]["truncated"])
+                self.assertNotIn("classes", parsed["structuredContent"])
+                self.assertIn("truncated", quill.last_call["outcome_flags"])
+        with patch("quill_agent_benchmark.McpClient") as client:
+            with self.assertRaisesRegex(ValueError, "at least 512"):
+                QuillTools(["unused"], Path("."), 1, 100)
+            client.assert_not_called()
+
+    def test_mcp_optional_arguments_survive_responses_adapter_and_dispatch(self):
+        schema = {
+            "type": "object",
+            "properties": {"view": {"type": "string", "enum": ["full", "compact"]},
+                           "details": {"type": "boolean"},
+                           "limit": {"type": "integer"}},
+        }
+        required_schema = {"type": "object", "properties": {"target": {"type": "string"}},
+                           "required": ["target"], "additionalProperties": False}
+        with tempfile.TemporaryDirectory() as directory, \
+                patch("quill_agent_benchmark.McpClient") as mcp:
+            requests = []
+
+            def receive(ids, timeout):
+                request_id = next(iter(ids))
+                _, method, params = mcp.return_value.send.call_args.args
+                requests.append((method, params))
+                if method == "tools/list":
+                    result = {"tools": [
+                        {"name": "get_overview", "inputSchema": schema},
+                        {"name": "get_dependencies", "inputSchema": required_schema},
+                    ]}
+                else:
+                    result = {"structuredContent": {"ready": True}}
+                return {request_id: {"result": result}}
+
+            mcp.return_value.receive.side_effect = receive
+            payloads = []
+
+            def transport(payload):
+                payloads.append(payload)
+                for tool in payload["tools"]:
+                    if tool["name"].startswith("quill_"):
+                        self.assertIs(False, tool["strict"])
+                self.assertIn("evidence_detail=summary", payload["instructions"])
+                self.assertIn("quill_get_overview({}); never use view=compact", payload["instructions"])
+                if len(payloads) <= 2:
+                    arguments = {} if len(payloads) == 1 else {"view": "full", "details": False}
+                    return {"id": str(len(payloads)), "output": [{
+                        "type": "function_call", "name": "quill_get_overview",
+                        "call_id": str(len(payloads)), "arguments": json.dumps(arguments)}]}
+                return {"id": "final", "output": [{"type": "message", "content": [{
+                    "type": "output_text", "text": '{"observed":{"ready":true}}'}]}]}
+
+            project = Path(directory)
+            with QuillTools(["unused"], project, 1, 10000) as quill:
+                self.assertEqual(schema, quill.definitions[0]["parameters"])
+                self.assertEqual(required_schema, quill.definitions[1]["parameters"])
+                self.assertNotIn("required", schema)
+                result = run_agent(
+                    ResponsesClient("unused", "https://example.invalid", 1, transport),
+                    {"id": "optional", "prompt": "inspect", "expected": {"ready": True}},
+                    "with_quill", "fake-local-model", "medium", SourceTools(project, 1000), quill)
+            self.assertEqual({"ready": True}, result["observed"])
+            self.assertEqual([{"name": "get_overview", "arguments": {}},
+                              {"name": "get_overview", "arguments": {"view": "full", "details": False}}],
+                             [params for method, params in requests if method == "tools/call"])
+            mcp.return_value.close.assert_called_once()
 
     def test_action_mode_is_explicit_and_read_only_default_is_preserved(self):
         with tempfile.TemporaryDirectory() as directory:

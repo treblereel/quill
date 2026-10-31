@@ -10,9 +10,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.IndexReader.SymbolSearchResult;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.SymbolRepository.SymbolSearchResult;
 
 /** Searches indexed type and member declarations without reading source files. */
 final class SymbolSearchQueries {
@@ -22,11 +22,11 @@ final class SymbolSearchQueries {
             "CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD",
             "FIELD", "CONSTRUCTOR", "METHOD", "PROPERTY");
 
-    String searchSymbols(Jdbi jdbi, String pattern, String kind, int limit, int offset) {
-        return searchSymbols(jdbi, pattern, kind, null, limit, offset);
+    String searchSymbols(ReadQueryContext reader, String pattern, String kind, int limit, int offset) {
+        return searchSymbols(reader, pattern, kind, null, limit, offset);
     }
 
-    String searchSymbols(Jdbi jdbi, String pattern, String kind, String language,
+    String searchSymbols(ReadQueryContext reader, String pattern, String kind, String language,
             int limit, int offset) {
         if (pattern == null || pattern.isBlank()) {
             return errorResponse("MISSING_PATTERN", "Search pattern must not be blank");
@@ -48,9 +48,9 @@ final class SymbolSearchQueries {
                     .map(java.util.regex.Pattern::quote).collect(java.util.stream.Collectors.joining(".*"));
             var matcher = java.util.regex.Pattern.compile(expression, java.util.regex.Pattern.CASE_INSENSITIVE);
             var properties = "java".equals(normalizedLanguage) ? java.util.List.<KotlinProperties.Property>of()
-                    : IndexReader.findAllClasses(jdbi).stream()
+                    : reader.symbols.findAllClasses().stream()
                         .filter(cls -> "current".equals(cls.lifecycle()) && !"orphan_output".equals(cls.origin()))
-                        .flatMap(cls -> KotlinProperties.list(jdbi, cls).stream())
+                        .flatMap(cls -> KotlinProperties.list(reader, cls).stream())
                         .filter(property -> matcher.matcher(property.name()).find())
                         .sorted(java.util.Comparator.comparing(KotlinProperties.Property::name)
                             .thenComparing(property -> property.owner().className())
@@ -63,13 +63,11 @@ final class SymbolSearchQueries {
             var symbols = root.putArray("symbols");
             page.forEach(property -> property.append(symbols.addObject()));
             appendPage(root, page.size(), properties.size(), limit, offset);
-            appendMeta(root, jdbi, 0);
+            appendMeta(root, reader, 0);
             return root.toString();
         }
-        var matches = IndexReader.searchSymbols(
-                jdbi, pattern.trim(), normalizedKind, normalizedLanguage, limit, offset);
-        int total = IndexReader.countSymbols(
-                jdbi, pattern.trim(), normalizedKind, normalizedLanguage);
+        var matches = reader.symbols.searchSymbols(pattern.trim(), normalizedKind, normalizedLanguage, limit, offset);
+        int total = reader.symbols.countSymbols(pattern.trim(), normalizedKind, normalizedLanguage);
 
         ObjectNode root = JSON.createObjectNode();
         root.put("pattern", pattern.trim());
@@ -110,7 +108,7 @@ final class SymbolSearchQueries {
             if (countedClasses.add(match.classId())) naiveTokens += match.sourceTokens();
         }
         appendPage(root, matches.size(), total, limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 

@@ -131,7 +131,7 @@ final class McpToolCatalog {
         // mode and first request in the advertised tool itself instead of relying on startup text.
         if (method.getName().equals("get_overview")) {
             String mode = workspace
-                    ? "Server mode: workspace (--workspace). First call with view=compact (limit<=50); then project=<name> with view=full. "
+                    ? "Server mode: workspace. First call with view=compact; then project=<name> with view=full. "
                     : "Server mode: single_project. Call without arguments, not view=compact. ";
             return mode + "Start here even for narrow symbol tasks; use change_session before edits.";
         }
@@ -148,6 +148,18 @@ final class McpToolCatalog {
         return value instanceof String name ? name : null;
     }
 
+    private static boolean queryEvidence(Method method) {
+        return method.getDeclaringClass() == QuillTools.class
+                && method.getAnnotation(Tool.class).structured()
+                && !Set.of("get_overview", "get_build_status", "get_build_problems", "get_file_problems",
+                        "change_session", "plan_change", "verify_change").contains(method.getName());
+    }
+
+    private static boolean coverageEvidence(Method method) {
+        return queryEvidence(method) && Set.of("get_call_hierarchy", "find_usages", "find_symbol_usages",
+                "get_context", "find_workspace_usages").contains(method.getName());
+    }
+
     static Map<String, Object> inputSchema(Method method) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
@@ -161,7 +173,8 @@ final class McpToolCatalog {
             }
             ToolArg arg = parameter.getAnnotation(ToolArg.class);
             if (arg != null) {
-                if (!SELF_DESCRIBING_ARGUMENTS.contains(parameter.getName())) {
+                if (!SELF_DESCRIBING_ARGUMENTS.contains(parameter.getName())
+                        && !arg.description().equalsIgnoreCase(parameter.getName().replace('_', ' '))) {
                     property.put("description", arg.description());
                 }
                 if (arg.allowed().length > 0) {
@@ -172,6 +185,10 @@ final class McpToolCatalog {
             if (!isOptional(parameter.getParameterizedType())) required.add(parameter.getName());
         }
 
+        if (coverageEvidence(method)) {
+            properties.put("evidence_detail", Map.of("type", "string", "enum", List.of("summary", "full")));
+            properties.put("evidence_offset", Map.of("type", "integer"));
+        }
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
@@ -209,6 +226,20 @@ final class McpToolCatalog {
             Parameter[] parameters = method.getParameters();
             var acceptedArguments = java.util.Arrays.stream(parameters)
                     .map(Parameter::getName).collect(java.util.stream.Collectors.toSet());
+            boolean queryEvidence = queryEvidence(method);
+            boolean coverageEvidence = coverageEvidence(method);
+            if (coverageEvidence) acceptedArguments.addAll(Set.of("evidence_detail", "evidence_offset"));
+            String evidenceDetail = "summary";
+            int evidenceOffset = 0;
+            if (coverageEvidence) {
+                Object detail = args.get("evidence_detail");
+                if (detail != null && (!(detail instanceof String) || !Set.of("summary", "full").contains(detail)))
+                    return new Invocation("Invalid evidence_detail: expected summary or full", true);
+                if (detail != null) evidenceDetail = (String) detail;
+                if (args.get("evidence_offset") != null) evidenceOffset = (Integer) convert(args.get("evidence_offset"), Integer.class);
+                if (evidenceOffset < 0 || evidenceOffset > 0 && !evidenceDetail.equals("full"))
+                    return new Invocation("evidence_offset must be nonnegative and requires evidence_detail=full", true);
+            }
             Optional<String> unknown = args.keySet().stream()
                     .filter(name -> !acceptedArguments.contains(name)).findFirst();
             if (unknown.isPresent()) {
@@ -238,6 +269,9 @@ final class McpToolCatalog {
                 }
             }
             String text = (String) method.invoke(tools, values);
+            if (queryEvidence) text = ToolResponseSupport.queryEvidence(text, method.getName(), args,
+                    evidenceDetail.equals("full"), evidenceOffset);
+            if (method.getAnnotation(Tool.class).structured()) text = ResponseBudget.apply(text, method.getName(), args);
             return new Invocation(text, isToolError(text));
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();

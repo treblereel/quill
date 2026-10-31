@@ -7,6 +7,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import org.treblereel.mcp.model.BuiltinQualifier;
+import org.treblereel.mcp.model.ResolutionMessages;
+import org.treblereel.mcp.model.ResolutionReason;
+import org.treblereel.mcp.model.ResolutionRule;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.CandidateDisposition;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
@@ -18,10 +23,13 @@ import org.treblereel.mcp.model.ResolutionConfidence;
 import org.treblereel.mcp.model.ResolutionStatus;
 import org.treblereel.mcp.model.ResolutionTrace;
 
-/** Re-evaluates static DI candidates in each application module's visible classpath. */
+/**
+ * Re-evaluates static DI candidates in each application module's visible classpath.
+ */
 public final class ApplicationContextResolver {
 
-    private ApplicationContextResolver() {}
+    private ApplicationContextResolver() {
+    }
 
     public static List<InjectionPointRecord> refine(
             List<InjectionPointRecord> injectionPoints, List<BeanRecord> beans,
@@ -103,9 +111,9 @@ public final class ApplicationContextResolver {
         Integer selected = candidates.size() == 1 ? candidates.getFirst().id() : null;
         ResolutionStatus status = selected != null ? ResolutionStatus.RESOLVED
                 : candidates.size() > 1 ? ResolutionStatus.AMBIGUOUS : ResolutionStatus.UNKNOWN;
-        String reason = selected != null ? "UNIQUE_CONTEXT_CANDIDATE"
-                : candidates.size() > 1 ? "MULTIPLE_CONTEXT_CANDIDATES"
-                : "NO_CONTEXT_CANDIDATE";
+        ResolutionReason reason = selected != null ? ResolutionReason.UNIQUE_CONTEXT_CANDIDATE
+                : candidates.size() > 1 ? ResolutionReason.MULTIPLE_CONTEXT_CANDIDATES
+                : ResolutionReason.NO_CONTEXT_CANDIDATE;
         Set<Integer> eligible = candidates.stream().map(BeanRecord::id)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         List<ResolutionCandidate> traceCandidates = beans.stream()
@@ -114,24 +122,24 @@ public final class ApplicationContextResolver {
                         java.util.Objects.equals(bean.id(), selected) ? CandidateDisposition.SELECTED
                                 : eligible.contains(bean.id()) ? CandidateDisposition.ELIGIBLE
                                 : CandidateDisposition.EXCLUDED,
-                        java.util.Objects.equals(bean.id(), selected) ? "UNIQUE_CONTEXT_CANDIDATE"
-                                : eligible.contains(bean.id()) ? "CONTEXT_CANDIDATE"
+                        java.util.Objects.equals(bean.id(), selected) ? ResolutionReason.UNIQUE_CONTEXT_CANDIDATE
+                                : eligible.contains(bean.id()) ? ResolutionReason.CONTEXT_CANDIDATE
                                 : defaultSuppressed.contains(bean.id())
-                                        ? "DEFAULT_BEAN_SUPPRESSED"
+                                ? ResolutionReason.DEFAULT_BEAN_SUPPRESSED
                                 : visible(visibleModules, modulesByClass.get(bean.classId()))
-                                        ? "FRAMEWORK_RULE_EXCLUDED" : "MODULE_NOT_VISIBLE",
-                        List.of("APPLICATION_MODULE_CLASSPATH")))
+                                ? ResolutionReason.FRAMEWORK_RULE_EXCLUDED : ResolutionReason.MODULE_NOT_VISIBLE,
+                        List.of(ResolutionRule.APPLICATION_MODULE_CLASSPATH)))
                 .toList();
-        List<String> rules = new ArrayList<>(point.resolutionTrace().appliedRules());
-        if (!rules.contains("APPLICATION_MODULE_CLASSPATH")) rules.add("APPLICATION_MODULE_CLASSPATH");
+        List<ResolutionRule> rules = new ArrayList<>(point.resolutionTrace().appliedRules());
+        if (!rules.contains(ResolutionRule.APPLICATION_MODULE_CLASSPATH)) rules.add(ResolutionRule.APPLICATION_MODULE_CLASSPATH);
         List<String> limitations = new ArrayList<>(point.limitations());
-        limitations.add("Resolved in application module context '" + context + "'.");
+        limitations.add(ResolutionMessages.resolvedInApplicationContext(context));
         return new InjectionPointRecord(point.id(), point.beanId(), point.kind(), point.targetType(),
                 point.qualifiers(), point.fieldName(), selected, status, point.resolutionStrategy(),
                 reason, selected != null ? ResolutionConfidence.HIGH
-                        : candidates.size() > 1 ? ResolutionConfidence.MEDIUM : ResolutionConfidence.LOW,
+                : candidates.size() > 1 ? ResolutionConfidence.MEDIUM : ResolutionConfidence.LOW,
                 limitations, new ResolutionTrace(traceCandidates, rules,
-                        point.resolutionTrace().unsupportedRules()));
+                point.resolutionTrace().unsupportedRules()));
     }
 
     private static List<BeanRecord> applySpecialization(
@@ -140,7 +148,7 @@ public final class ApplicationContextResolver {
                 java.util.stream.Collectors.toSet());
         Set<Integer> specialized = new LinkedHashSet<>();
         for (ResolutionCandidate evidence : trace.candidates()) {
-            if ("SPECIALIZED_BY".equals(evidence.reason()) && evidence.beanId() != null
+            if (evidence.reason() == ResolutionReason.SPECIALIZED_BY && evidence.beanId() != null
                     && evidence.relatedBeanId() != null
                     && candidateIds.contains(evidence.relatedBeanId())) {
                 specialized.add(evidence.beanId());
@@ -156,7 +164,7 @@ public final class ApplicationContextResolver {
     private static boolean qualifiersMatch(
             List<String> required, List<String> available, boolean spring) {
         for (String qualifier : required) {
-            if ((spring && qualifier.equals("@Default")) || qualifier.equals("@Any")) continue;
+            if ((spring && qualifier.equals(BuiltinQualifier.DEFAULT.annotation())) || qualifier.equals(BuiltinQualifier.ANY.annotation())) continue;
             if (!available.contains(qualifier)) return false;
         }
         return true;
@@ -191,13 +199,13 @@ public final class ApplicationContextResolver {
     }
 
     private static InjectionPointRecord contextRequired(InjectionPointRecord original,
-            List<String> contexts, List<InjectionPointRecord> outcomes) {
+                                                        List<String> contexts, List<InjectionPointRecord> outcomes) {
         List<String> limitations = new ArrayList<>(original.limitations());
-        limitations.add("Resolution differs across application contexts: " + contexts + ".");
-        List<String> rules = new ArrayList<>(original.resolutionTrace().appliedRules());
-        if (!rules.contains("APPLICATION_MODULE_CLASSPATH")) rules.add("APPLICATION_MODULE_CLASSPATH");
-        Set<String> unsupported = new LinkedHashSet<>(original.resolutionTrace().unsupportedRules());
-        unsupported.add("APPLICATION_CONTEXT_SELECTION");
+        limitations.add(ResolutionMessages.differingApplicationContexts(contexts));
+        List<ResolutionRule> rules = new ArrayList<>(original.resolutionTrace().appliedRules());
+        if (!rules.contains(ResolutionRule.APPLICATION_MODULE_CLASSPATH)) rules.add(ResolutionRule.APPLICATION_MODULE_CLASSPATH);
+        Set<ResolutionRule> unsupported = new LinkedHashSet<>(original.resolutionTrace().unsupportedRules());
+        unsupported.add(ResolutionRule.APPLICATION_CONTEXT_SELECTION);
         List<ResolutionCandidate> candidates = outcomes.stream()
                 .flatMap(outcome -> outcome.resolutionTrace().candidates().stream())
                 .collect(java.util.stream.Collectors.toMap(
@@ -206,7 +214,7 @@ public final class ApplicationContextResolver {
         return new InjectionPointRecord(original.id(), original.beanId(), original.kind(),
                 original.targetType(), original.qualifiers(), original.fieldName(), null,
                 ResolutionStatus.CONTEXT_REQUIRED, "APPLICATION_CONTEXT",
-                "APPLICATION_CONTEXT_REQUIRED", ResolutionConfidence.LOW, limitations,
+                ResolutionReason.APPLICATION_CONTEXT_REQUIRED, ResolutionConfidence.LOW, limitations,
                 new ResolutionTrace(candidates, rules, List.copyOf(unsupported)));
     }
 }

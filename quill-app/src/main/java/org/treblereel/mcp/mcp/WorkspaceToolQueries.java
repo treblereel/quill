@@ -1,5 +1,9 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.index.BuildStatusInspector;
+import org.treblereel.mcp.workspace.ProjectScope;
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -15,12 +19,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.jar.JarFile;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.JvmSourceFiles;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.model.ClassRecord;
@@ -224,9 +229,8 @@ final class WorkspaceToolQueries {
                         "provider_repository", provider.repository()));
                 return root.toString();
             }
-            String providerResponse = new QuillToolQueries().getDependencies(
-                    providerResolution.projects().getFirst().jdbi(), provider.className(),
-                    direction, depth, includeNodes, limit, offset, cursor);
+            String providerResponse = providerResolution.projects().getFirst().read(context -> new QuillToolQueries().getDependencies(
+                    context, provider.className(), direction, depth, includeNodes, limit, offset, cursor));
             JsonNode providerData = JSON.readTree(providerResponse);
             providerNode.set("data", providerData);
             if (!providerResolution.issues().isEmpty()) {
@@ -392,18 +396,18 @@ final class WorkspaceToolQueries {
             node.put("status", issue != null ? issue.code()
                     : resolution.projects().isEmpty() ? "unavailable" : "ready");
             if (issue != null) {
-                node.put("message", issue.message());
-                node.put("recommended_action", issue.recommendedAction());
+                node.setAll(ProjectAvailabilityResponses.summary(issue));
             }
             try {
                 appendFreshness(node, resolution);
                 if (!resolution.projects().isEmpty()) {
-                    Jdbi db = resolution.projects().getFirst().jdbi();
-                    Map<String, String> metadata = IndexReader.getMetadata(db);
+                    try (ReadQueryContext db = ReadQueryContext.open(resolution.projects().getFirst().jdbi())) {
+                    Map<String, String> metadata = db.index.getMetadata();
                     node.put("framework", metadata.getOrDefault("framework", "unknown"));
-                    node.put("indexed_classes", IndexReader.countClasses(db));
-                    node.put("indexed_beans", IndexReader.countBeans(db));
+                    node.put("indexed_classes", db.symbols.countClasses());
+                    node.put("indexed_beans", db.beans.countBeans());
                 }
+}
             } catch (Exception failure) {
                 node.put("status", "query_failed");
                 node.put("message", ProjectRegistry.safeMessage(failure));
@@ -465,7 +469,7 @@ final class WorkspaceToolQueries {
                     modules.getOrDefault(project.name(), List.of());
             node.put("module_count", repositoryModules.size());
             if (entry != null) {
-                Map<String, String> metadata = IndexReader.getMetadata(entry.jdbi());
+                Map<String, String> metadata = entry.jdbi().withHandle(repositoryHandle1 -> new IndexRepository(repositoryHandle1).getMetadata());
                 node.put("index_id", metadata.getOrDefault("index_id", "unknown"));
                 node.put("indexed_at", metadata.getOrDefault("indexed_at", "unknown"));
                 node.put("indexed_commit", metadata.getOrDefault("last_commit", "unknown"));
@@ -539,10 +543,9 @@ final class WorkspaceToolQueries {
         ProjectRegistry.Resolution availability = registry.resolve();
         for (ProjectRegistry.ProjectEntry project : availability.projects()) {
             List<ClassRecord> classes = new ArrayList<>(
-                    IndexReader.findClassesByName(project.jdbi(), target));
-            if (classes.isEmpty()) classes.addAll(IndexReader.findClassesByShortName(
-                    project.jdbi(), target));
-            IndexReader.findClassByPath(project.jdbi(), target).ifPresent(classes::add);
+                    project.jdbi().withHandle(repositoryHandle2 -> new SymbolRepository(repositoryHandle2).findClassesByName(target)));
+            if (classes.isEmpty()) classes.addAll(project.jdbi().withHandle(repositoryHandle3 -> new SymbolRepository(repositoryHandle3).findClassesByShortName(target)));
+            project.jdbi().withHandle(repositoryHandle4 -> new SymbolRepository(repositoryHandle4).findClassByPath(target)).ifPresent(classes::add);
             for (ClassRecord cls : classes) {
                 if ("dependency".equals(cls.origin()) || "orphan_output".equals(cls.origin())) {
                     continue;
@@ -574,6 +577,11 @@ final class WorkspaceToolQueries {
 
     String findUsages(String target, String providerRepository, String usageKind,
             int limit, int consumerLimit, int offset, int consumerOffset) {
+        return findUsages(target, providerRepository, usageKind, limit, consumerLimit, offset, consumerOffset, false);
+    }
+
+    private String findUsages(String target, String providerRepository, String usageKind,
+            int limit, int consumerLimit, int offset, int consumerOffset, boolean nested) {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null) return workspaceRequired();
         SymbolContract.Reference member;
@@ -652,9 +660,9 @@ final class WorkspaceToolQueries {
         }
         List<ProjectQueryExecutor.QueryResult> queryResults =
                 new ProjectQueryExecutor(registry).executeProjects(consumerProjects,
-                        consumer -> consumerUsages(usageQueries, consumer.jdbi(),
+                        (consumer, context) -> consumerUsages(usageQueries, context,
                                 provider.className(), usageKind, consumerLimit,
-                                consumerEdges.get(consumer.name())));
+                                consumerEdges.get(consumer.name())), nested);
         int failedConsumers = 0;
         int truncatedConsumers = 0;
         int resolvedConsumers = 0;
@@ -769,13 +777,12 @@ final class WorkspaceToolQueries {
             return ToolResponseSupport.errorResponse("PROVIDER_INDEX_UNAVAILABLE",
                     "Provider index is unavailable");
         }
-        Jdbi providerDb = providerResolution.projects().getFirst().jdbi();
-        if (MetaEnvelope.from(providerDb, 0, 0).structureStale()) {
+        try (ReadQueryContext providerDb = ReadQueryContext.open(providerResolution.projects().getFirst().jdbi())) {
+        if (org.treblereel.mcp.index.BuildStatusInspector.freshness(providerDb, 0, 0).structureStale()) {
             return ToolResponseSupport.errorResponse("PROVIDER_INDEX_STALE",
                     "Provider index is stale; refresh it before matching member usages");
         }
-        List<ClassRecord> providerClasses = IndexReader.findClassesByName(providerDb,
-                reference.className()).stream()
+        List<ClassRecord> providerClasses = providerDb.symbols.findClassesByName(reference.className()).stream()
                 .filter(cls -> !"dependency".equals(cls.origin())
                         && provider.module().equals(cls.module())
                         && (reference.sourceFile().isBlank()
@@ -827,12 +834,12 @@ final class WorkspaceToolQueries {
                 continue;
             }
             queried++;
-            Jdbi consumerDb = consumerResolution.projects().getFirst().jdbi();
-            if (!"complete".equals(IndexReader.getMetadata(consumerDb).get("dependency_index"))) {
+            try (ReadQueryContext consumerDb = ReadQueryContext.open(consumerResolution.projects().getFirst().jdbi())) {
+            if (!"complete".equals(consumerDb.index.getMetadata().get("dependency_index"))) {
                 issue.put("status", "dependency_index_incomplete");
                 continue;
             }
-            if (MetaEnvelope.from(consumerDb, 0, 0).structureStale()) {
+            if (org.treblereel.mcp.index.BuildStatusInspector.freshness(consumerDb, 0, 0).structureStale()) {
                 issue.put("status", "consumer_index_stale");
                 continue;
             }
@@ -846,8 +853,7 @@ final class WorkspaceToolQueries {
                 issue.put("status", binaryStatus);
                 continue;
             }
-            List<ClassRecord> binaryClasses = IndexReader.findClassesByName(consumerDb,
-                    reference.className()).stream()
+            List<ClassRecord> binaryClasses = consumerDb.symbols.findClassesByName(reference.className()).stream()
                     .filter(cls -> "dependency".equals(cls.origin())).toList();
             if (binaryClasses.size() != 1) {
                 issue.put("status", binaryClasses.isEmpty()
@@ -868,6 +874,7 @@ final class WorkspaceToolQueries {
             }
             unresolved.remove(unresolved.size() - 1);
         }
+}
         usages.sort(java.util.Comparator.comparing(ConsumerUsage::repository)
                 .thenComparing(value -> value.edge().consumerModule())
                 .thenComparing(value -> value.edge().sourceSet()));
@@ -931,6 +938,7 @@ final class WorkspaceToolQueries {
                 .add("Classpath order and indexed binary identity are checked; binary content hashes are not compared");
         return root.toString();
     }
+}
 
     private List<WorkspaceDependencyGraph.Edge> expandTestSourceSets(
             List<WorkspaceDependencyGraph.Edge> edges, WorkspaceCoordinateCatalog.Result catalog) {
@@ -939,11 +947,8 @@ final class WorkspaceToolQueries {
             if (!"main".equals(edge.sourceSet())) continue;
             ProjectRegistry.Resolution resolution = registry.resolve(edge.consumerRepository());
             if (resolution.projects().isEmpty()) continue;
-            Jdbi db = resolution.projects().getFirst().jdbi();
-            boolean hasTestClasses = db.withHandle(handle -> handle.createQuery("""
-                    SELECT COUNT(*) FROM classes WHERE module = :module AND source_set = 'test'
-                      AND lifecycle = 'current' AND origin NOT IN ('dependency', 'orphan_output')
-                    """).bind("module", edge.consumerModule()).mapTo(Integer.class).one() > 0);
+            try (ReadQueryContext db = ReadQueryContext.open(resolution.projects().getFirst().jdbi())) {
+            boolean hasTestClasses = db.symbols.hasTestClasses(edge.consumerModule());
             if (!hasTestClasses) continue;
             WorkspaceCoordinateCatalog.Module module = catalog.modules().stream()
                     .filter(value -> value.repository().equals(edge.consumerRepository())
@@ -969,12 +974,13 @@ final class WorkspaceToolQueries {
                     edge.checkoutVersion(), version, status, edge.crossRepository(),
                     edge.ambiguousProvider()));
         }
+}
         return expanded;
     }
 
-    private static List<ClassMemberRecord> matchingMembers(Jdbi db, ClassRecord cls,
+    private static List<ClassMemberRecord> matchingMembers(ReadQueryContext db, ClassRecord cls,
             SymbolContract.Reference reference) {
-        return IndexReader.findClassMembers(db, cls.id()).stream()
+        return db.symbols.findClassMembers(cls.id()).stream()
                 .filter(member -> member.kind().equals(reference.kind())
                         && member.name().equals(reference.jvmName())
                         && member.descriptor().equals(reference.descriptor())).toList();
@@ -1015,47 +1021,26 @@ final class WorkspaceToolQueries {
         }
     }
 
-    private static ObjectNode memberUsages(Jdbi db, ClassRecord target,
+    private static ObjectNode memberUsages(ReadQueryContext db, ClassRecord target,
             SymbolContract.Reference reference, WorkspaceDependencyGraph.Edge edge,
             int limit, int offset) {
         boolean field = "FIELD".equals(reference.kind());
-        String table = field ? "field_accesses" : "method_calls";
-        String nameColumn = field ? "field_name" : "to_method";
-        String descriptorColumn = field ? "field_descriptor" : "to_descriptor";
-        String bytecodeName = "CONSTRUCTOR".equals(reference.kind())
-                ? "<init>" : reference.jvmName();
-        String from = " FROM " + table + " usage JOIN classes caller ON caller.id = usage.from_class_id"
-                + " WHERE usage.to_class_id = :target AND usage." + nameColumn + " = :name"
-                + " AND usage." + descriptorColumn + " = :descriptor"
-                + " AND caller.lifecycle = 'current' AND caller.origin NOT IN ('dependency', 'orphan_output')"
-                + " AND caller.module = :module AND caller.source_set = :sourceSet";
-        return db.withHandle(handle -> {
-            var count = handle.createQuery("SELECT COUNT(*) AS groups, COALESCE(SUM(usage.occurrence_count), 0) AS occurrences" + from)
-                    .bind("target", target.id()).bind("name", bytecodeName)
-                    .bind("descriptor", reference.descriptor())
-                    .bind("module", edge.consumerModule()).bind("sourceSet", edge.sourceSet())
-                    .map((row, ctx) -> new int[]{row.getInt("groups"), row.getInt("occurrences")}).one();
-            String sql = "SELECT caller.class_name, caller.source_file, caller.source_line,"
-                    + " usage.from_method, usage.from_descriptor, usage.occurrence_count,"
-                    + " usage.evidence_lines, usage." + (field ? "access_kind" : "invocation_kind")
-                    + " AS bytecode_kind" + from
-                    + " ORDER BY caller.class_name, usage.from_method, usage.from_descriptor, bytecode_kind"
-                    + " LIMIT :limit OFFSET :offset";
+        String bytecodeName = "CONSTRUCTOR".equals(reference.kind()) ? "<init>" : reference.jvmName();
+        var page = db.usages.findWorkspaceMemberUsages(target.id(), field, bytecodeName,
+                reference.descriptor(), edge.consumerModule(), edge.sourceSet(), limit, offset);
+        int[] count = {page.groups(), page.occurrences()};
             ObjectNode result = JSON.createObjectNode();
             result.put("usage_group_count", count[0]);
             result.put("usage_occurrence_count", count[1]);
             ArrayNode rows = result.putArray("usages");
-            boolean classifiedDynamic = "2".equals(IndexReader.getMetadata(db).get("invokedynamic_evidence_protocol"));
-            handle.createQuery(sql).bind("target", target.id()).bind("name", bytecodeName)
-                    .bind("descriptor", reference.descriptor())
-                    .bind("module", edge.consumerModule()).bind("sourceSet", edge.sourceSet())
-                    .bind("limit", limit).bind("offset", offset).map((row, ctx) -> {
+            boolean classifiedDynamic = "2".equals(db.index.getMetadata().get("invokedynamic_evidence_protocol"));
+            page.rows().stream().map(row -> {
                         ObjectNode node = JSON.createObjectNode();
-                        node.put("class", row.getString("class_name"));
-                        node.put("caller_method", row.getString("from_method"));
-                        node.put("caller_descriptor", row.getString("from_descriptor"));
-                        node.put("occurrence_count", row.getInt("occurrence_count"));
-                        String kind = row.getString("bytecode_kind");
+                        node.put("class", row.className());
+                        node.put("caller_method", row.fromMethod());
+                        node.put("caller_descriptor", row.fromDescriptor());
+                        node.put("occurrence_count", row.occurrenceCount());
+                        String kind = row.bytecodeKind();
                         node.put(field ? "access_kind" : "invocation_kind", kind);
                         node.put("usage_kind", field ? kind.startsWith("read_") ? "read" : "write" : "dynamic".equals(kind)
                                 ? classifiedDynamic ? "callback_reference" : "dynamic_handle_reference" : "call");
@@ -1063,43 +1048,42 @@ final class WorkspaceToolQueries {
                                 ? classifiedDynamic ? "callback_creation" : "bootstrap_reference_unknown" : "invocation_instruction");
                         if (!field && "dynamic".equals(kind)) node.put("reference_basis",classifiedDynamic ? "lambda_metafactory" : "legacy_unclassified");
                         try {
-                            node.set("evidence_lines", JSON.readTree(row.getString("evidence_lines")));
+                            node.set("evidence_lines", JSON.readTree(row.evidenceLines()));
                         } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
                             throw new IllegalStateException("Invalid indexed evidence lines", invalid);
                         }
-                        String source = row.getString("source_file");
+                        String source = row.sourceFile();
                         if (source == null) node.putNull("source");
                         else node.put("source", source);
                         return node;
                     }).forEach(rows::add);
             ToolResponseSupport.appendPage(result, rows.size(), count[0], limit, offset);
             result.put("answer_complete", !result.path("has_more").asBoolean());
-            Map<String, String> metadata = IndexReader.getMetadata(db);
+            Map<String, String> metadata = db.index.getMetadata();
             ObjectNode snapshot = result.putObject("index_snapshot");
             snapshot.put("index_id", metadata.getOrDefault("index_id", "unknown"));
             snapshot.put("indexed_commit", metadata.getOrDefault("last_commit", "unknown"));
             return result;
-        });
     }
 
-    private static String consumerUsages(UsageToolQueries usageQueries, Jdbi jdbi,
+    private static String consumerUsages(UsageToolQueries usageQueries, ReadQueryContext reader,
             String target, String usageKind, int limit, WorkspaceDependencyGraph.Edge edge) {
         String response = usageQueries.findUsages(
-                jdbi, target, usageKind, null, limit, 0, false);
+                reader, target, usageKind, null, limit, 0, false);
         try {
             JsonNode parsed = JSON.readTree(response);
             if (!isClassNotFound(parsed)) {
                 return response;
             }
             List<org.treblereel.mcp.model.ExternalBeanRecord> beans =
-                    IndexReader.findExternalBeans(jdbi, Map.of("class_name", target));
+                    reader.beans.findExternalBeans(Map.of("class_name", target));
             boolean includeDiscovery = usageKind == null || usageKind.isBlank()
                     || "all".equalsIgnoreCase(usageKind)
                     || "bean_discovery".equalsIgnoreCase(usageKind);
             List<org.treblereel.mcp.model.ExternalBeanRecord> matches = includeDiscovery
                     ? beans : List.of();
             List<org.treblereel.mcp.model.ExternalDepRecord> allReferences =
-                    IndexReader.findExternalTypeUsages(jdbi, target);
+                    reader.usages.findExternalTypeUsages(target);
             List<org.treblereel.mcp.model.ExternalDepRecord> references = allReferences.stream()
                             .filter(reference -> matchesExternalUsageKind(
                                     usageKind, reference.usageKind()))
@@ -1107,8 +1091,7 @@ final class WorkspaceToolQueries {
             if (beans.isEmpty() && allReferences.isEmpty()) {
                 return unresolvedArtifactDependency(target, edge).toString();
             }
-            Map<Integer, ClassRecord> callers = IndexReader.findClassesByIds(jdbi,
-                    references.stream().map(org.treblereel.mcp.model.ExternalDepRecord::classId)
+            Map<Integer, ClassRecord> callers = reader.symbols.findClassesByIds(references.stream().map(org.treblereel.mcp.model.ExternalDepRecord::classId)
                             .distinct().toList());
             ObjectNode root = JSON.createObjectNode();
             root.put("target", target);
@@ -1168,7 +1151,7 @@ final class WorkspaceToolQueries {
                         + "provider type");
             });
             ToolResponseSupport.appendPage(root, usages.size(), total, limit, 0);
-            Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+            Map<String, String> metadata = reader.index.getMetadata();
             ObjectNode snapshot = root.putObject("index_snapshot");
             snapshot.put("index_id", metadata.getOrDefault("index_id", "unknown"));
             snapshot.put("indexed_at", metadata.getOrDefault("indexed_at", "unknown"));
@@ -1251,7 +1234,7 @@ final class WorkspaceToolQueries {
             if (providers.size() != 1) return response;
             ProviderClass provider = providers.getFirst();
             JsonNode workspaceResult = JSON.readTree(findUsages(target,
-                    provider.repository(), usageKind, limit, Math.min(limit, 20), offset));
+                    provider.repository(), usageKind, limit, Math.min(limit, 20), offset, 0, true));
             ObjectNode root = JSON.createObjectNode();
             root.put("target", target);
             root.put("origin", "workspace_provider");
@@ -1268,7 +1251,7 @@ final class WorkspaceToolQueries {
     }
 
     String routeMissingClassQuery(String response, String consumerRepository, String target,
-            String operation, Function<Jdbi, String> providerQuery) {
+            String operation, Function<ReadQueryContext, String> providerQuery, boolean withGraph) {
         if (registry.workspaceScope() == null) return response;
         DebugTrace.Trace trace = DebugTrace.start("workspace_route");
         try {
@@ -1330,8 +1313,8 @@ final class WorkspaceToolQueries {
                 return root.toString();
             }
 
-            JsonNode providerData = JSON.readTree(providerQuery.apply(
-                    availability.projects().getFirst().jdbi()));
+            JsonNode providerData = JSON.readTree((withGraph ? availability.projects().getFirst().readWithGraph(providerQuery)
+                    : availability.projects().getFirst().read(providerQuery)));
             boolean absentFromIndex = isClassNotFound(providerData);
             workspaceResult.put("status", absentFromIndex
                     ? "provider_index_incomplete" : "resolved");
@@ -1389,8 +1372,7 @@ final class WorkspaceToolQueries {
         }
         com.fasterxml.jackson.databind.JsonNode localRisk;
         try {
-            localRisk = JSON.readTree(new ChangeRiskQueries().getRisk(
-                    providerResolution.projects().getFirst().jdbi(), provider.className()));
+            localRisk = JSON.readTree(providerResolution.projects().getFirst().<String>read(context -> new ChangeRiskQueries().getRisk(context, provider.className())));
         } catch (Exception invalid) {
             return error("Could not calculate provider risk: " + invalid.getMessage());
         }
@@ -1413,18 +1395,19 @@ final class WorkspaceToolQueries {
             if (entry.getValue() == 1) {
                 ProjectRegistry.Resolution consumer = registry.resolve(entry.getKey());
                 if (!consumer.projects().isEmpty()) {
-                    var jdbi = consumer.projects().getFirst().jdbi();
+                    try (ReadQueryContext reader = ReadQueryContext.open(consumer.projects().getFirst().jdbi())) {
                     try {
                         var usage = JSON.readTree(new UsageToolQueries().findUsages(
-                                jdbi, provider.className(), null, null, 1, 0));
+                                reader, provider.className(), null, null, 1, 0));
                         usageGroups = usage.path("usage_group_count").asInt();
                         var tests = JSON.readTree(new TestImpactQueries().findImpactedTests(
-                                jdbi, List.of(provider.className()), true, 3, 1, 0));
+                                reader, List.of(provider.className()), true, 3, 1, 0));
                         impactedTests = tests.path("total").asInt();
                     } catch (Exception ignored) {
                         // The dependency edge remains valid even when detailed evidence is absent.
                     }
                 }
+}
             }
             downstream.add(new DownstreamRisk(entry.getKey(), entry.getValue(),
                     evidence.coordinate(), evidence.status(), usageGroups, impactedTests,
@@ -1499,7 +1482,7 @@ final class WorkspaceToolQueries {
                 ? registry.resolve() : registry.resolve(repository);
         Map<String, ProviderClass> candidates = new LinkedHashMap<>();
         for (ProjectRegistry.ProjectEntry project : projects.projects()) {
-            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(project.jdbi(), target);
+            ClassTargetResolver.Lookup lookup = project.read(context -> ClassTargetResolver.resolve(context, target));
             if (!lookup.found()) continue;
             ClassRecord cls = lookup.cls();
             if ("dependency".equals(cls.origin()) || "orphan_output".equals(cls.origin())) {
@@ -1628,8 +1611,8 @@ final class WorkspaceToolQueries {
             freshness.put("complete", false);
             return false;
         }
-        MetaEnvelope meta = MetaEnvelope.from(
-                resolution.projects().getFirst().jdbi(), 0, 0);
+        MetaEnvelope meta = resolution.projects().getFirst().read(reader ->
+                org.treblereel.mcp.index.BuildStatusInspector.freshness(reader, 0, 0));
         freshness.put("status", meta.structureStale() ? "stale" : "current");
         freshness.put("complete", !meta.structureStale());
         freshness.put("indexed_at", meta.indexedAt());

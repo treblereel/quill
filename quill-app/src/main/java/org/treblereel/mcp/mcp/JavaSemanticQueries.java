@@ -8,9 +8,9 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.*;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.BuildSystem;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.IndexRepository;
 
 /** Compiler-confirmed Java navigation from successful build capture; never executes a build. */
 final class JavaSemanticQueries {
@@ -29,33 +29,31 @@ final class JavaSemanticQueries {
             try {
                 ProjectRegistry.ProjectEntry selected = null; Path anchor = null;
                 for (var project : registry.initialized()) {
-                    List<String> candidates = project.jdbi().withHandle(handle -> handle.createQuery("""
-                            SELECT MIN(repository_path) FROM files WHERE kind = 'java' AND lifecycle = 'current'
-                            AND source_set = 'main' AND repository_path LIKE '%.java' GROUP BY module LIMIT 2
-                            """).mapTo(String.class).list());
+                    List<String> candidates = project.jdbi().withHandle(repositoryHandle1 -> new IndexRepository(repositoryHandle1).findSemanticAnchors("java", "%.java"));
                     if (candidates.isEmpty()) continue;
                     if (selected != null || candidates.size() != 1) return;
                     selected = project; anchor = project.root().resolve(candidates.getFirst());
                 }
                 if (selected == null) return;
                 Path root = selected.root(), file = anchor;
-                Jdbi db = selected.jdbi();
+                try (ReadQueryContext db = ReadQueryContext.open(selected.jdbi())) {
                 JsonNode request = prepare(db, root, file, -1);
                 if (!request.has("sources")) return;
                 synchronized (JavaSemanticQueries.class) {
                     if (!cancelled.get()) coordinator().prewarm(request.path("module").asText() + ":" + request.path("source_set").asText(),
-                            () -> prepare(db, root, file, -1));
+                            db.independentRead(context -> prepare(context, root, file, -1)));
                 }
-            } catch (RuntimeException unavailable) { /* Foreground retains preparation and fallback. */ }
+            }
+} catch (RuntimeException unavailable) { /* Foreground retains preparation and fallback. */ }
         }, "quill-java-startup");
         thread.setDaemon(true); thread.start();
         return () -> { cancelled.set(true); thread.interrupt(); };
     }
-    static JsonNode resolve(Jdbi db, Path root, Path file, int offset) {
+    static JsonNode resolve(ReadQueryContext db, Path root, Path file, int offset) {
         JsonNode request = prepare(db, root, file, offset);
         if (!request.has("sources")) return request;
         String key = request.path("module").asText() + ":" + request.path("source_set").asText();
-        return coordinator().query(key, () -> prepare(db, root, file, offset), () -> prepare(db, root, file, -1));
+        return coordinator().query(key, () -> prepare(db, root, file, offset), db.independentRead(context -> prepare(context, root, file, -1)));
     }
     private static JsonNode queryWorker(JsonNode request) {
         JsonNode result = WORKER.query(request);
@@ -64,12 +62,12 @@ final class JavaSemanticQueries {
         if (!current.equals(request)) return status("inputs_changed");
         return result;
     }
-    static JsonNode prepare(Jdbi db, Path root, Path file, int offset) {
+    static JsonNode prepare(ReadQueryContext db, Path root, Path file, int offset) {
         Path module = null;
         try {
             Path normalizedRoot = root.toAbsolutePath().normalize(), normalizedFile = file.toAbsolutePath().normalize();
             if (normalizedFile.startsWith(normalizedRoot)) {
-                var indexed = IndexReader.findFileByPath(db, normalizedRoot.relativize(normalizedFile).toString().replace('\\', '/'));
+                var indexed = db.index.findFileByPath(normalizedRoot.relativize(normalizedFile).toString().replace('\\', '/'));
                 if (indexed.isPresent() && indexed.get().module() != null)
                     module = normalizedRoot.resolve(indexed.get().module()).normalize();
             }

@@ -21,8 +21,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
@@ -40,25 +40,22 @@ final class StructureToolQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int MAX_GRAPH_NODES = 200;
 
-    String searchClasses(Jdbi jdbi, String pattern, int limit) {
-        return searchClasses(jdbi, pattern, null, null, limit, 0);
+    String searchClasses(ReadQueryContext reader, String pattern, int limit) {
+        return searchClasses(reader, pattern, null, null, limit, 0);
     }
 
-    String searchClasses(Jdbi jdbi, String pattern, String module, String sourceSet, int limit) {
-        return searchClasses(jdbi, pattern, module, sourceSet, limit, 0);
+    String searchClasses(ReadQueryContext reader, String pattern, String module, String sourceSet, int limit) {
+        return searchClasses(reader, pattern, module, sourceSet, limit, 0);
     }
 
-    String searchClasses(Jdbi jdbi, String pattern, String module, String sourceSet,
+    String searchClasses(ReadQueryContext reader, String pattern, String module, String sourceSet,
             int limit, int offset) {
-        List<ClassRecord> classes = IndexReader.searchClasses(
-                jdbi, pattern, module, sourceSet, limit, offset);
-        int total = IndexReader.countClasses(jdbi, pattern, module, sourceSet);
+        List<ClassRecord> classes = reader.symbols.searchClasses(pattern, module, sourceSet, limit, offset);
+        int total = reader.symbols.countClasses(pattern, module, sourceSet);
         List<ClassRecord> limited = classes;
-        Map<Integer, BeanRecord> beansByClass = IndexReader.findBeansByClassIds(
-                jdbi, limited.stream().map(ClassRecord::id).toList());
+        Map<Integer, BeanRecord> beansByClass = reader.beans.findBeansByClassIds(limited.stream().map(ClassRecord::id).toList());
         Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
-                IndexReader.findClassOccurrencesByClassIds(
-                        jdbi, limited.stream().map(ClassRecord::id).toList());
+                reader.index.findClassOccurrencesByClassIds(limited.stream().map(ClassRecord::id).toList());
 
         ObjectNode root = JSON.createObjectNode();
         ArrayNode arr = root.putArray("classes");
@@ -78,14 +75,14 @@ final class StructureToolQueries {
             naiveTokens += value.sourceTokens();
         }
         appendPage(root, limited.size(), total, limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
-    String getAnnotatedClasses(Jdbi jdbi, String annotation,
+    String getAnnotatedClasses(ReadQueryContext reader, String annotation,
             boolean includeMetaAnnotations, int limit, int offset) {
         String requested = annotation.startsWith("@") ? annotation.substring(1) : annotation;
-        List<String> names = IndexReader.findAnnotationNames(jdbi, requested);
+        List<String> names = reader.symbols.findAnnotationNames(requested);
         String resolved = names.stream().filter(requested::equals).findFirst().orElse(null);
         if (resolved == null && names.size() == 1) resolved = names.getFirst();
         if (resolved == null) {
@@ -97,16 +94,14 @@ final class StructureToolQueries {
             return error.toString();
         }
 
-        List<ClassRecord> classes = IndexReader.findAnnotatedClasses(
-                jdbi, resolved, includeMetaAnnotations, limit, offset);
-        int total = IndexReader.countAnnotatedClasses(jdbi, resolved, includeMetaAnnotations);
-        int direct = IndexReader.countAnnotatedClasses(jdbi, resolved, false);
+        List<ClassRecord> classes = reader.symbols.findAnnotatedClasses(resolved, includeMetaAnnotations, limit, offset);
+        int total = reader.symbols.countAnnotatedClasses(resolved, includeMetaAnnotations);
+        int direct = reader.symbols.countAnnotatedClasses(resolved, false);
         Map<Integer, List<ClassAnnotationRecord>> matches =
-                IndexReader.findClassAnnotations(jdbi, resolved,
+                reader.symbols.findClassAnnotations(resolved,
                         classes.stream().map(ClassRecord::id).toList(), includeMetaAnnotations);
         Map<Integer, List<ClassOccurrenceRecord>> occurrences =
-                IndexReader.findClassOccurrencesByClassIds(
-                        jdbi, classes.stream().map(ClassRecord::id).toList());
+                reader.index.findClassOccurrencesByClassIds(classes.stream().map(ClassRecord::id).toList());
 
         ObjectNode root = JSON.createObjectNode();
         root.put("annotation", resolved);
@@ -115,8 +110,7 @@ final class StructureToolQueries {
         root.put("direct_class_count", direct);
         root.put("meta_only_class_count", Math.max(0, total - direct));
         root.set("origin_breakdown", JSON.valueToTree(
-                IndexReader.countAnnotatedClassesByOrigin(
-                        jdbi, resolved, includeMetaAnnotations)));
+                reader.symbols.countAnnotatedClassesByOrigin(resolved, includeMetaAnnotations)));
         ArrayNode values = root.putArray("classes");
         int naiveTokens = 0;
         for (ClassRecord cls : classes) {
@@ -138,29 +132,29 @@ final class StructureToolQueries {
             naiveTokens += cls.sourceTokens();
         }
         appendPage(root, classes.size(), total, limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
-    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+    String getBeans(ReadQueryContext reader, String className, String scope, String kind,
             String profile, String qualifier, int limit) {
-        return getBeans(jdbi, className, scope, kind, profile, qualifier, null, null, limit);
+        return getBeans(reader, className, scope, kind, profile, qualifier, null, null, limit);
     }
 
-    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+    String getBeans(ReadQueryContext reader, String className, String scope, String kind,
             String profile, String qualifier, String module, String sourceSet, int limit) {
-        return getBeans(jdbi, className, scope, kind, profile, qualifier,
+        return getBeans(reader, className, scope, kind, profile, qualifier,
                 module, sourceSet, limit, 0);
     }
 
-    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+    String getBeans(ReadQueryContext reader, String className, String scope, String kind,
             String profile, String qualifier, String module, String sourceSet,
             int limit, int offset) {
-        return getBeans(jdbi, className, scope, kind, profile, qualifier, module, sourceSet,
+        return getBeans(reader, className, scope, kind, profile, qualifier, module, sourceSet,
                 "all", limit, offset);
     }
 
-    String getBeans(Jdbi jdbi, String className, String scope, String kind,
+    String getBeans(ReadQueryContext reader, String className, String scope, String kind,
             String profile, String qualifier, String module, String sourceSet,
             String origin, int limit, int offset) {
         String requestedOrigin = origin == null ? "all" : origin.toLowerCase();
@@ -181,26 +175,24 @@ final class StructureToolQueries {
         if (!"dependency".equals(requestedOrigin)) {
             Map<String, String> applicationFilter = new HashMap<>(filter);
             if (className != null && !className.contains("*")) {
-                lookup = ClassTargetResolver.resolve(jdbi, className);
+                lookup = ClassTargetResolver.resolve(reader, className);
                 if (lookup.error() == null) {
                     applicationFilter.put("class_name", lookup.cls().className());
                 } else {
                     applicationFilter.put("class_name", "__quill_no_application_match__");
                 }
             }
-            beans = IndexReader.findBeans(jdbi,
-                    applicationFilter.isEmpty() ? null : applicationFilter);
+            beans = reader.beans.findBeans(applicationFilter.isEmpty() ? null : applicationFilter);
         }
         List<ExternalBeanRecord> externalBeans = "application".equals(requestedOrigin)
                 ? List.of()
-                : IndexReader.findExternalBeans(jdbi, filter.isEmpty() ? null : filter);
+                : reader.beans.findExternalBeans(filter.isEmpty() ? null : filter);
         if (beans.isEmpty() && externalBeans.isEmpty() && lookup != null
                 && lookup.error() != null) {
-            return classLookupError(jdbi, lookup, className);
+            return classLookupError(reader, lookup, className);
         }
 
-        Map<Integer, ClassRecord> applicationClasses = IndexReader.findClassesByIds(
-                jdbi, beans.stream().map(BeanRecord::classId).toList());
+        Map<Integer, ClassRecord> applicationClasses = reader.symbols.findClassesByIds(beans.stream().map(BeanRecord::classId).toList());
         List<BeanView> views = new ArrayList<>(beans.size() + externalBeans.size());
         beans.forEach(bean -> views.add(new BeanView(bean, null,
                 applicationClasses.containsKey(bean.classId())
@@ -214,12 +206,10 @@ final class StructureToolQueries {
         int from = Math.min(offset, total);
         int to = (int) Math.min((long) from + limit, total);
         List<BeanView> limited = views.subList(from, to);
-        Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(
-                jdbi, limited.stream().filter(value -> value.application() != null)
+        Map<Integer, ClassRecord> classesById = reader.symbols.findClassesByIds(limited.stream().filter(value -> value.application() != null)
                         .map(value -> value.application().classId()).toList());
         Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
-                IndexReader.findClassOccurrencesByClassIds(
-                        jdbi, limited.stream().filter(value -> value.application() != null)
+                reader.index.findClassOccurrencesByClassIds(limited.stream().filter(value -> value.application() != null)
                                 .map(value -> value.application().classId()).toList());
         ObjectNode root = JSON.createObjectNode();
         ArrayNode arr = root.putArray("beans");
@@ -273,14 +263,14 @@ final class StructureToolQueries {
         originBreakdown.put("dependency", externalBeans.size());
         appendDependencyBeanSummary(root, externalBeans);
         if (total == 0 && !"application".equals(requestedOrigin)) {
-            Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+            Map<String, String> metadata = reader.index.getMetadata();
             ObjectNode hint = root.putObject("hint");
             hint.put("dependency_index", metadata.getOrDefault("dependency_index", "unknown"));
             hint.put("detail", metadata.getOrDefault("dependency_index_detail",
                     "No dependency bean matched. Re-run quill update after the project classpath is available."));
         }
         appendPage(root, limited.size(), total, limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
@@ -341,18 +331,18 @@ final class StructureToolQueries {
         }
     }
 
-    String getDependencies(Jdbi jdbi, String target, String direction, int depth) {
-        return getDependencies(jdbi, target, direction, depth,
+    String getDependencies(ReadQueryContext reader, String target, String direction, int depth) {
+        return getDependencies(reader, target, direction, depth,
                 true, MAX_GRAPH_NODES, 0, null);
     }
 
-    String getDependencies(Jdbi jdbi, String target, String direction, int depth,
+    String getDependencies(ReadQueryContext reader, String target, String direction, int depth,
             boolean includeNodes, int limit, int offset, String cursor) {
         if (!Set.of("inbound", "outbound", "both").contains(direction)) {
             return errorResponse("Invalid direction: expected inbound, outbound, or both");
         }
-        var lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+        var lookup = ClassTargetResolver.resolve(reader, target);
+        if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord cls = lookup.cls();
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
@@ -360,50 +350,49 @@ final class StructureToolQueries {
         root.put("origin", cls.origin());
         root.put("lifecycle", cls.lifecycle());
         appendContext(root, cls);
-        appendOccurrences(root, IndexReader.findClassOccurrencesByClassIds(
-                jdbi, List.of(cls.id())).get(cls.id()));
+        appendOccurrences(root, reader.index.findClassOccurrencesByClassIds(List.of(cls.id())).get(cls.id()));
         ObjectNode metrics = root.putObject("metrics");
-        metrics.put("fan_in", IndexReader.countDependents(jdbi, cls.id()));
-        metrics.put("incoming_edges", IndexReader.countDependencyEdges(jdbi, cls.id(), true));
-        metrics.put("fan_out", IndexReader.countDependencies(jdbi, cls.id()));
-        metrics.put("outgoing_edges", IndexReader.countDependencyEdges(jdbi, cls.id(), false));
+        metrics.put("fan_in", reader.usages.countDependents(cls.id()));
+        metrics.put("incoming_edges", reader.usages.countDependencyEdges(cls.id(), true));
+        metrics.put("fan_out", reader.usages.countDependencies(cls.id()));
+        metrics.put("outgoing_edges", reader.usages.countDependencyEdges(cls.id(), false));
         writeDependencyBreakdown(metrics.putObject("fan_in_breakdown"),
-                IndexReader.dependencyBreakdown(jdbi, cls.id(), true));
+                reader.usages.dependencyBreakdown(cls.id(), true));
         writeDependencyBreakdown(metrics.putObject("fan_out_breakdown"),
-                IndexReader.dependencyBreakdown(jdbi, cls.id(), false));
+                reader.usages.dependencyBreakdown(cls.id(), false));
         if (cls.isBean()) {
-            IndexReader.findBeanByClassId(jdbi, cls.id())
+            reader.beans.findBeanByClassId(cls.id())
                     .ifPresent(bean -> root.put("scope", bean.scope()));
         }
         if (!includeNodes) {
             root.put("nodes_included", false);
-            appendMeta(root, jdbi, cls.sourceTokens());
+            appendMeta(root, reader, cls.sourceTokens());
             return root.toString();
         }
         if (depth == 1) {
             if (cursor != null && !cursor.isBlank()) {
                 return errorResponse("cursor is only supported when depth > 1");
             }
-            List<GraphRelation> relations = relationsFor(jdbi, cls.id(), direction, 1);
+            List<GraphRelation> relations = relationsFor(reader, cls.id(), direction, 1);
             int from = Math.min(offset, relations.size());
             int to = (int) Math.min((long) from + limit, relations.size());
             List<GraphRelation> page = relations.subList(from, to);
-            int naiveTokens = cls.sourceTokens() + renderDepthOne(jdbi, root, page);
+            int naiveTokens = cls.sourceTokens() + renderDepthOne(reader, root, page);
             root.put("pagination", "offset");
             appendPage(root, page.size(), relations.size(), limit, offset);
-            appendMeta(root, jdbi, naiveTokens);
+            appendMeta(root, reader, naiveTokens);
             return root.toString();
         }
         if (offset != 0) {
             return errorResponse("offset is only supported when depth = 1; use cursor for deeper graphs");
         }
-        List<GraphRelation> graph = breadthFirstRelations(jdbi, cls.id(), direction, depth);
-        int cursorOffset = decodeCursor(jdbi, cursor, cls.id(), direction, depth);
+        List<GraphRelation> graph = breadthFirstRelations(reader, cls.id(), direction, depth);
+        int cursorOffset = decodeCursor(reader, cursor, cls.id(), direction, depth);
         if (cursorOffset < 0) return errorResponse("Invalid or expired dependency cursor");
         int from = Math.min(cursorOffset, graph.size());
         int to = (int) Math.min((long) from + limit, graph.size());
         List<GraphRelation> page = graph.subList(from, to);
-        int naiveTokens = cls.sourceTokens() + renderBreadthFirst(jdbi, root, page);
+        int naiveTokens = cls.sourceTokens() + renderBreadthFirst(reader, root, page);
         boolean hasMore = to < graph.size();
         root.put("pagination", "cursor");
         root.put("showing", page.size());
@@ -412,18 +401,18 @@ final class StructureToolQueries {
         root.put("has_more", hasMore);
         root.put("truncated", cursorOffset > 0 || hasMore);
         if (hasMore) {
-            root.put("next_cursor", encodeCursor(jdbi, cls.id(), direction, depth, to));
+            root.put("next_cursor", encodeCursor(reader, cls.id(), direction, depth, to));
         }
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
-    String findImplementations(Jdbi jdbi, String target, boolean transitive,
+    String findImplementations(ReadQueryContext reader, String target, boolean transitive,
             String module, String sourceSet, int limit, int offset) {
-        var lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+        var lookup = ClassTargetResolver.resolve(reader, target);
+        if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord base = lookup.cls();
-        List<ClassRecord> allClasses = IndexReader.findAllClasses(jdbi);
+        List<ClassRecord> allClasses = reader.symbols.findAllClasses();
         Map<String, Integer> distances = implementationDistances(
                 allClasses, base.className(), transitive);
         List<ClassRecord> implementations = allClasses.stream()
@@ -433,8 +422,7 @@ final class StructureToolQueries {
                         .thenComparing(ClassRecord::className))
                 .toList();
         Map<Integer, List<ClassOccurrenceRecord>> occurrencesByClass =
-                IndexReader.findClassOccurrencesByClassIds(
-                        jdbi, implementations.stream().map(ClassRecord::id).toList());
+                reader.index.findClassOccurrencesByClassIds(implementations.stream().map(ClassRecord::id).toList());
 
         List<ImplementationResult> results = new ArrayList<>();
         for (ClassRecord implementation : implementations) {
@@ -466,7 +454,7 @@ final class StructureToolQueries {
         root.set("generated_modules", JSON.valueToTree(summary.generatedModules()));
         root.put("selection_depends_on_application_context",
                 summary.occurrenceCount() > 1);
-        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        Map<String, String> metadata = reader.index.getMetadata();
         ObjectNode scope = root.putObject("index_scope");
         scope.put("module_discovery",
                 metadata.getOrDefault("module_discovery_scope", "unknown"));
@@ -493,7 +481,7 @@ final class StructureToolQueries {
             naiveTokens += implementation.sourceTokens();
         }
         appendPage(root, page.size(), results.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
@@ -588,7 +576,7 @@ final class StructureToolQueries {
     }
 
     private List<GraphRelation> breadthFirstRelations(
-            Jdbi jdbi, int rootClassId, String direction, int maxDepth) {
+            ReadQueryContext reader, int rootClassId, String direction, int maxDepth) {
         List<GraphRelation> graph = new ArrayList<>();
         ArrayDeque<Frontier> frontier = new ArrayDeque<>();
         Set<Integer> expanded = new HashSet<>();
@@ -600,7 +588,7 @@ final class StructureToolQueries {
             Frontier current = frontier.removeFirst();
             if (current.depth() >= maxDepth || !expanded.add(current.classId())) continue;
             for (GraphRelation relation : relationsFor(
-                    jdbi, current.classId(), direction, current.depth() + 1)) {
+                    reader, current.classId(), direction, current.depth() + 1)) {
                 if (seen.add(DependencyKey.of(relation.dependency()))) graph.add(relation);
                 if (scheduled.add(relation.related().id())) {
                     frontier.addLast(new Frontier(relation.related().id(), relation.depth()));
@@ -611,15 +599,15 @@ final class StructureToolQueries {
     }
 
     private List<GraphRelation> relationsFor(
-            Jdbi jdbi, int classId, String direction, int relationDepth) {
-        List<DependencyRecord> dependencies = IndexReader.findDependencies(jdbi, classId, direction);
+            ReadQueryContext reader, int classId, String direction, int relationDepth) {
+        List<DependencyRecord> dependencies = reader.usages.findDependencies(classId, direction);
         Set<Integer> classIds = new HashSet<>();
         classIds.add(classId);
         for (DependencyRecord dependency : dependencies) {
             classIds.add(dependency.fromClassId());
             classIds.add(dependency.toClassId());
         }
-        Map<Integer, ClassRecord> classes = IndexReader.findClassesByIds(jdbi, List.copyOf(classIds));
+        Map<Integer, ClassRecord> classes = reader.symbols.findClassesByIds(List.copyOf(classIds));
         ClassRecord current = classes.get(classId);
         List<GraphRelation> relations = new ArrayList<>();
         for (DependencyRecord dependency : dependencies) {
@@ -641,9 +629,9 @@ final class StructureToolQueries {
         return relations;
     }
 
-    private int renderDepthOne(Jdbi jdbi, ObjectNode root, List<GraphRelation> relations) {
+    private int renderDepthOne(ReadQueryContext reader, ObjectNode root, List<GraphRelation> relations) {
         int tokens = 0;
-        Map<Integer, List<ClassOccurrenceRecord>> occurrences = occurrences(jdbi, relations);
+        Map<Integer, List<ClassOccurrenceRecord>> occurrences = occurrences(reader, relations);
         for (GraphRelation relation : relations) {
             String arrayName = "outbound".equals(relation.relationDirection())
                     ? "depends_on" : "depended_by";
@@ -654,10 +642,10 @@ final class StructureToolQueries {
         return tokens;
     }
 
-    private int renderBreadthFirst(Jdbi jdbi, ObjectNode root, List<GraphRelation> relations) {
+    private int renderBreadthFirst(ReadQueryContext reader, ObjectNode root, List<GraphRelation> relations) {
         int tokens = 0;
         ArrayNode graph = root.putArray("graph");
-        Map<Integer, List<ClassOccurrenceRecord>> occurrences = occurrences(jdbi, relations);
+        Map<Integer, List<ClassOccurrenceRecord>> occurrences = occurrences(reader, relations);
         for (GraphRelation relation : relations) {
             ObjectNode child = graph.addObject();
             child.put("depth", relation.depth());
@@ -670,9 +658,8 @@ final class StructureToolQueries {
     }
 
     private Map<Integer, List<ClassOccurrenceRecord>> occurrences(
-            Jdbi jdbi, List<GraphRelation> relations) {
-        return IndexReader.findClassOccurrencesByClassIds(jdbi,
-                relations.stream().map(value -> value.related().id()).distinct().toList());
+            ReadQueryContext reader, List<GraphRelation> relations) {
+        return reader.index.findClassOccurrencesByClassIds(relations.stream().map(value -> value.related().id()).distinct().toList());
     }
 
     private void renderRelation(ObjectNode child, GraphRelation relation,
@@ -692,10 +679,10 @@ final class StructureToolQueries {
     }
 
     private String encodeCursor(
-            Jdbi jdbi, int classId, String direction, int depth, int offset) {
+            ReadQueryContext reader, int classId, String direction, int depth, int offset) {
         ObjectNode value = JSON.createObjectNode();
         value.put("v", 1);
-        value.put("index", IndexReader.getMetadata(jdbi).getOrDefault("index_id", ""));
+        value.put("index", reader.index.getMetadata().getOrDefault("index_id", ""));
         value.put("class_id", classId);
         value.put("direction", direction);
         value.put("depth", depth);
@@ -705,13 +692,13 @@ final class StructureToolQueries {
     }
 
     private int decodeCursor(
-            Jdbi jdbi, String cursor, int classId, String direction, int depth) {
+            ReadQueryContext reader, String cursor, int classId, String direction, int depth) {
         if (cursor == null || cursor.isBlank()) return 0;
         try {
             String decoded = new String(Base64.getUrlDecoder().decode(cursor),
                     StandardCharsets.UTF_8);
             var value = JSON.readTree(decoded);
-            String indexId = IndexReader.getMetadata(jdbi).getOrDefault("index_id", "");
+            String indexId = reader.index.getMetadata().getOrDefault("index_id", "");
             if (value.path("v").asInt() != 1
                     || !Objects.equals(value.path("index").asText(), indexId)
                     || value.path("class_id").asInt() != classId
@@ -753,17 +740,16 @@ final class StructureToolQueries {
         }
     }
 
-    String getInjectionPoints(Jdbi jdbi, String target) {
-        var lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+    String getInjectionPoints(ReadQueryContext reader, String target) {
+        var lookup = ClassTargetResolver.resolve(reader, target);
+        if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord cls = lookup.cls();
-        var bean = IndexReader.findBeanByClassId(jdbi, cls.id());
+        var bean = reader.beans.findBeanByClassId(cls.id());
         if (bean.isEmpty()) return errorResponse("Not a bean: " + target);
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
         appendContext(root, cls);
-        List<InjectionPointRecord> injectionPoints = IndexReader.findInjectionPoints(
-                jdbi, bean.get().id());
+        List<InjectionPointRecord> injectionPoints = reader.beans.findInjectionPoints(bean.get().id());
         Set<Integer> referencedBeanIds = new HashSet<>();
         injectionPoints.stream().map(InjectionPointRecord::resolvedBeanId)
                 .filter(Objects::nonNull).forEach(referencedBeanIds::add);
@@ -773,10 +759,8 @@ final class StructureToolQueries {
         injectionPoints.stream().flatMap(point -> point.resolutionTrace().candidates().stream())
                 .map(ResolutionCandidate::relatedBeanId).filter(Objects::nonNull)
                 .forEach(referencedBeanIds::add);
-        Map<Integer, BeanRecord> resolvedBeans = IndexReader.findBeansByIds(
-                jdbi, referencedBeanIds);
-        Map<Integer, ClassRecord> resolvedClasses = IndexReader.findClassesByIds(jdbi,
-                resolvedBeans.values().stream().map(BeanRecord::classId).toList());
+        Map<Integer, BeanRecord> resolvedBeans = reader.beans.findBeansByIds(referencedBeanIds);
+        Map<Integer, ClassRecord> resolvedClasses = reader.symbols.findClassesByIds(resolvedBeans.values().stream().map(BeanRecord::classId).toList());
         ArrayNode result = root.putArray("injection_points");
         ArrayNode unsatisfied = root.putArray("unsatisfied");
         ArrayNode ambiguous = root.putArray("ambiguous");
@@ -791,7 +775,7 @@ final class StructureToolQueries {
             node.set("qualifiers", JSON.valueToTree(point.qualifiers()));
             node.put("resolution", point.resolutionStatus().name().toLowerCase());
             node.put("resolution_strategy", point.resolutionStrategy());
-            node.put("reason", point.resolutionReason());
+            node.put("reason", point.resolutionReason().name());
             node.put("confidence", point.resolutionConfidence().name().toLowerCase());
             node.set("limitations", JSON.valueToTree(point.limitations()));
             appendResolutionTrace(node, point, resolvedBeans, resolvedClasses);
@@ -822,7 +806,7 @@ final class StructureToolQueries {
                 }
             }
         }
-        appendMeta(root, jdbi, cls.sourceTokens());
+        appendMeta(root, reader, cls.sourceTokens());
         return root.toString();
     }
 
@@ -855,7 +839,7 @@ final class StructureToolQueries {
                 candidateNode.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
             }
             candidateNode.put("disposition", candidate.disposition().name().toLowerCase());
-            candidateNode.put("reason", candidate.reason());
+            candidateNode.put("reason", candidate.reason().name());
             if (candidate.relatedBeanId() != null) {
                 candidateNode.put("related_bean_id", candidate.relatedBeanId());
                 BeanRecord related = beans.get(candidate.relatedBeanId());
@@ -869,8 +853,8 @@ final class StructureToolQueries {
     }
 
     private static void writeDependencyBreakdown(ObjectNode result,
-            List<IndexReader.DependencyBreakdown> breakdown) {
-        for (IndexReader.DependencyBreakdown entry : breakdown) {
+            List<UsageRepository.DependencyBreakdown> breakdown) {
+        for (UsageRepository.DependencyBreakdown entry : breakdown) {
             ObjectNode origin = result.putObject(entry.origin());
             origin.put("classes", entry.classes());
             origin.put("edges", entry.edges());

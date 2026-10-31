@@ -3,10 +3,10 @@ package org.treblereel.mcp.mcp;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.JvmMethodResolver;
-import org.treblereel.mcp.db.IndexReader.MethodCallView;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.UsageRepository;
+import org.treblereel.mcp.analysis.JvmMethodResolver;
+import org.treblereel.mcp.db.UsageRepository.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 
@@ -14,17 +14,16 @@ import org.treblereel.mcp.model.ClassRecord;
 final class JavaDispatchEvidence {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int OWNER_CAP = 5000, CALL_CAP = 5000, TARGET_LIMIT = 20;
-    private final Jdbi db;
-    private JvmMethodResolver resolver;
-    private org.treblereel.mcp.db.IndexGenerationCache.Graph graph;
+    private final ReadQueryContext db;
+    private org.treblereel.mcp.analysis.JvmTypeGraph graph;
     private List<ClassRecord> classes;
     private Map<String,List<ClassRecord>> owners;
     private Map<Integer,List<ClassMemberRecord>> members;
     private final Map<String,ObjectNode> targets = new HashMap<>();
-    JavaDispatchEvidence(Jdbi db) { this.db = db; }
+    JavaDispatchEvidence(ReadQueryContext db) { this.db = db; }
     private void load() {
         if (classes != null) return;
-        graph=org.treblereel.mcp.db.IndexGenerationCache.get(db);
+        graph=db.graph();
         classes=graph.classes;owners=graph.owners;
         members=graph.sourceMembers;
     }
@@ -41,8 +40,7 @@ final class JavaDispatchEvidence {
                 .put("invocation_kind", call.invocationKind()).put("execution_proven", false)
                 .put("runtime_target_proven", false).put("candidate_coverage_complete", false);
         result.putObject("declared_target").put("class",call.toClass()).put("name",call.toMethod()).put("descriptor",call.toDescriptor());
-        if (resolver == null) resolver = org.treblereel.mcp.db.ReadQueryContext.resolver(db);
-        var resolution = resolver.resolve(call.toClass(),call.toMethod(),call.toDescriptor());
+        var resolution = db.methods().resolve(call.toClass(),call.toMethod(),call.toDescriptor());
         result.put("declaration_resolution",resolution.status());
         if (resolution.resolved()) {
             var declaration = result.putObject("resolved_declaration");
@@ -92,8 +90,7 @@ final class JavaDispatchEvidence {
         if (!JvmMethodResolver.flag(resolution.member(),"bridge")) return;
         var bridge=declaration.putObject("bridge").put("evidence_kind","compiler_bridge_bytecode")
                 .put("runtime_target_proven",false);
-        var calls=IndexReader.findMethodCalls(db,resolution.owner().id(),resolution.member().name(),
-                resolution.member().descriptor(),"outbound",21,0);
+        var calls=db.usages.findMethodCalls(resolution.owner().id(), resolution.member().name(), resolution.member().descriptor(), "outbound", 21, 0, db.methods().symbolicOwners(resolution.owner().id(), resolution.member().name(), resolution.member().descriptor(), "outbound"));
         var targets=bridge.putArray("invocation_targets");
         for (var call : calls.stream().limit(20).toList()) targets.addObject()
                 .put("class",call.toClass()).put("name",call.toMethod()).put("descriptor",call.toDescriptor())
@@ -122,7 +119,7 @@ final class JavaDispatchEvidence {
             if (path.isEmpty()) continue;
             for (var declaration : members.getOrDefault(ancestor.id(),List.of())) {
                 if (!candidate(declaration,ancestor,selected,selectedOwner)) continue;
-                var calls = IndexReader.findExactMethodUsages(db,ancestor.id(),declaration.name(),declaration.descriptor(),CALL_CAP+1,0);
+                var calls = db.usages.findExactMethodUsages(db.methods().symbolicOwners(ancestor.id(), declaration.name(), declaration.descriptor(), "inbound"), declaration.name(), declaration.descriptor(), CALL_CAP+1, 0);
                 for (var call : calls) {
                     if (!Set.of("virtual","interface").contains(call.invocationKind())) continue;
                     if (found.size() >= CALL_CAP) { capped=true; break outer; }

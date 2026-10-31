@@ -17,7 +17,7 @@ class KotlinDirectoryWatcherTest {
         Files.createDirectories(source.getParent()); Files.writeString(source, "fun run() = 1");
         Files.createDirectories(ignored.getParent()); Files.writeString(ignored, "irrelevant");
         var listeners = new ArrayList<DirectoryChangeListener>(); var calls = new AtomicInteger();
-        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor) -> {
+        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor, barrier) -> {
             assertEquals(root, roots.getFirst()); assertEquals(2, roots.size()); listeners.add(listener);
             var visited = new HashSet<Path>(); visitor.recursiveVisitFiles(root, visited::add, visited::add);
             assertTrue(visited.contains(source)); assertFalse(visited.contains(ignored.getParent()));
@@ -44,7 +44,7 @@ class KotlinDirectoryWatcherTest {
         Path root = temp.toRealPath(); Files.writeString(root.resolve("Caller.kt"), "fun run() = 1");
         var failure = new CountDownLatch(1); var failures = new AtomicInteger();
         var subscription = new AtomicReference<DirectoryWatcher>();
-        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor) -> {
+        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor, barrier) -> {
             var value = DirectoryWatcher.builder().paths(roots).listener(listener).fileHashing(false)
                     .watchService(FileSystems.getDefault().newWatchService()).build();
             subscription.set(value); return value;
@@ -60,7 +60,7 @@ class KotlinDirectoryWatcherTest {
         Path first = temp.resolve("first"), second = temp.resolve("second");
         Files.createDirectory(first); Files.createDirectory(second);
         var listeners = new ArrayList<DirectoryChangeListener>(); var events = new AtomicInteger();
-        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor) -> {
+        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor, barrier) -> {
             listeners.add(listener);
             return DirectoryWatcher.builder().paths(roots).listener(listener).fileHashing(false)
                     .watchService(FileSystems.getDefault().newWatchService()).build();
@@ -83,7 +83,7 @@ class KotlinDirectoryWatcherTest {
         Path root = temp.toRealPath();
         var clock = new AtomicLong(); var failures = new AtomicInteger(); var changes = new AtomicInteger();
         var listeners = new ArrayList<DirectoryChangeListener>();
-        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor) -> {
+        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor, barrier) -> {
             listeners.add(listener);
             return DirectoryWatcher.builder().paths(roots).listener(listener).fileTreeVisitor(visitor).fileHashing(false)
                     .watchService(new io.methvin.watchservice.SilentMacOSWatchService()).build();
@@ -115,7 +115,7 @@ class KotlinDirectoryWatcherTest {
     }
     @Test void failedRetriesBackOffAndDoNotLeakHealthDirectories() throws Exception {
         var clock = new AtomicLong(); var attempts = new AtomicInteger(); var failures = new AtomicInteger();
-        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor) -> {
+        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor, barrier) -> {
             attempts.incrementAndGet(); throw new java.io.IOException("unavailable");
         }, () -> fail("No project change"), failures::incrementAndGet, clock::get)) {
             assertFalse(watcher.configure(Set.of(temp.toRealPath()), path -> true));
@@ -140,9 +140,40 @@ class KotlinDirectoryWatcherTest {
             assertFalse(Files.exists(healthFile.getParent()));
         }
     }
+    @Test void aReadCannotReuseAHeartbeatStartedBeforeThatRead() throws Exception {
+        var callbacks = new AtomicReference<DirectoryChangeListener>();
+        var flushes = new AtomicInteger();
+        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor, barrier) -> {
+            callbacks.set(listener); barrier.accept(flushes::incrementAndGet);
+            return DirectoryWatcher.builder().paths(roots).listener(listener).fileTreeVisitor(visitor).fileHashing(false)
+                    .watchService(FileSystems.getDefault().newWatchService()).build();
+        }, () -> {}, () -> fail("Delivery failed"))) {
+            assertTrue(watcher.configure(Set.of(temp.toRealPath()), path -> true));
+            var earlier = watcher.awaitDelivery();
+            Path firstMarker = watcher.deliveryFile();
+            var current = watcher.awaitDelivery();
+            assertNotSame(earlier, current);
+            callbacks.get().onEvent(probeEvent(watcher));
+            assertFalse(earlier.isDone(), "A periodic heartbeat cannot acknowledge an input barrier");
+            callbacks.get().onEvent(new DirectoryChangeEvent(DirectoryChangeEvent.EventType.CREATE, false,
+                    firstMarker, null, 1, firstMarker.getParent()));
+            assertTrue(earlier.isDone());
+            assertFalse(current.isDone(), "The earlier heartbeat cannot acknowledge a later read");
+            assertEquals(2, flushes.get());
+            callbacks.get().onEvent(new DirectoryChangeEvent(DirectoryChangeEvent.EventType.MODIFY, false,
+                    firstMarker, null, 1, firstMarker.getParent()));
+            assertFalse(current.isDone(), "A duplicate older marker cannot acknowledge the next barrier");
+            Path secondMarker = watcher.deliveryFile();
+            callbacks.get().onEvent(new DirectoryChangeEvent(DirectoryChangeEvent.EventType.CREATE, false,
+                    secondMarker, null, 1, secondMarker.getParent()));
+            assertTrue(current.isDone());
+            assertFalse(Files.exists(firstMarker)); assertFalse(Files.exists(secondMarker));
+        }
+    }
+
     @Test void acknowledgedProbeNeverTriggersAnalysisOrFailure() throws Exception {
         var clock = new AtomicLong(); var callbacks = new AtomicReference<DirectoryChangeListener>();
-        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor) -> {
+        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor, barrier) -> {
             callbacks.set(listener);
             return DirectoryWatcher.builder().paths(roots).listener(listener).fileTreeVisitor(visitor).fileHashing(false)
                     .watchService(FileSystems.getDefault().newWatchService()).build();

@@ -1,5 +1,8 @@
 # Paired task evaluation
 
+For 24 paired Quarkus/Spring Boot tasks with standalone applications and independent
+local oracles, see [Framework evaluation](framework-evaluation.md).
+
 Latency and payload size do not prove that an agent completes engineering tasks more
 accurately or with fewer tokens. Quill therefore keeps three benchmark stages separate:
 
@@ -90,6 +93,29 @@ and repository module paths without exposing those alternatives to the model. A 
 declare a `quill_tools` allowlist selected before the model runs. This models client-side tool
 search/routing without forcing a Quill call or loading the full catalog on every turn.
 
+The paired runner keeps one MCP server alive across independent model conversations. It polls
+`get_overview({})` locally before the first paid request and stops if preparation fails or times
+out. These polls do not consume model tokens or agent tool-call counts. The single-project
+launch mode is included in model instructions so workspace-only compact overview is not used.
+Task `duration_seconds` measures the model/tool loop; `mcp_initialization_seconds` records
+one-time startup on the first Quill task, and `end_to_end_duration_seconds` includes that startup.
+Historical captures predating this change started a new MCP process per question and did not
+wait for readiness; their timing and token usage are not a controlled comparison with this runner.
+
+For new unrestricted suites, the runner defaults to `--quill-profile router`: six source tools
+plus Quill's overview/search/execute interface. Suites using `quill_tools` with the default
+`--tool-selection suite` retain the full server profile so their allowlists keep working.
+Explicit `--quill-profile default` selects the full-catalog exposure used by v1/v2
+framework pilots. Exact reproduction also needs their frozen runner and recorded binary.
+The resolved profile is recorded in each capture.
+
+`benchmarks/quarkus-langchain4j-effectiveness.json` contains 24 source/POM navigation
+questions pinned to `06bbaf2339353d3d3857581a0001ee569651ed50`. The paid real-repository
+pilot uses its frozen v2 copy in the result directory. The current v3 only clarifies
+file paths versus class names, JSON null and the required `observed` wrapper; its facts
+and source oracles are unchanged, and v3 has not been measured with paid requests.
+These questions do not measure deep multi-hop graphs or framework runtime behavior.
+
 Catalog discovery experiments must keep server exposure separate from client-side selection. The
 default `--tool-selection suite` applies each task's `quill_tools` allowlist. Use `all` to expose
 the entire selected server profile. For example, compare the normal catalog and Quill's router in
@@ -109,9 +135,17 @@ python3 scripts/quill_agent_benchmark.py \
   --output-dir target/benchmarks/router-catalog --repetitions 10
 ```
 
-Both fields are stored in every capture. Do not compare `router/all` with the default
+Both fields are stored in every capture. Do not compare `router/all` with
 `default/suite` and attribute the difference solely to the router: that would change server
 exposure and client-side selection at the same time.
+
+Quill responses are compact JSON. A response exceeding `--tool-output-limit` is replaced by
+valid JSON explicitly stating that evidence was omitted and suggesting narrower filters or
+smaller pages. Its trace is marked truncated; it must not be treated as an empty successful
+answer. Quill mode requires a limit of at least 512 characters to retain this diagnostic.
+New Quill instructions prefer summary evidence, small pages and application-scoped bean
+queries. These changes do not retroactively change existing captures or demonstrate paid
+token/latency savings without a new model run.
 
 The generated `*-with-quill.json` and `*-without-quill.json` files contain the usage returned by
 every Responses API call:

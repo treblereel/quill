@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectIndexStore;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -11,7 +13,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.BuildSystem;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 
 @Tag("e2e")
@@ -34,14 +37,12 @@ class KotlinMavenIT {
         Path db = ProjectIndexStore.findDbForHead(project);
         assertNotNull(db);
         var jdbi = QuillDatabase.open(db);
-        var invoice = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.kotlin.Invoice").orElseThrow();
+        var invoice = jdbi.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findClassByName("org.treblereel.mcp.fixture.kotlin.Invoice")).orElseThrow();
         assertTrue(invoice.sourceFile().endsWith("Billing.kt"));
         assertTrue(invoice.sourceTokens() > 0);
-        var facade = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.kotlin.BillingKt").orElseThrow();
+        var facade = jdbi.withHandle(repositoryHandle2 -> new SymbolRepository(repositoryHandle2).findClassByName("org.treblereel.mcp.fixture.kotlin.BillingKt")).orElseThrow();
         assertEquals(invoice.sourceFile(), facade.sourceFile());
-        var invoiceDeclarations = IndexReader.findKotlinDeclarations(jdbi, invoice.id());
+        var invoiceDeclarations = jdbi.withHandle(repositoryHandle3 -> new SymbolRepository(repositoryHandle3).findKotlinDeclarations(invoice.id()));
         assertEquals("DATA_CLASS", invoiceDeclarations.getFirst().kind());
         var stateAccessors = invoiceDeclarations.stream()
                 .filter(value -> value.kind().equals("PROPERTY"))
@@ -55,7 +56,7 @@ class KotlinMavenIT {
         assertTrue(stateAccessors.stream().anyMatch(value ->
                 "setState".equals(value.jvmName())
                         && "(Ljava/lang/String;)V".equals(value.descriptor())));
-        var facadeDeclarations = IndexReader.findKotlinDeclarations(jdbi, facade.id());
+        var facadeDeclarations = jdbi.withHandle(repositoryHandle4 -> new SymbolRepository(repositoryHandle4).findKotlinDeclarations(facade.id()));
         assertEquals("FILE_FACADE", facadeDeclarations.getFirst().kind());
         var charge = facadeDeclarations.stream()
                 .filter(value -> value.name().equals("charge")).findFirst().orElseThrow();
@@ -72,7 +73,7 @@ class KotlinMavenIT {
         var fetch = facadeDeclarations.stream()
                 .filter(value -> value.name().equals("fetchInvoice")).findFirst().orElseThrow();
         assertTrue(fetch.isSuspend());
-        var facadeMembers = IndexReader.findClassMembers(jdbi, facade.id());
+        var facadeMembers = jdbi.withHandle(repositoryHandle5 -> new SymbolRepository(repositoryHandle5).findClassMembers(facade.id()));
         assertFalse(facadeMembers.stream().anyMatch(value ->
                 value.name().equals("charge$default")));
         assertFalse(facadeMembers.stream().anyMatch(value ->
@@ -81,15 +82,12 @@ class KotlinMavenIT {
                 value.name().endsWith("$default")),
                 "Synthetic default bridges must not become source declarations");
 
-        var invoiceId = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.kotlin.InvoiceId").orElseThrow();
+        var invoiceId = jdbi.withHandle(repositoryHandle6 -> new SymbolRepository(repositoryHandle6).findClassByName("org.treblereel.mcp.fixture.kotlin.InvoiceId")).orElseThrow();
         assertEquals("VALUE_CLASS",
-                IndexReader.findKotlinDeclarations(jdbi, invoiceId.id()).getFirst().kind());
+                jdbi.withHandle(repositoryHandle7 -> new SymbolRepository(repositoryHandle7).findKotlinDeclarations(invoiceId.id())).getFirst().kind());
 
-        var propertyShapes = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.kotlin.PropertyShapes").orElseThrow();
-        var propertyDeclarations = IndexReader.findKotlinDeclarations(
-                jdbi, propertyShapes.id()).stream()
+        var propertyShapes = jdbi.withHandle(repositoryHandle8 -> new SymbolRepository(repositoryHandle8).findClassByName("org.treblereel.mcp.fixture.kotlin.PropertyShapes")).orElseThrow();
+        var propertyDeclarations = jdbi.withHandle(repositoryHandle9 -> new SymbolRepository(repositoryHandle9).findKotlinDeclarations(propertyShapes.id())).stream()
                 .filter(value -> value.kind().equals("PROPERTY")).toList();
         assertTrue(propertyDeclarations.stream().anyMatch(value ->
                 value.name().equals("isActive") && value.jvmName().equals("isActive")
@@ -107,39 +105,34 @@ class KotlinMavenIT {
                         && value.jvmName().equals("getDelegated")
                         && value.descriptor().equals("()Ljava/lang/String;")));
 
-        var companion = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.kotlin.PropertyShapes$Companion").orElseThrow();
-        assertTrue(IndexReader.findKotlinDeclarations(jdbi, companion.id()).stream()
+        var companion = jdbi.withHandle(repositoryHandle10 -> new SymbolRepository(repositoryHandle10).findClassByName("org.treblereel.mcp.fixture.kotlin.PropertyShapes$Companion")).orElseThrow();
+        assertTrue(jdbi.withHandle(repositoryHandle11 -> new SymbolRepository(repositoryHandle11).findKotlinDeclarations(companion.id())).stream()
                 .anyMatch(value -> value.kind().equals("PROPERTY")
                         && value.name().equals("PREFIX")));
-        assertTrue(IndexReader.findClassMembers(jdbi, propertyShapes.id()).stream()
+        assertTrue(jdbi.withHandle(repositoryHandle12 -> new SymbolRepository(repositoryHandle12).findClassMembers(propertyShapes.id())).stream()
                 .anyMatch(value -> value.kind().equals("FIELD")
                         && value.name().equals("PREFIX")));
 
-        var multifileFacade = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.kotlin.BillingApi").orElseThrow();
+        var multifileFacade = jdbi.withHandle(repositoryHandle13 -> new SymbolRepository(repositoryHandle13).findClassByName("org.treblereel.mcp.fixture.kotlin.BillingApi")).orElseThrow();
         assertTrue(multifileFacade.sourceFile().endsWith("BillingQuotes.kt"));
         assertEquals("source", multifileFacade.origin());
-        assertEquals("source", IndexReader.findClassOccurrencesByClassIds(
-                jdbi, java.util.List.of(multifileFacade.id()))
+        assertEquals("source", jdbi.withHandle(repositoryHandle14 -> new IndexRepository(repositoryHandle14).findClassOccurrencesByClassIds(java.util.List.of(multifileFacade.id())))
                 .get(multifileFacade.id()).getFirst().origin());
         assertEquals("MULTIFILE_FACADE",
-                IndexReader.findKotlinDeclarations(jdbi, multifileFacade.id())
+                jdbi.withHandle(repositoryHandle15 -> new SymbolRepository(repositoryHandle15).findKotlinDeclarations(multifileFacade.id()))
                         .getFirst().kind());
-        var quotesPart = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.kotlin.BillingApi__BillingQuotesKt")
+        var quotesPart = jdbi.withHandle(repositoryHandle16 -> new SymbolRepository(repositoryHandle16).findClassByName("org.treblereel.mcp.fixture.kotlin.BillingApi__BillingQuotesKt"))
                 .orElseThrow();
         assertTrue(quotesPart.sourceFile().endsWith("BillingQuotes.kt"));
-        assertTrue(IndexReader.findKotlinDeclarations(jdbi, quotesPart.id()).stream()
+        assertTrue(jdbi.withHandle(repositoryHandle17 -> new SymbolRepository(repositoryHandle17).findKotlinDeclarations(quotesPart.id())).stream()
                 .anyMatch(value -> value.name().equals("quote")));
-        var validationPart = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.kotlin.BillingApi__BillingValidationKt")
+        var validationPart = jdbi.withHandle(repositoryHandle18 -> new SymbolRepository(repositoryHandle18).findClassByName("org.treblereel.mcp.fixture.kotlin.BillingApi__BillingValidationKt"))
                 .orElseThrow();
         assertTrue(validationPart.sourceFile().endsWith("BillingValidation.kt"));
-        assertTrue(IndexReader.findKotlinDeclarations(jdbi, validationPart.id()).stream()
+        assertTrue(jdbi.withHandle(repositoryHandle19 -> new SymbolRepository(repositoryHandle19).findKotlinDeclarations(validationPart.id())).stream()
                 .anyMatch(value -> value.name().equals("validateInvoice")));
 
-        var metadata = IndexReader.getMetadata(jdbi);
+        var metadata = jdbi.withHandle(repositoryHandle20 -> new IndexRepository(repositoryHandle20).getMetadata());
         assertTrue(Integer.parseInt(metadata.get("kotlin_metadata_classes")) >= 7);
         assertEquals("0", metadata.get("kotlin_metadata_fallbacks"));
     }

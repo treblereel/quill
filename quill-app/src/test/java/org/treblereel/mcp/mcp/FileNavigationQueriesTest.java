@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -24,8 +26,8 @@ class FileNavigationQueriesTest {
         insert(jdbi, "api/src/main/resources/app.properties", "resource", "current", null, "api");
         insert(jdbi, "api/src/main/java/com/acme/Old.java", "java", "deleted", "deleted", "api");
 
-        var result = JSON.readTree(new FileNavigationQueries()
-                .listProjectTree(jdbi, "api", 2, false, 100, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new FileNavigationQueries()
+                .listProjectTree(readScope, "api", 2, false, 100, 0)));
 
         assertEquals(2, result.path("depth").asInt());
         assertEquals("api/src", result.path("entries").get(0).path("path").asText());
@@ -41,10 +43,8 @@ class FileNavigationQueriesTest {
         insert(jdbi, "api/src/main/java/com/acme/OldOrder.java", "java", "deleted", "deleted", "api");
 
         FileNavigationQueries queries = new FileNavigationQueries();
-        var current = JSON.readTree(queries.searchFiles(
-                jdbi, "*Order*", "api", "java", null, null, false, 20, 0));
-        var all = JSON.readTree(queries.searchFiles(
-                jdbi, "Order", "api", "java", null, null, true, 20, 0));
+        var current = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.searchFiles(readScope, "*Order*", "api", "java", null, null, false, 20, 0)));
+        var all = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.searchFiles(readScope, "Order", "api", "java", null, null, true, 20, 0)));
 
         assertEquals(1, current.path("total").asInt());
         assertEquals(2, all.path("total").asInt());
@@ -60,10 +60,8 @@ class FileNavigationQueriesTest {
         insert(jdbi, "docs/Order.java.md", "resource", "current", null, ".");
 
         FileNavigationQueries queries = new FileNavigationQueries();
-        var glob = JSON.readTree(queries.searchFiles(jdbi, "**/Order*.java", null, null,
-                "api/src", ".java", false, 20, 0));
-        var ranked = JSON.readTree(queries.searchFiles(jdbi, "Order.java", null, null,
-                null, null, false, 20, 0));
+        var glob = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.searchFiles(readScope, "**/Order*.java", null, null, "api/src", ".java", false, 20, 0)));
+        var ranked = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.searchFiles(readScope, "Order.java", null, null, null, null, false, 20, 0)));
 
         assertEquals(2, glob.path("total").asInt());
         assertEquals("glob", glob.path("match_mode").asText());

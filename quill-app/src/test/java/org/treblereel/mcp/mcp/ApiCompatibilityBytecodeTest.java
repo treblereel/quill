@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.*;
@@ -39,6 +41,11 @@ class ApiCompatibilityBytecodeTest {
         db.useHandle(h->h.createUpdate("INSERT INTO jvm_api(class_id,evidence) VALUES (1,:evidence)").bind("evidence",evidence.get(1)).execute());
         return db;
     }
+    JsonNode compare(Path before, String beforeName, Path after, String afterName, int limit) throws Exception {
+        Jdbi baseline = index(before, beforeName), current = index(after, afterName);
+        return ReadQueryContext.readWithGraph(baseline, left ->
+                ReadQueryContext.readWithGraph(current, right -> ApiCompatibilityQueries.compare(left, right, limit)));
+    }
     String run(Path api,Path client,int exit) throws Exception {
         var process=new ProcessBuilder(Path.of(System.getProperty("java.home"),"bin/java").toString(),"-cp",api+File.pathSeparator+client,"p.Use").redirectErrorStream(true).start();
         try {
@@ -53,12 +60,12 @@ class ApiCompatibilityBytecodeTest {
         assertTrue(compile(client,Map.of("p/Use.java","package p; public class Use {public static void main(String[] a){System.out.println(Api.run(\"ok\"));}}"),old));
         assertTrue(compile(removed,Map.of("p/Api.java","package p; public class Api {public static String run(int x){return \"new\";}}"),null));
         assertTrue(run(removed,client,1).contains("NoSuchMethodError"));
-        JsonNode removal=ApiCompatibilityQueries.compare(index(old,"old-index"),index(removed,"removed-index"),20);
+        JsonNode removal=compare(old,"old-index", removed,"removed-index", 20);
         assertTrue(has(removal,"MEMBER_REMOVED_OR_DESCRIPTOR_CHANGED"));
         assertEquals("potentially_breaking",removal.path("verdict").asText());
         assertTrue(compile(instance,Map.of("p/Api.java","package p; public class Api {public String run(String x){return x;}}"),null));
         assertTrue(run(instance,client,1).contains("IncompatibleClassChangeError"));
-        assertTrue(has(ApiCompatibilityQueries.compare(index(old,"old-index-two"),index(instance,"instance-index"),20),"STATIC_INSTANCE_CHANGED"));
+        assertTrue(has(compare(old,"old-index-two", instance,"instance-index", 20),"STATIC_INSTANCE_CHANGED"));
     }
     @Test void bridgePreservesIndexedBinaryDescriptor() throws Exception {
         Path old=root.resolve("old"),current=root.resolve("current"),client=root.resolve("client");
@@ -67,7 +74,7 @@ class ApiCompatibilityBytecodeTest {
         assertTrue(compile(client,Map.of("p/Use.java","package p; public class Use {public static void main(String[] a){System.out.println(new Api().value());}}"),old));
         assertTrue(compile(current,Map.of("p/Base.java",base,"p/Api.java","package p; public class Api extends Base {public Integer value(){return 2;}}"),null));
         assertEquals("2",run(current,client,0).strip());
-        JsonNode report=ApiCompatibilityQueries.compare(index(old,"bridge-old"),index(current,"bridge-new"),20);
+        JsonNode report=compare(old,"bridge-old", current,"bridge-new", 20);
         assertFalse(has(report,"MEMBER_REMOVED_OR_DESCRIPTOR_CHANGED"));assertFalse(report.path("compatibility_proven").asBoolean());
         assertEquals("review_required",report.path("verdict").asText());
     }
@@ -78,7 +85,7 @@ class ApiCompatibilityBytecodeTest {
         assertTrue(compile(old,Map.of("p/Api.java",oldApi),null));assertTrue(compile(client,Map.of("p/Use.java",caller),old));
         assertTrue(compile(current,Map.of("p/Api.java",oldApi.replace("}}","} public static String run(Integer x){return \"integer\";}}")),null));
         assertEquals("string",run(current,client,0).strip());assertFalse(compile(recompile,Map.of("p/Use.java",caller),current));
-        JsonNode report=ApiCompatibilityQueries.compare(index(old,"overload-old"),index(current,"overload-new"),20);
+        JsonNode report=compare(old,"overload-old", current,"overload-new", 20);
         assertTrue(has(report,"MEMBER_ADDED"));assertEquals("review_required",report.path("verdict").asText());
     }
 }

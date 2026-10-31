@@ -21,7 +21,7 @@ import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.FieldInfo;
 import org.jboss.jandex.Indexer;
 import org.jboss.jandex.MethodInfo;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 
 /** Lazy, bounded lookup of declarations in resolved dependency JARs. */
 final class ExternalSymbolQueries {
@@ -30,7 +30,7 @@ final class ExternalSymbolQueries {
     private static final int MAX_PROJECT_CACHES = 8;
     private static final ConcurrentHashMap<Path, Catalog> CATALOGS = new ConcurrentHashMap<>();
 
-    String search(Jdbi jdbi, Path root, String pattern, String kind, String className,
+    String search(ReadQueryContext reader, Path root, String pattern, String kind, String className,
             String library, String matchMode, boolean includeOccurrences, int limit, int offset) {
         if (pattern == null || pattern.isBlank()) return error("Search pattern must not be blank");
         String requestedKind = kind == null || kind.isBlank()
@@ -44,7 +44,7 @@ final class ExternalSymbolQueries {
         if (matching == null) return error("match_mode must be exact, prefix, or contains");
         String libraryNeedle = library == null ? ""
                 : library.strip().toLowerCase(Locale.ROOT).replace("*", "");
-        Catalog catalog = catalog(jdbi, root);
+        Catalog catalog = catalog(reader, root);
         List<ClassRef> candidates = catalog.classes().stream()
                 .filter(ref -> className == null || className.isBlank()
                         || matchesClassName(ref.className(), className))
@@ -98,8 +98,8 @@ final class ExternalSymbolQueries {
         return result.toString();
     }
 
-    String details(Jdbi jdbi, Path root, String className, int limit, int offset) {
-        Catalog catalog = catalog(jdbi, root);
+    String details(ReadQueryContext reader, Path root, String className, int limit, int offset) {
+        Catalog catalog = catalog(reader, root);
         List<ClassRef> refs = catalog.classes().stream()
                 .filter(candidate -> candidate.className().equals(className)
                         || simpleName(candidate.className()).equals(className))
@@ -240,9 +240,9 @@ final class ExternalSymbolQueries {
         return result.toString();
     }
 
-    private static Catalog catalog(Jdbi jdbi, Path root) {
+    private static Catalog catalog(ReadQueryContext reader, Path root) {
         Path key = root.toAbsolutePath().normalize();
-        List<Path> jars = ProjectDependencyQueries.resolvedJars(jdbi, key);
+        List<Path> jars = ProjectDependencyQueries.resolvedJars(reader, key);
         String fingerprint = jars.stream().map(path -> path + ":" + modified(path))
                 .reduce("", (left, right) -> left + "|" + right);
         Catalog cached = CATALOGS.get(key);

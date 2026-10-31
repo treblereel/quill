@@ -18,6 +18,7 @@ final class JavaCompilerCapture {
                 || !("compile".equals(mojo.getGoal()) || "testCompile".equals(mojo.getGoal()))) return;
         var project = event.getProject();
         if (project == null || project.getBasedir() == null || event.getSession() == null) return;
+        if (CompilationCapture.skipped(event)) { CompilationCapture.failed(event); return; }
         boolean test = "testCompile".equals(mojo.getGoal());
         var config = mojo.getConfiguration() == null ? new Xpp3Dom("configuration") : new Xpp3Dom(mojo.getConfiguration());
         var evaluator = new PluginParameterExpressionEvaluator(event.getSession(), mojo);
@@ -72,7 +73,8 @@ final class JavaCompilerCapture {
         if (home != null) inputs.add(home.resolve("release"));
         for (String source : test ? project.getTestCompileSourceRoots() : project.getCompileSourceRoots()) inputs.add(Path.of(source).resolve("module-info.java"));
         fingerprints(values, inputs);
-        KotlinCompilerCapture.write(module.resolve("target/quill-java-" + (test ? "test" : "main") + ".properties"), values);
+        CompilationCapture.finish(event, values);
+
     }
 
     static Properties settings(Xpp3Dom config, boolean test) {

@@ -17,8 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
@@ -68,7 +67,7 @@ final class EntryPointQueries {
             "javax.annotation.processing.Processor",
             "javax.annotation.processing.AbstractProcessor");
 
-    String findEntryPoints(Jdbi jdbi, String kind, String module,
+    String findEntryPoints(ReadQueryContext reader, String kind, String module,
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
         String normalizedKind = normalizeKind(kind);
         if (normalizedKind != null && !KINDS.contains(normalizedKind)) {
@@ -76,15 +75,15 @@ final class EntryPointQueries {
                     + "observer, scheduled, message_consumer, annotation_processor, "
                     + "service_provider, or all");
         }
-        List<ClassRecord> classes = IndexReader.findAllClasses(jdbi);
+        List<ClassRecord> classes = reader.symbols.findAllClasses();
         Map<String, ClassRecord> classesByName = new HashMap<>();
         for (ClassRecord cls : classes) {
             classesByName.put(cls.className(), cls);
         }
         List<Integer> ids = classes.stream().map(ClassRecord::id).toList();
-        Map<Integer, List<ClassMemberRecord>> members = IndexReader.findClassMembers(jdbi, ids);
+        Map<Integer, List<ClassMemberRecord>> members = reader.symbols.findClassMembers(ids);
         Map<Integer, List<ClassAnnotationRecord>> classAnnotations =
-                IndexReader.findClassAnnotations(jdbi, ids);
+                reader.symbols.findClassAnnotations(ids);
         Set<String> processors = processorClasses(classes);
         Map<EntryKey, Candidate> entries = new LinkedHashMap<>();
 
@@ -116,7 +115,7 @@ final class EntryPointQueries {
         }
 
         int unavailableProviders = addServiceProviders(
-                jdbi, entries, classesByName, module, includeGenerated, includeTests);
+                reader, entries, classesByName, module, includeGenerated, includeTests);
         List<Candidate> result = entries.values().stream()
                 .filter(candidate -> normalizedKind == null
                         || normalizedKind.equals(candidate.kind()))
@@ -179,7 +178,7 @@ final class EntryPointQueries {
             if (countedClasses.add(cls.id())) naiveTokens += cls.sourceTokens();
         }
         appendPage(root, page.size(), result.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
@@ -215,10 +214,10 @@ final class EntryPointQueries {
                 || (existing.detail() == null && detail != null) ? candidate : existing);
     }
 
-    private static int addServiceProviders(Jdbi jdbi, Map<EntryKey, Candidate> entries,
+    private static int addServiceProviders(ReadQueryContext reader, Map<EntryKey, Candidate> entries,
             Map<String, ClassRecord> classesByName, String module,
             boolean includeGenerated, boolean includeTests) {
-        String detail = IndexReader.getMetadata(jdbi).get("service_registrations_detail");
+        String detail = reader.index.getMetadata().get("service_registrations_detail");
         if (detail == null) return 0;
         int unresolved = 0;
         try {
@@ -281,7 +280,7 @@ final class EntryPointQueries {
         if (module != null && !module.equals(cls.module())) return false;
         if ("dependency".equals(cls.origin())) return false;
         if (!includeGenerated && "generated".equals(cls.origin())) return false;
-        return includeTests || !"test".equals(cls.sourceSet());
+        return includeTests || !cls.inTestSourceSet();
     }
 
     private static String normalizeKind(String kind) {

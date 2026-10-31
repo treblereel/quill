@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectIndexStore;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
@@ -8,7 +10,8 @@ import java.util.Comparator;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.BeanRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 
 class AdvancedCdiTest {
@@ -36,11 +39,11 @@ class AdvancedCdiTest {
         assertNotNull(dbPath, "index db should be created");
 
         Jdbi jdbi = QuillDatabase.open(dbPath);
-        var classes = IndexReader.findAllClasses(jdbi);
+        var classes = jdbi.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findAllClasses());
         assertTrue(classes.size() >= 6,
                 "Should index at least 6 classes (CacheService, InMemory, CacheProducer, ProductService, LoggingInterceptor, annotations)");
 
-        var beans = IndexReader.findBeans(jdbi, null);
+        var beans = jdbi.withHandle(repositoryHandle2 -> new BeanRepository(repositoryHandle2).findBeans(null));
         assertTrue(beans.size() >= 3,
                 "Should find at least 3 beans (InMemoryCacheService, CacheProducer, ProductService) + producer");
 
@@ -66,7 +69,7 @@ class AdvancedCdiTest {
         var productServiceBean = beans.stream()
                 .filter(b -> b.classId() == productServiceClass.id())
                 .findFirst().orElseThrow();
-        var ips = IndexReader.findInjectionPoints(jdbi, productServiceBean.id());
+        var ips = jdbi.withHandle(repositoryHandle3 -> new BeanRepository(repositoryHandle3).findInjectionPoints(productServiceBean.id()));
         assertEquals(2, ips.size(), "ProductService should have 2 injection points");
 
         var qualifiedIp = ips.stream()

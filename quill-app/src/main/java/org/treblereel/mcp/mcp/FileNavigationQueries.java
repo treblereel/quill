@@ -3,24 +3,25 @@ package org.treblereel.mcp.mcp;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.IndexRepository;
+import org.treblereel.mcp.db.IndexRepository.FileRow;
 
 /** Compact file navigation over the indexed, worktree-aware file inventory. */
 final class FileNavigationQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String listProjectTree(Jdbi jdbi, String path, int depth, boolean includeDeleted,
+    String listProjectTree(ReadQueryContext reader, String path, int depth, boolean includeDeleted,
             int limit, int offset) {
         String base = normalizeBase(path);
-        List<FileRow> files = files(jdbi, base, includeDeleted);
+        List<FileRow> files = reader.index.findNavigationFiles( base, includeDeleted);
         Map<String, TreeEntry> entries = new LinkedHashMap<>();
         for (FileRow file : files) {
             String relative = relative(base, file.path());
@@ -43,7 +44,7 @@ final class FileNavigationQueries {
         return treeResponse(base, depth, ordered, limit, offset);
     }
 
-    String searchFiles(Jdbi jdbi, String pattern, String module, String kind,
+    String searchFiles(ReadQueryContext reader, String pattern, String module, String kind,
             String directory, String extension, boolean includeDeleted, int limit, int offset) {
         String requested = pattern == null ? "" : pattern.strip().replace('\\', '/');
         String needle = requested.toLowerCase(Locale.ROOT);
@@ -53,7 +54,7 @@ final class FileNavigationQueries {
                 : null;
         String base = normalizeBase(directory);
         String requestedExtension = normalizeExtension(extension);
-        List<ScoredFile> matches = files(jdbi, base, includeDeleted).stream()
+        List<ScoredFile> matches = reader.index.findNavigationFiles( base, includeDeleted).stream()
                 .filter(file -> matches(file.path(), matcher, needle, glob, basenameGlob))
                 .filter(file -> module == null || module.isBlank()
                         || normalizeBase(module).equals(normalizeBase(file.module())))
@@ -141,27 +142,7 @@ final class FileNavigationQueries {
         return slash < 0 ? path : path.substring(slash + 1);
     }
 
-    private static List<FileRow> files(Jdbi jdbi, String base, boolean includeDeleted) {
-        String prefix = base.equals(".") ? "" : base + "/";
-        return jdbi.withHandle(handle -> handle.createQuery("""
-                        SELECT repository_path, kind, origin, lifecycle, worktree_status,
-                               module, source_set
-                        FROM files
-                        WHERE (:includeDeleted = 1 OR lifecycle = 'current')
-                          AND (:prefix = '' OR repository_path = :base
-                               OR repository_path LIKE :prefix || '%')
-                        ORDER BY repository_path
-                        """)
-                .bind("includeDeleted", includeDeleted ? 1 : 0)
-                .bind("prefix", prefix)
-                .bind("base", base)
-                .map((row, context) -> new FileRow(
-                        row.getString("repository_path"), row.getString("kind"),
-                        row.getString("origin"), row.getString("lifecycle"),
-                        row.getString("worktree_status"), row.getString("module"),
-                        row.getString("source_set")))
-                .list());
-    }
+
 
     private static String treeResponse(
             String base, int depth, List<TreeEntry> entries, int limit, int offset) {
@@ -219,8 +200,7 @@ final class FileNavigationQueries {
         return path.startsWith(base + "/") ? path.substring(base.length() + 1) : null;
     }
 
-    private record FileRow(String path, String kind, String origin, String lifecycle,
-            String worktreeStatus, String module, String sourceSet) {}
+
     private record ScoredFile(FileRow file, int score, String reason) {}
     private record TreeEntry(String path, String type, FileRow file) {}
 }

@@ -18,10 +18,10 @@ import java.util.Optional;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.TreeSet;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.GitRepository;
 import org.treblereel.mcp.model.*;
 
 /** Builds Git history, hotspot, and co-change tool responses. */
@@ -35,26 +35,27 @@ final class GitToolQueries {
             + "Initialize a git repository and re-run 'quill init' to enable git intelligence: "
             + "git init && git add -A && git commit -m 'initial'";
 
-    String getHotspots(Jdbi jdbi, int limit, String since) {
-        return getHotspots(jdbi, limit, since, false);
+    String getHotspots(ReadQueryContext reader, int limit, String since) {
+        return getHotspots(reader, limit, since, false);
     }
 
-    String getHotspots(Jdbi jdbi, int limit, String since, boolean includeHistorical) {
-        return getHotspots(jdbi, limit, 0, since, includeHistorical);
+    String getHotspots(ReadQueryContext reader, int limit, String since, boolean includeHistorical) {
+        return getHotspots(reader, limit, 0, since, includeHistorical);
     }
 
-    String getHotspots(Jdbi jdbi, int limit, int offset, String since,
+    String getHotspots(ReadQueryContext reader, int limit, int offset, String since,
             boolean includeHistorical) {
-        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        GitRepository gitRepository = reader.git;
+        Map<String, String> metadata = reader.index.getMetadata();
         WorktreeInspector.Snapshot worktree = worktreeSnapshot(metadata);
-        boolean hasGit = IndexReader.hasGitData(jdbi);
+        boolean hasGit = gitRepository.hasGitData();
         if (!hasGit && !worktree.dirty()) return errorResponse(NO_GIT_MESSAGE);
 
         HotspotSelection selection = hasGit
-                ? selectHotspots(jdbi, worktree, limit, offset, since, includeHistorical)
+                ? selectHotspots(reader, worktree, limit, offset, since, includeHistorical)
                 : new HotspotSelection(List.of(), 0);
         List<GitFileStats> hotspots = selection.shown();
-        Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(jdbi, hotspots.stream()
+        Map<Integer, ClassRecord> classesById = reader.symbols.findClassesByIds(hotspots.stream()
                 .map(GitFileStats::classId).filter(Objects::nonNull).toList());
         Map<String, String> worktreeStatuses = worktree.statusesByRepositoryPath();
         ObjectNode root = JSON.createObjectNode();
@@ -88,18 +89,19 @@ final class GitToolQueries {
         }
         appendPage(root, hotspots.size(), selection.total(), limit, offset);
         root.put("worktree_total", worktree.changes().size());
-        appendMeta(root, jdbi, 0);
+        appendMeta(root, reader, 0);
         return root.toString();
     }
 
-    String resolveEntities(Jdbi jdbi, List<String> targets) {
+    String resolveEntities(ReadQueryContext reader, List<String> targets) {
+        GitRepository gitRepository = reader.git;
         if (targets == null || targets.isEmpty()) {
             return errorResponse("At least one target is required");
         }
         if (targets.size() > MAX_ENTITY_MATCHES) {
             return errorResponse("At most " + MAX_ENTITY_MATCHES + " targets are allowed");
         }
-        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        Map<String, String> metadata = reader.index.getMetadata();
         WorktreeInspector.Snapshot worktree = worktreeSnapshot(metadata);
         ObjectNode root = JSON.createObjectNode();
         ArrayNode entities = root.putArray("entities");
@@ -109,13 +111,12 @@ final class GitToolQueries {
             Set<String> currentPaths = new LinkedHashSet<>();
             Set<String> historicalPaths = new LinkedHashSet<>();
 
-            var classLookup = ClassTargetResolver.resolve(jdbi, target);
+            var classLookup = ClassTargetResolver.resolve(reader, target);
             if (classLookup.cls() != null && classLookup.cls().sourceFile() != null) {
                 currentPaths.add(classLookup.cls().sourceFile());
                 entity.put("class", classLookup.cls().className());
             }
-            for (FileRecord file : IndexReader.findFileCandidates(
-                    jdbi, target, MAX_ENTITY_MATCHES)) {
+            for (FileRecord file : reader.index.findFileCandidates(target, MAX_ENTITY_MATCHES)) {
                 if ("current".equals(file.lifecycle())) currentPaths.add(file.repositoryPath());
                 else historicalPaths.add(file.repositoryPath());
             }
@@ -127,8 +128,7 @@ final class GitToolQueries {
             }
 
             ArrayNode history = entity.putArray("historical_paths");
-            for (GitFileStats stats : IndexReader.findHistoricalPathCandidates(
-                    jdbi, target, MAX_ENTITY_MATCHES)) {
+            for (GitFileStats stats : gitRepository.findHistoricalPathCandidates(target, MAX_ENTITY_MATCHES)) {
                 historicalPaths.add(stats.filePath());
                 ObjectNode path = history.addObject();
                 path.put("file", stats.filePath());
@@ -157,7 +157,7 @@ final class GitToolQueries {
             entity.put("resolution", !currentPaths.isEmpty() ? "current"
                     : !historicalPaths.isEmpty() ? "historical" : "not_found");
         }
-        appendMeta(root, jdbi, 0);
+        appendMeta(root, reader, 0);
         return root.toString();
     }
 
@@ -189,12 +189,13 @@ final class GitToolQueries {
 
     private record HotspotSelection(List<GitFileStats> shown, int total) {}
 
-    private HotspotSelection selectHotspots(Jdbi jdbi, WorktreeInspector.Snapshot worktree,
+    private HotspotSelection selectHotspots(ReadQueryContext reader, WorktreeInspector.Snapshot worktree,
             int limit, int offset, String since, boolean includeHistorical) {
-        List<GitFileStats> matching = IndexReader.findHotspots(jdbi, Integer.MAX_VALUE, since);
+        GitRepository gitRepository = reader.git;
+        List<GitFileStats> matching = gitRepository.findHotspots(Integer.MAX_VALUE, since);
         if (!includeHistorical) {
             matching = matching.stream()
-                    .filter(stats -> isCurrentHotspot(jdbi, worktree, stats.filePath()))
+                    .filter(stats -> isCurrentHotspot(reader, worktree, stats.filePath()))
                     .toList();
         }
         int total = matching.size();
@@ -204,63 +205,62 @@ final class GitToolQueries {
         return new HotspotSelection(shown, total);
     }
 
-    private boolean isCurrentHotspot(Jdbi jdbi, WorktreeInspector.Snapshot worktree,
+    private boolean isCurrentHotspot(ReadQueryContext reader, WorktreeInspector.Snapshot worktree,
             String repositoryPath) {
         if (worktree.repositoryRoot() != null) {
             Path candidate = worktree.repositoryRoot().resolve(repositoryPath).normalize();
             return candidate.startsWith(worktree.repositoryRoot()) && Files.exists(candidate);
         }
-        return IndexReader.findFileByPath(jdbi, repositoryPath)
+        return reader.index.findFileByPath(repositoryPath)
                 .map(file -> file.lifecycle().equals("current"))
                 .orElse(true);
     }
 
-    String getFileHistory(Jdbi jdbi, String target, int limit) {
-        return getFileHistory(jdbi, target, limit, 0);
+    String getFileHistory(ReadQueryContext reader, String target, int limit) {
+        return getFileHistory(reader, target, limit, 0);
     }
 
-    String getFileHistory(Jdbi jdbi, String target, int limit, int offset) {
-        if (!IndexReader.hasGitData(jdbi)) return errorResponse(NO_GIT_MESSAGE);
+    String getFileHistory(ReadQueryContext reader, String target, int limit, int offset) {
+        GitRepository gitRepository = reader.git;
+        if (!gitRepository.hasGitData()) return errorResponse(NO_GIT_MESSAGE);
 
-        var lookup = ClassTargetResolver.resolve(jdbi, target);
+        var lookup = ClassTargetResolver.resolve(reader, target);
         if (lookup.error() != null) {
-            String filePath = resolveGitPath(jdbi, target);
-            List<GitCommitRecord> commits = IndexReader.findFileHistoryByPath(
-                    jdbi, filePath, limit, offset);
-            if (commits.isEmpty()) return classLookupError(jdbi, lookup, target);
+            String filePath = resolveGitPath(reader, target);
+            List<GitCommitRecord> commits = gitRepository.findFileHistoryByPath(filePath, limit, offset);
+            if (commits.isEmpty()) return classLookupError(reader, lookup, target);
             ObjectNode root = JSON.createObjectNode();
             root.put("target", filePath);
             root.put("file", filePath);
-            root.put("lifecycle", currentFileExists(jdbi, filePath) ? "current" : "historical");
+            root.put("lifecycle", currentFileExists(reader, filePath) ? "current" : "historical");
             appendCommits(root, commits);
-            int total = IndexReader.findFileStatsByPath(jdbi, filePath)
+            int total = gitRepository.findFileStatsByPath(filePath)
                     .map(GitFileStats::commitCount).orElse(commits.size());
-            appendHistoryPage(root, jdbi, commits.size(), total, limit, offset);
-            appendMeta(root, jdbi, 0);
+            appendHistoryPage(root, reader, commits.size(), total, limit, offset);
+            appendMeta(root, reader, 0);
             return root.toString();
         }
         ClassRecord cls = lookup.cls();
 
-        List<GitCommitRecord> commits = IndexReader.findFileHistory(
-                jdbi, cls.id(), limit, offset);
-        var statsOpt = IndexReader.findFileStatsByClassId(jdbi, cls.id());
+        List<GitCommitRecord> commits = gitRepository.findFileHistory(cls.id(), limit, offset);
+        var statsOpt = gitRepository.findFileStatsByClassId(cls.id());
 
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
         root.put("file", cls.sourceFile());
 
         appendCommits(root, commits);
-        appendHistoryPage(root, jdbi, commits.size(),
+        appendHistoryPage(root, reader, commits.size(),
                 statsOpt.map(GitFileStats::commitCount).orElse(commits.size()), limit, offset);
-        appendMeta(root, jdbi, cls.sourceTokens());
+        appendMeta(root, reader, cls.sourceTokens());
         return root.toString();
     }
 
-    private void appendHistoryPage(ObjectNode root, Jdbi jdbi, int showing,
+    private void appendHistoryPage(ObjectNode root, ReadQueryContext reader, int showing,
             int indexedTotal, int limit, int offset) {
         root.put("total_commits", indexedTotal);
         appendPage(root, showing, indexedTotal, limit, offset);
-        Map<String, String> metadata = IndexReader.getMetadata(jdbi);
+        Map<String, String> metadata = reader.index.getMetadata();
         boolean indexComplete = Boolean.parseBoolean(
                 metadata.getOrDefault("git_history_complete", "false"));
         root.put("index_history_complete", indexComplete);
@@ -282,32 +282,33 @@ final class GitToolQueries {
         }
     }
 
-    String getCoChanges(Jdbi jdbi, String target, int limit) {
-        if (!IndexReader.hasGitData(jdbi)) return errorResponse(NO_GIT_MESSAGE);
+    String getCoChanges(ReadQueryContext reader, String target, int limit) {
+        GitRepository gitRepository = reader.git;
+        if (!gitRepository.hasGitData()) return errorResponse(NO_GIT_MESSAGE);
 
-        var lookup = ClassTargetResolver.resolve(jdbi, target);
+        var lookup = ClassTargetResolver.resolve(reader, target);
         if (lookup.error() != null) {
-            String filePath = resolveGitPath(jdbi, target);
-            List<CoChangeRecord> coChanges = IndexReader.findCoChangesByPath(jdbi, filePath, limit);
-            if (coChanges.isEmpty() && IndexReader.findFileStatsByPath(jdbi, filePath).isEmpty()) {
-                return classLookupError(jdbi, lookup, target);
+            String filePath = resolveGitPath(reader, target);
+            List<CoChangeRecord> coChanges = gitRepository.findCoChangesByPath(filePath, limit);
+            if (coChanges.isEmpty() && gitRepository.findFileStatsByPath(filePath).isEmpty()) {
+                return classLookupError(reader, lookup, target);
             }
-            int targetCommitCount = IndexReader.findFileStatsByPath(jdbi, filePath)
+            int targetCommitCount = gitRepository.findFileStatsByPath(filePath)
                     .map(GitFileStats::commitCount).orElse(1);
-            return coChangeResponse(jdbi, filePath, coChanges, targetCommitCount);
+            return coChangeResponse(reader, filePath, coChanges, targetCommitCount);
         }
         ClassRecord cls = lookup.cls();
 
-        var statsOpt = IndexReader.findFileStatsByClassId(jdbi, cls.id());
+        var statsOpt = gitRepository.findFileStatsByClassId(cls.id());
         int targetCommitCount = statsOpt.map(GitFileStats::commitCount).orElse(1);
 
-        List<CoChangeRecord> coChanges = IndexReader.findCoChanges(jdbi, cls.id(), limit);
-        return coChangeResponse(jdbi, cls.className(), coChanges, targetCommitCount);
+        List<CoChangeRecord> coChanges = gitRepository.findCoChanges(cls.id(), limit);
+        return coChangeResponse(reader, cls.className(), coChanges, targetCommitCount);
     }
 
-    private String coChangeResponse(Jdbi jdbi, String target,
+    private String coChangeResponse(ReadQueryContext reader, String target,
             List<CoChangeRecord> coChanges, int targetCommitCount) {
-        Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(jdbi, coChanges.stream()
+        Map<Integer, ClassRecord> classesById = reader.symbols.findClassesByIds(coChanges.stream()
                 .map(CoChangeRecord::classId).filter(Objects::nonNull).toList());
 
         ObjectNode root = JSON.createObjectNode();
@@ -325,7 +326,7 @@ final class GitToolQueries {
             double ratio = (double) co.coChangeCount() / targetCommitCount;
             node.put("coupling_ratio", Math.round(ratio * 100.0) / 100.0);
         }
-        appendMeta(root, jdbi, 0);
+        appendMeta(root, reader, 0);
         return root.toString();
     }
 
@@ -362,36 +363,36 @@ final class GitToolQueries {
                         + "for this file; merge commits may be included");
     }
 
-    private String resolveGitPath(Jdbi jdbi, String target) {
-        return IndexReader.findFileByPath(jdbi, target)
+    private String resolveGitPath(ReadQueryContext reader, String target) {
+        return reader.index.findFileByPath(target)
                 .map(FileRecord::repositoryPath)
                 .orElse(target.replace('\\', '/'));
     }
 
-    private boolean currentFileExists(Jdbi jdbi, String repositoryPath) {
-        WorktreeInspector.Snapshot snapshot = worktreeSnapshot(IndexReader.getMetadata(jdbi));
+    private boolean currentFileExists(ReadQueryContext reader, String repositoryPath) {
+        WorktreeInspector.Snapshot snapshot = worktreeSnapshot(reader.index.getMetadata());
         if (snapshot.repositoryRoot() != null) {
             return Files.exists(snapshot.repositoryRoot().resolve(repositoryPath).normalize());
         }
-        return IndexReader.findFileByPath(jdbi, repositoryPath)
+        return reader.index.findFileByPath(repositoryPath)
                 .map(file -> file.lifecycle().equals("current"))
                 .orElse(false);
     }
 
-    String getRecentChanges(Jdbi jdbi, int commitCount) {
-        return getRecentChanges(jdbi, commitCount, MAX_RECENT_CHANGE_FILES, 0, true);
+    String getRecentChanges(ReadQueryContext reader, int commitCount) {
+        return getRecentChanges(reader, commitCount, MAX_RECENT_CHANGE_FILES, 0, true);
     }
 
-    String getRecentChanges(Jdbi jdbi, int commitCount, int fileLimit, int fileOffset,
+    String getRecentChanges(ReadQueryContext reader, int commitCount, int fileLimit, int fileOffset,
             boolean details) {
-        if (!IndexReader.hasGitData(jdbi)) return errorResponse(NO_GIT_MESSAGE);
+        GitRepository gitRepository = reader.git;
+        if (!gitRepository.hasGitData()) return errorResponse(NO_GIT_MESSAGE);
 
-        List<GitCommitRecord> commits = IndexReader.findRecentCommits(jdbi, commitCount);
+        List<GitCommitRecord> commits = gitRepository.findRecentCommits(commitCount);
         List<Integer> commitIds = commits.stream().map(GitCommitRecord::id).toList();
-        int totalFiles = IndexReader.countCommitFiles(jdbi, commitIds);
-        Map<Integer, List<GitCommitFile>> filesByCommit = IndexReader.findCommitFiles(jdbi,
-                commitIds, fileLimit, fileOffset);
-        Map<Integer, ClassRecord> classesById = IndexReader.findClassesByIds(jdbi, filesByCommit.values()
+        int totalFiles = gitRepository.countCommitFiles(commitIds);
+        Map<Integer, List<GitCommitFile>> filesByCommit = gitRepository.findCommitFiles(commitIds, fileLimit, fileOffset);
+        Map<Integer, ClassRecord> classesById = reader.symbols.findClassesByIds(filesByCommit.values()
                 .stream().flatMap(Collection::stream).map(GitCommitFile::classId)
                 .filter(Objects::nonNull).toList());
         ObjectNode root = JSON.createObjectNode();
@@ -425,14 +426,14 @@ final class GitToolQueries {
         root.put("commit_count", commits.size());
         root.put("details", details);
         appendPage(root, fileCount, totalFiles, fileLimit, fileOffset);
-        appendMeta(root, jdbi, 0);
+        appendMeta(root, reader, 0);
         return root.toString();
     }
 
 
     List<GitFileStats> currentHotspots(
-            Jdbi jdbi, Map<String, String> metadata, int limit) {
+            ReadQueryContext reader, Map<String, String> metadata, int limit) {
         WorktreeInspector.Snapshot worktree = worktreeSnapshot(metadata);
-        return selectHotspots(jdbi, worktree, limit, 0, null, false).shown();
+        return selectHotspots(reader, worktree, limit, 0, null, false).shown();
     }
 }

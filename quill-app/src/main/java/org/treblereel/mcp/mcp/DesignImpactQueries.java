@@ -10,8 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 
 /** Compares existing classes as candidate hosts for a proposed responsibility. */
@@ -21,7 +20,7 @@ final class DesignImpactQueries {
     private final ChangeRiskQueries risks = new ChangeRiskQueries();
     private final TestImpactQueries tests = new TestImpactQueries();
 
-    String compare(Jdbi jdbi, List<String> candidates, int testDepth) {
+    String compare(ReadQueryContext reader, List<String> candidates, int testDepth) {
         if (candidates == null || candidates.size() < 2) {
             return errorResponse("At least two candidates are required");
         }
@@ -29,20 +28,20 @@ final class DesignImpactQueries {
 
         List<CandidateImpact> impacts = new ArrayList<>();
         for (String candidate : candidates) {
-            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, candidate);
+            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, candidate);
             if (lookup.error() != null) {
                 ObjectNode error = JSON.createObjectNode();
                 error.put("error", "Could not resolve design candidate: " + candidate);
                 error.set("detail", ClassTargetResolver.errorResponse(JSON, lookup, candidate));
-                appendMeta(error, jdbi, 0);
+                appendMeta(error, reader, 0);
                 return error.toString();
             }
             ClassRecord cls = lookup.cls();
-            JsonNode risk = parse(risks.getRisk(jdbi, cls.className()));
-            JsonNode impacted = parse(tests.findImpactedTests(jdbi,
+            JsonNode risk = parse(risks.getRisk(reader, cls.className()));
+            JsonNode impacted = parse(tests.findImpactedTests(reader,
                     List.of(cls.className()), true, testDepth, 200, 0));
-            int fanIn = IndexReader.countDependents(jdbi, cls.id());
-            int fanOut = IndexReader.countDependencies(jdbi, cls.id());
+            int fanIn = reader.usages.countDependents(cls.id());
+            int fanOut = reader.usages.countDependencies(cls.id());
             int testCount = impacted.path("total").asInt();
             double riskScore = risk.path("risk_score").asDouble();
             double comparisonScore = Math.round((riskScore * 0.6
@@ -87,7 +86,7 @@ final class DesignImpactQueries {
                 .add("This compares existing blast radius, not semantic cohesion or a hypothetical new type")
                 .add("Scores combine change risk, dependents, and impacted tests and are comparative, not probabilities")
                 .add("Use trace_state_lifecycle to verify lifecycle alignment before selecting a host");
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 

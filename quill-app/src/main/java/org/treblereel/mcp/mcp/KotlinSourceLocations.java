@@ -4,16 +4,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.LinkedHashSet;
 import java.util.List;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 
 final class KotlinSourceLocations {
     private static final ObjectMapper JSON = new ObjectMapper();
-    static void append(Jdbi db, ObjectNode node, int owner, List<Integer> lines) {
-        var debug = IndexReader.findKotlinSourceDebug(db, owner);
+    static void append(ReadQueryContext db, ObjectNode node, int owner, List<Integer> lines) {
+        var debug = db.symbols.findKotlinSourceDebug(owner);
         if (debug.isEmpty()) return;
-        var cls = IndexReader.findClassById(db, owner);
+        var cls = db.symbols.findClassById(owner);
         if (cls.isEmpty()) return;
         if (debug.get().malformedSmap()) node.put("source_mapping_incomplete", true);
         var locations = node.putArray("source_locations");
@@ -48,10 +47,10 @@ final class KotlinSourceLocations {
         }
     }
 
-    private static String sourcePath(Jdbi db, ClassRecord owner, String name, String file) {
+    private static String sourcePath(ReadQueryContext db, ClassRecord owner, String name, String file) {
         var visible = new LinkedHashSet<String>(); visible.add(owner.module());
-        if (owner.module() != null) IndexReader.findModuleClasspath(db, owner.module()).forEach(value -> visible.add(value.visibleModule()));
-        var paths = IndexReader.findClassesByName(db, name).stream()
+        if (owner.module() != null) db.index.findModuleClasspath(owner.module()).forEach(value -> visible.add(value.visibleModule()));
+        var paths = db.symbols.findClassesByName(name).stream()
                 .filter(value -> visible.contains(value.module()) && value.sourceFile() != null
                         && (value.sourceFile().equals(file) || value.sourceFile().endsWith("/" + file))
                         && (!"main".equals(owner.sourceSet()) || !"test".equals(value.sourceSet())))

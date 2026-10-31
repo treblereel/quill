@@ -16,8 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.ClassRecord;
@@ -31,30 +30,30 @@ final class UsageToolQueries {
             "annotation", "constructor_call", "field_access", "inheritance", "injection",
             "method_call", "service_loader", "type_reference", "callback_reference", "method_handle_reference", "field_handle_reference", "bootstrap_reference");
 
-    String findUsages(Jdbi jdbi, String target, String usageKind,
+    String findUsages(ReadQueryContext reader, String target, String usageKind,
             String module, int limit, int offset) {
-        return findUsages(jdbi, target, usageKind, module, limit, offset, true);
+        return findUsages(reader, target, usageKind, module, limit, offset, true);
     }
 
-    String findUsages(Jdbi jdbi, String target, String usageKind,
+    String findUsages(ReadQueryContext reader, String target, String usageKind,
             String module, int limit, int offset, boolean includeLiveMeta) {
         String normalizedKind = normalizeKind(usageKind);
         if (normalizedKind != null && !USAGE_KINDS.contains(normalizedKind)) {
             return errorResponse("Invalid usage_kind: expected one of "
                     + USAGE_KINDS.stream().sorted().toList());
         }
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
         if (lookup.error() != null) {
-            return includeLiveMeta ? classLookupError(jdbi, lookup, target)
+            return includeLiveMeta ? classLookupError(reader, lookup, target)
                     : ClassTargetResolver.errorResponse(JSON, lookup, target).toString();
         }
         ClassRecord targetClass = lookup.cls();
 
-        List<Usage> usages = collectUsages(jdbi, targetClass);
+        List<Usage> usages = collectUsages(reader, targetClass);
         Set<Integer> callerIds = new HashSet<>();
         usages.forEach(usage -> callerIds.add(usage.caller().id()));
         Map<Integer, List<ClassOccurrenceRecord>> occurrences =
-                IndexReader.findClassOccurrencesByClassIds(jdbi, callerIds);
+                reader.index.findClassOccurrencesByClassIds(callerIds);
         usages = usages.stream()
                 .filter(usage -> normalizedKind == null
                         || normalizedKind.equals(usage.usageKind()))
@@ -101,17 +100,16 @@ final class UsageToolQueries {
             naiveTokens += usage.caller().sourceTokens();
         }
         appendPage(root, page.size(), usages.size(), limit, offset);
-        UsageCoverage.append(root,jdbi,targetClass.id());
-        if (includeLiveMeta) appendMeta(root, jdbi, naiveTokens);
+        UsageCoverage.append(root,reader,targetClass.id());
+        if (includeLiveMeta) appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
-    private List<Usage> collectUsages(Jdbi jdbi, ClassRecord target) {
+    private List<Usage> collectUsages(ReadQueryContext reader, ClassRecord target) {
         Map<UsageKey, Usage> result = new LinkedHashMap<>();
         List<DependencyRecord> dependencies =
-                IndexReader.findDependencies(jdbi, target.id(), "inbound");
-        Map<Integer, ClassRecord> callers = IndexReader.findClassesByIds(jdbi,
-                dependencies.stream().map(DependencyRecord::fromClassId).distinct().toList());
+                reader.usages.findDependencies(target.id(), "inbound");
+        Map<Integer, ClassRecord> callers = reader.symbols.findClassesByIds(dependencies.stream().map(DependencyRecord::fromClassId).distinct().toList());
         for (DependencyRecord dependency : dependencies) {
             ClassRecord caller = callers.get(dependency.fromClassId());
             if (caller == null) continue;
@@ -119,7 +117,7 @@ final class UsageToolQueries {
                     dependency.occurrenceCount(), dependency.evidenceLines()));
         }
 
-        for (ClassRecord candidate : IndexReader.findAllClasses(jdbi)) {
+        for (ClassRecord candidate : reader.symbols.findAllClasses()) {
             if (Objects.equals(candidate.superclass(), target.className())) {
                 add(result, new Usage(candidate, "inheritance", "EXTENDS", 1, List.of()));
             }
@@ -130,10 +128,9 @@ final class UsageToolQueries {
             }
         }
 
-        List<ClassRecord> annotated = IndexReader.findAnnotatedClasses(
-                jdbi, target.className(), true, Integer.MAX_VALUE, 0);
+        List<ClassRecord> annotated = reader.symbols.findAnnotatedClasses(target.className(), true, Integer.MAX_VALUE, 0);
         Map<Integer, List<ClassAnnotationRecord>> annotations =
-                IndexReader.findClassAnnotations(jdbi, target.className(),
+                reader.symbols.findClassAnnotations(target.className(),
                         annotated.stream().map(ClassRecord::id).toList(), true);
         for (ClassRecord candidate : annotated) {
             List<ClassAnnotationRecord> matches = annotations.getOrDefault(

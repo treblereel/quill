@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectInitializer;
+
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import org.treblereel.mcp.core.ProjectRootFinder;

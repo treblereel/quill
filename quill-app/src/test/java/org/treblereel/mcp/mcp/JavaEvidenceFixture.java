@@ -43,13 +43,15 @@ final class JavaEvidenceFixture {
         Jdbi db=QuillDatabase.create(root.resolve("index.db"));
         var classes=scan.classes().stream().map(c -> new ClassRecord(c.id(),c.className(),c.kind(),c.superclass(),c.interfaces(),c.sourceFile(),c.sourceLine(),
                 c.isBean(),c.sourceTokens(),c.fileId(),c.origin(),c.lifecycle(),".","main")).toList();
-        IndexWriter.writeFresh(db,classes,List.of(),List.of(),List.of(),
-                Map.of("index_id","fixture","indexed_at",Instant.now().toString(),"module_discovery_complete","true",
+        IndexWriter.writeFresh(db, new IndexFixture()
+                .classes(classes)
+                .metadata(Map.of("index_id","fixture","indexed_at",Instant.now().toString(),"module_discovery_complete","true",
                         "project_root",root.toString(),"last_commit",commit,"missing_test_output_modules","[]","compiled_before_index","true",
                         "java_source_roots","[\"src/main/java\"]","java_source_hashes",new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(
-                                SourceFileHashes.captureJava(root,List.of(root.resolve("src/main/java"))))),
-                List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),
-                JandexScanner.extractClassMembers(scan.index(),ids),calls,fields);
+                                SourceFileHashes.captureJava(root,List.of(root.resolve("src/main/java"))))))
+                .classMembers(JandexScanner.extractClassMembers(scan.index(),ids))
+                .methodCalls(calls)
+                .fieldAccesses(fields).snapshot());
         for(var entry:JvmApiScanner.capture(snapshot,ids).entrySet())
             db.useHandle(h->h.createUpdate("INSERT INTO jvm_api(class_id,evidence) VALUES (:id,:evidence)")
                     .bind("id",entry.getKey()).bind("evidence",entry.getValue()).execute());

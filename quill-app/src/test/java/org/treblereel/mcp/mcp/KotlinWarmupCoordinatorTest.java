@@ -320,11 +320,11 @@ class KotlinWarmupCoordinatorTest {
         }
     }
 
-    @Test void failedEventRegistrationAndMissingNativeLibraryRetainPollingAndForegroundQueries() throws Exception {
+    @Test void failedEventRegistrationAndMissingNativeLibraryKeepForegroundQueries() throws Exception {
         var request = request(); Path source = Path.of(request.path("file").asText());
         for (boolean missingNative : new boolean[]{false, true}) {
             var registrations = new AtomicInteger(); var warmed = new CountDownLatch(1);
-            KotlinDirectoryWatcher.Factory failing = (roots, listener, visitor) -> {
+            KotlinDirectoryWatcher.Factory failing = (roots, listener, visitor, barrier) -> {
                 registrations.incrementAndGet();
                 if (missingNative) throw new UnsatisfiedLinkError("simulated native library unavailable");
                 throw new java.io.IOException("simulated registration failure");
@@ -334,10 +334,10 @@ class KotlinWarmupCoordinatorTest {
             }, Duration.ofMillis(100), failing)) {
                 Supplier<JsonNode> background = () -> request.deepCopy().put("offset", -1);
                 assertEquals("resolved", coordinator.query("main", () -> request, background).path("status").asText());
-                assertEquals("metadata_poll_100ms", coordinator.watchBackend());
-                assertEquals("metadata_poll_100ms", coordinator.query("main", () -> request, background)
+                assertEquals("unavailable", coordinator.watchBackend());
+                assertEquals("unavailable", coordinator.query("main", () -> request, background)
                         .path("input_detection").asText());
-                Files.writeString(source, "fun run() = " + missingNative); await(warmed);
+                Files.writeString(source, "fun run() = " + missingNative);
                 assertEquals("resolved", coordinator.query("main", () -> request, background).path("status").asText());
                 assertEquals(1, registrations.get(), "Unavailable event backend must not be retried on every query");
             }
@@ -366,58 +366,48 @@ class KotlinWarmupCoordinatorTest {
     }
     @Test void failedRegistrationRecoversInSameModuleAndWarmsCurrentInputs() throws Exception {
         var request = request(); var attempts = new AtomicInteger(); var recovered = new CountDownLatch(1);
-        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor) -> {
+        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor, barrier) -> {
             if (attempts.incrementAndGet() < 3) throw new java.io.IOException("transient registration failure");
-            return KotlinDirectoryWatcher.DEFAULT.create(roots, listener, visitor);
+            return KotlinDirectoryWatcher.DEFAULT.create(roots, listener, visitor, barrier);
         };
         try (var coordinator = new KotlinWarmupCoordinator(r -> {
             if (attempts.get() >= 3 && r.path("offset").asInt() == -1) recovered.countDown();
             return result(r);
         }, Duration.ofMillis(10), factory)) {
             coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
-            assertEquals("metadata_poll_100ms", coordinator.watchBackend());
+            assertEquals("unavailable", coordinator.watchBackend());
             await(recovered); assertTrue(attempts.get() >= 3);
-            assertNotEquals("metadata_poll_100ms", coordinator.watchBackend());
+            assertNotEquals("unavailable", coordinator.watchBackend());
         }
     }
-    @Test void metadataAuditDoesNotDiscardASilentSaveInAnIntervalWithAnEarlierEvent() throws Exception {
+    @Test void silentProviderDoesNotPollAndIsDetectedByHeartbeat() throws Exception {
         var request = request(); Path source = Path.of(request.path("file").asText());
-        var callback = new AtomicReference<io.methvin.watcher.DirectoryChangeListener>();
-        var earlierWarmup = new CountDownLatch(1); var fresh = new CountDownLatch(1);
-        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor) -> {
-            callback.set(listener);
-            return io.methvin.watcher.DirectoryWatcher.builder().paths(roots).listener(listener)
-                    .fileTreeVisitor(visitor).fileHashing(false)
-                    .watchService(new io.methvin.watchservice.SilentMacOSWatchService()).build();
-        };
+        var fresh = new CountDownLatch(1);
+        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor, barrier) ->
+                io.methvin.watcher.DirectoryWatcher.builder().paths(roots).listener(listener)
+                        .fileTreeVisitor(visitor).fileHashing(false)
+                        .watchService(new io.methvin.watchservice.SilentMacOSWatchService()).build();
         try (var coordinator = new KotlinWarmupCoordinator(r -> {
-            if (r.path("offset").asInt() == -1) {
-                try {
-                    if (Files.readString(source).contains("changed")) fresh.countDown();
-                    else earlierWarmup.countDown();
-                } catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
-            }
+            if (r.path("offset").asInt() == -1) fresh.countDown();
             return result(r);
         }, Duration.ZERO, factory)) {
             coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
-            callback.get().onEvent(new io.methvin.watcher.DirectoryChangeEvent(
-                    io.methvin.watcher.DirectoryChangeEvent.EventType.MODIFY, false, source, null, 1, temp));
-            await(earlierWarmup);
-            Files.writeString(source, "fun run() = \"changed\"");
-            assertTrue(fresh.await(5, TimeUnit.SECONDS),
-                    "Metadata audit must detect the save before heartbeat failure activates fallback");
+            Files.writeString(source, "fun run() = true");
+            assertFalse(fresh.await(3, TimeUnit.SECONDS), "No filesystem event: background polling must not run");
+            assertTrue(fresh.await(10, TimeUnit.SECONDS), "Heartbeat failure must invalidate observation");
+            assertEquals("unavailable", coordinator.watchBackend());
         }
     }
 
-    @Test void metadataAuditDetectsSilentProviderAndBackgroundAnalysisReadsLatestContent() throws Exception {
+    @Test void heartbeatDetectsSilentProviderAndRecoveryReadsLatestContent() throws Exception {
         var request = request(); Path source = Path.of(request.path("file").asText());
         var attempts = new AtomicInteger(); var fresh = new CountDownLatch(1);
-        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor) -> {
+        KotlinDirectoryWatcher.Factory factory = (roots, listener, visitor, barrier) -> {
             if (attempts.incrementAndGet() == 1)
                 return io.methvin.watcher.DirectoryWatcher.builder().paths(roots).listener(listener)
                         .fileTreeVisitor(visitor).fileHashing(false)
                         .watchService(new io.methvin.watchservice.SilentMacOSWatchService()).build();
-            return KotlinDirectoryWatcher.DEFAULT.create(roots, listener, visitor);
+            return KotlinDirectoryWatcher.DEFAULT.create(roots, listener, visitor, barrier);
         };
         try (var coordinator = new KotlinWarmupCoordinator(r -> {
             try {
@@ -428,7 +418,7 @@ class KotlinWarmupCoordinatorTest {
             coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
             var modified = Files.getLastModifiedTime(source);
             Files.writeString(source, "fun run() = \"changed\""); Files.setLastModifiedTime(source, modified);
-            await(fresh);
+            assertTrue(fresh.await(15, TimeUnit.SECONDS));
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             while (attempts.get() == 1 && System.nanoTime() < deadline) Thread.sleep(20);
             assertTrue(attempts.get() >= 2, "Silent event provider must be replaced without a module switch");

@@ -17,6 +17,13 @@ public record BeanRecord(
         String memberName,
         List<String> beanTypes
 ) {
+    public BeanRecord {
+        qualifiers = qualifiers == null ? null : List.copyOf(qualifiers);
+        stereotypes = stereotypes == null ? null : List.copyOf(stereotypes);
+        profiles = profiles == null ? null : List.copyOf(profiles);
+        beanTypes = beanTypes == null ? null : List.copyOf(beanTypes);
+    }
+
     public BeanRecord(int id, int classId, String kind, String scope,
             List<String> qualifiers, List<String> stereotypes, boolean isAlternative,
             Integer priority, List<String> profiles, Integer declaringClassId,

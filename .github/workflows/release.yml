@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '25'
           cache: maven
       - name: Resolve published extension from Maven Central
         run: |
@@ -54,7 +54,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '25'
           cache: maven
       - uses: gradle/actions/setup-gradle@v4
         with:

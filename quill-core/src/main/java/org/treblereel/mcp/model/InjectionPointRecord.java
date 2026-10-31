@@ -12,16 +12,13 @@ public record InjectionPointRecord(
         Integer resolvedBeanId,
         ResolutionStatus resolutionStatus,
         String resolutionStrategy,
-        String resolutionReason,
+        ResolutionReason resolutionReason,
         ResolutionConfidence resolutionConfidence,
         List<String> limitations,
         ResolutionTrace resolutionTrace
 ) {
     public static final String STATIC_CDI = "STATIC_CDI";
     public static final String STATIC_SPRING = "STATIC_SPRING";
-    public static final String STATIC_MODEL_LIMITATION =
-            "Static analysis cannot observe runtime extensions, conditional registration, "
-                    + "or framework-specific resolution hooks.";
 
     public InjectionPointRecord {
         qualifiers = qualifiers == null ? List.of() : List.copyOf(qualifiers);
@@ -33,24 +30,30 @@ public record InjectionPointRecord(
             String targetType, List<String> qualifiers, String fieldName,
             Integer resolvedBeanId, boolean ambiguous, String strategy) {
         ResolutionStatus status;
-        String reason;
+        ResolutionReason reason;
         ResolutionConfidence confidence;
         if (resolvedBeanId != null) {
             status = ResolutionStatus.RESOLVED;
-            reason = "UNIQUE_STATIC_CANDIDATE";
+            reason = ResolutionReason.UNIQUE_STATIC_CANDIDATE;
             confidence = ResolutionConfidence.HIGH;
         } else if (ambiguous) {
             status = ResolutionStatus.AMBIGUOUS;
-            reason = "MULTIPLE_STATIC_CANDIDATES";
+            reason = ResolutionReason.MULTIPLE_STATIC_CANDIDATES;
             confidence = ResolutionConfidence.MEDIUM;
         } else {
             status = ResolutionStatus.UNKNOWN;
-            reason = "NO_STATIC_CANDIDATE";
+            reason = ResolutionReason.NO_STATIC_CANDIDATE;
             confidence = ResolutionConfidence.LOW;
         }
         return new InjectionPointRecord(id, beanId, kind, targetType, qualifiers, fieldName,
                 resolvedBeanId, status, strategy, reason, confidence,
-                List.of(STATIC_MODEL_LIMITATION), ResolutionTrace.EMPTY);
+                List.of(ResolutionMessages.STATIC_MODEL_LIMITATION), ResolutionTrace.EMPTY);
+    }
+
+    public InjectionPointRecord withId(int newId) {
+        return new InjectionPointRecord(newId, beanId, kind, targetType, qualifiers, fieldName,
+                resolvedBeanId, resolutionStatus, resolutionStrategy, resolutionReason,
+                resolutionConfidence, limitations, resolutionTrace);
     }
 
     public InjectionPointRecord withResolution(Integer newResolvedBeanId,

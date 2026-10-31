@@ -17,6 +17,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.jboss.jandex.AnnotationInstance;
 import org.jboss.jandex.AnnotationTarget;
@@ -69,7 +70,7 @@ public final class ConfigurationScanner {
         Path root = projectRoot.toAbsolutePath().normalize();
         List<Definition> definitions = scanDefinitions(root, moduleDirectories);
         Map<String, ClassRecord> classesByName = classes.stream().collect(
-                java.util.stream.Collectors.toMap(ClassRecord::className, value -> value,
+                Collectors.toMap(ClassRecord::className, value -> value,
                         (left, right) -> left));
         List<Usage> usages = new ArrayList<>();
         Set<String> unique = new LinkedHashSet<>();

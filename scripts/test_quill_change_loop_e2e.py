@@ -1,11 +1,36 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 import quill_change_loop_e2e as loop
 
 
 class ChangeLoopE2ETest(unittest.TestCase):
+    def test_snapshot_retries_only_refresh_pending_with_the_same_arguments(self):
+        client = Mock(timeout=30)
+        client.request.side_effect = [
+            {"isError": True, "structuredContent": {"error_code": "REFRESH_PENDING"}},
+            {"structuredContent": {"phase": "complete"}},
+        ]
+        args = {"targets": ["Target"], "change": "Change", "limit": 40}
+        with patch.object(loop.time, "sleep"):
+            result, trace = loop.change_snapshot(client, args)
+        self.assertEqual("complete", result["phase"])
+        self.assertEqual(1, trace["refresh_retries"])
+        self.assertEqual(client.request.call_args_list[0], client.request.call_args_list[1])
+        client.request.side_effect = None
+        client.request.return_value = {"isError": True, "structuredContent": {"error_code": "BUILD_FAILED"}}
+        with self.assertRaises(RuntimeError):
+            loop.change_snapshot(client, args)
+
+    def test_snapshot_wait_has_a_deadline(self):
+        client = Mock(timeout=1)
+        client.request.return_value = {"isError": True, "structuredContent": {"error_code": "REFRESH_PENDING"}}
+        with patch.object(loop.time, "perf_counter", side_effect=[0, 2]):
+            with self.assertRaises(TimeoutError):
+                loop.change_snapshot(client, {})
+
     def test_quick_compile_contract_accepts_system_maven_without_wrapper(self):
         with tempfile.TemporaryDirectory() as temporary:
             failures = loop.assert_contract(Path(temporary), {

@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ClaudeSettingsInstaller;
+
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.function.Function;

@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectIndexStore;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -96,6 +98,55 @@ class ProjectIndexStoreRecoveryTest {
         assertTrue(refs.values().stream().noneMatch("outdated"::equals));
         assertEquals(current.toAbsolutePath(), ProjectIndexStore.findBestAvailableDb(tempDir));
         assertTrue(ProjectIndexStore.readRecovery(tempDir).isEmpty());
+    }
+
+    @Test
+    void rejectsDataCorruptionWithReadableMetadataBeforePublicationAndDuringRecovery() throws Exception {
+        Path previous = createDatabase("previous", "unknown");
+        Path corrupt = createDatabase("corrupt", "unknown");
+        corruptData(corrupt);
+        assertThrows(IllegalStateException.class, () -> ProjectIndexStore.validateForPublication(corrupt));
+        new com.fasterxml.jackson.databind.ObjectMapper().writeValue(tempDir.resolve(".quill/refs.json").toFile(), java.util.Map.of("@worktree", "corrupt"));
+        assertEquals(previous.toAbsolutePath(), ProjectIndexStore.findBestAvailableDb(tempDir));
+    }
+
+    @Test
+    void changingValidatedStagingBytesInvalidatesTheProofBeforeRename() throws Exception {
+        Path previous = createDatabase("previous", "unknown");
+        Path active = createDatabase("active", "unknown");
+        Path staged = active.resolveSibling(".staging.tmp");
+        Files.move(active, staged);
+        long[] page = dataPage(staged);
+        ProjectIndexStore.validateForPublication(staged);
+        var modified = Files.getLastModifiedTime(staged);
+        long size = Files.size(staged);
+        damagePage(staged, page);
+        Files.setLastModifiedTime(staged, modified);
+        assertEquals(size, Files.size(staged));
+        assertEquals(modified, Files.getLastModifiedTime(staged));
+        ProjectIndexStore.atomicMove(staged, active);
+        new com.fasterxml.jackson.databind.ObjectMapper().writeValue(tempDir.resolve(".quill/refs.json").toFile(), java.util.Map.of("@worktree", "active"));
+        assertEquals(previous.toAbsolutePath(), ProjectIndexStore.findBestAvailableDb(tempDir));
+    }
+
+    private void corruptData(Path database) throws Exception {
+        damagePage(database, dataPage(database));
+    }
+
+    private long[] dataPage(Path database) {
+        return QuillDatabase.openWritable(database).withHandle(handle -> {
+            handle.execute("CREATE TABLE integrity_probe(value BLOB)");
+            handle.execute("INSERT INTO integrity_probe VALUES (zeroblob(8192))");
+            return new long[]{handle.createQuery("SELECT rootpage FROM sqlite_schema WHERE name='integrity_probe'")
+                    .mapTo(Long.class).one(), handle.createQuery("PRAGMA page_size").mapTo(Long.class).one()};
+        });
+    }
+
+    private void damagePage(Path database, long[] page) throws Exception {
+        try (var file = new java.io.RandomAccessFile(database.toFile(), "rw")) {
+            file.seek((page[0] - 1) * page[1]);
+            file.writeByte(0); // Invalid B-tree page type; the metadata table remains readable.
+        }
     }
 
     private Path createDatabase(String indexId, String commit) {

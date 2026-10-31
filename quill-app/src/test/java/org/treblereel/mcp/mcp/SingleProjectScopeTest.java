@@ -1,5 +1,8 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.workspace.ProjectScope;
+import org.treblereel.mcp.workspace.SingleProjectScope;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 

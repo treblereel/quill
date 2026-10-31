@@ -14,9 +14,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.IndexReader.FieldUsage;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.UsageRepository;
+import org.treblereel.mcp.db.UsageRepository.FieldUsage;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 
@@ -25,19 +25,17 @@ final class UnusedFieldQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String findUnusedFields(Jdbi jdbi, String module, boolean includeGenerated,
+    String findUnusedFields(ReadQueryContext reader, String module, boolean includeGenerated,
             boolean includeTests, boolean includeWriteOnly, int limit, int offset) {
-        List<ClassRecord> classes = IndexReader.findAllClasses(jdbi);
-        Map<Integer, List<ClassMemberRecord>> members = IndexReader.findClassMembers(
-                jdbi, classes.stream().map(ClassRecord::id).toList());
+        List<ClassRecord> classes = reader.symbols.findAllClasses();
+        Map<Integer, List<ClassMemberRecord>> members = reader.symbols.findClassMembers(classes.stream().map(ClassRecord::id).toList());
         Map<FieldKey, FieldUsage> usages = new HashMap<>();
-        for (FieldUsage usage : IndexReader.findFieldUsages(jdbi)) {
+        for (FieldUsage usage : reader.usages.findFieldUsages()) {
             usages.put(new FieldKey(usage.classId(), usage.fieldName(), usage.descriptor()), usage);
         }
         Set<String> serializableClasses = serializableClasses(classes);
         Map<String, Integer> excluded = new LinkedHashMap<>();
-        Set<Integer> handleOwners = new HashSet<>(jdbi.withHandle(h -> h.createQuery(
-                "SELECT DISTINCT to_class_id FROM dependencies WHERE kind='FIELD_HANDLE_REFERENCE'").mapTo(Integer.class).list()));
+        Set<Integer> handleOwners = new HashSet<>(reader.usages.findHandleReferenceOwners("FIELD_HANDLE_REFERENCE"));
         List<Candidate> candidates = new ArrayList<>();
         int analyzedPrivateFields = 0;
         for (ClassRecord cls : classes) {
@@ -139,7 +137,7 @@ final class UnusedFieldQueries {
             if (countedClasses.add(cls.id())) naiveTokens += cls.sourceTokens();
         }
         appendPage(root, page.size(), candidates.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
@@ -173,7 +171,7 @@ final class UnusedFieldQueries {
             increment(excluded, "generated_class");
             return false;
         }
-        if (!includeTests && "test".equals(cls.sourceSet())) {
+        if (!includeTests && cls.inTestSourceSet()) {
             increment(excluded, "test_class");
             return false;
         }

@@ -31,8 +31,7 @@ public final class McpStdioServer {
 
     public static void start(ProjectRegistry registry, InputStream input, OutputStream output,
             McpToolProfile profile) {
-        registry.upgradeBuildIntegrations();
-        registry.prewarm();
+        registry.prewarmAsync();
         startServer(new QuillTools(registry), QuillTools.class, input, output,
                 positiveEnvironmentDuration(
                         "QUILL_MCP_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT), profile, registry);
@@ -72,21 +71,32 @@ public final class McpStdioServer {
                 // unused libraries and their transitive native-image metadata.
                 .validateToolInputs(false)
                 .build();
-        Runnable stopStartup = registry == null ? () -> {} : KotlinSemanticQueries.startWarmup(registry);
-        Runnable stopJavaStartup = registry == null ? () -> {} : JavaSemanticQueries.startWarmup(registry);
+        var startupLock = new Object();
+        var stopped = new java.util.concurrent.atomic.AtomicBoolean();
+        var stopWarmups = new java.util.ArrayList<Runnable>();
+        if (registry != null) registry.prewarmAsync().thenRun(() -> {
+            synchronized (startupLock) {
+                if (stopped.get()) return;
+                stopWarmups.add(KotlinSemanticQueries.startWarmup(registry));
+                stopWarmups.add(JavaSemanticQueries.startWarmup(registry));
+            }
+        });
         try {
             eof.await();
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         } finally {
-            stopStartup.run();
-            stopJavaStartup.run();
+            synchronized (startupLock) {
+                stopped.set(true);
+                stopWarmups.forEach(Runnable::run);
+            }
             try {
                 // Cancelling the worker scheduler first interrupts active blocking tool calls and
                 // prevents an abandoned client from keeping the stdio process alive indefinitely.
                 toolScheduler.dispose();
                 server.closeGracefully().block(SHUTDOWN_TIMEOUT);
             } finally {
+                if (registry != null) registry.close();
                 responseScheduler.dispose();
                 KotlinSemanticQueries.closeWarmup();
                 JavaSemanticQueries.close();

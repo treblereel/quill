@@ -11,8 +11,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Comparator;
 import java.util.function.ToIntFunction;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.GitRepository;
+import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.model.*;
 
 /** Builds the project-wide overview response. */
@@ -26,12 +27,13 @@ final class ProjectOverviewQueries {
         this.git = git;
     }
 
-    String getOverview(Jdbi jdbi) {
-        return getOverview(jdbi, true);
+    String getOverview(ReadQueryContext reader) {
+        return getOverview(reader, true);
     }
 
-    String getOverview(Jdbi jdbi, boolean details) {
-        Map<String, String> meta = IndexReader.getMetadata(jdbi);
+    String getOverview(ReadQueryContext reader, boolean details) {
+        GitRepository gitRepository = reader.git;
+        Map<String, String> meta = reader.index.getMetadata();
         ObjectNode root = JSON.createObjectNode();
 
         ObjectNode capabilities = root.putObject("capabilities");
@@ -48,9 +50,9 @@ final class ProjectOverviewQueries {
                 "analyze_execution_order", "find_method_overrides")));
 
         ObjectNode project = root.putObject("project");
-        int classCount = IndexReader.countClasses(jdbi);
-        int beanCount = IndexReader.countBeans(jdbi);
-        int totalTokens = IndexReader.sumSourceTokens(jdbi);
+        int classCount = reader.symbols.countClasses();
+        int beanCount = reader.beans.countBeans();
+        int totalTokens = reader.symbols.sumSourceTokens();
         project.put("framework", meta.getOrDefault("framework", "CDI"));
         project.put("classes", classCount);
         project.put("beans", beanCount);
@@ -74,50 +76,47 @@ final class ProjectOverviewQueries {
                 Integer.parseInt(meta.getOrDefault("configuration_usages", "0")));
 
         ObjectNode scopeNode = root.putObject("beans_by_scope");
-        IndexReader.countBeansByScope(jdbi).forEach(scopeNode::put);
+        reader.beans.countBeansByScope().forEach(scopeNode::put);
 
         ObjectNode kindNode = root.putObject("beans_by_kind");
-        IndexReader.countBeansByKind(jdbi).forEach(kindNode::put);
+        reader.beans.countBeansByKind().forEach(kindNode::put);
 
         ArrayNode hubs = root.putArray("architecture_hubs");
-        List<IndexReader.ArchitectureHub> hubMetrics = IndexReader.findArchitectureHubs(jdbi);
-        Map<Integer, ClassRecord> hubClasses = IndexReader.findClassesByIds(jdbi,
-                hubMetrics.stream().map(IndexReader.ArchitectureHub::classId).toList());
-        topHubs(hubMetrics, IndexReader.ArchitectureHub::totalDependents).forEach(hub ->
+        List<UsageRepository.ArchitectureHub> hubMetrics = reader.usages.findArchitectureHubs();
+        Map<Integer, ClassRecord> hubClasses = reader.symbols.findClassesByIds(hubMetrics.stream().map(UsageRepository.ArchitectureHub::classId).toList());
+        topHubs(hubMetrics, UsageRepository.ArchitectureHub::totalDependents).forEach(hub ->
                 Optional.ofNullable(hubClasses.get(hub.classId()))
                         .ifPresent(cls -> appendHub(hubs, hub, cls, "combined")));
 
         if (details) {
             ObjectNode rankings = root.putObject("architecture_hub_rankings");
             writeHubRanking(rankings, "source", hubMetrics,
-                    IndexReader.ArchitectureHub::sourceDependents, hubClasses);
+                    UsageRepository.ArchitectureHub::sourceDependents, hubClasses);
             writeHubRanking(rankings, "generated", hubMetrics,
-                    IndexReader.ArchitectureHub::generatedDependents, hubClasses);
+                    UsageRepository.ArchitectureHub::generatedDependents, hubClasses);
             writeHubRanking(rankings, "production", hubMetrics,
-                    IndexReader.ArchitectureHub::productionDependents, hubClasses);
+                    UsageRepository.ArchitectureHub::productionDependents, hubClasses);
             writeHubRanking(rankings, "test", hubMetrics,
-                    IndexReader.ArchitectureHub::testDependents, hubClasses);
+                    UsageRepository.ArchitectureHub::testDependents, hubClasses);
             rankings.put("scope_note", "production/test are classified by source_set; "
                     + "source/generated are independent origin dimensions");
         }
 
         ObjectNode problems = root.putObject("problems");
-        List<InjectionPointRecord> unsatisfied = IndexReader.findUnsatisfiedInjectionPoints(jdbi);
-        List<InjectionPointRecord> ambiguous = IndexReader.findAmbiguousInjectionPoints(jdbi);
+        List<InjectionPointRecord> unsatisfied = reader.beans.findUnsatisfiedInjectionPoints();
+        List<InjectionPointRecord> ambiguous = reader.beans.findAmbiguousInjectionPoints();
         List<InjectionPointRecord> contextRequired =
-                IndexReader.findContextRequiredInjectionPoints(jdbi);
-        List<InjectionPointRecord> unknown = IndexReader.findUnknownInjectionPoints(jdbi);
-        List<InjectionPointRecord> unsupported = IndexReader.findUnsupportedInjectionPoints(jdbi);
+                reader.beans.findContextRequiredInjectionPoints();
+        List<InjectionPointRecord> unknown = reader.beans.findUnknownInjectionPoints();
+        List<InjectionPointRecord> unsupported = reader.beans.findUnsupportedInjectionPoints();
         List<InjectionPointRecord> problemSample = new ArrayList<>();
         problemSample.addAll(unsatisfied.stream().limit(10).toList());
         problemSample.addAll(ambiguous.stream().limit(10).toList());
         problemSample.addAll(contextRequired.stream().limit(10).toList());
         problemSample.addAll(unknown.stream().limit(10).toList());
         problemSample.addAll(unsupported.stream().limit(10).toList());
-        Map<Integer, BeanRecord> problemBeans = IndexReader.findBeansByIds(jdbi,
-                problemSample.stream().map(InjectionPointRecord::beanId).toList());
-        Map<Integer, ClassRecord> problemClasses = IndexReader.findClassesByIds(jdbi,
-                problemBeans.values().stream().map(BeanRecord::classId).toList());
+        Map<Integer, BeanRecord> problemBeans = reader.beans.findBeansByIds(problemSample.stream().map(InjectionPointRecord::beanId).toList());
+        Map<Integer, ClassRecord> problemClasses = reader.symbols.findClassesByIds(problemBeans.values().stream().map(BeanRecord::classId).toList());
         problems.put("unsatisfied_count", unsatisfied.size());
         if (details && !unsatisfied.isEmpty()) {
             List<InjectionPointRecord> unsatLimited = unsatisfied.size() > 10
@@ -156,7 +155,7 @@ final class ProjectOverviewQueries {
         writeResolutionGroup(problems, "unsupported_mechanism", unsupported,
                 problemBeans, problemClasses, details);
 
-        List<CdiProblem> cdiProblems = IndexReader.findCdiProblems(jdbi);
+        List<CdiProblem> cdiProblems = reader.beans.findCdiProblems();
         if (!cdiProblems.isEmpty()) {
             problems.put("cdi_spec_violation_count", cdiProblems.size());
             if (details) {
@@ -173,20 +172,20 @@ final class ProjectOverviewQueries {
             }
         }
 
-        if (IndexReader.hasExternalDeps(jdbi)) {
+        if (reader.usages.hasExternalDeps()) {
             ArrayNode libsArr = root.putArray("top_libraries");
-            for (var entry : IndexReader.findExternalDepsByLibrary(jdbi, 5)) {
+            for (var entry : reader.usages.findExternalDepsByLibrary(5)) {
                 ObjectNode lib = libsArr.addObject();
                 lib.put("package", entry.getKey());
                 lib.put("used_by_classes", entry.getValue());
             }
         }
 
-        if (IndexReader.hasGitData(jdbi)) {
+        if (gitRepository.hasGitData()) {
             ObjectNode gitSummary = root.putObject("git_summary");
-            gitSummary.put("total_commits_indexed", IndexReader.countCommits(jdbi));
+            gitSummary.put("total_commits_indexed", gitRepository.countCommits());
             ArrayNode hotspotsArr = gitSummary.putArray("top_hotspots");
-            for (GitFileStats s : git.currentHotspots(jdbi, meta, 3)) {
+            for (GitFileStats s : git.currentHotspots(reader, meta, 3)) {
                 ObjectNode h = hotspotsArr.addObject();
                 h.put("file", s.filePath());
                 h.put("commit_count", s.commitCount());
@@ -195,7 +194,7 @@ final class ProjectOverviewQueries {
             root.putNull("git_summary");
         }
 
-        appendMeta(root, jdbi, totalTokens);
+        appendMeta(root, reader, totalTokens);
         return root.toString();
     }
 
@@ -217,29 +216,29 @@ final class ProjectOverviewQueries {
         }
     }
 
-    private static List<IndexReader.ArchitectureHub> topHubs(
-            List<IndexReader.ArchitectureHub> hubs,
-            ToIntFunction<IndexReader.ArchitectureHub> metric) {
+    private static List<UsageRepository.ArchitectureHub> topHubs(
+            List<UsageRepository.ArchitectureHub> hubs,
+            ToIntFunction<UsageRepository.ArchitectureHub> metric) {
         return hubs.stream()
                 .filter(hub -> metric.applyAsInt(hub) > 0)
                 .sorted(Comparator.comparingInt(metric).reversed()
-                        .thenComparingInt(IndexReader.ArchitectureHub::classId))
+                        .thenComparingInt(UsageRepository.ArchitectureHub::classId))
                 .limit(5)
                 .toList();
     }
 
     private static void writeHubRanking(ObjectNode rankings, String name,
-            List<IndexReader.ArchitectureHub> metrics,
-            ToIntFunction<IndexReader.ArchitectureHub> rankingMetric,
+            List<UsageRepository.ArchitectureHub> metrics,
+            ToIntFunction<UsageRepository.ArchitectureHub> rankingMetric,
             Map<Integer, ClassRecord> classes) {
         ArrayNode result = rankings.putArray(name);
-        for (IndexReader.ArchitectureHub hub : topHubs(metrics, rankingMetric)) {
+        for (UsageRepository.ArchitectureHub hub : topHubs(metrics, rankingMetric)) {
             ClassRecord cls = classes.get(hub.classId());
             if (cls != null) appendHub(result, hub, cls, name);
         }
     }
 
-    private static void appendHub(ArrayNode result, IndexReader.ArchitectureHub metrics,
+    private static void appendHub(ArrayNode result, UsageRepository.ArchitectureHub metrics,
             ClassRecord cls, String rankedBy) {
         ObjectNode hub = result.addObject();
         hub.put("class", cls.className());
@@ -257,7 +256,7 @@ final class ProjectOverviewQueries {
     private static void appendResolutionEvidence(
             ObjectNode node, InjectionPointRecord injectionPoint) {
         node.put("resolution_strategy", injectionPoint.resolutionStrategy());
-        node.put("reason", injectionPoint.resolutionReason());
+        node.put("reason", injectionPoint.resolutionReason().name());
         node.put("confidence", injectionPoint.resolutionConfidence().name().toLowerCase());
         node.set("limitations", JSON.valueToTree(injectionPoint.limitations()));
     }

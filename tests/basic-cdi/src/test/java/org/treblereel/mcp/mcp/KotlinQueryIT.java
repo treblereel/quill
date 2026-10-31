@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,9 +14,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.treblereel.mcp.command.ProjectIndexStore;
-import org.treblereel.mcp.command.ProjectInitializer;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
+import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 
 @Tag("e2e")
@@ -55,13 +57,12 @@ class KotlinQueryIT {
     }
 
     private JsonNode usages(String cls, String method, String kind, String descriptor) throws Exception {
-        return JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db, PACKAGE + cls,
-                method, kind, descriptor, "all", 100, 0));
+        return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, PACKAGE + cls, method, kind, descriptor, "all", 100, 0)));
     }
 
     @Test void compiledMetadataPreservesNullabilityGenericBoundsAndProperties() throws Exception {
-        var owner = IndexReader.findClassByName(db, PACKAGE + "KotlinCallsKt").orElseThrow();
-        var declarations = IndexReader.findKotlinDeclarations(db, owner.id());
+        var owner = db.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findClassByName(PACKAGE + "KotlinCallsKt")).orElseThrow();
+        var declarations = db.withHandle(repositoryHandle2 -> new SymbolRepository(repositoryHandle2).findKotlinDeclarations(owner.id()));
         var rich = declarations.stream().filter(d -> d.name().equals("richTypes")).findFirst().orElseThrow().declarationTypes();
         assertNotNull(rich);
         assertEquals("kotlin/collections/Map", rich.result().classifier());
@@ -75,12 +76,12 @@ class KotlinQueryIT {
         var extension = declarations.stream().filter(d -> d.name().equals("nullableExtension")).findFirst().orElseThrow().declarationTypes();
         assertTrue(extension.receiver().nullable()); assertTrue(extension.result().nullable());
         assertEquals("STAR", extension.parameters().getFirst().type().arguments().getFirst().variance());
-        var box = IndexReader.findClassByName(db, PACKAGE + "GenericBox").orElseThrow();
-        var boxDeclarations = IndexReader.findKotlinDeclarations(db, box.id());
+        var box = db.withHandle(repositoryHandle3 -> new SymbolRepository(repositoryHandle3).findClassByName(PACKAGE + "GenericBox")).orElseThrow();
+        var boxDeclarations = db.withHandle(repositoryHandle4 -> new SymbolRepository(repositoryHandle4).findKotlinDeclarations(box.id()));
         assertEquals("T", boxDeclarations.stream().filter(d -> d.kind().equals("CLASS")).findFirst().orElseThrow().declarationTypes().typeParameters().getFirst().name());
         assertTrue(boxDeclarations.stream().filter(d -> d.kind().equals("PROPERTY")).allMatch(d -> d.declarationTypes().result().nullable()));
         assertTrue(boxDeclarations.stream().filter(d -> d.kind().equals("CONSTRUCTOR")).findFirst().orElseThrow().declarationTypes().parameters().getFirst().type().nullable());
-        var details = JSON.readTree(new SymbolToolQueries().getSymbolDetails(db, PACKAGE + "KotlinCallsKt", true, null, 100, 0));
+        var details = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolToolQueries().getSymbolDetails(readScope, PACKAGE + "KotlinCallsKt", true, null, 100, 0)));
         var card = java.util.stream.StreamSupport.stream(details.path("kotlin_declarations").spliterator(), false)
                 .filter(d -> d.path("name").asText().equals("richTypes")).findFirst().orElseThrow();
         assertTrue(card.path("declaration_types").path("result").path("arguments").get(1).path("type").path("nullable").asBoolean());
@@ -102,8 +103,7 @@ class KotlinQueryIT {
         var property = usages("Invoice", "state", "property", null);
         assertTrue(property.path("usages").valueStream().anyMatch(u -> u.path("caller").path("method").asText().equals("propertyCaller") && u.path("usage_kind").asText().equals("read")), property.toPrettyString());
         assertTrue(property.path("usages").valueStream().anyMatch(u -> u.path("caller").path("method").asText().equals("propertyCaller") && u.path("usage_kind").asText().equals("write")));
-        var byId = JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db,
-                property.path("symbol_id").asText(), null, null, null, "all", 100, 0));
+        var byId = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, property.path("symbol_id").asText(), null, null, null, "all", 100, 0)));
         assertEquals(property.path("total"), byId.path("total"));
     }
 
@@ -117,7 +117,7 @@ class KotlinQueryIT {
     }
 
     @Test void shortenedLayoutAndExtensionDefaultsSurviveRealCompilerOutput() throws Exception {
-        var root = IndexReader.findClassByName(db, PACKAGE + "RootInvoice").orElseThrow();
+        var root = db.withHandle(repositoryHandle5 -> new SymbolRepository(repositoryHandle5).findClassByName(PACKAGE + "RootInvoice")).orElseThrow();
         assertTrue(root.sourceFile().endsWith("src/main/kotlin/RootInvoice.kt"));
         assertEquals("source", root.origin());
         var extension = usages("KotlinCallsKt", "describe", "method", null);
@@ -125,19 +125,19 @@ class KotlinQueryIT {
         assertTrue(extension.path("extension").asBoolean());
     }
     @Test void compilerParameterMetadataSurvivesPersistenceAndDrivesNavigation() throws Exception {
-        var owner = IndexReader.findClassByName(db, PACKAGE + "KotlinCallsKt").orElseThrow();
-        var function = IndexReader.findKotlinDeclarations(db, owner.id()).stream()
+        var owner = db.withHandle(repositoryHandle6 -> new SymbolRepository(repositoryHandle6).findClassByName(PACKAGE + "KotlinCallsKt")).orElseThrow();
+        var function = db.withHandle(repositoryHandle7 -> new SymbolRepository(repositoryHandle7).findKotlinDeclarations(owner.id())).stream()
                 .filter(value -> value.name().equals("parameterShapes")).findFirst().orElseThrow();
         assertEquals(3, function.valueParameters().size());
         assertTrue(function.valueParameters().getFirst().hasDefault());
         assertTrue(function.valueParameters().get(1).vararg());
         assertEquals("required", function.valueParameters().get(2).name());
-        var ctorOwner = IndexReader.findClassByName(db, PACKAGE + "ParameterShapes").orElseThrow();
-        var constructor = IndexReader.findKotlinDeclarations(db, ctorOwner.id()).stream()
+        var ctorOwner = db.withHandle(repositoryHandle8 -> new SymbolRepository(repositoryHandle8).findClassByName(PACKAGE + "ParameterShapes")).orElseThrow();
+        var constructor = db.withHandle(repositoryHandle9 -> new SymbolRepository(repositoryHandle9).findKotlinDeclarations(ctorOwner.id())).stream()
                 .filter(value -> value.kind().equals("CONSTRUCTOR")).findFirst().orElseThrow();
         assertEquals(2, constructor.valueParameters().size());
-        var childOwner = IndexReader.findClassByName(db, PACKAGE + "ParameterOuter$Child").orElseThrow();
-        var childConstructor = IndexReader.findKotlinDeclarations(db, childOwner.id()).stream()
+        var childOwner = db.withHandle(repositoryHandle10 -> new SymbolRepository(repositoryHandle10).findClassByName(PACKAGE + "ParameterOuter$Child")).orElseThrow();
+        var childConstructor = db.withHandle(repositoryHandle11 -> new SymbolRepository(repositoryHandle11).findKotlinDeclarations(childOwner.id())).stream()
                 .filter(value -> value.kind().equals("CONSTRUCTOR")).findFirst().orElseThrow();
         assertEquals(1, childConstructor.valueParameters().size());
         assertTrue(childConstructor.descriptor().contains("ParameterOuter;I"));
@@ -145,12 +145,12 @@ class KotlinQueryIT {
         var query = new PositionSymbolQueries();
         String valid = "import " + PACKAGE + "parameterShapes\nfun run() = parameterShapes(required = \"ok\")";
         Files.writeString(live, valid);
-        var result = JSON.readTree(query.getSymbolAtPosition(db, project, "src/main/kotlin/Live.kt", 2, 13));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.getSymbolAtPosition(readScope, project, "src/main/kotlin/Live.kt", 2, 13)));
         assertTrue(result.has("selected"), result.toPrettyString());
         Files.writeString(live, "import " + PACKAGE + "parameterShapes\nfun run() = parameterShapes(1)");
-        assertFalse(JSON.readTree(query.getSymbolAtPosition(db, project, "src/main/kotlin/Live.kt", 2, 13)).has("selected"));
+        assertFalse(JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.getSymbolAtPosition(readScope, project, "src/main/kotlin/Live.kt", 2, 13))).has("selected"));
         Files.writeString(live, "import " + PACKAGE + "ParameterShapes\nfun run() = ParameterShapes(required = \"ok\")");
-        var constructorResult = JSON.readTree(query.getSymbolAtPosition(db, project, "src/main/kotlin/Live.kt", 2, 13));
+        var constructorResult = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.getSymbolAtPosition(readScope, project, "src/main/kotlin/Live.kt", 2, 13)));
         assertEquals("CONSTRUCTOR", constructorResult.path("selected").path("kind").asText(), constructorResult.toPrettyString());
     }
 
@@ -158,8 +158,7 @@ class KotlinQueryIT {
         String source = "import " + PACKAGE + "*\nfun run() = " + expression;
         String path = "src/main/kotlin/Navigation.kt";
         Files.writeString(project.resolve(path), source);
-        return JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(db, project, path,
-                2, 13 + expression.indexOf(token)));
+        return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, project, path, 2, 13 + expression.indexOf(token))));
     }
 
     @Test void generatedJvmOverloadsNavigateToSingleSourceDeclaration() throws Exception {
@@ -238,8 +237,8 @@ class KotlinQueryIT {
         assertTrue(inline.path("source_locations").size() > 0, inline.toPrettyString());
         assertTrue(inline.path("source_locations").valueStream().anyMatch(value -> value.path("mapped").asBoolean()
                 && value.path("source_file").asText().endsWith("KotlinCalls.kt")), inline.toPrettyString());
-        var coroutine = IndexReader.findClassesByName(db, PACKAGE + "KotlinCallsKt$debugSuspendCaller$1").getFirst();
-        var debug = IndexReader.findKotlinSourceDebug(db, coroutine.id()).orElseThrow();
+        var coroutine = db.withHandle(repositoryHandle12 -> new SymbolRepository(repositoryHandle12).findClassesByName(PACKAGE + "KotlinCallsKt$debugSuspendCaller$1")).getFirst();
+        var debug = db.withHandle(repositoryHandle13 -> new SymbolRepository(repositoryHandle13).findKotlinSourceDebug(coroutine.id())).orElseThrow();
         assertEquals("debugSuspendCaller", debug.coroutine().method());
         assertFalse(debug.coroutine().suspensionLines().isEmpty());
         assertTrue(debug.coroutine().supported());

@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.objectweb.asm.Type;
-import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
@@ -34,8 +33,8 @@ final class KotlinProperties {
         }
     }
 
-    static List<Property> list(Jdbi jdbi, ClassRecord cls) {
-        var declarations = IndexReader.findKotlinDeclarations(jdbi, cls.id()).stream()
+    static List<Property> list(ReadQueryContext reader, ClassRecord cls) {
+        var declarations = reader.symbols.findKotlinDeclarations(cls.id()).stream()
                 .filter(value -> "PROPERTY".equals(value.kind())).toList();
         var groups = new LinkedHashMap<String, List<KotlinDeclarationRecord>>();
         for (var declaration : declarations) {
@@ -54,12 +53,11 @@ final class KotlinProperties {
                 boolean field = !declaration.descriptor().startsWith("(");
                 ClassRecord owner = cls;
                 if (field && cls.className().endsWith("$Companion")
-                        && IndexReader.findClassMembers(jdbi, cls.id()).stream().noneMatch(member ->
+                        && reader.symbols.findClassMembers(cls.id()).stream().noneMatch(member ->
                             "FIELD".equals(member.kind()) && member.name().equals(declaration.jvmName())
                                     && member.descriptor().equals(declaration.descriptor()))) {
-                    var outer = IndexReader.findClassByName(jdbi,
-                            cls.className().substring(0, cls.className().length() - "$Companion".length()));
-                    if (outer.isPresent() && IndexReader.findClassMembers(jdbi, outer.get().id()).stream()
+                    var outer = reader.symbols.findClassByName(cls.className().substring(0, cls.className().length() - "$Companion".length()));
+                    if (outer.isPresent() && reader.symbols.findClassMembers(outer.get().id()).stream()
                             .anyMatch(member -> "FIELD".equals(member.kind())
                                 && member.name().equals(declaration.jvmName())
                                 && member.descriptor().equals(declaration.descriptor()))) owner = outer.get();

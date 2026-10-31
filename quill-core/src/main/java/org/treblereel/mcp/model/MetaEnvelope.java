@@ -1,13 +1,8 @@
 package org.treblereel.mcp.model;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.core.WorktreeInspector;
-import org.treblereel.mcp.core.WorktreeSnapshotCache;
-import org.treblereel.mcp.db.IndexReader;
 
 public record MetaEnvelope(
         String indexId,
@@ -25,35 +20,30 @@ public record MetaEnvelope(
         int naiveTokens,
         double compression
 ) {
-    public static MetaEnvelope from(Jdbi jdbi, int responseTokens, int naiveTokens) {
-        Map<String, String> meta = IndexReader.getMetadata(jdbi);
+    public static MetaEnvelope from(Map<String,String> meta, String currentCommit, String structuralFingerprint,
+            boolean structuralDirty, boolean dirty, int changedFiles, int structuralChanges,
+            int responseTokens, int naiveTokens) {
         String lastCommit = meta.getOrDefault("last_commit", "unknown");
-        String projectRoot = meta.get("project_root");
-        Path rootPath = projectRoot != null ? Path.of(projectRoot) : null;
-        WorktreeInspector.Snapshot worktree = rootPath != null
-                ? WorktreeSnapshotCache.shared().get(rootPath)
-                : WorktreeInspector.Snapshot.empty();
-        String currentCommit = worktree.currentCommit();
         boolean commitStale = isCommitStale(lastCommit, currentCommit);
         String indexedStructure = meta.get("indexed_structure_fingerprint");
         boolean structureChanged = indexedStructure != null
-                && !indexedStructure.equals(worktree.structuralFingerprint());
+                && !indexedStructure.equals(structuralFingerprint);
         boolean compiledSnapshot = Boolean.parseBoolean(
                 meta.getOrDefault("compiled_before_index", "false"));
         boolean structureStale = commitStale || structureChanged
-                || (worktree.structuralDirty() && !compiledSnapshot);
+                || (structuralDirty && !compiledSnapshot);
         List<String> staleReasons = new ArrayList<>();
         if (commitStale) staleReasons.add("commit_changed_after_index");
         if (structureChanged) staleReasons.add("worktree_changed_after_index");
-        if (worktree.structuralDirty() && !compiledSnapshot) {
+        if (structuralDirty && !compiledSnapshot) {
             staleReasons.add("dirty_worktree_not_compiled");
         }
         double compression = responseTokens > 0 ? (double) naiveTokens / responseTokens : 0;
         return new MetaEnvelope(
                 meta.get("index_id"),
                 meta.getOrDefault("indexed_at", "unknown"),
-                lastCommit, currentCommit, commitStale, worktree.dirty(), worktree.changes().size(),
-                worktree.structuralChanges().size(),
+                lastCommit, currentCommit, commitStale, dirty, changedFiles,
+                structuralChanges,
                 structureStale, List.copyOf(staleReasons), structureStale,
                 responseTokens, naiveTokens, Math.round(compression * 10.0) / 10.0
         );

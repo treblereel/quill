@@ -11,8 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 
@@ -21,14 +20,14 @@ final class ExternalDependencyQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {
+    String getExternalDeps(ReadQueryContext reader, String target, String library, int limit) {
         ClassRecord targetClass = null;
         if (target != null) {
-            var lookup = ClassTargetResolver.resolve(jdbi, target);
-            if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+            var lookup = ClassTargetResolver.resolve(reader, target);
+            if (lookup.error() != null) return classLookupError(reader, lookup, target);
             targetClass = lookup.cls();
         }
-        if (!IndexReader.hasExternalDeps(jdbi)) {
+        if (!reader.usages.hasExternalDeps()) {
             return errorResponse("No external dependency data. Re-run 'quill init' to index external dependencies.");
         }
 
@@ -38,7 +37,7 @@ final class ExternalDependencyQueries {
             ClassRecord cls = targetClass;
 
             root.put("target", cls.className());
-            var deps = IndexReader.findExternalDeps(jdbi, cls.id());
+            var deps = reader.usages.findExternalDeps(cls.id());
 
             Map<String, List<ExternalDepRecord>> byKind = new LinkedHashMap<>();
             for (ExternalDepRecord d : deps) {
@@ -53,24 +52,24 @@ final class ExternalDependencyQueries {
                 }
             }
             root.put("total_external_types", deps.size());
-            appendMeta(root, jdbi, cls.sourceTokens());
+            appendMeta(root, reader, cls.sourceTokens());
         } else if (library != null) {
             root.put("library_filter", library);
-            var classes = IndexReader.findClassesUsingType(jdbi, library + ".%");
+            var classes = reader.usages.findClassesUsingType(library + ".%");
             ArrayNode arr = root.putArray("classes_using_library");
             for (var entry : classes) {
                 arr.add(entry.getValue());
             }
             root.put("total_classes", classes.size());
-            appendMeta(root, jdbi, 0);
+            appendMeta(root, reader, 0);
         } else {
             ArrayNode arr = root.putArray("libraries");
-            for (var entry : IndexReader.findExternalDepsByLibrary(jdbi, limit)) {
+            for (var entry : reader.usages.findExternalDepsByLibrary(limit)) {
                 ObjectNode node = arr.addObject();
                 node.put("package", entry.getKey());
                 node.put("used_by_classes", entry.getValue());
             }
-            appendMeta(root, jdbi, 0);
+            appendMeta(root, reader, 0);
         }
 
         return root.toString();

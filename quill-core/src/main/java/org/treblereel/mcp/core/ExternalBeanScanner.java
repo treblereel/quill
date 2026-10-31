@@ -1,7 +1,5 @@
 package org.treblereel.mcp.core;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,7 +28,6 @@ import org.treblereel.mcp.model.InjectionPointRecord;
 /** Extracts DI beans from the dependency index without adding them to application classes. */
 public final class ExternalBeanScanner {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
     private static final String CONFIG_PROPERTY =
             "org.eclipse.microprofile.config.inject.ConfigProperty";
     private static final String SPRING_VALUE =
@@ -98,14 +95,6 @@ public final class ExternalBeanScanner {
                     bean.injectionPoints()));
         }
         return List.copyOf(numbered);
-    }
-
-    public static String injectionsJson(List<ExternalInjectionPointRecord> injections) {
-        try {
-            return JSON.writeValueAsString(injections);
-        } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException("Could not serialize external injection points", e);
-        }
     }
 
     private static List<ExternalInjectionPointRecord> externalInjections(

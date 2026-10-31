@@ -6,12 +6,13 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.BiFunction;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.jdbi.v3.core.Jdbi;
 
 /** MCP-facing facade that routes requests and delegates query construction. */
@@ -58,9 +59,9 @@ public final class QuillTools {
             @ToolArg(description = "Include modules") Optional<Boolean> include_modules,
             @ToolArg(description = "Page size") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset) {
-        return ResponseBudget.apply(workspace.listRepositories(include_modules.orElse(false),
+        return workspace.listRepositories(include_modules.orElse(false),
                 clamp(limit.orElse(50), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE));
     }
 
     @Tool(readOnly = true, structured = true, description = "Workspace dependencies.")
@@ -70,16 +71,16 @@ public final class QuillTools {
             @ToolArg(description = "Cross-repo") Optional<Boolean> cross_repository_only,
             @ToolArg(description = "Page size") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset) {
-        return ResponseBudget.apply(workspace.getDependencies(repository.orElse(null),
+        return workspace.getDependencies(repository.orElse(null),
                 direction.orElse("both"), cross_repository_only.orElse(true),
                 clamp(limit.orElse(100), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE));
     }
 
     @Tool(readOnly = true, structured = true, description = "Resolve workspace entity.")
     public String resolve_workspace_entity(
             @ToolArg(description = "Name, path, GA, or class") String target) {
-        return ResponseBudget.apply(workspace.resolveEntity(target));
+        return workspace.resolveEntity(target);
     }
 
     @Tool(readOnly = true, structured = true, description = "Find workspace usages.")
@@ -91,12 +92,12 @@ public final class QuillTools {
             @ToolArg(description = "Groups per consumer") Optional<Integer> consumer_limit,
             @ToolArg(description = "Usage offset") Optional<Integer> consumer_offset,
             @ToolArg(description = "Offset") Optional<Integer> offset) {
-        return ResponseBudget.apply(workspace.findUsages(target,
+        return workspace.findUsages(target,
                 provider_repository.orElse(null), usage_kind.orElse(null),
                 clamp(limit.orElse(20), 1, 100),
                 clamp(consumer_limit.orElse(20), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE),
-                clamp(consumer_offset.orElse(0), 0, Integer.MAX_VALUE)));
+                clamp(consumer_offset.orElse(0), 0, Integer.MAX_VALUE));
     }
 
     String find_workspace_usages(String target, Optional<String> provider_repository,
@@ -111,13 +112,13 @@ public final class QuillTools {
             @ToolArg(description = "Class or source path") String target,
             @ToolArg(description = "Provider repository") Optional<String> provider_repository,
             @ToolArg(description = "Dependency depth") Optional<Integer> max_depth) {
-        return ResponseBudget.apply(workspace.assessRisk(target,
-                provider_repository.orElse(null), clamp(max_depth.orElse(3), 1, 10)));
+        return workspace.assessRisk(target,
+                provider_repository.orElse(null), clamp(max_depth.orElse(3), 1, 10));
     }
 
     @Tool(readOnly = true, structured = true, description = "Find CDI/Spring beans.")
     public String list_beans(
-            @ToolArg(description = "Class, path, or wildcard") Optional<String> class_name,
+            @ToolArg(description = "Exact class/path or explicit * wildcard (e.g. *Delivery*); not a substring search") Optional<String> class_name,
             @ToolArg(description = "Scope") Optional<String> scope,
             @ToolArg(description = "Bean kind") Optional<String> kind,
             @ToolArg(description = "Build profile") Optional<String> profile,
@@ -128,8 +129,8 @@ public final class QuillTools {
             @ToolArg(description = "Page size") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> workspace.enrichDependencyBeans(
-                queries.getBeans(p.jdbi(), class_name.orElse(null), scope.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> workspace.enrichDependencyBeans(
+                queries.getBeans(context, class_name.orElse(null), scope.orElse(null),
                         kind.orElse(null), profile.orElse(null), qualifier.orElse(null),
                         module.orElse(null), source_set.orElse(null), origin.orElse("all"),
                         clamp(limit.orElse(50), 1, 100),
@@ -152,8 +153,8 @@ public final class QuillTools {
         int requestedLimit = clamp(limit.orElse(50), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         String requestedCursor = cursor.orElse(null);
-        return forAllProjects(project.orElse(null), p -> workspace.enrichClassDependencies(
-                queries.getDependencies(p.jdbi(), target, requestedDirection, requestedDepth,
+        return forAllProjects(project.orElse(null), (p, context) -> workspace.enrichClassDependencies(
+                queries.getDependencies(context, target, requestedDirection, requestedDepth,
                         requestedNodes, requestedLimit, requestedOffset, requestedCursor),
                 p.name(), target, requestedDirection, requestedDepth, requestedNodes,
                 requestedLimit, requestedOffset, requestedCursor));
@@ -169,8 +170,7 @@ public final class QuillTools {
         boolean requestedTransitive = transitive.orElse(true);
         int requestedLimit = clamp(limit.orElse(50), 1, 100);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
-        return forAllProjects(project.orElse(null), p -> routeClassQuery(
-                p, target, "find_implementations",
+        return forAllProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "find_implementations",
                 jdbi -> queries.findImplementations(jdbi, target, requestedTransitive,
                         null, null, requestedLimit, requestedOffset)));
     }
@@ -186,8 +186,8 @@ public final class QuillTools {
         String requestedKind = usage_kind.orElse(null);
         int requestedLimit = clamp(limit.orElse(50), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
-        return forAllProjects(project.orElse(null), p -> workspace.routeMissingUsages(
-                queries.findUsages(p.jdbi(), target, requestedKind, module.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> workspace.routeMissingUsages(
+                queries.findUsages(context, target, requestedKind, module.orElse(null),
                         requestedLimit, requestedOffset),
                 p.name(), target, requestedKind, requestedLimit, requestedOffset));
     }
@@ -199,7 +199,7 @@ public final class QuillTools {
             @ToolArg(description = "Member; optional for IDs/constructors") Optional<String> name,
             @ToolArg(description = "Kind; omit for symbol_id",
                     allowed = {"method", "constructor", "field", "property"}) Optional<String> kind,
-            @ToolArg(description = "Signature/descriptor for overloads") Optional<String> signature,
+            @ToolArg(description = "Exact indexed signature/JVM descriptor, or erased parameters like (java.lang.String), method(String). Omit only for unique names; prefer a candidate's symbol_id when ambiguous.") Optional<String> signature,
             @ToolArg(description = "Read/write filter",
                     allowed = {"all", "read", "write"}) Optional<String> access,
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
@@ -210,8 +210,7 @@ public final class QuillTools {
         String requestedAccess = access.orElse("all");
         int requestedLimit = clamp(limit.orElse(50), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
-        return forAllProjects(project.orElse(null), p -> routeClassQuery(
-                p, target, "find_symbol_usages",
+        return forGraphProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "find_symbol_usages",
                 jdbi -> queries.findSymbolUsages(jdbi, target, requestedName,
                         kind.orElse(null),
                         requestedSignature, requestedAccess, requestedLimit, requestedOffset)));
@@ -230,8 +229,7 @@ public final class QuillTools {
         String requestedKind = member_kind.orElse(null);
         int requestedLimit = clamp(member_limit.orElse(100), 1, 200);
         int requestedOffset = clamp(member_offset.orElse(0), 0, Integer.MAX_VALUE);
-        return forAllProjects(project.orElse(null), p -> routeClassQuery(
-                p, target, "get_symbol_details",
+        return forAllProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "get_symbol_details",
                 jdbi -> queries.getSymbolDetails(jdbi, target, requestedMembers,
                         requestedKind, requestedLimit, requestedOffset)));
     }
@@ -239,26 +237,26 @@ public final class QuillTools {
     @Tool(readOnly = true, structured = true,
             description = "Get a compact change-ready context card for one or more classes.")
     public String get_context(
-            @ToolArg(description = "Classes or source paths (max 10)") List<String> targets,
+            @ToolArg(description = "Classes or source paths") List<String> targets,
             @ToolArg(description = "Include declared members; default false") Optional<Boolean> include_members,
             @ToolArg(description = "Members, usages, and tests per section; default 10, max 25") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         boolean requestedMembers = include_members.orElse(false);
         int requestedLimit = clamp(limit.orElse(10), 1, 25);
-        return forAllProjects(project.orElse(null), p -> queries.getContext(
-                p.jdbi(), targets, requestedMembers, requestedLimit));
+        return forAllProjects(project.orElse(null), (p, context) -> queries.getContext(
+                context, targets, requestedMembers, requestedLimit));
     }
 
     @Tool(readOnly = true, structured = true,
             description = "Build an evidence-backed change plan with files, dependency review, tests, risk, freshness warnings, and non-executing verification commands.")
     public String plan_change(
-            @ToolArg(description = "Classes or source paths to change (max 10)") List<String> targets,
+            @ToolArg(description = "Classes or source paths to change") List<String> targets,
             @ToolArg(description = "Concise description of the intended change") String change,
             @ToolArg(description = "Members, usages, and tests per section; default 10, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(10), 1, 100);
-        return forAllProjects(project.orElse(null), p -> queries.planChange(
-                p.jdbi(), p.root(), targets, change, requestedLimit));
+        return forAllProjects(project.orElse(null), (p, context) -> queries.planChange(
+                context, p.root(), targets, change, requestedLimit));
     }
 
     @Tool(readOnly = true, structured = true,
@@ -268,8 +266,8 @@ public final class QuillTools {
             @ToolArg(description = "Changes, diagnostics, and tests per section; default 20, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
-        return forAllProjects(project.orElse(null), p -> queries.verifyChange(
-                p.jdbi(), p.root(), targets.orElse(List.of()), requestedLimit));
+        return forAllProjects(project.orElse(null), (p, context) -> queries.verifyChange(
+                context, p.root(), targets.orElse(List.of()), requestedLimit));
     }
 
     @Tool(readOnly = true, structured = true,
@@ -282,8 +280,8 @@ public final class QuillTools {
             @ToolArg(description = "Evidence per section; default 20, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
-        return forAllProjects(project.orElse(null), p -> queries.changeSession(
-                p.jdbi(), p.root(), targets.orElse(List.of()), change, requestedLimit,
+        return forAllProjects(project.orElse(null), (p, context) -> queries.changeSession(
+                context, p.root(), targets.orElse(List.of()), change, requestedLimit,
                 detail.orElse("summary"), view.orElse("auto")));
     }
 
@@ -295,8 +293,8 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findImpactedTests(
-                p.jdbi(), targets, transitive.orElse(true),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.findImpactedTests(
+                context, targets, transitive.orElse(true),
                 clamp(max_depth.orElse(3), 1, 5),
                 clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -314,8 +312,7 @@ public final class QuillTools {
         int requestedDepth = clamp(max_depth.orElse(5), 1, 20);
         int requestedLimit = clamp(limit.orElse(100), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
-        return forAllProjects(project.orElse(null), p -> routeClassQuery(
-                p, target, "get_type_hierarchy",
+        return forAllProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "get_type_hierarchy",
                 jdbi -> queries.getTypeHierarchy(jdbi, target, requestedDirection,
                         requestedDepth, requestedLimit, requestedOffset)));
     }
@@ -331,8 +328,8 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.searchSymbols(
-                p.jdbi(), pattern, kind.orElse(null), language.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.searchSymbols(
+                context, pattern, kind.orElse(null), language.orElse(null),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -342,7 +339,7 @@ public final class QuillTools {
     public String get_call_hierarchy(
             @ToolArg(description = "Class, path, or symbol_id") String target,
             @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
-            @ToolArg(description = "Exact indexed signature or JVM descriptor for overload selection") Optional<String> signature,
+            @ToolArg(description = "Exact indexed signature/JVM descriptor, or erased parameters like (java.lang.String), method(String). Simple type names must select a unique overload.") Optional<String> signature,
             @ToolArg(description = "Direction",
                     allowed = {"inbound", "outbound", "both"}) Optional<String> direction,
             @ToolArg(description = "Traverse calls; default false") Optional<Boolean> transitive,
@@ -359,8 +356,7 @@ public final class QuillTools {
         int requestedDepth = clamp(max_depth.orElse(3), 1, 8);
         int requestedLimit = clamp(limit.orElse(100), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
-        return forAllProjects(project.orElse(null), p -> routeClassQuery(
-                p, target, "get_call_hierarchy",
+        return forGraphProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "get_call_hierarchy",
                 jdbi -> queries.getCallHierarchy(jdbi, target, requestedMethod,
                         requestedSignature, requestedDirection, requestedTransitive,
                         requestedDepth, scope.orElse("all"), requestedLimit, requestedOffset)));
@@ -373,8 +369,7 @@ public final class QuillTools {
             @ToolArg(description = "Row limit") Optional<Integer> evidence_limit,
             @ToolArg(description = "Repo") Optional<String> project) {
         int requestedLimit = clamp(evidence_limit.orElse(50), 1, 200);
-        return forAllProjects(project.orElse(null), p -> routeClassQuery(
-                p, target, "trace_state_lifecycle",
+        return forGraphProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "trace_state_lifecycle",
                 jdbi -> queries.traceStateLifecycle(jdbi, target, requestedLimit)));
     }
 
@@ -393,8 +388,7 @@ public final class QuillTools {
         Set<String> after = semanticTerms(after_terms.orElse(null),
                 Set.of("dispatch", "submit", "publish", "send", "enqueue", "worker",
                         "invoke", "execute"));
-        return forAllProjects(project.orElse(null), p -> routeClassQuery(
-                p, target, "analyze_execution_order",
+        return forGraphProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "analyze_execution_order",
                 jdbi -> queries.analyzeExecutionOrder(jdbi, target, method.orElse(null),
                         signature.orElse(null), before, after)));
     }
@@ -405,8 +399,8 @@ public final class QuillTools {
             @ToolArg(description = "Test depth") Optional<Integer> test_depth,
             @ToolArg(description = "Repo") Optional<String> project) {
         int requestedDepth = clamp(test_depth.orElse(3), 1, 5);
-        return forAllProjects(project.orElse(null), p ->
-                queries.compareDesignImpact(p.jdbi(), candidates, requestedDepth));
+        return forAllProjects(project.orElse(null), (p, context) ->
+                queries.compareDesignImpact(context, candidates, requestedDepth));
     }
 
     @Tool(readOnly = true, structured = true, output = "method_overrides",
@@ -423,8 +417,7 @@ public final class QuillTools {
         boolean requestedTransitive = transitive.orElse(true);
         int requestedLimit = clamp(limit.orElse(50), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
-        return forAllProjects(project.orElse(null), p -> routeClassQuery(
-                p, target, "find_method_overrides",
+        return forAllProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "find_method_overrides",
                 jdbi -> queries.findMethodOverrides(jdbi, target, method.orElse(null),
                         requestedSignature, requestedTransitive, requestedLimit,
                         requestedOffset)));
@@ -438,8 +431,8 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findUnusedClasses(
-                p.jdbi(), module.orElse(null), include_generated.orElse(false),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.findUnusedClasses(
+                context, module.orElse(null), include_generated.orElse(false),
                 include_tests.orElse(false), clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -452,8 +445,8 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findUnusedMethods(
-                p.jdbi(), module.orElse(null), include_generated.orElse(false),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.findUnusedMethods(
+                context, module.orElse(null), include_generated.orElse(false),
                 include_tests.orElse(false), clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -467,8 +460,8 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findUnusedFields(
-                p.jdbi(), module.orElse(null), include_generated.orElse(false),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.findUnusedFields(
+                context, module.orElse(null), include_generated.orElse(false),
                 include_tests.orElse(false), include_write_only.orElse(false),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -483,8 +476,8 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findEntryPoints(
-                p.jdbi(), kind.orElse(null), module.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.findEntryPoints(
+                context, kind.orElse(null), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
                 clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -498,8 +491,8 @@ public final class QuillTools {
             @ToolArg(description = "Relations per page (default: 100, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getModuleGraph(
-                p.jdbi(), module.orElse(null), direction.orElse("both"),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.getModuleGraph(
+                context, module.orElse(null), direction.orElse("both"),
                 clamp(depth.orElse(2), 1, 10), clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -517,9 +510,9 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 100, max 200") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p ->
+        return forAllProjects(project.orElse(null), (p, context) ->
                 workspace.enrichProjectDependencies(projectDependencies.getProjectDependencies(
-                        p.jdbi(), p.root(), module.orElse(null),
+                        context, p.root(), module.orElse(null),
                         source_set.orElse(null),
                         query.orElse(null), directness.orElse(null), group.orElse(null),
                         artifact.orElse(null), scope.orElse(null),
@@ -536,8 +529,8 @@ public final class QuillTools {
             @ToolArg(description = "Entries per page; default 100, max 500") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> fileNavigation.listProjectTree(
-                p.jdbi(), path.orElse("."), clamp(depth.orElse(2), 1, 10),
+        return forAllProjects(project.orElse(null), (p, context) -> fileNavigation.listProjectTree(
+                context, path.orElse("."), clamp(depth.orElse(2), 1, 10),
                 include_deleted.orElse(false), clamp(limit.orElse(100), 1, 500),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -554,8 +547,8 @@ public final class QuillTools {
             @ToolArg(description = "Results per page; default 50, max 200") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> fileNavigation.searchFiles(
-                p.jdbi(), pattern, module.orElse(null), kind.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> fileNavigation.searchFiles(
+                context, pattern, module.orElse(null), kind.orElse(null),
                 directory.orElse(null), extension.orElse(null),
                 include_deleted.orElse(false), clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -568,8 +561,8 @@ public final class QuillTools {
             @ToolArg(description = "Results per page; default 100, max 500") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> worktreeStatus.getWorktreeStatus(
-                p.jdbi(), p.root(), status.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> worktreeStatus.getWorktreeStatus(
+                context, p.root(), status.orElse(null),
                 clamp(limit.orElse(100), 1, 500),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -581,8 +574,8 @@ public final class QuillTools {
             @ToolArg(description = "One-based source line") Integer line,
             @ToolArg(description = "One-based source column") Integer column,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> positionSymbols.getSymbolAtPosition(
-                p.jdbi(), p.root(), path, line, column));
+        return forGraphProjects(project.orElse(null), (p, context) -> positionSymbols.getSymbolAtPosition(
+                context, p.root(), path, line, column));
     }
 
     @Tool(readOnly = true, structured = true,
@@ -597,8 +590,8 @@ public final class QuillTools {
             @ToolArg(description = "Results per page; default 50, max 200") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> externalSymbols.search(
-                p.jdbi(), p.root(), pattern, kind.orElse(null), class_name.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> externalSymbols.search(
+                context, p.root(), pattern, kind.orElse(null), class_name.orElse(null),
                 library.orElse(null), match_mode.orElse("contains"),
                 include_occurrences.orElse(false),
                 clamp(limit.orElse(50), 1, 200),
@@ -612,8 +605,8 @@ public final class QuillTools {
             @ToolArg(description = "Members per page; default 100, max 200") Optional<Integer> limit,
             @ToolArg(description = "Member page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> externalSymbols.details(
-                p.jdbi(), p.root(), class_name, clamp(limit.orElse(100), 1, 200),
+        return forAllProjects(project.orElse(null), (p, context) -> externalSymbols.details(
+                context, p.root(), class_name, clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -627,8 +620,8 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getPackageGraph(
-                p.jdbi(), package_name.orElse(null), direction.orElse("both"),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.getPackageGraph(
+                context, package_name.orElse(null), direction.orElse("both"),
                 module.orElse(null), include_generated.orElse(false),
                 include_tests.orElse(false), clamp(limit.orElse(100), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -643,8 +636,8 @@ public final class QuillTools {
             @ToolArg(description = "Page size") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findArchitectureViolations(
-                p.jdbi(), scope.orElse("package"), from, forbidden,
+        return forAllProjects(project.orElse(null), (p, context) -> queries.findArchitectureViolations(
+                context, scope.orElse("package"), from, forbidden,
                 kinds.map(value -> java.util.Arrays.stream(value.split(","))
                                 .map(String::strip).filter(item -> !item.isEmpty()).toList())
                         .orElse(List.of()), false, false, clamp(limit.orElse(100), 1, 200),
@@ -660,8 +653,8 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 20") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findCycles(
-                p.jdbi(), scope.orElse("class"), module.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.findCycles(
+                context, scope.orElse("class"), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
                 clamp(limit.orElse(20), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -672,16 +665,40 @@ public final class QuillTools {
             @ToolArg(description = "Index id or commit; default previous") Optional<String> baseline,
             @ToolArg(description = "Details per category; default 50") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.compareIndex(
-                p.jdbi(), p.root(), baseline.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.compareIndex(
+                context, p.root(), baseline.orElse(null),
                 clamp(limit.orElse(50), 1, 200)));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Inspect build integration and compiled-index freshness without running a build.")
+    @Tool(readOnly = true, structured = true, description = "Inspect build integration and freshness. Default summary: statuses, counts and reasons; detail=full returns paged evidence. Never runs a build.")
     public String get_build_status(
+            @ToolArg(description = "Response detail; default summary", allowed = {"summary", "full"}) Optional<String> detail,
+            @ToolArg(description = "Exact repository-relative module filter") Optional<String> module,
+            @ToolArg(description = "Exact source-set evidence filter; module readiness still includes all source sets") Optional<String> source_set,
+            @ToolArg(description = "Items per evidence inventory; default 10, max 100") Optional<Integer> limit,
+            @ToolArg(description = "Evidence inventory offset; requires detail=full") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null),
-                p -> queries.getBuildStatus(p.jdbi(), p.root()));
+        String presentation = detail.orElse("summary");
+        if (!java.util.Set.of("summary", "full").contains(presentation))
+            return errorResponse("Invalid detail: expected summary or full");
+        if (offset.orElse(0) < 0 || offset.orElse(0) > 0 && !presentation.equals("full"))
+            return errorResponse("offset must be nonnegative and requires detail=full");
+        return forConfiguredProjects(project.orElse(null), p -> {
+            var resolution = registry.resolve(p.name());
+            if (!resolution.projects().isEmpty()) {
+                var entry = resolution.projects().getFirst();
+                return entry.read(context -> BuildStatusQueries.present(
+                        queries.getBuildStatus(context, p.root(), module.orElse(null)), p.root(), p.name(),
+                        presentation, module.orElse(null), source_set.orElse(null),
+                        clamp(limit.orElse(10), 1, 100), offset.orElse(0)));
+            }
+            if (resolution.issues().isEmpty()) return errorResponse(String.join("; ", resolution.errors()));
+            var result = ProjectAvailabilityResponses.details(resolution.issues().getFirst());
+            try { result.set("diagnostics", JSON.readTree(queries.getBuildProblems(p.root(), "all", null, 20, 0))); }
+            catch (java.io.IOException malformed) { throw new IllegalStateException(malformed); }
+            return BuildStatusQueries.present(result.toString(), p.root(), p.name(), presentation,
+                    module.orElse(null), source_set.orElse(null), clamp(limit.orElse(10), 1, 100), offset.orElse(0));
+        });
     }
 
     @Tool(readOnly = true, structured = true, description = "Read errors captured by the last Maven or Gradle build.")
@@ -691,7 +708,7 @@ public final class QuillTools {
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getBuildProblems(
+        return forConfiguredProjects(project.orElse(null), p -> queries.getBuildProblems(
                 p.root(), severity.orElse("all"), module.orElse(null),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -706,7 +723,7 @@ public final class QuillTools {
             @ToolArg(description = "Offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         if (paths.isEmpty()) return errorResponse("paths must not be empty");
-        return forAllProjects(project.orElse(null), p -> queries.getFileProblems(
+        return forConfiguredProjects(project.orElse(null), p -> queries.getFileProblems(
                 p.root(), paths, severity.orElse("all"),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -716,8 +733,7 @@ public final class QuillTools {
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> routeClassQuery(
-                p, target, "list_injection_points",
+        return forAllProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "list_injection_points",
                 jdbi -> queries.getInjectionPoints(jdbi, target)));
     }
 
@@ -728,7 +744,7 @@ public final class QuillTools {
             @ToolArg(description = "Include deleted/historical paths (default: false)") Optional<Boolean> include_historical,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getHotspots(p.jdbi(),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.getHotspots(context,
                 clamp(limit.orElse(10), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE), since.orElse(null),
                 include_historical.orElse(false)));
@@ -741,8 +757,8 @@ public final class QuillTools {
             @ToolArg(description = "Max commits to return (default: 10)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getFileHistory(
-                p.jdbi(), target, clamp(limit.orElse(10), 1, 100),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.getFileHistory(
+                context, target, clamp(limit.orElse(10), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -750,7 +766,7 @@ public final class QuillTools {
     public String resolve_entities(
             @ToolArg(description = "Class names, file names, or repository paths to resolve") List<String> targets,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.resolveEntities(p.jdbi(), targets));
+        return forAllProjects(project.orElse(null), (p, context) -> queries.resolveEntities(context, targets));
     }
 
     @Tool(readOnly = true, structured = true, description = "Find files that frequently change with a class/path and report coupling ratios.")
@@ -758,8 +774,8 @@ public final class QuillTools {
             @ToolArg(description = "Class name (short or FQCN), project path, or repository path") String target,
             @ToolArg(description = "Max results (default: 10)") Optional<Integer> limit,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getCoChanges(
-                p.jdbi(), target, clamp(limit.orElse(10), 1, 100)));
+        return forAllProjects(project.orElse(null), (p, context) -> queries.getCoChanges(
+                context, target, clamp(limit.orElse(10), 1, 100)));
     }
 
     @Tool(readOnly = true, structured = true, description = "Get recent commits and their changed files/classes.")
@@ -769,8 +785,8 @@ public final class QuillTools {
             @ToolArg(description = "Changed-file offset (default: 0)") Optional<Integer> file_offset,
             @ToolArg(description = "Include commit and resolved-class details (default: true)") Optional<Boolean> details,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getRecentChanges(
-                p.jdbi(), clamp(commits.orElse(10), 1, 200),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.getRecentChanges(
+                context, clamp(commits.orElse(10), 1, 200),
                 clamp(file_limit.orElse(200), 1, 200),
                 clamp(file_offset.orElse(0), 0, Integer.MAX_VALUE),
                 details.orElse(true)));
@@ -781,7 +797,7 @@ public final class QuillTools {
             @ToolArg(description = "Optional service FQCN or short name, e.g. javax.annotation.processing.Processor") Optional<String> service,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null),
-                p -> queries.inspectServiceDescriptors(p.jdbi(), service.orElse(null)));
+                (p, context) -> queries.inspectServiceDescriptors(context, service.orElse(null)));
     }
 
     @Tool(readOnly = true, structured = true, description = "Find configuration definitions and annotation/programmatic consumers without exposing values.")
@@ -793,8 +809,8 @@ public final class QuillTools {
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findConfigurationReferences(
-                p.jdbi(), key.orElse(null), class_name.orElse(null), kind.orElse("all"),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.findConfigurationReferences(
+                context, key.orElse(null), class_name.orElse(null), kind.orElse("all"),
                 module.orElse(null), clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -807,8 +823,8 @@ public final class QuillTools {
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findResourceReferences(
-                p.jdbi(), path, class_name.orElse(null), module.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.findResourceReferences(
+                context, path, class_name.orElse(null), module.orElse(null),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -832,7 +848,7 @@ public final class QuillTools {
             return errorResponse("Use view=compact for pagination; view must be full or compact.");
         }
         return forAllProjects(project.orElse(null),
-                p -> queries.getOverview(p.jdbi(), details.orElse(false)));
+                (p, context) -> queries.getOverview(context, details.orElse(false)));
     }
 
     public String get_overview(Optional<Boolean> details, Optional<String> project) {
@@ -847,8 +863,8 @@ public final class QuillTools {
             @ToolArg(description = "Max results (default: 30)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.searchClasses(
-                p.jdbi(), pattern, module.orElse(null), source_set.orElse(null),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.searchClasses(
+                context, pattern, module.orElse(null), source_set.orElse(null),
                 clamp(limit.orElse(30), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -861,8 +877,8 @@ public final class QuillTools {
             @ToolArg(description = "Max results (default: 50)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.getAnnotatedClasses(
-                p.jdbi(), annotation, include_meta_annotations.orElse(true),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.getAnnotatedClasses(
+                context, annotation, include_meta_annotations.orElse(true),
                 clamp(limit.orElse(50), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
@@ -875,8 +891,8 @@ public final class QuillTools {
             @ToolArg(description = "Max results (default: 50, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findAnnotatedSymbols(
-                p.jdbi(), annotation, kind.orElse("all"),
+        return forAllProjects(project.orElse(null), (p, context) -> queries.findAnnotatedSymbols(
+                context, annotation, kind.orElse("all"),
                 include_meta_annotations.orElse(true),
                 clamp(limit.orElse(50), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -893,8 +909,8 @@ public final class QuillTools {
             @ToolArg(description = "Limit; max 100") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
             @ToolArg(description = "Project") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> queries.findFrameworkEndpoints(
-                p.jdbi(), framework.orElse(null), http_method.orElse(null),
+        return forGraphProjects(project.orElse(null), (p, context) -> queries.findFrameworkEndpoints(
+                context, framework.orElse(null), http_method.orElse(null),
                 path_prefix.orElse(null), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
                 clamp(limit.orElse(50), 1, 100),
@@ -905,8 +921,7 @@ public final class QuillTools {
     public String assess_change_risk(
             @ToolArg(description = "Class name (short or FQCN), or any project/repository file path") String target,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), p -> routeClassQuery(
-                p, target, "assess_change_risk",
+        return forAllProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "assess_change_risk",
                 jdbi -> queries.getRisk(jdbi, target)));
     }
 
@@ -919,131 +934,131 @@ public final class QuillTools {
         String requestedTarget = target.orElse(null);
         String requestedLibrary = library.orElse(null);
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
-        return forAllProjects(project.orElse(null), p -> requestedTarget == null
-                ? queries.getExternalDeps(p.jdbi(), null, requestedLibrary, requestedLimit)
-                : routeClassQuery(p, requestedTarget, "list_external_dependencies",
+        return forAllProjects(project.orElse(null), (p, context) -> requestedTarget == null
+                ? queries.getExternalDeps(context, null, requestedLibrary, requestedLimit)
+                : routeClassQuery(p, context, requestedTarget, "list_external_dependencies",
                         jdbi -> queries.getExternalDeps(jdbi, requestedTarget,
                                 requestedLibrary, requestedLimit)));
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier) {
-        return queries.getBeans(jdbi, className, scope, kind, profile, qualifier);
+        return ReadQueryContext.read(jdbi, context -> queries.getBeans(context, className, scope, kind, profile, qualifier));
     }
 
     String getBeans(Jdbi jdbi, String className, String scope, String kind,
             String profile, String qualifier, int limit) {
-        return queries.getBeans(jdbi, className, scope, kind, profile, qualifier, limit);
+        return ReadQueryContext.read(jdbi, context -> queries.getBeans(context, className, scope, kind, profile, qualifier, limit));
     }
 
     String searchClasses(Jdbi jdbi, String pattern, int limit) {
-        return queries.searchClasses(jdbi, pattern, limit);
+        return ReadQueryContext.read(jdbi, context -> queries.searchClasses(context, pattern, limit));
     }
 
     String getDependencies(Jdbi jdbi, String target, String direction, int depth) {
-        return queries.getDependencies(jdbi, target, direction, depth);
+        return ReadQueryContext.read(jdbi, context -> queries.getDependencies(context, target, direction, depth));
     }
 
     String getDependencies(Jdbi jdbi, String target, String direction, int depth,
             boolean includeNodes, int limit, int offset, String cursor) {
-        return queries.getDependencies(jdbi, target, direction, depth,
-                includeNodes, limit, offset, cursor);
+        return ReadQueryContext.read(jdbi, context -> queries.getDependencies(context, target, direction, depth,
+                includeNodes, limit, offset, cursor));
     }
 
     String findImplementations(Jdbi jdbi, String target, boolean transitive,
             String module, String sourceSet, int limit, int offset) {
-        return queries.findImplementations(
-                jdbi, target, transitive, module, sourceSet, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findImplementations(
+                context, target, transitive, module, sourceSet, limit, offset));
     }
 
     String findUsages(Jdbi jdbi, String target, String usageKind,
             String module, int limit, int offset) {
-        return queries.findUsages(jdbi, target, usageKind, module, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findUsages(context, target, usageKind, module, limit, offset));
     }
 
     String getSymbolDetails(Jdbi jdbi, String target, boolean includeMembers,
             String memberKind, int memberLimit, int memberOffset) {
-        return queries.getSymbolDetails(
-                jdbi, target, includeMembers, memberKind, memberLimit, memberOffset);
+        return ReadQueryContext.read(jdbi, context -> queries.getSymbolDetails(
+                context, target, includeMembers, memberKind, memberLimit, memberOffset));
     }
 
     String findImpactedTests(Jdbi jdbi, List<String> targets,
             boolean transitive, int maxDepth, int limit, int offset) {
-        return queries.findImpactedTests(jdbi, targets, transitive, maxDepth, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findImpactedTests(context, targets, transitive, maxDepth, limit, offset));
     }
 
     String getTypeHierarchy(Jdbi jdbi, String target, String direction,
             int maxDepth, int limit, int offset) {
-        return queries.getTypeHierarchy(jdbi, target, direction, maxDepth, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.getTypeHierarchy(context, target, direction, maxDepth, limit, offset));
     }
 
     String searchSymbols(Jdbi jdbi, String pattern, String kind, int limit, int offset) {
-        return queries.searchSymbols(jdbi, pattern, kind, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.searchSymbols(context, pattern, kind, limit, offset));
     }
 
     String searchSymbols(Jdbi jdbi, String pattern, String kind, String language,
             int limit, int offset) {
-        return queries.searchSymbols(jdbi, pattern, kind, language, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.searchSymbols(context, pattern, kind, language, limit, offset));
     }
 
     String getCallHierarchy(Jdbi jdbi, String target, String method,
             String direction, int limit, int offset) {
-        return queries.getCallHierarchy(jdbi, target, method, direction, limit, offset);
+        return ReadQueryContext.readWithGraph(jdbi, context -> queries.getCallHierarchy(context, target, method, direction, limit, offset));
     }
 
     String getCallHierarchy(Jdbi jdbi, String target, String method,
             String direction, boolean transitive, int maxDepth, int limit, int offset) {
-        return queries.getCallHierarchy(jdbi, target, method, direction,
-                transitive, maxDepth, limit, offset);
+        return ReadQueryContext.readWithGraph(jdbi, context -> queries.getCallHierarchy(context, target, method, direction,
+                transitive, maxDepth, limit, offset));
     }
 
     String findMethodOverrides(Jdbi jdbi, String target, String method,
             String signature, boolean transitive, int limit, int offset) {
-        return queries.findMethodOverrides(
-                jdbi, target, method, signature, transitive, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findMethodOverrides(
+                context, target, method, signature, transitive, limit, offset));
     }
 
     String findUnusedClasses(Jdbi jdbi, String module, boolean includeGenerated,
             boolean includeTests, int limit, int offset) {
-        return queries.findUnusedClasses(
-                jdbi, module, includeGenerated, includeTests, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findUnusedClasses(
+                context, module, includeGenerated, includeTests, limit, offset));
     }
 
     String findUnusedMethods(Jdbi jdbi, String module, boolean includeGenerated,
             boolean includeTests, int limit, int offset) {
-        return queries.findUnusedMethods(
-                jdbi, module, includeGenerated, includeTests, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findUnusedMethods(
+                context, module, includeGenerated, includeTests, limit, offset));
     }
 
     String findUnusedFields(Jdbi jdbi, String module, boolean includeGenerated,
             boolean includeTests, boolean includeWriteOnly, int limit, int offset) {
-        return queries.findUnusedFields(jdbi, module, includeGenerated,
-                includeTests, includeWriteOnly, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findUnusedFields(context, module, includeGenerated,
+                includeTests, includeWriteOnly, limit, offset));
     }
 
     String findEntryPoints(Jdbi jdbi, String kind, String module,
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
-        return queries.findEntryPoints(jdbi, kind, module,
-                includeGenerated, includeTests, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findEntryPoints(context, kind, module,
+                includeGenerated, includeTests, limit, offset));
     }
 
     String getModuleGraph(Jdbi jdbi, String module, String direction,
             int depth, int limit, int offset) {
-        return queries.getModuleGraph(jdbi, module, direction, depth, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.getModuleGraph(context, module, direction, depth, limit, offset));
     }
 
     String findCycles(Jdbi jdbi, String scope, String module,
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
-        return queries.findCycles(jdbi, scope, module,
-                includeGenerated, includeTests, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findCycles(context, scope, module,
+                includeGenerated, includeTests, limit, offset));
     }
 
     String compareIndex(Jdbi jdbi, Path projectRoot, String baseline, int detailLimit) {
-        return queries.compareIndex(jdbi, projectRoot, baseline, detailLimit);
+        return ReadQueryContext.read(jdbi, context -> queries.compareIndex(context, projectRoot, baseline, detailLimit));
     }
 
     String getBuildStatus(Jdbi jdbi, Path projectRoot) {
-        return queries.getBuildStatus(jdbi, projectRoot);
+        return ReadQueryContext.read(jdbi, context -> queries.getBuildStatus(context, projectRoot));
     }
 
     String getBuildProblems(Path projectRoot, String severity, String module,
@@ -1057,97 +1072,131 @@ public final class QuillTools {
     }
 
     String getInjectionPoints(Jdbi jdbi, String target) {
-        return queries.getInjectionPoints(jdbi, target);
+        return ReadQueryContext.read(jdbi, context -> queries.getInjectionPoints(context, target));
     }
 
     String getHotspots(Jdbi jdbi, int limit, String since) {
-        return queries.getHotspots(jdbi, limit, since);
+        return ReadQueryContext.read(jdbi, context -> queries.getHotspots(context, limit, since));
     }
 
     String getHotspots(Jdbi jdbi, int limit, String since, boolean includeHistorical) {
-        return queries.getHotspots(jdbi, limit, since, includeHistorical);
+        return ReadQueryContext.read(jdbi, context -> queries.getHotspots(context, limit, since, includeHistorical));
     }
 
     String getFileHistory(Jdbi jdbi, String target, int limit) {
-        return queries.getFileHistory(jdbi, target, limit);
+        return ReadQueryContext.read(jdbi, context -> queries.getFileHistory(context, target, limit));
     }
 
     String getFileHistory(Jdbi jdbi, String target, int limit, int offset) {
-        return queries.getFileHistory(jdbi, target, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.getFileHistory(context, target, limit, offset));
     }
 
     String resolveEntities(Jdbi jdbi, List<String> targets) {
-        return queries.resolveEntities(jdbi, targets);
+        return ReadQueryContext.read(jdbi, context -> queries.resolveEntities(context, targets));
     }
 
     String inspectServiceDescriptors(Jdbi jdbi, String service) {
-        return queries.inspectServiceDescriptors(jdbi, service);
+        return ReadQueryContext.read(jdbi, context -> queries.inspectServiceDescriptors(context, service));
     }
 
     String findConfigurationReferences(Jdbi jdbi, String key, String className,
             String kind, String module, int limit, int offset) {
-        return queries.findConfigurationReferences(
-                jdbi, key, className, kind, module, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findConfigurationReferences(
+                context, key, className, kind, module, limit, offset));
     }
 
     String findResourceReferences(Jdbi jdbi, String path, String className,
             String module, int limit, int offset) {
-        return queries.findResourceReferences(jdbi, path, className, module, limit, offset);
+        return ReadQueryContext.read(jdbi, context -> queries.findResourceReferences(context, path, className, module, limit, offset));
     }
 
     String getCoChanges(Jdbi jdbi, String target, int limit) {
-        return queries.getCoChanges(jdbi, target, limit);
+        return ReadQueryContext.read(jdbi, context -> queries.getCoChanges(context, target, limit));
     }
 
     String getRecentChanges(Jdbi jdbi, int commitCount) {
-        return queries.getRecentChanges(jdbi, commitCount);
+        return ReadQueryContext.read(jdbi, context -> queries.getRecentChanges(context, commitCount));
     }
 
     String getRecentChanges(Jdbi jdbi, int commitCount, int fileLimit, int fileOffset,
             boolean details) {
-        return queries.getRecentChanges(jdbi, commitCount, fileLimit, fileOffset, details);
+        return ReadQueryContext.read(jdbi, context -> queries.getRecentChanges(context, commitCount, fileLimit, fileOffset, details));
     }
 
     String getOverview(Jdbi jdbi) {
-        return queries.getOverview(jdbi);
+        return ReadQueryContext.read(jdbi, context -> queries.getOverview(context));
     }
 
     String getRisk(Jdbi jdbi, String target) {
-        return queries.getRisk(jdbi, target);
+        return ReadQueryContext.read(jdbi, context -> queries.getRisk(context, target));
     }
 
     String getContext(Jdbi jdbi, List<String> targets, boolean includeMembers, int limit) {
-        return queries.getContext(jdbi, targets, includeMembers, limit);
+        return ReadQueryContext.read(jdbi, context -> queries.getContext(context, targets, includeMembers, limit));
     }
 
     String planChange(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit) {
-        return queries.planChange(jdbi, projectRoot, targets, change, limit);
+        return ReadQueryContext.read(jdbi, context -> queries.planChange(context, projectRoot, targets, change, limit));
     }
 
     String verifyChange(Jdbi jdbi, Path projectRoot, List<String> targets, int limit) {
-        return queries.verifyChange(jdbi, projectRoot, targets, limit);
+        return ReadQueryContext.read(jdbi, context -> queries.verifyChange(context, projectRoot, targets, limit));
     }
 
     String changeSession(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit) {
-        return queries.changeSession(jdbi, projectRoot, targets, change, limit, "full", "all");
+        return ReadQueryContext.read(jdbi, context -> queries.changeSession(context, projectRoot, targets, change, limit, "full", "all"));
     }
 
     String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {
-        return queries.getExternalDeps(jdbi, target, library, limit);
+        return ReadQueryContext.read(jdbi, context -> queries.getExternalDeps(context, target, library, limit));
     }
 
-    private String routeClassQuery(ProjectRegistry.ProjectEntry project, String target,
-            String operation, Function<Jdbi, String> query) {
-        return workspace.routeMissingClassQuery(query.apply(project.jdbi()),
-                project.name(), target, operation, query);
+    private String routeClassQuery(ProjectRegistry.ProjectEntry project, ReadQueryContext context, String target,
+            String operation, Function<ReadQueryContext, String> query) {
+        return workspace.routeMissingClassQuery(query.apply(context),
+                project.name(), target, operation, query, context.hasGraph());
+    }
+
+    private String forConfiguredProjects(String selector,
+            Function<org.treblereel.mcp.workspace.ProjectScope.Project, String> query) {
+        var projects = registry.configuredProjects(selector);
+        if (projects.isEmpty()) {
+            var resolution = registry.resolve(selector);
+            if (!resolution.issues().isEmpty()) return ProjectAvailabilityResponses.error(resolution.issues());
+            return errorResponse(selector == null ? "No projects configured"
+                    : "Project '" + selector + "' not found. Available: " + registry.configuredProjectNames());
+        }
+        if (projects.size() == 1) {
+            var project = projects.getFirst();
+            try { return query.apply(project); }
+            catch (Exception failure) { return errorResponse("Project '" + project.name() + "': " + ProjectRegistry.safeMessage(failure)); }
+        }
+        var result = JSON.createObjectNode();
+        var values = result.putArray("projects");
+        for (var project : projects) {
+            var node = values.addObject().put("project", project.name());
+            try { node.set("data", JSON.readTree(query.apply(project))); }
+            catch (Exception failure) { node.put("error", ProjectRegistry.safeMessage(failure)); }
+        }
+        return result.toString();
+    }
+
+    private String forGraphProjects(String projectFilter,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> perProject) {
+        return forAllProjects(projectFilter, perProject, true);
     }
 
     private String forAllProjects(String projectFilter,
-            Function<ProjectRegistry.ProjectEntry, String> perProject) {
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> perProject) {
+        return forAllProjects(projectFilter, perProject, false);
+    }
+
+    private String forAllProjects(String projectFilter,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> perProject, boolean withGraph) {
         boolean filtered = projectFilter != null && !projectFilter.isBlank();
-        ProjectQueryExecutor.Batch batch = executor.execute(projectFilter, perProject);
+        ProjectQueryExecutor.Batch batch = executor.execute(projectFilter, perProject, withGraph);
         ProjectRegistry.Resolution resolution = batch.resolution();
         List<ProjectRegistry.ProjectEntry> projects = resolution.projects();
         List<String> errors = resolution.errors();
@@ -1174,8 +1223,8 @@ public final class QuillTools {
         if (projects.size() == 1 && errors.isEmpty()) {
             ProjectQueryExecutor.QueryResult result = batch.results().getFirst();
             return result.error() == null
-                    ? ResponseBudget.apply(appendProjectWarnings(
-                            result.json(), resolution.issues()))
+                    ? appendProjectWarnings(
+                            result.json(), resolution.issues())
                     : errorResponse("Project '" + result.project() + "': " + result.error());
         }
 
@@ -1222,7 +1271,7 @@ public final class QuillTools {
             ProjectAvailabilityResponses.append(root, "project_warnings", warnings);
             ProjectAvailabilityResponses.append(root, unavailable);
         }
-        return ResponseBudget.apply(root.toString());
+        return root.toString();
     }
 
     private static String appendProjectWarnings(
@@ -1232,32 +1281,9 @@ public final class QuillTools {
             JsonNode parsed = JSON.readTree(json);
             if (!(parsed instanceof ObjectNode root)) return json;
             ProjectAvailabilityResponses.append(root, "project_warnings", issues);
-            annotateScopedBuildWarnings(root);
             return root.toString();
         } catch (Exception ignored) {
             return json;
-        }
-    }
-
-    static void annotateScopedBuildWarnings(ObjectNode root) {
-        JsonNode build = root.has("build") ? root.path("build") : root.path("verification").path("build");
-        JsonNode scope = build.path("verification_scope");
-        if (!scope.path("kind").asText().equals("modules_with_prerequisites")) return;
-        Set<String> modules = scope.path("modules").valueStream().map(JsonNode::asText)
-                .collect(java.util.stream.Collectors.toSet());
-        if (modules.isEmpty()) return;
-        for (JsonNode warning : root.path("project_warnings")) {
-            if (!(warning instanceof ObjectNode object)
-                    || !warning.path("build_reason").asText().equals("classes_stale")
-                    || warning.path("stale_modules").isEmpty()) continue;
-            boolean outside = warning.path("stale_modules").valueStream()
-                    .map(JsonNode::asText).noneMatch(modules::contains);
-            if (outside) {
-                object.put("scope", "repository_outside_change");
-                object.put("blocking_for_change", false);
-                object.put("recommended_action", "Advisory outside this verification scope; "
-                        + "follow the change directive. Rebuild these modules only for repository-wide verification.");
-            }
         }
     }
 

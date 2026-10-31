@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 
 /** Turns context evidence into an ordered, explicitly scoped change plan. */
 final class ChangePlanQueries {
@@ -18,17 +18,17 @@ final class ChangePlanQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final ContextQueries contextQueries = new ContextQueries();
 
-    String planChange(Jdbi jdbi, Path projectRoot, List<String> targets,
+    String planChange(ReadQueryContext reader, Path projectRoot, List<String> targets,
             String change, int limit) {
         if (change == null || change.isBlank()) {
             return errorResponse("A non-empty change description is required");
         }
-        ObjectNode context = parse(contextQueries.getContext(jdbi, targets, true, limit));
+        ObjectNode context = parse(contextQueries.getContext(reader, targets, true, limit));
         if (context.has("error_code")) return context.toString();
-        return planFromContext(projectRoot, context, change).toString();
+        return planFromContext(reader, projectRoot, context, change).toString();
     }
 
-    ObjectNode planFromContext(Path projectRoot, ObjectNode context, String change) {
+    ObjectNode planFromContext(ReadQueryContext reader, Path projectRoot, ObjectNode context, String change) {
         ObjectNode root = JSON.createObjectNode();
         root.put("change", change.strip());
         copy(context, root, "requested_targets");
@@ -102,7 +102,7 @@ final class ChangePlanQueries {
             arguments.put("offset", impact.path("next_offset").asInt());
         }
         root.set("verification_plan", new VerificationPlanQueries().plan(
-                projectRoot, context.path("contexts"), impact));
+                reader, projectRoot, context.path("contexts"), impact));
 
         ArrayNode warnings = root.putArray("warnings");
         if (context.path("unresolved_target_count").asInt() > 0) {

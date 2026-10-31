@@ -7,6 +7,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.*;
+import org.treblereel.mcp.analysis.JvmMethodResolver;
 
 class JavaInheritedResolutionTest {
     @TempDir Path root;
@@ -35,36 +36,36 @@ class JavaInheritedResolutionTest {
                 """);
     }
     @Test void inheritedReferencesReachBaseButOverridesStaySeparateAndPagesKeepRawOwners() throws Exception {
-        var response=JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db,"p.Base","run","method","()Ljava/lang/Number;","all",1,0));
+        var response=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "p.Base", "run", "method", "()Ljava/lang/Number;", "all", 1, 0)));
         assertEquals(2,response.path("total").asInt(),response.toString()); assertTrue(response.path("has_more").asBoolean());
-        var next=JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db,"p.Base","run","method","()Ljava/lang/Number;","all",1,1));
+        var next=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "p.Base", "run", "method", "()Ljava/lang/Number;", "all", 1, 1)));
         assertEquals(2,next.path("total").asInt()); assertFalse(next.path("has_more").asBoolean());
-        var calls=JSON.readTree(new CallHierarchyQueries().getCallHierarchy(db,"p.Use","inherited",null,"outbound",false,1,20,0));
+        var calls=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new CallHierarchyQueries().getCallHierarchy(readScope, "p.Use", "inherited", null, "outbound", false, 1, 20, 0)));
         var dispatch=calls.path("calls").get(0).path("dispatch");
         assertEquals("p.Child",dispatch.path("declared_target").path("class").asText());
         assertEquals("p.Base",dispatch.path("resolved_declaration").path("class").asText());
         assertEquals(java.util.Set.of("p.GrandChild"),new java.util.HashSet<>(dispatch.path("possible_targets").valueStream().map(n->n.path("class").asText()).toList()));
         assertEquals("inherited_class_declaration",dispatch.path("declaration_resolution").asText());
         assertFalse(dispatch.path("runtime_target_proven").asBoolean());
-        var inbound=JSON.readTree(new CallHierarchyQueries().getCallHierarchy(db,"p.Base","run",null,"inbound",false,1,20,0));
+        var inbound=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new CallHierarchyQueries().getCallHierarchy(readScope, "p.Base", "run", null, "inbound", false, 1, 20, 0)));
         assertEquals(2,inbound.path("total").asInt(),inbound.toString());
-        var both=JSON.readTree(new CallHierarchyQueries().getCallHierarchy(db,"p.Base","run",null,"both",false,1,20,0));
+        var both=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new CallHierarchyQueries().getCallHierarchy(readScope, "p.Base", "run", null, "both", false, 1, 20, 0)));
         assertEquals(2,both.path("total").asInt(),both.toString());
     }
     @Test void defaultsUseMostSpecificInterfaceAndClassStaticMethodsResolve() {
-        var resolver=new JvmMethodResolver(db);
+        var resolver=new JvmMethodResolver(ReadQueryContext.readWithGraph(db, context -> context.graph()));
         assertEquals("p.Narrow",resolver.resolve("p.Defaults","run","()Ljava/lang/Number;").owner().className());
         assertEquals("p.Base",resolver.resolve("p.Child","utility","()V").owner().className());
         assertFalse(resolver.resolve("p.Child","<init>","(I)V").resolved());
     }
     @Test void bridgesAreRetainedAndExposeBytecodeForwardingWithoutGuessingGenericTargets() throws Exception {
-        int id=IndexReader.findAllClasses(db).stream().filter(c->c.className().equals("p.Strings")).findFirst().orElseThrow().id();
-        assertEquals(1,IndexReader.findClassMembers(db,id).stream().filter(m->m.name().equals("get")).count());
-        assertEquals(2,IndexReader.findJvmClassMembers(db,id).stream().filter(m->m.name().equals("get")).count());
-        var calls=JSON.readTree(new CallHierarchyQueries().getCallHierarchy(db,"p.Strings","get","()Ljava/lang/Object;","outbound",false,1,20,0));
+        int id=db.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findAllClasses()).stream().filter(c->c.className().equals("p.Strings")).findFirst().orElseThrow().id();
+        assertEquals(1,db.withHandle(repositoryHandle2 -> new SymbolRepository(repositoryHandle2).findClassMembers(id)).stream().filter(m->m.name().equals("get")).count());
+        assertEquals(2,db.withHandle(repositoryHandle3 -> new SymbolRepository(repositoryHandle3).findJvmClassMembers(id)).stream().filter(m->m.name().equals("get")).count());
+        var calls=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new CallHierarchyQueries().getCallHierarchy(readScope, "p.Strings", "get", "()Ljava/lang/Object;", "outbound", false, 1, 20, 0)));
         assertEquals("()Ljava/lang/String;",calls.path("calls").get(0).path("callee").path("descriptor").asText());
         // Explicit bridge queries are supported; ordinary method selection remains unambiguous.
-        var usages=JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db,"p.Strings","get","method",null,"all",20,0));
+        var usages=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "p.Strings", "get", "method", null, "all", 20, 0)));
         assertFalse(usages.has("error_code"),usages.toString());
     }
     @Test void interfaceCyclesAndStaticInterfaceMembersAreNotInherited() {
@@ -72,13 +73,13 @@ class JavaInheritedResolutionTest {
             h.execute("UPDATE classes SET interfaces='[\"p.Narrow\"]' WHERE class_name='p.Contract'");
             h.execute("INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations) SELECT id,'METHOD','utility','utility():void','()V','void','[]','public static','[]' FROM classes WHERE class_name='p.Contract'");
         });
-        var resolver=new JvmMethodResolver(db);
+        var resolver=new JvmMethodResolver(ReadQueryContext.readWithGraph(db, context -> context.graph()));
         assertEquals("hierarchy_cycle",resolver.resolve("p.Defaults","run","()Ljava/lang/Number;").status());
         assertFalse(resolver.resolve("p.Defaults","utility","()V").resolved());
     }
     @Test void duplicateOwnersAndMissingAncestorsStayUnknown() {
         db.useHandle(h->h.execute("INSERT INTO classes(class_name,kind,interfaces) VALUES ('p.Base','CLASS','[]')"));
-        var resolver=new JvmMethodResolver(db);
+        var resolver=new JvmMethodResolver(ReadQueryContext.readWithGraph(db, context -> context.graph()));
         assertEquals("owner_ambiguous",resolver.resolve("p.Child","run","()Ljava/lang/Number;").status());
         assertEquals("ancestor_not_indexed",resolver.resolve("p.Missing","run","()V").status());
     }
@@ -89,7 +90,7 @@ class JavaInheritedResolutionTest {
             h.execute("INSERT INTO classes(class_name,kind,interfaces) VALUES ('p.Other','INTERFACE','[]')");
             h.execute("INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations) SELECT id,'METHOD','run','run():java.lang.Number','()Ljava/lang/Number;','java.lang.Number','[]','public abstract','[]' FROM classes WHERE class_name='p.Other'");
         });
-        var resolver=new JvmMethodResolver(db);
+        var resolver=new JvmMethodResolver(ReadQueryContext.readWithGraph(db, context -> context.graph()));
         assertEquals("hierarchy_cycle",resolver.resolve("p.Child","absent","()V").status());
         assertEquals("interface_declaration_ambiguous",resolver.resolve("p.Mixed","run","()Ljava/lang/Number;").status());
     }

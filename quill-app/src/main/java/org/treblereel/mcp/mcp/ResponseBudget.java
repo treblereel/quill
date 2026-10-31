@@ -23,7 +23,15 @@ final class ResponseBudget {
         return apply(json, configuredMaxBytes());
     }
 
+    static String apply(String json, String tool, Map<String, Object> arguments) {
+        return apply(json, configuredMaxBytes(), tool, arguments);
+    }
+
     static String apply(String json, int maxBytes) {
+        return apply(json, maxBytes, null, Map.of());
+    }
+
+    private static String apply(String json, int maxBytes, String tool, Map<String, Object> arguments) {
         if (json == null || bytes(json) <= maxBytes) return json;
         try {
             JsonNode parsed = JSON.readTree(json);
@@ -34,7 +42,17 @@ final class ResponseBudget {
             budget.put("truncated", true);
             budget.put("max_bytes", maxBytes);
             budget.put("original_bytes", originalBytes);
-            budget.put("continuation", "Reduce limit/depth or add a project, module, class, or library filter.");
+            if ("get_build_status".equals(tool)) {
+                budget.put("continuation", "Retry get_build_status with a smaller limit at the same offset; module and source_set are exact evidence filters.");
+                var retry = budget.putObject("retry_request");
+                retry.put("tool", tool);
+                ObjectNode args = JSON.valueToTree(arguments);
+                args.put("detail", "full");
+                args.put("limit", Math.max(1, root.path("limit").asInt(10) / 2));
+                retry.set("arguments", args);
+            } else {
+                budget.put("continuation", "Reduce limit/depth or add a project, module, class, or library filter.");
+            }
 
             int contentBudget = Math.max(256, maxBytes - 512);
             while (bytes(root.toString()) > contentBudget) {

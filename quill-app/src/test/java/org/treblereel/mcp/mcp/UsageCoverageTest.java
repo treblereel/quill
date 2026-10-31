@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.*;
 import java.nio.file.*;
@@ -21,10 +23,32 @@ class UsageCoverageTest {
             """);
     }
     JsonNode method(String name,int limit,int offset) throws Exception {
-        return JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db,"p.Target",name,"method",null,"all",limit,offset));
+        return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "p.Target", name, "method", null, "all", limit, offset)));
     }
     void metadata(String key,String value) { db.useHandle(h -> h.execute("INSERT OR REPLACE INTO metadata(key,value) VALUES(?,?)",key,value)); }
     Set<String> reasons(JsonNode result) { return new HashSet<>(result.path("coverage").path("incomplete_reasons").valueStream().map(JsonNode::asText).toList()); }
+    @Test void repositoryObservationsAreReusedWithinAResponseAndRefreshedForTheNext() throws Exception {
+        int target = db.withHandle(repositoryHandle1 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle1).findClassByName("p.Target")).orElseThrow().id();
+        ReadQueryContext.readWithGraph(db, context -> {
+            var first = JSON.createObjectNode();
+            UsageCoverage.append(first, context, target);
+            assertEquals("matching",first.path("coverage").path("source_snapshot").path("state").asText());
+            assertEquals("fresh",first.path("coverage").path("compiled_outputs").path("state").asText());
+            try {
+                Files.writeString(root.resolve("src/main/java/p/Added.java"),"package p; class Added {}");
+                Files.setLastModifiedTime(root.resolve("target/classes/p/Target.class"),
+                        FileTime.fromMillis(System.currentTimeMillis()+2000));
+            } catch (java.io.IOException error) { throw new java.io.UncheckedIOException(error); }
+            var second = JSON.createObjectNode();
+            UsageCoverage.append(second, context, target);
+            assertEquals(first.path("coverage").path("source_snapshot"),second.path("coverage").path("source_snapshot"));
+            assertEquals(first.path("coverage").path("compiled_outputs"),second.path("coverage").path("compiled_outputs"));
+            return null;
+        });
+        var next = method("lonely",10,0);
+        assertEquals("changed",next.path("coverage").path("source_snapshot").path("state").asText());
+        assertTrue(reasons(next).contains("compiled_outputs_changed_after_index"));
+    }
     @Test void completeScopedZeroNeverProvesNonUseAndListsExactlyWhatWasIndexed() throws Exception {
         var result=method("lonely",10,0);
         assertEquals(0,result.path("total").asInt()); assertTrue(result.path("answer_complete").asBoolean(),result.toString());
@@ -37,7 +61,7 @@ class UsageCoverageTest {
         assertEquals(2,coverage.path("indexed_scopes").get(0).path("class_count").asInt());
         assertFalse(coverage.path("external_consumers_covered").asBoolean());
         assertFalse(coverage.path("runtime_dispatch_exhaustive").asBoolean());
-        var field=JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db,"p.Target","CONSTANT","field",null,"read",10,0));
+        var field=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "p.Target", "CONSTANT", "field", null, "read", 10, 0)));
         assertEquals(0,field.path("total").asInt()); assertFalse(field.path("unused_proven").asBoolean());
         assertFalse(field.path("coverage").path("source_only_references_covered").asBoolean());
     }
@@ -90,9 +114,9 @@ class UsageCoverageTest {
         assertEquals("unknown_current_usage_coverage",result.path("empty_result").path("interpretation").asText());
     }
     @Test void classUsagesAndCallHierarchyExposeTheSameCoverageAndFilters() throws Exception {
-        var classes=JSON.readTree(new UsageToolQueries().findUsages(db,"p.Target","annotation",null,10,0));
+        var classes=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new UsageToolQueries().findUsages(readScope, "p.Target", "annotation", null, 10, 0)));
         assertTrue(classes.has("coverage")); assertEquals("annotation",classes.path("empty_result").path("filters").path("usage_kind").asText());
-        var hierarchy=JSON.readTree(new CallHierarchyQueries().getCallHierarchy(db,"p.Target","lonely",null,"inbound",false,1,10,0));
+        var hierarchy=JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new CallHierarchyQueries().getCallHierarchy(readScope, "p.Target", "lonely", null, "inbound", false, 1, 10, 0)));
         assertTrue(hierarchy.path("coverage").path("indexed_scope_verified").asBoolean());
         assertEquals("inbound",hierarchy.path("empty_result").path("filters").path("direction").asText());
         assertFalse(hierarchy.path("unused_proven").asBoolean());
@@ -126,7 +150,7 @@ class UsageCoverageTest {
             for(int i=0;i<101;i++) h.execute("INSERT INTO classes(class_name,kind,source_file,source_line,is_bean,source_tokens,module,source_set) VALUES(?,'CLASS','generated.java',1,0,1,?,'main')","p.Generated"+i,"module"+i);
         });
         var result=method("lonely",10,0);
-        assertEquals(100,result.path("coverage").path("indexed_scopes").size());
+        assertEquals(result.path("coverage").path("indexed_scope_count").asInt(), result.path("coverage").path("indexed_scopes").size());
         assertTrue(result.path("coverage").path("scope_inventory_truncated").asBoolean());
         assertTrue(reasons(result).contains("scope_inventory_truncated"));
     }

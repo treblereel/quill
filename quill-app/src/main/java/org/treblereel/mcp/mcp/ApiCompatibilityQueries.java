@@ -4,9 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.JvmMethodResolver;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.KotlinDeclarationRecord;
 import org.treblereel.mcp.model.KotlinDeclarationTypes;
 import org.treblereel.mcp.model.KotlinValueParameter;
@@ -48,7 +46,7 @@ final class ApiCompatibilityQueries {
         }
     }
 
-    static ObjectNode compare(Jdbi baseline, Jdbi current, int limit) {
+    static ObjectNode compare(ReadQueryContext baseline, ReadQueryContext current, int limit) {
         Map<OwnerKey, Owner> before = owners(baseline), after = owners(current);
         List<Finding> findings = new ArrayList<>();
         Set<OwnerKey> keys = new TreeSet<>(before.keySet()); keys.addAll(after.keySet());
@@ -117,7 +115,6 @@ final class ApiCompatibilityQueries {
         var details=root.putArray("findings");
         Map<String,List<ObjectNode>> subtypes = directSubtypes(baseline);
         Map<String,ObjectNode> impacts = new HashMap<>();
-        JvmMethodResolver baselineResolver=new JvmMethodResolver(baseline);
         for (Finding finding : findings.stream().limit(Math.max(0,limit)).toList()) {
             var node=details.addObject(); Owner owner=finding.before != null ? finding.before : finding.after;
             node.put("class_name",owner.key.name); node.put("module",owner.key.module); node.put("source_set",owner.key.sourceSet);
@@ -138,7 +135,7 @@ final class ApiCompatibilityQueries {
             if (finding.newKotlin != null) appendKotlin(node.putObject("after_kotlin"),finding.newKotlin);
             String impactKey=finding.before==null?"absent:"+owner.key:"baseline:"+owner.id+":"+(finding.oldMember==null?"class":finding.oldMember.key.toString());
             node.set("baseline_impact",impacts.computeIfAbsent(impactKey,ignored->{
-                var impact=JSON.createObjectNode();appendImpact(impact,baseline,finding,Math.max(0,limit),subtypes,baselineResolver);return impact;
+                var impact=JSON.createObjectNode();appendImpact(impact,baseline,finding,Math.max(0,limit),subtypes);return impact;
             }));
         }
         root.putArray("limitations")
@@ -241,39 +238,18 @@ final class ApiCompatibilityQueries {
         findings.add(new Finding(old, now, memberForKotlin(old, left), memberForKotlin(now, right),
                 left, right, reason, assessment));
     }
-    private static Map<OwnerKey,Owner> owners(Jdbi db) {
-        return db.withHandle(h -> {
+    private static Map<OwnerKey,Owner> owners(ReadQueryContext db) {
             Map<OwnerKey,Owner> result=new TreeMap<>(); Map<Integer,Owner> ids=new HashMap<>();
-            h.createQuery("""
-                    SELECT id,class_name,kind,superclass,interfaces,module,source_set FROM classes
-                    WHERE lifecycle='current' AND origin!='orphan_output' AND (source_set='main' OR source_set IS NULL)
-                    ORDER BY class_name,module,source_set,id
-                    """).map((r,c) -> new Owner(r.getInt("id"),new OwnerKey(r.getString("class_name"),value(r.getString("module")),value(r.getString("source_set"))),
-                        r.getString("kind"),value(r.getString("superclass")),canonical(r.getString("interfaces"),true)))
+            db.symbols.findApiOwners().stream().map(r -> new Owner(r.id(), new OwnerKey(r.className(),value(r.module()),value(r.sourceSet())),
+                        r.kind(),value(r.superclass()),canonical(r.interfaces(),true)))
                     .forEach(owner -> { Owner existing=result.putIfAbsent(owner.key,owner); if(existing!=null) {existing.ambiguous=true;owner.ambiguous=true;} ids.put(owner.id,existing==null?owner:existing); });
-            h.createQuery("SELECT class_id,COUNT(DISTINCT module) AS n FROM class_occurrences GROUP BY class_id HAVING n>1")
-                    .map((r,c)->r.getInt("class_id")).forEach(id->{if(ids.containsKey(id))ids.get(id).ambiguous=true;});
-            h.createQuery("SELECT class_id,kind,name,descriptor,signature,modifiers,annotations,annotation_details,type_name,parameter_types FROM class_members ORDER BY class_id,kind,name,descriptor,signature")
-                    .map((r,c) -> Map.entry(r.getInt("class_id"),member(r.getString("kind"),r.getString("name"),r.getString("descriptor"),r.getString("signature"),
-                            r.getString("modifiers"),r.getString("annotations"),r.getString("annotation_details"),r.getString("type_name"),r.getString("parameter_types"))))
+            db.symbols.findAmbiguousModuleOwners().forEach(id->{if(ids.containsKey(id))ids.get(id).ambiguous=true;});
+            db.symbols.findApiMembers().stream().map(r -> Map.entry(r.classId(),member(r.kind(),r.name(),r.descriptor(),r.signature(),
+                            r.modifiers(),r.annotations(),r.annotationDetails(),r.typeName(),r.parameterTypes())))
                     .forEach(entry -> {Owner owner=ids.get(entry.getKey());if(owner!=null && owner.members.putIfAbsent(entry.getValue().key,entry.getValue())!=null)owner.ambiguous=true;});
-            h.createQuery("SELECT class_id,evidence FROM jvm_api ORDER BY class_id")
-                    .map((r,c)->Map.entry(r.getInt("class_id"),r.getString("evidence")))
-                    .forEach(entry -> {Owner owner=ids.get(entry.getKey());if(owner!=null) attachJvm(owner,entry.getValue());});
-            h.createQuery("SELECT class_id,annotation_name,direct,via_annotation FROM class_annotations ORDER BY class_id,annotation_name,direct,via_annotation")
-                    .map((r,c)->Map.entry(r.getInt("class_id"),r.getString("annotation_name")+"|"+r.getInt("direct")+"|"+value(r.getString("via_annotation"))))
-                    .forEach(entry->{if(ids.containsKey(entry.getKey()))ids.get(entry.getKey()).annotations.add(entry.getValue());});
-            h.createQuery("""
-                    SELECT class_id,kind,name,jvm_name,descriptor,semantic_model,is_suspend,is_extension,
-                           has_default_parameters,is_mutable,is_lateinit,is_delegated,is_synthetic,value_parameters,declaration_types
-                    FROM kotlin_declarations ORDER BY class_id,kind,name,jvm_name,descriptor
-                    """).map((r,c) -> new KotlinDeclarationRecord(r.getInt("class_id"), r.getString("kind"), r.getString("name"),
-                            r.getString("jvm_name"), r.getString("descriptor"), r.getString("semantic_model"),
-                            r.getInt("is_suspend") == 1, r.getInt("is_extension") == 1,
-                            r.getInt("has_default_parameters") == 1, r.getInt("is_mutable") == 1,
-                            r.getInt("is_lateinit") == 1, r.getInt("is_delegated") == 1,
-                            r.getInt("is_synthetic") == 1, IndexReader.kotlinParametersFromJson(r.getString("value_parameters")),
-                            IndexReader.kotlinTypesFromJson(r.getString("declaration_types"))))
+            db.symbols.findJvmApiRows().forEach(r -> {Owner owner=ids.get(r.classId());if(owner!=null) attachJvm(owner,r.evidence());});
+            db.symbols.findApiAnnotations().forEach(r -> {if(ids.containsKey(r.classId()))ids.get(r.classId()).annotations.add(r.annotationName()+"|"+(r.direct()?1:0)+"|"+value(r.viaAnnotation()));});
+            db.symbols.findKotlinDeclarationRows().stream()
                     .forEach(declaration -> {
                         Owner owner = ids.get(declaration.classId());
                         if (owner == null || declaration.synthetic() || !"kotlin_metadata".equals(declaration.semanticModel())
@@ -284,7 +260,6 @@ final class ApiCompatibilityQueries {
                         if (owner.kotlin.putIfAbsent(key, declaration) != null) owner.ambiguous = true;
                     });
             return result;
-        });
     }
     private static Member member(String kind,String name,String descriptor,String signature,String modifiers,String annotations,String details,String type,String parameters) {
         Set<String> flags=new TreeSet<>();
@@ -419,63 +394,40 @@ final class ApiCompatibilityQueries {
         if(node.isArray()) {var result=JSON.createArrayNode();node.forEach(value->result.add(orderedObjects(value)));return result;}
         return node;
     }
-    private static void appendImpact(ObjectNode node,Jdbi baseline,Finding finding,int limit,Map<String,List<ObjectNode>> subtypeMap,JvmMethodResolver resolver) {
+    private static void appendImpact(ObjectNode node,ReadQueryContext baseline,Finding finding,int limit,Map<String,List<ObjectNode>> subtypeMap) {
         node.put("scope","baseline_static_evidence"); node.put("complete",false); node.put("external_consumers_known",false);
         if(finding.before==null || finding.before.ambiguous) {node.put("status","unavailable"); return;}
         Owner owner=finding.before;
-        baseline.useHandle(h -> {
-            String sql;Map<String,Object> bindings;
-            List<Integer> symbolicOwners=null;
-            if(finding.oldMember!=null && finding.oldMember.valid) {
-                Member member=finding.oldMember;
-                sql=member.key.kind.equals("FIELD") ? """
-                    SELECT DISTINCT c.id,c.class_name,c.module,c.source_set,a.from_method,a.from_descriptor FROM field_accesses a JOIN classes c ON c.id=a.from_class_id
-                    WHERE a.to_class_id=:id AND a.field_name=:name AND a.field_descriptor=:descriptor AND c.lifecycle='current' AND c.origin!='orphan_output'
-                    """ : """
-                    SELECT DISTINCT c.id,c.class_name,c.module,c.source_set,a.from_method,a.from_descriptor FROM method_calls a JOIN classes c ON c.id=a.from_class_id
-                    WHERE a.to_class_id IN (<ownerIds>) AND a.to_method=:name AND a.to_descriptor=:descriptor AND c.lifecycle='current' AND c.origin!='orphan_output'
-                    """;
-                bindings=Map.of("id",owner.id,"name",member.key.name,"descriptor",member.key.descriptor);
-                if(!member.key.kind.equals("FIELD")) {
-                    symbolicOwners=resolver.symbolicOwners(owner.id,member.key.name,member.key.descriptor);
-                    bindings=Map.of("name",member.key.name,"descriptor",member.key.descriptor);
-                }
-                node.put("reference_matching",member.key.kind.equals("FIELD") ? "exact_owner_name_descriptor" : "resolved_owner_name_descriptor");
-            } else {
-                sql="""
-                    SELECT DISTINCT c.id,c.class_name,c.module,c.source_set,NULL AS from_method,NULL AS from_descriptor FROM dependencies d JOIN classes c ON c.id=d.from_class_id
-                    WHERE d.to_class_id=:id AND c.lifecycle='current' AND c.origin!='orphan_output'
-                    """;
-                bindings=Map.of("id",owner.id);node.put("reference_matching","class_dependency");
-            }
-            var countQuery=h.createQuery("SELECT COUNT(*) FROM ("+sql+")").bindMap(bindings);
-            var detailQuery=h.createQuery("SELECT * FROM ("+sql+") ORDER BY class_name,module,source_set,id,from_method,from_descriptor LIMIT :detail_limit")
-                    .bindMap(bindings).bind("detail_limit",limit);
-            if(symbolicOwners!=null) {countQuery.bindList("ownerIds",symbolicOwners);detailQuery.bindList("ownerIds",symbolicOwners);}
-            long count=countQuery.mapTo(Long.class).one();
-            List<ObjectNode> consumers=detailQuery.map((r,c)->consumer(r)).list();
+        Member member = finding.oldMember != null && finding.oldMember.valid ? finding.oldMember : null;
+        String kind = member == null ? null : member.key.kind;
+        var ownerIds = member != null && !kind.equals("FIELD")
+                ? baseline.methods().symbolicOwners(owner.id, member.key.name, member.key.descriptor, "inbound") : List.of(owner.id);
+        var page = baseline.usages.findApiConsumers(owner.id, kind,
+                member == null ? null : member.key.name, member == null ? null : member.key.descriptor, ownerIds, limit);
+        node.put("reference_matching", member == null ? "class_dependency"
+                : kind.equals("FIELD") ? "exact_owner_name_descriptor" : "resolved_owner_name_descriptor");
+        long count = page.count();
+        List<ObjectNode> consumers = page.consumers().stream().map(ApiCompatibilityQueries::consumer).toList();
             node.put("consumer_count",count);node.set("consumers",JSON.valueToTree(consumers));node.put("consumers_truncated",count>limit);
             // Subclasses matter for final/abstract changes even when no call instruction exists.
             List<ObjectNode> subtypes=subtypeMap.getOrDefault(owner.key.name,List.of());
             node.put("direct_subtype_count",subtypes.size());node.set("direct_subtypes",JSON.valueToTree(subtypes.stream().limit(limit).toList()));node.put("direct_subtypes_truncated",subtypes.size()>limit);
-        });
     }
-    private static ObjectNode consumer(java.sql.ResultSet row) throws java.sql.SQLException {
-        ObjectNode node=JSON.createObjectNode().put("baseline_class_id",row.getInt("id")).put("class_name",row.getString("class_name"));
-        node.put("module",value(row.getString("module")));node.put("source_set",value(row.getString("source_set")));
-        if(row.getString("from_method")!=null)node.put("method",row.getString("from_method")).put("descriptor",row.getString("from_descriptor"));
+    private static ObjectNode consumer(org.treblereel.mcp.db.UsageRepository.ApiConsumer row) {
+        ObjectNode node=JSON.createObjectNode().put("baseline_class_id",row.id()).put("class_name",row.className());
+        node.put("module",value(row.module()));node.put("source_set",value(row.sourceSet()));
+        if(row.fromMethod()!=null)node.put("method",row.fromMethod()).put("descriptor",row.fromDescriptor());
         return node;
     }
-    private static Map<String,List<ObjectNode>> directSubtypes(Jdbi db) {
+    private static Map<String,List<ObjectNode>> directSubtypes(ReadQueryContext db) {
         Map<String,List<ObjectNode>> result=new HashMap<>();
-        db.useHandle(h->h.createQuery("SELECT id,class_name,module,source_set,superclass,interfaces,NULL AS from_method,NULL AS from_descriptor FROM classes WHERE lifecycle='current' AND origin!='orphan_output' ORDER BY class_name,module,source_set,id")
-                .map((r,c)->{
-                    ObjectNode node=consumer(r);Set<String> parents=new TreeSet<>();
-                    String superclass=r.getString("superclass");if(superclass!=null && !superclass.isBlank())parents.add(superclass);
-                    try {JsonNode interfaces=JSON.readTree(r.getString("interfaces"));if(interfaces!=null && interfaces.isArray())interfaces.forEach(v->parents.add(v.asText()));}catch(Exception ignored){}
+        db.symbols.findHierarchyRows().forEach(r -> {
+                    ObjectNode node=JSON.createObjectNode().put("baseline_class_id",r.id()).put("class_name",r.className())
+                            .put("module",value(r.module())).put("source_set",value(r.sourceSet()));Set<String> parents=new TreeSet<>();
+                    String superclass=r.superclass();if(superclass!=null && !superclass.isBlank())parents.add(superclass);
+                    try {JsonNode interfaces=JSON.readTree(r.interfaces());if(interfaces!=null && interfaces.isArray())interfaces.forEach(v->parents.add(v.asText()));}catch(Exception ignored){}
                     for(String parent:parents)result.computeIfAbsent(parent,ignored->new ArrayList<>()).add(node);
-                    return node;
-                }).list());
+                });
         return result;
     }
 }

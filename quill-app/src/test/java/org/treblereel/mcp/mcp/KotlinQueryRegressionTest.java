@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -54,21 +56,21 @@ class KotlinQueryRegressionTest {
         declaration(1, "FUNCTION", "greeting", "greeting", desc, false, false, true);
         call(1, "greeting$default", bridge, 1, "greeting", desc, 0);
         call(2, "run", "()V", 1, "greeting$default", bridge, 42);
-        var result = JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db, "acme.Owner", "greeting", "method", desc, "all", 1, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "acme.Owner", "greeting", "method", desc, "all", 1, 0)));
         assertEquals(1, result.path("total").asInt(), result.toPrettyString());
         var usage = result.path("usages").get(0);
         assertEquals("acme.Client", usage.path("caller").path("class").asText());
         assertEquals(42, usage.path("evidence_lines").get(0).asInt());
         assertEquals(2, usage.path("bytecode_path").size());
         assertTrue(usage.path("normalized").asBoolean());
-        assertEquals(0, JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db, "acme.Owner", "greeting", "method", desc, "all", 1, 1)).path("showing").asInt());
+        assertEquals(0, JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "acme.Owner", "greeting", "method", desc, "all", 1, 1))).path("showing").asInt());
     }
 
     @Test void unusedDefaultBridgeDoesNotCreateSourceUsage() {
         String desc = "(I)V", bridge = "(IILjava/lang/Object;)V";
         declaration(1, "FUNCTION", "f", "f", desc, false, false, true);
         call(1, "f$default", bridge, 1, "f", desc, 0);
-        assertTrue(KotlinUsageNormalizer.inbound(db, 1, "f", desc).usages().isEmpty());
+        assertTrue(ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 1, "f", desc)).usages().isEmpty());
     }
 
     @Test void preservesRealSourceFunctionsAndRejectsInvalidDefaultDescriptor() {
@@ -77,20 +79,20 @@ class KotlinQueryRegressionTest {
         declaration(1, "FUNCTION", "custom", "f$default", bridge, false, false, false);
         call(1, "f$default", bridge, 1, "f", desc, 5);
         call(1, "f$default", "(II)V", 1, "f", desc, 6);
-        assertEquals(2, KotlinUsageNormalizer.inbound(db, 1, "f", desc).usages().size());
-        assertTrue(KotlinUsageNormalizer.inbound(db, 1, "f", desc).usages().stream().allMatch(u -> u.path().size() == 1));
+        assertEquals(2, ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 1, "f", desc)).usages().size());
+        assertTrue(ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 1, "f", desc)).usages().stream().allMatch(u -> u.path().size() == 1));
     }
 
     @Test void handlesConstructorDefaultsAndTwoMasksAtParameterBoundary() {
         String constructor = "(I)V", defaultConstructor = "(IILkotlin/jvm/internal/DefaultConstructorMarker;)V";
         call(1, "<init>", defaultConstructor, 1, "<init>", constructor, 0);
         call(2, "construct", "()V", 1, "<init>", defaultConstructor, 12);
-        assertEquals("construct", KotlinUsageNormalizer.inbound(db, 1, "<init>", constructor).usages().getFirst().call().fromMethod());
+        assertEquals("construct", ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 1, "<init>", constructor)).usages().getFirst().call().fromMethod());
         String args = "I".repeat(33), desc = "(" + args + ")V", bridge = "(" + args + "IILjava/lang/Object;)V";
         declaration(1, "FUNCTION", "many", "many", desc, false, false, true);
         call(1, "many$default", bridge, 1, "many", desc, 0);
         call(2, "many", "()V", 1, "many$default", bridge, 13);
-        assertEquals(2, KotlinUsageNormalizer.inbound(db, 1, "many", desc).usages().getFirst().path().size());
+        assertEquals(2, ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 1, "many", desc)).usages().getFirst().path().size());
     }
 
     @Test void suspendContinuationAndExtensionReceiverDoNotConsumeDefaultMaskBits() {
@@ -100,20 +102,20 @@ class KotlinQueryRegressionTest {
         declaration(1, "FUNCTION", "f", "f", desc, true, true, true);
         call(1, "f$default", bridge, 1, "f", desc, 0);
         call(2, "run", "()V", 1, "f$default", bridge, 4);
-        assertEquals(2, KotlinUsageNormalizer.inbound(db, 1, "f", desc).usages().getFirst().path().size());
+        assertEquals(2, ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 1, "f", desc)).usages().getFirst().path().size());
     }
 
     @Test void expandsMultifileAndCompanionForwardingButKeepsOrdinaryForwarders() {
         type(3, "acme.Api", "MULTIFILE_FACADE"); type(4, "acme.Api__PartKt", "MULTIFILE_PART");
         declaration(4, "FUNCTION", "f", "f", "()V", false, false, false);
         call(3, "f", "()V", 4, "f", "()V", 0); call(2, "run", "()V", 3, "f", "()V", 7);
-        assertEquals("run", KotlinUsageNormalizer.inbound(db, 4, "f", "()V").usages().getFirst().call().fromMethod());
+        assertEquals("run", ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 4, "f", "()V")).usages().getFirst().call().fromMethod());
         type(5, "acme.Owner$Companion", "COMPANION_OBJECT");
         declaration(5, "FUNCTION", "g", "g", "()V", false, false, false);
         call(1, "g", "()V", 5, "g", "()V", 0); call(2, "companion", "()V", 1, "g", "()V", 8);
-        assertEquals("companion", KotlinUsageNormalizer.inbound(db, 5, "g", "()V").usages().getFirst().call().fromMethod());
+        assertEquals("companion", ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 5, "g", "()V")).usages().getFirst().call().fromMethod());
         declaration(1, "FUNCTION", "g", "g", "()V", false, false, false);
-        assertEquals("g", KotlinUsageNormalizer.inbound(db, 5, "g", "()V").usages().getFirst().call().fromMethod());
+        assertEquals("g", ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 5, "g", "()V")).usages().getFirst().call().fromMethod());
     }
 
     @Test void propertyUnifiesAccessorsAndFieldWithReadWriteFiltersAndStableId() throws Exception {
@@ -124,16 +126,16 @@ class KotlinQueryRegressionTest {
         call(2, "read", "()V", 1, "getState", "()Ljava/lang/String;", 10);
         call(2, "write", "()V", 1, "setState", "(Ljava/lang/String;)V", 11);
         field(2, "direct", "read_instance", 12); field(1, "getState", "read_instance", 1);
-        var search = JSON.readTree(new SymbolSearchQueries().searchSymbols(db, "state", "property", "kotlin", 10, 0));
+        var search = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolSearchQueries().searchSymbols(readScope, "state", "property", "kotlin", 10, 0)));
         assertEquals(1, search.path("total").asInt());
         String id = search.path("symbols").get(0).path("symbol_id").asText();
         assertEquals("PROPERTY", SymbolContract.parse(id).orElseThrow().kind());
         var query = new SymbolUsageQueries();
-        assertEquals(3, JSON.readTree(query.findSymbolUsages(db, id, null, null, null, "all", 10, 0)).path("total").asInt());
-        assertEquals(2, JSON.readTree(query.findSymbolUsages(db, id, null, null, null, "read", 10, 0)).path("total").asInt());
-        assertEquals(1, JSON.readTree(query.findSymbolUsages(db, id, null, null, null, "write", 10, 0)).path("total").asInt());
-        assertEquals(1, JSON.readTree(query.findSymbolUsages(db, id, null, null, null, "all", 1, 2)).path("showing").asInt());
-        assertEquals(0, JSON.readTree(new SymbolSearchQueries().searchSymbols(db, "state", "property", "java", 10, 0)).path("total").asInt());
+        assertEquals(3, JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.findSymbolUsages(readScope, id, null, null, null, "all", 10, 0))).path("total").asInt());
+        assertEquals(2, JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.findSymbolUsages(readScope, id, null, null, null, "read", 10, 0))).path("total").asInt());
+        assertEquals(1, JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.findSymbolUsages(readScope, id, null, null, null, "write", 10, 0))).path("total").asInt());
+        assertEquals(1, JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.findSymbolUsages(readScope, id, null, null, null, "all", 1, 2))).path("showing").asInt());
+        assertEquals(0, JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolSearchQueries().searchSymbols(readScope, "state", "property", "java", 10, 0))).path("total").asInt());
     }
 
     private void field(int from, String method, String access, int line) {
@@ -147,19 +149,19 @@ class KotlinQueryRegressionTest {
         declaration(1, "PROPERTY", "size", "size", "(Ljava/util/List;)I", false, true, false);
         declaration(1, "PROPERTY", "unbound", null, "", false, false, false);
         var query = new SymbolUsageQueries();
-        assertEquals("AMBIGUOUS_SYMBOL", JSON.readTree(query.findSymbolUsages(db, "acme.Owner", "size", "property", null, "all", 10, 0)).path("error_code").asText());
-        assertEquals(0, JSON.readTree(query.findSymbolUsages(db, "acme.Owner", "size", "property", "(Ljava/lang/String;)I", "all", 10, 0)).path("total").asInt());
-        var search = JSON.readTree(new SymbolSearchQueries().searchSymbols(db, "unbound", "property", null, 10, 0));
+        assertEquals("AMBIGUOUS_SYMBOL", JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.findSymbolUsages(readScope, "acme.Owner", "size", "property", null, "all", 10, 0))).path("error_code").asText());
+        assertEquals(0, JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.findSymbolUsages(readScope, "acme.Owner", "size", "property", "(Ljava/lang/String;)I", "all", 10, 0))).path("total").asInt());
+        var search = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolSearchQueries().searchSymbols(readScope, "unbound", "property", null, 10, 0)));
         String id = search.path("symbols").get(0).path("symbol_id").asText();
         assertTrue(SymbolContract.parse(id).isPresent());
-        assertEquals(0, JSON.readTree(query.findSymbolUsages(db, id, null, null, null, "all", 10, 0)).path("total").asInt());
+        assertEquals(0, JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.findSymbolUsages(readScope, id, null, null, null, "all", 10, 0))).path("total").asInt());
     }
 
     @Test void mapsCompanionPropertyToPhysicalOuterField() {
         type(3, "acme.Owner$Companion", "COMPANION_OBJECT");
         declaration(3, "PROPERTY", "state", "state", "Ljava/lang/String;", false, false, false);
         member(1, "FIELD", "state", "Ljava/lang/String;", "[]");
-        var property = KotlinProperties.list(db, org.treblereel.mcp.db.IndexReader.findClassByName(db, "acme.Owner$Companion").orElseThrow()).getFirst();
+        var property = ReadQueryContext.readWithGraph(db, readScope -> KotlinProperties.list(readScope, db.withHandle(repositoryHandle1 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle1).findClassByName("acme.Owner$Companion")).orElseThrow())).getFirst();
         assertEquals(1, property.bindings().getFirst().owner().id());
         assertEquals("acme.Owner$Companion", SymbolContract.parse(property.symbolId()).orElseThrow().className());
     }
@@ -168,7 +170,8 @@ class KotlinQueryRegressionTest {
         Files.writeString(temp.resolve("Owner.kt"), source);
         int offset = source.lastIndexOf(token), line = 1, column = 1;
         for (int i = 0; i < offset; i++) { if (source.charAt(i) == '\n') { line++; column=1; } else column++; }
-        return JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(db, temp, "Owner.kt", line, column));
+        int targetLine = line, targetColumn = column;
+        return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, temp, "Owner.kt", targetLine, targetColumn)));
     }
 
     @Test void resolvesKotlinConstructorsWithoutNewAndBacktickNames() throws Exception {
@@ -230,16 +233,16 @@ class KotlinQueryRegressionTest {
         call(1, "f$default", bridge, 1, "f", original, 0);
         db.useHandle(h -> h.execute("UPDATE method_calls SET invocation_kind = 'virtual'"));
         call(2, "run", "()V", 1, "f$default", bridge, 14);
-        assertEquals("run", KotlinUsageNormalizer.inbound(db, 1, "f", original).usages().getFirst().call().fromMethod());
+        assertEquals("run", ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 1, "f", original)).usages().getFirst().call().fromMethod());
         call(1, "f$default", "(Lacme/Owner;IJLjava/lang/Object;)V", 1, "f", original, 0);
-        assertEquals(2, KotlinUsageNormalizer.inbound(db, 1, "f", original).usages().size());
+        assertEquals(2, ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 1, "f", original)).usages().size());
     }
 
     @Test void delegatedFieldIsNotConfusedWithPropertyValue() {
         declaration(1, "PROPERTY", "lazyValue", "lazyValue$delegate", "Lkotlin/Lazy;", false, false, false);
         declaration(1, "PROPERTY", "lazyValue", "getLazyValue", "()Ljava/lang/String;", false, false, false);
         db.useHandle(h -> h.execute("UPDATE kotlin_declarations SET is_delegated = 1 WHERE kind = 'PROPERTY'"));
-        var properties = KotlinProperties.list(db, org.treblereel.mcp.db.IndexReader.findClassByName(db, "acme.Owner").orElseThrow());
+        var properties = ReadQueryContext.readWithGraph(db, readScope -> KotlinProperties.list(readScope, db.withHandle(repositoryHandle2 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle2).findClassByName("acme.Owner")).orElseThrow()));
         assertEquals(1, properties.size());
         assertEquals("()Ljava/lang/String;", properties.getFirst().descriptor());
         assertEquals(1, properties.getFirst().bindings().size());
@@ -254,12 +257,12 @@ class KotlinQueryRegressionTest {
             for (int i = 0; i < 5001; i++) batch.bind("name", "run" + i).add();
             batch.execute();
         });
-        var result = JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db, "acme.Owner", "f", "method", null, "all", 1, 0));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "acme.Owner", "f", "method", null, "all", 1, 0)));
         assertTrue(result.path("normalization_truncated").asBoolean());
         assertFalse(result.path("answer_complete").asBoolean());
         assertEquals(5000, result.path("total").asInt());
         db.useHandle(h -> h.execute("DELETE FROM kotlin_declarations"));
-        var java = JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db, "acme.Owner", "f", "method", null, "all", 1, 5000));
+        var java = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "acme.Owner", "f", "method", null, "all", 1, 5000)));
         assertEquals(5001, java.path("total").asInt());
         assertEquals(1, java.path("showing").asInt());
         assertFalse(java.path("normalization_truncated").asBoolean());
@@ -276,7 +279,7 @@ class KotlinQueryRegressionTest {
         call(3, "f", overload, 3, "f$default", bridge, 0);
         call(1, "f", overload, 3, "f", overload, 0);
         call(2, "run", "()V", 1, "f", overload, 17);
-        var result = KotlinUsageNormalizer.inbound(db, 3, "f", original);
+        var result = ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 3, "f", original));
         assertEquals(1, result.usages().size());
         assertEquals("run", result.usages().getFirst().call().fromMethod());
         assertEquals(4, result.usages().getFirst().path().size());
@@ -351,7 +354,7 @@ class KotlinQueryRegressionTest {
         parameters(1, "CONSTRUCTOR", "<init>", original, JSON.valueToTree(values).toString());
         call(1, "<init>", bridge, 1, "<init>", original, 0);
         call(2, "run", "()V", 1, "<init>", bridge, 3);
-        assertEquals("run", KotlinUsageNormalizer.inbound(db, 1, "<init>", original).usages().getFirst().call().fromMethod());
+        assertEquals("run", ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 1, "<init>", original)).usages().getFirst().call().fromMethod());
     }
 
     private void generatedFunction() {
@@ -394,7 +397,7 @@ class KotlinQueryRegressionTest {
             if (scenario == 2) call(1, "f", "()V", 2, "other", "()V", 1);
             if (scenario == 3) db.useHandle(h -> h.execute("UPDATE method_calls SET to_descriptor='(II)V' WHERE from_method='f$default'"));
             assertEquals(2, position("fun run() = f()", "f(").path("candidate_count").asInt(), "scenario " + scenario);
-            assertTrue(KotlinUsageNormalizer.sourceTarget(db, 1, "f", "()V").isEmpty());
+            assertTrue(ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.sourceTarget(readScope, 1, "f", "()V")).isEmpty());
         }
     }
 
@@ -410,17 +413,16 @@ class KotlinQueryRegressionTest {
         call(2, "run", "()V", 1, "<init>", "()V", 10);
         var result = position("fun run() = Owner()", "Owner(");
         assertEquals("(I)V", result.path("selected").path("jvm_descriptor").asText(), result.toPrettyString());
-        assertEquals("run", KotlinUsageNormalizer.inbound(db, 1, "<init>", "(I)V").usages().getFirst().call().fromMethod());
+        assertEquals("run", ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.inbound(readScope, 1, "<init>", "(I)V")).usages().getFirst().call().fromMethod());
         declaration(1, "CONSTRUCTOR", "Owner", "<init>", "()V", false, false, false);
-        assertTrue(KotlinUsageNormalizer.sourceTarget(db, 1, "<init>", "()V").isEmpty());
+        assertTrue(ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.sourceTarget(readScope, 1, "<init>", "()V")).isEmpty());
     }
 
     @Test void javaNavigationKeepsJvmOverloads() throws Exception {
         generatedFunction();
         String source = "class Caller { void run() { acme.Owner.f(); } }";
         Files.writeString(temp.resolve("Caller.java"), source);
-        var result = JSON.readTree(new PositionSymbolQueries().getSymbolAtPosition(db, temp,
-                "Caller.java", 1, source.indexOf("f();") + 1));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, temp, "Caller.java", 1, source.indexOf("f();") + 1)));
         assertEquals(2, result.path("candidate_count").asInt());
         assertEquals("()V", result.path("selected").path("jvm_descriptor").asText(), result.toPrettyString());
     }
@@ -428,13 +430,13 @@ class KotlinQueryRegressionTest {
     @Test void forwardingCyclesAndRepeatedEdgesDoNotHideCandidates() throws Exception {
         generatedFunction();
         db.useHandle(h -> h.execute("UPDATE method_calls SET occurrence_count=2 WHERE from_method='f'"));
-        assertTrue(KotlinUsageNormalizer.sourceTarget(db, 1, "f", "()V").isEmpty());
+        assertTrue(ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.sourceTarget(readScope, 1, "f", "()V")).isEmpty());
         db.useHandle(h -> h.execute("DELETE FROM method_calls"));
         member(1, "METHOD", "f", "(J)V", "[\"long\"]");
         db.useHandle(h -> h.execute("UPDATE class_members SET annotations='[\"kotlin.jvm.JvmOverloads\"]'"));
         call(1, "f", "()V", 1, "f", "(J)V", 0);
         call(1, "f", "(J)V", 1, "f", "()V", 0);
-        assertTrue(KotlinUsageNormalizer.sourceTarget(db, 1, "f", "()V").isEmpty());
+        assertTrue(ReadQueryContext.readWithGraph(db, readScope -> KotlinUsageNormalizer.sourceTarget(readScope, 1, "f", "()V")).isEmpty());
         assertEquals(3, position("fun run() = f()", "f(").path("candidate_count").asInt());
     }
 
@@ -495,9 +497,9 @@ class KotlinQueryRegressionTest {
         var info = new org.treblereel.mcp.core.KotlinSourceDebug.Info("acme.Client", List.of(
                 new org.treblereel.mcp.core.KotlinSourceDebug.Mapping("Kotlin", "Owner.kt", "acme/Owner", 5, 2, 100, 1)), false,
                 new org.treblereel.mcp.core.KotlinSourceDebug.Coroutine("acme.Owner", "g", "Owner.kt", 2, List.of(5, 6), List.of(6, -1)));
-        org.treblereel.mcp.db.IndexWriter.writeKotlinSourceDebug(db, java.util.Map.of(2, info));
+        org.treblereel.mcp.db.IndexFixture.writeKotlinSourceDebug(db, java.util.Map.of(2, info));
         var query = new SymbolUsageQueries();
-        var usage = JSON.readTree(query.findSymbolUsages(db, "acme.Owner", "g", "method", "()V", "all", 10, 0)).path("usages").get(0);
+        var usage = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.findSymbolUsages(readScope, "acme.Owner", "g", "method", "()V", "all", 10, 0))).path("usages").get(0);
         assertEquals(101, usage.path("evidence_lines").get(0).asInt());
         assertEquals(6, usage.path("source_locations").get(0).path("source_line").asInt());
         assertEquals("Owner.kt", usage.path("source_locations").get(0).path("source_file").asText());
@@ -505,7 +507,7 @@ class KotlinQueryRegressionTest {
         assertFalse(usage.path("coroutine_source").has("source_line"));
         type(3, "acme.Owner", null);
         db.useHandle(h -> h.execute("UPDATE classes SET source_file='other/Owner.kt' WHERE id=3"));
-        var node = JSON.createObjectNode(); KotlinSourceLocations.append(db, node, 2, List.of(101));
+        var node = JSON.createObjectNode(); ReadQueryContext.readWithGraph(db, readScope -> { KotlinSourceLocations.append(readScope, node, 2, List.of(101)); return null; });
         assertFalse(node.path("source_locations").get(0).path("mapped").asBoolean());
         assertFalse(node.path("source_locations").get(0).has("source_file"));
     }

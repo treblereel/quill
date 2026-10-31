@@ -8,14 +8,16 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.function.Function;
+import java.util.concurrent.Semaphore;
+import java.util.function.BiFunction;
+import org.treblereel.mcp.db.ReadQueryContext;
 
 /** Resolves project indexes and isolates failures while executing read-only tool queries. */
 final class ProjectQueryExecutor {
 
-    private static final ExecutorService QUERY_EXECUTOR = Executors.newFixedThreadPool(
-            queryWorkers(), Thread.ofPlatform().daemon()
-                    .name("quill-workspace-query-", 0).factory());
+    private static final ExecutorService QUERY_EXECUTOR = Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("quill-workspace-query-", 0).factory());
+    private static final Semaphore QUERY_SLOTS = new Semaphore(queryWorkers(), true);
 
     record QueryResult(String project, String json, String error) {
         boolean successful() {
@@ -35,19 +37,35 @@ final class ProjectQueryExecutor {
         this.registry = Objects.requireNonNull(registry, "registry");
     }
 
-    Batch execute(String selector, Function<ProjectRegistry.ProjectEntry, String> query) {
+    Batch execute(String selector, BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query) {
+        return execute(selector, query, false);
+    }
+
+    Batch execute(String selector, BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query, boolean withGraph) {
         ProjectRegistry.Resolution resolution = selector == null || selector.isBlank()
                 ? registry.resolve() : registry.resolve(selector);
-        return new Batch(resolution, executeProjects(resolution.projects(), query));
+        return new Batch(resolution, executeProjects(resolution.projects(), query, false, withGraph));
     }
 
     List<QueryResult> executeProjects(List<ProjectRegistry.ProjectEntry> projects,
-            Function<ProjectRegistry.ProjectEntry, String> query) {
-        if (projects.size() <= 1) {
-            return projects.stream().map(project -> executeProject(project, query)).toList();
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query) {
+        return executeProjects(projects, query, false);
+    }
+
+    List<QueryResult> executeProjects(List<ProjectRegistry.ProjectEntry> projects,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query, boolean nested) {
+        return executeProjects(projects, query, nested, false);
+    }
+
+    private List<QueryResult> executeProjects(List<ProjectRegistry.ProjectEntry> projects,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query, boolean nested, boolean withGraph) {
+        // Nested work stays on the owner thread and shares its handle and admission slot.
+        if (nested || projects.size() <= 1) {
+            return projects.stream().map(project -> executeProject(project, query, !nested, withGraph))
+                    .sorted(Comparator.comparing(QueryResult::project)).toList();
         }
         List<Future<QueryResult>> pending = projects.stream()
-                .map(project -> QUERY_EXECUTOR.submit(() -> executeProject(project, query)))
+                .map(project -> QUERY_EXECUTOR.submit(() -> executeProject(project, query, true, withGraph)))
                 .toList();
         List<QueryResult> results = new ArrayList<>(pending.size());
         try {
@@ -66,11 +84,26 @@ final class ProjectQueryExecutor {
     }
 
     QueryResult executeProject(ProjectRegistry.ProjectEntry project,
-            Function<ProjectRegistry.ProjectEntry, String> query) {
-        try {
-            return new QueryResult(project.name(), org.treblereel.mcp.db.ReadQueryContext.read(project.jdbi(),()->query.apply(project)), null);
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query) {
+        return executeProject(project, query, true, false);
+    }
+
+    private QueryResult executeProject(ProjectRegistry.ProjectEntry project,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query, boolean acquire, boolean withGraph) {
+        boolean admitted = false;
+        try (var metrics = org.treblereel.mcp.diagnostics.QueryMetrics.start()) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            if (acquire) { QUERY_SLOTS.acquire(); admitted = true; }
+            String response = withGraph ? project.readWithGraph(context -> query.apply(project, context))
+                    : project.read(context -> query.apply(project, context));
+            return new QueryResult(project.name(), response, null);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Workspace query interrupted", interrupted);
         } catch (Exception error) {
             return new QueryResult(project.name(), null, ProjectRegistry.safeMessage(error));
+        } finally {
+            if (admitted) QUERY_SLOTS.release();
         }
     }
 

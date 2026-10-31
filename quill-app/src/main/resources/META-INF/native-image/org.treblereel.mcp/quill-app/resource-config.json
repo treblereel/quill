@@ -1,6 +1,7 @@
 {
   "resources": {
     "includes": [
+      {"pattern": "org/treblereel/mcp/db/.*\\.sql$"},
       {"pattern": "com/knuddels/jtokkit/cl100k_base\\.tiktoken$"},
       {"pattern": "java-worker/worker\\.jar$"},
       {"pattern": "quill\\.properties$"},

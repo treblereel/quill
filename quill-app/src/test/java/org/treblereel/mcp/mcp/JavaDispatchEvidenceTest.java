@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.*;
 import java.nio.file.Path;
@@ -36,10 +38,10 @@ class JavaDispatchEvidenceTest {
             """);
     }
     JsonNode usages(String owner,String descriptor,int limit,int offset) throws Exception {
-        return JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db,owner,"value","method",descriptor,"all",limit,offset));
+        return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, owner, "value", "method", descriptor, "all", limit, offset)));
     }
     JsonNode calls(String method) throws Exception {
-        return JSON.readTree(new CallHierarchyQueries().getCallHierarchy(db,"p.Caller",method,null,"outbound",false,1,20,0));
+        return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new CallHierarchyQueries().getCallHierarchy(readScope, "p.Caller", method, null, "outbound", false, 1, 20, 0)));
     }
     @Test void interfaceCallsHaveExactTargetAndSeparateCovariantImplementationCandidates() throws Exception {
         var response=calls("invoke"); var call=response.path("calls").get(0);

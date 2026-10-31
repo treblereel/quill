@@ -1,5 +1,9 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
+
+import org.treblereel.mcp.db.IndexFixture;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,7 +18,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
-import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.model.ExternalBeanRecord;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
@@ -90,6 +93,11 @@ class WorkspaceToolQueriesTest {
         assertFalse(unbuilt.path("indexed").asBoolean());
         assertFalse(unbuilt.has("indexed_classes"));
         assertFalse(unbuilt.has("framework"));
+        assertFalse(unbuilt.has("verification_plan"));
+        assertFalse(unbuilt.has("diagnostics"));
+        assertEquals("get_overview", unbuilt.path("details_request").path("tool").asText());
+        assertEquals("full", unbuilt.at("/details_request/arguments/view").asText());
+        assertEquals("classes_missing", unbuilt.path("reason").asText());
         assertFalse(Files.exists(root.resolve("target")));
     }
 
@@ -190,7 +198,7 @@ class WorkspaceToolQueriesTest {
     void enrichesDependencyBeansWithWorkspaceProvider() throws Exception {
         var platform = QuillDatabase.openWritable(
                 workspace.resolve("platform/.quill/platform-index.db"));
-        IndexWriter.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
+        IndexFixture.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
                 1, "io.casehub.engine.RemoteEngineBean", "CLASS", "@ApplicationScoped",
                 List.of("@Default"), List.of(), false, false, null, List.of(), null,
                 List.of("io.casehub.engine.RemoteEngineBean"), "cdi",
@@ -267,7 +275,10 @@ class WorkspaceToolQueriesTest {
         assertEquals("maven", result.path("build_system").asText());
         assertEquals("mcp_client", result.path("decision_owner").asText());
         assertFalse(result.path("build_was_started").asBoolean(true));
-        assertTrue(result.path("recommended_action").asText().contains("Decide whether"));
+        assertEquals("classes_missing", result.path("reason").asText());
+        assertEquals("build", result.path("action").asText());
+        assertTrue(result.path("recommended_action").asText().contains("quick_compile"));
+        assertEquals("quick_compile", result.path("verification_plan").path("commands").get(0).path("scope").asText());
     }
 
     @Test
@@ -364,8 +375,7 @@ class WorkspaceToolQueriesTest {
                            (1,'run','()V',2,'state','J','read_field',1,'[42]'),
                            (2,'internal','()V',2,'state','I','read_field',1,'[43]')""");
         });
-        var cls = org.treblereel.mcp.db.IndexReader.findClassByName(engine,
-                "io.casehub.engine.EngineService").orElseThrow();
+        var cls = engine.withHandle(repositoryHandle1 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle1).findClassByName("io.casehub.engine.EngineService")).orElseThrow();
         JsonNode result = memberUsages(SymbolContract.id(cls, "FIELD", "state", "I"), 20);
         JsonNode usage = result.path("consumers").get(0).path("usage");
         assertEquals(1, usage.path("usage_group_count").asInt(), result.toString());
@@ -390,8 +400,7 @@ class WorkspaceToolQueriesTest {
                 INSERT INTO method_calls(from_class_id,from_method,from_descriptor,to_class_id,
                     to_method,to_descriptor,invocation_kind,occurrence_count,evidence_lines)
                 VALUES (1,'create','()V',2,'<init>','(I)V','SPECIAL',1,'[61]')"""));
-        var cls = org.treblereel.mcp.db.IndexReader.findClassByName(engine,
-                "io.casehub.engine.EngineService").orElseThrow();
+        var cls = engine.withHandle(repositoryHandle2 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle2).findClassByName("io.casehub.engine.EngineService")).orElseThrow();
         JsonNode result = memberUsages(SymbolContract.id(cls, "CONSTRUCTOR", "<init>", "(I)V"), 20);
         assertEquals("constructor", result.path("kind").asText(), result.toString());
         assertEquals(1, result.path("total").asInt());
@@ -412,8 +421,7 @@ class WorkspaceToolQueriesTest {
                     VALUES (:id,'METHOD','unused','unused():void','()V','void',
                             '[]','public','[]')""").bind("id", id).execute();
         });
-        var cls = org.treblereel.mcp.db.IndexReader.findClassByName(engine,
-                "io.casehub.engine.EngineService").orElseThrow();
+        var cls = engine.withHandle(repositoryHandle3 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle3).findClassByName("io.casehub.engine.EngineService")).orElseThrow();
         JsonNode result = memberUsages(SymbolContract.id(cls, "METHOD", "unused", "()V"), 20);
         assertEquals(0, result.path("total").asInt(), result.toString());
         assertEquals(1, result.path("resolved_consumer_count").asInt());
@@ -522,8 +530,7 @@ class WorkspaceToolQueriesTest {
     void missingProviderMemberAndMalformedSymbolIdReturnExplicitErrors() throws Exception {
         installMemberFixture("1.0");
         var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
-        var cls = org.treblereel.mcp.db.IndexReader.findClassByName(engine,
-                "io.casehub.engine.EngineService").orElseThrow();
+        var cls = engine.withHandle(repositoryHandle4 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle4).findClassByName("io.casehub.engine.EngineService")).orElseThrow();
         JsonNode missing = memberUsages(SymbolContract.id(cls, "METHOD", "missing", "()V"), 20);
         assertEquals("SYMBOL_NOT_FOUND", missing.path("error_code").asText());
         JsonNode malformed = memberUsages("quill:symbol:v2:bad", 20);
@@ -617,8 +624,7 @@ class WorkspaceToolQueriesTest {
                     VALUES (1,'run','()V',2,'execute','(I)V','VIRTUAL',2,'[33]'),
                            (1,'run','()V',2,'execute','(Ljava/lang/String;)V','VIRTUAL',1,'[35]')""");
         });
-        var cls = org.treblereel.mcp.db.IndexReader.findClassByName(engine,
-                "io.casehub.engine.EngineService").orElseThrow();
+        var cls = engine.withHandle(repositoryHandle5 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle5).findClassByName("io.casehub.engine.EngineService")).orElseThrow();
         return SymbolContract.id(cls, "METHOD", "execute", "(I)V");
     }
 
@@ -703,7 +709,7 @@ class WorkspaceToolQueriesTest {
     void treatsExternalFrameworkBeanDiscoveryAsWorkspaceUsage() throws Exception {
         var platform = QuillDatabase.openWritable(
                 workspace.resolve("platform/.quill/platform-index.db"));
-        IndexWriter.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
+        IndexFixture.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
                 1, "io.casehub.engine.EngineService", "CLASS", "@ApplicationScoped",
                 List.of("@Default"), List.of(), false, false, null, List.of(), null,
                 List.of("io.casehub.engine.EngineService"), "cdi",
@@ -731,7 +737,7 @@ class WorkspaceToolQueriesTest {
     void doesNotReportUnresolvedWhenUsageKindFiltersOutBeanDiscovery() throws Exception {
         var platform = QuillDatabase.openWritable(
                 workspace.resolve("platform/.quill/platform-index.db"));
-        IndexWriter.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
+        IndexFixture.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
                 1, "io.casehub.engine.EngineService", "CLASS", "@ApplicationScoped",
                 List.of("@Default"), List.of(), false, false, null, List.of(), null,
                 List.of("io.casehub.engine.EngineService"), "cdi",

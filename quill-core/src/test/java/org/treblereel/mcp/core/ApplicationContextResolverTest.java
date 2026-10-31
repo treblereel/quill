@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.treblereel.mcp.model.ResolutionReason;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
@@ -35,7 +36,7 @@ class ApplicationContextResolverTest {
 
         assertEquals(ResolutionStatus.RESOLVED, refined.resolutionStatus());
         assertEquals(2, refined.resolvedBeanId());
-        assertEquals("UNIQUE_CONTEXT_CANDIDATE", refined.resolutionReason());
+        assertEquals(ResolutionReason.UNIQUE_CONTEXT_CANDIDATE, refined.resolutionReason());
     }
 
     @Test
@@ -106,7 +107,7 @@ class ApplicationContextResolverTest {
         assertEquals(3, refined.resolvedBeanId());
         assertTrue(refined.resolutionTrace().candidates().stream()
                 .anyMatch(candidate -> candidate.beanId() == 2
-                        && "DEFAULT_BEAN_SUPPRESSED".equals(candidate.reason())));
+                        && candidate.reason() == ResolutionReason.DEFAULT_BEAN_SUPPRESSED));
     }
 
     private static ModuleClasspathRecord context(String application, String visible, int distance) {

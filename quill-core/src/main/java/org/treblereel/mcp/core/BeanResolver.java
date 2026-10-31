@@ -187,14 +187,14 @@ public final class BeanResolver {
         for (var a : annotations) {
             if (a.name().equals(NAMED)) {
                 String value = a.value() == null ? "" : a.value().asString();
-                result.add(value.isEmpty() ? "@Named" : "@Named(\"" + value + "\")");
+                result.add(value.isEmpty() ? BuiltinQualifier.NAMED.annotation() : "@Named(\"" + value + "\")");
             } else if (metaHas(a.name(), QUALIFIER, index, new HashSet<>())) result.add(simple(a.name()));
         }
         if (bean) {
-            boolean custom = result.stream().anyMatch(q -> !q.equals("@Any") && !q.equals("@Default") && !q.startsWith("@Named"));
-            if (!custom && !result.contains("@Default")) result.add("@Default");
-            if (!result.contains("@Any")) result.add("@Any");
-        } else if (result.isEmpty()) result.add("@Default");
+            boolean custom = result.stream().anyMatch(q -> !q.equals(BuiltinQualifier.ANY.annotation()) && !q.equals(BuiltinQualifier.DEFAULT.annotation()) && !q.startsWith(BuiltinQualifier.NAMED.annotation()));
+            if (!custom && !result.contains(BuiltinQualifier.DEFAULT.annotation())) result.add(BuiltinQualifier.DEFAULT.annotation());
+            if (!result.contains(BuiltinQualifier.ANY.annotation())) result.add(BuiltinQualifier.ANY.annotation());
+        } else if (result.isEmpty()) result.add(BuiltinQualifier.DEFAULT.annotation());
         return List.copyOf(result);
     }
 
@@ -318,21 +318,21 @@ public final class BeanResolver {
 
     private static Selection select(List<BeanRecord> candidates, List<String> requiredQualifiers,
             Map<Integer, Integer> specializedBeans, Map<Integer, String> classNames) {
-        List<String> appliedRules = new ArrayList<>(List.of(
-                "TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING", "SPECIALIZATION",
-                "DEFAULT_BEAN_FALLBACK", "ALTERNATIVE_PRIORITY"));
+        List<ResolutionRule> appliedRules = new ArrayList<>(List.of(
+                ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING, ResolutionRule.SPECIALIZATION,
+                ResolutionRule.DEFAULT_BEAN_FALLBACK, ResolutionRule.ALTERNATIVE_PRIORITY));
         Map<Integer, ResolutionCandidate> evidence = new LinkedHashMap<>();
         List<BeanRecord> qualified = new ArrayList<>();
         for (BeanRecord candidate : candidates) {
             if (qualifiersMatch(requiredQualifiers, candidate.qualifiers())) {
                 qualified.add(candidate);
                 evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
-                        CandidateDisposition.ELIGIBLE, "QUALIFIERS_MATCHED",
-                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING")));
+                        CandidateDisposition.ELIGIBLE, ResolutionReason.QUALIFIERS_MATCHED,
+                        List.of(ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING)));
             } else {
                 evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
-                        CandidateDisposition.EXCLUDED, "QUALIFIER_MISMATCH",
-                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING")));
+                        CandidateDisposition.EXCLUDED, ResolutionReason.QUALIFIER_MISMATCH,
+                        List.of(ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING)));
             }
         }
 
@@ -351,9 +351,9 @@ public final class BeanResolver {
                         .map(Map.Entry::getKey).findFirst().orElse(null);
                 evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
                         specializingBean, CandidateDisposition.EXCLUDED,
-                        "SPECIALIZED_BY",
-                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING",
-                                "SPECIALIZATION")));
+                        ResolutionReason.SPECIALIZED_BY,
+                        List.of(ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING,
+                                ResolutionRule.SPECIALIZATION)));
             } else {
                 active.add(candidate);
             }
@@ -364,9 +364,9 @@ public final class BeanResolver {
             for (BeanRecord candidate : active) {
                 if (!candidate.isDefault()) continue;
                 evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
-                        CandidateDisposition.EXCLUDED, "DEFAULT_BEAN_SUPPRESSED",
-                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING",
-                                "SPECIALIZATION", "DEFAULT_BEAN_FALLBACK")));
+                        CandidateDisposition.EXCLUDED, ResolutionReason.DEFAULT_BEAN_SUPPRESSED,
+                        List.of(ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING,
+                                ResolutionRule.SPECIALIZATION, ResolutionRule.DEFAULT_BEAN_FALLBACK)));
             }
             active = new ArrayList<>(nonDefault);
         } else if (!active.isEmpty() && active.stream().allMatch(BeanRecord::isDefault)) {
@@ -379,10 +379,10 @@ public final class BeanResolver {
                 evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
                         winner ? (winners.size() == 1 ? CandidateDisposition.SELECTED
                                 : CandidateDisposition.ELIGIBLE) : CandidateDisposition.EXCLUDED,
-                        winner ? (winners.size() == 1 ? "DEFAULT_BEAN_FALLBACK_SELECTED"
-                                : "SAME_PRIORITY_DEFAULT_BEAN") : "LOWER_PRIORITY_DEFAULT_BEAN",
-                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING",
-                                "SPECIALIZATION", "DEFAULT_BEAN_FALLBACK")));
+                        winner ? (winners.size() == 1 ? ResolutionReason.DEFAULT_BEAN_FALLBACK_SELECTED
+                                : ResolutionReason.SAME_PRIORITY_DEFAULT_BEAN) : ResolutionReason.LOWER_PRIORITY_DEFAULT_BEAN,
+                        List.of(ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING,
+                                ResolutionRule.SPECIALIZATION, ResolutionRule.DEFAULT_BEAN_FALLBACK)));
             }
             ResolutionTrace trace = trace(evidence, appliedRules);
             return winners.size() == 1
@@ -401,10 +401,10 @@ public final class BeanResolver {
                 evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
                         winner ? (winners.size() == 1 ? CandidateDisposition.SELECTED
                                 : CandidateDisposition.ELIGIBLE) : CandidateDisposition.EXCLUDED,
-                        winner ? (winners.size() == 1 ? "HIGHEST_PRIORITY_ALTERNATIVE"
-                                : "SAME_PRIORITY_ALTERNATIVE") : "LOWER_PRIORITY_OR_NON_ALTERNATIVE",
-                        List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING",
-                                "SPECIALIZATION", "ALTERNATIVE_PRIORITY")));
+                        winner ? (winners.size() == 1 ? ResolutionReason.HIGHEST_PRIORITY_ALTERNATIVE
+                                : ResolutionReason.SAME_PRIORITY_ALTERNATIVE) : ResolutionReason.LOWER_PRIORITY_OR_NON_ALTERNATIVE,
+                        List.of(ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING,
+                                ResolutionRule.SPECIALIZATION, ResolutionRule.ALTERNATIVE_PRIORITY)));
             }
             ResolutionTrace trace = trace(evidence, appliedRules);
             return winners.size() == 1
@@ -419,10 +419,10 @@ public final class BeanResolver {
                             : CandidateDisposition.ELIGIBLE)
                     : CandidateDisposition.EXCLUDED;
             evidence.put(candidate.id(), candidateEvidence(candidate, classNames, disposition,
-                    normalCandidate ? (normal.size() == 1 ? "UNIQUE_ELIGIBLE_CANDIDATE"
-                            : "MULTIPLE_ELIGIBLE_CANDIDATES") : "INACTIVE_ALTERNATIVE",
-                    List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING",
-                            "SPECIALIZATION", "ALTERNATIVE_PRIORITY")));
+                    normalCandidate ? (normal.size() == 1 ? ResolutionReason.UNIQUE_ELIGIBLE_CANDIDATE
+                            : ResolutionReason.MULTIPLE_ELIGIBLE_CANDIDATES) : ResolutionReason.INACTIVE_ALTERNATIVE,
+                    List.of(ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING,
+                            ResolutionRule.SPECIALIZATION, ResolutionRule.ALTERNATIVE_PRIORITY)));
         }
         ResolutionTrace trace = trace(evidence, appliedRules);
         return normal.size() == 1
@@ -432,7 +432,7 @@ public final class BeanResolver {
 
     private static ResolutionCandidate candidateEvidence(BeanRecord bean,
             Map<Integer, String> classNames, CandidateDisposition disposition,
-            String reason, List<String> rules) {
+            ResolutionReason reason, List<ResolutionRule> rules) {
         return candidateEvidence(bean, classNames, null, disposition, reason, rules);
     }
 
@@ -442,16 +442,16 @@ public final class BeanResolver {
 
     private static ResolutionCandidate candidateEvidence(BeanRecord bean,
             Map<Integer, String> classNames, Integer relatedBeanId,
-            CandidateDisposition disposition, String reason, List<String> rules) {
+            CandidateDisposition disposition, ResolutionReason reason, List<ResolutionRule> rules) {
         return new ResolutionCandidate(bean.id(), classNames.get(bean.classId()), relatedBeanId,
                 disposition, reason, rules);
     }
 
     private static ResolutionTrace trace(Map<Integer, ResolutionCandidate> evidence,
-            List<String> appliedRules) {
+            List<ResolutionRule> appliedRules) {
         return new ResolutionTrace(new ArrayList<>(evidence.values()), appliedRules,
-                List.of("RUNTIME_CDI_EXTENSIONS", "CONDITIONAL_BEAN_REGISTRATION",
-                        "PRODUCER_METHOD_SPECIALIZATION"));
+                List.of(ResolutionRule.RUNTIME_CDI_EXTENSIONS, ResolutionRule.CONDITIONAL_BEAN_REGISTRATION,
+                        ResolutionRule.PRODUCER_METHOD_SPECIALIZATION));
     }
 
     private static Map<Integer, Integer> specializedBeans(List<ClassInfo> classes,
@@ -481,10 +481,10 @@ public final class BeanResolver {
             collectSpecializedQualifiers(bean.id(), specializedBeans, byId,
                     inherited, new HashSet<>());
             inherited.addAll(bean.qualifiers());
-            boolean custom = inherited.stream().anyMatch(q -> !q.equals("@Any")
-                    && !q.equals("@Default") && !q.startsWith("@Named"));
-            if (custom) inherited.remove("@Default");
-            inherited.add("@Any");
+            boolean custom = inherited.stream().anyMatch(q -> !q.equals(BuiltinQualifier.ANY.annotation())
+                    && !q.equals(BuiltinQualifier.DEFAULT.annotation()) && !q.startsWith(BuiltinQualifier.NAMED.annotation()));
+            if (custom) inherited.remove(BuiltinQualifier.DEFAULT.annotation());
+            inherited.add(BuiltinQualifier.ANY.annotation());
             BeanRecord updated = new BeanRecord(bean.id(), bean.classId(), bean.kind(),
                     bean.scope(), new ArrayList<>(inherited), bean.stereotypes(),
                     bean.isAlternative(), bean.isDefault(), bean.priority(), bean.profiles(),
@@ -506,7 +506,7 @@ public final class BeanResolver {
     }
 
     private static boolean qualifiersMatch(List<String> required, List<String> available) {
-        for (String q : required) if (!"@Any".equals(q) && !available.contains(q)) return false;
+        for (String q : required) if (!BuiltinQualifier.ANY.annotation().equals(q) && !available.contains(q)) return false;
         return true;
     }
 

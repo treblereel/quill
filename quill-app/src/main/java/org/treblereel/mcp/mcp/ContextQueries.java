@@ -9,14 +9,13 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 
 /** Composes the most useful evidence for understanding or changing a small set of classes. */
 final class ContextQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final int MAX_TARGETS = 10;
     private static final List<String> SYMBOL_FIELDS = List.of(
             "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
             "class", "kind", "superclass", "interfaces", "source", "origin", "lifecycle",
@@ -32,12 +31,9 @@ final class ContextQueries {
     private final TestImpactQueries tests = new TestImpactQueries();
     private final ChangeRiskQueries risks = new ChangeRiskQueries();
 
-    String getContext(Jdbi jdbi, List<String> targets, boolean includeMembers, int limit) {
+    String getContext(ReadQueryContext reader, List<String> targets, boolean includeMembers, int limit) {
         if (targets == null || targets.isEmpty()) {
             return errorResponse("At least one target is required");
-        }
-        if (targets.size() > MAX_TARGETS) {
-            return errorResponse("At most " + MAX_TARGETS + " targets are allowed");
         }
 
         ObjectNode root = JSON.createObjectNode();
@@ -48,7 +44,7 @@ final class ContextQueries {
         int naiveTokens = 0;
 
         for (String target : targets) {
-            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
+            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
             if (lookup.error() != null) {
                 ObjectNode failure = unresolved.addObject();
                 failure.put("target", target == null ? "" : target);
@@ -72,19 +68,19 @@ final class ContextQueries {
             resolution.put("lifecycle", cls.lifecycle());
 
             ObjectNode details = parse(symbols.getSymbolDetails(
-                    jdbi, cls.className(), includeMembers, null, limit, 0));
+                    reader, cls.className(), includeMembers, null, limit, 0));
             ObjectNode symbol = context.putObject("symbol");
             SYMBOL_FIELDS.forEach(field -> copy(details, symbol, field));
             JsonNode metrics = details.get("dependency_metrics");
             if (metrics != null) context.set("coupling", metrics.deepCopy());
 
             ObjectNode usage = parse(usages.findUsages(
-                    jdbi, cls.className(), null, null, limit, 0, false));
+                    reader, cls.className(), null, null, limit, 0, false));
             context.set("usages", compact(usage, List.of(
                     "usage_group_count", "usage_occurrence_count", "usages", "limitations", "coverage", "empty_result", "answer_complete",
                     "showing", "total", "has_more", "next_offset")));
 
-            ObjectNode risk = parse(risks.getRisk(jdbi, cls.className()));
+            ObjectNode risk = parse(risks.getRisk(reader, cls.className()));
             context.set("risk", compact(risk, List.of(
                     "risk_score", "risk_level", "signals", "recommendation")));
         }
@@ -94,12 +90,12 @@ final class ContextQueries {
         root.put("answer_complete", unresolved.isEmpty());
         if (!resolvedNames.isEmpty()) {
             ObjectNode impact = parse(tests.findImpactedTests(
-                    jdbi, resolvedNames, true, 3, limit, 0));
+                    reader, resolvedNames, true, 3, limit, 0));
             root.set("impacted_tests", compact(impact, List.of(
                 "targets", "test_index_coverage", "answer_complete", "limitations", "tests",
                 "showing", "total", "limit", "offset", "has_more", "next_offset")));
         }
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 

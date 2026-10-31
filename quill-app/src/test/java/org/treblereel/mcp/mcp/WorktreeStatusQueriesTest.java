@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -35,8 +37,8 @@ class WorktreeStatusQueriesTest {
             });
             Files.writeString(temp.resolve("src.txt"), "dirty");
 
-            var result = JSON.readTree(new WorktreeStatusQueries()
-                    .getWorktreeStatus(jdbi, temp, "untracked", 10, 0));
+            var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new WorktreeStatusQueries()
+                    .getWorktreeStatus(readScope, temp, "untracked", 10, 0)));
 
             assertEquals("main", result.path("branch").asText());
             assertEquals(commit.getName(), result.path("indexed_commit").asText());

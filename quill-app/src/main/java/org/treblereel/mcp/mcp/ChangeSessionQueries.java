@@ -13,7 +13,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 
 /** Builds a compact, stateless snapshot of the change workflow. */
 final class ChangeSessionQueries {
@@ -28,17 +28,17 @@ final class ChangeSessionQueries {
     private final ChangeVerificationQueries verification = new ChangeVerificationQueries();
     private final WorktreeStatusQueries worktree = new WorktreeStatusQueries();
 
-    String snapshot(Jdbi jdbi, Path projectRoot, List<String> targets,
+    String snapshot(ReadQueryContext reader, Path projectRoot, List<String> targets,
             String change, int limit) {
-        return snapshot(jdbi, projectRoot, targets, change, limit, "full", "all");
+        return snapshot(reader, projectRoot, targets, change, limit, "full", "all");
     }
 
-    String snapshot(Jdbi jdbi, Path projectRoot, List<String> targets,
+    String snapshot(ReadQueryContext reader, Path projectRoot, List<String> targets,
             String change, int limit, String detail) {
-        return snapshot(jdbi, projectRoot, targets, change, limit, detail, "all");
+        return snapshot(reader, projectRoot, targets, change, limit, detail, "all");
     }
 
-    String snapshot(Jdbi jdbi, Path projectRoot, List<String> targets,
+    String snapshot(ReadQueryContext reader, Path projectRoot, List<String> targets,
             String change, int limit, String detail, String view) {
         String normalizedDetail = detail == null ? "summary" : detail.strip().toLowerCase();
         if (!normalizedDetail.equals("summary") && !normalizedDetail.equals("full")) {
@@ -49,21 +49,21 @@ final class ChangeSessionQueries {
             return errorResponse("Invalid view: expected auto, plan, verification, or all");
         }
         if (change == null || change.isBlank()) {
-            return plans.planChange(jdbi, projectRoot, targets, change, limit);
+            return plans.planChange(reader, projectRoot, targets, change, limit);
         }
         ObjectNode changes = parse(worktree.getFreshWorktreeStatus(
-                jdbi, projectRoot, null, limit, 0));
+                reader, projectRoot, null, limit, 0));
         boolean inferred = targets == null || targets.isEmpty();
         List<String> candidates = inferred
                 ? ChangeVerificationQueries.inferredTargets(changes) : List.copyOf(targets);
         boolean inferenceTruncated = inferred && candidates.size() > 10;
-        List<String> effectiveTargets = candidates.stream().limit(10).toList();
+        List<String> effectiveTargets = inferred ? candidates.stream().limit(10).toList() : candidates;
         ObjectNode context = parse(contexts.getContext(
-                jdbi, effectiveTargets, true, limit));
+                reader, effectiveTargets, true, limit));
         if (context.has("error_code")) return context.toString();
-        ObjectNode plan = plans.planFromContext(projectRoot, context, change);
+        ObjectNode plan = plans.planFromContext(reader, projectRoot, context, change);
         ObjectNode verify = parse(verification.verifyChangeWithContext(
-                jdbi, projectRoot, effectiveTargets, limit, context, changes,
+                reader, projectRoot, effectiveTargets, limit, context, changes,
                 inferred, inferenceTruncated));
         if (verify.has("error_code")) return verify.toString();
         List<String> canonicalTargets = canonicalTargets(context);
@@ -130,6 +130,14 @@ final class ChangeSessionQueries {
                     .add("verification.test_evidence.tests")
                     .add("verification_plan.non_quick_compile_commands");
         }
+        if (normalizedDetail.equals("summary")) {
+            ToolResponseSupport.summarizeInventories(result).forEach(omitted::add);
+            var request = result.putObject("full_evidence_request");
+            request.put("tool", "change_session");
+            var arguments = request.putObject("arguments");
+            arguments.set("targets", JSON.valueToTree(effectiveTargets));
+            arguments.put("change", change.strip()).put("limit", limit).put("detail", "full").put("view", "all");
+        }
         return result.toString();
     }
 
@@ -172,7 +180,7 @@ final class ChangeSessionQueries {
         result.set("build", compact(verify.path("build"), List.of(
                 "build_system", "compiled_outputs", "freshness", "status",
                 "verification_scope", "repository_status", "repository_stale_modules",
-                "build_reason", "action_required", "recommended_action")));
+                "build_reason", "reason", "action", "action_required", "recommended_action")));
         ObjectNode diagnostics = compact(verify.path("diagnostics"), List.of(
                 "build_status", "build_tool", "finished_at", "limitations",
                 "showing", "total", "has_more", "recommended_action"));
@@ -184,7 +192,7 @@ final class ChangeSessionQueries {
         }
         result.set("diagnostics", diagnostics);
         result.set("test_evidence", compact(verify.path("test_evidence"), List.of(
-                "test_index_coverage", "answer_complete", "limitations",
+                "test_index_coverage", "reason", "action", "answer_complete", "limitations",
                 "showing", "total", "has_more")));
         return result;
     }
@@ -192,7 +200,7 @@ final class ChangeSessionQueries {
     private static ObjectNode summaryVerificationPlan(JsonNode plan) {
         ObjectNode result = compact(plan, List.of("build_system", "working_directory",
                 "runner", "requested_modules", "modules", "command_modules", "quick_compile_modules",
-                "unresolved_modules", "module_selection_complete", "verification_scope",
+                "unresolved_modules", "module_selection_complete", "active_profiles", "profile_selection_complete", "profiles_by_source_set", "verification_scope",
                 "refresh_index_after_success", "commands_executable"));
         var commands = result.putArray("commands");
         var otherScopes = result.putArray("other_command_scopes");
@@ -231,8 +239,12 @@ final class ChangeSessionQueries {
         receipt.put("review_status", checklist.path("status").asText());
         receipt.put("review_required_count", checklist.path("required_count").asInt());
 
+        boolean previousGeneration = !verify.path("verdict").asText().equals("blocked")
+                && metadata.path("stale_reasons").valueStream()
+                .anyMatch(reason -> reason.asText().equals("previous_generation"));
+        if (previousGeneration) quickCompile = null;
         ObjectNode recommendation = receipt.putObject("recommendation");
-        recommendation.put("scope", "quick_compile");
+        recommendation.put("scope", previousGeneration ? "wait_for_refresh" : "quick_compile");
         recommendation.set("argv", quickCompile == null
                 ? JSON.createArrayNode() : quickCompile.path("argv").deepCopy());
         copy(verify.path("verification_plan"), recommendation, "working_directory");
@@ -407,6 +419,8 @@ final class ChangeSessionQueries {
         if (actions.isEmpty()) directive.putNull("primary_action");
         else {
             ObjectNode primary = actions.get(0).deepCopy();
+            if (primary.path("action").asText().equals("wait_for_refresh"))
+                directive.put("headline", "Wait for the refreshed index generation before verification");
             String evidence = primary.path("evidence").asText();
             if (!evidence.isBlank()) {
                 JsonNode value = evidence.startsWith("plan.")
@@ -487,6 +501,8 @@ final class ChangeSessionQueries {
         String verdict = verification.path("verdict").asText();
         if (verdict.equals("ready")) return "complete";
         if (verdict.equals("blocked")) return "blocked";
+        if (verification.path("_meta").path("stale_reasons").valueStream()
+                .anyMatch(reason -> reason.asText().equals("previous_generation"))) return "verification_required";
         if (!verification.path("worktree").path("structural_dirty").asBoolean()) return "planned";
         for (JsonNode blocker : verification.path("blockers")) {
             if (REVIEW_REASONS.contains(blocker.path("code").asText())) {

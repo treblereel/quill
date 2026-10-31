@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.IndexFixture;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
@@ -88,8 +90,12 @@ class SpringQuillToolsTest {
                 new DependencyRecord(6, 5, "SPRING_INJECT", 4)
         );
 
-        IndexWriter.write(jdbi, classes, beans, ips, deps,
-                Map.of("indexed_at", "2026-09-01T10:00:00", "last_commit", "def5678"));
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(classes)
+                .beans(beans)
+                .injectionPoints(ips)
+                .dependencies(deps)
+                .metadata(Map.of("indexed_at", "2026-09-01T10:00:00", "last_commit", "def5678")).snapshot());
     }
 
     @Test

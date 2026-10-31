@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,7 +25,7 @@ class ApiCompatibilityQueriesTest {
         db.useHandle(h->h.createUpdate("INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations) VALUES (1,:kind,:name,:signature,:descriptor,'int','[]',:flags,'[]')")
                 .bind("kind",kind).bind("name",name).bind("signature",name+descriptor).bind("descriptor",descriptor).bind("flags",flags).execute());
     }
-    JsonNode result() {return ApiCompatibilityQueries.compare(before,after,20);}
+    JsonNode result() {return ReadQueryContext.<com.fasterxml.jackson.databind.node.ObjectNode>readWithGraph(before, readScope -> ReadQueryContext.<com.fasterxml.jackson.databind.node.ObjectNode>readWithGraph(after, otherReadScope -> ApiCompatibilityQueries.compare(readScope, otherReadScope, 20)));}
     List<String> reasons(JsonNode node) {List<String> values=new ArrayList<>();node.path("findings").forEach(f->values.add(f.path("reason").asText()));return values;}
     JsonNode finding(String reason) {for(JsonNode f:result().path("findings"))if(f.path("reason").asText().equals(reason))return f;throw new AssertionError(result().toString());}
     void kotlin(Jdbi db,String kind,String name,String jvmName,String descriptor,String parameters,
@@ -198,9 +200,9 @@ class ApiCompatibilityQueriesTest {
     @Test void countsRemainCompleteWhenDetailsAndConsumersAreTruncatedAndOrderIsStable() {
         member(before,"METHOD","a","()V","public");member(before,"METHOD","b","()V","public");
         for(int i=0;i<3;i++){int caller=owner(before,"p.Caller"+i,"main");before.useHandle(h->h.createUpdate("INSERT INTO method_calls(from_class_id,from_method,from_descriptor,to_class_id,to_method,to_descriptor,invocation_kind) VALUES (:caller,'invoke','()V',1,'a','()V','INVOKESTATIC')").bind("caller",caller).execute());}
-        JsonNode report=ApiCompatibilityQueries.compare(before,after,1);assertTrue(report.path("truncated").asBoolean());assertTrue(report.path("finding_count").asInt()>1);
+        JsonNode report=ReadQueryContext.<com.fasterxml.jackson.databind.node.ObjectNode>readWithGraph(before, readScope -> ReadQueryContext.<com.fasterxml.jackson.databind.node.ObjectNode>readWithGraph(after, otherReadScope -> ApiCompatibilityQueries.compare(readScope, otherReadScope, 1)));assertTrue(report.path("truncated").asBoolean());assertTrue(report.path("finding_count").asInt()>1);
         JsonNode impact=report.path("findings").get(0).path("baseline_impact");assertEquals(3,impact.path("consumer_count").asInt());assertEquals(1,impact.path("consumers").size());assertTrue(impact.path("consumers_truncated").asBoolean());
-        assertEquals(report,ApiCompatibilityQueries.compare(before,after,1));
+        assertEquals(report,ReadQueryContext.<com.fasterxml.jackson.databind.node.ObjectNode>readWithGraph(before, readScope -> ReadQueryContext.<com.fasterxml.jackson.databind.node.ObjectNode>readWithGraph(after, otherReadScope -> ApiCompatibilityQueries.compare(readScope, otherReadScope, 1))));
     }
     @Test void classKindAndHierarchyChangesAreIndependentOfMemberChanges() {
         after.useHandle(h->h.execute("UPDATE classes SET kind='INTERFACE',superclass=NULL,interfaces='[\"p.Marker\"]'"));

@@ -20,6 +20,23 @@ class PicocliNativeMetadataTest {
                     + "quill-app/reflect-config.json";
 
     @Test
+    void databaseSchemaAndCacheConfigurationAreIncludedForNativeImages() throws Exception {
+        ClassLoader loader = getClass().getClassLoader();
+        try (var resources = loader.getResourceAsStream(
+                "META-INF/native-image/org.treblereel.mcp/quill-app/resource-config.json")) {
+            assertNotNull(resources);
+            var patterns = JSON.readTree(resources).path("resources").path("includes");
+            for (String name : Set.of("org/treblereel/mcp/db/schema.sql", "org/treblereel/mcp/db/indexes.sql", "org/treblereel/mcp/db/GitRepository/findHotspots.sql", "org/treblereel/mcp/db/SymbolRepository/searchSymbols.sql", "org/treblereel/mcp/db/UsageRepository/findExactMethodUsages.sql")) {
+                assertNotNull(loader.getResource(name));
+                boolean included = false;
+                for (var pattern : patterns) included |= name.matches(pattern.path("pattern").asText());
+                assertTrue(included, name);
+            }
+        }
+
+    }
+
+    @Test
     void annotationProcessorGeneratesMetadataForEveryCommand() throws Exception {
         JsonNode commands;
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(GENERATED_CONFIG)) {

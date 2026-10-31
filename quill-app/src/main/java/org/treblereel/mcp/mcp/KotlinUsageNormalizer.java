@@ -4,10 +4,10 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.objectweb.asm.Type;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.IndexReader.MethodCallView;
+import org.treblereel.mcp.db.UsageRepository;
+import org.treblereel.mcp.db.UsageRepository.MethodCallView;
 
 /** Expands compiler forwarding edges, retaining the bytecode path as evidence. */
 final class KotlinUsageNormalizer {
@@ -18,56 +18,56 @@ final class KotlinUsageNormalizer {
     record SourceMember(String className, String method, String descriptor, String sourceFile) {}
 
     /** Returns a source declaration only after every edge has compiler-forwarding evidence. */
-    static java.util.Optional<SourceMember> sourceTarget(Jdbi jdbi, int owner, String method, String descriptor) {
+    static java.util.Optional<SourceMember> sourceTarget(ReadQueryContext reader, int owner, String method, String descriptor) {
         Set<String> visited = new HashSet<>();
         for (int depth = 0; depth < 32; depth++) {
             if (!visited.add(owner + "|" + method + "|" + descriptor)) break;
             final String name = method, desc = descriptor;
-            boolean declared = IndexReader.findKotlinDeclarations(jdbi, owner).stream().anyMatch(value ->
+            boolean declared = reader.symbols.findKotlinDeclarations(owner).stream().anyMatch(value ->
                     ("FUNCTION".equals(value.kind()) || "CONSTRUCTOR".equals(value.kind()))
                     && name.equals(value.jvmName()) && desc.equals(value.descriptor()));
             if (declared) {
                 if (depth == 0) return java.util.Optional.empty();
-                var cls = IndexReader.findClassById(jdbi, owner);
+                var cls = reader.symbols.findClassById(owner);
                 return cls.map(value -> new SourceMember(value.className(), name, desc, value.sourceFile()));
             }
-            var calls = IndexReader.findAdjacentMethodCalls(jdbi, owner, method, descriptor, "outbound");
-            if (calls.size() != 1 || calls.getFirst().occurrenceCount() != 1 || !forwarder(jdbi, calls.getFirst())) break;
+            var calls = reader.usages.findAdjacentMethodCalls(owner, method, descriptor, "outbound", reader.methods().symbolicOwners(owner, method, descriptor, "outbound"));
+            if (calls.size() != 1 || calls.getFirst().occurrenceCount() != 1 || !forwarder(reader, calls.getFirst())) break;
             var call = calls.getFirst();
             owner = call.toClassId(); method = call.toMethod(); descriptor = call.toDescriptor();
         }
         return java.util.Optional.empty();
     }
 
-    static Result inbound(Jdbi jdbi, int owner, String method, String descriptor) {
+    static Result inbound(ReadQueryContext reader, int owner, String method, String descriptor) {
         var result = new ArrayList<Usage>();
         boolean[] truncated = {false};
         int[] visited = {0};
-        expand(jdbi, owner, method, descriptor, List.of(), new HashSet<>(), result, truncated, visited);
+        expand(reader, owner, method, descriptor, List.of(), new HashSet<>(), result, truncated, visited);
         return new Result(List.copyOf(result), truncated[0]);
     }
 
-    private static void expand(Jdbi jdbi, int owner, String method, String descriptor,
+    private static void expand(ReadQueryContext reader, int owner, String method, String descriptor,
             List<MethodCallView> suffix, Set<String> active, List<Usage> result,
             boolean[] truncated, int[] visited) {
         String key = owner + "|" + method + "|" + descriptor;
         if (!active.add(key)) { truncated[0] = true; return; }
         if (active.size() > 32) { truncated[0] = true; active.remove(key); return; }
-        for (var call : IndexReader.findAdjacentMethodCalls(jdbi, owner, method, descriptor, "inbound")) {
+        for (var call : reader.usages.findAdjacentMethodCalls(owner, method, descriptor, "inbound", reader.methods().symbolicOwners(owner, method, descriptor, "inbound"))) {
             if (++visited[0] > CAP) { truncated[0] = true; break; }
             var path = new ArrayList<MethodCallView>();
             path.add(call); path.addAll(suffix);
-            if (forwarder(jdbi, call)) {
-                expand(jdbi, call.fromClassId(), call.fromMethod(), call.fromDescriptor(),
+            if (forwarder(reader, call)) {
+                expand(reader, call.fromClassId(), call.fromMethod(), call.fromDescriptor(),
                         path, active, result, truncated, visited);
             } else result.add(new Usage(call, List.copyOf(path)));
         }
         active.remove(key);
     }
 
-    private static boolean forwarder(Jdbi jdbi, MethodCallView call) {
-        var source = IndexReader.findKotlinDeclarations(jdbi, call.fromClassId());
-        var target = IndexReader.findKotlinDeclarations(jdbi, call.toClassId());
+    private static boolean forwarder(ReadQueryContext reader, MethodCallView call) {
+        var source = reader.symbols.findKotlinDeclarations(call.fromClassId());
+        var target = reader.symbols.findKotlinDeclarations(call.toClassId());
         if (source.isEmpty() || target.isEmpty()) return false;
         // A real source function must never be collapsed just because it forwards a call.
         if (source.stream().anyMatch(value -> ("FUNCTION".equals(value.kind()) || "PROPERTY".equals(value.kind()) || "CONSTRUCTOR".equals(value.kind()))
@@ -75,7 +75,7 @@ final class KotlinUsageNormalizer {
                 && call.fromDescriptor().equals(value.descriptor()))) return false;
         if (call.toMethod().equals(call.fromMethod() + "$default")
                 && (call.fromClassId() == call.toClassId() || call.toClass().equals(call.fromClass() + "$Companion"))) {
-            boolean overload = IndexReader.findClassMembers(jdbi, call.fromClassId()).stream()
+            boolean overload = reader.symbols.findClassMembers(call.fromClassId()).stream()
                     .anyMatch(member -> call.fromMethod().equals(member.name())
                             && call.fromDescriptor().equals(member.descriptor())
                             && member.annotations().stream().anyMatch(annotation -> annotation.equals("kotlin.jvm.JvmOverloads")
@@ -83,8 +83,7 @@ final class KotlinUsageNormalizer {
             boolean declaredDefault = target.stream().anyMatch(value -> "FUNCTION".equals(value.kind())
                     && call.fromMethod().equals(value.jvmName()) && value.hasDefaultParameters());
             if (overload && declaredDefault) {
-                return IndexReader.findAdjacentMethodCalls(jdbi, call.fromClassId(),
-                        call.fromMethod(), call.fromDescriptor(), "outbound").size() == 1;
+                return reader.usages.findAdjacentMethodCalls(call.fromClassId(), call.fromMethod(), call.fromDescriptor(), "outbound", reader.methods().symbolicOwners(call.fromClassId(), call.fromMethod(), call.fromDescriptor(), "outbound")).size() == 1;
             }
         }
         boolean constructor = "<init>".equals(call.toMethod());
@@ -94,7 +93,7 @@ final class KotlinUsageNormalizer {
         boolean targetOverload = declaration.isEmpty()
                 && target.stream().anyMatch(value -> "FUNCTION".equals(value.kind())
                     && call.toMethod().equals(value.jvmName()) && value.hasDefaultParameters())
-                && IndexReader.findClassMembers(jdbi, call.toClassId()).stream().anyMatch(member ->
+                && reader.symbols.findClassMembers(call.toClassId()).stream().anyMatch(member ->
                     call.toMethod().equals(member.name()) && call.toDescriptor().equals(member.descriptor())
                         && member.annotations().stream().anyMatch(annotation ->
                             annotation.equals("kotlin.jvm.JvmOverloads") || annotation.equals("@JvmOverloads")));
@@ -105,11 +104,10 @@ final class KotlinUsageNormalizer {
         if (constructor && sameOwner && "<init>".equals(call.fromMethod())
                 && to.length > 0 && to[to.length - 1].getDescriptor().equals("Lkotlin/jvm/internal/DefaultConstructorMarker;")
                 && target.stream().anyMatch(value -> "CONSTRUCTOR".equals(value.kind()) && value.hasDefaultParameters())) {
-            boolean overload = IndexReader.findClassMembers(jdbi, call.fromClassId()).stream().anyMatch(member ->
+            boolean overload = reader.symbols.findClassMembers(call.fromClassId()).stream().anyMatch(member ->
                     "CONSTRUCTOR".equals(member.kind()) && call.fromDescriptor().equals(member.descriptor())
                     && member.annotations().contains("kotlin.jvm.JvmOverloads"));
-            return overload && call.occurrenceCount() == 1 && IndexReader.findAdjacentMethodCalls(jdbi,
-                    call.fromClassId(), call.fromMethod(), call.fromDescriptor(), "outbound").size() == 1;
+            return overload && call.occurrenceCount() == 1 && reader.usages.findAdjacentMethodCalls(call.fromClassId(), call.fromMethod(), call.fromDescriptor(), "outbound", reader.methods().symbolicOwners(call.fromClassId(), call.fromMethod(), call.fromDescriptor(), "outbound")).size() == 1;
         }
         if (sameOwner && (call.fromMethod().equals(call.toMethod() + "$default")
                 || constructor && call.fromMethod().equals("<init>"))) {
@@ -134,15 +132,14 @@ final class KotlinUsageNormalizer {
         }
         if (!call.fromMethod().equals(call.toMethod())) return false;
         if (sameOwner && !call.fromDescriptor().equals(call.toDescriptor())) {
-            var physical = IndexReader.findClassMembers(jdbi, call.fromClassId()).stream()
+            var physical = reader.symbols.findClassMembers(call.fromClassId()).stream()
                     .filter(member -> call.fromMethod().equals(member.name())
                             && call.fromDescriptor().equals(member.descriptor())).findFirst();
             boolean overload = physical.isPresent() && physical.get().annotations().stream()
                     .anyMatch(annotation -> annotation.equals("kotlin.jvm.JvmOverloads") || annotation.equals("@JvmOverloads"));
             boolean hiddenBridge = physical.isEmpty() && from.length == to.length;
             if (overload || hiddenBridge) {
-                var outgoing = IndexReader.findAdjacentMethodCalls(jdbi, call.fromClassId(),
-                        call.fromMethod(), call.fromDescriptor(), "outbound");
+                var outgoing = reader.usages.findAdjacentMethodCalls(call.fromClassId(), call.fromMethod(), call.fromDescriptor(), "outbound", reader.methods().symbolicOwners(call.fromClassId(), call.fromMethod(), call.fromDescriptor(), "outbound"));
                 return outgoing.size() == 1 && call.occurrenceCount() == 1;
             }
         }
@@ -152,8 +149,7 @@ final class KotlinUsageNormalizer {
         boolean companion = call.toClass().equals(call.fromClass() + "$Companion")
                 && target.stream().anyMatch(value -> "COMPANION_OBJECT".equals(value.kind()));
         if ((multifile || companion) && call.fromDescriptor().equals(call.toDescriptor())) {
-            var outgoing = IndexReader.findAdjacentMethodCalls(jdbi, call.fromClassId(),
-                    call.fromMethod(), call.fromDescriptor(), "outbound");
+            var outgoing = reader.usages.findAdjacentMethodCalls(call.fromClassId(), call.fromMethod(), call.fromDescriptor(), "outbound", reader.methods().symbolicOwners(call.fromClassId(), call.fromMethod(), call.fromDescriptor(), "outbound"));
             return outgoing.size() == 1 && call.occurrenceCount() == 1;
         }
         return false;

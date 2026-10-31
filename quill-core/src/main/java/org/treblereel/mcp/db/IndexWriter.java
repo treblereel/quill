@@ -10,24 +10,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.ConfigurationScanner;
-import org.treblereel.mcp.core.ExternalBeanScanner;
 import org.treblereel.mcp.model.*;
 
 public final class IndexWriter {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final ConfigurationScanner.Result EMPTY_CONFIGURATION =
-            new ConfigurationScanner.Result(List.of(), List.of());
-    private static final String[] ALL_TABLES = {
-            "git_commit_files", "git_commits", "git_file_stats",
-            "class_external_deps", "external_beans", "cdi_problems",
-            "resource_usages", "configuration_usages", "configuration_definitions",
-            "dependencies", "field_accesses", "method_calls", "injection_points", "beans", "class_members",
-            "class_annotations", "jvm_api",
-            "class_occurrences", "module_classpath", "kotlin_declarations", "kotlin_source_debug", "classes",
-            "files", "metadata"
-    };
-
     private IndexWriter() {}
 
     public record WriteTimings(
@@ -45,6 +32,13 @@ public final class IndexWriter {
         String desiredName() {
             return "desired_" + name;
         }
+
+        String insertSql(boolean desired) {
+            return "INSERT INTO " + (desired ? desiredName() : name) + " ("
+                    + String.join(", ", columns) + ") VALUES ("
+                    + String.join(", ", java.util.Collections.nCopies(columns.size(), "?")) + ")";
+        }
+
     }
 
     private static final TableSpec FILES = new TableSpec("files",
@@ -66,7 +60,9 @@ public final class IndexWriter {
     private static final TableSpec METHOD_CALLS = new TableSpec("method_calls",
             "from_class_id", "from_method", "from_descriptor", "to_class_id",
             "to_method", "to_descriptor", "invocation_kind", "occurrence_count",
-            "evidence_lines", "instruction_ordinals", "caller_branch_count",
+            "evidence_lines", "instruction_ordinals");
+    private static final TableSpec METHOD_EVIDENCE = new TableSpec("method_evidence",
+            "from_class_id", "from_method", "from_descriptor", "caller_branch_count",
             "caller_exception_handler_count", "caller_control_flow_edges",
             "caller_async_boundaries", "caller_external_calls");
     private static final TableSpec FIELD_ACCESSES = new TableSpec("field_accesses",
@@ -106,141 +102,53 @@ public final class IndexWriter {
             "id", "hash", "short_hash", "author", "author_email", "committed_at", "message");
     private static final TableSpec COMMIT_FILES = new TableSpec("git_commit_files",
             "commit_id", "class_id", "file_path", "change_type");
+    private static final TableSpec MODULE_CLASSPATH = new TableSpec("module_classpath",
+            "application_module", "visible_module", "distance", "relation");
+    private static final TableSpec KOTLIN_DEBUG = new TableSpec("kotlin_source_debug", "class_id", "data");
+    private static final TableSpec KOTLIN_DECLARATIONS = new TableSpec("kotlin_declarations",
+            "class_id", "kind", "name", "jvm_name", "descriptor", "semantic_model", "is_suspend",
+            "is_extension", "has_default_parameters", "is_mutable", "is_lateinit", "is_delegated",
+            "is_synthetic", "value_parameters", "declaration_types");
+    private static final TableSpec EXTERNAL_BEANS = new TableSpec("external_beans",
+            "id", "class_name", "kind", "scope", "qualifiers", "stereotypes", "is_alternative",
+            "is_default", "priority", "profiles", "member_name", "bean_types", "framework",
+            "artifact", "jar_path", "injection_points");
     private static final List<TableSpec> INSERT_ORDER = List.of(
             FILES, CLASSES, CLASS_OCCURRENCES, CLASS_ANNOTATIONS, CLASS_MEMBERS, JVM_API,
-            METHOD_CALLS, FIELD_ACCESSES, CONFIGURATION_DEFINITIONS, CONFIGURATION_USAGES,
+            METHOD_EVIDENCE, METHOD_CALLS, FIELD_ACCESSES, CONFIGURATION_DEFINITIONS, CONFIGURATION_USAGES,
             RESOURCE_USAGES, BEANS,
             INJECTION_POINTS, DEPENDENCIES, METADATA,
-            EXTERNAL_DEPS, PROBLEMS, FILE_STATS, COMMITS, COMMIT_FILES);
+            EXTERNAL_DEPS, PROBLEMS, FILE_STATS, COMMITS, COMMIT_FILES,
+            MODULE_CLASSPATH, KOTLIN_DEBUG, KOTLIN_DECLARATIONS, EXTERNAL_BEANS);
     private static final List<TableSpec> DELETE_ORDER = List.of(
             COMMIT_FILES, FILE_STATS, EXTERNAL_DEPS, PROBLEMS, DEPENDENCIES,
             RESOURCE_USAGES, CONFIGURATION_USAGES, CONFIGURATION_DEFINITIONS,
-            FIELD_ACCESSES, METHOD_CALLS,
+            FIELD_ACCESSES, METHOD_CALLS, METHOD_EVIDENCE,
             INJECTION_POINTS, BEANS, COMMITS, JVM_API, CLASS_MEMBERS, CLASS_ANNOTATIONS, CLASS_OCCURRENCES,
+            KOTLIN_DEBUG, KOTLIN_DECLARATIONS, MODULE_CLASSPATH, EXTERNAL_BEANS,
             CLASSES, FILES, METADATA);
 
-    public static void writeAll(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files) {
-        writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, List.of(),
-                List.of(), List.of(), List.of(), false);
-    }
-
-    public static WriteTimings writeFresh(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files) {
-        return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, List.of(),
-                List.of(), List.of(), List.of(), true);
-    }
-
-    public static WriteTimings writeFresh(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences) {
-        return writeFresh(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                List.of());
-    }
-
-    public static WriteTimings writeFresh(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations) {
-        return writeFresh(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, List.of());
-    }
-
-    public static WriteTimings writeFresh(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members) {
-        return writeFresh(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, members, List.of());
-    }
-
-    public static WriteTimings writeFresh(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members,
-            List<MethodCallRecord> methodCalls) {
-        return writeFresh(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, members, methodCalls, List.of());
-    }
-
-    public static WriteTimings writeFresh(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members,
-            List<MethodCallRecord> methodCalls,
-            List<FieldAccessRecord> fieldAccesses) {
-        return writeFreshWithConfiguration(jdbi, classes, beans, injectionPoints, dependencies,
-                metadata, externalDeps, problems, fileStats, commits, commitFiles, files,
-                occurrences, annotations, members, methodCalls, fieldAccesses,
-                EMPTY_CONFIGURATION, List.of());
-    }
-
-    public static WriteTimings writeFreshWithConfiguration(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members,
-            List<MethodCallRecord> methodCalls,
-            List<FieldAccessRecord> fieldAccesses,
-            ConfigurationScanner.Result configuration,
-            List<ResourceUsageRecord> resourceUsages) {
-        return writeFresh(jdbi, new IndexSnapshot(classes, beans, injectionPoints, dependencies,
-                metadata, externalDeps, problems, fileStats, commits, commitFiles, files,
-                occurrences, annotations, members, methodCalls, fieldAccesses, configuration,
-                resourceUsages));
-    }
-
+    /** Writes and compacts a new disposable staging database before publication validation. */
     public static WriteTimings writeFresh(Jdbi jdbi, IndexSnapshot snapshot) {
-        return writeAll(jdbi, snapshot, true);
+        long transactionStartedAt = System.nanoTime();
+        long[] insertsNanos = new long[1];
+        long[] indexesNanos = new long[1];
+        try (Handle handle = jdbi.open()) {
+            handle.useTransaction(h -> {
+                long insertsStartedAt = System.nanoTime();
+                populateTables(h, snapshot, false);
+                insertsNanos[0] = System.nanoTime() - insertsStartedAt;
+                long indexesStartedAt = System.nanoTime();
+                IndexSchema.createIndexes(h);
+                indexesNanos[0] = System.nanoTime() - indexesStartedAt;
+            });
+            // VACUUM cannot run in a transaction and never belongs on the incremental path.
+            handle.execute("VACUUM");
+        }
+        long totalNanos = System.nanoTime() - transactionStartedAt;
+        long overheadNanos = Math.max(0, totalNanos - insertsNanos[0] - indexesNanos[0]);
+        return new WriteTimings(toMillis(insertsNanos[0]), toMillis(indexesNanos[0]),
+                toMillis(overheadNanos));
     }
 
     /**
@@ -248,123 +156,16 @@ public final class IndexWriter {
      * persisted value changed. Secondary indexes are retained and therefore updated only for the
      * actual delta. The caller must supply a disposable staging database, never the active index.
      */
-    public static IncrementalWriteTimings writeIncremental(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files) {
-        return writeIncremental(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, List.of());
-    }
-
-    public static IncrementalWriteTimings writeIncremental(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences) {
-        return writeIncremental(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                List.of());
-    }
-
-    public static IncrementalWriteTimings writeIncremental(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations) {
-        return writeIncremental(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, List.of());
-    }
-
-    public static IncrementalWriteTimings writeIncremental(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members) {
-        return writeIncremental(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, members, List.of());
-    }
-
-    public static IncrementalWriteTimings writeIncremental(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members,
-            List<MethodCallRecord> methodCalls) {
-        return writeIncremental(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, members, methodCalls, List.of());
-    }
-
-    public static IncrementalWriteTimings writeIncremental(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members,
-            List<MethodCallRecord> methodCalls,
-            List<FieldAccessRecord> fieldAccesses) {
-        return writeIncrementalWithConfiguration(jdbi, classes, beans, injectionPoints,
-                dependencies, metadata, externalDeps, problems, fileStats, commits, commitFiles,
-                files, occurrences, annotations, members, methodCalls, fieldAccesses,
-                EMPTY_CONFIGURATION, List.of());
-    }
-
-    public static IncrementalWriteTimings writeIncrementalWithConfiguration(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members,
-            List<MethodCallRecord> methodCalls,
-            List<FieldAccessRecord> fieldAccesses,
-            ConfigurationScanner.Result configuration,
-            List<ResourceUsageRecord> resourceUsages) {
-        return writeIncremental(jdbi, new IndexSnapshot(classes, beans, injectionPoints,
-                dependencies, metadata, externalDeps, problems, fileStats, commits, commitFiles,
-                files, occurrences, annotations, members, methodCalls, fieldAccesses,
-                configuration, resourceUsages));
-    }
-
     public static IncrementalWriteTimings writeIncremental(Jdbi jdbi, IndexSnapshot snapshot) {
         long startedAt = System.nanoTime();
         long[] deltaNanos = new long[1];
         long[] counts = new long[3];
-        jdbi.useHandle(h -> {
+        try (Handle h = jdbi.open()) {
             h.execute("PRAGMA foreign_keys=OFF");
             try {
                 h.useTransaction(tx -> {
                     createDesiredTables(tx);
-                    populateDesiredTables(tx, snapshot);
+                    populateTables(tx, snapshot, true);
                     createDesiredIndexes(tx);
                     long deltaStartedAt = System.nanoTime();
                     for (TableSpec table : DELETE_ORDER) {
@@ -386,7 +187,7 @@ public final class IndexWriter {
             } finally {
                 h.execute("PRAGMA foreign_keys=ON");
             }
-        });
+        }
         long totalNanos = System.nanoTime() - startedAt;
         return new IncrementalWriteTimings(toMillis(deltaNanos[0]),
                 toMillis(Math.max(0, totalNanos - deltaNanos[0])),
@@ -401,27 +202,31 @@ public final class IndexWriter {
         }
     }
 
-    private static void populateDesiredTables(Handle h, IndexSnapshot snapshot) {
-        insertDesiredFiles(h, snapshot.files());
-        insertDesiredClasses(h, snapshot.classes());
-        insertDesiredClassOccurrences(h, snapshot.classOccurrences());
-        insertDesiredClassAnnotations(h, snapshot.classAnnotations());
-        insertDesiredClassMembers(h, snapshot.classMembers());
-        insertJvmApi(h,"desired_jvm_api",snapshot.jvmApi());
-        insertDesiredMethodCalls(h, snapshot.methodCalls());
-        insertDesiredFieldAccesses(h, snapshot.fieldAccesses());
-        insertDesiredConfigurationDefinitions(h, snapshot.configuration().definitions());
-        insertDesiredConfigurationUsages(h, snapshot.configuration().usages());
-        insertDesiredResourceUsages(h, snapshot.resourceUsages());
-        insertDesiredBeans(h, snapshot.beans());
-        insertDesiredInjectionPoints(h, snapshot.injectionPoints());
-        insertDesiredDependencies(h, snapshot.dependencies());
-        insertDesiredMetadata(h, snapshot.metadata());
-        insertDesiredExternalDeps(h, snapshot.externalDependencies());
-        insertDesiredProblems(h, snapshot.problems());
-        insertDesiredFileStats(h, snapshot.gitFileStats());
-        insertDesiredCommits(h, snapshot.gitCommits());
-        insertDesiredCommitFiles(h, snapshot.gitCommitFiles());
+    private static void populateTables(Handle h, IndexSnapshot snapshot, boolean desired) {
+        insertFiles(h, desired, snapshot.files());
+        insertClasses(h, desired, snapshot.classes());
+        insertClassOccurrences(h, desired, snapshot.classOccurrences());
+        insertClassAnnotations(h, desired, snapshot.classAnnotations());
+        insertClassMembers(h, desired, snapshot.classMembers());
+        insertJvmApi(h, desired, snapshot.jvmApi());
+        insertMethodCalls(h, desired, snapshot.methodCalls());
+        insertFieldAccesses(h, desired, snapshot.fieldAccesses());
+        insertConfigurationDefinitions(h, desired, snapshot.configuration().definitions());
+        insertConfigurationUsages(h, desired, snapshot.configuration().usages());
+        insertResourceUsages(h, desired, snapshot.resourceUsages());
+        insertBeans(h, desired, snapshot.beans());
+        insertInjectionPoints(h, desired, snapshot.injectionPoints());
+        insertDependencies(h, desired, snapshot.dependencies());
+        insertMetadata(h, desired, snapshot.metadata());
+        insertExternalDeps(h, desired, snapshot.externalDependencies());
+        insertProblems(h, desired, snapshot.problems());
+        insertFileStats(h, desired, snapshot.gitFileStats());
+        insertCommits(h, desired, snapshot.gitCommits());
+        insertCommitFiles(h, desired, snapshot.gitCommitFiles());
+        insertModuleClasspath(h, desired, snapshot.moduleClasspath());
+        insertKotlinSourceDebug(h, desired, snapshot.kotlinSourceDebug());
+        insertKotlinDeclarations(h, desired, snapshot.kotlinDeclarations());
+        insertExternalBeans(h, desired, snapshot.externalBeans());
     }
 
     private static void createDesiredIndexes(Handle h) {
@@ -457,9 +262,9 @@ public final class IndexWriter {
         return h.createQuery("SELECT count(*) FROM " + table).mapTo(Long.class).one();
     }
 
-    private static void insertDesiredFiles(Handle h, List<FileRecord> files) {
+    private static void insertFiles(Handle h, boolean desired, List<FileRecord> files) {
         executeBatch(h,
-                "INSERT INTO desired_files (id, project_path, repository_path, kind, origin, lifecycle, worktree_status, module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                FILES.insertSql(desired),
                 files, (statement, file) -> {
                     statement.setInt(1, file.id());
                     statement.setString(2, file.projectPath());
@@ -473,12 +278,11 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredClasses(Handle h, List<ClassRecord> classes) {
-        try (PreparedStatement statement = h.getConnection().prepareStatement(
-                "INSERT INTO desired_classes (id, class_name, kind, superclass, interfaces, source_file, source_line, is_bean, source_tokens, file_id, origin, lifecycle, module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+    private static void insertClasses(Handle h, boolean desired, List<ClassRecord> classes) {
+        try (PreparedStatement statement = h.getConnection().prepareStatement(CLASSES.insertSql(desired))) {
             for (int i = 0; i < classes.size(); i++) {
                 ClassRecord c = classes.get(i);
-                statement.setInt(1, i + 1);
+                statement.setInt(1, c.id());
                 statement.setString(2, c.className());
                 statement.setString(3, c.kind());
                 statement.setString(4, c.superclass());
@@ -500,10 +304,9 @@ public final class IndexWriter {
         }
     }
 
-    private static void insertDesiredClassOccurrences(
-            Handle h, List<ClassOccurrenceRecord> occurrences) {
+    private static void insertClassOccurrences(Handle h, boolean desired, List<ClassOccurrenceRecord> occurrences) {
         executeBatch(h,
-                "INSERT INTO desired_class_occurrences (id, class_id, class_name, module, source_set, output_directory, class_file, source_file, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                CLASS_OCCURRENCES.insertSql(desired),
                 occurrences, (statement, occurrence) -> {
                     statement.setInt(1, occurrence.id());
                     statement.setInt(2, occurrence.classId());
@@ -517,10 +320,9 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredClassAnnotations(
-            Handle h, List<ClassAnnotationRecord> annotations) {
+    private static void insertClassAnnotations(Handle h, boolean desired, List<ClassAnnotationRecord> annotations) {
         executeBatch(h,
-                "INSERT INTO desired_class_annotations (class_id, annotation_name, direct, via_annotation) VALUES (?, ?, ?, ?)",
+                CLASS_ANNOTATIONS.insertSql(desired),
                 annotations, (statement, annotation) -> {
                     statement.setInt(1, annotation.classId());
                     statement.setString(2, annotation.annotationName());
@@ -529,10 +331,9 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredClassMembers(
-            Handle h, List<ClassMemberRecord> members) {
+    private static void insertClassMembers(Handle h, boolean desired, List<ClassMemberRecord> members) {
         executeBatch(h,
-                "INSERT INTO desired_class_members (class_id, kind, name, signature, descriptor, type_name, parameter_types, modifiers, annotations, annotation_details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                CLASS_MEMBERS.insertSql(desired),
                 members, (statement, member) -> {
                     statement.setInt(1, member.classId());
                     statement.setString(2, member.kind());
@@ -549,10 +350,9 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredMethodCalls(
-            Handle h, List<MethodCallRecord> methodCalls) {
+    private static void insertMethodCalls(Handle h, boolean desired, List<MethodCallRecord> methodCalls) {
         executeBatch(h,
-                "INSERT INTO desired_method_calls (from_class_id, from_method, from_descriptor, to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines, instruction_ordinals, caller_branch_count, caller_exception_handler_count, caller_control_flow_edges, caller_async_boundaries, caller_external_calls) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                METHOD_CALLS.insertSql(desired),
                 methodCalls, (statement, call) -> {
                     statement.setInt(1, call.fromClassId());
                     statement.setString(2, call.fromMethod());
@@ -566,21 +366,38 @@ public final class IndexWriter {
                             ? "[]" : toJson(call.evidenceLines()));
                     statement.setString(10, call.instructionOrdinals().isEmpty()
                             ? "[]" : toJson(call.instructionOrdinals()));
-                    statement.setInt(11, call.callerBranchCount());
-                    statement.setInt(12, call.callerExceptionHandlerCount());
-                    statement.setString(13, call.callerControlFlowEdges().isEmpty()
-                            ? "[]" : toJson(call.callerControlFlowEdges()));
-                    statement.setString(14, call.callerAsyncBoundaries().isEmpty()
-                            ? "[]" : toJson(call.callerAsyncBoundaries()));
-                    statement.setString(15, call.callerExternalCalls().isEmpty()
-                            ? "[]" : toJson(call.callerExternalCalls()));
                 });
+        record CallerMethod(int classId, String name, String descriptor) {}
+        var methods = new java.util.LinkedHashMap<CallerMethod, MethodCallRecord>();
+        for (var call : methodCalls) {
+            var key = new CallerMethod(call.fromClassId(), call.fromMethod(), call.fromDescriptor());
+            var previous = methods.putIfAbsent(key, call);
+            if (previous != null && (previous.callerBranchCount() != call.callerBranchCount()
+                    || previous.callerExceptionHandlerCount() != call.callerExceptionHandlerCount()
+                    || !previous.callerControlFlowEdges().equals(call.callerControlFlowEdges())
+                    || !previous.callerAsyncBoundaries().equals(call.callerAsyncBoundaries())
+                    || !previous.callerExternalCalls().equals(call.callerExternalCalls()))) {
+                throw new IllegalArgumentException("Conflicting method evidence for " + key);
+            }
+        }
+        executeBatch(h, METHOD_EVIDENCE.insertSql(desired), methods.values(), (statement, call) -> {
+            statement.setInt(1, call.fromClassId());
+            statement.setString(2, call.fromMethod());
+            statement.setString(3, call.fromDescriptor());
+            statement.setInt(4, call.callerBranchCount());
+            statement.setInt(5, call.callerExceptionHandlerCount());
+            statement.setString(6, call.callerControlFlowEdges().isEmpty()
+                    ? "[]" : toJson(call.callerControlFlowEdges()));
+            statement.setString(7, call.callerAsyncBoundaries().isEmpty()
+                    ? "[]" : toJson(call.callerAsyncBoundaries()));
+            statement.setString(8, call.callerExternalCalls().isEmpty()
+                    ? "[]" : toJson(call.callerExternalCalls()));
+        });
     }
 
-    private static void insertDesiredFieldAccesses(
-            Handle h, List<FieldAccessRecord> fieldAccesses) {
+    private static void insertFieldAccesses(Handle h, boolean desired, List<FieldAccessRecord> fieldAccesses) {
         executeBatch(h,
-                "INSERT INTO desired_field_accesses (from_class_id, from_method, from_descriptor, to_class_id, field_name, field_descriptor, access_kind, occurrence_count, evidence_lines, instruction_ordinals) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                FIELD_ACCESSES.insertSql(desired),
                 fieldAccesses, (statement, access) -> {
                     statement.setInt(1, access.fromClassId());
                     statement.setString(2, access.fromMethod());
@@ -597,12 +414,11 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredBeans(Handle h, List<BeanRecord> beans) {
-        try (PreparedStatement statement = h.getConnection().prepareStatement(
-                "INSERT INTO desired_beans (id, class_id, kind, scope, qualifiers, stereotypes, is_alternative, is_default, priority, profiles, declaring_class_id, member_name, bean_types) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+    private static void insertBeans(Handle h, boolean desired, List<BeanRecord> beans) {
+        try (PreparedStatement statement = h.getConnection().prepareStatement(BEANS.insertSql(desired))) {
             for (int i = 0; i < beans.size(); i++) {
                 BeanRecord b = beans.get(i);
-                statement.setInt(1, i + 1);
+                statement.setInt(1, b.id());
                 statement.setInt(2, b.classId());
                 statement.setString(3, b.kind());
                 statement.setString(4, b.scope());
@@ -623,13 +439,11 @@ public final class IndexWriter {
         }
     }
 
-    private static void insertDesiredInjectionPoints(
-            Handle h, List<InjectionPointRecord> injectionPoints) {
-        try (PreparedStatement statement = h.getConnection().prepareStatement(
-                "INSERT INTO desired_injection_points (id, bean_id, kind, target_type, qualifiers, field_name, resolved_bean_id, resolution_status, resolution_strategy, resolution_reason, resolution_confidence, limitations, resolution_candidates, applied_rules, unsupported_rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+    private static void insertInjectionPoints(Handle h, boolean desired, List<InjectionPointRecord> injectionPoints) {
+        try (PreparedStatement statement = h.getConnection().prepareStatement(INJECTION_POINTS.insertSql(desired))) {
             for (int i = 0; i < injectionPoints.size(); i++) {
                 InjectionPointRecord ip = injectionPoints.get(i);
-                statement.setInt(1, i + 1);
+                statement.setInt(1, ip.id());
                 statement.setInt(2, ip.beanId());
                 statement.setString(3, ip.kind());
                 statement.setString(4, ip.targetType());
@@ -638,7 +452,7 @@ public final class IndexWriter {
                 statement.setObject(7, ip.resolvedBeanId());
                 statement.setString(8, ip.resolutionStatus().name());
                 statement.setString(9, ip.resolutionStrategy());
-                statement.setString(10, ip.resolutionReason());
+                statement.setString(10, ip.resolutionReason().name());
                 statement.setString(11, ip.resolutionConfidence().name());
                 statement.setString(12, toJson(ip.limitations()));
                 statement.setString(13, toJson(ip.resolutionTrace().candidates()));
@@ -652,9 +466,9 @@ public final class IndexWriter {
         }
     }
 
-    private static void insertDesiredDependencies(Handle h, List<DependencyRecord> dependencies) {
+    private static void insertDependencies(Handle h, boolean desired, List<DependencyRecord> dependencies) {
         executeBatch(h,
-                "INSERT INTO desired_dependencies (from_class_id, to_class_id, kind, injection_point_id, occurrence_count, evidence_lines) VALUES (?, ?, ?, ?, ?, ?)",
+                DEPENDENCIES.insertSql(desired),
                 dependencies, (statement, d) -> {
                     statement.setInt(1, d.fromClassId());
                     statement.setInt(2, d.toClassId());
@@ -666,17 +480,17 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredMetadata(Handle h, Map<String, String> metadata) {
-        executeBatch(h, "INSERT INTO desired_metadata (key, value) VALUES (?, ?)",
+    private static void insertMetadata(Handle h, boolean desired, Map<String, String> metadata) {
+        executeBatch(h, METADATA.insertSql(desired),
                 metadata.entrySet(), (statement, entry) -> {
                     statement.setString(1, entry.getKey());
                     statement.setString(2, entry.getValue());
                 });
     }
 
-    private static void insertDesiredExternalDeps(Handle h, List<ExternalDepRecord> deps) {
+    static void insertExternalDeps(Handle h, boolean desired, List<ExternalDepRecord> deps) {
         executeBatch(h,
-                "INSERT INTO desired_class_external_deps (class_id, external_type, usage_kind) VALUES (?, ?, ?)",
+                EXTERNAL_DEPS.insertSql(desired),
                 deps, (statement, d) -> {
                     statement.setInt(1, d.classId());
                     statement.setString(2, d.externalType());
@@ -684,9 +498,9 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredProblems(Handle h, List<CdiProblem> problems) {
+    static void insertProblems(Handle h, boolean desired, List<CdiProblem> problems) {
         executeBatch(h,
-                "INSERT INTO desired_cdi_problems (class_id, class_name, problem_type, message) VALUES (?, ?, ?, ?)",
+                PROBLEMS.insertSql(desired),
                 problems, (statement, p) -> {
                     statement.setObject(1, p.classId());
                     statement.setString(2, p.className());
@@ -695,9 +509,9 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredFileStats(Handle h, List<GitFileStats> fileStats) {
+    static void insertFileStats(Handle h, boolean desired, List<GitFileStats> fileStats) {
         executeBatch(h,
-                "INSERT INTO desired_git_file_stats (file_path, class_id, commit_count, last_modified, last_author, first_commit, distinct_authors) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                FILE_STATS.insertSql(desired),
                 fileStats, (statement, s) -> {
                     statement.setString(1, s.filePath());
                     statement.setObject(2, s.classId());
@@ -709,9 +523,9 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredCommits(Handle h, List<GitCommitRecord> commits) {
+    static void insertCommits(Handle h, boolean desired, List<GitCommitRecord> commits) {
         executeBatch(h,
-                "INSERT INTO desired_git_commits (id, hash, short_hash, author, author_email, committed_at, message) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                COMMITS.insertSql(desired),
                 commits, (statement, c) -> {
                     statement.setInt(1, c.id());
                     statement.setString(2, c.hash());
@@ -723,9 +537,9 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredCommitFiles(Handle h, List<GitCommitFile> commitFiles) {
+    static void insertCommitFiles(Handle h, boolean desired, List<GitCommitFile> commitFiles) {
         executeBatch(h,
-                "INSERT INTO desired_git_commit_files (commit_id, class_id, file_path, change_type) VALUES (?, ?, ?, ?)",
+                COMMIT_FILES.insertSql(desired),
                 commitFiles, (statement, f) -> {
                     statement.setInt(1, f.commitId());
                     statement.setObject(2, f.classId());
@@ -734,11 +548,9 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredConfigurationDefinitions(
-            Handle h, List<ConfigurationScanner.Definition> definitions) {
+    private static void insertConfigurationDefinitions(Handle h, boolean desired, List<ConfigurationScanner.Definition> definitions) {
         executeBatch(h,
-                "INSERT INTO desired_configuration_definitions "
-                        + "(key, kind, file, line, module, source_set) VALUES (?, ?, ?, ?, ?, ?)",
+                CONFIGURATION_DEFINITIONS.insertSql(desired),
                 definitions, (statement, definition) -> {
                     statement.setString(1, definition.key());
                     statement.setString(2, definition.kind());
@@ -749,13 +561,9 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredConfigurationUsages(
-            Handle h, List<ConfigurationScanner.Usage> usages) {
+    private static void insertConfigurationUsages(Handle h, boolean desired, List<ConfigurationScanner.Usage> usages) {
         executeBatch(h,
-                "INSERT INTO desired_configuration_usages "
-                        + "(key, kind, class_id, class_name, member, parameter_index, "
-                        + "annotation, source, module, source_set) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                CONFIGURATION_USAGES.insertSql(desired),
                 usages, (statement, usage) -> {
                     statement.setString(1, usage.key());
                     statement.setString(2, usage.kind());
@@ -770,12 +578,9 @@ public final class IndexWriter {
                 });
     }
 
-    private static void insertDesiredResourceUsages(
-            Handle h, List<ResourceUsageRecord> usages) {
+    private static void insertResourceUsages(Handle h, boolean desired, List<ResourceUsageRecord> usages) {
         executeBatch(h,
-                "INSERT INTO desired_resource_usages "
-                        + "(resource_path, kind, class_id, class_name, member, api, source, "
-                        + "module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                RESOURCE_USAGES.insertSql(desired),
                 usages, (statement, usage) -> {
                     statement.setString(1, usage.resourcePath());
                     statement.setString(2, usage.kind());
@@ -787,232 +592,33 @@ public final class IndexWriter {
                     statement.setString(8, usage.module());
                     statement.setString(9, usage.sourceSet());
                 });
-    }
-
-    private static WriteTimings writeAll(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members,
-            List<MethodCallRecord> methodCalls,
-            boolean freshDatabase) {
-        return writeAll(jdbi, classes, beans, injectionPoints, dependencies, metadata,
-                externalDeps, problems, fileStats, commits, commitFiles, files, occurrences,
-                annotations, members, methodCalls, List.of(), EMPTY_CONFIGURATION, List.of(),
-                freshDatabase);
-    }
-
-    private static WriteTimings writeAll(Jdbi jdbi,
-            List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata,
-            List<ExternalDepRecord> externalDeps, List<CdiProblem> problems,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles, List<FileRecord> files,
-            List<ClassOccurrenceRecord> occurrences,
-            List<ClassAnnotationRecord> annotations,
-            List<ClassMemberRecord> members,
-            List<MethodCallRecord> methodCalls,
-            List<FieldAccessRecord> fieldAccesses,
-            ConfigurationScanner.Result configuration,
-            List<ResourceUsageRecord> resourceUsages,
-            boolean freshDatabase) {
-        return writeAll(jdbi, new IndexSnapshot(classes, beans, injectionPoints, dependencies,
-                metadata, externalDeps, problems, fileStats, commits, commitFiles, files,
-                occurrences, annotations, members, methodCalls, fieldAccesses, configuration,
-                resourceUsages),
-                freshDatabase);
-    }
-
-    private static WriteTimings writeAll(
-            Jdbi jdbi, IndexSnapshot snapshot, boolean freshDatabase) {
-        long transactionStartedAt = System.nanoTime();
-        long[] insertsNanos = new long[1];
-        long[] indexesNanos = new long[1];
-        jdbi.useTransaction(h -> {
-            if (!freshDatabase) {
-                for (String table : ALL_TABLES) {
-                    h.execute("DELETE FROM " + table);
-                }
-                h.execute("DELETE FROM sqlite_sequence");
-            }
-
-            long insertsStartedAt = System.nanoTime();
-            insertFiles(h, snapshot.files());
-            insertClasses(h, snapshot.classes());
-            insertClassOccurrences(h, snapshot.classOccurrences());
-            insertClassAnnotations(h, snapshot.classAnnotations());
-            insertClassMembers(h, snapshot.classMembers());
-            insertJvmApi(h,"jvm_api",snapshot.jvmApi());
-            insertMethodCalls(h, snapshot.methodCalls());
-            insertFieldAccesses(h, snapshot.fieldAccesses());
-            insertConfigurationDefinitions(h, snapshot.configuration().definitions());
-            insertConfigurationUsages(h, snapshot.configuration().usages());
-            insertResourceUsages(h, snapshot.resourceUsages());
-            insertBeans(h, snapshot.beans());
-            insertInjectionPoints(h, snapshot.injectionPoints());
-            insertDependencies(h, snapshot.dependencies());
-            insertMetadata(h, snapshot.metadata());
-            insertExternalDeps(h, snapshot.externalDependencies());
-            insertProblems(h, snapshot.problems());
-            insertGitData(h, snapshot.gitFileStats(), snapshot.gitCommits(),
-                    snapshot.gitCommitFiles());
-            insertsNanos[0] = System.nanoTime() - insertsStartedAt;
-            if (freshDatabase) {
-                long indexesStartedAt = System.nanoTime();
-                QuillDatabase.createIndexes(h);
-                indexesNanos[0] = System.nanoTime() - indexesStartedAt;
-            }
-        });
-        long totalNanos = System.nanoTime() - transactionStartedAt;
-        long overheadNanos = Math.max(0, totalNanos - insertsNanos[0] - indexesNanos[0]);
-        return new WriteTimings(toMillis(insertsNanos[0]), toMillis(indexesNanos[0]),
-                toMillis(overheadNanos));
     }
 
     private static long toMillis(long nanos) {
         return Math.max(0, nanos / 1_000_000);
     }
 
-    public static void write(Jdbi jdbi, List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String, String> metadata) {
-        jdbi.useTransaction(h -> {
-            for (String table : new String[]{"dependencies", "injection_points", "beans",
-                    "method_calls", "jvm_api", "class_members", "class_annotations", "class_occurrences",
-                    "kotlin_source_debug", "classes", "files", "metadata"}) {
-                h.execute("DELETE FROM " + table);
-            }
-            h.execute("DELETE FROM sqlite_sequence");
-
-            insertClasses(h, classes);
-            insertBeans(h, beans);
-            insertInjectionPoints(h, injectionPoints);
-            insertDependencies(h, dependencies);
-            insertMetadata(h, metadata);
-        });
-    }
-
-    public static void writeGitData(Jdbi jdbi, List<GitFileStats> fileStats,
-            List<GitCommitRecord> commits, List<GitCommitFile> commitFiles) {
-        jdbi.useTransaction(h -> {
-            for (String table : new String[]{"git_commit_files", "git_commits", "git_file_stats"}) {
-                h.execute("DELETE FROM " + table);
-            }
-            insertGitData(h, fileStats, commits, commitFiles);
-        });
-    }
-
-    private static void insertConfigurationDefinitions(
-            Handle h, List<ConfigurationScanner.Definition> definitions) {
-        executeBatch(h,
-                "INSERT INTO configuration_definitions "
-                        + "(key, kind, file, line, module, source_set) VALUES (?, ?, ?, ?, ?, ?)",
-                definitions, (statement, definition) -> {
-                    statement.setString(1, definition.key());
-                    statement.setString(2, definition.kind());
-                    statement.setString(3, definition.file());
-                    statement.setInt(4, definition.line());
-                    statement.setString(5, definition.module());
-                    statement.setString(6, definition.sourceSet());
-                });
-    }
-
-    private static void insertConfigurationUsages(
-            Handle h, List<ConfigurationScanner.Usage> usages) {
-        executeBatch(h,
-                "INSERT INTO configuration_usages "
-                        + "(key, kind, class_id, class_name, member, parameter_index, "
-                        + "annotation, source, module, source_set) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                usages, (statement, usage) -> {
-                    statement.setString(1, usage.key());
-                    statement.setString(2, usage.kind());
-                    statement.setInt(3, usage.classId());
-                    statement.setString(4, usage.className());
-                    statement.setString(5, usage.member());
-                    statement.setObject(6, usage.parameterIndex());
-                    statement.setString(7, usage.annotation());
-                    statement.setString(8, usage.source());
-                    statement.setString(9, usage.module());
-                    statement.setString(10, usage.sourceSet());
-                });
-    }
-
-    private static void insertResourceUsages(
-            Handle h, List<ResourceUsageRecord> usages) {
-        executeBatch(h,
-                "INSERT INTO resource_usages "
-                        + "(resource_path, kind, class_id, class_name, member, api, source, "
-                        + "module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                usages, (statement, usage) -> {
-                    statement.setString(1, usage.resourcePath());
-                    statement.setString(2, usage.kind());
-                    statement.setInt(3, usage.classId());
-                    statement.setString(4, usage.className());
-                    statement.setString(5, usage.member());
-                    statement.setString(6, usage.api());
-                    statement.setString(7, usage.source());
-                    statement.setString(8, usage.module());
-                    statement.setString(9, usage.sourceSet());
-                });
-    }
-
-    public static void writeExternalDeps(Jdbi jdbi, List<ExternalDepRecord> deps) {
-        jdbi.useTransaction(h -> {
-            h.execute("DELETE FROM class_external_deps");
-            insertExternalDeps(h, deps);
-        });
-    }
-
-    public static void writeProblems(Jdbi jdbi, List<CdiProblem> problems) {
-        if (problems.isEmpty()) return;
-        jdbi.useTransaction(h -> {
-            h.execute("DELETE FROM cdi_problems");
-            insertProblems(h, problems);
-        });
-    }
-
-    public static void writeModuleClasspath(
-            Jdbi jdbi, List<ModuleClasspathRecord> moduleClasspath) {
-        jdbi.useTransaction(h -> {
-            h.execute("DELETE FROM module_classpath");
+    static void insertModuleClasspath(Handle h, boolean desired, List<ModuleClasspathRecord> moduleClasspath) {
             executeBatch(h,
-                    "INSERT INTO module_classpath (application_module, visible_module, distance, relation) VALUES (?, ?, ?, ?)",
+                    MODULE_CLASSPATH.insertSql(desired),
                     moduleClasspath, (statement, entry) -> {
                         statement.setString(1, entry.applicationModule());
                         statement.setString(2, entry.visibleModule());
                         statement.setInt(3, entry.distance());
                         statement.setString(4, entry.relation());
                     });
+    }
+
+    static void insertKotlinSourceDebug(Handle h, boolean desired, Map<Integer, org.treblereel.mcp.core.KotlinSourceDebug.Info> values) {
+        executeBatch(h, KOTLIN_DEBUG.insertSql(desired), values.entrySet(), (statement, entry) -> {
+            statement.setInt(1, entry.getKey());
+            statement.setString(2, toJson(entry.getValue()));
         });
     }
 
-    public static void writeKotlinSourceDebug(Jdbi jdbi, Map<Integer, org.treblereel.mcp.core.KotlinSourceDebug.Info> values) {
-        jdbi.useTransaction(h -> {
-            h.execute("DELETE FROM kotlin_source_debug");
-            values.forEach((id, value) -> {
-                h.createUpdate("INSERT INTO kotlin_source_debug(class_id,data) VALUES (:id,:data)")
-                    .bind("id", id).bind("data", toJson(value)).execute();
-            });
-        });
-    }
-
-    public static void writeKotlinDeclarations(
-            Jdbi jdbi, List<KotlinDeclarationRecord> declarations) {
-        jdbi.useTransaction(h -> {
-            h.execute("DELETE FROM kotlin_declarations");
+    static void insertKotlinDeclarations(Handle h, boolean desired, List<KotlinDeclarationRecord> declarations) {
             executeBatch(h,
-                    "INSERT INTO kotlin_declarations (class_id, kind, name, jvm_name, "
-                            + "descriptor, semantic_model, is_suspend, is_extension, "
-                            + "has_default_parameters, is_mutable, is_lateinit, "
-                            + "is_delegated, is_synthetic, value_parameters, declaration_types) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    KOTLIN_DECLARATIONS.insertSql(desired),
                     declarations, (statement, declaration) -> {
                         statement.setInt(1, declaration.classId());
                         statement.setString(2, declaration.kind());
@@ -1031,17 +637,11 @@ public final class IndexWriter {
                                 : jsonArray(declaration.valueParameters()));
                         statement.setString(15, declaration.declarationTypes() == null ? null : toJson(declaration.declarationTypes()));
                     });
-        });
     }
 
-    public static void writeExternalBeans(Jdbi jdbi, List<ExternalBeanRecord> beans) {
-        jdbi.useTransaction(h -> {
-            h.execute("DELETE FROM external_beans");
+    static void insertExternalBeans(Handle h, boolean desired, List<ExternalBeanRecord> beans) {
             executeBatch(h,
-                    "INSERT INTO external_beans (id, class_name, kind, scope, qualifiers, "
-                            + "stereotypes, is_alternative, is_default, priority, profiles, "
-                            + "member_name, bean_types, framework, artifact, jar_path, "
-                            + "injection_points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    EXTERNAL_BEANS.insertSql(desired),
                     beans, (statement, bean) -> {
                         statement.setInt(1, bean.id());
                         statement.setString(2, bean.className());
@@ -1059,282 +659,14 @@ public final class IndexWriter {
                         statement.setString(14, bean.artifact());
                         statement.setString(15, bean.jarPath());
                         statement.setString(16,
-                                ExternalBeanScanner.injectionsJson(bean.injectionPoints()));
+                                jsonArray(bean.injectionPoints()));
                     });
-        });
     }
 
-    private static void insertClasses(Handle h, List<ClassRecord> classes) {
-        executeBatch(h,
-                "INSERT INTO classes (class_name, kind, superclass, interfaces, source_file, source_line, is_bean, source_tokens, file_id, origin, lifecycle, module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                classes, (statement, c) -> {
-                    statement.setString(1, c.className());
-                    statement.setString(2, c.kind());
-                    statement.setString(3, c.superclass());
-                    statement.setString(4, toJson(c.interfaces()));
-                    statement.setString(5, c.sourceFile());
-                    statement.setObject(6, c.sourceLine());
-                    statement.setInt(7, c.isBean() ? 1 : 0);
-                    statement.setInt(8, c.sourceTokens());
-                    statement.setObject(9, c.fileId());
-                    statement.setString(10, c.origin());
-                    statement.setString(11, c.lifecycle());
-                    statement.setString(12, c.module());
-                    statement.setString(13, c.sourceSet());
-                });
-    }
-
-    private static void insertClassOccurrences(
-            Handle h, List<ClassOccurrenceRecord> occurrences) {
-        executeBatch(h,
-                "INSERT INTO class_occurrences (id, class_id, class_name, module, source_set, output_directory, class_file, source_file, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                occurrences, (statement, occurrence) -> {
-                    statement.setInt(1, occurrence.id());
-                    statement.setInt(2, occurrence.classId());
-                    statement.setString(3, occurrence.className());
-                    statement.setString(4, occurrence.module());
-                    statement.setString(5, occurrence.sourceSet());
-                    statement.setString(6, occurrence.outputDirectory());
-                    statement.setString(7, occurrence.classFile());
-                    statement.setString(8, occurrence.sourceFile());
-                    statement.setString(9, occurrence.origin());
-                });
-    }
-
-    private static void insertClassAnnotations(
-            Handle h, List<ClassAnnotationRecord> annotations) {
-        executeBatch(h,
-                "INSERT INTO class_annotations (class_id, annotation_name, direct, via_annotation) VALUES (?, ?, ?, ?)",
-                annotations, (statement, annotation) -> {
-                    statement.setInt(1, annotation.classId());
-                    statement.setString(2, annotation.annotationName());
-                    statement.setInt(3, annotation.direct() ? 1 : 0);
-                    statement.setString(4, annotation.viaAnnotation());
-                });
-    }
-
-    private static void insertJvmApi(Handle h,String table,Map<Integer,String> evidence) {
-        executeBatch(h,"INSERT INTO " + table + " (class_id,evidence) VALUES (?,?)",
+    private static void insertJvmApi(Handle h, boolean desired,Map<Integer,String> evidence) {
+        executeBatch(h,JVM_API.insertSql(desired),
                 evidence.entrySet(),(statement,entry) -> {
                     statement.setInt(1,entry.getKey()); statement.setString(2,entry.getValue());
-                });
-    }
-
-    private static void insertClassMembers(Handle h, List<ClassMemberRecord> members) {
-        executeBatch(h,
-                "INSERT INTO class_members (class_id, kind, name, signature, descriptor, type_name, parameter_types, modifiers, annotations, annotation_details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                members, (statement, member) -> {
-                    statement.setInt(1, member.classId());
-                    statement.setString(2, member.kind());
-                    statement.setString(3, member.name());
-                    statement.setString(4, member.signature());
-                    statement.setString(5, member.descriptor());
-                    statement.setString(6, member.typeName());
-                    statement.setString(7, member.parameterTypes().isEmpty()
-                            ? "[]" : toJson(member.parameterTypes()));
-                    statement.setString(8, member.modifiers());
-                    statement.setString(9, member.annotations().isEmpty()
-                            ? "[]" : toJson(member.annotations()));
-                    statement.setString(10, annotationDetailsJson(member));
-                });
-    }
-
-    private static String annotationDetailsJson(ClassMemberRecord member) {
-        if (member.annotationDetails().isEmpty()) return "[]";
-        return toJson(member.annotationDetails().stream().map(annotation -> Map.of(
-                "annotationName", annotation.annotationName(),
-                "targetKind", annotation.targetKind(),
-                "parameterIndex", annotation.parameterIndex() == null
-                        ? -1 : annotation.parameterIndex(),
-                "parameterName", annotation.parameterName() == null
-                        ? "" : annotation.parameterName(),
-                "parameterType", annotation.parameterType() == null
-                        ? "" : annotation.parameterType())).toList());
-    }
-
-    private static void insertMethodCalls(Handle h, List<MethodCallRecord> methodCalls) {
-        executeBatch(h,
-                "INSERT INTO method_calls (from_class_id, from_method, from_descriptor, to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines, instruction_ordinals, caller_branch_count, caller_exception_handler_count, caller_control_flow_edges, caller_async_boundaries, caller_external_calls) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                methodCalls, (statement, call) -> {
-                    statement.setInt(1, call.fromClassId());
-                    statement.setString(2, call.fromMethod());
-                    statement.setString(3, call.fromDescriptor());
-                    statement.setInt(4, call.toClassId());
-                    statement.setString(5, call.toMethod());
-                    statement.setString(6, call.toDescriptor());
-                    statement.setString(7, call.invocationKind());
-                    statement.setInt(8, call.occurrenceCount());
-                    statement.setString(9, call.evidenceLines().isEmpty()
-                            ? "[]" : toJson(call.evidenceLines()));
-                    statement.setString(10, call.instructionOrdinals().isEmpty()
-                            ? "[]" : toJson(call.instructionOrdinals()));
-                    statement.setInt(11, call.callerBranchCount());
-                    statement.setInt(12, call.callerExceptionHandlerCount());
-                    statement.setString(13, call.callerControlFlowEdges().isEmpty()
-                            ? "[]" : toJson(call.callerControlFlowEdges()));
-                    statement.setString(14, call.callerAsyncBoundaries().isEmpty()
-                            ? "[]" : toJson(call.callerAsyncBoundaries()));
-                    statement.setString(15, call.callerExternalCalls().isEmpty()
-                            ? "[]" : toJson(call.callerExternalCalls()));
-                });
-    }
-
-    private static void insertFieldAccesses(Handle h, List<FieldAccessRecord> fieldAccesses) {
-        executeBatch(h,
-                "INSERT INTO field_accesses (from_class_id, from_method, from_descriptor, to_class_id, field_name, field_descriptor, access_kind, occurrence_count, evidence_lines, instruction_ordinals) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                fieldAccesses, (statement, access) -> {
-                    statement.setInt(1, access.fromClassId());
-                    statement.setString(2, access.fromMethod());
-                    statement.setString(3, access.fromDescriptor());
-                    statement.setInt(4, access.toClassId());
-                    statement.setString(5, access.fieldName());
-                    statement.setString(6, access.fieldDescriptor());
-                    statement.setString(7, access.accessKind());
-                    statement.setInt(8, access.occurrenceCount());
-                    statement.setString(9, access.evidenceLines().isEmpty()
-                            ? "[]" : toJson(access.evidenceLines()));
-                    statement.setString(10, access.instructionOrdinals().isEmpty()
-                            ? "[]" : toJson(access.instructionOrdinals()));
-                });
-    }
-
-    private static void insertFiles(Handle h, List<FileRecord> files) {
-        if (files == null || files.isEmpty()) return;
-        executeBatch(h,
-                "INSERT INTO files (id, project_path, repository_path, kind, origin, lifecycle, worktree_status, module, source_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                files, (statement, file) -> {
-                    statement.setInt(1, file.id());
-                    statement.setString(2, file.projectPath());
-                    statement.setString(3, file.repositoryPath());
-                    statement.setString(4, file.kind());
-                    statement.setString(5, file.origin());
-                    statement.setString(6, file.lifecycle());
-                    statement.setString(7, file.worktreeStatus());
-                    statement.setString(8, file.module());
-                    statement.setString(9, file.sourceSet());
-                });
-    }
-
-    private static void insertBeans(Handle h, List<BeanRecord> beans) {
-        executeBatch(h,
-                "INSERT INTO beans (class_id, kind, scope, qualifiers, stereotypes, is_alternative, is_default, priority, profiles, declaring_class_id, member_name, bean_types) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                beans, (statement, b) -> {
-                    statement.setInt(1, b.classId());
-                    statement.setString(2, b.kind());
-                    statement.setString(3, b.scope());
-                    statement.setString(4, toJson(b.qualifiers()));
-                    statement.setString(5, toJson(b.stereotypes()));
-                    statement.setInt(6, b.isAlternative() ? 1 : 0);
-                    statement.setInt(7, b.isDefault() ? 1 : 0);
-                    statement.setObject(8, b.priority());
-                    statement.setString(9, toJson(b.profiles()));
-                    statement.setObject(10, b.declaringClassId());
-                    statement.setString(11, b.memberName());
-                    statement.setString(12, toJson(b.beanTypes()));
-                });
-    }
-
-    private static void insertInjectionPoints(Handle h, List<InjectionPointRecord> ips) {
-        executeBatch(h,
-                "INSERT INTO injection_points (bean_id, kind, target_type, qualifiers, field_name, resolved_bean_id, resolution_status, resolution_strategy, resolution_reason, resolution_confidence, limitations, resolution_candidates, applied_rules, unsupported_rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ips, (statement, ip) -> {
-                    statement.setInt(1, ip.beanId());
-                    statement.setString(2, ip.kind());
-                    statement.setString(3, ip.targetType());
-                    statement.setString(4, toJson(ip.qualifiers()));
-                    statement.setString(5, ip.fieldName());
-                    statement.setObject(6, ip.resolvedBeanId());
-                    statement.setString(7, ip.resolutionStatus().name());
-                    statement.setString(8, ip.resolutionStrategy());
-                    statement.setString(9, ip.resolutionReason());
-                    statement.setString(10, ip.resolutionConfidence().name());
-                    statement.setString(11, toJson(ip.limitations()));
-                    statement.setString(12, toJson(ip.resolutionTrace().candidates()));
-                    statement.setString(13, toJson(ip.resolutionTrace().appliedRules()));
-                    statement.setString(14, toJson(ip.resolutionTrace().unsupportedRules()));
-                });
-    }
-
-    private static void insertDependencies(Handle h, List<DependencyRecord> deps) {
-        executeBatch(h,
-                "INSERT INTO dependencies (from_class_id, to_class_id, kind, injection_point_id, occurrence_count, evidence_lines) VALUES (?, ?, ?, ?, ?, ?)",
-                deps, (statement, d) -> {
-                    statement.setInt(1, d.fromClassId());
-                    statement.setInt(2, d.toClassId());
-                    statement.setString(3, d.kind());
-                    statement.setObject(4, d.injectionPointId());
-                    statement.setInt(5, d.occurrenceCount());
-                    statement.setString(6, d.evidenceLines().isEmpty()
-                            ? "[]" : toJson(d.evidenceLines()));
-                });
-    }
-
-    private static void insertMetadata(Handle h, Map<String, String> metadata) {
-        executeBatch(h, "INSERT INTO metadata (key, value) VALUES (?, ?)",
-                metadata.entrySet(), (statement, entry) -> {
-                    statement.setString(1, entry.getKey());
-                    statement.setString(2, entry.getValue());
-                });
-    }
-
-    private static void insertExternalDeps(Handle h, List<ExternalDepRecord> deps) {
-        if (deps.isEmpty()) return;
-        executeBatch(h,
-                "INSERT INTO class_external_deps (class_id, external_type, usage_kind) VALUES (?, ?, ?)",
-                deps, (statement, d) -> {
-                    statement.setInt(1, d.classId());
-                    statement.setString(2, d.externalType());
-                    statement.setString(3, d.usageKind());
-                });
-    }
-
-    private static void insertProblems(Handle h, List<CdiProblem> problems) {
-        if (problems.isEmpty()) return;
-        executeBatch(h,
-                "INSERT INTO cdi_problems (class_id, class_name, problem_type, message) VALUES (?, ?, ?, ?)",
-                problems, (statement, p) -> {
-                    statement.setObject(1, p.classId());
-                    statement.setString(2, p.className());
-                    statement.setString(3, p.problemType());
-                    statement.setString(4, p.message());
-                });
-    }
-
-    private static void insertGitData(Handle h,
-            List<GitFileStats> fileStats, List<GitCommitRecord> commits,
-            List<GitCommitFile> commitFiles) {
-        if (fileStats.isEmpty() && commits.isEmpty()) return;
-
-        executeBatch(h,
-                "INSERT INTO git_file_stats (file_path, class_id, commit_count, last_modified, last_author, first_commit, distinct_authors) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                fileStats, (statement, s) -> {
-                    statement.setString(1, s.filePath());
-                    statement.setObject(2, s.classId());
-                    statement.setInt(3, s.commitCount());
-                    statement.setString(4, s.lastModified());
-                    statement.setString(5, s.lastAuthor());
-                    statement.setString(6, s.firstCommit());
-                    statement.setInt(7, s.distinctAuthors());
-                });
-
-        executeBatch(h,
-                "INSERT INTO git_commits (hash, short_hash, author, author_email, committed_at, message) VALUES (?, ?, ?, ?, ?, ?)",
-                commits, (statement, c) -> {
-                    statement.setString(1, c.hash());
-                    statement.setString(2, c.shortHash());
-                    statement.setString(3, c.author());
-                    statement.setString(4, c.authorEmail());
-                    statement.setString(5, c.committedAt());
-                    statement.setString(6, c.message());
-                });
-
-        executeBatch(h,
-                "INSERT INTO git_commit_files (commit_id, class_id, file_path, change_type) VALUES (?, ?, ?, ?)",
-                commitFiles, (statement, f) -> {
-                    statement.setInt(1, f.commitId());
-                    statement.setObject(2, f.classId());
-                    statement.setString(3, f.filePath());
-                    statement.setString(4, f.changeType());
                 });
     }
 
@@ -1371,4 +703,17 @@ public final class IndexWriter {
     private static String jsonArray(Collection<?> value) {
         return value == null || value.isEmpty() ? "[]" : toJson(value);
     }
+    private static String annotationDetailsJson(ClassMemberRecord member) {
+        if (member.annotationDetails().isEmpty()) return "[]";
+        return toJson(member.annotationDetails().stream().map(annotation -> Map.of(
+                "annotationName", annotation.annotationName(),
+                "targetKind", annotation.targetKind(),
+                "parameterIndex", annotation.parameterIndex() == null
+                        ? -1 : annotation.parameterIndex(),
+                "parameterName", annotation.parameterName() == null
+                        ? "" : annotation.parameterName(),
+                "parameterType", annotation.parameterType() == null
+                        ? "" : annotation.parameterType())).toList());
+    }
+
 }

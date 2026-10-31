@@ -1,5 +1,11 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
+import org.treblereel.mcp.index.ProjectUpdater;
+
+import org.treblereel.mcp.db.IndexFixture;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
@@ -15,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.WorktreeInspector;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 
@@ -143,8 +149,7 @@ class UpdateCommandTest {
                 "Incremental updates must still publish a new immutable generation");
         assertTrue(Files.exists(previousDatabase),
                 "Publishing the delta must not mutate or remove the previous generation");
-        assertEquals("incremental", org.treblereel.mcp.db.IndexReader
-                .getMetadata(QuillDatabase.open(currentDatabase)).get("database_write_mode"));
+        assertEquals("incremental", QuillDatabase.open(currentDatabase).withHandle(repositoryHandle1 -> new org.treblereel.mcp.db.IndexRepository(repositoryHandle1).getMetadata()).get("database_write_mode"));
     }
 
     @Test
@@ -186,8 +191,7 @@ class UpdateCommandTest {
         assertTrue(out.toString().contains("Re-indexing from the latest generation"));
         Path published = ProjectIndexStore.findExactDbForHead(PROJECT_ROOT);
         assertNotNull(published);
-        assertEquals("incremental", IndexReader.getMetadata(
-                QuillDatabase.open(published)).get("database_write_mode"));
+        assertEquals("incremental", QuillDatabase.open(published).withHandle(repositoryHandle2 -> new IndexRepository(repositoryHandle2).getMetadata()).get("database_write_mode"));
     }
 
     @Test
@@ -197,9 +201,9 @@ class UpdateCommandTest {
         Path pom = Files.writeString(project.resolve("pom.xml"), "<project/>");
         Path db = createFingerprintDatabase(project, classesDir);
 
-        assertFalse(UpdateCommand.hasProjectChanges(project, db));
+        assertFalse(ProjectUpdater.hasProjectChanges(project, db));
         Files.writeString(pom, "<project><!-- changed --></project>");
-        assertTrue(UpdateCommand.hasProjectChanges(project, db));
+        assertTrue(ProjectUpdater.hasProjectChanges(project, db));
     }
 
     @Test
@@ -209,9 +213,9 @@ class UpdateCommandTest {
         Path build = Files.writeString(project.resolve("build.gradle"), "plugins { id 'java' }");
         Path db = createFingerprintDatabase(project, classesDir);
 
-        assertFalse(UpdateCommand.hasProjectChanges(project, db));
+        assertFalse(ProjectUpdater.hasProjectChanges(project, db));
         Files.writeString(build, "plugins { id 'java-library' }");
-        assertTrue(UpdateCommand.hasProjectChanges(project, db));
+        assertTrue(ProjectUpdater.hasProjectChanges(project, db));
     }
 
     @Test
@@ -221,9 +225,9 @@ class UpdateCommandTest {
         Files.writeString(project.resolve("pom.xml"), "<project/>");
         Path db = createFingerprintDatabase(project, classesDir);
 
-        assertFalse(UpdateCommand.hasProjectChanges(project, db));
+        assertFalse(ProjectUpdater.hasProjectChanges(project, db));
         Files.delete(classFile);
-        assertTrue(UpdateCommand.hasProjectChanges(project, db));
+        assertTrue(ProjectUpdater.hasProjectChanges(project, db));
     }
 
     @Test
@@ -238,7 +242,7 @@ class UpdateCommandTest {
         Files.write(classFile, new byte[]{3, 2, 1});
         Files.setLastModifiedTime(classFile, originalTime);
 
-        assertTrue(UpdateCommand.hasProjectChanges(project, db));
+        assertTrue(ProjectUpdater.hasProjectChanges(project, db));
     }
 
     @Test
@@ -257,18 +261,17 @@ class UpdateCommandTest {
         WorktreeInspector.Snapshot dirty = WorktreeInspector.inspect(project);
         assertTrue(dirty.structuralDirty());
         Path db = project.resolve(".quill/snapshot.db");
-        IndexWriter.write(QuillDatabase.create(db), java.util.List.of(), java.util.List.of(),
-                java.util.List.of(), java.util.List.of(),
-                Map.of("compiled_before_index", "false",
-                        "indexed_structure_fingerprint", dirty.structuralFingerprint()));
+        IndexWriter.writeIncremental(QuillDatabase.create(db), new IndexFixture()
+                .metadata(Map.of("compiled_before_index", "false",
+                        "indexed_structure_fingerprint", dirty.structuralFingerprint())).snapshot());
 
-        assertTrue(UpdateCommand.requiresPostCompileRefresh(project, db),
+        assertTrue(ProjectUpdater.requiresPostCompileRefresh(project, db),
                 "A successful external build must republish an index marked as uncompiled");
 
         QuillDatabase.create(db).useHandle(handle -> handle.createUpdate(
                         "UPDATE metadata SET value = 'true' WHERE key = 'compiled_before_index'")
                 .execute());
-        assertFalse(UpdateCommand.requiresPostCompileRefresh(project, db),
+        assertFalse(ProjectUpdater.requiresPostCompileRefresh(project, db),
                 "An already compiled snapshot must keep the normal fingerprint fast path");
     }
 

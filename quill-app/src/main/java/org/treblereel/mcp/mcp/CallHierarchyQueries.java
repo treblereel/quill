@@ -19,10 +19,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.objectweb.asm.Type;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.IndexReader.MethodCallView;
+import org.treblereel.mcp.db.UsageRepository;
+import org.treblereel.mcp.db.UsageRepository.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.KotlinDeclarationRecord;
@@ -35,13 +35,13 @@ final class CallHierarchyQueries {
     private static final Set<String> SCOPES = Set.of("all", "cross_class", "cross_package");
     private static final int TRAVERSAL_EDGE_CAP = 5_000;
 
-    String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
+    String getCallHierarchy(ReadQueryContext reader, String target, String method, String signature,
             String direction, boolean transitive, int maxDepth, int limit, int offset) {
-        return getCallHierarchy(jdbi, target, method, signature, direction, transitive,
+        return getCallHierarchy(reader, target, method, signature, direction, transitive,
                 maxDepth, "all", limit, offset);
     }
 
-    String getCallHierarchy(Jdbi jdbi, String target, String method, String signature,
+    String getCallHierarchy(ReadQueryContext reader, String target, String method, String signature,
             String direction, boolean transitive, int maxDepth, String scope,
             int limit, int offset) {
         try {
@@ -76,14 +76,14 @@ final class CallHierarchyQueries {
             return errorResponse("MISSING_METHOD",
                     "A method name is required when signature is provided");
         }
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
+        if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord cls = lookup.cls();
         List<KotlinDeclarationRecord> kotlinDeclarations =
-                IndexReader.findKotlinDeclarations(jdbi, cls.id());
+                reader.symbols.findKotlinDeclarations(cls.id());
 
         List<ClassMemberRecord> candidates = normalizedMethod == null ? List.of()
-                : (normalizedSignature == null ? IndexReader.findClassMembers(jdbi, cls.id()) : IndexReader.findJvmClassMembers(jdbi, cls.id())).stream()
+                : (normalizedSignature == null ? reader.symbols.findClassMembers(cls.id()) : reader.symbols.findJvmClassMembers(cls.id())).stream()
                         .filter(member -> member.kind().equals("METHOD")
                                 || member.kind().equals("CONSTRUCTOR"))
                         .filter(member -> KotlinMemberNames.matches(
@@ -93,8 +93,7 @@ final class CallHierarchyQueries {
                         .toList();
         List<ClassMemberRecord> matchingMembers = normalizedSignature == null
                 ? candidates
-                : candidates.stream().filter(member -> normalizedSignature.equals(member.signature())
-                        || normalizedSignature.equals(JvmDescriptors.methodDescriptor(member)))
+                : candidates.stream().filter(member -> JvmDescriptors.matchesSignature(member, normalizedSignature))
                         .toList();
         ClassMemberRecord selected = null;
         String descriptor = null;
@@ -102,7 +101,7 @@ final class CallHierarchyQueries {
         KotlinDeclarationRecord kotlinDeclaration = null;
         if (normalizedMethod != null) {
             if (matchingMembers.size() != 1) {
-                return symbolSelectionError(jdbi, cls, normalizedMethod,
+                return symbolSelectionError(reader, cls, normalizedMethod,
                         normalizedSignature, matchingMembers.isEmpty() ? candidates : matchingMembers,
                         matchingMembers.size() > 1
                                 || (normalizedSignature == null && candidates.size() > 1));
@@ -116,16 +115,16 @@ final class CallHierarchyQueries {
                 appendError(error, "DESCRIPTOR_UNAVAILABLE",
                         "Method descriptor is unavailable; rebuild the Quill index");
                 appendCandidate(error.putArray("candidates"), cls, selected);
-                appendMeta(error, jdbi, 0);
+                appendMeta(error, reader, 0);
                 return error.toString();
             }
             bytecodeMethod = "CONSTRUCTOR".equals(selected.kind()) ? "<init>" : selected.name();
         }
 
         TraversalResult unfiltered = transitive
-                ? traverse(jdbi, cls.id(), bytecodeMethod, descriptor,
+                ? traverse(reader, cls.id(), bytecodeMethod, descriptor,
                         normalizedDirection, maxDepth)
-                : direct(jdbi, cls.id(), bytecodeMethod, descriptor,
+                : direct(reader, cls.id(), bytecodeMethod, descriptor,
                         normalizedDirection, TRAVERSAL_EDGE_CAP, 0);
         List<TraversalEdge> filtered = unfiltered.edges().stream()
                 .filter(edge -> inScope(edge.call(), normalizedScope)).toList();
@@ -151,7 +150,7 @@ final class CallHierarchyQueries {
         }
         root.put("direction", normalizedDirection);
         if (selected != null && !kotlinDeclarations.isEmpty() && !normalizedDirection.equals("outbound")) {
-            var sourceCallers = KotlinUsageNormalizer.inbound(jdbi, cls.id(), bytecodeMethod, descriptor);
+            var sourceCallers = KotlinUsageNormalizer.inbound(reader, cls.id(), bytecodeMethod, descriptor);
             root.put("source_caller_count", sourceCallers.usages().size());
             root.put("source_caller_normalization_truncated", sourceCallers.truncated());
             var callers = root.putArray("source_callers");
@@ -163,7 +162,7 @@ final class CallHierarchyQueries {
                 caller.put("occurrence_count", call.occurrenceCount());
                 caller.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
                 SymbolUsageQueries.appendPath(caller, usage);
-                KotlinSourceLocations.append(jdbi, caller, call.fromClassId(), call.evidenceLines());
+                KotlinSourceLocations.append(reader, caller, call.fromClassId(), call.evidenceLines());
             }
         }
         root.put("direct_only", !transitive);
@@ -188,10 +187,10 @@ final class CallHierarchyQueries {
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = cls.sourceTokens();
         countedClasses.add(cls.id());
-        JavaSourceLocations javaLocations = new JavaSourceLocations(jdbi);
-        String dynamicBasis = "2".equals(IndexReader.getMetadata(jdbi).get("invokedynamic_evidence_protocol"))
+        JavaSourceLocations javaLocations = new JavaSourceLocations(reader);
+        String dynamicBasis = "2".equals(reader.index.getMetadata().get("invokedynamic_evidence_protocol"))
                 ? "lambda_metafactory" : "legacy_unclassified";
-        JavaDispatchEvidence dispatch = new JavaDispatchEvidence(jdbi);
+        JavaDispatchEvidence dispatch = new JavaDispatchEvidence(reader);
         if (selected != null && kotlinDeclarations.isEmpty() && !normalizedDirection.equals("outbound"))
             dispatch.appendPossibleCallers(root, cls, selected, limit, offset);
         java.util.Map<Integer, ClassRecord> callees = new java.util.HashMap<>();
@@ -213,7 +212,7 @@ final class CallHierarchyQueries {
             if (call.fromSource() != null && call.fromSource().endsWith(".java")) dispatch.appendTarget(edge, call);
             edge.put("occurrence_count", call.occurrenceCount());
             edge.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
-            ClassRecord callee = callees.computeIfAbsent(call.toClassId(), id -> IndexReader.findClassById(jdbi, id).orElse(null));
+            ClassRecord callee = callees.computeIfAbsent(call.toClassId(), id -> reader.symbols.findClassById(id).orElse(null));
             if (callee != null) javaLocations.append(edge, call.fromSource(), call.fromClass(), call.fromMethod(), call.fromDescriptor(),
                     call.toClass(), call.toMethod(), call.toDescriptor(), "call", SymbolContract.id(callee,
                             "<init>".equals(call.toMethod()) ? "CONSTRUCTOR" : "METHOD", call.toMethod(), call.toDescriptor()), call.evidenceLines());
@@ -226,8 +225,8 @@ final class CallHierarchyQueries {
             if (countedClasses.add(call.toClassId())) naiveTokens += call.toSourceTokens();
         }
         appendPage(root, page.size(), filtered.size(), limit, offset);
-        UsageCoverage.append(root,jdbi,cls.id());
-        appendMeta(root, jdbi, naiveTokens, cls.sourceFile(), cls.module());
+        UsageCoverage.append(root,reader,cls.id());
+        appendMeta(root, reader, naiveTokens, cls.sourceFile(), cls.module());
         return root.toString();
     }
 
@@ -245,25 +244,22 @@ final class CallHierarchyQueries {
         return separator < 0 ? "" : owner.substring(0, separator);
     }
 
-    private static TraversalResult direct(Jdbi jdbi, int classId, String method,
+    private static TraversalResult direct(ReadQueryContext reader, int classId, String method,
             String descriptor, String direction, int limit, int offset) {
-        List<TraversalEdge> edges = IndexReader.findMethodCalls(
-                jdbi, classId, method, descriptor, direction, limit, offset).stream()
+        List<TraversalEdge> edges = reader.usages.findMethodCalls(classId, method, descriptor, direction, limit, offset, reader.methods().symbolicOwners(classId, method, descriptor, direction)).stream()
                 .map(call -> new TraversalEdge(call, 1, direction, List.of()))
                 .toList();
-        int total = IndexReader.countMethodCalls(
-                jdbi, classId, method, descriptor, direction);
+        int total = reader.usages.countMethodCalls(classId, method, descriptor, direction, reader.methods().symbolicOwners(classId, method, descriptor, direction));
         return new TraversalResult(edges, total, total > edges.size());
     }
 
-    private static TraversalResult traverse(Jdbi jdbi, int classId, String method,
+    private static TraversalResult traverse(ReadQueryContext reader, int classId, String method,
             String descriptor, String direction, int maxDepth) {
         List<String> directions = direction.equals("both")
                 ? List.of("inbound", "outbound") : List.of(direction);
         LinkedHashSet<MethodNode> roots = new LinkedHashSet<>();
         for (String traversalDirection : directions) {
-            for (MethodCallView call : IndexReader.findAdjacentMethodCalls(
-                    jdbi, classId, method, descriptor, traversalDirection)) {
+            for (MethodCallView call : reader.usages.findAdjacentMethodCalls(classId, method, descriptor, traversalDirection, reader.methods().symbolicOwners(classId, method, descriptor, traversalDirection))) {
                 roots.add(endpoint(call, traversalDirection));
             }
         }
@@ -282,9 +278,7 @@ final class CallHierarchyQueries {
             NodePath current = queue.removeFirst();
             if (current.depth() >= maxDepth) continue;
             for (String traversalDirection : directions) {
-                List<MethodCallView> adjacent = IndexReader.findAdjacentMethodCalls(
-                        jdbi, current.node().classId(), current.node().method(),
-                        current.node().descriptor(), traversalDirection);
+                List<MethodCallView> adjacent = reader.usages.findAdjacentMethodCalls(current.node().classId(), current.node().method(), current.node().descriptor(), traversalDirection, reader.methods().symbolicOwners(current.node().classId(), current.node().method(), current.node().descriptor(), traversalDirection));
                 for (MethodCallView call : adjacent) {
                     MethodNode next = opposite(call, traversalDirection);
                     List<String> path = new ArrayList<>(current.path());
@@ -357,7 +351,7 @@ final class CallHierarchyQueries {
         else node.put("module", module);
     }
 
-    private static String symbolSelectionError(Jdbi jdbi, ClassRecord cls,
+    private static String symbolSelectionError(ReadQueryContext reader, ClassRecord cls,
             String method, String signature, List<ClassMemberRecord> candidates,
             boolean ambiguous) {
         ObjectNode error = JSON.createObjectNode();
@@ -373,7 +367,7 @@ final class CallHierarchyQueries {
             appendRetryWith(error, "signature",
                     "Use one candidate's exact signature, descriptor, or symbol_id");
         }
-        appendMeta(error, jdbi, 0);
+        appendMeta(error, reader, 0);
         return error.toString();
     }
 

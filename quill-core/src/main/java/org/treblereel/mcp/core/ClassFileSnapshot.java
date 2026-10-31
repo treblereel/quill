@@ -10,6 +10,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.stream.Stream;
 
 /** Immutable bytecode captured once for all application-indexing passes. */
@@ -60,16 +62,18 @@ public final class ClassFileSnapshot {
             List<Path> orderedDirectories = directories.stream()
                     .sorted(Comparator.comparing(Path::toString))
                     .toList();
+            Map<Path, List<Entry>> byDirectory = new HashMap<>();
+            for (Entry entry : entries) {
+                byDirectory.computeIfAbsent(entry.classesDirectory(), ignored -> new ArrayList<>()).add(entry);
+            }
+            byDirectory.values().forEach(values -> values.sort(Comparator.comparing(entry -> entry.path().toString())));
             for (Path directory : orderedDirectories) {
                 update(digest, "classesDir", directory.toString());
-                entries.stream()
-                        .filter(entry -> entry.classesDirectory().equals(directory))
-                        .sorted(Comparator.comparing(entry -> entry.path().toString()))
-                        .forEach(entry -> {
-                            update(digest, "file", directory.relativize(entry.path()).toString());
-                            digest.update(entry.bytecode());
-                            digest.update((byte) 0);
-                        });
+                byDirectory.getOrDefault(directory, List.of()).forEach(entry -> {
+                    update(digest, "file", directory.relativize(entry.path()).toString());
+                    digest.update(entry.bytecode());
+                    digest.update((byte) 0);
+                });
             }
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException e) {

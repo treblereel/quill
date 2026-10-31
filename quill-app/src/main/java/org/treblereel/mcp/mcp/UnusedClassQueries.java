@@ -14,8 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.UnusedClassCandidate;
 
@@ -24,13 +23,13 @@ final class UnusedClassQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    String findUnusedClasses(Jdbi jdbi, String module, boolean includeGenerated,
+    String findUnusedClasses(ReadQueryContext reader, String module, boolean includeGenerated,
             boolean includeTests, int limit, int offset) {
-        ServiceProviders serviceProviders = readServiceProviders(jdbi);
+        ServiceProviders serviceProviders = readServiceProviders(reader);
         Map<String, Integer> excluded = new LinkedHashMap<>();
         List<Candidate> candidates = new ArrayList<>();
         int analyzed = 0;
-        for (UnusedClassCandidate evidence : IndexReader.findUnusedClassCandidates(jdbi)) {
+        for (UnusedClassCandidate evidence : reader.usages.findUnusedClassCandidates()) {
             ClassRecord cls = evidence.classRecord();
             if (!inRequestedScope(cls, module, includeGenerated, includeTests, excluded)) continue;
             analyzed++;
@@ -107,7 +106,7 @@ final class UnusedClassQueries {
             naiveTokens += cls.sourceTokens();
         }
         appendPage(root, page.size(), candidates.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 
@@ -125,7 +124,7 @@ final class UnusedClassQueries {
             increment(excluded, "generated_class");
             return false;
         }
-        if (!includeTests && "test".equals(cls.sourceSet())) {
+        if (!includeTests && cls.inTestSourceSet()) {
             increment(excluded, "test_class");
             return false;
         }
@@ -157,8 +156,8 @@ final class UnusedClassQueries {
         return "medium".equals(confidence) ? 0 : 1;
     }
 
-    private static ServiceProviders readServiceProviders(Jdbi jdbi) {
-        String detail = IndexReader.getMetadata(jdbi).get("service_registrations_detail");
+    private static ServiceProviders readServiceProviders(ReadQueryContext reader) {
+        String detail = reader.index.getMetadata().get("service_registrations_detail");
         if (detail == null) return new ServiceProviders(Set.of(), false);
         try {
             JsonNode registrations = JSON.readTree(detail);

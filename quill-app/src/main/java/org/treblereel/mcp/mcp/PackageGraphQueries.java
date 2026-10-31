@@ -17,8 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 
@@ -28,7 +27,7 @@ final class PackageGraphQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> DIRECTIONS = Set.of("inbound", "outbound", "both");
 
-    String getPackageGraph(Jdbi jdbi, String requestedPackage, String direction,
+    String getPackageGraph(ReadQueryContext reader, String requestedPackage, String direction,
             String module, boolean includeGenerated, boolean includeTests,
             int limit, int offset) {
         String normalizedDirection = direction == null
@@ -36,10 +35,10 @@ final class PackageGraphQueries {
         if (!DIRECTIONS.contains(normalizedDirection)) {
             return errorResponse("Invalid direction: expected inbound, outbound, or both");
         }
-        List<ClassRecord> classes = IndexReader.findAllClasses(jdbi).stream()
+        List<ClassRecord> classes = reader.symbols.findAllClasses().stream()
                 .filter(cls -> module == null || module.isBlank() || module.equals(cls.module()))
                 .filter(cls -> includeGenerated || !"generated".equals(cls.origin()))
-                .filter(cls -> includeTests || !"test".equals(cls.sourceSet()))
+                .filter(cls -> includeTests || !cls.inTestSourceSet())
                 .toList();
         Map<Integer, ClassRecord> classesById = new HashMap<>();
         Map<String, MutablePackage> summaries = new TreeMap<>();
@@ -51,7 +50,7 @@ final class PackageGraphQueries {
             summary.sourceTokens += cls.sourceTokens();
             if (cls.module() != null) summary.modules.add(cls.module());
             if ("generated".equals(cls.origin())) summary.generated++;
-            if ("test".equals(cls.sourceSet())) summary.tests++;
+            if (cls.inTestSourceSet()) summary.tests++;
         }
 
         String selected = resolvePackage(requestedPackage, summaries.keySet());
@@ -60,12 +59,11 @@ final class PackageGraphQueries {
             error.put("error", "Package not found: " + requestedPackage);
             error.set("candidates", JSON.valueToTree(packageCandidates(
                     requestedPackage.strip(), summaries.keySet())));
-            appendMeta(error, jdbi, 0);
+            appendMeta(error, reader, 0);
             return error.toString();
         }
 
-        List<DependencyRecord> dependencies = IndexReader.findCurrentDependencyGraph(
-                jdbi, module, includeGenerated, includeTests);
+        List<DependencyRecord> dependencies = reader.usages.findCurrentDependencyGraph(module, includeGenerated, includeTests);
         Map<PackagePair, MutableEdge> aggregated = new LinkedHashMap<>();
         for (DependencyRecord dependency : dependencies) {
             ClassRecord fromClass = classesById.get(dependency.fromClassId());
@@ -149,7 +147,7 @@ final class PackageGraphQueries {
                 .add("Reflection, runtime-generated links, and dependencies only present in uncompiled source are absent")
                 .add("Nested classes are attributed to the package of their binary owner name");
         appendPage(root, page.size(), relations.size(), limit, offset);
-        appendMeta(root, jdbi, naiveTokens);
+        appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
 

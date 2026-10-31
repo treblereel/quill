@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.*;
 import java.nio.file.*;
@@ -15,7 +17,7 @@ class JavaJvmApiCompatibilityTest {
     JsonNode compare(String before,String after) throws Exception {
         var h=helper();Path old=root.resolve("old"),now=root.resolve("now");
         assertTrue(h.compile(old,Map.of("p/Api.java",before),null));assertTrue(h.compile(now,Map.of("p/Api.java",after),null));
-        return ApiCompatibilityQueries.compare(h.index(old,"old-db"),h.index(now,"now-db"),100);
+        return h.compare(old,"old-db", now,"now-db", 100);
     }
     JsonNode finding(JsonNode result,String reason) {
         return result.path("findings").valueStream().filter(f->f.path("reason").asText().equals(reason)).findFirst().orElseThrow(()->new AssertionError(result));
@@ -27,7 +29,7 @@ class JavaJvmApiCompatibilityTest {
         var h=helper();Path old=root.resolve("final-old"),now=root.resolve("final-now");
         assertTrue(h.compile(old,Map.of("p/Api.java","package p; public class Api {}"),null));
         assertTrue(h.compile(now,Map.of("p/Api.java","package p; public final class Api {}"),null));
-        finding(ApiCompatibilityQueries.compare(h.index(old,"final-old-db"),h.index(now,"final-now-db"),100),"CLASS_FINAL_ADDED");
+        finding(h.compare(old,"final-old-db", now,"final-now-db", 100),"CLASS_FINAL_ADDED");
     }
     @Test void finalAndAbstractClassFindingsMatchExistingBinaryFailures() throws Exception {
         var h=helper();Path old=root.resolve("old"),finalApi=root.resolve("final"),abstractApi=root.resolve("abstract"),sub=root.resolve("sub"),client=root.resolve("client");
@@ -36,10 +38,10 @@ class JavaJvmApiCompatibilityTest {
         assertTrue(h.compile(client,Map.of("p/Use.java","package p; public class Use {public static void main(String[] a){System.out.println(new Api());}}"),old));
         assertTrue(h.compile(finalApi,Map.of("p/Api.java","package p; public final class Api {}"),null));
         assertTrue(h.run(finalApi,sub,1).contains("IncompatibleClassChangeError"));
-        finding(ApiCompatibilityQueries.compare(h.index(old,"final-before"),h.index(finalApi,"final-after"),100),"CLASS_FINAL_ADDED");
+        finding(h.compare(old,"final-before", finalApi,"final-after", 100),"CLASS_FINAL_ADDED");
         assertTrue(h.compile(abstractApi,Map.of("p/Api.java","package p; public abstract class Api {}"),null));
         assertTrue(h.run(abstractApi,client,1).contains("InstantiationError"));
-        finding(ApiCompatibilityQueries.compare(h.index(old,"abstract-before"),h.index(abstractApi,"abstract-after"),100),"CLASS_ABSTRACT_ADDED");
+        finding(h.compare(old,"abstract-before", abstractApi,"abstract-after", 100),"CLASS_ABSTRACT_ADDED");
     }
     @Test void genericContractsChangeWithoutChangingJvmDescriptors() throws Exception {
         var report=compare("package p; public class Api<T> { public java.util.List<String> values(){return null;} }",
@@ -59,7 +61,7 @@ class JavaJvmApiCompatibilityTest {
         assertTrue(h.compile(now,Map.of("p/Api.java","package p; public class Api {public static int run() throws java.io.IOException {return 1;}}"),null));
         assertEquals("1",h.run(now,client,0).strip());
         assertFalse(h.compile(root.resolve("recompiled"),Map.of("p/Use.java",caller),now));
-        var report=ApiCompatibilityQueries.compare(h.index(old,"old-db"),h.index(now,"now-db"),100);
+        var report=h.compare(old,"old-db", now,"now-db", 100);
         finding(report,"THROWS_CHANGED");assertEquals("review_required",report.path("verdict").asText());
     }
     @Test void changedConstantsWarnAboutAlreadyInlinedValues() throws Exception {
@@ -68,7 +70,7 @@ class JavaJvmApiCompatibilityTest {
         assertTrue(h.compile(client,Map.of("p/Use.java","package p; public class Use {public static void main(String[] a){System.out.println(Api.VALUE);}}"),old));
         assertTrue(h.compile(now,Map.of("p/Api.java","package p; public class Api {public static final int VALUE=2;}"),null));
         assertEquals("1",h.run(now,client,0).strip());
-        var change=finding(ApiCompatibilityQueries.compare(h.index(old,"old-db"),h.index(now,"now-db"),100),"CONSTANT_VALUE_CHANGED");
+        var change=finding(h.compare(old,"old-db", now,"now-db", 100),"CONSTANT_VALUE_CHANGED");
         assertTrue(change.path("consumer_recompile_required").asBoolean());
         assertFalse(change.path("inlined_consumer_values_updated").asBoolean());
         assertEquals(0,change.path("baseline_impact").path("consumer_count").asInt());
@@ -83,7 +85,7 @@ class JavaJvmApiCompatibilityTest {
         assertTrue(h.compile(output,Map.of("p/Api.java","package p; public class Api {}"),null));
         Jdbi before=h.index(output,"before"),after=h.index(output,"after");
         before.useHandle(handle->handle.execute("UPDATE jvm_api SET evidence='{\"schema_version\":1,\"status\":\"captured\"}'"));
-        var report=ApiCompatibilityQueries.compare(before,after,100);
+        var report=ReadQueryContext.<com.fasterxml.jackson.databind.node.ObjectNode>readWithGraph(before, readScope -> ReadQueryContext.<com.fasterxml.jackson.databind.node.ObjectNode>readWithGraph(after, otherReadScope -> ApiCompatibilityQueries.compare(readScope, otherReadScope, 100)));
         finding(report,"JVM_API_EVIDENCE_INCOMPLETE");
         assertEquals(1,report.path("jvm_api_coverage").path("baseline_missing_classes").asInt());
         assertEquals("unknown",report.path("verdict").asText());
@@ -96,14 +98,14 @@ class JavaJvmApiCompatibilityTest {
         before.useHandle(handle->{handle.execute("INSERT INTO metadata(key,value) VALUES ('index_id','baseline')");handle.execute("INSERT INTO metadata(key,value) VALUES ('indexed_at','2026-10-13T00:00:00Z')");});
         after.useHandle(handle->handle.execute("INSERT INTO metadata(key,value) VALUES ('index_id','current')"));
         Files.createDirectories(root.resolve(".quill"));Files.copy(root.resolve("baseline.db"),root.resolve(".quill/baseline.db"));
-        JsonNode result=new ObjectMapper().readTree(new IndexComparisonQueries().compareIndex(after,root,"baseline",100));
+        JsonNode result=new ObjectMapper().readTree(ReadQueryContext.<String>readWithGraph(after, readScope -> new IndexComparisonQueries().compareIndex(readScope, root, "baseline", 100)));
         assertEquals(1,result.path("classes").path("modified_count").asInt(),result.toString());
         finding(result.path("api_compatibility"),"CONSTANT_VALUE_CHANGED");
     }
     @Test void inheritedSymbolicOwnersAreIncludedInBaselineImpact() throws Exception {
         Jdbi before=JavaEvidenceFixture.index(root.resolve("before"),"package p; class Base {public void run(){}} class Child extends Base {} class Use {void use(Child c){c.run();}}");
         Jdbi after=JavaEvidenceFixture.index(root.resolve("after"),"package p; class Base {} class Child extends Base {} class Use {void use(Child c){}}");
-        var change=finding(ApiCompatibilityQueries.compare(before,after,100),"MEMBER_REMOVED_OR_DESCRIPTOR_CHANGED");
+        var change=finding(ReadQueryContext.<com.fasterxml.jackson.databind.node.ObjectNode>readWithGraph(before, readScope -> ReadQueryContext.<com.fasterxml.jackson.databind.node.ObjectNode>readWithGraph(after, otherReadScope -> ApiCompatibilityQueries.compare(readScope, otherReadScope, 100))),"MEMBER_REMOVED_OR_DESCRIPTOR_CHANGED");
         assertEquals(1,change.path("baseline_impact").path("consumer_count").asInt(),change.toString());
         assertEquals("p.Use",change.path("baseline_impact").path("consumers").get(0).path("class_name").asText());
     }

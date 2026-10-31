@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,7 +14,7 @@ import java.util.List;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.treblereel.mcp.command.BuildStatusInspector;
+import org.treblereel.mcp.index.BuildStatusInspector;
 import org.treblereel.mcp.db.QuillDatabase;
 
 class ChangeVerificationScopeTest {
@@ -28,6 +30,7 @@ class ChangeVerificationScopeTest {
         JsonNode result = verify(db);
         assertEquals("ready", result.path("verdict").asText());
         assertTrue(result.path("verified").asBoolean());
+        assertEquals("build_required", result.path("build").path("repository_status").asText());
         assertEquals("fresh", result.path("build").path("compiled_outputs").path("status").asText());
         assertTrue(result.path("build").path("repository_stale_modules").toString().contains("unrelated"));
         assertEquals(List.of(".", "app", "base"), result.path("verification_plan")
@@ -138,13 +141,13 @@ class ChangeVerificationScopeTest {
                   {"build_reason":"classes_stale","stale_modules":["base","unrelated"]},
                   {"build_reason":"classes_missing","stale_modules":["unrelated"]}]}
                 """);
-        QuillTools.annotateScopedBuildWarnings(response);
+        ProjectAvailabilityResponses.annotateScopedBuildWarnings(response);
         assertEquals(false, response.path("project_warnings").get(0).path("blocking_for_change").asBoolean(true));
         assertEquals("repository_outside_change", response.path("project_warnings").get(0).path("scope").asText());
         assertFalse(response.path("project_warnings").get(1).has("blocking_for_change"));
         assertFalse(response.path("project_warnings").get(2).has("blocking_for_change"));
         ((ObjectNode) response.path("verification").path("build").path("verification_scope")).put("kind", "repository");
-        QuillTools.annotateScopedBuildWarnings(response);
+        ProjectAvailabilityResponses.annotateScopedBuildWarnings(response);
         assertFalse(response.path("project_warnings").get(1).has("blocking_for_change"));
     }
 
@@ -155,8 +158,7 @@ class ChangeVerificationScopeTest {
                  "impacted_tests":{"answer_complete":true,"tests":[]},
                  "_meta":{"structure_stale":false}}
                 """);
-        return JSON.readTree(new ChangeVerificationQueries().verifyChangeWithContext(db, root,
-                List.of("Thing"), 20, context, JSON.createObjectNode(), false, false));
+        return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new ChangeVerificationQueries().verifyChangeWithContext(readScope, root, List.of("Thing"), 20, context, JSON.createObjectNode(), false, false)));
     }
 
     private void fixture() throws Exception {

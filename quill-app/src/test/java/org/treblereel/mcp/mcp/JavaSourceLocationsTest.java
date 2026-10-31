@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import org.treblereel.mcp.db.ReadQueryContext;
+
 import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -57,7 +59,7 @@ class JavaSourceLocationsTest {
     void metadata(String key, String value) { db.useHandle(h -> h.execute("INSERT OR REPLACE INTO metadata(key,value) VALUES(?,?)", key, value)); }
     @AfterEach void stop() { JavaSemanticQueries.close(); }
     ObjectNode usages(String name, String kind, String access) throws Exception {
-        return (ObjectNode) JSON.readTree(new SymbolUsageQueries().findSymbolUsages(db,"p.Example",name,kind,null,access,10,0));
+        return (ObjectNode) JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, "p.Example", name, kind, null, access, 10, 0)));
     }
     @Test void methodAndFieldResponsesContainOnlyExactCompilerCorroboratedRanges() throws Exception {
         var result = usages("pick", "method", "all");
@@ -73,7 +75,7 @@ class JavaSourceLocationsTest {
         }
         assertEquals(2, usages("value","field","write").path("usages").get(0).path("source_evidence").path("locations").size());
         assertEquals(1, usages("value","field","read").path("usages").get(0).path("source_evidence").path("locations").size());
-        var hierarchy = JSON.readTree(new CallHierarchyQueries().getCallHierarchy(db,"p.Example","pick","(I)I","inbound",false,1,10,0));
+        var hierarchy = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new CallHierarchyQueries().getCallHierarchy(readScope, "p.Example", "pick", "(I)I", "inbound", false, 1, 10, 0)));
         assertEquals(2, hierarchy.path("calls").get(0).path("source_evidence").path("locations").size());
     }
     @Test void changedSourceWithRestoredTimestampRetainsOnlyBytecodeEvidence() throws Exception {
@@ -95,10 +97,12 @@ class JavaSourceLocationsTest {
     }
     @Test void wrongCallerDescriptorOrBytecodeLineCannotProduceSourceCoordinates() throws Exception {
         var node = JSON.createObjectNode();
-        var locations = new JavaSourceLocations(db);
+        try (var context = ReadQueryContext.openWithGraph(db)) {
+        var locations = new JavaSourceLocations(context);
         locations.append(node,relative,"p.Example","run","(I)V","p.Example","pick","(I)I","call","id",List.of(5));
         assertEquals("no_matching_source_reference",node.path("source_evidence").path("status").asText());
         locations.append(node,relative,"p.Example","run","()V","p.Example","pick","(I)I","call","id",List.of(4));
         assertTrue(node.path("source_evidence").path("locations").isEmpty());
+        }
     }
 }

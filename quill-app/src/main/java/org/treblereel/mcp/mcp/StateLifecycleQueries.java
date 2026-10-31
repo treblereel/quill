@@ -11,10 +11,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import org.jdbi.v3.core.Jdbi;
-import org.treblereel.mcp.db.IndexReader;
-import org.treblereel.mcp.db.IndexReader.FieldAccessView;
-import org.treblereel.mcp.db.IndexReader.MethodCallView;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.UsageRepository;
+import org.treblereel.mcp.db.UsageRepository.FieldAccessView;
+import org.treblereel.mcp.db.UsageRepository.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 
@@ -31,11 +31,11 @@ final class StateLifecycleQueries {
     private static final Set<String> SERIALIZATION = Set.of(
             "serialize", "deserialize", "mapper", "codec", "json", "marshal", "unmarshal");
 
-    String trace(Jdbi jdbi, String target, int evidenceLimit) {
-        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(jdbi, target);
-        if (lookup.error() != null) return classLookupError(jdbi, lookup, target);
+    String trace(ReadQueryContext reader, String target, int evidenceLimit) {
+        ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
+        if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord cls = lookup.cls();
-        List<ClassMemberRecord> members = IndexReader.findClassMembers(jdbi, cls.id());
+        List<ClassMemberRecord> members = reader.symbols.findClassMembers(cls.id());
         List<ClassMemberRecord> constructors = members.stream()
                 .filter(member -> member.kind().equals("CONSTRUCTOR")).toList();
         List<ClassMemberRecord> fields = members.stream()
@@ -44,8 +44,7 @@ final class StateLifecycleQueries {
         List<Evidence> creations = new ArrayList<>();
         for (ClassMemberRecord constructor : constructors) {
             if (constructor.descriptor().isBlank()) continue;
-            for (MethodCallView usage : IndexReader.findExactMethodUsages(jdbi, cls.id(),
-                    "<init>", constructor.descriptor(), evidenceLimit, 0)) {
+            for (MethodCallView usage : reader.usages.findExactMethodUsages(reader.methods().symbolicOwners(cls.id(), "<init>", constructor.descriptor(), "inbound"), "<init>", constructor.descriptor(), evidenceLimit, 0)) {
                 creations.add(Evidence.call("creation", usage, null));
             }
         }
@@ -54,7 +53,7 @@ final class StateLifecycleQueries {
         List<Evidence> writes = new ArrayList<>();
         for (ClassMemberRecord field : fields) {
             if (field.descriptor().isBlank()) continue;
-            for (FieldAccessView usage : IndexReader.findExactFieldUsages(jdbi, cls.id(),
+            for (FieldAccessView usage : reader.usages.findExactFieldUsages(cls.id(),
                     field.name(), field.descriptor(), null, evidenceLimit, 0)) {
                 Evidence evidence = Evidence.field(usage, field.name());
                 (usage.accessKind().startsWith("read_") ? reads : writes).add(evidence);
@@ -101,7 +100,7 @@ final class StateLifecycleQueries {
                 .add("Use evidence locations for targeted source verification before architectural decisions");
         int naiveTokens = cls.sourceTokens() + combined.stream()
                 .mapToInt(Evidence::sourceTokens).sum();
-        appendMeta(root, jdbi, naiveTokens, cls.sourceFile(), cls.module());
+        appendMeta(root, reader, naiveTokens, cls.sourceFile(), cls.module());
         return root.toString();
     }
 

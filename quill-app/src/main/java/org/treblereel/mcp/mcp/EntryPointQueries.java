@@ -145,7 +145,7 @@ final class EntryPointQueries {
         ArrayNode limitations = root.putArray("limitations");
         limitations.add("Only compiled signatures, indexed annotations, type hierarchy, and project-local META-INF/services descriptors are analyzed");
         limitations.add("XML, YAML, programmatic route registration, build extensions, reflection, and external deployment descriptors may define additional entry points");
-        limitations.add("Annotation values such as route paths, topics, channels, and schedules are not retained in the current member index");
+        limitations.add("annotation_values lists explicitly written members only; defaults declared by the annotation type are absent");
         limitations.add("Composed method annotations are reported only when their concrete annotation type is one of the supported framework entry-point annotations");
 
         ArrayNode values = root.putArray("entry_points");
@@ -168,6 +168,7 @@ final class EntryPointQueries {
             node.put("confidence", candidate.confidence());
             node.set("annotations", JSON.valueToTree(candidate.annotations()));
             if (candidate.detail() != null) node.set("service", candidate.detail());
+            if (candidate.member() != null) appendAnnotationEvidence(node, candidate);
             if (cls.sourceFile() == null) node.putNull("source");
             else node.put("source", cls.sourceFile() + ":" + cls.sourceLine());
             node.put("origin", cls.origin());
@@ -289,6 +290,38 @@ final class EntryPointQueries {
     }
 
     private record EntryKey(int classId, String signature, String kind) {}
+
+    /**
+     * Route paths, schedules, topics and observer settings come from the indexed annotation
+     * values. Observers also report the observed event type and qualifiers: an observer without
+     * qualifiers is notified for every event of its type, whatever qualifiers the event has.
+     */
+    private static void appendAnnotationEvidence(ObjectNode node, Candidate candidate) {
+        var details = candidate.member().annotationDetails();
+        ObjectNode values = JSON.createObjectNode();
+        details.stream().filter(detail -> candidate.annotations().contains(detail.annotationName()))
+                .filter(detail -> !detail.values().isEmpty())
+                .forEach(detail -> values.set(detail.annotationName(), JSON.valueToTree(detail.values())));
+        if (!values.isEmpty()) node.set("annotation_values", values);
+        if (!"observer".equals(candidate.kind())) return;
+        details.stream().filter(detail -> OBSERVER_ANNOTATIONS.contains(detail.annotationName()))
+                .filter(detail -> detail.parameterIndex() != null).findFirst().ifPresent(observes -> {
+                    ObjectNode observer = node.putObject("observer");
+                    observer.put("event_type", observes.parameterType());
+                    observer.put("asynchronous", observes.annotationName().endsWith("ObservesAsync"));
+                    List<String> parameterAnnotations = details.stream()
+                            .filter(detail -> observes.parameterIndex().equals(detail.parameterIndex()))
+                            .map(detail -> detail.annotationName())
+                            .filter(name -> !OBSERVER_ANNOTATIONS.contains(name)).distinct().sorted().toList();
+                    observer.set("observed_parameter_annotations", JSON.valueToTree(parameterAnnotations));
+                    observer.put("during", String.valueOf(observes.values().getOrDefault("during", "IN_PROGRESS")));
+                    observer.put("notify_observer", String.valueOf(
+                            observes.values().getOrDefault("notifyObserver", "ALWAYS")));
+                    observer.put("qualifier_rule", parameterAnnotations.isEmpty()
+                            ? "No observed qualifiers: notified for every event of this type; no @Default is required"
+                            : "Notified when the event carries every observed qualifier; non-qualifier annotations in this list are ignored");
+                });
+    }
 
     private record Candidate(
             ClassRecord owner,

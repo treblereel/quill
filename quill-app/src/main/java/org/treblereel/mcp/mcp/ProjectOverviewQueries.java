@@ -214,7 +214,7 @@ final class ProjectOverviewQueries {
 
     private static List<String> auxiliaryBuildProjects(ReadQueryContext reader) {
         java.util.Set<String> modules = new java.util.HashSet<>(reader.index.findIndexedModules());
-        java.util.Set<String> result = new java.util.TreeSet<>();
+        java.util.TreeSet<String> candidates = new java.util.TreeSet<>();
         for (String descriptor : reader.index.findBuildDescriptors()) {
             int slash = descriptor.lastIndexOf('/');
             if (slash < 0) continue; // the root build itself
@@ -222,7 +222,14 @@ final class ProjectOverviewQueries {
             if (modules.contains(directory) || directory.contains("/src/")
                     || directory.startsWith("src/") || directory.contains("/target/")
                     || directory.startsWith("target/")) continue;
-            result.add(directory);
+            // An aggregator whose children are indexed modules belongs to the indexed build.
+            if (modules.stream().anyMatch(module -> module.startsWith(directory + "/"))) continue;
+            candidates.add(directory);
+        }
+        // Report each separate build once, by its top directory (Gradle subprojects included).
+        List<String> result = new ArrayList<>();
+        for (String directory : candidates) {
+            if (result.stream().noneMatch(top -> directory.startsWith(top + "/"))) result.add(directory);
             if (result.size() >= 20) break;
         }
         return List.copyOf(result);

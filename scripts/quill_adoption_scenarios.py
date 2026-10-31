@@ -8,7 +8,9 @@ from pathlib import Path
 
 
 SCOPE = ("Work only in this fixture; do not access credentials, other projects, or unrelated "
-         "services, and do not delegate. Do not modify files or run builds or tests. ")
+         "services, and do not delegate. Do not modify files or run builds or tests. "
+         "Do not copy or clone the fixture, and do not start your own code-analysis servers; "
+         "use only the tools already configured. ")
 SCENARIOS = {
     "navigation": {
         "prompt": "Locate the production declaration of greet(String) and its source file, "

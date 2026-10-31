@@ -17,7 +17,7 @@ final class ToolOutputSchemas {
                     field("architecture_hubs", array()),
                     field("view", string()), field("workspace_root", string()),
                     field("revision", integer()), field("scope", string()),
-                    field("projects", array()), field("next_page_request", object()),
+                    field("projects", array()), field("next_page_request", unconstrainedObject()),
                     pageFields());
             case "symbol_search" -> object(
                     field("pattern", string()), field("kind", string()),
@@ -25,12 +25,12 @@ final class ToolOutputSchemas {
                     pageFields());
             case "symbol_details" -> object(
                     identityFields(), field("class", string()), field("kind", string()),
-                    field("location", object()), field("members", array()), pageFields());
+                    field("location", unconstrainedObject()), field("members", array()), pageFields());
             case "position_symbol" -> object(
                     field("path", string()), field("line", integer()),
                     field("column", integer()), field("identifier", string()),
                     field("resolution", string()), field("confidence", string()),
-                    field("selected", object()), field("candidates", array()),
+                    field("selected", unconstrainedObject()), field("candidates", array()),
                     field("limitations", array()));
             case "symbol_usages" -> object(
                     identityFields(), field("target", string()), field("kind", string()),
@@ -44,7 +44,7 @@ final class ToolOutputSchemas {
                     pageFields());
             case "execution_order" -> object(
                     identityFields(), field("target", string()), field("method", string()),
-                    field("bytecode_sequence", array()), field("ordering_analysis", object()));
+                    field("bytecode_sequence", array()), field("ordering_analysis", unconstrainedObject()));
             default -> throw new IllegalArgumentException("Unknown output schema: " + name);
         };
     }
@@ -106,11 +106,13 @@ final class ToolOutputSchemas {
         return Map.of("type", "boolean");
     }
 
+    // Nested schemas rely on JSON Schema defaults (any items, additional properties allowed);
+    // only the top-level schema states additionalProperties explicitly.
     private static Map<String, Object> array() {
-        return Map.of("type", "array", "items", unconstrainedObject());
+        return Map.of("type", "array");
     }
 
     private static Map<String, Object> unconstrainedObject() {
-        return Map.of("type", "object", "additionalProperties", true);
+        return Map.of("type", "object");
     }
 }

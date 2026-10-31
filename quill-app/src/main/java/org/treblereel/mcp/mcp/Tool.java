@@ -18,4 +18,10 @@ import java.lang.annotation.Target;
 
     /** Optional identifier for a more specific output schema. */
     String output() default "";
+
+    /**
+     * Whether tools/list advertises the tool. Unlisted tools stay callable by name and are
+     * discoverable through the router's search_tools.
+     */
+    boolean listed() default true;
 }

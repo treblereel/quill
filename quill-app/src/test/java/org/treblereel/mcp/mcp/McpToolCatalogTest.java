@@ -602,12 +602,27 @@ class McpToolCatalogTest {
         Map<String, Object> properties = (Map<String, Object>) configuration.tool()
                 .inputSchema().get("properties");
         @SuppressWarnings("unchecked")
-        Map<String, Object> project = (Map<String, Object>) properties.get("project");
+        Map<String, Object> module = (Map<String, Object>) properties.get("module");
         @SuppressWarnings("unchecked")
         Map<String, Object> key = (Map<String, Object>) properties.get("key");
 
-        assertNull(project.get("description"));
+        assertNull(module.get("description"));
         assertTrue(key.get("description").toString().contains("wildcard"));
+        assertFalse(properties.containsKey("project"),
+                "A single-project catalog does not advertise the project selector");
+        assertFalse(configuration.tool().inputSchema().containsKey("additionalProperties"));
+    }
+
+    @Test
+    void singleProjectCatalogOmitsWorkspaceToolsAndListsOneDeadCodeTool() {
+        Set<String> names = McpToolCatalog.create(new QuillTools(new ProjectRegistry()), workers,
+                        responses, Duration.ofSeconds(1)).stream()
+                .map(specification -> specification.tool().name())
+                .collect(java.util.stream.Collectors.toSet());
+
+        assertFalse(names.contains("find_workspace_usages"));
+        assertTrue(names.contains("find_unused"));
+        assertFalse(names.contains("find_unused_fields"), "Per-kind tools are callable but unlisted");
     }
 
     @Test

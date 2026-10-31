@@ -37,6 +37,11 @@ public final class QuillTools {
         return registry.workspaceScope() != null;
     }
 
+    /** One project without --workspace: no project selector and no workspace tools to offer. */
+    boolean singleProjectCatalog() {
+        return !workspaceMode() && registry.configuredProjectCount() <= 1;
+    }
+
     public QuillTools() {
         this(new ProjectRegistry());
     }
@@ -422,7 +427,29 @@ public final class QuillTools {
                         requestedOffset)));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Find conservative candidates for unused indexed classes; not proof of dead code.")
+    @Tool(readOnly = true, structured = true,
+            description = "Find conservative dead-code candidates: unused classes, or private methods/fields without indexed calls/reads.")
+    public String find_unused(
+            @ToolArg(description = "What to find", allowed = {"classes", "methods", "fields"}) String kind,
+            @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
+            @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,
+            @ToolArg(description = "Include test classes; default false") Optional<Boolean> include_tests,
+            @ToolArg(description = "Fields only: include written but never read fields; default false") Optional<Boolean> include_write_only,
+            @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
+            @ToolArg(description = "Page offset") Optional<Integer> offset,
+            @ToolArg(description = "Project; omit for all") Optional<String> project) {
+        // One advertised tool instead of three near-identical schemas; the per-kind tools stay
+        // callable for existing clients.
+        return switch (kind) {
+            case "classes" -> find_unused_classes(module, include_generated, include_tests, limit, offset, project);
+            case "methods" -> find_unused_methods(module, include_generated, include_tests, limit, offset, project);
+            case "fields" -> find_unused_fields(module, include_generated, include_tests, include_write_only,
+                    limit, offset, project);
+            default -> errorResponse("Invalid kind: expected classes, methods, or fields");
+        };
+    }
+
+    @Tool(readOnly = true, structured = true, listed = false, description = "Find conservative candidates for unused indexed classes; not proof of dead code.")
     public String find_unused_classes(
             @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
             @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,
@@ -436,7 +463,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Find private methods without indexed inbound calls; conservative dead-code candidates.")
+    @Tool(readOnly = true, structured = true, listed = false, description = "Find private methods without indexed inbound calls; conservative dead-code candidates.")
     public String find_unused_methods(
             @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
             @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,
@@ -450,7 +477,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Find private fields without indexed reads; conservative dead-code candidates.")
+    @Tool(readOnly = true, structured = true, listed = false, description = "Find private fields without indexed reads; conservative dead-code candidates.")
     public String find_unused_fields(
             @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
             @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,

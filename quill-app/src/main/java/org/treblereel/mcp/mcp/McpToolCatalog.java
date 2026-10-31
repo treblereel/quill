@@ -33,6 +33,11 @@ final class McpToolCatalog {
             "project", "limit", "offset", "module", "source_set", "class_name",
             "include_generated", "include_tests", "include_deleted");
 
+    /** Tools that only answer with --workspace; a single-project catalog omits them. */
+    private static final Set<String> WORKSPACE_TOOLS = Set.of(
+            "list_workspace_repositories", "get_workspace_dependencies", "resolve_workspace_entity",
+            "find_workspace_usages", "assess_workspace_change_risk");
+
     private McpToolCatalog() {}
 
     static List<AsyncToolSpecification> create(
@@ -67,21 +72,25 @@ final class McpToolCatalog {
             return create(router, RouterTools.class, toolScheduler, responseScheduler,
                     requestTimeout, McpToolProfile.full());
         }
+        boolean singleProject = tools instanceof QuillTools quill && quill.singleProjectCatalog();
         return java.util.Arrays.stream(toolType.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(Tool.class))
+                .filter(method -> method.getAnnotation(Tool.class).listed())
                 .filter(method -> profile.includes(method.getName()))
+                .filter(method -> !singleProject || !WORKSPACE_TOOLS.contains(method.getName()))
                 .sorted(Comparator.comparing(Method::getName))
-                .map(method -> specification(
-                        tools, method, toolScheduler, responseScheduler, requestTimeout, profile))
+                .map(method -> specification(tools, method, toolScheduler, responseScheduler,
+                        requestTimeout, profile, singleProject))
                 .toList();
     }
 
     private static AsyncToolSpecification specification(
             Object tools, Method method, Scheduler toolScheduler,
-            Scheduler responseScheduler, Duration requestTimeout, McpToolProfile profile) {
+            Scheduler responseScheduler, Duration requestTimeout, McpToolProfile profile,
+            boolean singleProject) {
         Tool annotation = method.getAnnotation(Tool.class);
         McpSchema.Tool.Builder toolBuilder =
-                McpSchema.Tool.builder(method.getName(), inputSchema(method))
+                McpSchema.Tool.builder(method.getName(), inputSchema(method, singleProject))
                         .description(description(tools, method, annotation));
         if (annotation.readOnly()) {
             // Queries may refresh derived caches/telemetry, but never edit source/configuration,
@@ -162,9 +171,19 @@ final class McpToolCatalog {
     }
 
     static Map<String, Object> inputSchema(Method method) {
+        return inputSchema(method, false);
+    }
+
+    /**
+     * @param singleProject omit the optional project selector, which has only one possible value;
+     *                      the argument is still accepted when a client sends it
+     */
+    static Map<String, Object> inputSchema(Method method, boolean singleProject) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
         for (Parameter parameter : method.getParameters()) {
+            if (singleProject && parameter.getName().equals("project")
+                    && isOptional(parameter.getParameterizedType())) continue;
             Map<String, Object> property = new LinkedHashMap<>();
             property.put("type", jsonType(parameter.getParameterizedType()));
             if ("array".equals(property.get("type"))) {
@@ -196,7 +215,8 @@ final class McpToolCatalog {
         // An empty "required" array is the JSON Schema default; omitting it keeps the catalog
         // that clients resend with every model request smaller.
         if (!required.isEmpty()) schema.put("required", required);
-        schema.put("additionalProperties", false);
+        // No additionalProperties=false: invocation rejects unknown arguments itself and lists
+        // the accepted ones, and the flag repeated on every tool cost ~1.6k catalog characters.
         return schema;
     }
 

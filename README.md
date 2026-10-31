@@ -387,6 +387,11 @@ quill --mcp --project /path/to/project --tools core,git
 quill --mcp --project /path/to/project --tools router
 ```
 
+Without `--workspace` and with at most one `--project`, the catalog omits the `project`
+selector (it is still accepted) and the five workspace-only tools. Input schemas do not
+repeat `additionalProperties: false`; unknown arguments are rejected with the list of
+accepted ones.
+
 Comma-separated profiles form a union. `core` contains the general navigation, dependency,
 impact, risk, and build-status tools; the specialized profiles add their respective analysis
 surface. `router` is standalone and exposes only `get_overview`, `search_tools`, and
@@ -462,6 +467,8 @@ does not imply that an executor, reactive stream, or message publication has com
   classes, and impacted tests while keeping lifecycle/semantic fit as an explicit limitation
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected
   method or overload, with hierarchy paths and Java modifier checks
+- **find_unused** — one advertised dead-code tool with `kind=classes|methods|fields`; it
+  dispatches to the per-kind tools below, which remain callable but are not listed
 - **find_unused_classes** — find conservative dead-code candidates while excluding indexed
   references, hierarchy use, DI/framework roots, main classes, and ServiceLoader providers
 - **find_unused_methods** — find uncalled private-method candidates using exact erased JVM

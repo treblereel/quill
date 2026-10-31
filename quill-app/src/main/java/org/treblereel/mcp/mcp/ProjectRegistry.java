@@ -178,6 +178,10 @@ public class ProjectRegistry implements AutoCloseable {
         this.mutableScope = scope instanceof SingleProjectScope single ? single : null;
     }
 
+    int configuredProjectCount() {
+        return scope.snapshot().projects().size();
+    }
+
     public void register(Path projectPath) {
         if (mutableScope == null) {
             throw new IllegalStateException("Projects are managed by "

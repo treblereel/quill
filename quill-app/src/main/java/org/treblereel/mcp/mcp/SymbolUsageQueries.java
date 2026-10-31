@@ -33,12 +33,16 @@ final class SymbolUsageQueries {
     String findSymbolUsages(Jdbi jdbi, String target, String name, String kind,
             String signature, String access, int limit, int offset) {
         try(var metrics=QueryMetrics.start()) {
-            return org.treblereel.mcp.db.ReadQueryContext.read(jdbi,()->findSymbolUsagesInRequest(jdbi,target,name,kind,signature,access,limit,offset));
+            return org.treblereel.mcp.db.ReadQueryContext.read(jdbi,()->findSymbolUsagesInRequest(jdbi,target,name,kind,signature,access,limit,offset,false));
         }
     }
 
+    String findMethodDeclaration(Jdbi jdbi,String target,String name,String signature) {
+        return org.treblereel.mcp.db.ReadQueryContext.read(jdbi,()->findSymbolUsagesInRequest(jdbi,target,name,"METHOD",signature,null,0,0,true));
+    }
+
     private String findSymbolUsagesInRequest(Jdbi jdbi,String target,String name,String kind,
-            String signature,String access,int limit,int offset) {
+            String signature,String access,int limit,int offset,boolean declarationOnly) {
         try {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
             if (reference != null) {
@@ -116,6 +120,8 @@ final class SymbolUsageQueries {
             appendMeta(error, jdbi, 0);
             return error.toString();
         }
+        // Declaration consumers must not enumerate/enrich callers just to obtain symbol identity.
+        if (declarationOnly) return base(cls,selected,kotlinDeclaration).toString();
         return "FIELD".equals(normalizedKind)
                 ? fieldUsages(jdbi, cls, selected, normalizedAccess, limit, offset)
                 : methodUsages(jdbi, cls, selected, kotlinDeclaration, limit, offset);

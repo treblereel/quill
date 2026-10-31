@@ -29,6 +29,20 @@ class MethodContextQueriesTest {
         assertFalse(new MethodContextQueries().get(db,cls,"pick(int)").path("source_complete").asBoolean());
         org.treblereel.mcp.db.QuillDatabase.retire(db);
     }
+    @Test void declarationSelectionPreservesIdentityAndErrorsWithoutEnumeratingCallers() throws Exception {
+        var db=JavaEvidenceFixture.index(root,"package p; class Fixture {int pick(int n){return n;} String pick(String n){return n;} int caller(){return pick(1);}} ");
+        try {
+            var json=new com.fasterxml.jackson.databind.ObjectMapper();var queries=new SymbolUsageQueries();
+            for(String signature:java.util.List.of("(I)I","pick(int)","(Ljava/lang/String;)Ljava/lang/String;")){
+                var declaration=json.readTree(queries.findMethodDeclaration(db,"p.Fixture","pick",signature));
+                var usages=json.readTree(queries.findSymbolUsages(db,"p.Fixture","pick","METHOD",signature,null,1,0));
+                for(String key:java.util.List.of("target","kind","name","signature","descriptor","symbol_id"))assertEquals(usages.path(key),declaration.path(key));
+                assertFalse(declaration.has("usages"));assertFalse(declaration.has("coverage"));assertFalse(declaration.has("_meta"));
+            }
+            var ambiguous=json.readTree(queries.findMethodDeclaration(db,"p.Fixture","pick",null));assertEquals("AMBIGUOUS_SYMBOL",ambiguous.path("error_code").asText());assertEquals(2,ambiguous.path("candidates").size());
+            var missing=json.readTree(queries.findMethodDeclaration(db,"p.Fixture","pick","(J)J"));assertEquals("SYMBOL_NOT_FOUND",missing.path("error_code").asText());
+        }finally{org.treblereel.mcp.db.QuillDatabase.retire(db);}
+    }
     @Test void rawUtf16ColumnsAndCrLfAreNotVisualTabColumns() {
         String text="first\r\n\tλ😀 body\r\nlast";
         assertEquals(8,MethodContextQueries.offset(text,2,2));

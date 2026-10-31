@@ -19,8 +19,8 @@ final class MethodContextQueries {
             int parameters=selector.indexOf('(');
             String name=parameters<0 ? selector : selector.substring(0,parameters);
             String signature=parameters<0 ? null : selector.substring(parameters);
-            JsonNode symbol=JSON.readTree(new SymbolUsageQueries().findSymbolUsages(
-                    db,cls.className(),name,"METHOD",signature,null,1,0));
+            JsonNode symbol=JSON.readTree(new SymbolUsageQueries().findMethodDeclaration(
+                    db,cls.className(),name,signature));
             if (symbol.has("error") || symbol.has("error_code")) return symbol;
             for(String field:new String[]{"target","name","descriptor","symbol_id"}) result.set(field,symbol.get(field));
             var metadata=IndexReader.getMetadata(db);

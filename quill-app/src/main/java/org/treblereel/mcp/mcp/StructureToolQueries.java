@@ -837,6 +837,7 @@ final class StructureToolQueries {
                 }
             }
         }
+        InterceptionEvidence.append(root, reader, cls, bean.get());
         appendMeta(root, reader, cls.sourceTokens());
         return root.toString();
     }

@@ -35,6 +35,21 @@ class PrefetchLifecycleTest {
         assertEquals("",hook("SessionStart","one"));
         assertTrue(hook("UserPromptSubmit","one").contains("additionalContext"));
     }
+    @Test void oversizedFactIsNeverMarkedDeliveredOrSilentlySuppressed() throws Exception {
+        var db=JavaEvidenceFixture.index(root,"package p; class Fixture {}");
+        db.useHandle(h->h.execute("UPDATE classes SET class_name=? WHERE class_name='p.Fixture'","p."+"x".repeat(12000)+".Fixture"));
+        org.treblereel.mcp.db.QuillDatabase.retire(db);
+        Files.createDirectories(root.resolve(".quill"));Files.copy(root.resolve("index.db"),root.resolve(".quill/fixture.db"));
+        Files.writeString(root.resolve(".quill/refs.json"),"{\"@worktree\":\"fixture\"}");
+        var mapper=new ObjectMapper();
+        for(int i=0;i<2;i++){
+            var data=mapper.readTree(mapper.readTree(hook("UserPromptSubmit","oversized")).path("hookSpecificOutput").path("additionalContext").asText());
+            assertEquals("partial",data.path("status").asText(),data.toString());assertTrue(data.path("facts").isEmpty());
+            assertEquals("prefetch_context_limit",data.path("unavailable").get(0).path("status").asText());
+            assertTrue(data.toString().getBytes(StandardCharsets.UTF_8).length<=10000);
+            try(var files=Files.list(root.resolve(".quill/prefetch"))){var state=mapper.readTree(files.filter(p->p.toString().endsWith(".json")).findFirst().orElseThrow().toFile());assertTrue(state.isEmpty(),state.toString());}
+        }
+    }
     @Test void operationAnchorSurvivesFollowUpsButNotResetOrAnExplicitUnknownRoute() throws Exception {
         var db=JavaEvidenceFixture.index(root,"package p; class Fixture {int fetch(){return 1;}}");
         EndpointPrefetchTest.routes(db,"GET");org.treblereel.mcp.db.QuillDatabase.retire(db);

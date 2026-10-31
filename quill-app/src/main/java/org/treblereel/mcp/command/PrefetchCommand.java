@@ -48,15 +48,22 @@ public final class PrefetchCommand implements Callable<Integer> {
                 for(JsonNode fact:data.path("facts")) {
                     ObjectNode identity=((ObjectNode)fact).deepCopy();identity.remove("_meta");
                     String id=digest(data.path("index_id").asText()+identity);
-                    if(!delivered.has(id)){fresh.add(fact);delivered.put(id,true);}
+                    if(!delivered.has(id))fresh.add(fact);
                 }
                 data.set("facts",fresh);
+                if(!fresh.isEmpty() && "ready".equals(data.path("status").asText()))
+                    data.put("producer","quill.prefetch").put("instructions","These are completed Quill reads for the shown index and query scope. Reuse covered facts, including explicit limits and unknowns; do not rediscover tools or repeat reads just for confirmation. Query tools/read source for missing, stale, ambiguous or truncated evidence. Source declarations do not prove runtime values; another static Quill query cannot establish them.");
+                PrefetchContext.boundContext(data);
+                for(JsonNode fact:fresh){
+                    ObjectNode identity=((ObjectNode)fact).deepCopy();identity.remove("_meta");
+                    delivered.put(digest(data.path("index_id").asText()+identity),true);
+                }
+                // An omitted context was not acknowledged: do not suppress it on a follow-up.
+                if(data.path("context_truncated").asBoolean()){delivered.remove("_index_id");delivered.remove("_endpoint");}
                 if(delivered.size()>512)delivered=JSON.createObjectNode();
                 Path temporary=Files.createTempFile(directory,"pending-",".json");
                 try {JSON.writeValue(temporary.toFile(),delivered);Files.move(temporary,state,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}finally{Files.deleteIfExists(temporary);}
-                if(fresh.isEmpty() && data.path("ambiguities").isEmpty() && data.path("unavailable").isEmpty() && "ready".equals(data.path("status").asText()))return 0;
-                if(!fresh.isEmpty() && "ready".equals(data.path("status").asText()))
-                    data.put("producer","quill.prefetch").put("instructions","These are completed Quill reads for the shown index and query scope. Reuse covered facts, including explicit limits and unknowns; do not rediscover tools or repeat reads just for confirmation. Query tools/read source for missing, stale, ambiguous or truncated evidence. Source declarations do not prove runtime values; another static Quill query cannot establish them.");
+                if(fresh.isEmpty() && data.path("unavailable").isEmpty() && data.path("ambiguities").isEmpty() && "ready".equals(data.path("status").asText()))return 0;
                 ObjectNode output=JSON.createObjectNode();output.putObject("hookSpecificOutput").put("hookEventName",event).put("additionalContext",data.toString());
                 System.out.println(output);
             }

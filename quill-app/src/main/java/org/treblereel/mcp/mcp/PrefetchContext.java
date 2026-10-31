@@ -65,9 +65,10 @@ public final class PrefetchContext {
             String key=keys.group().replaceAll("\\.+$","");
             if(!configurationKeys.contains(key) || !emittedKeys.add(key))continue;
             ObjectNode evidence=(ObjectNode)JSON.readTree(new ConfigurationReferenceQueries().find(db,key,null,"all",null,12,0,"declared"));
+            ConfigurationMethodSource.append(db,evidence);
             evidence.remove("_meta");var fact=facts.addObject().put("kind","configuration").put("tool","find_configuration_references");
             fact.putObject("arguments").put("key",key).put("view","declared").put("limit",12);
-            fact.put("query_scope","Indexed declarations matching the shown key, including profile declarations; effective runtime configuration is unsupported");
+            fact.put("query_scope","Indexed declarations matching the key; runtime values and profile activation unproven");
             fact.set("evidence",evidence);
         }
         Set<Integer> seen=new HashSet<>();var matcher=IDENTIFIER.matcher(prompt);
@@ -94,6 +95,17 @@ public final class PrefetchContext {
             return EndpointPrefetch.collect(db,root,previousEndpoint,deliveredCurrentIndex);
         result.put("index_id",metadata.getOrDefault("index_id","unknown"));
         return result.put("status","ready");
+    }
+    /** Portable hook budget: omit complete facts explicitly instead of letting clients cut JSON. */
+    public static void boundContext(ObjectNode data){
+        final int limit=10000;
+        if(!(data.path("facts") instanceof ArrayNode facts))return;
+        while(data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>limit && !facts.isEmpty()){
+            JsonNode omitted=facts.remove(facts.size()-1);
+            data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
+            var missing=data.withArray("unavailable").addObject().put("status","prefetch_context_limit");
+            for(String key:List.of("kind","tool","arguments"))if(omitted.has(key))missing.set(key,omitted.get(key));
+        }
     }
     private PrefetchContext(){}
 }

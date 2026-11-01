@@ -16,6 +16,7 @@ import org.treblereel.mcp.model.MetaEnvelope;
 final class ToolResponseSupport {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final int SCOPE_PAGE = 50;
 
     private ToolResponseSupport() {}
 
@@ -246,12 +247,14 @@ final class ToolResponseSupport {
                     coverage.put("evidence_detail", full ? "full" : "summary");
                     var scopes = coverage.path("indexed_scopes");
                     if (full && scopes.isArray()) {
-                        int total = scopes.size(), from = Math.min(offset, total), to = from + Math.min(100, total - from);
+                        // 50 scopes per evidence page keep a full page inside the response budget
+                        // even for long module paths.
+                        int total = scopes.size(), from = Math.min(offset, total), to = from + Math.min(SCOPE_PAGE, total - from);
                         var page = JSON.createArrayNode();
                         scopes.valueStream().skip(from).limit(to - from).forEach(page::add);
                         coverage.set("indexed_scopes", page);
                         var paging = coverage.putObject("indexed_scopes_page");
-                        appendPage(paging, to - from, total, 100, offset);
+                        appendPage(paging, to - from, total, SCOPE_PAGE, offset);
                         var indexId = coverage.has("index_id") ? coverage.path("index_id")
                                 : object.path("_meta").path("index_id");
                         if (!indexId.isMissingNode()) paging.set("index_id", indexId.deepCopy());

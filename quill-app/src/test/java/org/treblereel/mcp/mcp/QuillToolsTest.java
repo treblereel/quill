@@ -1762,7 +1762,7 @@ class QuillToolsTest {
         assertEquals("(I)V", changedHierarchy.path("candidates").get(0)
                 .path("descriptor").asText());
 
-        JsonNode futureVersion = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findSymbolUsages(readScope, "quill:symbol:v3:anything", null, null, null, "all", 10, 0)));
+        JsonNode futureVersion = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findSymbolUsages(readScope, "quill:symbol:v4:anything", null, null, null, "all", 10, 0)));
         assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION",
                 futureVersion.path("error_code").asText());
         assertFalse(futureVersion.has("error"));

@@ -54,21 +54,21 @@ class NarrowEvidenceTest {
             var original = response(); String tools = original.toString();
             Map<String, Object> args = new LinkedHashMap<>(Map.of("target", "sample.Target", "method", "resume", "offset", 7, "evidence_detail", "full"));
             int rows = 0;
-            for (int offset = 0; offset < 600; offset += 100) {
+            for (int offset = 0; offset < 600; offset += 50) {
                 args.put("evidence_offset", offset);
                 var result = call(tools, "get_call_hierarchy", args);
                 assertFalse(result.has("_response_budget"));
                 assertEquals(original.path("calls"), result.path("calls"));
                 assertEquals(original.path("project_warnings"), result.path("project_warnings"));
                 var scopes = result.at("/coverage/indexed_scopes"); rows += scopes.size();
-                assertEquals(Math.min(100, 556 - offset), scopes.size());
+                assertEquals(Math.min(50, 556 - offset), scopes.size());
                 assertEquals(original.at("/coverage/indexed_scopes/" + offset), scopes.get(0));
                 var page = result.at("/coverage/indexed_scopes_page");
                 assertEquals(556, page.path("total").asInt());
                 assertEquals(offset, page.path("offset").asInt());
                 assertEquals("fixture-index", page.path("index_id").asText());
-                if (offset < 500) {
-                    assertEquals(offset + 100, page.at("/next_page_request/arguments/evidence_offset").asInt());
+                if (offset < 550) {
+                    assertEquals(offset + 50, page.at("/next_page_request/arguments/evidence_offset").asInt());
                     assertEquals(7, page.at("/next_page_request/arguments/offset").asInt());
                 } else assertFalse(page.has("next_page_request"));
             }

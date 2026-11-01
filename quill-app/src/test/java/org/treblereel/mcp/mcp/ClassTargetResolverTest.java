@@ -78,7 +78,7 @@ class ClassTargetResolverTest {
 
     @Test
     void reportsUnsupportedSymbolIdVersionsWithoutTreatingThemAsClassNames() {
-        ClassTargetResolver.Lookup lookup = ReadQueryContext.readWithGraph(database(List.of(current("example.Type"))), readScope -> ClassTargetResolver.resolve(readScope, "quill:symbol:v3:anything"));
+        ClassTargetResolver.Lookup lookup = ReadQueryContext.readWithGraph(database(List.of(current("example.Type"))), readScope -> ClassTargetResolver.resolve(readScope, "quill:symbol:v4:anything"));
 
         assertFalse(lookup.found());
         assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", lookup.errorCode());

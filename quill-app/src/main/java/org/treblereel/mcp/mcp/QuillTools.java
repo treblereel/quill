@@ -265,7 +265,7 @@ public final class QuillTools {
             @ToolArg(description = "Members, usages, and tests per section; default 10, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(10), 1, 100);
-        return forAllProjects(project.orElse(null), (p, context) -> queries.planChange(
+        return forGraphProjects(project.orElse(null), (p, context) -> queries.planChange(
                 context, p.root(), targets, change, requestedLimit));
     }
 
@@ -276,7 +276,7 @@ public final class QuillTools {
             @ToolArg(description = "Changes, diagnostics, and tests per section; default 20, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
-        return forAllProjects(project.orElse(null), (p, context) -> queries.verifyChange(
+        return forGraphProjects(project.orElse(null), (p, context) -> queries.verifyChange(
                 context, p.root(), targets.orElse(List.of()), requestedLimit));
     }
 
@@ -290,7 +290,7 @@ public final class QuillTools {
             @ToolArg(description = "Evidence per section; default 20, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
-        return forAllProjects(project.orElse(null), (p, context) -> queries.changeSession(
+        return forGraphProjects(project.orElse(null), (p, context) -> queries.changeSession(
                 context, p.root(), targets.orElse(List.of()), change, requestedLimit,
                 detail.orElse("summary"), view.orElse("auto")));
     }
@@ -303,7 +303,7 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), (p, context) -> queries.findImpactedTests(
+        return forGraphProjects(project.orElse(null), (p, context) -> queries.findImpactedTests(
                 context, targets, transitive.orElse(true),
                 clamp(max_depth.orElse(3), 1, 5),
                 clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
@@ -1016,7 +1016,7 @@ public final class QuillTools {
 
     String findImpactedTests(Jdbi jdbi, List<String> targets,
             boolean transitive, int maxDepth, int limit, int offset) {
-        return ReadQueryContext.read(jdbi, context -> queries.findImpactedTests(context, targets, transitive, maxDepth, limit, offset));
+        return ReadQueryContext.readWithGraph(jdbi, context -> queries.findImpactedTests(context, targets, transitive, maxDepth, limit, offset));
     }
 
     String getTypeHierarchy(Jdbi jdbi, String target, String direction,
@@ -1169,16 +1169,16 @@ public final class QuillTools {
 
     String planChange(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit) {
-        return ReadQueryContext.read(jdbi, context -> queries.planChange(context, projectRoot, targets, change, limit));
+        return ReadQueryContext.readWithGraph(jdbi, context -> queries.planChange(context, projectRoot, targets, change, limit));
     }
 
     String verifyChange(Jdbi jdbi, Path projectRoot, List<String> targets, int limit) {
-        return ReadQueryContext.read(jdbi, context -> queries.verifyChange(context, projectRoot, targets, limit));
+        return ReadQueryContext.readWithGraph(jdbi, context -> queries.verifyChange(context, projectRoot, targets, limit));
     }
 
     String changeSession(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit) {
-        return ReadQueryContext.read(jdbi, context -> queries.changeSession(context, projectRoot, targets, change, limit, "full", "all"));
+        return ReadQueryContext.readWithGraph(jdbi, context -> queries.changeSession(context, projectRoot, targets, change, limit, "full", "all"));
     }
 
     String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {

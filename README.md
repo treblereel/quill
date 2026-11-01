@@ -111,7 +111,7 @@ defaults for constrained or unusually large local environments.
 Workspace fan-out queries use up to four shared read workers; set
 `QUILL_WORKSPACE_QUERY_WORKERS` to a positive value (capped at 32) to override it.
 `QUILL_MCP_REQUEST_TIMEOUT` sets the per-tool timeout in seconds (default: `30`).
-Successful JSON responses are capped at 256 KiB; set `QUILL_MCP_MAX_RESPONSE_BYTES`
+Successful JSON responses are capped at 64 KiB and paginated lists default to 25 items; set `QUILL_MCP_MAX_RESPONSE_BYTES`
 to override the cap. Truncated responses report omitted fields and filtering guidance.
 Dependency JAR indexing uses up to eight workers, capped automatically by available CPUs
 and the process heap budget (roughly 256 MiB per worker). Set

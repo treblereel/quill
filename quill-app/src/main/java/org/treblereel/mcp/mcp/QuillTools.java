@@ -19,6 +19,11 @@ import org.jdbi.v3.core.Jdbi;
 public final class QuillTools {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    /**
+     * First pages stay small: agents follow has_more/offset when they need everything, and a
+     * large default page is resent with every later model request of the session.
+     */
+    static final int DEFAULT_PAGE_SIZE = 25;
     private static final Set<String> NOT_FOUND_PREFIXES = Set.of(
             "{\"error\":\"Class not found\"",
             "{\"error\":\"Not a bean:");
@@ -64,7 +69,7 @@ public final class QuillTools {
             @ToolArg(description = "Page size") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset) {
         return workspace.listRepositories(include_modules.orElse(false),
-                clamp(limit.orElse(50), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE));
     }
 
@@ -77,7 +82,7 @@ public final class QuillTools {
             @ToolArg(description = "Offset") Optional<Integer> offset) {
         return workspace.getDependencies(repository.orElse(null),
                 direction.orElse("both"), cross_repository_only.orElse(true),
-                clamp(limit.orElse(100), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE));
     }
 
@@ -137,7 +142,7 @@ public final class QuillTools {
                 queries.getBeans(context, class_name.orElse(null), scope.orElse(null),
                         kind.orElse(null), profile.orElse(null), qualifier.orElse(null),
                         module.orElse(null), source_set.orElse(null), origin.orElse("all"),
-                        clamp(limit.orElse(50), 1, 100),
+                        clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 100),
                         clamp(offset.orElse(0), 0, Integer.MAX_VALUE))));
     }
 
@@ -154,7 +159,7 @@ public final class QuillTools {
         String requestedDirection = direction.orElse("both");
         int requestedDepth = clamp(depth.orElse(1), 1, 5);
         boolean requestedNodes = include_nodes.orElse(true);
-        int requestedLimit = clamp(limit.orElse(50), 1, 200);
+        int requestedLimit = clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         String requestedCursor = cursor.orElse(null);
         return forAllProjects(project.orElse(null), (p, context) -> workspace.enrichClassDependencies(
@@ -172,7 +177,7 @@ public final class QuillTools {
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         boolean requestedTransitive = transitive.orElse(true);
-        int requestedLimit = clamp(limit.orElse(50), 1, 100);
+        int requestedLimit = clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 100);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forAllProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "find_implementations",
                 jdbi -> queries.findImplementations(jdbi, target, requestedTransitive,
@@ -188,7 +193,7 @@ public final class QuillTools {
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         String requestedKind = usage_kind.orElse(null);
-        int requestedLimit = clamp(limit.orElse(50), 1, 200);
+        int requestedLimit = clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forAllProjects(project.orElse(null), (p, context) -> workspace.routeMissingUsages(
                 queries.findUsages(context, target, requestedKind, module.orElse(null),
@@ -212,7 +217,7 @@ public final class QuillTools {
         String requestedName = name.orElse(null);
         String requestedSignature = signature.orElse(null);
         String requestedAccess = access.orElse("all");
-        int requestedLimit = clamp(limit.orElse(50), 1, 200);
+        int requestedLimit = clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forGraphProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "find_symbol_usages",
                 jdbi -> queries.findSymbolUsages(jdbi, target, requestedName,
@@ -300,7 +305,7 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), (p, context) -> queries.findImpactedTests(
                 context, targets, transitive.orElse(true),
                 clamp(max_depth.orElse(3), 1, 5),
-                clamp(limit.orElse(100), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -314,7 +319,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         String requestedDirection = direction.orElse("both");
         int requestedDepth = clamp(max_depth.orElse(5), 1, 20);
-        int requestedLimit = clamp(limit.orElse(100), 1, 200);
+        int requestedLimit = clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forAllProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "get_type_hierarchy",
                 jdbi -> queries.getTypeHierarchy(jdbi, target, requestedDirection,
@@ -334,7 +339,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> queries.searchSymbols(
                 context, pattern, kind.orElse(null), language.orElse(null),
-                clamp(limit.orElse(50), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -358,7 +363,7 @@ public final class QuillTools {
         String requestedDirection = direction.orElse("both");
         boolean requestedTransitive = transitive.orElse(false);
         int requestedDepth = clamp(max_depth.orElse(3), 1, 8);
-        int requestedLimit = clamp(limit.orElse(100), 1, 200);
+        int requestedLimit = clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forGraphProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "get_call_hierarchy",
                 jdbi -> queries.getCallHierarchy(jdbi, target, requestedMethod,
@@ -419,7 +424,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         String requestedSignature = signature.orElse(null);
         boolean requestedTransitive = transitive.orElse(true);
-        int requestedLimit = clamp(limit.orElse(50), 1, 200);
+        int requestedLimit = clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forAllProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "find_method_overrides",
                 jdbi -> queries.findMethodOverrides(jdbi, target, method.orElse(null),
@@ -459,7 +464,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> queries.findUnusedClasses(
                 context, module.orElse(null), include_generated.orElse(false),
-                include_tests.orElse(false), clamp(limit.orElse(50), 1, 200),
+                include_tests.orElse(false), clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -473,7 +478,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> queries.findUnusedMethods(
                 context, module.orElse(null), include_generated.orElse(false),
-                include_tests.orElse(false), clamp(limit.orElse(50), 1, 200),
+                include_tests.orElse(false), clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -489,7 +494,7 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), (p, context) -> queries.findUnusedFields(
                 context, module.orElse(null), include_generated.orElse(false),
                 include_tests.orElse(false), include_write_only.orElse(false),
-                clamp(limit.orElse(50), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -505,7 +510,7 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), (p, context) -> queries.findEntryPoints(
                 context, kind.orElse(null), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
-                clamp(limit.orElse(100), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -519,7 +524,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> queries.getModuleGraph(
                 context, module.orElse(null), direction.orElse("both"),
-                clamp(depth.orElse(2), 1, 10), clamp(limit.orElse(100), 1, 200),
+                clamp(depth.orElse(2), 1, 10), clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -542,7 +547,7 @@ public final class QuillTools {
                         source_set.orElse(null),
                         query.orElse(null), directness.orElse(null), group.orElse(null),
                         artifact.orElse(null), scope.orElse(null),
-                        clamp(limit.orElse(100), 1, 200),
+                        clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                         clamp(offset.orElse(0), 0, Integer.MAX_VALUE)), p.name()));
     }
 
@@ -557,7 +562,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> fileNavigation.listProjectTree(
                 context, path.orElse("."), clamp(depth.orElse(2), 1, 10),
-                include_deleted.orElse(false), clamp(limit.orElse(100), 1, 500),
+                include_deleted.orElse(false), clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 500),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -576,7 +581,7 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), (p, context) -> fileNavigation.searchFiles(
                 context, pattern, module.orElse(null), kind.orElse(null),
                 directory.orElse(null), extension.orElse(null),
-                include_deleted.orElse(false), clamp(limit.orElse(50), 1, 200),
+                include_deleted.orElse(false), clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -589,7 +594,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> worktreeStatus.getWorktreeStatus(
                 context, p.root(), status.orElse(null),
-                clamp(limit.orElse(100), 1, 500),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 500),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -620,7 +625,7 @@ public final class QuillTools {
                 context, p.root(), pattern, kind.orElse(null), class_name.orElse(null),
                 library.orElse(null), match_mode.orElse("contains"),
                 include_occurrences.orElse(false),
-                clamp(limit.orElse(50), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -632,7 +637,7 @@ public final class QuillTools {
             @ToolArg(description = "Member page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> externalSymbols.details(
-                context, p.root(), class_name, clamp(limit.orElse(100), 1, 200),
+                context, p.root(), class_name, clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -649,7 +654,7 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), (p, context) -> queries.getPackageGraph(
                 context, package_name.orElse(null), direction.orElse("both"),
                 module.orElse(null), include_generated.orElse(false),
-                include_tests.orElse(false), clamp(limit.orElse(100), 1, 200),
+                include_tests.orElse(false), clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -666,7 +671,7 @@ public final class QuillTools {
                 context, scope.orElse("package"), from, forbidden,
                 kinds.map(value -> java.util.Arrays.stream(value.split(","))
                                 .map(String::strip).filter(item -> !item.isEmpty()).toList())
-                        .orElse(List.of()), false, false, clamp(limit.orElse(100), 1, 200),
+                        .orElse(List.of()), false, false, clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -693,7 +698,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> queries.compareIndex(
                 context, p.root(), baseline.orElse(null),
-                clamp(limit.orElse(50), 1, 200)));
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200)));
     }
 
     @Tool(readOnly = true, structured = true, description = "Inspect build integration and freshness; detail=full returns paged evidence. Never runs a build.")
@@ -736,7 +741,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forConfiguredProjects(project.orElse(null), p -> queries.getBuildProblems(
                 p.root(), severity.orElse("all"), module.orElse(null),
-                clamp(limit.orElse(50), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -751,7 +756,7 @@ public final class QuillTools {
         if (paths.isEmpty()) return errorResponse("paths must not be empty");
         return forConfiguredProjects(project.orElse(null), p -> queries.getFileProblems(
                 p.root(), paths, severity.orElse("all"),
-                clamp(limit.orElse(50), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -836,7 +841,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> queries.findConfigurationReferences(
                 context, key.orElse(null), class_name.orElse(null), kind.orElse("all"),
-                module.orElse(null), clamp(limit.orElse(50), 1, 200),
+                module.orElse(null), clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -850,7 +855,7 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> queries.findResourceReferences(
                 context, path, class_name.orElse(null), module.orElse(null),
-                clamp(limit.orElse(50), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -904,7 +909,7 @@ public final class QuillTools {
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> queries.getAnnotatedClasses(
                 context, annotation, include_meta_annotations.orElse(true),
-                clamp(limit.orElse(50), 1, 100),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -919,7 +924,7 @@ public final class QuillTools {
         return forAllProjects(project.orElse(null), (p, context) -> queries.findAnnotatedSymbols(
                 context, annotation, kind.orElse("all"),
                 include_meta_annotations.orElse(true),
-                clamp(limit.orElse(50), 1, 200),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
@@ -938,7 +943,7 @@ public final class QuillTools {
                 context, framework.orElse(null), http_method.orElse(null),
                 path_prefix.orElse(null), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
-                clamp(limit.orElse(50), 1, 100),
+                clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 

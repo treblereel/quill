@@ -14,7 +14,8 @@ import java.util.Map;
 /** Enforces a final safety budget across every successful MCP JSON response. */
 final class ResponseBudget {
 
-    static final int DEFAULT_MAX_BYTES = 256 * 1024;
+    /** About 16k tokens per response; QUILL_MCP_MAX_RESPONSE_BYTES overrides it. */
+    static final int DEFAULT_MAX_BYTES = 64 * 1024;
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private ResponseBudget() {}

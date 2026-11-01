@@ -105,6 +105,15 @@ public final class ProjectIndexStore {
 
     private static void cleanupLru(Path root, Map<String, String> refs, String activeIndex) {
         Path quillDir = root.resolve(".quill");
+        // Generations with an outdated schema can never be served again. They are kept until a
+        // replacement is published (this runs after activation) and removed here; their refs
+        // are dropped below because the databases no longer exist.
+        for (Path outdated : outdatedGenerations(root)) {
+            String fileName = outdated.getFileName().toString();
+            if (!fileName.substring(0, fileName.length() - ".db".length()).equals(activeIndex)) {
+                deleteDatabaseArtifacts(outdated);
+            }
+        }
         List<Path> databases;
         try (Stream<Path> files = Files.list(quillDir)) {
             databases = files

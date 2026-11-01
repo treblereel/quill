@@ -2649,6 +2649,35 @@ class QuillToolsTest {
     }
 
     @Test
+    void findCyclesKeepsNestedClassesWhoseOwnerHasNoDependencies() throws Exception {
+        // The owner is indexed only when it takes part in a dependency row; a nested class
+        // with an edge-free owner stays its own node instead of failing the whole query.
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes
+                      (id, class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES (100, 'org.acme.Outer$Inner', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/Outer.java', 3, 0, 5, 'source', 'current', 'app', 'main'),
+                           (101, 'org.acme.Peer', 'CLASS', 'java.lang.Object', '[]',
+                            'src/main/java/org/acme/Peer.java', 1, 0, 5, 'source', 'current', 'app', 'main')
+                    """);
+            handle.execute("""
+                    INSERT INTO dependencies(from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    VALUES (100, 101, 'METHOD_CALL', 1, '[]'), (101, 100, 'CONSTRUCTS', 1, '[]')
+                    """);
+        });
+
+        JsonNode result = JSON.readTree(new QuillTools().findCycles(
+                jdbi, "class", null, false, true, 20, 0));
+
+        assertFalse(result.has("error_code"), result.toString());
+        assertTrue(result.path("cycles").valueStream().anyMatch(cycle -> cycle.path("members").toString()
+                .contains("org.acme.Outer$Inner") && cycle.path("members").toString().contains("org.acme.Peer")),
+                result.toString());
+    }
+
+    @Test
     void findCyclesUsesOnlyDirectModuleDependencies() throws Exception {
         IndexFixture.writeModuleClasspath(jdbi, List.of(
                 new ModuleClasspathRecord("app", "app", 0, "self"),

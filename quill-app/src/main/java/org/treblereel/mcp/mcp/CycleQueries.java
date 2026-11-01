@@ -184,7 +184,8 @@ final class CycleQueries {
         Map<Integer, Integer> canonical = new HashMap<>();
         classes.values().forEach(cls -> {
             int separator = cls.className().indexOf('$');
-            Integer owner = separator < 0 ? cls.id()
+            // Boxed on both branches: an int branch would unbox a missing owner and throw.
+            Integer owner = separator < 0 ? Integer.valueOf(cls.id())
                     : idsByName.get(cls.className().substring(0, separator));
             canonical.put(cls.id(), owner == null ? cls.id() : owner);
         });

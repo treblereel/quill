@@ -201,11 +201,25 @@ class VerificationPlanQueriesTest {
         assertTrue(result.path("module_selection_complete").asBoolean());
     }
 
-    private static Path fixture(String relative) throws Exception {
+    /**
+     * A copy without build outputs: the reactor builds these fixtures with this checkout's Quill
+     * build integration, whose captures record the machine's active Maven profiles.
+     */
+    private Path fixture(String relative) throws Exception {
         Path current = Path.of("").toAbsolutePath();
         for (Path candidate : List.of(current.resolve(relative), current.resolve("..").resolve(relative))) {
-            Path normalized = candidate.normalize();
-            if (Files.isDirectory(normalized)) return normalized.toRealPath();
+            Path source = candidate.normalize();
+            if (!Files.isDirectory(source)) continue;
+            Path copy = tempDir.resolve("fixture-" + source.getFileName()).toAbsolutePath();
+            try (var paths = Files.walk(source)) {
+                for (Path path : (Iterable<Path>) paths::iterator) {
+                    Path target = copy.resolve(source.relativize(path).toString());
+                    if (source.relativize(path).toString().matches("(.*/)?(target|build|\\.gradle)(/.*)?")) continue;
+                    if (Files.isDirectory(path)) Files.createDirectories(target);
+                    else Files.copy(path, target);
+                }
+            }
+            return copy.toRealPath();
         }
         throw new IllegalStateException("Fixture not found: " + relative);
     }

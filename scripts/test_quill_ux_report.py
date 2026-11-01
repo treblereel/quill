@@ -28,6 +28,26 @@ class QuillUxReportTest(unittest.TestCase):
         self.assertEqual(1, report["truncated_responses"])
         self.assertEqual("get_overview", report["tools"][0]["tool"])
 
+    def test_splits_calls_by_client_model_and_profile(self):
+        events = [
+            {"tool": "get_overview", "session_id": "a", "response_bytes": 100, "status": "ok",
+             "client": "codex-mcp-client/0.162.1", "model": "gpt-6.1-sol", "tool_profile": "router"},
+            {"tool": "execute_tool", "session_id": "a", "response_bytes": 50, "status": "error",
+             "client": "codex-mcp-client/0.162.1", "model": "gpt-6.1-sol", "tool_profile": "router"},
+            {"tool": "get_overview", "session_id": "b", "response_bytes": 400, "status": "ok",
+             "client": "claude-code/2.1.311", "tool_profile": "full"},
+            {"tool": "get_overview", "response_bytes": 10, "status": "ok"},
+        ]
+
+        clients = summarize(events)["clients"]
+
+        self.assertEqual(("codex-mcp-client/0.162.1", "gpt-6.1-sol", "router", 2, 1, 150),
+                         tuple(clients[0][key] for key in
+                               ("client", "model", "tool_profile", "calls", "errors", "total_response_bytes")))
+        claude = next(row for row in clients if row["client"].startswith("claude-code"))
+        self.assertEqual("unknown", claude["model"])
+        self.assertTrue(any(row["client"] == "unknown" for row in clients))
+
     def test_loads_json_lines_and_compares_reports(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "events.jsonl"

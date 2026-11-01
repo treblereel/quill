@@ -69,6 +69,22 @@ def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
             "response_bytes": distribution(response_sizes),
         })
 
+    # Profile and catalog decisions are made per client and model, so totals are also split
+    # by them; events from older telemetry without these fields fall under "unknown".
+    by_client: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for event in events:
+        key = (str(event.get("client") or "unknown"), str(event.get("model") or "unknown"),
+               str(event.get("tool_profile") or "unknown"))
+        by_client[key].append(event)
+    clients = [{
+        "client": client, "model": model, "tool_profile": profile,
+        "calls": len(rows),
+        "sessions": len({row.get("session_id") for row in rows if row.get("session_id")}),
+        "errors": sum(row.get("status") == "error" for row in rows),
+        "total_response_bytes": int(sum(float(row.get("response_bytes", 0)) for row in rows)),
+        "response_bytes": distribution([float(row.get("response_bytes", 0)) for row in rows]),
+    } for (client, model, profile), rows in sorted(by_client.items(), key=lambda item: (-len(item[1]), item[0]))]
+
     durations = [float(event.get("duration_ms", 0)) for event in events]
     response_sizes = [float(event.get("response_bytes", 0)) for event in events]
     statuses = Counter(str(event.get("status", "unknown")) for event in events)
@@ -86,6 +102,7 @@ def summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
         "response_bytes": distribution(response_sizes),
         "total_response_bytes": int(sum(response_sizes)),
         "tools": tools,
+        "clients": clients,
     }
 
 
@@ -117,6 +134,10 @@ def print_report(report: dict[str, Any]) -> None:
               f"{row['duration_ms']['median']:>7.1f} "
               f"{row['duration_ms']['p95']:>7.1f} "
               f"{row['response_bytes']['median']:>10.0f}")
+    print("client                     model                profile   calls errors  bytes total")
+    for row in current.get("clients", []):
+        print(f"{row['client'][:26]:<26} {row['model'][:20]:<20} {row['tool_profile'][:9]:<9} "
+              f"{row['calls']:>5} {row['errors']:>6} {row['total_response_bytes']:>12}")
     if "delta" in report:
         print("delta vs baseline: " + json.dumps(report["delta"], sort_keys=True))
 

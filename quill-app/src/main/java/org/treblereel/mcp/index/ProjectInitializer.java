@@ -399,7 +399,7 @@ public class ProjectInitializer {
                 JandexScanner.extractClassAnnotations(
                         scanResult.index(), annotationLookup, classNameToSqliteId);
         List<ClassMemberRecord> classMembers =
-                JandexScanner.extractClassMembers(scanResult.index(), classNameToSqliteId);
+                JandexScanner.extractClassMembers(scanResult.index(), annotationLookup, classNameToSqliteId);
         List<FrameworkEndpointRecord> frameworkEndpoints =
                 JandexScanner.extractFrameworkEndpoints(
                         scanResult.index(), annotationLookup, classNameToSqliteId);

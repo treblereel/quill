@@ -6,6 +6,9 @@ import java.util.Map;
 import java.util.TreeMap;
 import org.jboss.jandex.AnnotationInstance;
 import org.jboss.jandex.AnnotationValue;
+import org.jboss.jandex.ClassInfo;
+import org.jboss.jandex.IndexView;
+import org.jboss.jandex.MethodInfo;
 
 /**
  * Explicit annotation members as JSON-friendly values: strings, numbers, booleans, enum
@@ -19,12 +22,35 @@ public final class AnnotationValues {
 
     private AnnotationValues() {}
 
+    /** Key listing the members whose value comes from the annotation type's default. */
+    public static final String DEFAULTS_KEY = "$defaults";
+
     public static Map<String, Object> of(AnnotationInstance annotation) {
+        return of(annotation, null);
+    }
+
+    /**
+     * Explicit members, plus the defaults declared by the annotation type when {@code types}
+     * indexes it (application or dependency JARs); defaulted members are listed under
+     * {@link #DEFAULTS_KEY}. Without the type only explicit members are known.
+     */
+    public static Map<String, Object> of(AnnotationInstance annotation, IndexView types) {
         Map<String, Object> result = new TreeMap<>();
         for (AnnotationValue value : annotation.values()) {
             Object converted = convert(value);
             if (converted != null) result.put(value.name(), converted);
         }
+        ClassInfo type = types == null ? null : types.getClassByName(annotation.name());
+        if (type == null) return result;
+        List<String> defaulted = new ArrayList<>();
+        for (MethodInfo member : type.methods()) {
+            if (result.containsKey(member.name()) || member.defaultValue() == null) continue;
+            Object converted = convert(member.defaultValue());
+            if (converted == null) continue;
+            result.put(member.name(), converted);
+            defaulted.add(member.name());
+        }
+        if (!defaulted.isEmpty()) result.put(DEFAULTS_KEY, defaulted.stream().sorted().toList());
         return result;
     }
 

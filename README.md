@@ -667,8 +667,9 @@ Responses omit values a client can derive, so read absent fields by these rules:
   are not part of the indexed modules.
 - **Annotation values.** The index (schema 32) keeps explicitly written annotation members
   (strings, numbers, booleans, enum names, class names, arrays of those) for classes,
-  members and parameters; `find_annotated_symbols` returns them in `values`. Defaults
-  declared by the annotation type are not recorded.
+  members and parameters; `find_annotated_symbols` returns them in `values`. When the
+  annotation type is indexed (application or dependency JARs) its declared defaults are
+  filled in too and the defaulted members are listed under `$defaults`.
 - **Empty results are not errors.** An annotation that no indexed declaration carries
   returns an empty list with `annotation_indexed: false`.
 - **Error guidance.** `CLASS_NOT_FOUND` and external-class misses explain why in `reason`

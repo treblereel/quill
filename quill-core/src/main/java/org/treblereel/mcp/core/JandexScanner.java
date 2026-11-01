@@ -249,7 +249,7 @@ public final class JandexScanner {
                 String directName = annotation.name().toString();
                 addClassAnnotation(result, seen,
                         new ClassAnnotationRecord(classId, directName, true, null,
-                                AnnotationValues.of(annotation)));
+                                AnnotationValues.of(annotation, lookupIndex)));
                 collectMetaAnnotations(classId, annotation.name(), directName, lookupIndex,
                         new HashSet<>(), result, seen);
             }
@@ -288,6 +288,12 @@ public final class JandexScanner {
     /** Extracts declared fields, constructors, and methods for symbol inspection. */
     public static List<ClassMemberRecord> extractClassMembers(
             IndexView index, Map<String, Integer> classNameToId) {
+        return extractClassMembers(index, index, classNameToId);
+    }
+
+    /** @param annotationTypes index used to resolve annotation member defaults */
+    public static List<ClassMemberRecord> extractClassMembers(
+            IndexView index, IndexView annotationTypes, Map<String, Integer> classNameToId) {
         List<ClassMemberRecord> result = new ArrayList<>();
         for (ClassInfo classInfo : index.getKnownClasses().stream()
                 .sorted(Comparator.comparing(value -> value.name().toString())).toList()) {
@@ -304,7 +310,7 @@ public final class JandexScanner {
                         type, List.of(),
                         java.lang.reflect.Modifier.toString(field.flags()),
                         memberAnnotations(field.annotations(), AnnotationTarget.Kind.FIELD),
-                        annotationDetails(field.annotations())));
+                        annotationDetails(field.annotations(), annotationTypes)));
             }
             for (MethodInfo method : classInfo.methods().stream()
                     .filter(value -> !"<clinit>".equals(value.name()))
@@ -332,7 +338,7 @@ public final class JandexScanner {
                                 + (synthetic(method.flags()) ? " synthetic" : "")
                                 + ((method.flags() & 0x0080) != 0 ? " varargs" : ""),
                         methodAnnotations(method.annotations()),
-                        annotationDetails(method.annotations())));
+                        annotationDetails(method.annotations(), annotationTypes)));
             }
         }
         return result;
@@ -383,7 +389,7 @@ public final class JandexScanner {
     }
 
     private static List<MemberAnnotationRecord> annotationDetails(
-            Collection<AnnotationInstance> annotations) {
+            Collection<AnnotationInstance> annotations, IndexView annotationTypes) {
         return annotations.stream()
                 .filter(annotation -> annotation.target() != null)
                 .filter(annotation -> annotation.target().kind() == AnnotationTarget.Kind.FIELD
@@ -397,11 +403,11 @@ public final class JandexScanner {
                         return new MemberAnnotationRecord(annotation.name().toString(),
                                 "METHOD_PARAMETER", (int) parameter.position(),
                                 parameter.nameOrDefault(), parameter.type().toString(),
-                                AnnotationValues.of(annotation));
+                                AnnotationValues.of(annotation, annotationTypes));
                     }
                     return new MemberAnnotationRecord(annotation.name().toString(),
                             annotation.target().kind().name(), null, null, null,
-                            AnnotationValues.of(annotation));
+                            AnnotationValues.of(annotation, annotationTypes));
                 })
                 .sorted(Comparator.comparing(MemberAnnotationRecord::annotationName)
                         .thenComparing(MemberAnnotationRecord::targetKind)

@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
+import org.treblereel.mcp.model.ClassMemberRecord;
+import org.treblereel.mcp.model.MemberAnnotationRecord;
 
 /**
  * Registration conditions and ArC retention signals derived from indexed annotation values.
@@ -40,17 +42,39 @@ final class BeanEvidence {
 
     private BeanEvidence() {}
 
-    static void appendConditions(ObjectNode node, BeanRecord bean, List<ClassAnnotationRecord> annotations) {
-        if (bean.memberName() != null) return; // producer conditions sit on the member, not the class
+    /**
+     * @param declaringMembers members of the class declaring a producer; its conditions sit on
+     *                         the producer method or field, not on the bean class
+     */
+    static void appendConditions(ObjectNode node, BeanRecord bean, List<ClassAnnotationRecord> annotations,
+            List<ClassMemberRecord> declaringMembers) {
         ArrayNode conditions = JSON.createArrayNode();
-        for (ClassAnnotationRecord annotation : annotations) {
-            String meaning = CONDITIONS.get(annotation.annotationName());
-            if (meaning == null || !annotation.direct()) continue;
-            ObjectNode condition = conditions.addObject().put("annotation", annotation.annotationName());
-            condition.set("values", JSON.valueToTree(annotation.values()));
-            condition.put("meaning", meaning);
+        if (bean.memberName() == null) {
+            for (ClassAnnotationRecord annotation : annotations) {
+                if (annotation.direct()) addCondition(conditions, annotation.annotationName(), annotation.values(), "class");
+            }
+        } else {
+            for (ClassMemberRecord member : declaringMembers) {
+                if (!member.name().equals(bean.memberName())) continue;
+                for (MemberAnnotationRecord annotation : member.annotationDetails()) {
+                    if (annotation.parameterIndex() == null) {
+                        addCondition(conditions, annotation.annotationName(), annotation.values(),
+                                member.kind().toLowerCase(java.util.Locale.ROOT));
+                    }
+                }
+            }
         }
         if (!conditions.isEmpty()) node.set("registration_conditions", conditions);
+    }
+
+    private static void addCondition(ArrayNode conditions, String annotation, Map<String, Object> values,
+            String declaredOn) {
+        String meaning = CONDITIONS.get(annotation);
+        if (meaning == null) return;
+        ObjectNode condition = conditions.addObject().put("annotation", annotation)
+                .put("declared_on", declaredOn);
+        condition.set("values", JSON.valueToTree(values));
+        condition.put("meaning", meaning);
     }
 
     /** Positive reasons ArC keeps the bean when unused-bean removal is enabled (Quarkus default). */

@@ -25,6 +25,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
+import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
@@ -219,6 +220,11 @@ final class StructureToolQueries {
         Map<Integer, List<ClassAnnotationRecord>> pageAnnotations = reader.symbols.findClassAnnotations(
                 limited.stream().filter(value -> value.application() != null)
                         .map(value -> value.application().classId()).toList());
+        Map<Integer, List<ClassMemberRecord>> producerMembers = reader.symbols.findClassMembers(
+                limited.stream().filter(value -> value.application() != null
+                                && value.application().memberName() != null
+                                && value.application().declaringClassId() != null)
+                        .map(value -> value.application().declaringClassId()).distinct().toList());
         ObjectNode root = JSON.createObjectNode();
         ArrayNode arr = root.putArray("beans");
         int naiveTokens = 0;
@@ -265,7 +271,9 @@ final class StructureToolQueries {
                 appendOccurrences(node, occurrencesByClass.get(beanClass.id()));
                 naiveTokens += beanClass.sourceTokens();
             }
-            BeanEvidence.appendConditions(node, bean, pageAnnotations.getOrDefault(bean.classId(), List.of()));
+            BeanEvidence.appendConditions(node, bean, pageAnnotations.getOrDefault(bean.classId(), List.of()),
+                    bean.declaringClassId() == null ? List.of()
+                            : producerMembers.getOrDefault(bean.declaringClassId(), List.of()));
             BeanEvidence.appendRetention(node, bean, injectedInto.getOrDefault(bean.id(), 0),
                     pageAnnotations.getOrDefault(bean.classId(), List.of()));
         }

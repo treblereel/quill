@@ -436,16 +436,20 @@ class QuillToolsTest {
                 first.path("annotations").get(0).asText());
         assertEquals(2, first.path("total").asInt());
         assertTrue(first.path("has_more").asBoolean());
-        assertEquals("createOrder", methods.path("members").get(0).path("name").asText());
-        assertEquals("java", methods.path("members").get(0).path("language").asText());
-        assertEquals("createOrder",
-                methods.path("members").get(0).path("source_name").asText());
-        assertEquals("createOrder",
-                methods.path("members").get(0).path("jvm_name").asText());
-        assertTrue(methods.path("members").get(0).path("symbol_id").asText()
-                .startsWith("quill:symbol:v3:"));
-        assertEquals("java.lang.String",
-                methods.path("members").get(0).path("parameters").get(0).asText());
+        JsonNode createOrder = methods.path("members").get(0);
+        assertEquals("createOrder", createOrder.path("name").asText());
+        assertTrue(createOrder.path("signature").asText().contains("java.lang.String"), createOrder.toString());
+        for (String repeated : List.of("symbol_id", "language", "source_name", "jvm_name",
+                "jvm_descriptor", "location", "parameters", "annotation_details")) {
+            assertFalse(createOrder.has(repeated), repeated);
+        }
+        // The fixture records no descriptor, so fill the format with one.
+        String id = methods.path("member_symbol_id_format").asText().replace("{kind}", "method")
+                .replace("{name}", "createOrder").replace("{descriptor}", "(Ljava/lang/String;)V");
+        var reference = SymbolContract.parse(id).orElseThrow();
+        assertEquals("org.acme.OrderService", reference.className());
+        assertEquals("createOrder", reference.jvmName());
+        assertEquals("(Ljava/lang/String;)V", reference.descriptor());
     }
 
     @Test
@@ -1465,8 +1469,8 @@ class QuillToolsTest {
         JsonNode member = detail.path("members").valueStream()
                 .filter(value -> value.path("name").asText().equals("runPrecisely"))
                 .findFirst().orElseThrow();
-        assertTrue(member.path("location").path("line").isNull());
-        assertEquals("unknown", member.path("location").path("basis").asText());
+        // The class location is stated once; members carry no line evidence of their own.
+        assertFalse(member.has("location"));
     }
 
     @Test

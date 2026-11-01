@@ -62,6 +62,31 @@ final class SymbolContract {
         node.put("source_name", sourceName);
         node.put("jvm_name", member.name());
         node.put("jvm_descriptor", member.descriptor());
+        appendKotlinRole(node, cls, member, declaration);
+        appendMemberLocation(node, cls.sourceFile(), cls.sourceLine());
+    }
+
+    /**
+     * A member inside a class listing. Identity the listing states once is left out: the id
+     * follows {@link #memberIdFormat}, the language and source file are the class's, and the
+     * JVM name and descriptor are {@code name} and {@code descriptor}.
+     */
+    static void appendListedMember(ObjectNode node, ClassRecord cls, ClassMemberRecord member,
+            List<KotlinDeclarationRecord> declarations) {
+        KotlinDeclarationRecord declaration = KotlinMemberNames
+                .declaration(member, declarations).orElse(null);
+        if (declaration != null && !declaration.name().equals(member.name()))
+            node.put("source_name", declaration.name());
+        appendKotlinRole(node, cls, member, declaration);
+    }
+
+    /** {@code {kind}}, {@code {name}} and {@code {descriptor}} are the member's, with ~ and % escaped. */
+    static String memberIdFormat(ClassRecord cls) {
+        return PREFIX_V3 + escape(cls.className()) + "~{kind}~{name}~{descriptor}~" + sourceHash(cls.sourceFile());
+    }
+
+    private static void appendKotlinRole(ObjectNode node, ClassRecord cls, ClassMemberRecord member,
+            KotlinDeclarationRecord declaration) {
         if (declaration != null) {
             node.put("source_kind", declaration.kind().toLowerCase(Locale.ROOT));
             node.put("jvm_role", jvmRole(
@@ -78,7 +103,6 @@ final class SymbolContract {
                 node.put("property_symbol_id", id(cls, "PROPERTY", declaration.name(), descriptor));
             }
         }
-        appendMemberLocation(node, cls.sourceFile(), cls.sourceLine());
     }
 
     static void append(ObjectNode node, String className, String kind, String jvmName,

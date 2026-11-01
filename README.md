@@ -663,6 +663,13 @@ Responses omit values a client can derive, so read absent fields by these rules:
   (`basis`, `scope`, never-proven flags) for every `source_evidence`, and, in
   `list_injection_points`, `resolution_context` for the limitations and applied or
   unsupported rules that every injection point shares (per-point lists keep only the rest).
+- **Member listings** in `get_symbol_details` give each member's `kind`, `name`,
+  `signature` (methods and constructors) or `type` (fields), `descriptor`, and its
+  `modifiers` and `annotations` when present; parameter annotations are under
+  `parameter_annotations`. Identity the class already states is not repeated: member ids
+  follow `member_symbol_id_format` (fill in `{kind}`, `{name}`, `{descriptor}`), and the
+  language and source file are the class's. Kotlin members keep `source_name` when it differs
+  from the JVM name.
 - **Source locations** corroborated by the compiler carry `excerpt`, the referencing source
   line (bounded, up to 50 per response), when the file still matches the indexed hash.
 - **Call edges** omit `edge_kind` and `execution_semantics` for ordinary calls; the values

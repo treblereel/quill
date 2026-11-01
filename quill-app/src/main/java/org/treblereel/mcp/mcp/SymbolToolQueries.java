@@ -94,29 +94,29 @@ final class SymbolToolQueries {
         root.put("members_included", true);
         if (normalizedKind == null) root.putNull("member_kind");
         else root.put("member_kind", normalizedKind.toLowerCase(Locale.ROOT));
+        // Members repeat no class-level identity; find_symbol_usages and get_call_hierarchy accept
+        // the class with name and descriptor, or the id built from member_symbol_id_format.
+        root.put("member_symbol_id_format", SymbolContract.memberIdFormat(cls));
         ArrayNode values = root.putArray("members");
         for (ClassMemberRecord member : page) {
             ObjectNode node = values.addObject();
             node.put("kind", member.kind().toLowerCase(Locale.ROOT));
             node.put("name", member.name());
-            node.put("signature", member.signature());
+            // A method signature already names its parameter and return types.
+            if ("FIELD".equals(member.kind())) node.put("type", member.typeName());
+            else node.put("signature", member.signature());
             node.put("descriptor", member.descriptor());
-            node.put("type", member.typeName());
-            node.set("parameters", JSON.valueToTree(member.parameterTypes()));
-            node.put("modifiers", member.modifiers());
-            node.set("annotations", JSON.valueToTree(member.annotations()));
-            SymbolContract.appendMember(node, cls, member, kotlinDeclarations);
-            ArrayNode details = node.putArray("annotation_details");
-            member.annotationDetails().forEach(annotation -> {
-                ObjectNode detail = details.addObject();
-                detail.put("annotation", annotation.annotationName());
-                detail.put("target", annotation.targetKind());
-                if (annotation.parameterIndex() != null) {
-                    detail.put("parameter_index", annotation.parameterIndex());
-                    detail.put("parameter_name", annotation.parameterName());
-                    detail.put("parameter_type", annotation.parameterType());
-                }
-            });
+            if (member.modifiers() != null && !member.modifiers().isBlank()) node.put("modifiers", member.modifiers());
+            if (!member.annotations().isEmpty()) node.set("annotations", JSON.valueToTree(member.annotations()));
+            SymbolContract.appendListedMember(node, cls, member, kotlinDeclarations);
+            ArrayNode details = JSON.createArrayNode();
+            member.annotationDetails().stream().filter(annotation -> annotation.parameterIndex() != null)
+                    .forEach(annotation -> details.addObject()
+                            .put("annotation", annotation.annotationName())
+                            .put("parameter_index", annotation.parameterIndex())
+                            .put("parameter_name", annotation.parameterName())
+                            .put("parameter_type", annotation.parameterType()));
+            if (!details.isEmpty()) node.set("parameter_annotations", details);
         }
         appendPage(root, page.size(), members.size(), memberLimit, memberOffset);
         appendMeta(root, reader, cls.sourceTokens());

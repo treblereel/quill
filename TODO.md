@@ -52,10 +52,12 @@ Quill. Claude без Quill тратит медиану 9k на вопрос, с 
    Сделано: при грязном дереве без структурных изменений — краткая форма + `worktree_changed_files`.
 3. [ ] Пустые/null поля (121k, 4%) — общий проход сериализации, кроме полей-доказательств
    (`*_proven:false`, `has_more`). ≈ −28k.
-4. [ ] `find_configuration_references` (355k): `declared_source` 12%, `field_read_source` 11%,
+4. [~] `find_configuration_references` (355k): `declared_source` 12%, `field_read_source` 11%,
    повтор `module`/`sourceSet`/`classId`/`resolution_strategy`/`definition_files` в каждой из
    43 строк wildcard-запроса → `row_defaults`; для wildcard-ключа меньший лимит по умолчанию и
    группировка по префиксу. ≈ −30k.
+   Сделано: `row_defaults_by_kind` в MCP-ответе (оценка на записанных ответах 355k → 292k, x0.82).
+   Осталось: лимит для wildcard, `field_read_source`.
 5. [ ] `list_injection_points` (359k): `provider_evidence` 20% (общий `scope` в defaults,
    повтор artifact/framework), `resolution_trace` 20% с пустыми `applied_rules`/`candidates`,
    пустые `limitations`. ≈ −22k.

@@ -664,6 +664,11 @@ Responses omit values a client can derive, so read absent fields by these rules:
   (`basis`, `scope`, never-proven flags) for every `source_evidence`, and, in
   `list_injection_points`, `resolution_context` for the limitations and applied or
   unsupported rules that every injection point shares (per-point lists keep only the rest).
+- **Configuration rows** in `find_configuration_references`: a field every row of one `kind`
+  carries with the same value (`module`, `sourceSet`, `configuration_scope`,
+  `resolution_strategy`, ...) is written once in `row_defaults_by_kind.<kind>`, and shared
+  `declared_source` fields under its `declared_source`. A row without the field takes the
+  default of its kind.
 - **Member listings** in `get_symbol_details` give each member's `kind`, `name`,
   `signature` (methods and constructors) or `type` (fields), `descriptor`, and its
   `modifiers` and `annotations` when present; parameter annotations are under

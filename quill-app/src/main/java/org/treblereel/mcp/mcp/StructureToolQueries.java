@@ -801,6 +801,7 @@ final class StructureToolQueries {
                 .forEach(referencedBeanIds::add);
         Map<Integer, BeanRecord> resolvedBeans = reader.beans.findBeansByIds(referencedBeanIds);
         Map<Integer, ClassRecord> resolvedClasses = reader.symbols.findClassesByIds(resolvedBeans.values().stream().map(BeanRecord::classId).toList());
+        Map<String, String> limitationKeys = new java.util.LinkedHashMap<>();
         ArrayNode result = root.putArray("injection_points");
         ArrayNode unsatisfied = root.putArray("unsatisfied");
         ArrayNode ambiguous = root.putArray("ambiguous");
@@ -817,7 +818,12 @@ final class StructureToolQueries {
             node.put("resolution_strategy", point.resolutionStrategy());
             node.put("reason", point.resolutionReason().name());
             node.put("confidence", point.resolutionConfidence().name().toLowerCase());
-            node.set("limitations", JSON.valueToTree(point.limitations()));
+            // The same limitation sentences repeat on every point; reference them by key.
+            ArrayNode pointLimitations = node.putArray("limitations");
+            for (String text : point.limitations()) {
+                pointLimitations.add(limitationKeys.computeIfAbsent(text,
+                        ignored -> "L" + (limitationKeys.size() + 1)));
+            }
             appendResolutionTrace(node, point, resolvedBeans, resolvedClasses);
             if (point.resolutionStatus() == ResolutionStatus.AMBIGUOUS) {
                 node.putNull("resolved_to");
@@ -846,6 +852,8 @@ final class StructureToolQueries {
                 }
             }
         }
+        ObjectNode limitationTexts = root.putObject("limitation_texts");
+        limitationKeys.forEach((text, key) -> limitationTexts.put(key, text));
         InterceptionEvidence.append(root, reader, cls, bean.get());
         appendMeta(root, reader, cls.sourceTokens());
         return root.toString();

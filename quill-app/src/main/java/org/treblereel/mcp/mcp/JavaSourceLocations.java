@@ -27,6 +27,7 @@ final class JavaSourceLocations {
     private static final int MAX_EXCERPTS = 50, MAX_EXCERPT_LENGTH = 160;
     private final Map<String, List<String>> lines = new HashMap<>();
     private int excerpts;
+    private boolean used;
     JavaSourceLocations(ReadQueryContext db) {
         this.db = db;
         var metadata = db.index.getMetadata();
@@ -56,12 +57,13 @@ final class JavaSourceLocations {
             String owner, String name, String descriptor, String access, String symbolId, List<Integer> lines) {
         if (source == null || !source.endsWith(".java")) return;
         JsonNode result = files.computeIfAbsent(source, this::references);
-        var evidence = node.putObject("source_evidence").put("basis", "compiler")
-                .put("status", result.path("status").asText()).put("scope", "indexed_source")
-                .put("bytecode_source_identity_proven", false).put("reference_coverage_complete", false);
+        used = true;
+        // basis, scope and the never-proven flags are identical for every location; they are
+        // stated once per response by writeDefaults.
+        var evidence = node.putObject("source_evidence").put("status", result.path("status").asText());
         if (!"resolved".equals(result.path("status").asText())) return;
         evidence.put("generation", result.path("generation").asLong());
-        evidence.put("truncated", result.path("truncated").asBoolean());
+        if (result.path("truncated").asBoolean()) evidence.put("truncated", true);
         var locations = evidence.putArray("locations");
         for (JsonNode reference : result.path("references")) {
             if (!reference.path("owner").asText().equals(owner) || !reference.path("name").asText().equals(name)
@@ -79,6 +81,13 @@ final class JavaSourceLocations {
             if (excerpt != null) location.put("excerpt", excerpt);
         }
         evidence.put("status", locations.isEmpty() ? "no_matching_source_reference" : "corroborated");
+    }
+    /** Writes the properties shared by every source_evidence object of this response. */
+    void writeDefaults(ObjectNode root) {
+        if (!used) return;
+        root.putObject("source_evidence_defaults").put("basis", "compiler").put("scope", "indexed_source")
+                .put("bytecode_source_identity_proven", false).put("reference_coverage_complete", false)
+                .put("truncated", false);
     }
     private String excerpt(String source, int line) {
         if (excerpts >= MAX_EXCERPTS || line < 1 || root == null) return null;

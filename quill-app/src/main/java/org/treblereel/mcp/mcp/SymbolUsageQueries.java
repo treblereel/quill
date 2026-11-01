@@ -166,6 +166,7 @@ final class SymbolUsageQueries {
         root.put("answer_complete", !normalized.truncated());
         if (!kotlin) QueryMetrics.measure("dispatch_callers", () -> dispatch.appendPossibleCallers(root, cls, selected, limit, offset));
         dispatch.writeTargets(root);
+        javaLocations.writeDefaults(root);
         appendPage(root, page.size(), total, limit, offset);
         QueryMetrics.measure("coverage", () -> UsageCoverage.append(root,reader,cls.id()));
         appendMeta(root, reader, naiveTokens);
@@ -278,6 +279,7 @@ final class SymbolUsageQueries {
             if (countedClasses.add(usage.fromClassId())) naiveTokens += usage.fromSourceTokens();
         }
         limitations(root);
+        javaLocations.writeDefaults(root);
         appendPage(root, usages.size(), total, limit, offset);
         QueryMetrics.measure("coverage", () -> UsageCoverage.append(root,reader,cls.id()));
         appendMeta(root, reader, naiveTokens);

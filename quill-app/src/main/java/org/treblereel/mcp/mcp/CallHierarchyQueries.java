@@ -230,6 +230,7 @@ final class CallHierarchyQueries {
             if (countedClasses.add(call.toClassId())) naiveTokens += call.toSourceTokens();
         }
         dispatch.writeTargets(root);
+        javaLocations.writeDefaults(root);
         appendPage(root, page.size(), filtered.size(), limit, offset);
         UsageCoverage.append(root,reader,cls.id());
         appendMeta(root, reader, naiveTokens, cls.sourceFile(), cls.module());

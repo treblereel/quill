@@ -647,6 +647,10 @@ Responses omit values a client can derive, so read absent fields by these rules:
   `quill:symbol:v3:Class~kind~name~descriptor~sourceHash`, where `sourceHash` (8 hex digits)
   only separates equal class names declared in different source files. v2 ids are still
   accepted as input.
+- **Shared evidence fields** are stated once per response: `source_evidence_defaults`
+  (`basis`, `scope`, never-proven flags) for every `source_evidence`, and
+  `limitation_texts` for the limitation keys (`L1`, `L2`, ...) listed on each injection point
+  in `list_injection_points`.
 - **Source locations** corroborated by the compiler carry `excerpt`, the referencing source
   line (bounded, up to 50 per response), when the file still matches the indexed hash.
 - **Call edges** omit `edge_kind` and `execution_semantics` for ordinary calls; the values

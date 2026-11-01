@@ -687,6 +687,9 @@ Bean and injection evidence follows CDI and Spring semantics more closely:
   `BUILD_TIME` phase are not runtime beans and are skipped.
 - Each `@RegisterRestClient` interface is a `SYNTHETIC` bean qualified `@RestClient`, scoped by
   its scope annotation or `@ApplicationScoped`, with member `synthetic:RestClient`.
+- Points resolved to a `@RequestScoped`, `@SessionScoped` or `@ConversationScoped` bean carry
+  `context_requirement` with `async_availability: "unproven"`: static analysis cannot prove
+  that asynchronous code has the context active.
 - Unresolved injection points list `dependency_candidates`: beans of the required type declared
   in dependency JARs (for example framework producers), with artifact, scope and qualifiers.
 - Container-provided beans (`Event`, `Instance`, `Provider`, `InjectionPoint`,

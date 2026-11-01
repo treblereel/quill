@@ -852,6 +852,7 @@ final class StructureToolQueries {
                             && !resolved.beanTypes().isEmpty()) {
                         node.put("resolved_produced_type", resolved.beanTypes().getFirst());
                     }
+                    appendContextNote(node, resolved.scope());
                 }
             } else {
                 node.putNull("resolved_to");
@@ -876,6 +877,25 @@ final class StructureToolQueries {
      * as Vert.x or Jackson). Application resolution does not consider them, so an agent would
      * otherwise search the JARs itself.
      */
+    private static final Set<String> CONTEXT_BOUND_SCOPES = Set.of(
+            "@RequestScoped", "@SessionScoped", "@ConversationScoped");
+
+    /**
+     * Injection into a request- or session-scoped bean goes through a client proxy whose context
+     * must be active when the proxy is used. Static analysis cannot prove that for asynchronous
+     * code, so the answer states the unknown instead of claiming availability or failure.
+     */
+    private static void appendContextNote(ObjectNode node, String scope) {
+        if (scope == null || !CONTEXT_BOUND_SCOPES.contains(scope)) return;
+        ObjectNode context = node.putObject("context_requirement");
+        context.put("scope", scope);
+        context.put("async_availability", "unproven");
+        context.put("note", "Calls through this proxy need an active " + scope.substring(1)
+                + " context. On other threads (Mutiny, CompletableFuture, executors, worker pools) "
+                + "availability depends on context propagation (for example SmallRye Context "
+                + "Propagation or Vert.x duplicated contexts); Quill does not track it");
+    }
+
     private static void appendDependencyCandidates(ObjectNode node, ReadQueryContext reader,
             InjectionPointRecord point) {
         int generic = point.targetType().indexOf('<');

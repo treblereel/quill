@@ -220,7 +220,7 @@ def source_tokens(text):
 def summarize(calls):
     tools = defaultdict(lambda: {'calls': 0, 'recorded_chars': 0, 'replay_chars': 0,
                                  'replay_fields': Counter()})
-    regressions, larger_than_source = [], []
+    regressions, failures, larger_than_source = [], [], []
     for call in calls:
         recorded, replayed = payload(call['recorded']), payload(call.get('replay'))
         row = tools[call['tool']]
@@ -228,9 +228,12 @@ def summarize(calls):
         row['recorded_chars'] += len(recorded)
         row['replay_chars'] += len(replayed)
         row['replay_fields'].update(composition(replayed))
-        if not failed(call['recorded']) and (call.get('replay_error') or failed(call.get('replay'))):
-            regressions.append({'session': call['session'], 'tool': call['tool'], 'arguments': call['arguments'],
-                                'error': call.get('replay_error') or replayed[:300]})
+        if call.get('replay_error') or failed(call.get('replay')):
+            failure = {'session': call['session'], 'tool': call['tool'], 'arguments': call['arguments'],
+                       'error': call.get('replay_error') or replayed[:300]}
+            failures.append(failure)
+            if not failed(call['recorded']):
+                regressions.append(failure)
         source = source_tokens(replayed)
         if call['tool'] == 'get_symbol_details' and source and len(replayed) // 4 > source:
             larger_than_source.append({'session': call['session'], 'arguments': call['arguments'],
@@ -249,7 +252,7 @@ def summarize(calls):
             'recorded_chars': recorded, 'replay_chars': replayed,
             'approx_token_delta': (replayed - recorded) // 4,
             'replay_over_recorded': round(replayed / recorded, 3) if recorded else None,
-            'per_tool': per_tool, 'regressions': regressions,
+            'per_tool': per_tool, 'regressions': regressions, 'failures': failures,
             'symbol_details_larger_than_source': larger_than_source,
             'scope': 'Quill response size only; model usage, call counts and answer accuracy need a model run'}
 
@@ -262,7 +265,8 @@ def print_report(report, out=None):
     for name, row in report['per_tool'].items():
         print(f"  {name:32} {row['calls']:4} calls {row['recorded_chars']:10,} -> {row['replay_chars']:10,}"
               f"  x{row['replay_over_recorded']}", file=out)
-    print(f"regressions {len(report['regressions'])}; get_symbol_details larger than source "
+    print(f"regressions {len(report['regressions'])}; failures {len(report['failures'])}; "
+          f"get_symbol_details larger than source "
           f"{len(report['symbol_details_larger_than_source'])}", file=out)
 
 

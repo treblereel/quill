@@ -86,6 +86,7 @@ class ReplayTest(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertEqual(1, len(report['regressions']))
         self.assertEqual({'fail': True}, report['regressions'][0]['arguments'])
+        self.assertEqual(2, len(report['failures']))
 
     def test_guard_restores_the_index_and_rejects_other_changes(self):
         project = self.dir / 'project'

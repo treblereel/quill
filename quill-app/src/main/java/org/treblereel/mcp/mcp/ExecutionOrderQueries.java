@@ -69,9 +69,7 @@ final class ExecutionOrderQueries {
                 .filter(member -> indexedName(member).equals(requestedMethod)
                         || KotlinMemberNames.matches(
                                 requestedMethod, member, kotlinDeclarations))
-                .filter(member -> requestedSignature == null || requestedSignature.isBlank()
-                        || member.descriptor().equals(requestedSignature)
-                        || member.signature().equals(requestedSignature))
+                .filter(member -> JvmDescriptors.matchesSignature(member, requestedSignature))
                 .toList();
         if (candidates.size() != 1) {
             return selectionError(

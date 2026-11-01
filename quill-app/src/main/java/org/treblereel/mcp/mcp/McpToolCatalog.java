@@ -69,8 +69,21 @@ final class McpToolCatalog {
                 throw new IllegalArgumentException("Router profile requires QuillTools");
             }
             RouterTools router = new RouterTools(quillTools);
-            return create(router, RouterTools.class, toolScheduler, responseScheduler,
-                    requestTimeout, McpToolProfile.full());
+            List<AsyncToolSpecification> catalog = new ArrayList<>(create(
+                    router, RouterTools.class, toolScheduler, responseScheduler,
+                    requestTimeout, McpToolProfile.full()));
+            if (!profile.tools().isEmpty()) {
+                catalog.removeIf(spec -> spec.tool().name().equals("get_overview"));
+            }
+            java.util.Arrays.stream(QuillTools.class.getDeclaredMethods())
+                    .filter(method -> method.isAnnotationPresent(Tool.class))
+                    .filter(method -> profile.includes(method.getName())
+                            || (!profile.tools().isEmpty() && method.getName().equals("get_overview")))
+                    .map(method -> specification(quillTools, method, toolScheduler,
+                            responseScheduler, requestTimeout, profile, quillTools.singleProjectCatalog()))
+                    .forEach(catalog::add);
+            catalog.sort(Comparator.comparing(spec -> spec.tool().name()));
+            return List.copyOf(catalog);
         }
         boolean singleProject = tools instanceof QuillTools quill && quill.singleProjectCatalog();
         return java.util.Arrays.stream(toolType.getDeclaredMethods())
@@ -138,20 +151,14 @@ final class McpToolCatalog {
         Boolean workspace = tools instanceof QuillTools quill ? quill.workspaceMode()
                 : tools instanceof RouterTools router ? router.workspaceMode() : null;
         if (workspace == null) return annotation.description();
-        // Some clients surface only tools/list, not initialize.instructions. Keep the actual
-        // mode and first request in the advertised tool itself instead of relying on startup text.
+        // Some clients surface only tools/list, so retain mode guidance there too.
         if (method.getName().equals("get_overview")) {
             String mode = workspace
-                    ? "Server mode: workspace. First call with view=compact; then project=<name> with view=full. "
-                    : "Server mode: single_project. Call without arguments, not view=compact. ";
-            return mode + "Call once per session before the first project-wide question, again after "
-                    + "a build or index refresh; use change_session before edits.";
+                    ? "Server mode: workspace (--workspace). For inventory use view=compact (limit<=50); then project=<name> with view=full. "
+                    : "Server mode: single_project. Overview without arguments, not view=compact. ";
+            return mode + "Optional orientation; known targets can be queried directly. Use change_session before edits.";
         }
-        return switch (method.getName()) {
-            case "search_classes", "find_implementations", "find_annotated_symbols" ->
-                    "After get_overview: " + annotation.description();
-            default -> annotation.description();
-        };
+        return annotation.description();
     }
 
     /** Client name/version from initialize; every MCP client sends it. */
@@ -254,8 +261,11 @@ final class McpToolCatalog {
             Invocation invocation = invokeMethod(tools, method, arguments);
             trace.event("tool_result", Map.of(
                     "tool", method.getName(), "is_error", invocation.error()));
-            return result(withoutUnavailableNextStep(invocation.text(), profile),
-                    invocation.error(), structured);
+            String text = invocation.text();
+            if (!invocation.error() && (graphOutput(method.getName()) || graphOutput(routedTool(method, arguments)))) {
+                text = GraphMetadata.compact(text);
+            }
+            return result(withoutUnavailableNextStep(text, profile), invocation.error(), structured);
         } catch (RuntimeException e) {
             trace.failure(e);
             return result("Tool failed: " + ProjectRegistry.safeMessage(e), true, structured);
@@ -263,6 +273,8 @@ final class McpToolCatalog {
             trace.close();
         }
     }
+
+    private static boolean graphOutput(String name) {return name != null && java.util.Set.of("get_call_hierarchy", "get_context", "analyze_execution_order").contains(name);}
 
     static Invocation invokeMethod(
             Object tools, Method method, Map<String, Object> arguments) {

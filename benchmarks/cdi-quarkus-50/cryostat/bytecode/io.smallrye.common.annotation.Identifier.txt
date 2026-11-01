@@ -1,0 +1,62 @@
+Classfile jar:file:///Users/treblereel/.m2/repository/io/smallrye/common/smallrye-common-annotation/2.19.0/smallrye-common-annotation-2.19.0.jar!/io/smallrye/common/annotation/Identifier.class
+  Last modified Jun 9, 2026; size 668 bytes
+  SHA-256 checksum 14e3173bf21a8dde549fe9f13db1625b661a1c7f51184ba7f1ac97a17500b9c6
+  Compiled from "Identifier.java"
+public interface io.smallrye.common.annotation.Identifier extends java.lang.annotation.Annotation
+  minor version: 0
+  major version: 61
+  flags: (0x2601) ACC_PUBLIC, ACC_INTERFACE, ACC_ABSTRACT, ACC_ANNOTATION
+  this_class: #1                          // io/smallrye/common/annotation/Identifier
+  super_class: #3                         // java/lang/Object
+  interfaces: 1, fields: 0, methods: 1, attributes: 4
+Constant pool:
+   #1 = Class              #2             // io/smallrye/common/annotation/Identifier
+   #2 = Utf8               io/smallrye/common/annotation/Identifier
+   #3 = Class              #4             // java/lang/Object
+   #4 = Utf8               java/lang/Object
+   #5 = Class              #6             // java/lang/annotation/Annotation
+   #6 = Utf8               java/lang/annotation/Annotation
+   #7 = Utf8               value
+   #8 = Utf8               ()Ljava/lang/String;
+   #9 = Utf8               SourceFile
+  #10 = Utf8               Identifier.java
+  #11 = Utf8               RuntimeVisibleAnnotations
+  #12 = Utf8               Ljakarta/inject/Qualifier;
+  #13 = Utf8               Ljava/lang/annotation/Documented;
+  #14 = Utf8               Ljava/lang/annotation/Retention;
+  #15 = Utf8               Ljava/lang/annotation/RetentionPolicy;
+  #16 = Utf8               RUNTIME
+  #17 = Utf8               Ljava/lang/annotation/Target;
+  #18 = Utf8               Ljava/lang/annotation/ElementType;
+  #19 = Utf8               FIELD
+  #20 = Utf8               PARAMETER
+  #21 = Utf8               METHOD
+  #22 = Utf8               TYPE
+  #23 = Utf8               NestMembers
+  #24 = Class              #25            // io/smallrye/common/annotation/Identifier$Literal
+  #25 = Utf8               io/smallrye/common/annotation/Identifier$Literal
+  #26 = Utf8               InnerClasses
+  #27 = Utf8               Literal
+{
+  public abstract java.lang.String value();
+    descriptor: ()Ljava/lang/String;
+    flags: (0x0401) ACC_PUBLIC, ACC_ABSTRACT
+}
+SourceFile: "Identifier.java"
+RuntimeVisibleAnnotations:
+  0: #12()
+    jakarta.inject.Qualifier
+  1: #13()
+    java.lang.annotation.Documented
+  2: #14(#7=e#15.#16)
+    java.lang.annotation.Retention(
+      value=Ljava/lang/annotation/RetentionPolicy;.RUNTIME
+    )
+  3: #17(#7=[e#18.#19,e#18.#20,e#18.#21,e#18.#22])
+    java.lang.annotation.Target(
+      value=[Ljava/lang/annotation/ElementType;.FIELD,Ljava/lang/annotation/ElementType;.PARAMETER,Ljava/lang/annotation/ElementType;.METHOD,Ljava/lang/annotation/ElementType;.TYPE]
+    )
+NestMembers:
+  io/smallrye/common/annotation/Identifier$Literal
+InnerClasses:
+  public static final #27= #24 of #1;     // Literal=class io/smallrye/common/annotation/Identifier$Literal of class io/smallrye/common/annotation/Identifier

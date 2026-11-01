@@ -1,5 +1,6 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.PrefetchHooksInstaller;
 import org.treblereel.mcp.index.ClaudeSettingsInstaller;
 import org.treblereel.mcp.index.CodexConfigInstaller;
 import org.treblereel.mcp.index.McpJsonInstaller;
@@ -23,7 +24,7 @@ import picocli.CommandLine.Spec;
 
 /** Updates client integration independently of build outputs and index generations. */
 @Command(name = "refresh", mixinStandardHelpOptions = true,
-        description = "Refresh managed instructions and local MCP registration; no index, build, or permission grants")
+        description = "Refresh managed instructions and local MCP registration; no index, build, or Claude tool grants")
 public final class ClientRefreshCommand implements Callable<Integer> {
     private static final ObjectMapper JSON = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
@@ -59,13 +60,14 @@ public final class ClientRefreshCommand implements Callable<Integer> {
                         : CodexConfigInstaller.installWorkspace(target, root, binary);
                 boolean current = ProjectConfiguration.inspectClaudeMd(target) == ProjectConfiguration.InstructionsState.CURRENT
                         && ProjectConfiguration.inspectAgentsMd(target) == ProjectConfiguration.InstructionsState.CURRENT;
-                boolean ok = current && claude && mcp != McpJsonInstaller.Result.UNSUPPORTED
+                boolean hooks = binary == null || workspace != null || PrefetchHooksInstaller.install(target,binary);
+                boolean ok = hooks && current && claude && mcp != McpJsonInstaller.Result.UNSUPPORTED
                         && codex != CodexConfigInstaller.Result.UNSUPPORTED && codex != CodexConfigInstaller.Result.FAILED;
                 successful &= ok;
                 spec.commandLine().getOut().println(target + ": instructions=" + (current ? "current" : "failed")
                         + ", claude=" + claude + ", mcp=" + mcp + ", codex=" + codex);
             }
-            spec.commandLine().getOut().println("No indexing, builds, tool permission grants, or global trust changes. "
+            spec.commandLine().getOut().println("No indexing, builds, Claude tool permission grants, or global trust changes. "
                     + "Start a fresh client session; live tool activation was not checked.");
             spec.commandLine().getOut().flush();
             return successful ? CommandLine.ExitCode.OK : CommandLine.ExitCode.SOFTWARE;
@@ -102,7 +104,7 @@ public final class ClientRefreshCommand implements Callable<Integer> {
                 throw new IOException("Not a regular configuration directory: " + path);
             }
         }
-        for (String name : List.of("AGENTS.md", "CLAUDE.md", ".mcp.json", ".codex/config.toml")) {
+        for (String name : List.of("AGENTS.md", "CLAUDE.md", ".mcp.json", ".codex/config.toml", ".codex/hooks.json")) {
             Path path = root.resolve(name);
             if (Files.isSymbolicLink(path) || (Files.exists(path) && !Files.isRegularFile(path))) {
                 throw new IOException("Not a regular configuration file: " + path);
@@ -112,6 +114,8 @@ public final class ClientRefreshCommand implements Callable<Integer> {
                 throw new IOException("Repair malformed Quill markers before refreshing " + path);
             }
         }
+        var hooks=ClaudeSettingsInstaller.readPermissionSettings(root.resolve(".codex/hooks.json"));
+        if(hooks==null || hooks.has("hooks") && !hooks.path("hooks").isObject())throw new IOException("Unsupported Codex hook configuration");
         if (!ClaudePermissionStatus.inspect(root).valid()) {
             throw new IOException("Invalid local Claude settings; run quill client permissions status --project " + root);
         }

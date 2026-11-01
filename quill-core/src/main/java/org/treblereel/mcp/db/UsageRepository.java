@@ -73,6 +73,9 @@ public final class UsageRepository {
             int writerClassCount,
             int writeOccurrences) {}
 
+    public record InvokedMemberView(int fromClassId, String name, String descriptor,
+            String invocationKind, long instructionOccurrences, int groupCount) {}
+
     public record FieldAccessView(
             int fromClassId,
             String fromClass,
@@ -589,5 +592,42 @@ public final class UsageRepository {
                   AND c.lifecycle='current' AND c.origin!='orphan_output'
                 """).bind("name",name).bind("descriptor",descriptor)
                 .map((rs,ctx) -> Map.entry(rs.getInt("id"),rs.getString("class_name"))).list();
+    }
+
+    /** Members of the target each caller invokes, at most 32 per caller, most frequent first. */
+    public Map<Integer, List<InvokedMemberView>> findInvokedMembers(
+            int targetClassId, Collection<Integer> callerClassIds) {
+        if (callerClassIds == null || callerClassIds.isEmpty()) return Map.of();
+        List<Integer> ids = List.copyOf(new LinkedHashSet<>(callerClassIds));
+        Map<Integer, List<InvokedMemberView>> result = new LinkedHashMap<>();
+        for (int from = 0; from < ids.size(); from += 500) {
+            handle.createQuery("""
+                    WITH members AS (
+                      SELECT from_class_id, to_method, to_descriptor, invocation_kind,
+                             SUM(occurrence_count) AS instruction_occurrences
+                      FROM method_calls
+                      WHERE to_class_id = :target AND from_class_id IN (<callers>)
+                        AND to_method != '<init>'
+                        AND invocation_kind IN ('virtual', 'interface', 'static', 'special')
+                      GROUP BY from_class_id, to_method, to_descriptor, invocation_kind
+                    ), ranked AS (
+                      SELECT *, COUNT(*) OVER (PARTITION BY from_class_id) AS group_count,
+                        ROW_NUMBER() OVER (PARTITION BY from_class_id
+                          ORDER BY instruction_occurrences DESC, to_method, to_descriptor, invocation_kind) AS position
+                      FROM members
+                    )
+                    SELECT * FROM ranked WHERE position <= 32 ORDER BY from_class_id, position
+                    """)
+                    .bind("target", targetClassId)
+                    .bindList("callers", ids.subList(from, Math.min(from + 500, ids.size())))
+                    .map((rs, ctx) -> new InvokedMemberView(rs.getInt("from_class_id"),
+                            rs.getString("to_method"), rs.getString("to_descriptor"),
+                            rs.getString("invocation_kind"), rs.getLong("instruction_occurrences"),
+                            rs.getInt("group_count")))
+                    .forEach(member -> result.computeIfAbsent(member.fromClassId(),
+                            ignored -> new ArrayList<>()).add(member));
+            }
+        result.replaceAll((ignored, values) -> List.copyOf(values));
+        return result;
     }
 }

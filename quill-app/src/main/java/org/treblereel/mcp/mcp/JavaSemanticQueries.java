@@ -55,10 +55,18 @@ final class JavaSemanticQueries {
         String key = request.path("module").asText() + ":" + request.path("source_set").asText();
         return coordinator().query(key, () -> prepare(db, root, file, offset), db.independentRead(context -> prepare(context, root, file, -1)));
     }
+    static JsonNode declaration(ReadQueryContext db, Path root, Path file, String owner, String name, String descriptor) {
+        JsonNode request=prepare(db,root,file,-3);
+        if (!request.has("sources")) return request;
+        ((ObjectNode)request).put("declaration_selector",String.join("\t",owner,name,descriptor));
+        return queryWorker(request);
+    }
     private static JsonNode queryWorker(JsonNode request) {
         JsonNode result = WORKER.query(request);
         JsonNode current = prepare(Path.of(request.path("project_root").asText()), Path.of(request.path("file").asText()),
                 request.path("offset").asInt(), Path.of(request.path("module").asText()));
+        if (request.has("declaration_selector") && current.isObject())
+            ((ObjectNode)current).set("declaration_selector",request.get("declaration_selector"));
         if (!current.equals(request)) return status("inputs_changed");
         return result;
     }
@@ -110,10 +118,24 @@ final class JavaSemanticQueries {
             if (Boolean.parseBoolean(settings.getProperty("enablePreview", "false"))) return status("preview_unsupported");
             if (!"UTF-8".equalsIgnoreCase(settings.getProperty("encoding", "UTF-8"))) return status("encoding_unsupported");
             if (settings.containsKey("legacyCompilerArgument")) return status("compiler_arguments_unsupported");
-            for (String argument : values(settings, "argument"))
-                if (!argument.equals("-parameters") && !argument.matches("-g(?::[a-z,]+)?") && !argument.matches("-Xlint(?::[a-z,\\-]+)?")
-                        && !argument.equals("-Werror") && !argument.startsWith("-A")) return status("compiler_arguments_unsupported");
+            List<String> exports = new ArrayList<>();
+            List<String> arguments = values(settings, "argument");
+            for (int i = 0; i < arguments.size(); i++) {
+                String argument = arguments.get(i);
+                if (argument.equals("--add-exports") || argument.startsWith("--add-exports=")) {
+                    String value = argument.startsWith("--add-exports=")
+                            ? argument.substring("--add-exports=".length())
+                            : ++i < arguments.size() ? arguments.get(i) : null;
+                    if (value == null || !value.matches("[\\w.$]+/[\\w.$]+=(ALL-UNNAMED|[\\w.$]+)(,(ALL-UNNAMED|[\\w.$]+))*"))
+                        return status("compiler_arguments_unsupported");
+                    exports.add(value);
+                } else if (!argument.equals("-parameters") && !argument.matches("-g(?::[a-z,]+)?")
+                        && !argument.matches("-Xlint(?::[a-z,\\-]+)?") && !argument.equals("-Werror")
+                        && !argument.startsWith("-A")) return status("compiler_arguments_unsupported");
+            }
             String release = settings.getProperty("release");
+            if (release != null && release.isBlank()) release = null;
+            if (release != null && !exports.isEmpty()) return status("compiler_arguments_unsupported");
             String source = settings.getProperty("source"), target = settings.getProperty("target");
             if (release != null && !release.matches("[0-9]+") || release == null
                     && (source == null || target == null || !source.matches("(?:1\\.)?[0-9]+") || !target.matches("(?:1\\.)?[0-9]+")))
@@ -130,6 +152,8 @@ final class JavaSemanticQueries {
                     .put("project_root", root.toString()).put("module", module.toString())
                     .put("source_set", settings.getProperty("sourceSet", "unknown")).put("jdk_home", home.toString())
                     .put("captured_classpath", selected.toString()).put("settings_sha256", hash(selected));
+            var exportOptions = request.putArray("add_exports");
+            exports.forEach(exportOptions::add);
             if (release != null) request.put("release", release);
             else { request.put("source", source); request.put("target", target); }
             var watched = request.putArray("compiler_settings_files").add(selected.toString()).add(home.resolve("release").toString());

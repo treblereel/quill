@@ -68,6 +68,11 @@ public final class BeanResolver {
     }
 
     public static ResolutionResult resolve(IndexView applicationIndex, IndexView dependencyIndex) {
+        return resolve(applicationIndex, dependencyIndex, Map.of());
+    }
+
+    public static ResolutionResult resolve(IndexView applicationIndex, IndexView dependencyIndex,
+            Map<String, String> frameworkScopes) {
         IndexView lookup = dependencyIndex == null ? applicationIndex
                 : CompositeIndex.create(applicationIndex, dependencyIndex);
         List<BeanRecord> beans = new ArrayList<>();
@@ -80,16 +85,18 @@ public final class BeanResolver {
                 .sorted(Comparator.comparing(c -> c.name().toString())).toList();
         int nextBean = 1;
         for (ClassInfo c : classes) {
-            if (!isBeanClass(c, lookup)) continue;
+            boolean declared = isBeanClass(c, lookup);
+            String frameworkScope = frameworkScopes.get(c.name().toString());
+            if (!declared && (frameworkScope == null || !frameworkBeanClass(c))) continue;
             int classId = classIds.computeIfAbsent(c.name().toString(), x -> classIds.size() + 1);
             int ownerId = nextBean++;
             classBeanIds.put(c.name(), ownerId);
-            beans.add(new BeanRecord(ownerId, classId, beanKind(c), scope(c.declaredAnnotations(), lookup),
+            beans.add(new BeanRecord(ownerId, classId, beanKind(c), declared ? scope(c.declaredAnnotations(), lookup) : inheritedScope(c, lookup, frameworkScope),
                     qualifiers(c.declaredAnnotations(), lookup, true), stereotypes(c, lookup),
                     hasMeta(c.declaredAnnotations(), ALTERNATIVE, lookup),
                     hasAnnotation(c.declaredAnnotations(), DEFAULT_BEAN),
                     priority(c.declaredAnnotations(), lookup),
-                    profiles(c), null, null, typeClosure(Type.create(c.name(), Type.Kind.CLASS), lookup)));
+                    profiles(c), null, null, beanTypes(Type.create(c.name(), Type.Kind.CLASS), c.declaredAnnotations(), lookup)));
             for (FieldInfo f : c.fields())
                 if (f.hasAnnotation(PRODUCES)) {
                     beans.add(new BeanRecord(nextBean++, classId, "PRODUCER_FIELD", scope(f.annotations(), lookup),
@@ -97,10 +104,10 @@ public final class BeanResolver {
                             hasAnnotation(f.annotations(), ALTERNATIVE) || isAlternative(c, lookup),
                             hasAnnotation(f.annotations(), DEFAULT_BEAN),
                             first(priority(f.annotations(), lookup), priority(c.declaredAnnotations(), lookup)),
-                            profiles(c), classId, f.name(), typeClosure(f.type(), lookup)));
+                            profiles(c, f.annotations()), classId, f.name(), beanTypes(f.type(), f.annotations(), lookup)));
                 }
             for (MethodInfo m : c.methods())
-                if (methodHas(m, PRODUCES)) {
+                if (producerMethod(m, lookup, frameworkScopes.containsKey(c.name().toString()))) {
                     int producerId = nextBean++;
                     producerIds.put(m, producerId);
                     Collection<AnnotationInstance> annotations = methodAnnotations(m);
@@ -109,7 +116,7 @@ public final class BeanResolver {
                             hasAnnotation(annotations, ALTERNATIVE) || isAlternative(c, lookup),
                             hasAnnotation(annotations, DEFAULT_BEAN),
                             first(priority(annotations, lookup), priority(c.declaredAnnotations(), lookup)),
-                            profiles(c), classId, m.name(), typeClosure(m.returnType(), lookup)));
+                            profiles(c, annotations), classId, m.name(), beanTypes(m.returnType(), annotations, lookup)));
                 }
         }
         for (ClassInfo c : classes) {
@@ -121,7 +128,7 @@ public final class BeanResolver {
             beans.add(new BeanRecord(nextBean++, classId, "SYNTHETIC", "@Dependent",
                     qualifiers(List.of(), lookup, true), List.of(), false, false, null,
                     profiles(c), null, CONFIG_MAPPING_CREATOR,
-                    typeClosure(Type.create(c.name(), Type.Kind.CLASS), lookup)));
+                    beanTypes(Type.create(c.name(), Type.Kind.CLASS), List.of(), lookup)));
         }
         for (ClassInfo c : classes) {
             // Quarkus registers each @RegisterRestClient interface as a synthetic bean injected
@@ -134,7 +141,7 @@ public final class BeanResolver {
             beans.add(new BeanRecord(nextBean++, classId, "SYNTHETIC", declaredScope,
                     List.of("@RestClient", BuiltinQualifier.ANY.annotation()), List.of(), false, false, null,
                     profiles(c), null, REST_CLIENT_CREATOR,
-                    typeClosure(Type.create(c.name(), Type.Kind.CLASS), lookup)));
+                    beanTypes(Type.create(c.name(), Type.Kind.CLASS), List.of(), lookup)));
         }
         int nextIp = 1;
         for (ClassInfo c : classes) {
@@ -142,16 +149,17 @@ public final class BeanResolver {
             if (ownerId == null) continue;
             for (FieldInfo f : c.fields())
                 if (f.hasAnnotation(INJECT)) {
-                    ips.add(ip(nextIp++, ownerId, "FIELD", f.type(), qualifiers(f.annotations(), lookup, false), f.name()));
+                    ips.add(ip(nextIp++, ownerId, "FIELD", f.type(), qualifiers(f.annotations(), lookup, false), f.name(), f.hasAnnotation(n("jakarta.decorator.Delegate"))));
                 }
             for (MethodInfo m : c.methods()) {
-                boolean injected = methodHas(m, INJECT), producer = methodHas(m, PRODUCES);
+                boolean injected = (m.flags() & (0x0040 | 0x1000)) == 0 && methodHas(m, INJECT), producer = producerMethod(m, lookup, frameworkScopes.containsKey(c.name().toString()));
                 if (!injected && !producer) continue;
                 int parameterOwner = producer ? producerIds.getOrDefault(m, ownerId) : ownerId;
                 String kind = "<init>".equals(m.name()) ? "CONSTRUCTOR_PARAM" : "METHOD_PARAM";
                 for (int p = 0; p < m.parametersCount(); p++)
                     ips.add(ip(nextIp++, parameterOwner, kind, m.parameterType(p),
-                            qualifiers(parameterAnnotations(m, p), lookup, false), m.name()));
+                            qualifiers(parameterAnnotations(m, p), lookup, false), m.name(),
+                            parameterAnnotations(m, p).stream().anyMatch(a -> a.name().equals(n("jakarta.decorator.Delegate")))));
             }
             nextIp = inheritedInjectionPoints(c, ownerId, lookup, ips, nextIp);
         }
@@ -166,11 +174,6 @@ public final class BeanResolver {
     }
 
     /**
-     * CDI injects the @Inject fields and initializer methods declared by every superclass of a
-     * bean class (CDI 4.1, 4.2), including superclasses from dependencies. Initializers
-     * overridden lower in the hierarchy are not called through the superclass declaration.
-     */
-    /**
      * Quarkus extension config roots whose phase is BUILD_TIME (the @ConfigRoot default) exist only
      * while the application is built; they are not registered as runtime beans.
      */
@@ -181,6 +184,11 @@ public final class BeanResolver {
         return phase == null || "BUILD_TIME".equals(phase.asEnum());
     }
 
+    /**
+     * CDI injects the @Inject fields and initializer methods declared by every superclass of a
+     * bean class (CDI 4.1, 4.2), including superclasses from dependencies. Initializers
+     * overridden lower in the hierarchy are not called through the superclass declaration.
+     */
     private static int inheritedInjectionPoints(ClassInfo bean, int ownerId, IndexView lookup,
             List<InjectionPointRecord> ips, int nextIp) {
         List<ClassInfo> superclasses = InjectionHierarchy.superclasses(bean, lookup);
@@ -205,12 +213,46 @@ public final class BeanResolver {
     }
 
     private static InjectionPointRecord ip(int id, int owner, String kind, Type type, List<String> qs, String member) {
+        return ip(id, owner, kind, type, qs, member, false);
+    }
+
+    private static InjectionPointRecord ip(int id, int owner, String kind, Type type, List<String> qs, String member, boolean delegate) {
+        if (delegate) return new InjectionPointRecord(id, owner, kind, typeName(type), qs, member,
+                null, ResolutionStatus.UNSUPPORTED_MECHANISM, InjectionPointRecord.STATIC_CDI,
+                ResolutionReason.DECORATOR_DELEGATE_CHAIN, ResolutionConfidence.LOW,
+                List.of("Delegate injection follows the enabled decorator chain, not ordinary bean selection."),
+                new ResolutionTrace(List.of(), List.of(), List.of(ResolutionRule.DECORATOR_DELEGATE_CHAIN)));
         return InjectionPointRecord.staticAnalysis(id, owner, kind, typeName(type), qs,
                 member, null, false, InjectionPointRecord.STATIC_CDI);
     }
 
+    static boolean frameworkBeanClass(ClassInfo c) {
+        return !c.isAnnotation() && !c.isInterface() && !Modifier.isAbstract(c.flags())
+                && (c.enclosingClass() == null || Modifier.isStatic(c.flags())) && c.enclosingMethod() == null
+                && !c.hasDeclaredAnnotation(n("jakarta.enterprise.inject.Vetoed"));
+    }
+
+    static boolean vetoed(ClassInfo c, IndexView index) {
+        ClassInfo pkg = index.getClassByName(n(c.name().packagePrefix() + ".package-info"));
+        return c.hasDeclaredAnnotation(n("jakarta.enterprise.inject.Vetoed"))
+                || pkg != null && pkg.hasDeclaredAnnotation(n("jakarta.enterprise.inject.Vetoed"));
+    }
+
+    public static boolean quarkusProducerClass(ClassInfo c, IndexView index) {
+        return frameworkBeanClass(c) && !vetoed(c, index)
+                && (c.fields().stream().anyMatch(f -> f.hasAnnotation(PRODUCES))
+                    || c.methods().stream().anyMatch(m -> producerMethod(m, index, true)));
+    }
+
+    private static boolean producerMethod(MethodInfo method, IndexView index, boolean quarkus) {
+        if (method.isConstructor() || (method.flags() & (0x0040 | 0x1000)) != 0 || method.returnType().kind() == Type.Kind.VOID) return false;
+        var annotations = methodAnnotations(method);
+        return methodHas(method, PRODUCES) || quarkus && (hasScope(annotations, index)
+                || hasMeta(annotations, STEREOTYPE, index) || hasMeta(annotations, QUALIFIER, index));
+    }
+
     private static boolean isBeanClass(ClassInfo c, IndexView index) {
-        if (c.isAnnotation() || c.isInterface() || Modifier.isAbstract(c.flags())) return false;
+        if (c.isAnnotation() || c.isInterface() || Modifier.isAbstract(c.flags()) && !c.hasDeclaredAnnotation(DECORATOR) || vetoed(c, index)) return false;
         return hasScope(c.declaredAnnotations(), index) || hasMeta(c.declaredAnnotations(), STEREOTYPE, index)
                 || c.hasDeclaredAnnotation(INTERCEPTOR) || c.hasDeclaredAnnotation(DECORATOR);
     }
@@ -249,6 +291,22 @@ public final class BeanResolver {
         return "@Dependent";
     }
 
+    private static String inheritedScope(ClassInfo c, IndexView index, String fallback) {
+        Set<DotName> seen = new HashSet<>();
+        while (c.superName() != null && seen.add(c.name())) {
+            c = index.getClassByName(c.superName());
+            if (c == null) break;
+            if (hasScope(c.declaredAnnotations(), index)) {
+                var inherited = c.declaredAnnotations().stream().filter(a -> {
+                    ClassInfo annotation = index.getClassByName(a.name());
+                    return annotation != null && annotation.hasDeclaredAnnotation(n("java.lang.annotation.Inherited"));
+                }).toList();
+                return hasScope(inherited, index) ? scope(inherited, index) : fallback;
+            }
+        }
+        return fallback;
+    }
+
     private static List<String> stereotypes(ClassInfo c, IndexView index) {
         return c.declaredAnnotations().stream().filter(a -> metaHas(a.name(), STEREOTYPE, index, new HashSet<>()))
                 .map(a -> simple(a.name())).toList();
@@ -260,13 +318,14 @@ public final class BeanResolver {
             if (a.name().equals(NAMED)) {
                 String value = a.value() == null ? "" : a.value().asString();
                 result.add(value.isEmpty() ? BuiltinQualifier.NAMED.annotation() : "@Named(\"" + value + "\")");
-            } else if (metaHas(a.name(), QUALIFIER, index, new HashSet<>())) result.add(simple(a.name()));
+            } else if (metaHas(a.name(), QUALIFIER, index, new HashSet<>())) result.add(qualifierIdentity(a, index));
         }
         if (bean) {
             boolean custom = result.stream().anyMatch(q -> !q.equals(BuiltinQualifier.ANY.annotation()) && !q.equals(BuiltinQualifier.DEFAULT.annotation()) && !q.startsWith(BuiltinQualifier.NAMED.annotation()));
             if (!custom && !result.contains(BuiltinQualifier.DEFAULT.annotation())) result.add(BuiltinQualifier.DEFAULT.annotation());
             if (!result.contains(BuiltinQualifier.ANY.annotation())) result.add(BuiltinQualifier.ANY.annotation());
-        } else if (result.isEmpty()) result.add(BuiltinQualifier.DEFAULT.annotation());
+        } else if (result.isEmpty() || result.stream().allMatch(q -> q.startsWith(BuiltinQualifier.NAMED.annotation())))
+            result.add(BuiltinQualifier.DEFAULT.annotation());
         return List.copyOf(result);
     }
 
@@ -304,26 +363,64 @@ public final class BeanResolver {
         return a != null ? a : b;
     }
 
-    private static List<String> typeClosure(Type type, IndexView index) {
-        LinkedHashSet<String> r = new LinkedHashSet<>();
-        addType(type, index, r, new HashSet<>());
-        return List.copyOf(r);
+    private static String qualifierIdentity(AnnotationInstance annotation, IndexView index) {
+        if (annotation.name().toString().equals("jakarta.enterprise.inject.Any")) return "@Any";
+        if (annotation.name().toString().equals("jakarta.enterprise.inject.Default")) return "@Default";
+        ClassInfo declaration = index.getClassByName(annotation.name());
+        Map<String, String> values = new TreeMap<>();
+        if (declaration != null) for (MethodInfo member : declaration.methods()) {
+            if (member.hasAnnotation(n("jakarta.enterprise.util.Nonbinding"))) continue;
+            AnnotationValue value = annotation.value(member.name());
+            if (value == null) value = member.defaultValue();
+            if (value != null) values.put(member.name(), value.toString());
+        }
+        // Include qualified identity so equally named qualifiers in different packages never alias.
+        return "@" + annotation.name() + (values.isEmpty() ? "" : "(" + String.join(",", values.values()) + ")");
+    }
+
+    private static List<String> beanTypes(Type type, Collection<AnnotationInstance> annotations, IndexView index) {
+        LinkedHashSet<String> types = new LinkedHashSet<>();
+        addType(type, index, types, new HashSet<>());
+        types.add("java.lang.Object");
+        for (var annotation : annotations) if (annotation.name().equals(n("jakarta.enterprise.inject.Typed"))) {
+            Set<String> allowed = new HashSet<>();
+            if (annotation.value() != null) for (Type t : annotation.value().asClassArray()) allowed.add(typeName(t));
+            types.removeIf(t -> !t.equals("java.lang.Object") && !allowed.contains(t.contains("<") ? t.substring(0,t.indexOf('<')) : t));
+        }
+        return List.copyOf(types);
     }
 
     private static void addType(Type type, IndexView index, Set<String> result, Set<DotName> visited) {
+        if (type.kind() == Type.Kind.ARRAY || type.kind() == Type.Kind.PRIMITIVE) {
+            result.add(typeName(type)); return;
+        }
         DotName name = type.name();
         if (name == null || !visited.add(name)) return;
-        result.add(name.toString());
+        result.add(type.kind() == Type.Kind.PARAMETERIZED_TYPE ? type.toString() : name.toString());
         ClassInfo c = index.getClassByName(name);
         if (c == null) return;
         for (Type i : c.interfaceTypes()) addType(i, index, result, visited);
-        Type parent = c.superClassType();
-        if (parent != null && !"java.lang.Object".equals(parent.name().toString()))
-            addType(parent, index, result, visited);
+        if (c.superClassType() != null) addType(c.superClassType(), index, result, visited);
+    }
+
+    static String assignableType(String type) {
+        return switch (type) {
+            case "boolean" -> "java.lang.Boolean"; case "byte" -> "java.lang.Byte";
+            case "short" -> "java.lang.Short"; case "int" -> "java.lang.Integer";
+            case "long" -> "java.lang.Long"; case "char" -> "java.lang.Character";
+            case "float" -> "java.lang.Float"; case "double" -> "java.lang.Double";
+            default -> type;
+        };
+    }
+
+    static boolean hasBeanType(BeanRecord bean, String target) {
+        return bean.beanTypes() != null && bean.beanTypes().stream()
+                .anyMatch(type -> assignableType(type).equals(assignableType(target)));
     }
 
     private static String typeName(Type type) {
-        return type.name() == null ? type.toString() : type.name().toString();
+        return type.kind() == Type.Kind.ARRAY || type.kind() == Type.Kind.PRIMITIVE || type.kind() == Type.Kind.PARAMETERIZED_TYPE
+                ? type.toString() : type.name() == null ? type.toString() : type.name().toString();
     }
 
     private static boolean methodHas(MethodInfo m, DotName wanted) {
@@ -338,12 +435,21 @@ public final class BeanResolver {
         return m.annotations().stream().filter(a -> a.target() != null && a.target().kind() == AnnotationTarget.Kind.METHOD_PARAMETER && a.target().asMethodParameter().position() == p).toList();
     }
 
-    private static List<String> profiles(ClassInfo c) {
+    private static List<String> profiles(ClassInfo c) { return profiles(c, List.of()); }
+
+    private static List<String> profiles(ClassInfo c, Collection<AnnotationInstance> member) {
         List<String> r = new ArrayList<>();
+        for (var condition : member) {
+            if (condition.name().equals(IF_PROFILE) && condition.value() != null) r.add(condition.value().asString());
+            if (condition.name().equals(UNLESS_PROFILE) && condition.value() != null) r.add("!" + condition.value().asString());
+        }
         var a = c.declaredAnnotation(IF_PROFILE);
         if (a != null && a.value() != null) r.add(a.value().asString());
         a = c.declaredAnnotation(UNLESS_PROFILE);
         if (a != null && a.value() != null) r.add("!" + a.value().asString());
+        // Conditions on producer and declaring bean are conjunctive, not profile alternatives.
+        if (r.stream().filter(p -> !p.startsWith("!")).distinct().count() > 1)
+            return r.stream().distinct().map(p -> p.startsWith("!") ? p : "+" + p).toList();
         return r.isEmpty() ? null : List.copyOf(r);
     }
 
@@ -365,13 +471,18 @@ public final class BeanResolver {
         for (var b : beans) {
             classByBean.put(b.id(), b.classId());
             if (b.beanTypes() != null)
-                for (String t : b.beanTypes()) byType.computeIfAbsent(t, x -> new ArrayList<>()).add(b);
+                for (String t : b.beanTypes()) byType.computeIfAbsent(assignableType(t), x -> new ArrayList<>()).add(b);
         }
         for (int i = 0; i < ips.size(); i++) {
             var ip = ips.get(i);
+            if (ip.resolutionStatus() == ResolutionStatus.UNSUPPORTED_MECHANISM) continue;
             if (ip.resolvedBeanId() != null
                     || ip.resolutionStatus() == ResolutionStatus.AMBIGUOUS) continue;
-            var candidates = byType.getOrDefault(ip.targetType(), List.of());
+            var candidates = byType.getOrDefault(assignableType(ip.targetType()), List.of());
+            if (candidates.stream().anyMatch(b -> injectionCandidate(b) && qualifiersMatch(ip.qualifiers(), b.qualifiers())
+                    && b.profiles() != null && !b.profiles().isEmpty())) {
+                ips.set(i, profileContext(ip)); continue;
+            }
             Selection selection = select(candidates, ip.qualifiers(), specializedBeans, classNames);
             if (selection.bean() != null) {
                 var b = selection.bean();
@@ -385,17 +496,34 @@ public final class BeanResolver {
         }
     }
 
+    static InjectionPointRecord profileContext(InjectionPointRecord point) {
+        return new InjectionPointRecord(point.id(), point.beanId(), point.kind(), point.targetType(),
+                point.qualifiers(), point.fieldName(), null, ResolutionStatus.CONTEXT_REQUIRED,
+                point.resolutionStrategy(), ResolutionReason.BUILD_PROFILE_CONTEXT_REQUIRED, ResolutionConfidence.LOW,
+                List.of("A build profile is required to select conditional beans; profile lists use +required, !excluded, or unprefixed alternatives."),
+                ResolutionTrace.EMPTY);
+    }
+
     private record Selection(BeanRecord bean, boolean ambiguous, ResolutionTrace trace) {
+    }
+
+    static boolean injectionCandidate(BeanRecord bean) {
+        return !"DECORATOR".equals(bean.kind()) && !"INTERCEPTOR".equals(bean.kind());
     }
 
     private static Selection select(List<BeanRecord> candidates, List<String> requiredQualifiers,
             Map<Integer, Integer> specializedBeans, Map<Integer, String> classNames) {
         List<ResolutionRule> appliedRules = new ArrayList<>(List.of(
                 ResolutionRule.TYPE_ASSIGNABILITY, ResolutionRule.QUALIFIER_MATCHING, ResolutionRule.SPECIALIZATION,
-                ResolutionRule.DEFAULT_BEAN_FALLBACK, ResolutionRule.ALTERNATIVE_PRIORITY));
+                ResolutionRule.DEFAULT_BEAN_FALLBACK, ResolutionRule.ALTERNATIVE_PRIORITY, ResolutionRule.CDI_BEAN_KIND));
         Map<Integer, ResolutionCandidate> evidence = new LinkedHashMap<>();
         List<BeanRecord> qualified = new ArrayList<>();
         for (BeanRecord candidate : candidates) {
+            if (!injectionCandidate(candidate)) {
+                evidence.put(candidate.id(), candidateEvidence(candidate, classNames,
+                        CandidateDisposition.EXCLUDED, ResolutionReason.NOT_INJECTION_BEAN, List.of(ResolutionRule.CDI_BEAN_KIND)));
+                continue;
+            }
             if (qualifiersMatch(requiredQualifiers, candidate.qualifiers())) {
                 qualified.add(candidate);
                 evidence.put(candidate.id(), candidateEvidence(candidate, classNames,

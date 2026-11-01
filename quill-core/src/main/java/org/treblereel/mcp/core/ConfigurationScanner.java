@@ -48,7 +48,9 @@ public final class ConfigurationScanner {
 
     public record Definition(
             String key, String kind, String file, int line, String module,
-            String sourceSet) {}
+            String sourceSet, String evidence) {
+        public Definition(String key,String kind,String file,int line,String module,String sourceSet) {this(key,kind,file,line,module,sourceSet,"{}");}
+    }
 
     public record Usage(
             String key, String kind, int classId, String className, String member,
@@ -72,6 +74,7 @@ public final class ConfigurationScanner {
         Map<String, ClassRecord> classesByName = classes.stream().collect(
                 Collectors.toMap(ClassRecord::className, value -> value,
                         (left, right) -> left));
+        if (classFiles != null) definitions.addAll(QuarkusTestProfileOverrides.scan(root,classFiles,classesByName));
         List<Usage> usages = new ArrayList<>();
         Set<String> unique = new LinkedHashSet<>();
         for (ClassInfo classInfo : index.getKnownClasses().stream()
@@ -130,19 +133,24 @@ public final class ConfigurationScanner {
 
     private static void parseProperties(Path root, Path file, SourceContext context,
             List<Definition> target) throws IOException {
-        List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        for (DeclaredProperty property : declaredProperties(Files.readAllLines(file, StandardCharsets.UTF_8), false))
+            target.add(new Definition(property.key(), "property", relative(root, file), property.line(), context.module(), context.sourceSet()));
+    }
+
+    public record DeclaredProperty(String key, String value, int line) {}
+
+    /** Reuses index parsing for an on-demand source snapshot; values are never written to the index. */
+    public static List<DeclaredProperty> declaredProperties(List<String> lines, boolean yaml) throws IOException {
+        if (yaml) return yamlProperties(lines);
+        List<DeclaredProperty> result = new ArrayList<>();
         for (LogicalProperty logical : logicalProperties(lines)) {
             Properties parsed = new Properties();
-            try {
-                parsed.load(new StringReader(logical.value()));
-            } catch (IllegalArgumentException ignored) {
-                continue;
-            }
-            for (String key : parsed.stringPropertyNames()) {
-                if (!key.isEmpty()) target.add(new Definition(key, "property", relative(root, file),
-                        logical.line(), context.module(), context.sourceSet()));
-            }
+            try { parsed.load(new StringReader(logical.value())); }
+            catch (IllegalArgumentException ignored) { continue; }
+            for (String key : parsed.stringPropertyNames())
+                if (!key.isEmpty()) result.add(new DeclaredProperty(key, parsed.getProperty(key), logical.line()));
         }
+        return List.copyOf(result);
     }
 
     private static List<LogicalProperty> logicalProperties(List<String> lines) {
@@ -180,7 +188,12 @@ public final class ConfigurationScanner {
 
     private static void parseYaml(Path root, Path file, SourceContext context,
             List<Definition> target) throws IOException {
-        List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        for (DeclaredProperty property : declaredProperties(Files.readAllLines(file, StandardCharsets.UTF_8), true))
+            target.add(new Definition(property.key(), "yaml_property", relative(root, file), property.line(), context.module(), context.sourceSet()));
+    }
+
+    private static List<DeclaredProperty> yamlProperties(List<String> lines) {
+        List<DeclaredProperty> result = new ArrayList<>();
         Deque<YamlKey> parents = new ArrayDeque<>();
         for (int i = 0; i < lines.size(); i++) {
             String raw = lines.get(i);
@@ -203,10 +216,10 @@ public final class ConfigurationScanner {
             if (value.isEmpty()) {
                 parents.addLast(new YamlKey(indent, local));
             } else {
-                target.add(new Definition(key, "yaml_property", relative(root, file), i + 1,
-                        context.module(), context.sourceSet()));
+                result.add(new DeclaredProperty(key, unquote(value), i + 1));
             }
         }
+        return List.copyOf(result);
     }
 
     private static void parsePersistence(Path root, Path file, SourceContext context,

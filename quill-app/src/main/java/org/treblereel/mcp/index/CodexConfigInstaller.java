@@ -28,7 +28,7 @@ public final class CodexConfigInstaller {
         if (Files.exists(config)) return installIfPresent(projectRoot, binary);
 
         try {
-            String updated = appendBlock("", projectRoot, binary);
+            String updated = appendBlock("", projectRoot, binary, "writes");
             writeAtomically(config, updated);
             System.err.println("[quill] Created " + config + " with the Quill MCP server.");
             return Result.ADDED;
@@ -50,9 +50,15 @@ public final class CodexConfigInstaller {
             String content = Files.readString(config, StandardCharsets.UTF_8);
             if (definesQuillServer(content)) {
                 if (!shouldRepairManagedLauncher(content, binary)) {
+                    String updated = readOnlyDefaults(content);
+                    if (!updated.equals(content)) {
+                        writeAtomically(config, updated);
+                        return Result.REPLACED;
+                    }
                     return Result.ALREADY_CONFIGURED;
                 }
-                String updated = appendBlock(removeQuillServer(content), projectRoot, binary);
+                String updated = appendBlock(removeQuillServer(content), projectRoot, binary,
+                        quillStringValue(content, "default_tools_approval_mode").orElse("writes"));
                 writeAtomically(config, updated);
                 System.err.println("[quill] Repaired the Quill launcher in " + config + ".");
                 return Result.REPLACED;
@@ -62,7 +68,7 @@ public final class CodexConfigInstaller {
                 return Result.UNSUPPORTED;
             }
 
-            String updated = appendBlock(content, projectRoot, binary);
+            String updated = appendBlock(content, projectRoot, binary, "writes");
             writeAtomically(config, updated);
             System.err.println("[quill] Added the Quill MCP server to " + config + ".");
             return Result.ADDED;
@@ -88,7 +94,8 @@ public final class CodexConfigInstaller {
             }
             boolean replaced = definesQuillServer(content);
             String cleaned = removeQuillServer(content);
-            String updated = appendWorkspaceBlock(cleaned, projectRoot, workspaceRoot, binary);
+            String updated = appendWorkspaceBlock(cleaned, projectRoot, workspaceRoot, binary,
+                    quillStringValue(content, "default_tools_approval_mode").orElse("writes"));
             writeAtomically(config, updated);
             return replaced ? Result.REPLACED : Result.ADDED;
         } catch (IOException e) {
@@ -103,7 +110,7 @@ public final class CodexConfigInstaller {
             return installWorkspaceIfPresent(projectRoot, workspaceRoot, binary);
         }
         try {
-            writeAtomically(config, appendWorkspaceBlock("", projectRoot, workspaceRoot, binary));
+            writeAtomically(config, appendWorkspaceBlock("", projectRoot, workspaceRoot, binary, "writes"));
             System.err.println("[quill] Created " + config
                     + " with the workspace-aware Quill MCP server.");
             return Result.ADDED;
@@ -188,6 +195,10 @@ public final class CodexConfigInstaller {
     }
 
     public static Optional<String> quillCommand(String content) {
+        return quillStringValue(content, "command");
+    }
+
+    private static Optional<String> quillStringValue(String content, String key) {
         boolean inQuillTable = false;
         for (String line : content.split("\\R", -1)) {
             String withoutComment = stripComment(line).trim();
@@ -197,7 +208,7 @@ public final class CodexConfigInstaller {
                 inQuillTable = "mcp_servers.quill".equals(table);
                 continue;
             }
-            if (!inQuillTable || !"command".equals(assignmentKey(withoutComment))) continue;
+            if (!inQuillTable || !key.equals(assignmentKey(withoutComment))) continue;
             int equals = indexOfUnquoted(withoutComment, '=');
             if (equals < 0) return Optional.empty();
             String value = withoutComment.substring(equals + 1).trim();
@@ -303,7 +314,7 @@ public final class CodexConfigInstaller {
     }
 
     private static String appendBlock(
-            String content, Path projectRoot, String binary) {
+            String content, Path projectRoot, String binary, String approvalMode) {
         String newline = content.contains("\r\n") ? "\r\n" : "\n";
         String command = binary != null ? binary : "quill";
 
@@ -315,6 +326,8 @@ public final class CodexConfigInstaller {
         block.append("# Added by Quill.")
                 .append(newline)
                 .append("[mcp_servers.quill]").append(newline)
+                .append("enabled = true").append(newline)
+                .append("default_tools_approval_mode = ").append(tomlString(approvalMode)).append(newline)
                 .append("command = ").append(tomlString(command)).append(newline)
                 .append("args = [\"--mcp\"]").append(newline)
                 .append("cwd = ").append(tomlString(projectRoot.toAbsolutePath().normalize().toString()))
@@ -323,7 +336,7 @@ public final class CodexConfigInstaller {
     }
 
     private static String appendWorkspaceBlock(String content, Path projectRoot,
-            Path workspaceRoot, String binary) {
+            Path workspaceRoot, String binary, String approvalMode) {
         String newline = content.contains("\r\n") ? "\r\n" : "\n";
         String command = binary != null ? binary : "quill";
         StringBuilder block = new StringBuilder();
@@ -333,6 +346,8 @@ public final class CodexConfigInstaller {
         if (!content.isBlank()) block.append(newline);
         block.append(workspaceMarker(workspaceRoot)).append(newline)
                 .append("[mcp_servers.quill]").append(newline)
+                .append("enabled = true").append(newline)
+                .append("default_tools_approval_mode = ").append(tomlString(approvalMode)).append(newline)
                 .append("command = ").append(tomlString(command)).append(newline)
                 .append("args = [\"--mcp\", \"--workspace\", ")
                 .append(tomlString(workspaceRoot.toAbsolutePath().normalize().toString()))
@@ -341,6 +356,30 @@ public final class CodexConfigInstaller {
                 .append(tomlString(projectRoot.toAbsolutePath().normalize().toString()))
                 .append(newline);
         return content + block;
+    }
+
+    private static String readOnlyDefaults(String content) {
+        if (content.lines().map(String::trim).noneMatch(line -> line.equals("# Added by Quill.")
+                || line.startsWith("# Added by Quill for workspace "))) return content;
+        String newline = content.contains("\r\n") ? "\r\n" : "\n";
+        var lines = new java.util.ArrayList<>(java.util.Arrays.asList(content.split("\\R", -1)));
+        String table = "";
+        int start = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            String line = stripComment(lines.get(i)).trim();
+            if (line.startsWith("[")) {
+                table = tableName(line);
+                if ("mcp_servers.quill".equals(table)) start = i;
+            } else {
+                String key = assignmentKey(line);
+                if (("mcp_servers.quill".equals(table) && "default_tools_approval_mode".equals(key))
+                        || ("".equals(table) && "mcp_servers.quill.default_tools_approval_mode".equals(key))
+                        || ("mcp_servers".equals(table) && "quill.default_tools_approval_mode".equals(key))) return content;
+            }
+        }
+        if (start < 0) return content;
+        lines.add(start + 1, "default_tools_approval_mode = \"writes\"");
+        return String.join(newline, lines);
     }
 
     private static boolean targetsWorkspace(String content, Path workspaceRoot) {

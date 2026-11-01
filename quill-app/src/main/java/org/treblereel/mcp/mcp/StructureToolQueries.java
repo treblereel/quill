@@ -7,6 +7,7 @@ import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.isProducer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
@@ -17,10 +18,12 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import org.treblereel.mcp.db.IndexReader;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.model.BeanRecord;
@@ -190,6 +193,15 @@ final class StructureToolQueries {
         List<ExternalBeanRecord> externalBeans = "application".equals(requestedOrigin)
                 ? List.of()
                 : reader.beans.findExternalBeans(filter.isEmpty() ? null : filter);
+        boolean typeLookup = false;
+        if (beans.isEmpty() && externalBeans.isEmpty() && className != null && !className.contains("*")) {
+            Map<String, String> typeFilter = new HashMap<>(filter);
+            typeFilter.remove("class_name");
+            typeFilter.put("bean_type", className);
+            if (!"dependency".equals(requestedOrigin)) beans = IndexReader.findBeans(reader.jdbi(), typeFilter);
+            if (!"application".equals(requestedOrigin)) externalBeans = IndexReader.findExternalBeans(reader.jdbi(), typeFilter);
+            typeLookup = !beans.isEmpty() || !externalBeans.isEmpty();
+        }
         if (beans.isEmpty() && externalBeans.isEmpty() && lookup != null
                 && lookup.error() != null) {
             return classLookupError(reader, lookup, className);
@@ -227,6 +239,8 @@ final class StructureToolQueries {
                         .map(value -> value.application().declaringClassId()).distinct().toList());
         ObjectNode root = JSON.createObjectNode();
         ArrayNode arr = root.putArray("beans");
+        if (typeLookup) root.put("lookup_kind", "provided_bean_type").put("requested_type", className)
+                .put("runtime_resolution_proven", false);
         int naiveTokens = 0;
         for (BeanView view : limited) {
             ObjectNode node = arr.addObject();
@@ -796,6 +810,8 @@ final class StructureToolQueries {
         if (bean.isEmpty()) return notABean(reader, cls, target);
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
+        root.put("scope", bean.get().scope());
+        root.put("bean_kind", bean.get().kind());
         appendContext(root, cls);
         List<InjectionPointRecord> injectionPoints = reader.beans.findInjectionPoints(bean.get().id());
         Set<Integer> referencedBeanIds = new HashSet<>();
@@ -809,13 +825,19 @@ final class StructureToolQueries {
                 .forEach(referencedBeanIds::add);
         Map<Integer, BeanRecord> resolvedBeans = reader.beans.findBeansByIds(referencedBeanIds);
         Map<Integer, ClassRecord> resolvedClasses = reader.symbols.findClassesByIds(resolvedBeans.values().stream().map(BeanRecord::classId).toList());
-        Map<String, String> limitationKeys = new java.util.LinkedHashMap<>();
+        root.put("injection_points_total", injectionPoints.size());
+        ObjectNode kinds = root.putObject("injection_points_by_kind");
+        for (InjectionPointRecord point : injectionPoints)
+            kinds.put(point.kind(), kinds.path(point.kind()).asInt() + 1);
         ArrayNode result = root.putArray("injection_points");
         ArrayNode unsatisfied = root.putArray("unsatisfied");
         ArrayNode ambiguous = root.putArray("ambiguous");
         ArrayNode contextRequired = root.putArray("context_required");
         ArrayNode unknown = root.putArray("unknown");
         ArrayNode unsupported = root.putArray("unsupported_mechanism");
+        List<ExternalBeanRecord> providers = injectionPoints.stream()
+                .anyMatch(p -> p.resolutionStatus() == ResolutionStatus.UNKNOWN)
+                ? reader.beans.findExternalBeans(null) : List.of();
         for (InjectionPointRecord point : injectionPoints) {
             ObjectNode node = result.addObject();
             node.put("kind", point.kind());
@@ -826,16 +848,11 @@ final class StructureToolQueries {
             node.put("resolution_strategy", point.resolutionStrategy());
             node.put("reason", point.resolutionReason().name());
             node.put("confidence", point.resolutionConfidence().name().toLowerCase());
-            // The same limitation sentences repeat on every point; reference them by key.
-            ArrayNode pointLimitations = node.putArray("limitations");
-            for (String text : point.limitations()) {
-                pointLimitations.add(limitationKeys.computeIfAbsent(text,
-                        ignored -> "L" + (limitationKeys.size() + 1)));
-            }
+            node.set("limitations", JSON.valueToTree(point.limitations()));
             appendResolutionTrace(node, point, resolvedBeans, resolvedClasses);
             if (point.resolvedBeanId() == null && (point.resolutionStatus() == ResolutionStatus.UNKNOWN
                     || point.resolutionStatus() == ResolutionStatus.UNSATISFIED)) {
-                appendDependencyCandidates(node, reader, point);
+                appendProviderEvidence(reader, node, point, providers);
             }
             if (point.resolutionStatus() == ResolutionStatus.AMBIGUOUS) {
                 node.putNull("resolved_to");
@@ -843,6 +860,8 @@ final class StructureToolQueries {
             } else if (point.resolvedBeanId() != null) {
                 BeanRecord resolved = resolvedBeans.get(point.resolvedBeanId());
                 if (resolved != null) {
+                    node.put("resolved_scope", resolved.scope());
+                    node.put("resolved_kind", resolved.kind());
                     ClassRecord resolvedClass = resolvedClasses.get(resolved.classId());
                     if (resolvedClass != null) node.put("resolved_to", resolvedClass.className());
                     if (resolved.memberName() != null) {
@@ -865,18 +884,12 @@ final class StructureToolQueries {
                 }
             }
         }
-        ObjectNode limitationTexts = root.putObject("limitation_texts");
-        limitationKeys.forEach((text, key) -> limitationTexts.put(key, text));
+        shareResolutionContext(root, result);
         InterceptionEvidence.append(root, reader, cls, bean.get());
         appendMeta(root, reader, cls.sourceTokens());
         return root.toString();
     }
 
-    /**
-     * Beans of the required type found in dependency JARs (for example a framework producer such
-     * as Vert.x or Jackson). Application resolution does not consider them, so an agent would
-     * otherwise search the JARs itself.
-     */
     private static final Set<String> CONTEXT_BOUND_SCOPES = Set.of(
             "@RequestScoped", "@SessionScoped", "@ConversationScoped");
 
@@ -896,23 +909,59 @@ final class StructureToolQueries {
                 + "Propagation or Vert.x duplicated contexts); Quill does not track it");
     }
 
-    private static void appendDependencyCandidates(ObjectNode node, ReadQueryContext reader,
-            InjectionPointRecord point) {
-        int generic = point.targetType().indexOf('<');
-        String type = generic < 0 ? point.targetType() : point.targetType().substring(0, generic);
-        var external = reader.beans.findExternalBeans(Map.of("bean_type", type));
-        if (external.isEmpty()) return;
-        ArrayNode candidates = node.putArray("dependency_candidates");
-        external.stream().limit(5).forEach(bean -> {
-            ObjectNode candidate = candidates.addObject().put("class", bean.className()).put("kind", bean.kind())
-                    .put("scope", bean.scope()).put("framework", bean.framework());
-            if (bean.memberName() != null) candidate.put("member", bean.memberName());
-            if (bean.artifact() != null) candidate.put("artifact", bean.artifact());
-            if (bean.defaultBean()) candidate.put("default_bean", true);
-            candidate.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
-        });
-        node.put("dependency_candidates_note", "Beans of this type declared in dependency JARs; "
-                + "they satisfy the point only if their qualifiers match and the bean is enabled");
+    private static void appendProviderEvidence(ReadQueryContext reader, ObjectNode node, InjectionPointRecord point,
+            List<ExternalBeanRecord> providers) {
+        List<ExternalBeanRecord> matches = providers.stream()
+                .filter(b -> IndexReader.matchesBeanType(b.beanTypes(), point.targetType())).toList();
+        ObjectNode evidence = node.putObject("provider_evidence");
+        evidence.put("scope", "indexed declarations by provided type; not full CDI eligibility or runtime resolution")
+                .put("runtime_resolution_proven", false).put("total", matches.size())
+                .put("showing", Math.min(5, matches.size())).put("has_more", matches.size() > 5);
+        ArrayNode declarations = evidence.putArray("declarations");
+        for (ExternalBeanRecord bean : matches.stream().limit(5).toList()) {
+            ObjectNode declaration = declarations.addObject().put("declaring_class", bean.className())
+                    .put("kind", bean.kind()).put("bean_scope", bean.scope()).put("framework", bean.framework());
+            if (bean.memberName() != null) declaration.put("member", bean.memberName());
+            if (bean.artifact() != null) declaration.put("artifact", bean.artifact());
+            declaration.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+            declaration.set("profiles", JSON.valueToTree(bean.profiles()));
+            declaration.put("qualifier_names_match", point.qualifiers().stream().allMatch(q -> {
+                int end = q.indexOf('(');
+                return IndexReader.matchesQualifier(bean.qualifiers(), end < 0 ? q : q.substring(0, end));
+            }));
+        }
+        var lookup = ClassTargetResolver.resolve(reader, point.targetType());
+        if (lookup.error() == null && reader.symbols.findClassAnnotations(lookup.cls().id()).stream()
+                .anyMatch(a -> a.direct() && a.annotationName().equals("io.smallrye.config.ConfigMapping"))) {
+            evidence.putObject("configuration_mapping_declaration")
+                    .put("class", lookup.cls().className()).put("annotation", "io.smallrye.config.ConfigMapping")
+                    .put("source", lookup.cls().sourceFile()).put("generated_bean_scope", "not_proven");
+        }
+    }
+
+    private static void shareResolutionContext(ObjectNode root, ArrayNode points) {
+        if (points.size() < 2) return;
+        ObjectNode context = JSON.createObjectNode();
+        for (String key : List.of("limitations", "applied_rules", "unsupported_rules")) {
+            Set<JsonNode> common = null;
+            for (JsonNode point : points) {
+                JsonNode values = key.equals("limitations") ? point.path(key) : point.path("resolution_trace").path(key);
+                Set<JsonNode> entries = new LinkedHashSet<>(); values.forEach(entries::add);
+                if (common == null) common = entries; else common.retainAll(entries);
+            }
+            if (common == null || common.isEmpty()) continue;
+            ArrayNode shared = context.putArray(key); common.forEach(shared::add);
+            for (JsonNode point : points) {
+                ArrayNode values = (ArrayNode) (key.equals("limitations") ? point.get(key) : point.path("resolution_trace").get(key));
+                List<JsonNode> extra = new ArrayList<>();
+                for (JsonNode value : values) if (!common.contains(value)) extra.add(value);
+                values.removeAll(); extra.forEach(values::add);
+            }
+        }
+        if (!context.isEmpty()) {
+            context.put("applies_to", "All injection_points; per-point lists are additional.");
+            root.set("resolution_context", context);
+        }
     }
 
     private static void appendResolutionTrace(ObjectNode node, InjectionPointRecord point,
@@ -940,6 +989,7 @@ final class StructureToolQueries {
             }
             if (bean != null) {
                 candidateNode.put("kind", bean.kind());
+                candidateNode.put("scope", bean.scope());
                 if (bean.memberName() != null) candidateNode.put("member", bean.memberName());
                 candidateNode.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
             }

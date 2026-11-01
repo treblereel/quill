@@ -3,6 +3,7 @@ package org.treblereel.mcp.mcp;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.appendPage;
+import static org.treblereel.mcp.mcp.ToolResponseSupport.appendRetryWith;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.classLookupError;
 import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 
@@ -59,10 +60,16 @@ final class MethodOverrideQueries {
                         methodName, member, kotlinDeclarations))
                 .toList();
         List<ClassMemberRecord> baseDeclarations = namedDeclarations.stream()
-                .filter(member -> requestedSignature == null
-                        || requestedSignature.equals(member.signature())
-                        || requestedSignature.equals(member.descriptor()))
+                .filter(member -> JvmDescriptors.matchesSignature(member, requestedSignature))
                 .toList();
+        if (requestedSignature != null && baseDeclarations.size() > 1) {
+            ObjectNode error = JSON.createObjectNode();
+            appendError(error, "AMBIGUOUS_METHOD", "Multiple declarations match; provide a JVM descriptor");
+            appendRetryWith(error, "signature", "Use one candidate's full signature or JVM descriptor");
+            error.set("candidates", JSON.valueToTree(baseDeclarations.stream()
+                    .map(ClassMemberRecord::signature).toList()));
+            return error.toString();
+        }
         if (baseDeclarations.isEmpty()) {
             ObjectNode error = JSON.createObjectNode();
             appendError(error, "METHOD_NOT_FOUND", requestedSignature == null

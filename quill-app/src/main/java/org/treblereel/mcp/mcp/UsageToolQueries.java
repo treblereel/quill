@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
@@ -68,6 +69,10 @@ final class UsageToolQueries {
         int from = Math.min(offset, usages.size());
         int to = (int) Math.min((long) from + limit, usages.size());
         List<Usage> page = usages.subList(from, to);
+        Map<Integer, List<UsageRepository.InvokedMemberView>> members = reader.usages.findInvokedMembers(
+                targetClass.id(), page.stream()
+                        .filter(usage -> "method_call".equals(usage.usageKind()))
+                        .map(usage -> usage.caller().id()).toList());
 
         ObjectNode root = JSON.createObjectNode();
         root.put("target", targetClass.className());
@@ -89,6 +94,20 @@ final class UsageToolQueries {
             node.put("usage_kind", usage.usageKind());
             node.put("indexed_kind", usage.indexedKind());
             node.put("occurrences", usage.occurrenceCount());
+            List<UsageRepository.InvokedMemberView> invoked = "method_call".equals(usage.usageKind())
+                    ? members.getOrDefault(usage.caller().id(), List.of()) : List.of();
+            if (!invoked.isEmpty()) {
+                node.put("invoked_member_groups", invoked.getFirst().groupCount());
+                node.put("invoked_members_truncated", invoked.getFirst().groupCount() > invoked.size());
+                ArrayNode names = node.putArray("invoked_members");
+                for (var member : invoked) {
+                    ObjectNode value = names.addObject();
+                    value.put("name", member.name());
+                    value.put("descriptor", member.descriptor());
+                    value.put("invocation_kind", member.invocationKind());
+                    value.put("instruction_occurrences", member.instructionOccurrences());
+                }
+            }
             node.put("source", usage.caller().sourceFile() + ":" + usage.caller().sourceLine());
             node.put("origin", usage.caller().origin());
             appendContext(node, usage.caller());

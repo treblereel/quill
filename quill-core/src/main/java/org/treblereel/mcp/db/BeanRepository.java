@@ -17,7 +17,6 @@ public final class BeanRepository {
     public BeanRepository(Handle handle) { this.handle = Objects.requireNonNull(handle); }
 
     public List<BeanRecord> findBeans(Map<String, String> filter) {
-        
             var sb = new StringBuilder("SELECT b.*, c.class_name FROM beans b "
                     + "JOIN classes c ON b.class_id = c.id "
                     + "WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'");
@@ -26,7 +25,6 @@ public final class BeanRepository {
                 if (filter.containsKey("class_name")) sb.append(" AND c.class_name LIKE :className");
                 if (filter.containsKey("scope")) sb.append(" AND b.scope = :scope");
                 if (filter.containsKey("kind")) sb.append(" AND b.kind = :kind");
-                if (filter.containsKey("qualifier")) sb.append(" AND b.qualifiers LIKE :qualifier");
                 if (filter.containsKey("module")) {
                     sb.append(" AND (EXISTS (SELECT 1 FROM class_occurrences co "
                             + "WHERE co.class_id = c.id AND co.module = :module) OR "
@@ -46,12 +44,16 @@ public final class BeanRepository {
                 if (filter.containsKey("class_name")) q.bind("className", filter.get("class_name").replace("*", "%"));
                 if (filter.containsKey("scope")) q.bind("scope", filter.get("scope"));
                 if (filter.containsKey("kind")) q.bind("kind", filter.get("kind"));
-                if (filter.containsKey("qualifier")) q.bind("qualifier", "%" + filter.get("qualifier") + "%");
                 if (filter.containsKey("module")) q.bind("module", filter.get("module"));
                 if (filter.containsKey("source_set")) q.bind("sourceSet", filter.get("source_set"));
             }
 
             List<BeanRecord> results = q.map((rs, ctx) -> mapBean(rs)).list();
+
+            if (filter != null && filter.containsKey("bean_type")) {
+                results = results.stream().filter(b -> matchesBeanType(
+                        b.beanTypes(), filter.get("bean_type"))).toList();
+            }
 
             if (filter != null && filter.containsKey("profile")) {
                 String requestedProfile = filter.get("profile");
@@ -60,20 +62,21 @@ public final class BeanRepository {
                         .toList();
             }
 
-            return results;
-        
+            return filter != null && filter.containsKey("qualifier") ? results.stream()
+                    .filter(b -> matchesQualifier(b.qualifiers(), filter.get("qualifier"))).toList() : results;
     }
 
     public List<ExternalBeanRecord> findExternalBeans(Map<String, String> filter) {
-        
             StringBuilder sql = new StringBuilder("SELECT * FROM external_beans WHERE 1=1");
             if (filter != null) {
-                if (filter.containsKey("class_name")) sql.append(" AND class_name LIKE :className");
+                if (filter.containsKey("class_name")) {
+                    String name = filter.get("class_name");
+                    if (name.contains("*")) sql.append(" AND class_name LIKE :className");
+                    else if (name.contains(".")) sql.append(" AND class_name = :className");
+                    else sql.append(" AND (class_name = :className OR substr(class_name, -length(:className)-1) IN ('.' || :className, '$' || :className))");
+                }
                 if (filter.containsKey("scope")) sql.append(" AND scope = :scope");
                 if (filter.containsKey("kind")) sql.append(" AND kind = :kind");
-                if (filter.containsKey("profile")) sql.append(" AND profiles LIKE :profile");
-                if (filter.containsKey("qualifier")) sql.append(" AND qualifiers LIKE :qualifier");
-                if (filter.containsKey("bean_type")) sql.append(" AND bean_types LIKE :beanType ESCAPE '!'");
             }
             sql.append(" ORDER BY class_name, framework, kind, member_name");
             var query = handle.createQuery(sql.toString());
@@ -81,23 +84,12 @@ public final class BeanRepository {
                 if (filter.containsKey("class_name")) {
                     String value = filter.get("class_name");
                     String pattern = value.replace('*', '%');
-                    if (!value.contains("*") && !value.contains(".")) pattern = "%" + value;
                     query.bind("className", pattern);
                 }
                 if (filter.containsKey("scope")) query.bind("scope", filter.get("scope"));
                 if (filter.containsKey("kind")) query.bind("kind", filter.get("kind"));
-                if (filter.containsKey("profile")) {
-                    query.bind("profile", "%\"" + filter.get("profile") + "\"%");
-                }
-                if (filter.containsKey("qualifier")) {
-                    query.bind("qualifier", "%" + filter.get("qualifier") + "%");
-                }
-                if (filter.containsKey("bean_type")) {
-                    String type = filter.get("bean_type").replace("!", "!!").replace("%", "!%").replace("_", "!_");
-                    query.bind("beanType", "%\"" + type + "\"%");
-                }
             }
-            return query.map((rs, ctx) -> new ExternalBeanRecord(
+            var beans = query.map((rs, ctx) -> new ExternalBeanRecord(
                     rs.getInt("id"), rs.getString("class_name"), rs.getString("kind"),
                     rs.getString("scope"), fromJson(rs.getString("qualifiers")),
                     fromJson(rs.getString("stereotypes")),
@@ -107,7 +99,30 @@ public final class BeanRepository {
                     fromJson(rs.getString("bean_types")), rs.getString("framework"),
                     rs.getString("artifact"), rs.getString("jar_path"),
                     externalInjectionsFromJson(rs.getString("injection_points")))).list();
-        
+            return beans.stream()
+                    .filter(b -> filter == null || !filter.containsKey("bean_type") || matchesBeanType(b.beanTypes(), filter.get("bean_type")))
+                    .filter(b -> filter == null || !filter.containsKey("profile") || matchesProfile(b.profiles(), filter.get("profile")))
+                    .filter(b -> filter == null || !filter.containsKey("qualifier") || matchesQualifier(b.qualifiers(), filter.get("qualifier"))).toList();
+    }
+
+    public static boolean matchesBeanType(List<String> types, String requested) {
+        if (types == null || requested == null) return false;
+        return types.stream().anyMatch(type -> type.equals(requested)
+                || !requested.contains(".") && (type.endsWith("." + requested) || type.endsWith("$" + requested)));
+    }
+
+    public static boolean matchesQualifier(List<String> available, String requested) {
+        if (available == null || requested == null) return false;
+        String selector = requested.startsWith("@") ? requested.substring(1) : requested;
+        for (String value : available) {
+            String actual = value.startsWith("@") ? value.substring(1) : value;
+            int end = actual.indexOf('(');
+            String name = end < 0 ? actual : actual.substring(0,end);
+            String simple = name.substring(Math.max(name.lastIndexOf('.'),name.lastIndexOf('$')) + 1);
+            if (selector.equals(actual) || selector.equals(name) || selector.equals(simple)
+                    || end >= 0 && selector.equals(simple + actual.substring(end))) return true;
+        }
+        return false;
     }
 
     public List<InjectionPointRecord> findInjectionPoints(int beanId) {
@@ -301,10 +316,19 @@ public final class BeanRepository {
     }
 
     static boolean matchesProfile(List<String> beanProfiles, String requestedProfile) {
-        if (beanProfiles == null || beanProfiles.isEmpty()) return false;
+        if (beanProfiles == null || beanProfiles.isEmpty()) return true;
+        boolean restricted = false;
+        boolean included = false;
         for (String p : beanProfiles) {
-            if (p.equals(requestedProfile)) return true;
+            if (p.startsWith("+")) {
+                if (!p.substring(1).equals(requestedProfile)) return false;
+            } else if (p.startsWith("!")) {
+                if (p.substring(1).equals(requestedProfile)) return false;
+            } else {
+                restricted = true;
+                included |= p.equals(requestedProfile);
+            }
         }
-        return false;
+        return !restricted || included;
     }
 }

@@ -37,7 +37,7 @@ public final class McpToolProfile {
             "get_overview", "resolve_entities", "find_git_hotspots", "get_file_history",
             "find_co_changed_files", "get_recent_changes", "assess_change_risk",
             "compare_index", "get_build_status", "get_worktree_status");
-    private static final Set<String> NAMES = Set.of("full", "router", "core", "code", "di", "git");
+    private static final Set<String> NAMES = Set.of("full", "router", "compact", "core", "code", "di", "git");
 
     private final boolean full;
     private final boolean router;
@@ -59,6 +59,15 @@ public final class McpToolProfile {
                 .map(String::strip)
                 .map(name -> name.toLowerCase(Locale.ROOT))
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (names.equals(Set.of("compact"))) {
+            return new McpToolProfile(false, true, Set.of(
+                    "get_symbol_details", "search_classes", "list_beans",
+                    "list_injection_points", "get_dependencies", "get_context",
+                    "get_call_hierarchy", "find_configuration_references"));
+        }
+        if (names.contains("compact")) {
+            throw new IllegalArgumentException("MCP tool profile 'compact' must be used alone");
+        }
         if (names.contains("router")) {
             if (names.size() != 1) {
                 throw new IllegalArgumentException(
@@ -70,7 +79,7 @@ public final class McpToolProfile {
         for (String name : names) {
             if (!NAMES.contains(name)) {
                 throw new IllegalArgumentException("Unknown MCP tool profile '" + name
-                        + "'; expected full, router, core, code, di, git, or a comma-separated union");
+                        + "'; expected full, router, compact, core, code, di, git, or a comma-separated union");
             }
             if (name.equals("full")) return full();
             selected.addAll(switch (name) {

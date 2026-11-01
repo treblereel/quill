@@ -62,8 +62,12 @@ final class WorktreeStatusQueries {
             item.put("path", change.projectPath());
             item.put("repository_path", change.repositoryPath());
             item.put("status", change.status());
-            item.put("structural", WorktreeInspector.isStructuralPath(change.projectPath()));
+            item.put("structural", snapshot.structuralChanges().contains(change));
         });
+        var submodules=result.putArray("submodules");
+        for(var module:org.treblereel.mcp.core.SubmoduleInventory.read(root))
+            submodules.addObject().put("path",module.path()).put("index_commit",module.indexCommit())
+                    .put("head_commit",module.headCommit()).put("initialized",module.initialized()).put("status",module.status());
         result.put("source", "live_git_worktree");
         result.put("observed_at", java.time.Instant.now().toString());
         return result;

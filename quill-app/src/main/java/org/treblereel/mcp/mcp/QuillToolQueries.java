@@ -93,6 +93,10 @@ public final class QuillToolQueries {
         return context.getContext(reader, targets, includeMembers, limit);
     }
 
+    String getContext(ReadQueryContext reader, List<String> targets, boolean includeMembers, int limit, String view) {
+        return context.getContext(reader, targets, includeMembers, limit, view);
+    }
+
     String planChange(ReadQueryContext reader, Path projectRoot, List<String> targets,
             String change, int limit) {
         return changePlan.planChange(reader, projectRoot, targets, change, limit);
@@ -385,6 +389,11 @@ public final class QuillToolQueries {
             String kind, String module, int limit, int offset) {
         return configurationReferences.find(
                 reader, key, className, kind, module, limit, offset);
+    }
+
+    String findConfigurationReferences(ReadQueryContext reader, String key, String className,
+            String kind, String module, int limit, int offset, String view) {
+        return configurationReferences.find(reader, key, className, kind, module, limit, offset, view);
     }
 
     String findResourceReferences(ReadQueryContext reader, String path, String className,

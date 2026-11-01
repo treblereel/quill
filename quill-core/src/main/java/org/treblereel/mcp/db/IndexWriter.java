@@ -88,7 +88,7 @@ public final class IndexWriter {
             "class_id", "class_name", "problem_type", "message");
     private static final TableSpec CONFIGURATION_DEFINITIONS = new TableSpec(
             "configuration_definitions", "key", "kind", "file", "line", "module",
-            "source_set");
+            "source_set", "evidence");
     private static final TableSpec CONFIGURATION_USAGES = new TableSpec(
             "configuration_usages", "key", "kind", "class_id", "class_name", "member",
             "parameter_index", "annotation", "source", "module", "source_set");
@@ -559,6 +559,7 @@ public final class IndexWriter {
                     statement.setInt(4, definition.line());
                     statement.setString(5, definition.module());
                     statement.setString(6, definition.sourceSet());
+                    statement.setString(7, definition.evidence());
                 });
     }
 

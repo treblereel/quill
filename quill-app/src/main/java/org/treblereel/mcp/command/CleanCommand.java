@@ -1,5 +1,6 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.PrefetchHooksInstaller;
 import org.treblereel.mcp.index.BuildIntegrationInstaller;
 import org.treblereel.mcp.index.ClaudeSettingsInstaller;
 import org.treblereel.mcp.index.CodexConfigInstaller;
@@ -50,6 +51,7 @@ public class CleanCommand implements Callable<Integer> {
                 McpJsonInstaller.uninstallProject(normalized);
         boolean claudeInstructions = ProjectConfiguration.removeClaudeMd(normalized);
         boolean codexInstructions = ProjectConfiguration.removeAgentsMd(normalized);
+        PrefetchHooksInstaller.uninstall(normalized);
         boolean claudeApproval = ClaudeSettingsInstaller.uninstall(normalized);
         boolean existed = Files.exists(normalized.resolve(".quill"));
         boolean removed = ProjectIndexLock.withLockAndDeleteDirectory(

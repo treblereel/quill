@@ -256,7 +256,8 @@ CREATE TABLE IF NOT EXISTS configuration_definitions (
     line INTEGER NOT NULL,
     module TEXT NOT NULL,
     source_set TEXT NOT NULL,
-    UNIQUE(key, kind, file, line, module, source_set)
+    evidence TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(key, kind, file, line, module, source_set, evidence)
 );
 
 CREATE TABLE IF NOT EXISTS configuration_usages (

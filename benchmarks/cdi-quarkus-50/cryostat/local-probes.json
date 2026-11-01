@@ -1,0 +1,29 @@
+{
+  "patch": [
+    {
+      "variant": "baseline",
+      "compile": "passed",
+      "behavior_cases": 12,
+      "passed": 12,
+      "application_started": false,
+      "network_used": false
+    },
+    {
+      "variant": "reference_rename",
+      "compile": "passed",
+      "behavior_cases": 12,
+      "passed": 12,
+      "application_started": false,
+      "network_used": false
+    }
+  ],
+  "config": {
+    "value": 25,
+    "winning_source": "explicit-override",
+    "ordinal": 500,
+    "ambient_sources_loaded": false
+  },
+  "limitations": [
+    "Pure mapping behavior checked; Quarkus application/container and integration tests were not started."
+  ]
+}

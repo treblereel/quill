@@ -49,6 +49,11 @@ public final class ReadQueryContext implements AutoCloseable {
         references = new ReferenceRepository(handle);
     }
 
+    /** The generation's Jdbi, for query code written against Jdbi rather than the repositories. */
+    public Jdbi jdbi() {
+        return database;
+    }
+
     public static <T> T read(Jdbi database, Function<ReadQueryContext,T> work) {
         try (var context = open(database)) { return work.apply(context); }
     }

@@ -1,0 +1,14 @@
+--- a/src/main/java/io/cryostat/security/rbac/PermissionMapper.java
++++ b/src/main/java/io/cryostat/security/rbac/PermissionMapper.java
+@@ -80 +80 @@
+-                    return verbDefault.map(this::parse);
++                    return verbDefault.map(this::parseMappingValue);
+@@ -83 +83 @@
+-            return config.defaultPermission().map(this::parse);
++            return config.defaultPermission().map(this::parseMappingValue);
+@@ -85 +85 @@
+-        return Optional.of(parse(value));
++        return Optional.of(parseMappingValue(value));
+@@ -88 +88 @@
+-    private K8sResourceVerb parse(String value) {
++    private K8sResourceVerb parseMappingValue(String value) {

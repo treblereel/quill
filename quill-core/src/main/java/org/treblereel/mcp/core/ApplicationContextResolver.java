@@ -48,6 +48,10 @@ public final class ApplicationContextResolver {
 
         List<InjectionPointRecord> result = new ArrayList<>(injectionPoints.size());
         for (InjectionPointRecord point : injectionPoints) {
+            if (point.resolutionStatus() == ResolutionStatus.UNSUPPORTED_MECHANISM) {
+                result.add(point);
+                continue;
+            }
             BeanRecord owner = beansById.get(point.beanId());
             Set<String> ownerModules = owner == null ? Set.of()
                     : modulesByClass.getOrDefault(owner.classId(), Set.of());
@@ -76,11 +80,14 @@ public final class ApplicationContextResolver {
         boolean spring = InjectionPointRecord.STATIC_SPRING.equals(point.resolutionStrategy());
         if (point.isCdiBuiltin()) return point.asCdiBuiltin();
         List<BeanRecord> candidates = beans.stream()
-                .filter(bean -> bean.beanTypes() != null && bean.beanTypes().contains(point.targetType()))
+                .filter(bean -> spring || BeanResolver.injectionCandidate(bean))
+                .filter(bean -> BeanResolver.hasBeanType(bean, point.targetType()))
                 .filter(bean -> modulesByClass.getOrDefault(bean.classId(), Set.of()).stream()
                         .anyMatch(visibleModules::contains))
                 .filter(bean -> qualifiersMatch(point.qualifiers(), bean.qualifiers(), spring))
                 .toList();
+        if (!spring && candidates.stream().anyMatch(b -> b.profiles() != null && !b.profiles().isEmpty()))
+            return BeanResolver.profileContext(point);
         Set<Integer> defaultSuppressed = new LinkedHashSet<>();
         if (spring) {
             List<BeanRecord> primaries = candidates.stream().filter(BeanRecord::isAlternative).toList();
@@ -118,13 +125,14 @@ public final class ApplicationContextResolver {
         Set<Integer> eligible = candidates.stream().map(BeanRecord::id)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         List<ResolutionCandidate> traceCandidates = beans.stream()
-                .filter(bean -> bean.beanTypes() != null && bean.beanTypes().contains(point.targetType()))
+                .filter(bean -> BeanResolver.hasBeanType(bean, point.targetType()))
                 .map(bean -> new ResolutionCandidate(bean.id(), className(classesById, bean.classId()),
                         java.util.Objects.equals(bean.id(), selected) ? CandidateDisposition.SELECTED
                                 : eligible.contains(bean.id()) ? CandidateDisposition.ELIGIBLE
                                 : CandidateDisposition.EXCLUDED,
                         java.util.Objects.equals(bean.id(), selected) ? ResolutionReason.UNIQUE_CONTEXT_CANDIDATE
                                 : eligible.contains(bean.id()) ? ResolutionReason.CONTEXT_CANDIDATE
+                                : !spring && !BeanResolver.injectionCandidate(bean) ? ResolutionReason.NOT_INJECTION_BEAN
                                 : defaultSuppressed.contains(bean.id())
                                 ? ResolutionReason.DEFAULT_BEAN_SUPPRESSED
                                 : visible(visibleModules, modulesByClass.get(bean.classId()))
@@ -132,6 +140,7 @@ public final class ApplicationContextResolver {
                         List.of(ResolutionRule.APPLICATION_MODULE_CLASSPATH)))
                 .toList();
         List<ResolutionRule> rules = new ArrayList<>(point.resolutionTrace().appliedRules());
+        if (!spring && !rules.contains(ResolutionRule.CDI_BEAN_KIND)) rules.add(ResolutionRule.CDI_BEAN_KIND);
         if (!rules.contains(ResolutionRule.APPLICATION_MODULE_CLASSPATH)) rules.add(ResolutionRule.APPLICATION_MODULE_CLASSPATH);
         List<String> limitations = new ArrayList<>(point.limitations());
         limitations.add(ResolutionMessages.resolvedInApplicationContext(context));
@@ -204,6 +213,8 @@ public final class ApplicationContextResolver {
         List<String> limitations = new ArrayList<>(original.limitations());
         limitations.add(ResolutionMessages.differingApplicationContexts(contexts));
         List<ResolutionRule> rules = new ArrayList<>(original.resolutionTrace().appliedRules());
+        if (!InjectionPointRecord.STATIC_SPRING.equals(original.resolutionStrategy())
+                && !rules.contains(ResolutionRule.CDI_BEAN_KIND)) rules.add(ResolutionRule.CDI_BEAN_KIND);
         if (!rules.contains(ResolutionRule.APPLICATION_MODULE_CLASSPATH)) rules.add(ResolutionRule.APPLICATION_MODULE_CLASSPATH);
         Set<ResolutionRule> unsupported = new LinkedHashSet<>(original.resolutionTrace().unsupportedRules());
         unsupported.add(ResolutionRule.APPLICATION_CONTEXT_SELECTION);

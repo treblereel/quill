@@ -1,0 +1,442 @@
+Classfile jar:file:///Users/treblereel/.m2/repository/io/quarkus/quarkus-vertx/3.40.1.1/quarkus-vertx-3.40.1.1.jar!/io/quarkus/vertx/runtime/VertxProducer.class
+  Last modified Oct 19, 2026; size 4381 bytes
+  SHA-256 checksum 19b03235b861eff991d1e8c054fb99e77b32acd81ece878db0ffc687b602b46d
+  Compiled from "VertxProducer.java"
+public class io.quarkus.vertx.runtime.VertxProducer
+  minor version: 0
+  major version: 61
+  flags: (0x0021) ACC_PUBLIC, ACC_SUPER
+  this_class: #108                        // io/quarkus/vertx/runtime/VertxProducer
+  super_class: #2                         // java/lang/Object
+  interfaces: 0, fields: 1, methods: 6, attributes: 3
+Constant pool:
+    #1 = Methodref          #2.#3         // java/lang/Object."<init>":()V
+    #2 = Class              #4            // java/lang/Object
+    #3 = NameAndType        #5:#6         // "<init>":()V
+    #4 = Utf8               java/lang/Object
+    #5 = Utf8               <init>
+    #6 = Utf8               ()V
+    #7 = InterfaceMethodref #8.#9         // io/vertx/core/Vertx.eventBus:()Lio/vertx/core/eventbus/EventBus;
+    #8 = Class              #10           // io/vertx/core/Vertx
+    #9 = NameAndType        #11:#12       // eventBus:()Lio/vertx/core/eventbus/EventBus;
+   #10 = Utf8               io/vertx/core/Vertx
+   #11 = Utf8               eventBus
+   #12 = Utf8               ()Lio/vertx/core/eventbus/EventBus;
+   #13 = Methodref          #14.#15       // io/vertx/mutiny/core/Vertx.newInstance:(Lio/vertx/core/Vertx;)Lio/vertx/mutiny/core/Vertx;
+   #14 = Class              #16           // io/vertx/mutiny/core/Vertx
+   #15 = NameAndType        #17:#18       // newInstance:(Lio/vertx/core/Vertx;)Lio/vertx/mutiny/core/Vertx;
+   #16 = Utf8               io/vertx/mutiny/core/Vertx
+   #17 = Utf8               newInstance
+   #18 = Utf8               (Lio/vertx/core/Vertx;)Lio/vertx/mutiny/core/Vertx;
+   #19 = Methodref          #14.#20       // io/vertx/mutiny/core/Vertx.eventBus:()Lio/vertx/mutiny/core/eventbus/EventBus;
+   #20 = NameAndType        #11:#21       // eventBus:()Lio/vertx/mutiny/core/eventbus/EventBus;
+   #21 = Utf8               ()Lio/vertx/mutiny/core/eventbus/EventBus;
+   #22 = Class              #23           // io/vertx/core/AbstractVerticle
+   #23 = Utf8               io/vertx/core/AbstractVerticle
+   #24 = Class              #25           // java/lang/annotation/Annotation
+   #25 = Utf8               java/lang/annotation/Annotation
+   #26 = Fieldref           #27.#28       // jakarta/enterprise/inject/Any$Literal.INSTANCE:Ljakarta/enterprise/inject/Any$Literal;
+   #27 = Class              #29           // jakarta/enterprise/inject/Any$Literal
+   #28 = NameAndType        #30:#31       // INSTANCE:Ljakarta/enterprise/inject/Any$Literal;
+   #29 = Utf8               jakarta/enterprise/inject/Any$Literal
+   #30 = Utf8               INSTANCE
+   #31 = Utf8               Ljakarta/enterprise/inject/Any$Literal;
+   #32 = InterfaceMethodref #33.#34       // jakarta/enterprise/inject/spi/BeanManager.getBeans:(Ljava/lang/reflect/Type;[Ljava/lang/annotation/Annotation;)Ljava/util/Set;
+   #33 = Class              #35           // jakarta/enterprise/inject/spi/BeanManager
+   #34 = NameAndType        #36:#37       // getBeans:(Ljava/lang/reflect/Type;[Ljava/lang/annotation/Annotation;)Ljava/util/Set;
+   #35 = Utf8               jakarta/enterprise/inject/spi/BeanManager
+   #36 = Utf8               getBeans
+   #37 = Utf8               (Ljava/lang/reflect/Type;[Ljava/lang/annotation/Annotation;)Ljava/util/Set;
+   #38 = Class              #39           // jakarta/enterprise/context/ApplicationScoped
+   #39 = Utf8               jakarta/enterprise/context/ApplicationScoped
+   #40 = InterfaceMethodref #33.#41       // jakarta/enterprise/inject/spi/BeanManager.getContext:(Ljava/lang/Class;)Ljakarta/enterprise/context/spi/Context;
+   #41 = NameAndType        #42:#43       // getContext:(Ljava/lang/Class;)Ljakarta/enterprise/context/spi/Context;
+   #42 = Utf8               getContext
+   #43 = Utf8               (Ljava/lang/Class;)Ljakarta/enterprise/context/spi/Context;
+   #44 = InterfaceMethodref #45.#46       // java/util/Set.iterator:()Ljava/util/Iterator;
+   #45 = Class              #47           // java/util/Set
+   #46 = NameAndType        #48:#49       // iterator:()Ljava/util/Iterator;
+   #47 = Utf8               java/util/Set
+   #48 = Utf8               iterator
+   #49 = Utf8               ()Ljava/util/Iterator;
+   #50 = InterfaceMethodref #51.#52       // java/util/Iterator.hasNext:()Z
+   #51 = Class              #53           // java/util/Iterator
+   #52 = NameAndType        #54:#55       // hasNext:()Z
+   #53 = Utf8               java/util/Iterator
+   #54 = Utf8               hasNext
+   #55 = Utf8               ()Z
+   #56 = InterfaceMethodref #51.#57       // java/util/Iterator.next:()Ljava/lang/Object;
+   #57 = NameAndType        #58:#59       // next:()Ljava/lang/Object;
+   #58 = Utf8               next
+   #59 = Utf8               ()Ljava/lang/Object;
+   #60 = Class              #61           // jakarta/enterprise/inject/spi/Bean
+   #61 = Utf8               jakarta/enterprise/inject/spi/Bean
+   #62 = InterfaceMethodref #60.#63       // jakarta/enterprise/inject/spi/Bean.getScope:()Ljava/lang/Class;
+   #63 = NameAndType        #64:#65       // getScope:()Ljava/lang/Class;
+   #64 = Utf8               getScope
+   #65 = Utf8               ()Ljava/lang/Class;
+   #66 = Methodref          #2.#67        // java/lang/Object.equals:(Ljava/lang/Object;)Z
+   #67 = NameAndType        #68:#69       // equals:(Ljava/lang/Object;)Z
+   #68 = Utf8               equals
+   #69 = Utf8               (Ljava/lang/Object;)Z
+   #70 = InterfaceMethodref #71.#72       // jakarta/enterprise/context/spi/Context.get:(Ljakarta/enterprise/context/spi/Contextual;)Ljava/lang/Object;
+   #71 = Class              #73           // jakarta/enterprise/context/spi/Context
+   #72 = NameAndType        #74:#75       // get:(Ljakarta/enterprise/context/spi/Contextual;)Ljava/lang/Object;
+   #73 = Utf8               jakarta/enterprise/context/spi/Context
+   #74 = Utf8               get
+   #75 = Utf8               (Ljakarta/enterprise/context/spi/Contextual;)Ljava/lang/Object;
+   #76 = InterfaceMethodref #33.#77       // jakarta/enterprise/inject/spi/BeanManager.createInstance:()Ljakarta/enterprise/inject/Instance;
+   #77 = NameAndType        #78:#79       // createInstance:()Ljakarta/enterprise/inject/Instance;
+   #78 = Utf8               createInstance
+   #79 = Utf8               ()Ljakarta/enterprise/inject/Instance;
+   #80 = InterfaceMethodref #81.#82       // jakarta/enterprise/inject/Instance.select:(Ljava/lang/Class;[Ljava/lang/annotation/Annotation;)Ljakarta/enterprise/inject/Instance;
+   #81 = Class              #83           // jakarta/enterprise/inject/Instance
+   #82 = NameAndType        #84:#85       // select:(Ljava/lang/Class;[Ljava/lang/annotation/Annotation;)Ljakarta/enterprise/inject/Instance;
+   #83 = Utf8               jakarta/enterprise/inject/Instance
+   #84 = Utf8               select
+   #85 = Utf8               (Ljava/lang/Class;[Ljava/lang/annotation/Annotation;)Ljakarta/enterprise/inject/Instance;
+   #86 = InterfaceMethodref #81.#87       // jakarta/enterprise/inject/Instance.get:()Ljava/lang/Object;
+   #87 = NameAndType        #74:#59       // get:()Ljava/lang/Object;
+   #88 = Methodref          #22.#89       // io/vertx/core/AbstractVerticle.deploymentID:()Ljava/lang/String;
+   #89 = NameAndType        #90:#91       // deploymentID:()Ljava/lang/String;
+   #90 = Utf8               deploymentID
+   #91 = Utf8               ()Ljava/lang/String;
+   #92 = Methodref          #14.#93       // io/vertx/mutiny/core/Vertx.undeploy:(Ljava/lang/String;)Lio/smallrye/mutiny/Uni;
+   #93 = NameAndType        #94:#95       // undeploy:(Ljava/lang/String;)Lio/smallrye/mutiny/Uni;
+   #94 = Utf8               undeploy
+   #95 = Utf8               (Ljava/lang/String;)Lio/smallrye/mutiny/Uni;
+   #96 = InterfaceMethodref #97.#98       // io/smallrye/mutiny/Uni.await:()Lio/smallrye/mutiny/groups/UniAwait;
+   #97 = Class              #99           // io/smallrye/mutiny/Uni
+   #98 = NameAndType        #100:#101     // await:()Lio/smallrye/mutiny/groups/UniAwait;
+   #99 = Utf8               io/smallrye/mutiny/Uni
+  #100 = Utf8               await
+  #101 = Utf8               ()Lio/smallrye/mutiny/groups/UniAwait;
+  #102 = Methodref          #103.#104     // io/smallrye/mutiny/groups/UniAwait.indefinitely:()Ljava/lang/Object;
+  #103 = Class              #105          // io/smallrye/mutiny/groups/UniAwait
+  #104 = NameAndType        #106:#59      // indefinitely:()Ljava/lang/Object;
+  #105 = Utf8               io/smallrye/mutiny/groups/UniAwait
+  #106 = Utf8               indefinitely
+  #107 = Fieldref           #108.#109     // io/quarkus/vertx/runtime/VertxProducer.LOGGER:Lorg/jboss/logging/Logger;
+  #108 = Class              #110          // io/quarkus/vertx/runtime/VertxProducer
+  #109 = NameAndType        #111:#112     // LOGGER:Lorg/jboss/logging/Logger;
+  #110 = Utf8               io/quarkus/vertx/runtime/VertxProducer
+  #111 = Utf8               LOGGER
+  #112 = Utf8               Lorg/jboss/logging/Logger;
+  #113 = String             #114          // Undeployed verticle: %s
+  #114 = Utf8               Undeployed verticle: %s
+  #115 = Methodref          #2.#116       // java/lang/Object.getClass:()Ljava/lang/Class;
+  #116 = NameAndType        #117:#65      // getClass:()Ljava/lang/Class;
+  #117 = Utf8               getClass
+  #118 = Methodref          #119.#120     // org/jboss/logging/Logger.debugf:(Ljava/lang/String;Ljava/lang/Object;)V
+  #119 = Class              #121          // org/jboss/logging/Logger
+  #120 = NameAndType        #122:#123     // debugf:(Ljava/lang/String;Ljava/lang/Object;)V
+  #121 = Utf8               org/jboss/logging/Logger
+  #122 = Utf8               debugf
+  #123 = Utf8               (Ljava/lang/String;Ljava/lang/Object;)V
+  #124 = Class              #125          // java/lang/Exception
+  #125 = Utf8               java/lang/Exception
+  #126 = String             #127          // Unable to undeploy verticle %s: %s
+  #127 = Utf8               Unable to undeploy verticle %s: %s
+  #128 = Methodref          #124.#129     // java/lang/Exception.toString:()Ljava/lang/String;
+  #129 = NameAndType        #130:#91      // toString:()Ljava/lang/String;
+  #130 = Utf8               toString
+  #131 = Methodref          #119.#132     // org/jboss/logging/Logger.debugf:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V
+  #132 = NameAndType        #122:#133     // debugf:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V
+  #133 = Utf8               (Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V
+  #134 = Methodref          #119.#135     // org/jboss/logging/Logger.getLogger:(Ljava/lang/Class;)Lorg/jboss/logging/Logger;
+  #135 = NameAndType        #136:#137     // getLogger:(Ljava/lang/Class;)Lorg/jboss/logging/Logger;
+  #136 = Utf8               getLogger
+  #137 = Utf8               (Ljava/lang/Class;)Lorg/jboss/logging/Logger;
+  #138 = Utf8               Code
+  #139 = Utf8               LineNumberTable
+  #140 = Utf8               LocalVariableTable
+  #141 = Utf8               this
+  #142 = Utf8               Lio/quarkus/vertx/runtime/VertxProducer;
+  #143 = Utf8               eventbus
+  #144 = Utf8               (Lio/vertx/core/Vertx;)Lio/vertx/core/eventbus/EventBus;
+  #145 = Utf8               vertx
+  #146 = Utf8               Lio/vertx/core/Vertx;
+  #147 = Utf8               MethodParameters
+  #148 = Utf8               RuntimeVisibleAnnotations
+  #149 = Utf8               Ljakarta/inject/Singleton;
+  #150 = Utf8               Ljakarta/enterprise/inject/Produces;
+  #151 = Utf8               mutiny
+  #152 = Utf8               mutinyEventBus
+  #153 = Utf8               (Lio/vertx/mutiny/core/Vertx;)Lio/vertx/mutiny/core/eventbus/EventBus;
+  #154 = Utf8               Lio/vertx/mutiny/core/Vertx;
+  #155 = Utf8               undeployVerticles
+  #156 = Utf8               (Ljava/lang/Object;Ljakarta/enterprise/inject/spi/BeanManager;)V
+  #157 = Utf8               verticle
+  #158 = Utf8               Lio/vertx/core/AbstractVerticle;
+  #159 = Utf8               e
+  #160 = Utf8               Ljava/lang/Exception;
+  #161 = Utf8               instance
+  #162 = Utf8               Ljava/lang/Object;
+  #163 = Utf8               bean
+  #164 = Utf8               Ljakarta/enterprise/inject/spi/Bean;
+  #165 = Utf8               event
+  #166 = Utf8               beanManager
+  #167 = Utf8               Ljakarta/enterprise/inject/spi/BeanManager;
+  #168 = Utf8               beans
+  #169 = Utf8               Ljava/util/Set;
+  #170 = Utf8               applicationContext
+  #171 = Utf8               Ljakarta/enterprise/context/spi/Context;
+  #172 = Utf8               LocalVariableTypeTable
+  #173 = Utf8               Ljakarta/enterprise/inject/spi/Bean<*>;
+  #174 = Utf8               Ljava/util/Set<Ljakarta/enterprise/inject/spi/Bean<*>;>;
+  #175 = Utf8               StackMapTable
+  #176 = Utf8               RuntimeVisibleParameterAnnotations
+  #177 = Utf8               Ljakarta/enterprise/event/Observes;
+  #178 = Utf8               Ljakarta/enterprise/context/BeforeDestroyed;
+  #179 = Utf8               value
+  #180 = Utf8               Ljakarta/enterprise/context/ApplicationScoped;
+  #181 = Utf8               <clinit>
+  #182 = Utf8               SourceFile
+  #183 = Utf8               VertxProducer.java
+  #184 = Utf8               InnerClasses
+  #185 = Class              #186          // jakarta/enterprise/inject/Any
+  #186 = Utf8               jakarta/enterprise/inject/Any
+  #187 = Utf8               Literal
+{
+  private static final org.jboss.logging.Logger LOGGER;
+    descriptor: Lorg/jboss/logging/Logger;
+    flags: (0x001a) ACC_PRIVATE, ACC_STATIC, ACC_FINAL
+
+  public io.quarkus.vertx.runtime.VertxProducer();
+    descriptor: ()V
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+         4: return
+      LineNumberTable:
+        line 30: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       5     0  this   Lio/quarkus/vertx/runtime/VertxProducer;
+
+  public io.vertx.core.eventbus.EventBus eventbus(io.vertx.core.Vertx);
+    descriptor: (Lio/vertx/core/Vertx;)Lio/vertx/core/eventbus/EventBus;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=2, args_size=2
+         0: aload_1
+         1: invokeinterface #7,  1            // InterfaceMethod io/vertx/core/Vertx.eventBus:()Lio/vertx/core/eventbus/EventBus;
+         6: areturn
+      LineNumberTable:
+        line 37: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       7     0  this   Lio/quarkus/vertx/runtime/VertxProducer;
+            0       7     1 vertx   Lio/vertx/core/Vertx;
+    MethodParameters:
+      Name                           Flags
+      vertx
+    RuntimeVisibleAnnotations:
+      0: #149()
+        jakarta.inject.Singleton
+      1: #150()
+        jakarta.enterprise.inject.Produces
+
+  public io.vertx.mutiny.core.Vertx mutiny(io.vertx.core.Vertx);
+    descriptor: (Lio/vertx/core/Vertx;)Lio/vertx/mutiny/core/Vertx;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=2, args_size=2
+         0: aload_1
+         1: invokestatic  #13                 // Method io/vertx/mutiny/core/Vertx.newInstance:(Lio/vertx/core/Vertx;)Lio/vertx/mutiny/core/Vertx;
+         4: areturn
+      LineNumberTable:
+        line 43: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       5     0  this   Lio/quarkus/vertx/runtime/VertxProducer;
+            0       5     1 vertx   Lio/vertx/core/Vertx;
+    MethodParameters:
+      Name                           Flags
+      vertx
+    RuntimeVisibleAnnotations:
+      0: #149()
+        jakarta.inject.Singleton
+      1: #150()
+        jakarta.enterprise.inject.Produces
+
+  public io.vertx.mutiny.core.eventbus.EventBus mutinyEventBus(io.vertx.mutiny.core.Vertx);
+    descriptor: (Lio/vertx/mutiny/core/Vertx;)Lio/vertx/mutiny/core/eventbus/EventBus;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=2, args_size=2
+         0: aload_1
+         1: invokevirtual #19                 // Method io/vertx/mutiny/core/Vertx.eventBus:()Lio/vertx/mutiny/core/eventbus/EventBus;
+         4: areturn
+      LineNumberTable:
+        line 49: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       5     0  this   Lio/quarkus/vertx/runtime/VertxProducer;
+            0       5     1 mutiny   Lio/vertx/mutiny/core/Vertx;
+    MethodParameters:
+      Name                           Flags
+      mutiny
+    RuntimeVisibleAnnotations:
+      0: #149()
+        jakarta.inject.Singleton
+      1: #150()
+        jakarta.enterprise.inject.Produces
+
+  void undeployVerticles(java.lang.Object, jakarta.enterprise.inject.spi.BeanManager);
+    descriptor: (Ljava/lang/Object;Ljakarta/enterprise/inject/spi/BeanManager;)V
+    flags: (0x0000)
+    Code:
+      stack=6, locals=10, args_size=3
+         0: aload_2
+         1: ldc           #22                 // class io/vertx/core/AbstractVerticle
+         3: iconst_1
+         4: anewarray     #24                 // class java/lang/annotation/Annotation
+         7: dup
+         8: iconst_0
+         9: getstatic     #26                 // Field jakarta/enterprise/inject/Any$Literal.INSTANCE:Ljakarta/enterprise/inject/Any$Literal;
+        12: aastore
+        13: invokeinterface #32,  3           // InterfaceMethod jakarta/enterprise/inject/spi/BeanManager.getBeans:(Ljava/lang/reflect/Type;[Ljava/lang/annotation/Annotation;)Ljava/util/Set;
+        18: astore_3
+        19: aload_2
+        20: ldc           #38                 // class jakarta/enterprise/context/ApplicationScoped
+        22: invokeinterface #40,  2           // InterfaceMethod jakarta/enterprise/inject/spi/BeanManager.getContext:(Ljava/lang/Class;)Ljakarta/enterprise/context/spi/Context;
+        27: astore        4
+        29: aload_3
+        30: invokeinterface #44,  1           // InterfaceMethod java/util/Set.iterator:()Ljava/util/Iterator;
+        35: astore        5
+        37: aload         5
+        39: invokeinterface #50,  1           // InterfaceMethod java/util/Iterator.hasNext:()Z
+        44: ifeq          182
+        47: aload         5
+        49: invokeinterface #56,  1           // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+        54: checkcast     #60                 // class jakarta/enterprise/inject/spi/Bean
+        57: astore        6
+        59: ldc           #38                 // class jakarta/enterprise/context/ApplicationScoped
+        61: aload         6
+        63: invokeinterface #62,  1           // InterfaceMethod jakarta/enterprise/inject/spi/Bean.getScope:()Ljava/lang/Class;
+        68: invokevirtual #66                 // Method java/lang/Object.equals:(Ljava/lang/Object;)Z
+        71: ifeq          179
+        74: aload         4
+        76: aload         6
+        78: invokeinterface #70,  2           // InterfaceMethod jakarta/enterprise/context/spi/Context.get:(Ljakarta/enterprise/context/spi/Contextual;)Ljava/lang/Object;
+        83: astore        7
+        85: aload         7
+        87: ifnull        179
+        90: aload         7
+        92: checkcast     #22                 // class io/vertx/core/AbstractVerticle
+        95: astore        8
+        97: aload_2
+        98: invokeinterface #76,  1           // InterfaceMethod jakarta/enterprise/inject/spi/BeanManager.createInstance:()Ljakarta/enterprise/inject/Instance;
+       103: ldc           #14                 // class io/vertx/mutiny/core/Vertx
+       105: iconst_0
+       106: anewarray     #24                 // class java/lang/annotation/Annotation
+       109: invokeinterface #80,  3           // InterfaceMethod jakarta/enterprise/inject/Instance.select:(Ljava/lang/Class;[Ljava/lang/annotation/Annotation;)Ljakarta/enterprise/inject/Instance;
+       114: invokeinterface #86,  1           // InterfaceMethod jakarta/enterprise/inject/Instance.get:()Ljava/lang/Object;
+       119: checkcast     #14                 // class io/vertx/mutiny/core/Vertx
+       122: astore        9
+       124: aload         9
+       126: aload         8
+       128: invokevirtual #88                 // Method io/vertx/core/AbstractVerticle.deploymentID:()Ljava/lang/String;
+       131: invokevirtual #92                 // Method io/vertx/mutiny/core/Vertx.undeploy:(Ljava/lang/String;)Lio/smallrye/mutiny/Uni;
+       134: invokeinterface #96,  1           // InterfaceMethod io/smallrye/mutiny/Uni.await:()Lio/smallrye/mutiny/groups/UniAwait;
+       139: invokevirtual #102                // Method io/smallrye/mutiny/groups/UniAwait.indefinitely:()Ljava/lang/Object;
+       142: pop
+       143: getstatic     #107                // Field LOGGER:Lorg/jboss/logging/Logger;
+       146: ldc           #113                // String Undeployed verticle: %s
+       148: aload         7
+       150: invokevirtual #115                // Method java/lang/Object.getClass:()Ljava/lang/Class;
+       153: invokevirtual #118                // Method org/jboss/logging/Logger.debugf:(Ljava/lang/String;Ljava/lang/Object;)V
+       156: goto          179
+       159: astore        8
+       161: getstatic     #107                // Field LOGGER:Lorg/jboss/logging/Logger;
+       164: ldc           #126                // String Unable to undeploy verticle %s: %s
+       166: aload         7
+       168: invokevirtual #115                // Method java/lang/Object.getClass:()Ljava/lang/Class;
+       171: aload         8
+       173: invokevirtual #128                // Method java/lang/Exception.toString:()Ljava/lang/String;
+       176: invokevirtual #131                // Method org/jboss/logging/Logger.debugf:(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V
+       179: goto          37
+       182: return
+      Exception table:
+         from    to  target type
+            90   156   159   Class java/lang/Exception
+      LineNumberTable:
+        line 61: 0
+        line 62: 19
+        line 63: 29
+        line 64: 59
+        line 66: 74
+        line 67: 85
+        line 70: 90
+        line 71: 97
+        line 72: 109
+        line 73: 124
+        line 74: 143
+        line 78: 156
+        line 75: 159
+        line 77: 161
+        line 81: 179
+        line 82: 182
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+           97      59     8 verticle   Lio/vertx/core/AbstractVerticle;
+          124      32     9 mutiny   Lio/vertx/mutiny/core/Vertx;
+          161      18     8     e   Ljava/lang/Exception;
+           85      94     7 instance   Ljava/lang/Object;
+           59     120     6  bean   Ljakarta/enterprise/inject/spi/Bean;
+            0     183     0  this   Lio/quarkus/vertx/runtime/VertxProducer;
+            0     183     1 event   Ljava/lang/Object;
+            0     183     2 beanManager   Ljakarta/enterprise/inject/spi/BeanManager;
+           19     164     3 beans   Ljava/util/Set;
+           29     154     4 applicationContext   Ljakarta/enterprise/context/spi/Context;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+           59     120     6  bean   Ljakarta/enterprise/inject/spi/Bean<*>;
+           19     164     3 beans   Ljava/util/Set<Ljakarta/enterprise/inject/spi/Bean<*>;>;
+      StackMapTable: number_of_entries = 4
+        frame_type = 254 /* append */
+          offset_delta = 37
+          locals = [ class java/util/Set, class jakarta/enterprise/context/spi/Context, class java/util/Iterator ]
+        frame_type = 255 /* full_frame */
+          offset_delta = 121
+          locals = [ class io/quarkus/vertx/runtime/VertxProducer, class java/lang/Object, class jakarta/enterprise/inject/spi/BeanManager, class java/util/Set, class jakarta/enterprise/context/spi/Context, class java/util/Iterator, class jakarta/enterprise/inject/spi/Bean, class java/lang/Object ]
+          stack = [ class java/lang/Exception ]
+        frame_type = 249 /* chop */
+          offset_delta = 19
+        frame_type = 250 /* chop */
+          offset_delta = 2
+    MethodParameters:
+      Name                           Flags
+      event
+      beanManager
+    RuntimeVisibleParameterAnnotations:
+      parameter 0:
+        0: #177()
+          jakarta.enterprise.event.Observes
+        1: #178(#179=c#180)
+          jakarta.enterprise.context.BeforeDestroyed(
+            value=class Ljakarta/enterprise/context/ApplicationScoped;
+          )
+      parameter 1:
+
+  static {};
+    descriptor: ()V
+    flags: (0x0008) ACC_STATIC
+    Code:
+      stack=1, locals=0, args_size=0
+         0: ldc           #108                // class io/quarkus/vertx/runtime/VertxProducer
+         2: invokestatic  #134                // Method org/jboss/logging/Logger.getLogger:(Ljava/lang/Class;)Lorg/jboss/logging/Logger;
+         5: putstatic     #107                // Field LOGGER:Lorg/jboss/logging/Logger;
+         8: return
+      LineNumberTable:
+        line 32: 0
+}
+SourceFile: "VertxProducer.java"
+RuntimeVisibleAnnotations:
+  0: #180()
+    jakarta.enterprise.context.ApplicationScoped
+InnerClasses:
+  public static final #187= #27 of #185;  // Literal=class jakarta/enterprise/inject/Any$Literal of class jakarta/enterprise/inject/Any

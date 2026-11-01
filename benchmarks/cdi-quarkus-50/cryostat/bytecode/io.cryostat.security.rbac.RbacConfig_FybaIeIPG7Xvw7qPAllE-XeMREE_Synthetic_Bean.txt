@@ -1,0 +1,574 @@
+Classfile jar:file:///Users/treblereel/workspace/redhat/cryostat/target/quarkus-app/quarkus/generated-bytecode.jar!/io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean.class
+  Last modified Oct 28, 2026; size 4474 bytes
+  SHA-256 checksum 486a6d7bfd3640fb9d785e68c829ba9c6d1d3620fee2be99aca4651a21f00c82
+public class io.cryostat.security.rbac.RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean implements io.quarkus.arc.InjectableBean,java.util.function.Supplier
+  minor version: 0
+  major version: 61
+  flags: (0x1001) ACC_PUBLIC, ACC_SYNTHETIC
+  this_class: #2                          // io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean
+  super_class: #12                        // java/lang/Object
+  interfaces: 2, fields: 3, methods: 16, attributes: 0
+Constant pool:
+    #1 = Utf8               io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean
+    #2 = Class              #1            // "io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean"
+    #3 = Utf8               types
+    #4 = Utf8               Ljava/util/Set;
+    #5 = Utf8               injectProviderSupplier1
+    #6 = Utf8               Ljava/util/function/Supplier;
+    #7 = Utf8               <init>
+    #8 = Utf8               ()V
+    #9 = Utf8               params
+   #10 = Utf8               Ljava/util/Map;
+   #11 = Utf8               java/lang/Object
+   #12 = Class              #11           // java/lang/Object
+   #13 = NameAndType        #7:#8         // "<init>":()V
+   #14 = Methodref          #12.#13       // java/lang/Object."<init>":()V
+   #15 = Utf8               java/lang/Thread
+   #16 = Class              #15           // java/lang/Thread
+   #17 = Utf8               currentThread
+   #18 = Utf8               ()Ljava/lang/Thread;
+   #19 = NameAndType        #17:#18       // currentThread:()Ljava/lang/Thread;
+   #20 = Methodref          #16.#19       // java/lang/Thread.currentThread:()Ljava/lang/Thread;
+   #21 = Utf8               getContextClassLoader
+   #22 = Utf8               ()Ljava/lang/ClassLoader;
+   #23 = NameAndType        #21:#22       // getContextClassLoader:()Ljava/lang/ClassLoader;
+   #24 = Methodref          #16.#23       // java/lang/Thread.getContextClassLoader:()Ljava/lang/ClassLoader;
+   #25 = Utf8               io.cryostat.security.rbac.RbacConfig
+   #26 = String             #25           // io.cryostat.security.rbac.RbacConfig
+   #27 = Utf8               java/lang/Class
+   #28 = Class              #27           // java/lang/Class
+   #29 = Utf8               forName
+   #30 = Utf8               (Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+   #31 = NameAndType        #29:#30       // forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+   #32 = Methodref          #28.#31       // java/lang/Class.forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+   #33 = Utf8               java/util/Set
+   #34 = Class              #33           // java/util/Set
+   #35 = Utf8               of
+   #36 = Utf8               (Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Set;
+   #37 = NameAndType        #35:#36       // of:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Set;
+   #38 = InterfaceMethodref #34.#37       // java/util/Set.of:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Set;
+   #39 = NameAndType        #3:#4         // types:Ljava/util/Set;
+   #40 = Fieldref           #2.#39        // "io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean".types:Ljava/util/Set;
+   #41 = Utf8               io/quarkus/arc/impl/FixedValueSupplier
+   #42 = Class              #41           // io/quarkus/arc/impl/FixedValueSupplier
+   #43 = Utf8               io/quarkus/arc/impl/InjectionPointProvider
+   #44 = Class              #43           // io/quarkus/arc/impl/InjectionPointProvider
+   #45 = Methodref          #44.#13       // io/quarkus/arc/impl/InjectionPointProvider."<init>":()V
+   #46 = Utf8               (Ljava/lang/Object;)V
+   #47 = NameAndType        #7:#46        // "<init>":(Ljava/lang/Object;)V
+   #48 = Methodref          #42.#47       // io/quarkus/arc/impl/FixedValueSupplier."<init>":(Ljava/lang/Object;)V
+   #49 = NameAndType        #5:#6         // injectProviderSupplier1:Ljava/util/function/Supplier;
+   #50 = Fieldref           #2.#49        // "io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean".injectProviderSupplier1:Ljava/util/function/Supplier;
+   #51 = Utf8               cryostat.security.rbac
+   #52 = String             #51           // cryostat.security.rbac
+   #53 = Utf8               prefix
+   #54 = String             #53           // prefix
+   #55 = Utf8               type
+   #56 = String             #55           // type
+   #57 = Utf8               java/util/Map
+   #58 = Class              #57           // java/util/Map
+   #59 = Utf8               (Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Map;
+   #60 = NameAndType        #35:#59       // of:(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Map;
+   #61 = InterfaceMethodref #58.#60       // java/util/Map.of:(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Map;
+   #62 = NameAndType        #9:#10        // params:Ljava/util/Map;
+   #63 = Fieldref           #2.#62        // "io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean".params:Ljava/util/Map;
+   #64 = Utf8               create
+   #65 = Utf8               (Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/security/rbac/RbacConfig;
+   #66 = Utf8               createSynthetic
+   #67 = Utf8               (Lio/quarkus/arc/SyntheticCreationalContext;)Ljava/lang/Object;
+   #68 = Utf8               io/quarkus/arc/runtime/ConfigMappingCreator
+   #69 = Class              #68           // io/quarkus/arc/runtime/ConfigMappingCreator
+   #70 = Methodref          #69.#13       // io/quarkus/arc/runtime/ConfigMappingCreator."<init>":()V
+   #71 = Utf8               io/quarkus/arc/BeanCreator
+   #72 = Class              #71           // io/quarkus/arc/BeanCreator
+   #73 = NameAndType        #64:#67       // create:(Lio/quarkus/arc/SyntheticCreationalContext;)Ljava/lang/Object;
+   #74 = InterfaceMethodref #72.#73       // io/quarkus/arc/BeanCreator.create:(Lio/quarkus/arc/SyntheticCreationalContext;)Ljava/lang/Object;
+   #75 = Utf8               java/util/HashMap
+   #76 = Class              #75           // java/util/HashMap
+   #77 = Methodref          #76.#13       // java/util/HashMap."<init>":()V
+   #78 = Utf8               jakarta.enterprise.inject.spi.InjectionPoint
+   #79 = String             #78           // jakarta.enterprise.inject.spi.InjectionPoint
+   #80 = Utf8               io/quarkus/arc/impl/SyntheticCreationalContextImpl$TypeAndQualifiers
+   #81 = Class              #80           // io/quarkus/arc/impl/SyntheticCreationalContextImpl$TypeAndQualifiers
+   #82 = Utf8               (Ljava/lang/reflect/Type;[Ljava/lang/annotation/Annotation;)V
+   #83 = NameAndType        #7:#82        // "<init>":(Ljava/lang/reflect/Type;[Ljava/lang/annotation/Annotation;)V
+   #84 = Methodref          #81.#83       // io/quarkus/arc/impl/SyntheticCreationalContextImpl$TypeAndQualifiers."<init>":(Ljava/lang/reflect/Type;[Ljava/lang/annotation/Annotation;)V
+   #85 = Utf8               java/util/function/Supplier
+   #86 = Class              #85           // java/util/function/Supplier
+   #87 = Utf8               get
+   #88 = Utf8               ()Ljava/lang/Object;
+   #89 = NameAndType        #87:#88       // get:()Ljava/lang/Object;
+   #90 = InterfaceMethodref #86.#89       // java/util/function/Supplier.get:()Ljava/lang/Object;
+   #91 = Utf8               io/quarkus/arc/InjectableReferenceProvider
+   #92 = Class              #91           // io/quarkus/arc/InjectableReferenceProvider
+   #93 = Utf8               io/quarkus/arc/impl/CreationalContextImpl
+   #94 = Class              #93           // io/quarkus/arc/impl/CreationalContextImpl
+   #95 = Utf8               child
+   #96 = Utf8               (Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+   #97 = NameAndType        #95:#96       // child:(Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+   #98 = Methodref          #94.#97       // io/quarkus/arc/impl/CreationalContextImpl.child:(Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+   #99 = Utf8               (Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+  #100 = NameAndType        #87:#99       // get:(Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+  #101 = InterfaceMethodref #92.#100      // io/quarkus/arc/InjectableReferenceProvider.get:(Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+  #102 = Utf8               put
+  #103 = Utf8               (Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+  #104 = NameAndType        #102:#103     // put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+  #105 = InterfaceMethodref #58.#104      // java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+  #106 = Utf8               java/lang/RuntimeException
+  #107 = Class              #106          // java/lang/RuntimeException
+  #108 = Utf8               Error injecting synthetic injection point of bean: FybaIeIPG7Xvw7qPAllE-XeMREE
+  #109 = String             #108          // Error injecting synthetic injection point of bean: FybaIeIPG7Xvw7qPAllE-XeMREE
+  #110 = Utf8               (Ljava/lang/String;Ljava/lang/Throwable;)V
+  #111 = NameAndType        #7:#110       // "<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+  #112 = Methodref          #107.#111     // java/lang/RuntimeException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+  #113 = Utf8               io/quarkus/arc/impl/SyntheticCreationalContextImpl
+  #114 = Class              #113          // io/quarkus/arc/impl/SyntheticCreationalContextImpl
+  #115 = Utf8               (Ljakarta/enterprise/context/spi/CreationalContext;Ljava/util/Map;Ljava/util/Map;)V
+  #116 = NameAndType        #7:#115       // "<init>":(Ljakarta/enterprise/context/spi/CreationalContext;Ljava/util/Map;Ljava/util/Map;)V
+  #117 = Methodref          #114.#116     // io/quarkus/arc/impl/SyntheticCreationalContextImpl."<init>":(Ljakarta/enterprise/context/spi/CreationalContext;Ljava/util/Map;Ljava/util/Map;)V
+  #118 = NameAndType        #66:#67       // createSynthetic:(Lio/quarkus/arc/SyntheticCreationalContext;)Ljava/lang/Object;
+  #119 = Methodref          #2.#118       // "io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean".createSynthetic:(Lio/quarkus/arc/SyntheticCreationalContext;)Ljava/lang/Object;
+  #120 = Utf8               io/cryostat/security/rbac/RbacConfig
+  #121 = Class              #120          // io/cryostat/security/rbac/RbacConfig
+  #122 = Utf8               java/lang/StringBuilder
+  #123 = Class              #122          // java/lang/StringBuilder
+  #124 = Methodref          #123.#13      // java/lang/StringBuilder."<init>":()V
+  #125 = Utf8               Error creating synthetic bean [
+  #126 = String             #125          // Error creating synthetic bean [
+  #127 = Utf8               append
+  #128 = Utf8               (Ljava/lang/Object;)Ljava/lang/StringBuilder;
+  #129 = NameAndType        #127:#128     // append:(Ljava/lang/Object;)Ljava/lang/StringBuilder;
+  #130 = Methodref          #123.#129     // java/lang/StringBuilder.append:(Ljava/lang/Object;)Ljava/lang/StringBuilder;
+  #131 = Utf8               FybaIeIPG7Xvw7qPAllE-XeMREE
+  #132 = String             #131          // FybaIeIPG7Xvw7qPAllE-XeMREE
+  #133 = Utf8               ]:
+  #134 = String             #133          // ]:
+  #135 = Utf8               jakarta/enterprise/inject/CreationException
+  #136 = Class              #135          // jakarta/enterprise/inject/CreationException
+  #137 = Utf8               toString
+  #138 = Utf8               ()Ljava/lang/String;
+  #139 = NameAndType        #137:#138     // toString:()Ljava/lang/String;
+  #140 = Methodref          #12.#139      // java/lang/Object.toString:()Ljava/lang/String;
+  #141 = Methodref          #136.#111     // jakarta/enterprise/inject/CreationException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+  #142 = Utf8               java/lang/Exception
+  #143 = Class              #142          // java/lang/Exception
+  #144 = Utf8               (Ljava/lang/Throwable;)V
+  #145 = NameAndType        #7:#144       // "<init>":(Ljava/lang/Throwable;)V
+  #146 = Methodref          #136.#145     // jakarta/enterprise/inject/CreationException."<init>":(Ljava/lang/Throwable;)V
+  #147 = NameAndType        #64:#65       // create:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/security/rbac/RbacConfig;
+  #148 = Methodref          #2.#147       // "io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean".create:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/security/rbac/RbacConfig;
+  #149 = Utf8               hasDependentInstances
+  #150 = Utf8               ()Z
+  #151 = NameAndType        #149:#150     // hasDependentInstances:()Z
+  #152 = Methodref          #94.#151      // io/quarkus/arc/impl/CreationalContextImpl.hasDependentInstances:()Z
+  #153 = Utf8               addDependencyToParent
+  #154 = Utf8               (Lio/quarkus/arc/InjectableBean;Ljava/lang/Object;Ljakarta/enterprise/context/spi/CreationalContext;)V
+  #155 = NameAndType        #153:#154     // addDependencyToParent:(Lio/quarkus/arc/InjectableBean;Ljava/lang/Object;Ljakarta/enterprise/context/spi/CreationalContext;)V
+  #156 = Methodref          #94.#155      // io/quarkus/arc/impl/CreationalContextImpl.addDependencyToParent:(Lio/quarkus/arc/InjectableBean;Ljava/lang/Object;Ljakarta/enterprise/context/spi/CreationalContext;)V
+  #157 = NameAndType        #87:#65       // get:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/security/rbac/RbacConfig;
+  #158 = Methodref          #2.#157       // "io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean".get:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/security/rbac/RbacConfig;
+  #159 = Utf8               getIdentifier
+  #160 = Utf8               getTypes
+  #161 = Utf8               ()Ljava/util/Set;
+  #162 = Utf8               getBeanClass
+  #163 = Utf8               ()Ljava/lang/Class;
+  #164 = Utf8               getImplementationClass
+  #165 = Utf8               getKind
+  #166 = Utf8               ()Lio/quarkus/arc/InjectableBean$Kind;
+  #167 = Utf8               io/quarkus/arc/InjectableBean$Kind
+  #168 = Class              #167          // io/quarkus/arc/InjectableBean$Kind
+  #169 = Utf8               SYNTHETIC
+  #170 = Utf8               Lio/quarkus/arc/InjectableBean$Kind;
+  #171 = NameAndType        #169:#170     // SYNTHETIC:Lio/quarkus/arc/InjectableBean$Kind;
+  #172 = Fieldref           #168.#171     // io/quarkus/arc/InjectableBean$Kind.SYNTHETIC:Lio/quarkus/arc/InjectableBean$Kind;
+  #173 = Utf8               isSuppressed
+  #174 = Utf8               equals
+  #175 = Utf8               (Ljava/lang/Object;)Z
+  #176 = Utf8               io/quarkus/arc/InjectableBean
+  #177 = Class              #176          // io/quarkus/arc/InjectableBean
+  #178 = NameAndType        #159:#138     // getIdentifier:()Ljava/lang/String;
+  #179 = InterfaceMethodref #177.#178     // io/quarkus/arc/InjectableBean.getIdentifier:()Ljava/lang/String;
+  #180 = NameAndType        #174:#175     // equals:(Ljava/lang/Object;)Z
+  #181 = Methodref          #12.#180      // java/lang/Object.equals:(Ljava/lang/Object;)Z
+  #182 = Utf8               hashCode
+  #183 = Utf8               ()I
+  #184 = Integer            507167737
+  #185 = Utf8               io/quarkus/arc/impl/Beans
+  #186 = Class              #185          // io/quarkus/arc/impl/Beans
+  #187 = Utf8               (Lio/quarkus/arc/InjectableBean;)Ljava/lang/String;
+  #188 = NameAndType        #137:#187     // toString:(Lio/quarkus/arc/InjectableBean;)Ljava/lang/String;
+  #189 = Methodref          #186.#188     // io/quarkus/arc/impl/Beans.toString:(Lio/quarkus/arc/InjectableBean;)Ljava/lang/String;
+  #190 = Utf8               Code
+  #191 = Utf8               StackMapTable
+  #192 = Utf8               jakarta/enterprise/context/spi/CreationalContext
+  #193 = Class              #192          // jakarta/enterprise/context/spi/CreationalContext
+  #194 = Utf8               java/lang/ClassLoader
+  #195 = Class              #194          // java/lang/ClassLoader
+{
+  private final java.util.Set types;
+    descriptor: Ljava/util/Set;
+    flags: (0x0012) ACC_PRIVATE, ACC_FINAL
+
+  private final java.util.function.Supplier injectProviderSupplier1;
+    descriptor: Ljava/util/function/Supplier;
+    flags: (0x0012) ACC_PRIVATE, ACC_FINAL
+
+  private final java.util.Map params;
+    descriptor: Ljava/util/Map;
+    flags: (0x0012) ACC_PRIVATE, ACC_FINAL
+
+  public io.cryostat.security.rbac.RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean();
+    descriptor: ()V
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=5, locals=8, args_size=1
+         0: aload_0
+         1: invokespecial #14                 // Method java/lang/Object."<init>":()V
+         4: invokestatic  #20                 // Method java/lang/Thread.currentThread:()Ljava/lang/Thread;
+         7: invokevirtual #24                 // Method java/lang/Thread.getContextClassLoader:()Ljava/lang/ClassLoader;
+        10: astore_1
+        11: aconst_null
+        12: astore_2
+        13: ldc           #26                 // String io.cryostat.security.rbac.RbacConfig
+        15: iconst_0
+        16: aload_1
+        17: invokestatic  #32                 // Method java/lang/Class.forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+        20: astore_2
+        21: aconst_null
+        22: astore_3
+        23: ldc           #12                 // class java/lang/Object
+        25: astore_3
+        26: aload_0
+        27: aload_2
+        28: aload_3
+        29: invokestatic  #38                 // InterfaceMethod java/util/Set.of:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Set;
+        32: putfield      #40                 // Field types:Ljava/util/Set;
+        35: aload_0
+        36: new           #42                 // class io/quarkus/arc/impl/FixedValueSupplier
+        39: dup
+        40: new           #44                 // class io/quarkus/arc/impl/InjectionPointProvider
+        43: dup
+        44: invokespecial #45                 // Method io/quarkus/arc/impl/InjectionPointProvider."<init>":()V
+        47: invokespecial #48                 // Method io/quarkus/arc/impl/FixedValueSupplier."<init>":(Ljava/lang/Object;)V
+        50: putfield      #50                 // Field injectProviderSupplier1:Ljava/util/function/Supplier;
+        53: invokestatic  #20                 // Method java/lang/Thread.currentThread:()Ljava/lang/Thread;
+        56: invokevirtual #24                 // Method java/lang/Thread.getContextClassLoader:()Ljava/lang/ClassLoader;
+        59: astore        4
+        61: ldc           #52                 // String cryostat.security.rbac
+        63: astore        5
+        65: ldc           #26                 // String io.cryostat.security.rbac.RbacConfig
+        67: iconst_0
+        68: aload         4
+        70: invokestatic  #32                 // Method java/lang/Class.forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+        73: astore        6
+        75: ldc           #54                 // String prefix
+        77: aload         5
+        79: ldc           #56                 // String type
+        81: aload         6
+        83: invokestatic  #61                 // InterfaceMethod java/util/Map.of:(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Map;
+        86: astore        7
+        88: aload_0
+        89: aload         7
+        91: putfield      #63                 // Field params:Ljava/util/Map;
+        94: return
+
+  public java.lang.Object createSynthetic(io.quarkus.arc.SyntheticCreationalContext);
+    descriptor: (Lio/quarkus/arc/SyntheticCreationalContext;)Ljava/lang/Object;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=2, locals=2, args_size=2
+         0: new           #69                 // class io/quarkus/arc/runtime/ConfigMappingCreator
+         3: dup
+         4: invokespecial #70                 // Method io/quarkus/arc/runtime/ConfigMappingCreator."<init>":()V
+         7: aload_1
+         8: invokeinterface #74,  2           // InterfaceMethod io/quarkus/arc/BeanCreator.create:(Lio/quarkus/arc/SyntheticCreationalContext;)Ljava/lang/Object;
+        13: areturn
+
+  public io.cryostat.security.rbac.RbacConfig create(jakarta.enterprise.context.spi.CreationalContext);
+    descriptor: (Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/security/rbac/RbacConfig;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=5, locals=10, args_size=2
+         0: new           #76                 // class java/util/HashMap
+         3: dup
+         4: invokespecial #77                 // Method java/util/HashMap."<init>":()V
+         7: astore_2
+         8: invokestatic  #20                 // Method java/lang/Thread.currentThread:()Ljava/lang/Thread;
+        11: invokevirtual #24                 // Method java/lang/Thread.getContextClassLoader:()Ljava/lang/ClassLoader;
+        14: astore_3
+        15: aconst_null
+        16: astore        4
+        18: ldc           #79                 // String jakarta.enterprise.inject.spi.InjectionPoint
+        20: iconst_0
+        21: aload_3
+        22: invokestatic  #32                 // Method java/lang/Class.forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+        25: astore        4
+        27: aconst_null
+        28: astore        5
+        30: new           #81                 // class io/quarkus/arc/impl/SyntheticCreationalContextImpl$TypeAndQualifiers
+        33: dup
+        34: aload         4
+        36: aload         5
+        38: invokespecial #84                 // Method io/quarkus/arc/impl/SyntheticCreationalContextImpl$TypeAndQualifiers."<init>":(Ljava/lang/reflect/Type;[Ljava/lang/annotation/Annotation;)V
+        41: astore        6
+        43: aload_0
+        44: getfield      #50                 // Field injectProviderSupplier1:Ljava/util/function/Supplier;
+        47: invokeinterface #90,  1           // InterfaceMethod java/util/function/Supplier.get:()Ljava/lang/Object;
+        52: astore        7
+        54: aload         7
+        56: checkcast     #92                 // class io/quarkus/arc/InjectableReferenceProvider
+        59: aload_1
+        60: invokestatic  #98                 // Method io/quarkus/arc/impl/CreationalContextImpl.child:(Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+        63: astore        8
+        65: aload         7
+        67: checkcast     #92                 // class io/quarkus/arc/InjectableReferenceProvider
+        70: aload         8
+        72: invokeinterface #101,  2          // InterfaceMethod io/quarkus/arc/InjectableReferenceProvider.get:(Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+        77: astore        9
+        79: aload_2
+        80: aload         6
+        82: aload         9
+        84: invokeinterface #105,  3          // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+        89: pop
+        90: goto          107
+        93: astore        4
+        95: new           #107                // class java/lang/RuntimeException
+        98: dup
+        99: ldc           #109                // String Error injecting synthetic injection point of bean: FybaIeIPG7Xvw7qPAllE-XeMREE
+       101: aload         4
+       103: invokespecial #112                // Method java/lang/RuntimeException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+       106: athrow
+       107: new           #114                // class io/quarkus/arc/impl/SyntheticCreationalContextImpl
+       110: dup
+       111: aload_1
+       112: aload_0
+       113: getfield      #63                 // Field params:Ljava/util/Map;
+       116: aload_2
+       117: invokespecial #117                // Method io/quarkus/arc/impl/SyntheticCreationalContextImpl."<init>":(Ljakarta/enterprise/context/spi/CreationalContext;Ljava/util/Map;Ljava/util/Map;)V
+       120: astore        4
+       122: aconst_null
+       123: astore        5
+       125: aload_0
+       126: aload         4
+       128: invokevirtual #119                // Method createSynthetic:(Lio/quarkus/arc/SyntheticCreationalContext;)Ljava/lang/Object;
+       131: checkcast     #121                // class io/cryostat/security/rbac/RbacConfig
+       134: astore        5
+       136: goto          197
+       139: astore        6
+       141: new           #123                // class java/lang/StringBuilder
+       144: dup
+       145: invokespecial #124                // Method java/lang/StringBuilder."<init>":()V
+       148: astore        7
+       150: aload         7
+       152: ldc           #126                // String Error creating synthetic bean [
+       154: invokevirtual #130                // Method java/lang/StringBuilder.append:(Ljava/lang/Object;)Ljava/lang/StringBuilder;
+       157: pop
+       158: aload         7
+       160: ldc           #132                // String FybaIeIPG7Xvw7qPAllE-XeMREE
+       162: invokevirtual #130                // Method java/lang/StringBuilder.append:(Ljava/lang/Object;)Ljava/lang/StringBuilder;
+       165: pop
+       166: aload         7
+       168: ldc           #134                // String ]:
+       170: invokevirtual #130                // Method java/lang/StringBuilder.append:(Ljava/lang/Object;)Ljava/lang/StringBuilder;
+       173: pop
+       174: aload         7
+       176: aload         6
+       178: invokevirtual #130                // Method java/lang/StringBuilder.append:(Ljava/lang/Object;)Ljava/lang/StringBuilder;
+       181: pop
+       182: new           #136                // class jakarta/enterprise/inject/CreationException
+       185: dup
+       186: aload         7
+       188: invokevirtual #140                // Method java/lang/Object.toString:()Ljava/lang/String;
+       191: aload         6
+       193: invokespecial #141                // Method jakarta/enterprise/inject/CreationException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+       196: athrow
+       197: aload         5
+       199: areturn
+       200: astore_2
+       201: aload_2
+       202: instanceof    #107                // class java/lang/RuntimeException
+       205: ifeq          215
+       208: aload_2
+       209: checkcast     #107                // class java/lang/RuntimeException
+       212: astore_3
+       213: aload_3
+       214: athrow
+       215: new           #136                // class jakarta/enterprise/inject/CreationException
+       218: dup
+       219: aload_2
+       220: invokespecial #146                // Method jakarta/enterprise/inject/CreationException."<init>":(Ljava/lang/Throwable;)V
+       223: athrow
+      Exception table:
+         from    to  target type
+            15    90    93   Class java/lang/RuntimeException
+           125   136   139   Class java/lang/Exception
+             0   200   200   Class java/lang/Exception
+      StackMapTable: number_of_entries = 6
+        frame_type = 255 /* full_frame */
+          offset_delta = 93
+          locals = [ class "io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean", class jakarta/enterprise/context/spi/CreationalContext, class java/util/HashMap, class java/lang/ClassLoader ]
+          stack = [ class java/lang/RuntimeException ]
+        frame_type = 13 /* same */
+        frame_type = 255 /* full_frame */
+          offset_delta = 31
+          locals = [ class "io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean", class jakarta/enterprise/context/spi/CreationalContext, class java/util/HashMap, class java/lang/ClassLoader, class io/quarkus/arc/impl/SyntheticCreationalContextImpl, class io/cryostat/security/rbac/RbacConfig ]
+          stack = [ class java/lang/Exception ]
+        frame_type = 57 /* same */
+        frame_type = 255 /* full_frame */
+          offset_delta = 2
+          locals = [ class "io/cryostat/security/rbac/RbacConfig_FybaIeIPG7Xvw7qPAllE-XeMREE_Synthetic_Bean", class jakarta/enterprise/context/spi/CreationalContext ]
+          stack = [ class java/lang/Exception ]
+        frame_type = 252 /* append */
+          offset_delta = 14
+          locals = [ class java/lang/Exception ]
+
+  public java.lang.Object create(jakarta.enterprise.context.spi.CreationalContext);
+    descriptor: (Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+    flags: (0x0041) ACC_PUBLIC, ACC_BRIDGE
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_0
+         1: aload_1
+         2: invokevirtual #148                // Method create:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/security/rbac/RbacConfig;
+         5: areturn
+
+  public java.lang.Object get();
+    descriptor: ()Ljava/lang/Object;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: areturn
+
+  public io.cryostat.security.rbac.RbacConfig get(jakarta.enterprise.context.spi.CreationalContext);
+    descriptor: (Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/security/rbac/RbacConfig;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=3, locals=3, args_size=2
+         0: aload_0
+         1: aload_1
+         2: invokevirtual #148                // Method create:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/security/rbac/RbacConfig;
+         5: astore_2
+         6: aload_1
+         7: checkcast     #94                 // class io/quarkus/arc/impl/CreationalContextImpl
+        10: invokevirtual #152                // Method io/quarkus/arc/impl/CreationalContextImpl.hasDependentInstances:()Z
+        13: ifne          18
+        16: aload_2
+        17: areturn
+        18: aload_0
+        19: aload_2
+        20: aload_1
+        21: invokestatic  #156                // Method io/quarkus/arc/impl/CreationalContextImpl.addDependencyToParent:(Lio/quarkus/arc/InjectableBean;Ljava/lang/Object;Ljakarta/enterprise/context/spi/CreationalContext;)V
+        24: aload_2
+        25: areturn
+      StackMapTable: number_of_entries = 1
+        frame_type = 252 /* append */
+          offset_delta = 18
+          locals = [ class io/cryostat/security/rbac/RbacConfig ]
+
+  public java.lang.Object get(jakarta.enterprise.context.spi.CreationalContext);
+    descriptor: (Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+    flags: (0x0041) ACC_PUBLIC, ACC_BRIDGE
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_0
+         1: aload_1
+         2: invokevirtual #158                // Method get:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/security/rbac/RbacConfig;
+         5: areturn
+
+  public java.lang.String getIdentifier();
+    descriptor: ()Ljava/lang/String;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: ldc           #132                // String FybaIeIPG7Xvw7qPAllE-XeMREE
+         2: areturn
+
+  public java.util.Set getTypes();
+    descriptor: ()Ljava/util/Set;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: getfield      #40                 // Field types:Ljava/util/Set;
+         4: areturn
+
+  public java.lang.Class getBeanClass();
+    descriptor: ()Ljava/lang/Class;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: ldc           #121                // class io/cryostat/security/rbac/RbacConfig
+         2: areturn
+
+  public java.lang.Class getImplementationClass();
+    descriptor: ()Ljava/lang/Class;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: ldc           #121                // class io/cryostat/security/rbac/RbacConfig
+         2: areturn
+
+  public io.quarkus.arc.InjectableBean$Kind getKind();
+    descriptor: ()Lio/quarkus/arc/InjectableBean$Kind;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: getstatic     #172                // Field io/quarkus/arc/InjectableBean$Kind.SYNTHETIC:Lio/quarkus/arc/InjectableBean$Kind;
+         3: areturn
+
+  public boolean isSuppressed();
+    descriptor: ()Z
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iconst_0
+         1: ireturn
+
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_0
+         1: aload_1
+         2: if_acmpne     7
+         5: iconst_1
+         6: ireturn
+         7: aload_1
+         8: ifnonnull     13
+        11: iconst_0
+        12: ireturn
+        13: aload_1
+        14: instanceof    #177                // class io/quarkus/arc/InjectableBean
+        17: ifne          22
+        20: iconst_0
+        21: ireturn
+        22: ldc           #132                // String FybaIeIPG7Xvw7qPAllE-XeMREE
+        24: aload_1
+        25: checkcast     #177                // class io/quarkus/arc/InjectableBean
+        28: invokeinterface #179,  1          // InterfaceMethod io/quarkus/arc/InjectableBean.getIdentifier:()Ljava/lang/String;
+        33: invokevirtual #181                // Method java/lang/Object.equals:(Ljava/lang/Object;)Z
+        36: ireturn
+      StackMapTable: number_of_entries = 3
+        frame_type = 7 /* same */
+        frame_type = 5 /* same */
+        frame_type = 8 /* same */
+
+  public int hashCode();
+    descriptor: ()I
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: ldc           #184                // int 507167737
+         2: ireturn
+
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: invokestatic  #189                // Method io/quarkus/arc/impl/Beans.toString:(Lio/quarkus/arc/InjectableBean;)Ljava/lang/String;
+         4: areturn
+}

@@ -41,7 +41,7 @@ class MavenExtensionUpdaterTest {
         BuildIntegrationInstaller.install(root);
         Path file = root.resolve(".mvn/extensions.xml");
         String current = Files.readString(file);
-        Files.writeString(file, current.replace("<version>0.1.4</version>", "<version>0.1.0</version>"));
+        Files.writeString(file, current.replace("<version>0.1.6-SNAPSHOT</version>", "<version>0.1.0</version>"));
         MavenExtensionUpdater.upgrade(root);
         assertEquals(current, Files.readString(file));
         FileTime old = FileTime.fromMillis(1000);
@@ -58,7 +58,7 @@ class MavenExtensionUpdaterTest {
         Path file = configuration(root, content);
         assertEquals(BuildIntegrationInstaller.State.OUTDATED, BuildIntegrationInstaller.inspect(root).state());
         MavenExtensionUpdater.upgrade(root);
-        assertEquals(content.replace(" \n 0.1.0 \t", " \n 0.1.4 \t"), Files.readString(file));
+        assertEquals(content.replace(" \n 0.1.0 \t", " \n 0.1.6-SNAPSHOT \t"), Files.readString(file));
         assertEquals(BuildIntegrationInstaller.State.INSTALLED, BuildIntegrationInstaller.inspect(root).state());
     }
 
@@ -67,17 +67,17 @@ class MavenExtensionUpdaterTest {
                 .replace("<", "<m:").replace("<m:/", "</m:") + "</m:extensions>";
         Path file = configuration(root, content);
         MavenExtensionUpdater.upgrade(root);
-        assertEquals(content.replace("0.1.0", "0.1.4"), Files.readString(file));
+        assertEquals(content.replace("0.1.0", "0.1.6-SNAPSHOT"), Files.readString(file));
     }
 
     @TestFactory Stream<DynamicTest> upgradesOlderMavenVersions() {
-        return Stream.of("0.0.9", "0.1.0", "0.1.1-SNAPSHOT", "0.1.1-rc1").map(version ->
+        return Stream.of("0.0.9", "0.1.0", "0.1.1-SNAPSHOT", "0.1.1-rc1", "0.1.3").map(version ->
                 DynamicTest.dynamicTest(version, () -> {
                     Path project = Files.createDirectories(root.resolve(version));
                     Path file = configuration(project, "<extensions>"
                             + extension("org.treblereel.mcp", version) + "</extensions>");
                     MavenExtensionUpdater.upgrade(project);
-                    assertTrue(Files.readString(file).contains("<version>0.1.4</version>"));
+                    assertTrue(Files.readString(file).contains("<version>0.1.6-SNAPSHOT</version>"));
                 }));
     }
 
@@ -92,7 +92,7 @@ class MavenExtensionUpdaterTest {
         Path module = Files.createDirectories(root.resolve("module"));
         Files.writeString(module.resolve("pom.xml"), "<project/>");
         MavenExtensionUpdater.upgrade(module);
-        assertTrue(Files.readString(file).contains("<version>0.1.4</version>"));
+        assertTrue(Files.readString(file).contains("<version>0.1.6-SNAPSHOT</version>"));
     }
 
     @Test void preservesSymbolicLinkToExtensionConfiguration() throws Exception {
@@ -103,7 +103,7 @@ class MavenExtensionUpdaterTest {
         Files.createSymbolicLink(file, Path.of("../shared-extensions.xml"));
         MavenExtensionUpdater.upgrade(root);
         assertTrue(Files.isSymbolicLink(file));
-        assertTrue(Files.readString(shared).contains("<version>0.1.4</version>"));
+        assertTrue(Files.readString(shared).contains("<version>0.1.6-SNAPSHOT</version>"));
     }
 
     @Test void nearerMavenDirectoryStopsAncestorLookup() throws Exception {
@@ -135,7 +135,7 @@ class MavenExtensionUpdaterTest {
         String old = extension("org.treblereel.mcp", "0.1.0");
         List<String> contents = List.of(
                 "<extensions>" + extension("org.treblereel.mcp", "0.1.10") + "</extensions>",
-                "<extensions>" + extension("org.treblereel.mcp", "0.1.4") + "</extensions>",
+                "<extensions>" + extension("org.treblereel.mcp", "0.1.6-SNAPSHOT") + "</extensions>",
                 "<extensions>" + extension("org.treblereel.mcp", "${extension.version}") + "</extensions>",
                 "<extensions>" + extension("org.treblereel.mcp", "LATEST") + "</extensions>",
                 "<extensions>" + extension("org.treblereel.mcp", "RELEASE") + "</extensions>",
@@ -165,7 +165,7 @@ class MavenExtensionUpdaterTest {
         try (var registry = new ProjectRegistry()) {
             registry.register(root);
             registry.prewarm();
-            assertTrue(Files.readString(file).contains("<version>0.1.4</version>"));
+            assertTrue(Files.readString(file).contains("<version>0.1.6-SNAPSHOT</version>"));
         }
     }
 
@@ -176,7 +176,7 @@ class MavenExtensionUpdaterTest {
         Path file1 = configuration(first, "<extensions>" + extension("org.treblereel.mcp", "0.1.0") + "</extensions>");
         Path file2 = configuration(second, "<extensions>" + extension("org.treblereel.mcp", "0.1.0") + "</extensions>");
         new ProjectRegistry(new WorkspaceProjectScope(root)).upgradeBuildIntegrations();
-        assertTrue(Files.readString(file1).contains("<version>0.1.4</version>"));
-        assertTrue(Files.readString(file2).contains("<version>0.1.4</version>"));
+        assertTrue(Files.readString(file1).contains("<version>0.1.6-SNAPSHOT</version>"));
+        assertTrue(Files.readString(file2).contains("<version>0.1.6-SNAPSHOT</version>"));
     }
 }

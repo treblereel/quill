@@ -8,28 +8,35 @@ final class JvmDescriptors {
 
     private JvmDescriptors() {}
 
-    static boolean matchesSignature(ClassMemberRecord member, String signature) {
-        if (signature.equals(member.signature()) || signature.equals(member.descriptor())) return true;
-        if (!member.kind().equals("METHOD") && !member.kind().equals("CONSTRUCTOR")) return false;
+    static boolean matchesSignature(ClassMemberRecord member, String selector) {
+        if (selector == null || selector.isBlank()) return true;
+        String value = selector.strip();
+        if (value.equals(member.signature()) || value.equals(member.descriptor())) return true;
+        if (!"METHOD".equals(member.kind()) && !"CONSTRUCTOR".equals(member.kind())) return false;
         String descriptor = methodDescriptor(member);
-        if (signature.equals(descriptor)) return true;
-        int open = signature.indexOf('(');
-        if (open < 0 || !signature.endsWith(")")) return false;
-        String name = signature.substring(0, open).trim();
-        if (!name.isEmpty() && !name.equals(member.name())
-                && !(name.equals("<init>") && member.kind().equals("CONSTRUCTOR"))) return false;
-        String parameters = signature.substring(open + 1, signature.length() - 1).trim();
-        String[] requested = parameters.isEmpty() ? new String[0] : parameters.split(",", -1);
+        if (value.equals(descriptor)) return true;
         if (descriptor == null) return false;
+        if (value.startsWith(member.name() + "(")) value = value.substring(member.name().length());
+        if ("CONSTRUCTOR".equals(member.kind()) && value.startsWith("<init>(")) {
+            value = value.substring("<init>".length());
+        }
+        String parameters;
+        if (value.startsWith("(") && value.endsWith(")")) {
+            parameters = value.substring(1, value.length() - 1);
+        } else {
+            if (value.contains("(") || value.contains(")")) return false;
+            parameters = value;
+        }
+        String[] requested = parameters.isBlank() ? new String[0] : parameters.split(",", -1);
         Type[] actual = Type.getArgumentTypes(descriptor);
         if (requested.length != actual.length) return false;
-        for (int i = 0; i < requested.length; i++) {
-            String type = requested[i].trim().replace("...", "[]");
-            String indexed = actual[i].getClassName().replace('$', '.');
-            if (!type.equals(indexed) && (type.contains(".")
-                    || !type.equals(indexed.substring(indexed.lastIndexOf('.') + 1)))) return false;
+        for (int i = 0; i < actual.length; i++) {
+            String wanted=requested[i].strip().replace("...","[]").replace('$','.');
+            String qualified=actual[i].getClassName().replace('$','.');
+            // Callers still reject multiple matching overloads; a short type never selects one arbitrarily.
+            if (!wanted.equals(qualified) && !(wanted.indexOf('.')<0
+                    && wanted.equals(qualified.substring(qualified.lastIndexOf('.')+1)))) return false;
         }
-        // The caller retains every matching candidate, so simple names never pick an arbitrary overload.
         return true;
     }
 

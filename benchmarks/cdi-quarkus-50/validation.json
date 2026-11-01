@@ -1,0 +1,14 @@
+{
+  "status": "passed",
+  "scenario_count": 50,
+  "categories": 10,
+  "per_category": 5,
+  "unique_ids": true,
+  "template_parameters_valid": true,
+  "maximum_turns_per_arm_per_repeat": 55,
+  "project_specific_prompt_literals": 0,
+  "new_provider_calls": 0,
+  "production_source_changes": 0,
+  "runnable_bound_project_suite": false,
+  "suite_sha256": "d7eae2e752d16565f9f9d8d263b200a20bd232a04c89e42ac4174ba78c1d3734"
+}

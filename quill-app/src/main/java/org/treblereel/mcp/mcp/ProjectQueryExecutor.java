@@ -94,6 +94,7 @@ final class ProjectQueryExecutor {
         try (var metrics = org.treblereel.mcp.diagnostics.QueryMetrics.start()) {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
             if (acquire) { QUERY_SLOTS.acquire(); admitted = true; }
+            org.treblereel.mcp.core.WorktreeSnapshotCache.shared().refresh(project.root());
             String response = withGraph ? project.readWithGraph(context -> query.apply(project, context))
                     : project.read(context -> query.apply(project, context));
             return new QueryResult(project.name(), response, null);

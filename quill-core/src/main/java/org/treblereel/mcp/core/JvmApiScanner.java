@@ -35,7 +35,7 @@ public final class JvmApiScanner {
                         else if(constant instanceof Double d) value.put("bits",Long.toUnsignedString(Double.doubleToRawLongBits(d)));
                         else value.put("value",constant.toString());
                     }
-                    return null;
+                    return FieldAnnotationValues.visitor(values->field.set("annotation_values",values));
                 }
                 @Override public MethodVisitor visitMethod(int access,String name,String descriptor,String signature,String[] exceptions) {
                     if(name.equals("<clinit>")) return null;

@@ -1,0 +1,702 @@
+Classfile jar:file:///Users/treblereel/workspace/redhat/cryostat/target/quarkus-app/quarkus/generated-bytecode.jar!/io/cryostat/reports/AnalysisReportAggregator_Bean.class
+  Last modified Oct 28, 2026; size 5864 bytes
+  SHA-256 checksum af0a353b014c89d010cce3dc014406074a059364fc53e04706569383cd27c4ac
+public class io.cryostat.reports.AnalysisReportAggregator_Bean implements io.quarkus.arc.InjectableBean,java.util.function.Supplier
+  minor version: 0
+  major version: 61
+  flags: (0x1001) ACC_PUBLIC, ACC_SYNTHETIC
+  this_class: #2                          // io/cryostat/reports/AnalysisReportAggregator_Bean
+  super_class: #15                        // java/lang/Object
+  interfaces: 2, fields: 7, methods: 14, attributes: 0
+Constant pool:
+    #1 = Utf8               io/cryostat/reports/AnalysisReportAggregator_Bean
+    #2 = Class              #1            // io/cryostat/reports/AnalysisReportAggregator_Bean
+    #3 = Utf8               types
+    #4 = Utf8               Ljava/util/Set;
+    #5 = Utf8               injectProviderSupplier1
+    #6 = Utf8               Ljava/util/function/Supplier;
+    #7 = Utf8               injectProviderSupplier2
+    #8 = Utf8               injectProviderSupplier3
+    #9 = Utf8               injectProviderSupplier4
+   #10 = Utf8               interceptorProviderSupplier5
+   #11 = Utf8               interceptorProviderSupplier6
+   #12 = Utf8               <init>
+   #13 = Utf8               (Ljava/util/function/Supplier;Ljava/util/function/Supplier;Ljava/util/function/Supplier;Ljava/util/function/Supplier;Ljava/util/function/Supplier;Ljava/util/function/Supplier;)V
+   #14 = Utf8               java/lang/Object
+   #15 = Class              #14           // java/lang/Object
+   #16 = Utf8               ()V
+   #17 = NameAndType        #12:#16       // "<init>":()V
+   #18 = Methodref          #15.#17       // java/lang/Object."<init>":()V
+   #19 = Utf8               java/lang/Thread
+   #20 = Class              #19           // java/lang/Thread
+   #21 = Utf8               currentThread
+   #22 = Utf8               ()Ljava/lang/Thread;
+   #23 = NameAndType        #21:#22       // currentThread:()Ljava/lang/Thread;
+   #24 = Methodref          #20.#23       // java/lang/Thread.currentThread:()Ljava/lang/Thread;
+   #25 = Utf8               getContextClassLoader
+   #26 = Utf8               ()Ljava/lang/ClassLoader;
+   #27 = NameAndType        #25:#26       // getContextClassLoader:()Ljava/lang/ClassLoader;
+   #28 = Methodref          #20.#27       // java/lang/Thread.getContextClassLoader:()Ljava/lang/ClassLoader;
+   #29 = Utf8               io.cryostat.reports.AnalysisReportAggregator
+   #30 = String             #29           // io.cryostat.reports.AnalysisReportAggregator
+   #31 = Utf8               java/lang/Class
+   #32 = Class              #31           // java/lang/Class
+   #33 = Utf8               forName
+   #34 = Utf8               (Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+   #35 = NameAndType        #33:#34       // forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+   #36 = Methodref          #32.#35       // java/lang/Class.forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+   #37 = Utf8               java/util/Set
+   #38 = Class              #37           // java/util/Set
+   #39 = Utf8               of
+   #40 = Utf8               (Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Set;
+   #41 = NameAndType        #39:#40       // of:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Set;
+   #42 = InterfaceMethodref #38.#41       // java/util/Set.of:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Set;
+   #43 = NameAndType        #3:#4         // types:Ljava/util/Set;
+   #44 = Fieldref           #2.#43        // io/cryostat/reports/AnalysisReportAggregator_Bean.types:Ljava/util/Set;
+   #45 = NameAndType        #5:#6         // injectProviderSupplier1:Ljava/util/function/Supplier;
+   #46 = Fieldref           #2.#45        // io/cryostat/reports/AnalysisReportAggregator_Bean.injectProviderSupplier1:Ljava/util/function/Supplier;
+   #47 = Utf8               io/quarkus/cache/CacheName_ArcAnnotationLiteral
+   #48 = Class              #47           // io/quarkus/cache/CacheName_ArcAnnotationLiteral
+   #49 = Utf8               reports-aggregator
+   #50 = String             #49           // reports-aggregator
+   #51 = Utf8               (Ljava/lang/String;)V
+   #52 = NameAndType        #12:#51       // "<init>":(Ljava/lang/String;)V
+   #53 = Methodref          #48.#52       // io/quarkus/cache/CacheName_ArcAnnotationLiteral."<init>":(Ljava/lang/String;)V
+   #54 = Utf8               (Ljava/lang/Object;)Ljava/util/Set;
+   #55 = NameAndType        #39:#54       // of:(Ljava/lang/Object;)Ljava/util/Set;
+   #56 = InterfaceMethodref #38.#55       // java/util/Set.of:(Ljava/lang/Object;)Ljava/util/Set;
+   #57 = Utf8               java/util/HashSet
+   #58 = Class              #57           // java/util/HashSet
+   #59 = Methodref          #58.#17       // java/util/HashSet."<init>":()V
+   #60 = Utf8               java/util/Collection
+   #61 = Class              #60           // java/util/Collection
+   #62 = Utf8               add
+   #63 = Utf8               (Ljava/lang/Object;)Z
+   #64 = NameAndType        #62:#63       // add:(Ljava/lang/Object;)Z
+   #65 = InterfaceMethodref #61.#64       // java/util/Collection.add:(Ljava/lang/Object;)Z
+   #66 = Utf8               jakarta/enterprise/inject/literal/InjectLiteral
+   #67 = Class              #66           // jakarta/enterprise/inject/literal/InjectLiteral
+   #68 = Utf8               INSTANCE
+   #69 = Utf8               Ljakarta/enterprise/inject/literal/InjectLiteral;
+   #70 = NameAndType        #68:#69       // INSTANCE:Ljakarta/enterprise/inject/literal/InjectLiteral;
+   #71 = Fieldref           #67.#70       // jakarta/enterprise/inject/literal/InjectLiteral.INSTANCE:Ljakarta/enterprise/inject/literal/InjectLiteral;
+   #72 = Utf8               io/cryostat/reports/AnalysisReportAggregator
+   #73 = Class              #72           // io/cryostat/reports/AnalysisReportAggregator
+   #74 = Utf8               cache
+   #75 = String             #74           // cache
+   #76 = Utf8               io/quarkus/arc/impl/Reflections
+   #77 = Class              #76           // io/quarkus/arc/impl/Reflections
+   #78 = Utf8               findField
+   #79 = Utf8               (Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+   #80 = NameAndType        #78:#79       // findField:(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+   #81 = Methodref          #77.#80       // io/quarkus/arc/impl/Reflections.findField:(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+   #82 = Utf8               io.quarkus.cache.Cache
+   #83 = String             #82           // io.quarkus.cache.Cache
+   #84 = Utf8               io/quarkus/arc/impl/FixedValueSupplier
+   #85 = Class              #84           // io/quarkus/arc/impl/FixedValueSupplier
+   #86 = Utf8               io/quarkus/arc/impl/CurrentInjectionPointProvider
+   #87 = Class              #86           // io/quarkus/arc/impl/CurrentInjectionPointProvider
+   #88 = Utf8               (Lio/quarkus/arc/InjectableBean;Ljava/util/function/Supplier;Ljava/lang/reflect/Type;Ljava/util/Set;Ljava/util/Set;Ljava/lang/reflect/Member;IZ)V
+   #89 = NameAndType        #12:#88       // "<init>":(Lio/quarkus/arc/InjectableBean;Ljava/util/function/Supplier;Ljava/lang/reflect/Type;Ljava/util/Set;Ljava/util/Set;Ljava/lang/reflect/Member;IZ)V
+   #90 = Methodref          #87.#89       // io/quarkus/arc/impl/CurrentInjectionPointProvider."<init>":(Lio/quarkus/arc/InjectableBean;Ljava/util/function/Supplier;Ljava/lang/reflect/Type;Ljava/util/Set;Ljava/util/Set;Ljava/lang/reflect/Member;IZ)V
+   #91 = Utf8               (Ljava/lang/Object;)V
+   #92 = NameAndType        #12:#91       // "<init>":(Ljava/lang/Object;)V
+   #93 = Methodref          #85.#92       // io/quarkus/arc/impl/FixedValueSupplier."<init>":(Ljava/lang/Object;)V
+   #94 = NameAndType        #7:#6         // injectProviderSupplier2:Ljava/util/function/Supplier;
+   #95 = Fieldref           #2.#94        // io/cryostat/reports/AnalysisReportAggregator_Bean.injectProviderSupplier2:Ljava/util/function/Supplier;
+   #96 = Utf8               logger
+   #97 = String             #96           // logger
+   #98 = Utf8               org.jboss.logging.Logger
+   #99 = String             #98           // org.jboss.logging.Logger
+  #100 = Utf8               io/quarkus/arc/impl/Qualifiers
+  #101 = Class              #100          // io/quarkus/arc/impl/Qualifiers
+  #102 = Utf8               IP_DEFAULT_QUALIFIERS
+  #103 = NameAndType        #102:#4       // IP_DEFAULT_QUALIFIERS:Ljava/util/Set;
+  #104 = Fieldref           #101.#103     // io/quarkus/arc/impl/Qualifiers.IP_DEFAULT_QUALIFIERS:Ljava/util/Set;
+  #105 = NameAndType        #8:#6         // injectProviderSupplier3:Ljava/util/function/Supplier;
+  #106 = Fieldref           #2.#105       // io/cryostat/reports/AnalysisReportAggregator_Bean.injectProviderSupplier3:Ljava/util/function/Supplier;
+  #107 = NameAndType        #9:#6         // injectProviderSupplier4:Ljava/util/function/Supplier;
+  #108 = Fieldref           #2.#107       // io/cryostat/reports/AnalysisReportAggregator_Bean.injectProviderSupplier4:Ljava/util/function/Supplier;
+  #109 = NameAndType        #10:#6        // interceptorProviderSupplier5:Ljava/util/function/Supplier;
+  #110 = Fieldref           #2.#109       // io/cryostat/reports/AnalysisReportAggregator_Bean.interceptorProviderSupplier5:Ljava/util/function/Supplier;
+  #111 = NameAndType        #11:#6        // interceptorProviderSupplier6:Ljava/util/function/Supplier;
+  #112 = Fieldref           #2.#111       // io/cryostat/reports/AnalysisReportAggregator_Bean.interceptorProviderSupplier6:Ljava/util/function/Supplier;
+  #113 = Utf8               create
+  #114 = Utf8               (Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/reports/AnalysisReportAggregator;
+  #115 = Utf8               java/util/function/Supplier
+  #116 = Class              #115          // java/util/function/Supplier
+  #117 = Utf8               get
+  #118 = Utf8               ()Ljava/lang/Object;
+  #119 = NameAndType        #117:#118     // get:()Ljava/lang/Object;
+  #120 = InterfaceMethodref #116.#119     // java/util/function/Supplier.get:()Ljava/lang/Object;
+  #121 = Utf8               io/cryostat/reports/AnalysisReportAggregator_Subclass
+  #122 = Class              #121          // io/cryostat/reports/AnalysisReportAggregator_Subclass
+  #123 = Utf8               io/quarkus/arc/InjectableInterceptor
+  #124 = Class              #123          // io/quarkus/arc/InjectableInterceptor
+  #125 = Utf8               (Ljakarta/enterprise/context/spi/CreationalContext;Lio/quarkus/arc/InjectableInterceptor;Lio/quarkus/arc/InjectableInterceptor;)V
+  #126 = NameAndType        #12:#125      // "<init>":(Ljakarta/enterprise/context/spi/CreationalContext;Lio/quarkus/arc/InjectableInterceptor;Lio/quarkus/arc/InjectableInterceptor;)V
+  #127 = Methodref          #122.#126     // io/cryostat/reports/AnalysisReportAggregator_Subclass."<init>":(Ljakarta/enterprise/context/spi/CreationalContext;Lio/quarkus/arc/InjectableInterceptor;Lio/quarkus/arc/InjectableInterceptor;)V
+  #128 = Utf8               io/quarkus/arc/InjectableReferenceProvider
+  #129 = Class              #128          // io/quarkus/arc/InjectableReferenceProvider
+  #130 = Utf8               io/quarkus/arc/impl/CreationalContextImpl
+  #131 = Class              #130          // io/quarkus/arc/impl/CreationalContextImpl
+  #132 = Utf8               child
+  #133 = Utf8               (Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+  #134 = NameAndType        #132:#133     // child:(Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+  #135 = Methodref          #131.#134     // io/quarkus/arc/impl/CreationalContextImpl.child:(Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+  #136 = Utf8               (Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+  #137 = NameAndType        #117:#136     // get:(Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+  #138 = InterfaceMethodref #129.#137     // io/quarkus/arc/InjectableReferenceProvider.get:(Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+  #139 = Utf8               io/vertx/mutiny/core/eventbus/EventBus
+  #140 = Class              #139          // io/vertx/mutiny/core/eventbus/EventBus
+  #141 = Utf8               bus
+  #142 = Utf8               Lio/vertx/mutiny/core/eventbus/EventBus;
+  #143 = NameAndType        #141:#142     // bus:Lio/vertx/mutiny/core/eventbus/EventBus;
+  #144 = Fieldref           #73.#143      // io/cryostat/reports/AnalysisReportAggregator.bus:Lio/vertx/mutiny/core/eventbus/EventBus;
+  #145 = Utf8               java/lang/RuntimeException
+  #146 = Class              #145          // java/lang/RuntimeException
+  #147 = Utf8               Error injecting io.vertx.mutiny.core.eventbus.EventBus io.cryostat.reports.AnalysisReportAggregator.bus
+  #148 = String             #147          // Error injecting io.vertx.mutiny.core.eventbus.EventBus io.cryostat.reports.AnalysisReportAggregator.bus
+  #149 = Utf8               (Ljava/lang/String;Ljava/lang/Throwable;)V
+  #150 = NameAndType        #12:#149      // "<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+  #151 = Methodref          #146.#150     // java/lang/RuntimeException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+  #152 = Utf8               io/quarkus/cache/Cache
+  #153 = Class              #152          // io/quarkus/cache/Cache
+  #154 = Utf8               Lio/quarkus/cache/Cache;
+  #155 = NameAndType        #74:#154      // cache:Lio/quarkus/cache/Cache;
+  #156 = Fieldref           #73.#155      // io/cryostat/reports/AnalysisReportAggregator.cache:Lio/quarkus/cache/Cache;
+  #157 = Utf8               Error injecting io.quarkus.cache.Cache io.cryostat.reports.AnalysisReportAggregator.cache
+  #158 = String             #157          // Error injecting io.quarkus.cache.Cache io.cryostat.reports.AnalysisReportAggregator.cache
+  #159 = Utf8               org/jboss/logging/Logger
+  #160 = Class              #159          // org/jboss/logging/Logger
+  #161 = Utf8               Lorg/jboss/logging/Logger;
+  #162 = NameAndType        #96:#161      // logger:Lorg/jboss/logging/Logger;
+  #163 = Fieldref           #73.#162      // io/cryostat/reports/AnalysisReportAggregator.logger:Lorg/jboss/logging/Logger;
+  #164 = Utf8               Error injecting org.jboss.logging.Logger io.cryostat.reports.AnalysisReportAggregator.logger
+  #165 = String             #164          // Error injecting org.jboss.logging.Logger io.cryostat.reports.AnalysisReportAggregator.logger
+  #166 = Utf8               io/cryostat/recordings/RecordingHelper
+  #167 = Class              #166          // io/cryostat/recordings/RecordingHelper
+  #168 = Utf8               recordingHelper
+  #169 = Utf8               Lio/cryostat/recordings/RecordingHelper;
+  #170 = NameAndType        #168:#169     // recordingHelper:Lio/cryostat/recordings/RecordingHelper;
+  #171 = Fieldref           #73.#170      // io/cryostat/reports/AnalysisReportAggregator.recordingHelper:Lio/cryostat/recordings/RecordingHelper;
+  #172 = Utf8               Error injecting io.cryostat.recordings.RecordingHelper io.cryostat.reports.AnalysisReportAggregator.recordingHelper
+  #173 = String             #172          // Error injecting io.cryostat.recordings.RecordingHelper io.cryostat.reports.AnalysisReportAggregator.recordingHelper
+  #174 = Utf8               arc$markConstructed
+  #175 = NameAndType        #174:#16      // arc$markConstructed:()V
+  #176 = Methodref          #122.#175     // io/cryostat/reports/AnalysisReportAggregator_Subclass.arc$markConstructed:()V
+  #177 = Utf8               jakarta/enterprise/inject/CreationException
+  #178 = Class              #177          // jakarta/enterprise/inject/CreationException
+  #179 = Utf8               (Ljava/lang/Throwable;)V
+  #180 = NameAndType        #12:#179      // "<init>":(Ljava/lang/Throwable;)V
+  #181 = Methodref          #178.#180     // jakarta/enterprise/inject/CreationException."<init>":(Ljava/lang/Throwable;)V
+  #182 = Utf8               java/lang/Exception
+  #183 = Class              #182          // java/lang/Exception
+  #184 = NameAndType        #113:#114     // create:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/reports/AnalysisReportAggregator;
+  #185 = Methodref          #2.#184       // io/cryostat/reports/AnalysisReportAggregator_Bean.create:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/reports/AnalysisReportAggregator;
+  #186 = Utf8               io/quarkus/arc/Arc
+  #187 = Class              #186          // io/quarkus/arc/Arc
+  #188 = Utf8               requireContainer
+  #189 = Utf8               ()Lio/quarkus/arc/ArcContainer;
+  #190 = NameAndType        #188:#189     // requireContainer:()Lio/quarkus/arc/ArcContainer;
+  #191 = Methodref          #187.#190     // io/quarkus/arc/Arc.requireContainer:()Lio/quarkus/arc/ArcContainer;
+  #192 = Utf8               jakarta/inject/Singleton
+  #193 = Class              #192          // jakarta/inject/Singleton
+  #194 = Utf8               io/quarkus/arc/ArcContainer
+  #195 = Class              #194          // io/quarkus/arc/ArcContainer
+  #196 = Utf8               getActiveContext
+  #197 = Utf8               (Ljava/lang/Class;)Lio/quarkus/arc/InjectableContext;
+  #198 = NameAndType        #196:#197     // getActiveContext:(Ljava/lang/Class;)Lio/quarkus/arc/InjectableContext;
+  #199 = InterfaceMethodref #195.#198     // io/quarkus/arc/ArcContainer.getActiveContext:(Ljava/lang/Class;)Lio/quarkus/arc/InjectableContext;
+  #200 = Utf8               (Ljakarta/enterprise/context/spi/Contextual;)V
+  #201 = NameAndType        #12:#200      // "<init>":(Ljakarta/enterprise/context/spi/Contextual;)V
+  #202 = Methodref          #131.#201     // io/quarkus/arc/impl/CreationalContextImpl."<init>":(Ljakarta/enterprise/context/spi/Contextual;)V
+  #203 = Utf8               jakarta/enterprise/context/spi/Context
+  #204 = Class              #203          // jakarta/enterprise/context/spi/Context
+  #205 = Utf8               (Ljakarta/enterprise/context/spi/Contextual;Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+  #206 = NameAndType        #117:#205     // get:(Ljakarta/enterprise/context/spi/Contextual;Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+  #207 = InterfaceMethodref #204.#206     // jakarta/enterprise/context/spi/Context.get:(Ljakarta/enterprise/context/spi/Contextual;Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+  #208 = NameAndType        #117:#114     // get:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/reports/AnalysisReportAggregator;
+  #209 = Methodref          #2.#208       // io/cryostat/reports/AnalysisReportAggregator_Bean.get:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/reports/AnalysisReportAggregator;
+  #210 = Utf8               getIdentifier
+  #211 = Utf8               ()Ljava/lang/String;
+  #212 = Utf8               dlPRSbYzwu0w_1WwUYcHxXW7QOY
+  #213 = String             #212          // dlPRSbYzwu0w_1WwUYcHxXW7QOY
+  #214 = Utf8               getTypes
+  #215 = Utf8               ()Ljava/util/Set;
+  #216 = Utf8               getScope
+  #217 = Utf8               ()Ljava/lang/Class;
+  #218 = Utf8               getBeanClass
+  #219 = Utf8               isSuppressed
+  #220 = Utf8               ()Z
+  #221 = Utf8               equals
+  #222 = Utf8               io/quarkus/arc/InjectableBean
+  #223 = Class              #222          // io/quarkus/arc/InjectableBean
+  #224 = NameAndType        #210:#211     // getIdentifier:()Ljava/lang/String;
+  #225 = InterfaceMethodref #223.#224     // io/quarkus/arc/InjectableBean.getIdentifier:()Ljava/lang/String;
+  #226 = NameAndType        #221:#63      // equals:(Ljava/lang/Object;)Z
+  #227 = Methodref          #15.#226      // java/lang/Object.equals:(Ljava/lang/Object;)Z
+  #228 = Utf8               hashCode
+  #229 = Utf8               ()I
+  #230 = Integer            2017814753
+  #231 = Utf8               toString
+  #232 = Utf8               io/quarkus/arc/impl/Beans
+  #233 = Class              #232          // io/quarkus/arc/impl/Beans
+  #234 = Utf8               (Lio/quarkus/arc/InjectableBean;)Ljava/lang/String;
+  #235 = NameAndType        #231:#234     // toString:(Lio/quarkus/arc/InjectableBean;)Ljava/lang/String;
+  #236 = Methodref          #233.#235     // io/quarkus/arc/impl/Beans.toString:(Lio/quarkus/arc/InjectableBean;)Ljava/lang/String;
+  #237 = Utf8               Code
+  #238 = Utf8               StackMapTable
+  #239 = Utf8               jakarta/enterprise/context/spi/CreationalContext
+  #240 = Class              #239          // jakarta/enterprise/context/spi/CreationalContext
+{
+  private final java.util.Set types;
+    descriptor: Ljava/util/Set;
+    flags: (0x0012) ACC_PRIVATE, ACC_FINAL
+
+  private final java.util.function.Supplier injectProviderSupplier1;
+    descriptor: Ljava/util/function/Supplier;
+    flags: (0x0012) ACC_PRIVATE, ACC_FINAL
+
+  private final java.util.function.Supplier injectProviderSupplier2;
+    descriptor: Ljava/util/function/Supplier;
+    flags: (0x0012) ACC_PRIVATE, ACC_FINAL
+
+  private final java.util.function.Supplier injectProviderSupplier3;
+    descriptor: Ljava/util/function/Supplier;
+    flags: (0x0012) ACC_PRIVATE, ACC_FINAL
+
+  private final java.util.function.Supplier injectProviderSupplier4;
+    descriptor: Ljava/util/function/Supplier;
+    flags: (0x0012) ACC_PRIVATE, ACC_FINAL
+
+  private final java.util.function.Supplier interceptorProviderSupplier5;
+    descriptor: Ljava/util/function/Supplier;
+    flags: (0x0012) ACC_PRIVATE, ACC_FINAL
+
+  private final java.util.function.Supplier interceptorProviderSupplier6;
+    descriptor: Ljava/util/function/Supplier;
+    flags: (0x0012) ACC_PRIVATE, ACC_FINAL
+
+  public io.cryostat.reports.AnalysisReportAggregator_Bean(java.util.function.Supplier, java.util.function.Supplier, java.util.function.Supplier, java.util.function.Supplier, java.util.function.Supplier, java.util.function.Supplier);
+    descriptor: (Ljava/util/function/Supplier;Ljava/util/function/Supplier;Ljava/util/function/Supplier;Ljava/util/function/Supplier;Ljava/util/function/Supplier;Ljava/util/function/Supplier;)V
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=13, locals=17, args_size=7
+         0: aload_0
+         1: invokespecial #18                 // Method java/lang/Object."<init>":()V
+         4: invokestatic  #24                 // Method java/lang/Thread.currentThread:()Ljava/lang/Thread;
+         7: invokevirtual #28                 // Method java/lang/Thread.getContextClassLoader:()Ljava/lang/ClassLoader;
+        10: astore        7
+        12: aconst_null
+        13: astore        8
+        15: ldc           #30                 // String io.cryostat.reports.AnalysisReportAggregator
+        17: iconst_0
+        18: aload         7
+        20: invokestatic  #36                 // Method java/lang/Class.forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+        23: astore        8
+        25: aconst_null
+        26: astore        9
+        28: ldc           #15                 // class java/lang/Object
+        30: astore        9
+        32: aload_0
+        33: aload         8
+        35: aload         9
+        37: invokestatic  #42                 // InterfaceMethod java/util/Set.of:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/Set;
+        40: putfield      #44                 // Field types:Ljava/util/Set;
+        43: aload_0
+        44: aload_1
+        45: putfield      #46                 // Field injectProviderSupplier1:Ljava/util/function/Supplier;
+        48: new           #48                 // class io/quarkus/cache/CacheName_ArcAnnotationLiteral
+        51: dup
+        52: ldc           #50                 // String reports-aggregator
+        54: invokespecial #53                 // Method io/quarkus/cache/CacheName_ArcAnnotationLiteral."<init>":(Ljava/lang/String;)V
+        57: invokestatic  #56                 // InterfaceMethod java/util/Set.of:(Ljava/lang/Object;)Ljava/util/Set;
+        60: astore        10
+        62: new           #58                 // class java/util/HashSet
+        65: dup
+        66: invokespecial #59                 // Method java/util/HashSet."<init>":()V
+        69: astore        11
+        71: aload         11
+        73: new           #48                 // class io/quarkus/cache/CacheName_ArcAnnotationLiteral
+        76: dup
+        77: ldc           #50                 // String reports-aggregator
+        79: invokespecial #53                 // Method io/quarkus/cache/CacheName_ArcAnnotationLiteral."<init>":(Ljava/lang/String;)V
+        82: invokeinterface #65,  2           // InterfaceMethod java/util/Collection.add:(Ljava/lang/Object;)Z
+        87: pop
+        88: aload         11
+        90: getstatic     #71                 // Field jakarta/enterprise/inject/literal/InjectLiteral.INSTANCE:Ljakarta/enterprise/inject/literal/InjectLiteral;
+        93: invokeinterface #65,  2           // InterfaceMethod java/util/Collection.add:(Ljava/lang/Object;)Z
+        98: pop
+        99: ldc           #73                 // class io/cryostat/reports/AnalysisReportAggregator
+       101: ldc           #75                 // String cache
+       103: invokestatic  #81                 // Method io/quarkus/arc/impl/Reflections.findField:(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+       106: astore        12
+       108: aconst_null
+       109: astore        13
+       111: ldc           #83                 // String io.quarkus.cache.Cache
+       113: iconst_0
+       114: aload         7
+       116: invokestatic  #36                 // Method java/lang/Class.forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+       119: astore        13
+       121: aload_0
+       122: new           #85                 // class io/quarkus/arc/impl/FixedValueSupplier
+       125: dup
+       126: new           #87                 // class io/quarkus/arc/impl/CurrentInjectionPointProvider
+       129: dup
+       130: aload_0
+       131: aload_2
+       132: aload         13
+       134: aload         10
+       136: aload         11
+       138: aload         12
+       140: iconst_m1
+       141: iconst_0
+       142: invokespecial #90                 // Method io/quarkus/arc/impl/CurrentInjectionPointProvider."<init>":(Lio/quarkus/arc/InjectableBean;Ljava/util/function/Supplier;Ljava/lang/reflect/Type;Ljava/util/Set;Ljava/util/Set;Ljava/lang/reflect/Member;IZ)V
+       145: invokespecial #93                 // Method io/quarkus/arc/impl/FixedValueSupplier."<init>":(Ljava/lang/Object;)V
+       148: putfield      #95                 // Field injectProviderSupplier2:Ljava/util/function/Supplier;
+       151: new           #58                 // class java/util/HashSet
+       154: dup
+       155: invokespecial #59                 // Method java/util/HashSet."<init>":()V
+       158: astore        14
+       160: aload         14
+       162: getstatic     #71                 // Field jakarta/enterprise/inject/literal/InjectLiteral.INSTANCE:Ljakarta/enterprise/inject/literal/InjectLiteral;
+       165: invokeinterface #65,  2           // InterfaceMethod java/util/Collection.add:(Ljava/lang/Object;)Z
+       170: pop
+       171: ldc           #73                 // class io/cryostat/reports/AnalysisReportAggregator
+       173: ldc           #97                 // String logger
+       175: invokestatic  #81                 // Method io/quarkus/arc/impl/Reflections.findField:(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;
+       178: astore        15
+       180: aconst_null
+       181: astore        16
+       183: ldc           #99                 // String org.jboss.logging.Logger
+       185: iconst_0
+       186: aload         7
+       188: invokestatic  #36                 // Method java/lang/Class.forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
+       191: astore        16
+       193: aload_0
+       194: new           #85                 // class io/quarkus/arc/impl/FixedValueSupplier
+       197: dup
+       198: new           #87                 // class io/quarkus/arc/impl/CurrentInjectionPointProvider
+       201: dup
+       202: aload_0
+       203: aload_3
+       204: aload         16
+       206: getstatic     #104                // Field io/quarkus/arc/impl/Qualifiers.IP_DEFAULT_QUALIFIERS:Ljava/util/Set;
+       209: aload         14
+       211: aload         15
+       213: iconst_m1
+       214: iconst_0
+       215: invokespecial #90                 // Method io/quarkus/arc/impl/CurrentInjectionPointProvider."<init>":(Lio/quarkus/arc/InjectableBean;Ljava/util/function/Supplier;Ljava/lang/reflect/Type;Ljava/util/Set;Ljava/util/Set;Ljava/lang/reflect/Member;IZ)V
+       218: invokespecial #93                 // Method io/quarkus/arc/impl/FixedValueSupplier."<init>":(Ljava/lang/Object;)V
+       221: putfield      #106                // Field injectProviderSupplier3:Ljava/util/function/Supplier;
+       224: aload_0
+       225: aload         4
+       227: putfield      #108                // Field injectProviderSupplier4:Ljava/util/function/Supplier;
+       230: aload_0
+       231: aload         5
+       233: putfield      #110                // Field interceptorProviderSupplier5:Ljava/util/function/Supplier;
+       236: aload_0
+       237: aload         6
+       239: putfield      #112                // Field interceptorProviderSupplier6:Ljava/util/function/Supplier;
+       242: return
+
+  public io.cryostat.reports.AnalysisReportAggregator create(jakarta.enterprise.context.spi.CreationalContext);
+    descriptor: (Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/reports/AnalysisReportAggregator;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=5, locals=7, args_size=2
+         0: aload_0
+         1: getfield      #110                // Field interceptorProviderSupplier5:Ljava/util/function/Supplier;
+         4: invokeinterface #120,  1          // InterfaceMethod java/util/function/Supplier.get:()Ljava/lang/Object;
+         9: astore_2
+        10: aload_0
+        11: getfield      #112                // Field interceptorProviderSupplier6:Ljava/util/function/Supplier;
+        14: invokeinterface #120,  1          // InterfaceMethod java/util/function/Supplier.get:()Ljava/lang/Object;
+        19: astore_3
+        20: new           #122                // class io/cryostat/reports/AnalysisReportAggregator_Subclass
+        23: dup
+        24: aload_1
+        25: aload_2
+        26: checkcast     #124                // class io/quarkus/arc/InjectableInterceptor
+        29: aload_3
+        30: checkcast     #124                // class io/quarkus/arc/InjectableInterceptor
+        33: invokespecial #127                // Method io/cryostat/reports/AnalysisReportAggregator_Subclass."<init>":(Ljakarta/enterprise/context/spi/CreationalContext;Lio/quarkus/arc/InjectableInterceptor;Lio/quarkus/arc/InjectableInterceptor;)V
+        36: astore        4
+        38: aload_0
+        39: getfield      #46                 // Field injectProviderSupplier1:Ljava/util/function/Supplier;
+        42: invokeinterface #120,  1          // InterfaceMethod java/util/function/Supplier.get:()Ljava/lang/Object;
+        47: astore        5
+        49: aload         5
+        51: checkcast     #129                // class io/quarkus/arc/InjectableReferenceProvider
+        54: aload         5
+        56: checkcast     #129                // class io/quarkus/arc/InjectableReferenceProvider
+        59: aload_1
+        60: invokestatic  #135                // Method io/quarkus/arc/impl/CreationalContextImpl.child:(Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+        63: invokeinterface #138,  2          // InterfaceMethod io/quarkus/arc/InjectableReferenceProvider.get:(Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+        68: astore        6
+        70: aload         4
+        72: aload         6
+        74: checkcast     #140                // class io/vertx/mutiny/core/eventbus/EventBus
+        77: putfield      #144                // Field io/cryostat/reports/AnalysisReportAggregator.bus:Lio/vertx/mutiny/core/eventbus/EventBus;
+        80: goto          97
+        83: astore        5
+        85: new           #146                // class java/lang/RuntimeException
+        88: dup
+        89: ldc           #148                // String Error injecting io.vertx.mutiny.core.eventbus.EventBus io.cryostat.reports.AnalysisReportAggregator.bus
+        91: aload         5
+        93: invokespecial #151                // Method java/lang/RuntimeException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+        96: athrow
+        97: aload_0
+        98: getfield      #95                 // Field injectProviderSupplier2:Ljava/util/function/Supplier;
+       101: invokeinterface #120,  1          // InterfaceMethod java/util/function/Supplier.get:()Ljava/lang/Object;
+       106: astore        5
+       108: aload         5
+       110: checkcast     #129                // class io/quarkus/arc/InjectableReferenceProvider
+       113: aload         5
+       115: checkcast     #129                // class io/quarkus/arc/InjectableReferenceProvider
+       118: aload_1
+       119: invokestatic  #135                // Method io/quarkus/arc/impl/CreationalContextImpl.child:(Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+       122: invokeinterface #138,  2          // InterfaceMethod io/quarkus/arc/InjectableReferenceProvider.get:(Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+       127: astore        6
+       129: aload         4
+       131: aload         6
+       133: checkcast     #153                // class io/quarkus/cache/Cache
+       136: putfield      #156                // Field io/cryostat/reports/AnalysisReportAggregator.cache:Lio/quarkus/cache/Cache;
+       139: goto          156
+       142: astore        5
+       144: new           #146                // class java/lang/RuntimeException
+       147: dup
+       148: ldc           #158                // String Error injecting io.quarkus.cache.Cache io.cryostat.reports.AnalysisReportAggregator.cache
+       150: aload         5
+       152: invokespecial #151                // Method java/lang/RuntimeException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+       155: athrow
+       156: aload_0
+       157: getfield      #106                // Field injectProviderSupplier3:Ljava/util/function/Supplier;
+       160: invokeinterface #120,  1          // InterfaceMethod java/util/function/Supplier.get:()Ljava/lang/Object;
+       165: astore        5
+       167: aload         5
+       169: checkcast     #129                // class io/quarkus/arc/InjectableReferenceProvider
+       172: aload         5
+       174: checkcast     #129                // class io/quarkus/arc/InjectableReferenceProvider
+       177: aload_1
+       178: invokestatic  #135                // Method io/quarkus/arc/impl/CreationalContextImpl.child:(Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+       181: invokeinterface #138,  2          // InterfaceMethod io/quarkus/arc/InjectableReferenceProvider.get:(Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+       186: astore        6
+       188: aload         4
+       190: aload         6
+       192: checkcast     #160                // class org/jboss/logging/Logger
+       195: putfield      #163                // Field io/cryostat/reports/AnalysisReportAggregator.logger:Lorg/jboss/logging/Logger;
+       198: goto          215
+       201: astore        5
+       203: new           #146                // class java/lang/RuntimeException
+       206: dup
+       207: ldc           #165                // String Error injecting org.jboss.logging.Logger io.cryostat.reports.AnalysisReportAggregator.logger
+       209: aload         5
+       211: invokespecial #151                // Method java/lang/RuntimeException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+       214: athrow
+       215: aload_0
+       216: getfield      #108                // Field injectProviderSupplier4:Ljava/util/function/Supplier;
+       219: invokeinterface #120,  1          // InterfaceMethod java/util/function/Supplier.get:()Ljava/lang/Object;
+       224: astore        5
+       226: aload         5
+       228: checkcast     #129                // class io/quarkus/arc/InjectableReferenceProvider
+       231: aload         5
+       233: checkcast     #129                // class io/quarkus/arc/InjectableReferenceProvider
+       236: aload_1
+       237: invokestatic  #135                // Method io/quarkus/arc/impl/CreationalContextImpl.child:(Lio/quarkus/arc/InjectableReferenceProvider;Ljakarta/enterprise/context/spi/CreationalContext;)Lio/quarkus/arc/impl/CreationalContextImpl;
+       240: invokeinterface #138,  2          // InterfaceMethod io/quarkus/arc/InjectableReferenceProvider.get:(Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+       245: astore        6
+       247: aload         4
+       249: aload         6
+       251: checkcast     #167                // class io/cryostat/recordings/RecordingHelper
+       254: putfield      #171                // Field io/cryostat/reports/AnalysisReportAggregator.recordingHelper:Lio/cryostat/recordings/RecordingHelper;
+       257: goto          274
+       260: astore        5
+       262: new           #146                // class java/lang/RuntimeException
+       265: dup
+       266: ldc           #173                // String Error injecting io.cryostat.recordings.RecordingHelper io.cryostat.reports.AnalysisReportAggregator.recordingHelper
+       268: aload         5
+       270: invokespecial #151                // Method java/lang/RuntimeException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+       273: athrow
+       274: aload         4
+       276: invokevirtual #176                // Method io/cryostat/reports/AnalysisReportAggregator_Subclass.arc$markConstructed:()V
+       279: aload         4
+       281: areturn
+       282: astore_2
+       283: aload_2
+       284: instanceof    #146                // class java/lang/RuntimeException
+       287: ifeq          297
+       290: aload_2
+       291: checkcast     #146                // class java/lang/RuntimeException
+       294: astore_3
+       295: aload_3
+       296: athrow
+       297: new           #178                // class jakarta/enterprise/inject/CreationException
+       300: dup
+       301: aload_2
+       302: invokespecial #181                // Method jakarta/enterprise/inject/CreationException."<init>":(Ljava/lang/Throwable;)V
+       305: athrow
+      Exception table:
+         from    to  target type
+            38    80    83   Class java/lang/RuntimeException
+            97   139   142   Class java/lang/RuntimeException
+           156   198   201   Class java/lang/RuntimeException
+           215   257   260   Class java/lang/RuntimeException
+             0   282   282   Class java/lang/Exception
+      StackMapTable: number_of_entries = 10
+        frame_type = 255 /* full_frame */
+          offset_delta = 83
+          locals = [ class io/cryostat/reports/AnalysisReportAggregator_Bean, class jakarta/enterprise/context/spi/CreationalContext, class java/lang/Object, class java/lang/Object, class io/cryostat/reports/AnalysisReportAggregator_Subclass ]
+          stack = [ class java/lang/RuntimeException ]
+        frame_type = 13 /* same */
+        frame_type = 108 /* same_locals_1_stack_item */
+          stack = [ class java/lang/RuntimeException ]
+        frame_type = 13 /* same */
+        frame_type = 108 /* same_locals_1_stack_item */
+          stack = [ class java/lang/RuntimeException ]
+        frame_type = 13 /* same */
+        frame_type = 108 /* same_locals_1_stack_item */
+          stack = [ class java/lang/RuntimeException ]
+        frame_type = 13 /* same */
+        frame_type = 255 /* full_frame */
+          offset_delta = 7
+          locals = [ class io/cryostat/reports/AnalysisReportAggregator_Bean, class jakarta/enterprise/context/spi/CreationalContext ]
+          stack = [ class java/lang/Exception ]
+        frame_type = 252 /* append */
+          offset_delta = 14
+          locals = [ class java/lang/Exception ]
+
+  public java.lang.Object create(jakarta.enterprise.context.spi.CreationalContext);
+    descriptor: (Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+    flags: (0x0041) ACC_PUBLIC, ACC_BRIDGE
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_0
+         1: aload_1
+         2: invokevirtual #185                // Method create:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/reports/AnalysisReportAggregator;
+         5: areturn
+
+  public java.lang.Object get();
+    descriptor: ()Ljava/lang/Object;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: areturn
+
+  public io.cryostat.reports.AnalysisReportAggregator get(jakarta.enterprise.context.spi.CreationalContext);
+    descriptor: (Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/reports/AnalysisReportAggregator;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=5, locals=2, args_size=2
+         0: invokestatic  #191                // Method io/quarkus/arc/Arc.requireContainer:()Lio/quarkus/arc/ArcContainer;
+         3: ldc           #193                // class jakarta/inject/Singleton
+         5: invokeinterface #199,  2          // InterfaceMethod io/quarkus/arc/ArcContainer.getActiveContext:(Ljava/lang/Class;)Lio/quarkus/arc/InjectableContext;
+        10: aload_0
+        11: new           #131                // class io/quarkus/arc/impl/CreationalContextImpl
+        14: dup
+        15: aload_0
+        16: invokespecial #202                // Method io/quarkus/arc/impl/CreationalContextImpl."<init>":(Ljakarta/enterprise/context/spi/Contextual;)V
+        19: invokeinterface #207,  3          // InterfaceMethod jakarta/enterprise/context/spi/Context.get:(Ljakarta/enterprise/context/spi/Contextual;Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+        24: checkcast     #73                 // class io/cryostat/reports/AnalysisReportAggregator
+        27: areturn
+
+  public java.lang.Object get(jakarta.enterprise.context.spi.CreationalContext);
+    descriptor: (Ljakarta/enterprise/context/spi/CreationalContext;)Ljava/lang/Object;
+    flags: (0x0041) ACC_PUBLIC, ACC_BRIDGE
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_0
+         1: aload_1
+         2: invokevirtual #209                // Method get:(Ljakarta/enterprise/context/spi/CreationalContext;)Lio/cryostat/reports/AnalysisReportAggregator;
+         5: areturn
+
+  public java.lang.String getIdentifier();
+    descriptor: ()Ljava/lang/String;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: ldc           #213                // String dlPRSbYzwu0w_1WwUYcHxXW7QOY
+         2: areturn
+
+  public java.util.Set getTypes();
+    descriptor: ()Ljava/util/Set;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: getfield      #44                 // Field types:Ljava/util/Set;
+         4: areturn
+
+  public java.lang.Class getScope();
+    descriptor: ()Ljava/lang/Class;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: ldc           #193                // class jakarta/inject/Singleton
+         2: areturn
+
+  public java.lang.Class getBeanClass();
+    descriptor: ()Ljava/lang/Class;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: ldc           #73                 // class io/cryostat/reports/AnalysisReportAggregator
+         2: areturn
+
+  public boolean isSuppressed();
+    descriptor: ()Z
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iconst_0
+         1: ireturn
+
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_0
+         1: aload_1
+         2: if_acmpne     7
+         5: iconst_1
+         6: ireturn
+         7: aload_1
+         8: ifnonnull     13
+        11: iconst_0
+        12: ireturn
+        13: aload_1
+        14: instanceof    #223                // class io/quarkus/arc/InjectableBean
+        17: ifne          22
+        20: iconst_0
+        21: ireturn
+        22: ldc           #213                // String dlPRSbYzwu0w_1WwUYcHxXW7QOY
+        24: aload_1
+        25: checkcast     #223                // class io/quarkus/arc/InjectableBean
+        28: invokeinterface #225,  1          // InterfaceMethod io/quarkus/arc/InjectableBean.getIdentifier:()Ljava/lang/String;
+        33: invokevirtual #227                // Method java/lang/Object.equals:(Ljava/lang/Object;)Z
+        36: ireturn
+      StackMapTable: number_of_entries = 3
+        frame_type = 7 /* same */
+        frame_type = 5 /* same */
+        frame_type = 8 /* same */
+
+  public int hashCode();
+    descriptor: ()I
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: ldc           #230                // int 2017814753
+         2: ireturn
+
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: invokestatic  #236                // Method io/quarkus/arc/impl/Beans.toString:(Lio/quarkus/arc/InjectableBean;)Ljava/lang/String;
+         4: areturn
+}

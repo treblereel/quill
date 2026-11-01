@@ -32,11 +32,15 @@ final class SymbolUsageQueries {
 
     String findSymbolUsages(ReadQueryContext reader, String target, String name, String kind,
             String signature, String access, int limit, int offset) {
-        return findSymbolUsagesInRequest(reader,target,name,kind,signature,access,limit,offset);
+        return findSymbolUsagesInRequest(reader,target,name,kind,signature,access,limit,offset,false);
+    }
+
+    String findMethodDeclaration(ReadQueryContext reader,String target,String name,String signature) {
+        return findSymbolUsagesInRequest(reader,target,name,"METHOD",signature,null,0,0,true);
     }
 
     private String findSymbolUsagesInRequest(ReadQueryContext reader,String target,String name,String kind,
-            String signature,String access,int limit,int offset) {
+            String signature,String access,int limit,int offset,boolean declarationOnly) {
         try {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
             if (reference != null) {
@@ -81,8 +85,7 @@ final class SymbolUsageQueries {
         List<ClassMemberRecord> matches = requestedSignature == null
                 || requestedSignature.isBlank()
                 ? namedMembers
-                : namedMembers.stream().filter(member -> JvmDescriptors.matchesSignature(
-                        member, requestedSignature.strip())).toList();
+                : namedMembers.stream().filter(member -> JvmDescriptors.matchesSignature(member, requestedSignature)).toList();
         if (matches.size() != 1) {
             ObjectNode error = JSON.createObjectNode();
             boolean ambiguous = !matches.isEmpty();
@@ -115,6 +118,8 @@ final class SymbolUsageQueries {
             appendMeta(error, reader, 0);
             return error.toString();
         }
+        // Declaration consumers must not enumerate/enrich callers just to obtain symbol identity.
+        if (declarationOnly) return base(cls,selected,kotlinDeclaration).toString();
         return "FIELD".equals(normalizedKind)
                 ? fieldUsages(reader, cls, selected, normalizedAccess, limit, offset)
                 : methodUsages(reader, cls, selected, kotlinDeclaration, limit, offset);

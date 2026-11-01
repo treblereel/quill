@@ -61,6 +61,10 @@
     "allPublicFields": true
   },
   {
+    "name": "org.eclipse.jgit.submodule.SubmoduleWalk$IgnoreSubmoduleMode",
+    "methods": [{"name": "values", "parameterTypes": []}]
+  },
+  {
     "name": "org.eclipse.jgit.dircache.DirCache$DirCacheVersion",
     "methods": [
       {

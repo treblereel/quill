@@ -299,21 +299,25 @@ for added and removed repositories, and `workspace clear` removes only entries m
 workspace. Use `workspace clear --repositories` when indexes and build integration should also be
 removed.
 
-Both `quill init` and `quill workspace init` offer one interactive consent question to
-let Claude use Quill's current read-only MCP tools without repeated tool-approval prompts.
-For scripts, pass `--allow-quill-tools` explicitly; without a terminal no permissions are
-granted automatically. Use `--no-allow-quill-tools` to skip the question (it does not revoke
-existing permissions). `--allow-quill-tools` cannot be combined with `--index-only`.
-Workspace consent covers the workspace root and its discovered JVM repositories.
+Both `quill init` and `quill workspace init` configure Claude's current read-only Quill
+tool permissions by default, including non-interactive runs. Use `--no-allow-quill-tools`
+to skip these grants (it does not revoke existing permissions); `--allow-quill-tools`
+remains an explicit equivalent of the default. `--index-only` never grants permissions
+and cannot be combined with explicit `--allow-quill-tools`.
+Workspace initialization covers the workspace root and its discovered JVM repositories.
 
-Consent adds concrete tool names derived from Quill's read-only contracts to each target's
+Initialization adds concrete tool names derived from Quill's read-only contracts to each target's
 `.claude/settings.local.json`, not global or shared permission settings. There is no wildcard
 grant for future tools. Existing rules, including `ask` and `deny`, are preserved and remain
-authoritative. New tools require renewed consent on a later `init`. Ownership is recorded in
+authoritative. Later `init` runs add newly available read-only tools. Ownership is recorded in
 `.claude/quill-permissions.json`; keep that local receipt with the settings, and do not commit
 it. `quill clean` / `workspace clear` remove only permissions Quill added, preserving pre-existing
 rules. Claude's workspace trust and MCP connection approval are separate client checks;
-this option does not bypass them or change Codex permissions.
+this option does not bypass them. Codex registrations created by Quill use
+`default_tools_approval_mode = "writes"`, allowing tools marked read-only without repeated
+approval while retaining prompts for other tools. Existing explicit server approval modes
+are preserved; user-owned project registrations are not overwritten. No global approval,
+shell permission, or sandbox setting is changed.
 
 Manage that choice later without re-indexing, rebuilding, or removing the MCP server:
 
@@ -334,7 +338,7 @@ quill client refresh --workspace /path/to/initialized/workspace
 ```
 
 Refresh preserves content outside Quill's managed instruction blocks, other MCP servers,
-and existing tool permissions. It never indexes, builds, grants tool permissions, or changes
+and existing Claude tool permissions. It never indexes, builds, grants Claude tool permissions, or changes
 global Codex trust. Workspace refresh uses the recorded configured repositories, not discovery.
 Malformed managed markers, unsupported configuration, and symlinked targets require repair
 before refresh. Unmarked legacy instructions are preserved, not silently deleted.
@@ -378,8 +382,16 @@ Once indexed, Quill exposes these tools via MCP:
 Every tool result includes native MCP `structuredContent` and an advertised object
 `outputSchema`. Quill does not duplicate the JSON payload as text content.
 
-The default `--tools full` profile exposes the complete catalog. To reduce the initial
-`tools/list` context for smaller local models, select `router`, `core`, `code`, `di`, or `git`:
+Method queries accept a full indexed signature, a JVM descriptor, or a parameter-only
+selector such as `(java.lang.String, int[])`. Parentheses and a matching method name
+are optional for parameter selectors (`accept(java.lang.String, int[])` or
+`java.lang.String, int[]`). Use exact erased qualified types; short type names
+and parameter variable names are not guessed. Ambiguous declarations still require
+an exact signature or JVM descriptor.
+
+The default `--tools compact` profile exposes eight common queries, including `get_context`,
+plus overview and router fallback. Use `--tools full` for the complete initial catalog,
+or choose `router`, `core`, `code`, `di`, or `git`:
 
 ```bash
 quill --mcp --project /path/to/project --tools core
@@ -648,9 +660,9 @@ Responses omit values a client can derive, so read absent fields by these rules:
   only separates equal class names declared in different source files. v2 ids are still
   accepted as input.
 - **Shared evidence fields** are stated once per response: `source_evidence_defaults`
-  (`basis`, `scope`, never-proven flags) for every `source_evidence`, and
-  `limitation_texts` for the limitation keys (`L1`, `L2`, ...) listed on each injection point
-  in `list_injection_points`.
+  (`basis`, `scope`, never-proven flags) for every `source_evidence`, and, in
+  `list_injection_points`, `resolution_context` for the limitations and applied or
+  unsupported rules that every injection point shares (per-point lists keep only the rest).
 - **Source locations** corroborated by the compiler carry `excerpt`, the referencing source
   line (bounded, up to 50 per response), when the file still matches the indexed hash.
 - **Call edges** omit `edge_kind` and `execution_semantics` for ordinary calls; the values
@@ -665,7 +677,7 @@ Responses omit values a client can derive, so read absent fields by these rules:
   the router profile, without searching the catalog. The overview also lists
   `project.auxiliary_build_projects`: separate Maven/Gradle builds in the repository that
   are not part of the indexed modules.
-- **Annotation values.** The index (schema 32) keeps explicitly written annotation members
+- **Annotation values.** The index (schema 33) keeps explicitly written annotation members
   (strings, numbers, booleans, enum names, class names, arrays of those) for classes,
   members and parameters; `find_annotated_symbols` returns them in `values`. When the
   annotation type is indexed (application or dependency JARs) its declared defaults are
@@ -690,8 +702,10 @@ Bean and injection evidence follows CDI and Spring semantics more closely:
 - Points resolved to a `@RequestScoped`, `@SessionScoped` or `@ConversationScoped` bean carry
   `context_requirement` with `async_availability: "unproven"`: static analysis cannot prove
   that asynchronous code has the context active.
-- Unresolved injection points list `dependency_candidates`: beans of the required type declared
-  in dependency JARs (for example framework producers), with artifact, scope and qualifiers.
+- Unresolved injection points carry `provider_evidence`: up to five beans of the required type
+  declared in dependency JARs (for example framework producers), with artifact, scope,
+  qualifiers, profiles and whether the qualifier names match. It is declaration evidence,
+  not proof of runtime resolution.
 - Container-provided beans (`Event`, `Instance`, `Provider`, `InjectionPoint`,
   `BeanManager`, ...) resolve with status `RESOLVED`, reason `BUILTIN_BEAN` and no bean id.
 
@@ -796,6 +810,8 @@ Alternatively, add a project-scoped entry to `.codex/config.toml`:
 
 ```toml
 [mcp_servers.quill]
+enabled = true
+default_tools_approval_mode = "writes"
 command = "/absolute/path/to/quill"
 args = ["--mcp"]
 cwd = "/absolute/path/to/project"
@@ -1170,9 +1186,18 @@ The build produces a thin library JAR and a runnable shaded `-all.jar` for devel
 and diagnostics. Keeping them separate makes repeated Maven builds reproducible and
 avoids shading an already shaded artifact. Quill releases are distributed as native
 executables, so end-user MCP configuration should point to `quill` or `quill.exe`.
-The independently versioned Maven build extension is verified with
-`./mvnw -f quill-maven-extension/pom.xml verify`; it is intentionally outside the
-Quill reactor so only that artifact can be published to Maven Central.
+The independently versioned Maven build extension is intentionally outside the Quill
+reactor. This development branch uses the unpublished `0.1.6-SNAPSHOT`; install it locally
+before the first Quill build (also before using this native candidate on another machine):
+
+```bash
+mvn -Dmaven.multiModuleProjectDirectory="$PWD/quill-maven-extension" -f quill-maven-extension/pom.xml install
+```
+
+The explicit multi-module directory bootstraps the standalone extension without loading
+the repository's `.mvn/extensions.xml`, which already requests the new version.
+Use `verify` instead of `install` for subsequent isolated extension checks. Publishing
+that artifact to Maven Central is a separate release action.
 
 ### Native executable
 
@@ -1212,3 +1237,92 @@ download verification.
 ## License
 
 Quill is licensed under the [Apache License 2.0](LICENSE).
+
+### Cumulative CDI and source-context implementation
+
+CDI qualifier identity preserves its qualified annotation name, binding member values
+and defaults, ignoring `@Nonbinding`. `@Typed`, `Object`, array types and primitive/wrapper
+assignment are preserved; different generic arguments are not collapsed into a raw match.
+Profile filters include unconditional beans and exclusions. Producer and declaring-bean
+conditions combine; `+profile` means required, `!profile` means excluded. Static injection
+selection reports `CONTEXT_REQUIRED` if a build profile is needed. Quarkus producer discovery
+requires a successful, fresh, module-owned compiler capture with Quarkus plugin/ArC evidence.
+
+`get_context` accepts `Class#method(qualified.Types)` and returns complete bounded Java
+method source only with an exact compiler declaration, matching indexed source hash,
+and valid project boundary. Missing, changed, oversized or unsupported source has an explicit
+status; no approximate line window is returned. `find_framework_endpoints` uses `path` for
+the route prefix. Argument errors list accepted names without requiring another catalog lookup.
+
+### Framework provider evidence
+
+`list_beans` resolves an exact class first, then the provided bean type when no
+declaration class matches. Short names do not match unrelated class suffixes;
+explicit wildcards remain available. Scope, qualifier, profile and origin filters
+are retained. Unknown injection points expose bounded dependency declarations,
+producer member/scope/artifact and qualifier-name matches without promoting them
+to a proven CDI/runtime selection. A configuration-mapping annotation alone does
+not prove the generated bean scope. Endpoint prefetch reuses this same evidence.
+
+### Declared configuration evidence
+
+`find_configuration_references` keeps its no-source `index` default. Explicit
+`view="declared"` adds current source hashes, indexed key/line validation, file/key
+profile conditions and bounded literal boolean/number/duration declarations.
+Declared view also includes bounded exact-field bytecode read sites (methods,
+descriptors and line tables), plus captured static-final String aliases of the
+shown keys. Constant equality does not prove source binding; declaration lines
+not present in the index remain unknown. Java field-read source windows add
+current indexed-hash-validated neighbouring lines, merge overlaps and expose
+truncation; bounds apply per declared-configuration packet. Windows do not
+claim complete methods, branch paths or bytecode/source identity. No compiler
+is started by this packet.
+Values are never indexed. Expressions, sensitive keys and opaque strings are
+not emitted; no environment/system values are read or effective runtime values
+claimed. At most12definitions in5files per page receive source evidence.
+Profiled definitions link to their base consumers without selecting a runtime
+winner. Captured application `QuarkusTestProfile#getConfigOverrides()` literal maps
+are also indexed as test-only declarations, including inherited bodies. Declared
+view verifies source and bytecode hashes; dynamic/unsupported bodies and profile
+activation remain unknown. Test declarations never resolve production defaults.
+Index schema31 requires reindexing older projects. Endpoint prefetch limits configuration candidates to directly indexed
+owned-field/programmatic reads, excluding sibling-member settings.
+
+### Generic prefetch and long sessions
+
+An explicit `Class#method(qualified.Types)` also supplies a compact direct-impact packet:
+production callers, direct test references, overrides, interface contracts and scoped counts.
+The same packet is available through `get_context(view="impact")`. References are static,
+not runtime test coverage; pagination, missing supertypes and unclassified callers keep
+incompleteness explicit. Full dispatch/source evidence remains available on demand.
+
+
+Native project initialization and `client refresh --project` install project-local
+`UserPromptSubmit` and `SessionStart` hooks in `.codex/hooks.json` and `.claude/settings.json`.
+Existing handlers, permissions and host trust settings are preserved. In Codex, trust the
+project and review new or changed hooks in `/hooks` before they can run. Initialization
+does not grant that trust. The `prefetch --project` helper reads an existing
+index; it never starts MCP, builds, initializes a project or calls a language model.
+It looks up literal indexed identifiers or exact HTTP method/path operations, not question
+templates. Identifier lookup emits at most three verified class declaration cards. HTTP
+lookup provides the handler declaration and bounded direct-callee DI/configuration evidence;
+its source range may use captured javac settings for read-only semantic analysis. Callee
+bodies remain available on demand and configuration values are not indexed. The selected
+operation is retained for follow-ups without literal identifiers; unchanged context is
+suppressed, not retransmitted on every turn. Ambiguous routes and stale/source-hash failures
+remain explicit. DI uses the indexed default context rather than guessing a runtime profile. New sessions, `/clear`, compaction, forks and new index generations
+invalidate delivery state. Workspace-wide automatic prefetch is not installed; use explicit
+repository contexts or normal workspace MCP queries.
+
+Expired worktree snapshots refresh synchronously. Every public project query refreshes live
+worktree evidence before reading its immutable index generation. Schema v30 requires reindexing
+older semantic generations rather than silently reusing pre-fix CDI/qualifier data.
+
+Gitlinks are discovered read-only, including nested and uninitialized submodules. Workspace
+mode indexes initialized submodule repositories independently, including explicit gitlinks beyond
+directory discovery depth. Parent indexes do not absorb compiled outputs from another Git repository.
+Submodule HEAD and structural changes participate in parent freshness; documentation-only changes
+remain dirty without marking structural evidence stale. Quill never clones, fetches or updates a
+submodule checkout. Initialize/build it explicitly first, then use normal project `init`/`update`
+or workspace discovery. Nested traversal beyond eight levels reports a limit rather than claiming
+complete worktree evidence.

@@ -71,6 +71,23 @@ public final class WorkspaceDiscovery {
                     + safeMessage(failure));
         }
 
+        // Explicit Git links are independent repositories even beyond ordinary directory discovery depth.
+        Set<Path> visited=new HashSet<>();List<Path> queue=new ArrayList<>(roots);
+        if(isGitRepository(workspaceRoot) && !queue.contains(workspaceRoot))queue.add(workspaceRoot);
+        for(int cursor=0;cursor<queue.size();cursor++) {
+            Path parent=queue.get(cursor);
+            try {if(!visited.add(parent.toRealPath()))continue;}catch(IOException unavailable){continue;}
+            for(var module:org.treblereel.mcp.core.SubmoduleInventory.read(parent)) {
+                if(!module.initialized()){diagnostics.add("Submodule "+parent.resolve(module.path())+": "+module.status()+"; initialize/build it explicitly");continue;}
+                Path child=parent.resolve(module.path()).normalize();
+                try {
+                    if(!child.toRealPath().startsWith(workspaceRoot.toRealPath()) || child.toRealPath().equals(parent.toRealPath()))continue;
+                    if(!roots.contains(child))roots.add(child);
+                    if(!visited.contains(child.toRealPath()))queue.add(child);
+                }catch(IOException unavailable){diagnostics.add("Submodule unavailable: "+child);}
+            }
+        }
+
         roots.sort(Comparator.comparing(path -> normalize(workspaceRoot.relativize(path))));
         List<Repository> repositories = new ArrayList<>();
         Set<String> names = new HashSet<>();
@@ -95,6 +112,7 @@ public final class WorkspaceDiscovery {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             for (Repository repository : repositories) {
                 update(digest, repository.relativePath());
+                update(digest, String.valueOf(org.treblereel.mcp.core.GitAnalyzer.resolveHead(repository.root())));
                 Path git = repository.root().resolve(".git");
                 updateIdentity(digest, git);
                 for (String buildFile : BUILD_FILES) {

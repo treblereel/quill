@@ -218,6 +218,11 @@ final class CallHierarchyQueries {
             edge.put("occurrence_count", call.occurrenceCount());
             edge.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
             ClassRecord callee = callees.computeIfAbsent(call.toClassId(), id -> reader.symbols.findClassById(id).orElse(null));
+            ClassRecord caller = callees.computeIfAbsent(call.fromClassId(), id -> reader.symbols.findClassById(id).orElse(null));
+            if(callee!=null) ((ObjectNode)edge.get("callee")).put("symbol_id",SymbolContract.id(callee,
+                    "<init>".equals(call.toMethod()) ? "CONSTRUCTOR" : "METHOD",call.toMethod(),call.toDescriptor()));
+            if(caller!=null) ((ObjectNode)edge.get("caller")).put("symbol_id",SymbolContract.id(caller,
+                    "<init>".equals(call.fromMethod()) ? "CONSTRUCTOR" : "METHOD",call.fromMethod(),call.fromDescriptor()));
             if (callee != null) javaLocations.append(edge, call.fromSource(), call.fromClass(), call.fromMethod(), call.fromDescriptor(),
                     call.toClass(), call.toMethod(), call.toDescriptor(), "call", SymbolContract.id(callee,
                             "<init>".equals(call.toMethod()) ? "CONSTRUCTOR" : "METHOD", call.toMethod(), call.toDescriptor()), call.evidenceLines());

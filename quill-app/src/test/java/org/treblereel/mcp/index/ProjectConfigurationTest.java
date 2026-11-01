@@ -24,8 +24,8 @@ class ProjectConfigurationTest {
         String installed = Files.readString(claude);
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectClaudeMd(root));
-        assertTrue(installed.contains("call `get_overview`"));
-        assertTrue(installed.contains("discover only `get_overview`"));
+        assertTrue(installed.contains("query the relevant tool directly"));
+        assertTrue(installed.contains("not a prerequisite for other queries"));
         assertTrue(installed.contains("do not enumerate or print the entire tool catalog"));
         assertTrue(installed.contains("single-project or unknown mode"));
         assertTrue(installed.contains("`retry_with`"));
@@ -40,12 +40,14 @@ class ProjectConfigurationTest {
         assertEquals(1, occurrences(installed, "<!-- quill:managed:start -->"));
 
         Files.writeString(claude, installed.replace(
-                "call `get_overview`", "obsolete instructions"));
+                "query the relevant tool directly", "obsolete instructions"));
+        assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
+                ProjectConfiguration.inspectClaudeMd(root));
         ProjectConfiguration.ensureClaudeMd(root);
 
         String refreshed = Files.readString(claude);
         assertTrue(refreshed.startsWith("# User instructions\n"));
-        assertTrue(refreshed.contains("call `get_overview`"));
+        assertTrue(refreshed.contains("query the relevant tool directly"));
         assertFalse(refreshed.contains("obsolete instructions"));
         assertEquals(1, occurrences(refreshed, "<!-- quill:managed:start -->"));
     }
@@ -79,7 +81,7 @@ class ProjectConfigurationTest {
         assertTrue(installed.contains("Tool discovery is not MCP resource discovery"));
         assertTrue(installed.startsWith("# User instructions\n"));
         assertTrue(installed.contains("`mcp__quill__get_overview`"));
-        assertTrue(installed.contains("discover only `mcp__quill__get_overview` by exact"));
+        assertTrue(installed.contains("query the relevant tool directly"));
         assertTrue(installed.contains("do not enumerate or print the entire tool catalog"));
         assertTrue(installed.contains("A repository described as a workspace does not imply"));
         assertTrue(installed.contains("`WORKSPACE_MODE_REQUIRED`"));
@@ -118,7 +120,7 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(refreshed.contains("# User instructions"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v3 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v4 -->"));
         assertFalse(refreshed.contains("Old guidance."));
     }
 

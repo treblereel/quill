@@ -56,7 +56,7 @@ class AdvancedCdiTest {
         var producerBean = beans.stream()
                 .filter(b -> "PRODUCER_METHOD".equals(b.kind()))
                 .findFirst().orElseThrow();
-        assertTrue(producerBean.qualifiers().contains("@Cached"),
+        assertTrue(org.treblereel.mcp.db.BeanRepository.matchesQualifier(producerBean.qualifiers(), "@Cached"),
                 "Producer bean should carry @Cached qualifier");
         assertNotNull(producerBean.declaringClassId(),
                 "Producer bean should reference declaring class");
@@ -73,7 +73,7 @@ class AdvancedCdiTest {
         assertEquals(2, ips.size(), "ProductService should have 2 injection points");
 
         var qualifiedIp = ips.stream()
-                .filter(ip -> ip.qualifiers().contains("@Cached"))
+                .filter(ip -> org.treblereel.mcp.db.BeanRepository.matchesQualifier(ip.qualifiers(), "@Cached"))
                 .findFirst();
         assertTrue(qualifiedIp.isPresent(), "Should have injection point with @Cached qualifier");
         assertNotNull(qualifiedIp.get().resolvedBeanId(),

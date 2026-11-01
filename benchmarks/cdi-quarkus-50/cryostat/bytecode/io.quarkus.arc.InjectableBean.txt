@@ -1,0 +1,446 @@
+Classfile jar:file:///Users/treblereel/.m2/repository/io/quarkus/arc/arc/3.40.1.1/arc-3.40.1.1.jar!/io/quarkus/arc/InjectableBean.class
+  Last modified Oct 19, 2026; size 3832 bytes
+  SHA-256 checksum 370fcc64a7a2946c56ae6d1185260ae4f15774055b808c67e86439345a02f973
+  Compiled from "InjectableBean.java"
+public interface io.quarkus.arc.InjectableBean<T extends java.lang.Object> extends jakarta.enterprise.inject.spi.Bean<T>, io.quarkus.arc.InjectableReferenceProvider<T>
+  minor version: 0
+  major version: 61
+  flags: (0x0601) ACC_PUBLIC, ACC_INTERFACE, ACC_ABSTRACT
+  this_class: #2                          // io/quarkus/arc/InjectableBean
+  super_class: #5                         // java/lang/Object
+  interfaces: 2, fields: 0, methods: 19, attributes: 4
+Constant pool:
+    #1 = Utf8               io/quarkus/arc/InjectableBean
+    #2 = Class              #1            // io/quarkus/arc/InjectableBean
+    #3 = Utf8               <T:Ljava/lang/Object;>Ljava/lang/Object;Ljakarta/enterprise/inject/spi/Bean<TT;>;Lio/quarkus/arc/InjectableReferenceProvider<TT;>;
+    #4 = Utf8               java/lang/Object
+    #5 = Class              #4            // java/lang/Object
+    #6 = Utf8               jakarta/enterprise/inject/spi/Bean
+    #7 = Class              #6            // jakarta/enterprise/inject/spi/Bean
+    #8 = Utf8               io/quarkus/arc/InjectableReferenceProvider
+    #9 = Class              #8            // io/quarkus/arc/InjectableReferenceProvider
+   #10 = Utf8               InjectableBean.java
+   #11 = Utf8               io/quarkus/arc/InjectableBean$Kind
+   #12 = Class              #11           // io/quarkus/arc/InjectableBean$Kind
+   #13 = Utf8               Kind
+   #14 = Utf8               getIdentifier
+   #15 = Utf8               ()Ljava/lang/String;
+   #16 = Utf8               getKind
+   #17 = Utf8               ()Lio/quarkus/arc/InjectableBean$Kind;
+   #18 = Utf8               CLASS
+   #19 = Utf8               Lio/quarkus/arc/InjectableBean$Kind;
+   #20 = NameAndType        #18:#19       // CLASS:Lio/quarkus/arc/InjectableBean$Kind;
+   #21 = Fieldref           #12.#20       // io/quarkus/arc/InjectableBean$Kind.CLASS:Lio/quarkus/arc/InjectableBean$Kind;
+   #22 = Utf8               this
+   #23 = Utf8               Lio/quarkus/arc/InjectableBean<TT;>;
+   #24 = Utf8               Lio/quarkus/arc/InjectableBean;
+   #25 = Utf8               getScope
+   #26 = Utf8               ()Ljava/lang/Class;
+   #27 = Utf8               ()Ljava/lang/Class<+Ljava/lang/annotation/Annotation;>;
+   #28 = Utf8               jakarta/enterprise/context/Dependent
+   #29 = Class              #28           // jakarta/enterprise/context/Dependent
+   #30 = Utf8               getTypes
+   #31 = Utf8               ()Ljava/util/Set;
+   #32 = Utf8               ()Ljava/util/Set<Ljava/lang/reflect/Type;>;
+   #33 = Utf8               getQualifiers
+   #34 = Utf8               ()Ljava/util/Set<Ljava/lang/annotation/Annotation;>;
+   #35 = Utf8               io/quarkus/arc/impl/Qualifiers
+   #36 = Class              #35           // io/quarkus/arc/impl/Qualifiers
+   #37 = Utf8               DEFAULT_QUALIFIERS
+   #38 = Utf8               Ljava/util/Set;
+   #39 = NameAndType        #37:#38       // DEFAULT_QUALIFIERS:Ljava/util/Set;
+   #40 = Fieldref           #36.#39       // io/quarkus/arc/impl/Qualifiers.DEFAULT_QUALIFIERS:Ljava/util/Set;
+   #41 = Utf8               destroy
+   #42 = Utf8               (Ljava/lang/Object;Ljakarta/enterprise/context/spi/CreationalContext;)V
+   #43 = Utf8               (TT;Ljakarta/enterprise/context/spi/CreationalContext<TT;>;)V
+   #44 = Utf8               instance
+   #45 = Utf8               creationalContext
+   #46 = Utf8               jakarta/enterprise/context/spi/CreationalContext
+   #47 = Class              #46           // jakarta/enterprise/context/spi/CreationalContext
+   #48 = Utf8               release
+   #49 = Utf8               ()V
+   #50 = NameAndType        #48:#49       // release:()V
+   #51 = InterfaceMethodref #47.#50       // jakarta/enterprise/context/spi/CreationalContext.release:()V
+   #52 = Utf8               TT;
+   #53 = Utf8               Ljava/lang/Object;
+   #54 = Utf8               Ljakarta/enterprise/context/spi/CreationalContext<TT;>;
+   #55 = Utf8               Ljakarta/enterprise/context/spi/CreationalContext;
+   #56 = Utf8               getDeclaringBean
+   #57 = Utf8               ()Lio/quarkus/arc/InjectableBean;
+   #58 = Utf8               ()Lio/quarkus/arc/InjectableBean<*>;
+   #59 = Utf8               getName
+   #60 = Utf8               getStereotypes
+   #61 = Utf8               ()Ljava/util/Set<Ljava/lang/Class<+Ljava/lang/annotation/Annotation;>;>;
+   #62 = Utf8               java/util/Collections
+   #63 = Class              #62           // java/util/Collections
+   #64 = Utf8               emptySet
+   #65 = NameAndType        #64:#31       // emptySet:()Ljava/util/Set;
+   #66 = Methodref          #63.#65       // java/util/Collections.emptySet:()Ljava/util/Set;
+   #67 = Utf8               getInjectionPoints
+   #68 = Utf8               ()Ljava/util/Set<Ljakarta/enterprise/inject/spi/InjectionPoint;>;
+   #69 = Utf8               isAlternative
+   #70 = Utf8               ()Z
+   #71 = Utf8               getAlternativePriority
+   #72 = Utf8               ()Ljava/lang/Integer;
+   #73 = NameAndType        #69:#70       // isAlternative:()Z
+   #74 = InterfaceMethodref #2.#73        // io/quarkus/arc/InjectableBean.isAlternative:()Z
+   #75 = Utf8               getPriority
+   #76 = Utf8               ()I
+   #77 = NameAndType        #75:#76       // getPriority:()I
+   #78 = InterfaceMethodref #2.#77        // io/quarkus/arc/InjectableBean.getPriority:()I
+   #79 = Utf8               java/lang/Integer
+   #80 = Class              #79           // java/lang/Integer
+   #81 = Utf8               valueOf
+   #82 = Utf8               (I)Ljava/lang/Integer;
+   #83 = NameAndType        #81:#82       // valueOf:(I)Ljava/lang/Integer;
+   #84 = Methodref          #80.#83       // java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+   #85 = Utf8               isDefaultBean
+   #86 = Utf8               isSuppressed
+   #87 = Utf8               hasPriority
+   #88 = Utf8               getImplementationClass
+   #89 = Utf8               ()Ljava/lang/Class<*>;
+   #90 = Utf8               getBeanClass
+   #91 = NameAndType        #90:#26       // getBeanClass:()Ljava/lang/Class;
+   #92 = InterfaceMethodref #2.#91        // io/quarkus/arc/InjectableBean.getBeanClass:()Ljava/lang/Class;
+   #93 = Utf8               isActive
+   #94 = Utf8               checkActive
+   #95 = Utf8               ()Lio/quarkus/arc/ActiveResult;
+   #96 = NameAndType        #94:#95       // checkActive:()Lio/quarkus/arc/ActiveResult;
+   #97 = InterfaceMethodref #2.#96        // io/quarkus/arc/InjectableBean.checkActive:()Lio/quarkus/arc/ActiveResult;
+   #98 = Utf8               io/quarkus/arc/ActiveResult
+   #99 = Class              #98           // io/quarkus/arc/ActiveResult
+  #100 = Utf8               value
+  #101 = NameAndType        #100:#70      // value:()Z
+  #102 = Methodref          #99.#101      // io/quarkus/arc/ActiveResult.value:()Z
+  #103 = Utf8               active
+  #104 = NameAndType        #103:#95      // active:()Lio/quarkus/arc/ActiveResult;
+  #105 = Methodref          #99.#104      // io/quarkus/arc/ActiveResult.active:()Lio/quarkus/arc/ActiveResult;
+  #106 = Utf8               Code
+  #107 = Utf8               LineNumberTable
+  #108 = Utf8               LocalVariableTable
+  #109 = Utf8               LocalVariableTypeTable
+  #110 = Utf8               Signature
+  #111 = Utf8               MethodParameters
+  #112 = Utf8               StackMapTable
+  #113 = Utf8               InnerClasses
+  #114 = Utf8               SourceFile
+  #115 = Utf8               NestMembers
+{
+  public abstract java.lang.String getIdentifier();
+    descriptor: ()Ljava/lang/String;
+    flags: (0x0401) ACC_PUBLIC, ACC_ABSTRACT
+
+  public default io.quarkus.arc.InjectableBean$Kind getKind();
+    descriptor: ()Lio/quarkus/arc/InjectableBean$Kind;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: getstatic     #21                 // Field io/quarkus/arc/InjectableBean$Kind.CLASS:Lio/quarkus/arc/InjectableBean$Kind;
+         3: areturn
+      LineNumberTable:
+        line 39: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       4     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       4     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+
+  public default java.lang.Class<? extends java.lang.annotation.Annotation> getScope();
+    descriptor: ()Ljava/lang/Class;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: ldc           #29                 // class jakarta/enterprise/context/Dependent
+         2: areturn
+      LineNumberTable:
+        line 48: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       3     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       3     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+    Signature: #27                          // ()Ljava/lang/Class<+Ljava/lang/annotation/Annotation;>;
+
+  public abstract java.util.Set<java.lang.reflect.Type> getTypes();
+    descriptor: ()Ljava/util/Set;
+    flags: (0x0401) ACC_PUBLIC, ACC_ABSTRACT
+    Signature: #32                          // ()Ljava/util/Set<Ljava/lang/reflect/Type;>;
+
+  public default java.util.Set<java.lang.annotation.Annotation> getQualifiers();
+    descriptor: ()Ljava/util/Set;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: getstatic     #40                 // Field io/quarkus/arc/impl/Qualifiers.DEFAULT_QUALIFIERS:Ljava/util/Set;
+         3: areturn
+      LineNumberTable:
+        line 64: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       4     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       4     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+    Signature: #34                          // ()Ljava/util/Set<Ljava/lang/annotation/Annotation;>;
+
+  public default void destroy(T, jakarta.enterprise.context.spi.CreationalContext<T>);
+    descriptor: (Ljava/lang/Object;Ljakarta/enterprise/context/spi/CreationalContext;)V
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=3, args_size=3
+         0: aload_2
+         1: invokeinterface #51,  1           // InterfaceMethod jakarta/enterprise/context/spi/CreationalContext.release:()V
+         6: return
+      LineNumberTable:
+        line 69: 0
+        line 70: 6
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       7     0  this   Lio/quarkus/arc/InjectableBean;
+            0       7     1 instance   Ljava/lang/Object;
+            0       7     2 creationalContext   Ljakarta/enterprise/context/spi/CreationalContext;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       7     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+            0       7     1 instance   TT;
+            0       7     2 creationalContext   Ljakarta/enterprise/context/spi/CreationalContext<TT;>;
+    Signature: #43                          // (TT;Ljakarta/enterprise/context/spi/CreationalContext<TT;>;)V
+    MethodParameters:
+      Name                           Flags
+      instance
+      creationalContext
+
+  public default io.quarkus.arc.InjectableBean<?> getDeclaringBean();
+    descriptor: ()Lio/quarkus/arc/InjectableBean;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aconst_null
+         1: areturn
+      LineNumberTable:
+        line 77: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+    Signature: #58                          // ()Lio/quarkus/arc/InjectableBean<*>;
+
+  public default java.lang.String getName();
+    descriptor: ()Ljava/lang/String;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aconst_null
+         1: areturn
+      LineNumberTable:
+        line 82: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+
+  public default java.util.Set<java.lang.Class<? extends java.lang.annotation.Annotation>> getStereotypes();
+    descriptor: ()Ljava/util/Set;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: invokestatic  #66                 // Method java/util/Collections.emptySet:()Ljava/util/Set;
+         3: areturn
+      LineNumberTable:
+        line 87: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       4     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       4     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+    Signature: #61                          // ()Ljava/util/Set<Ljava/lang/Class<+Ljava/lang/annotation/Annotation;>;>;
+
+  public default java.util.Set<jakarta.enterprise.inject.spi.InjectionPoint> getInjectionPoints();
+    descriptor: ()Ljava/util/Set;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: invokestatic  #66                 // Method java/util/Collections.emptySet:()Ljava/util/Set;
+         3: areturn
+      LineNumberTable:
+        line 100: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       4     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       4     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+    Signature: #68                          // ()Ljava/util/Set<Ljakarta/enterprise/inject/spi/InjectionPoint;>;
+
+  public default boolean isAlternative();
+    descriptor: ()Z
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iconst_0
+         1: ireturn
+      LineNumberTable:
+        line 105: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+
+  public default java.lang.Integer getAlternativePriority();
+    descriptor: ()Ljava/lang/Integer;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: invokeinterface #74,  1           // InterfaceMethod isAlternative:()Z
+         6: ifeq          21
+         9: aload_0
+        10: invokeinterface #78,  1           // InterfaceMethod getPriority:()I
+        15: invokestatic  #84                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+        18: goto          22
+        21: aconst_null
+        22: areturn
+      StackMapTable: number_of_entries = 2
+        frame_type = 21 /* same */
+        frame_type = 64 /* same_locals_1_stack_item */
+          stack = [ class java/lang/Integer ]
+      LineNumberTable:
+        line 113: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      23     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0      23     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+
+  public default boolean isDefaultBean();
+    descriptor: ()Z
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iconst_0
+         1: ireturn
+      LineNumberTable:
+        line 120: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+
+  public default boolean isSuppressed();
+    descriptor: ()Z
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iconst_0
+         1: ireturn
+      LineNumberTable:
+        line 129: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+
+  public default boolean hasPriority();
+    descriptor: ()Z
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iconst_0
+         1: ireturn
+      LineNumberTable:
+        line 144: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+
+  public default int getPriority();
+    descriptor: ()I
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: iconst_0
+         1: ireturn
+      LineNumberTable:
+        line 160: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       2     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+
+  public default java.lang.Class<?> getImplementationClass();
+    descriptor: ()Ljava/lang/Class;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: invokeinterface #92,  1           // InterfaceMethod getBeanClass:()Ljava/lang/Class;
+         6: areturn
+      LineNumberTable:
+        line 177: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       7     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       7     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+    Signature: #89                          // ()Ljava/lang/Class<*>;
+
+  public default boolean isActive();
+    descriptor: ()Z
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: aload_0
+         1: invokeinterface #97,  1           // InterfaceMethod checkActive:()Lio/quarkus/arc/ActiveResult;
+         6: invokevirtual #102                // Method io/quarkus/arc/ActiveResult.value:()Z
+         9: ireturn
+      LineNumberTable:
+        line 186: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0      10     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0      10     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+
+  public default io.quarkus.arc.ActiveResult checkActive();
+    descriptor: ()Lio/quarkus/arc/ActiveResult;
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=1, locals=1, args_size=1
+         0: invokestatic  #105                // Method io/quarkus/arc/ActiveResult.active:()Lio/quarkus/arc/ActiveResult;
+         3: areturn
+      LineNumberTable:
+        line 197: 0
+      LocalVariableTable:
+        Start  Length  Slot  Name   Signature
+            0       4     0  this   Lio/quarkus/arc/InjectableBean;
+      LocalVariableTypeTable:
+        Start  Length  Slot  Name   Signature
+            0       4     0  this   Lio/quarkus/arc/InjectableBean<TT;>;
+}
+InnerClasses:
+  public static final #13= #12 of #2;     // Kind=class io/quarkus/arc/InjectableBean$Kind of class io/quarkus/arc/InjectableBean
+Signature: #3                           // <T:Ljava/lang/Object;>Ljava/lang/Object;Ljakarta/enterprise/inject/spi/Bean<TT;>;Lio/quarkus/arc/InjectableReferenceProvider<TT;>;
+SourceFile: "InjectableBean.java"
+NestMembers:
+  io/quarkus/arc/InjectableBean$Kind

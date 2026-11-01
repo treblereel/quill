@@ -243,8 +243,9 @@ class QuillToolsTest {
         var tools = new QuillTools();
         String result = tools.getBeans(jdbi, null, null, null, "dev", null);
         assertTrue(result.contains("AuditService"));
-        assertFalse(result.contains("OrderService"));
-        assertTrue(result.contains("\"total\":1"));
+        assertTrue(result.contains("OrderService"));
+        assertFalse(result.contains("StripePaymentService"));
+        assertTrue(result.contains("\"total\":2"));
     }
 
     @Test
@@ -290,6 +291,68 @@ class QuillToolsTest {
         assertEquals("constructor_call", usage.path("usage_kind").asText());
         assertEquals("CONSTRUCTS", usage.path("indexed_kind").asText());
         assertEquals(42, usage.path("evidence_lines").get(0).asInt());
+    }
+
+    @Test
+    void classUsagesExposeInvokedMembersWithoutMixingOverloadsOrCallbacks() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO dependencies(from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    VALUES (3, 1, 'CALLS', 6, '[11,12,20,21,22,30]'), (4, 1, 'CALLS', 1, '[40]'),
+                      (3, 1, 'CALLBACK_REFERENCE', 4, '[50]')""");
+            handle.execute("""
+                    INSERT INTO method_calls(from_class_id, from_method, from_descriptor,
+                      to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines)
+                    VALUES (3, 'a', '()V', 1, 'selected', '(I)V', 'virtual', 2, '[11,12]'),
+                      (3, 'b', '()V', 1, 'selected', '(I)V', 'virtual', 3, '[20,21,22]'),
+                      (3, 'c', '()V', 1, 'selected', '(Ljava/lang/String;)V', 'virtual', 1, '[30]'),
+                      (3, 'constructor', '()V', 1, '<init>', '()V', 'special', 1, '[35]'),
+                      (3, 'callback', '()V', 1, 'selected', '(I)V', 'dynamic', 4, '[50]'),
+                      (4, 'otherTarget', '()V', 2, 'notThisTarget', '()V', 'interface', 1, '[60]')""");
+        });
+        QuillTools tools = new QuillTools();
+        JsonNode first = JSON.readTree(tools.findUsages(jdbi, "OrderService", "method_call", null, 1, 0));
+        JsonNode second = JSON.readTree(tools.findUsages(jdbi, "OrderService", "method_call", null, 1, 1));
+        assertEquals(2, first.path("total").asInt());
+        assertTrue(first.path("has_more").asBoolean());
+        assertEquals("org.acme.AuditService", first.path("usages").get(0).path("class").asText());
+        assertFalse(first.path("usages").get(0).has("invoked_members"));
+        JsonNode usage = second.path("usages").get(0);
+        assertEquals("org.acme.StripePaymentService", usage.path("class").asText());
+        assertEquals(2, usage.path("invoked_member_groups").asInt());
+        assertFalse(usage.path("invoked_members_truncated").asBoolean());
+        assertEquals(2, usage.path("invoked_members").size());
+        assertEquals("(I)V", usage.path("invoked_members").get(0).path("descriptor").asText());
+        assertEquals(5, usage.path("invoked_members").get(0).path("instruction_occurrences").asLong());
+        assertEquals("virtual", usage.path("invoked_members").get(0).path("invocation_kind").asText());
+        assertEquals("(Ljava/lang/String;)V", usage.path("invoked_members").get(1).path("descriptor").asText());
+        JsonNode callback = JSON.readTree(tools.findUsages(jdbi, "OrderService", "callback_reference", null, 10, 0));
+        assertFalse(callback.path("usages").get(0).has("invoked_members"));
+        assertTrue(org.treblereel.mcp.db.IndexReader.findInvokedMembers(jdbi, 1, List.of()).isEmpty());
+        var batches = org.treblereel.mcp.db.IndexReader.findInvokedMembers(jdbi, 1,
+                java.util.stream.IntStream.range(1, 1200).boxed().toList());
+        assertEquals(2, batches.get(3).size());
+    }
+
+    @Test
+    void classUsageInvokedMemberDetailsAreBoundedAndExplicitlyTruncated() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO dependencies(from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    VALUES (3, 1, 'CALLS', 40, '[]')""");
+            for (int index = 0; index < 40; index++) {
+                handle.execute("""
+                        INSERT INTO method_calls(from_class_id, from_method, from_descriptor,
+                          to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines)
+                        VALUES (3, 'run', '()V', 1, ?, '()V', 'static', 1, '[]')""", "m" + index);
+            }
+        });
+        JsonNode result = JSON.readTree(new QuillTools().findUsages(
+                jdbi, "OrderService", "method_call", null, 10, 0));
+        JsonNode usage = result.path("usages").get(0);
+        assertEquals(40, usage.path("invoked_member_groups").asInt());
+        assertEquals(32, usage.path("invoked_members").size());
+        assertTrue(usage.path("invoked_members_truncated").asBoolean());
     }
 
     @Test
@@ -638,6 +701,51 @@ class QuillToolsTest {
             assertEquals("src/main/java/org/acme/OrderService.java",
                     result.path("requested_targets").get(0).asText());
             assertEquals(1, result.path("resolved_target_count").asInt());
+        }
+    }
+
+    @Test
+    void workflowInfersJvmTargetsBeyondPublicStatusPage() throws Exception {
+        writeMinimalPom();
+        Path source = tempDir.resolve("src/main/java/org/acme/OrderService.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package org.acme; class OrderService {}\n");
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
+                    .setSign(false).call();
+            Path notes = Files.createDirectories(tempDir.resolve("a-evidence"));
+            for (int i = 0; i < 150; i++) {
+                Files.writeString(notes.resolve("note-%03d.md".formatted(i)), "unrelated");
+            }
+            Files.writeString(source, "package org.acme; class OrderService { void changed() {} }\n");
+            QuillTools tools = new QuillTools();
+            JsonNode page = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new WorktreeStatusQueries()
+                    .getFreshWorktreeStatus(readScope, tempDir, null, 10, 0)));
+            assertEquals(10, page.path("showing").asInt());
+            assertTrue(page.path("has_more").asBoolean());
+            JsonNode verified = JSON.readTree(tools.verifyChange(jdbi, tempDir, List.of(), 10));
+            JsonNode session = JSON.readTree(tools.changeSession(jdbi, tempDir, List.of(),
+                    "Change method", 10));
+            assertEquals(1, verified.path("inferred_target_count").asInt());
+            assertFalse(verified.path("worktree").path("has_more").asBoolean());
+            assertEquals("src/main/java/org/acme/OrderService.java",
+                    verified.path("requested_targets").get(0).asText());
+            assertEquals(verified.path("requested_targets"), session.path("requested_targets"));
+            assertFalse(session.path("verification").path("worktree").path("has_more").asBoolean());
+            ObjectNode context = (ObjectNode) JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ContextQueries()
+                    .getContext(readScope, List.of("OrderService"), false, 10)));
+            JsonNode withContext = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ChangeVerificationQueries().verifyChangeWithContext(
+                    readScope, tempDir, List.of("OrderService"), 10, context)));
+            assertFalse(withContext.path("worktree").path("has_more").asBoolean());
+            for (int i = 0; i < 10; i++) {
+                Files.writeString(source.resolveSibling("Unknown%d.java".formatted(i)),
+                        "package org.acme; class Unknown%d {}".formatted(i));
+            }
+            JsonNode tooMany = JSON.readTree(tools.changeSession(jdbi, tempDir, List.of(),
+                    "Change methods", 10));
+            assertTrue(tooMany.path("target_inference_truncated").asBoolean());
+            assertFalse(tooMany.path("verification_receipt").path("verified").asBoolean());
         }
     }
 
@@ -1022,6 +1130,11 @@ class QuillToolsTest {
         JsonNode result = JSON.readTree(new QuillTools().findImpactedTests(
                 jdbi, List.of("OrderService"), true, 3, 10, 0));
 
+        assertEquals("class", result.path("granularity").asText());
+        assertFalse(result.path("runtime_coverage_measured").asBoolean(true));
+        assertTrue(result.path("limitations").valueStream().map(JsonNode::asText)
+                .anyMatch(value -> value.contains("different member")
+                        && value.contains("does not establish method execution")));
         assertEquals(1, result.path("indexed_test_class_count").asInt());
         assertTrue(result.path("compiled_test_outputs_indexed").asBoolean());
         assertEquals(1, result.path("total").asInt());
@@ -1033,6 +1146,143 @@ class QuillToolsTest {
         assertEquals(List.of("org.acme.OrderService", "org.acme.OrderHelper",
                         "org.acme.OrderServiceTest"),
                 test.path("dependency_path").valueStream().map(JsonNode::asText).toList());
+    }
+
+    @Test
+    void methodTestImpactSeparatesExactReferencesFromClassRanking() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes(class_name, kind, superclass, interfaces, source_file,
+                      source_line, is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.OrderServiceTest', 'CLASS', 'java.lang.Object', '[]',
+                      'src/test/java/org/acme/OrderServiceTest.java', 1, 0, 50,
+                      'source', 'current', '.', 'test')""");
+            handle.execute("""
+                    INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                      type_name, parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'process', 'process(int):void', '(I)V',
+                      'void', '["int"]', 'public', '[]'),
+                      (1, 'METHOD', 'process', 'process(java.lang.String):void',
+                      '(Ljava/lang/String;)V', 'void', '["java.lang.String"]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls(from_class_id, from_method, from_descriptor,
+                      to_class_id, to_method, to_descriptor, invocation_kind,
+                      occurrence_count, evidence_lines)
+                    VALUES (3, 'first', '()V', 1, 'process', '(I)V', 'virtual', 3, '[11,12,13]'),
+                      (5, 'testProcess', '()V', 1, 'process', '(I)V', 'virtual', 2, '[20,21]'),
+                      (4, 'differentOverload', '()V', 1, 'process', '(Ljava/lang/String;)V',
+                      'virtual', 1, '[31]')""");
+            handle.execute("""
+                    INSERT INTO dependencies(from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    VALUES (3, 1, 'CALLS', 3, '[11,12,13]'), (5, 1, 'CALLS', 2, '[20,21]'),
+                      (4, 1, 'CALLS', 1, '[31]')""");
+        });
+        var queries = new QuillToolQueries();
+        JsonNode first = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of(SymbolContract.id("org.acme.OrderService", "METHOD", "process", "(I)V")), true, 3, 1, 0)));
+        JsonNode second = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of(SymbolContract.id("org.acme.OrderService", "METHOD", "process", "(I)V")), true, 3, 1, 1)));
+        assertEquals("selected_method_reference_page", first.path("test_ranking_scope").asText());
+        assertFalse(first.path("runtime_coverage_measured").asBoolean(true));
+        JsonNode refs = first.path("selected_method_references");
+        assertEquals("(I)V", refs.path("descriptor").asText());
+        assertEquals(2, refs.path("total").asInt());
+        assertTrue(refs.path("has_more").asBoolean());
+        assertEquals(1, second.path("selected_method_references").path("offset").asInt());
+        assertNotEquals(refs.path("usages").get(0).path("caller"),
+                second.path("selected_method_references").path("usages").get(0).path("caller"));
+        JsonNode all = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of(SymbolContract.id("org.acme.OrderService", "METHOD", "process", "(I)V")), true, 3, 20, 0)));
+        assertEquals(5, all.path("selected_method_references").path("usages").valueStream()
+                .mapToInt(value -> value.path("occurrence_count").asInt()).sum());
+        assertEquals("org.acme.OrderServiceTest", all.path("tests").get(0).path("class").asText());
+        JsonNode old = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of("OrderService"), true, 3, 20, 0)));
+        assertEquals(old.path("tests"), all.path("class_level_candidates").path("tests"));
+        assertEquals(2, all.path("tests").get(0).path("invocation_instruction_occurrences").asInt());
+        assertEquals("AMBIGUOUS_SYMBOL", JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of("OrderService#process"), true, 3, 20, 0))).path("error_code").asText());
+        assertEquals("SYMBOL_NOT_FOUND", JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of(SymbolContract.id("org.acme.OrderService", "METHOD", "process", "(J)V")), true, 3, 20, 0))).path("error_code").asText());
+        assertEquals("INVALID_ARGUMENT", JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of("OrderService#process", "AuditService"), true, 3, 20, 0))).path("error_code").asText());
+        assertEquals("INVALID_ARGUMENT", JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of("OrderService#"), true, 3, 20, 0))).path("error_code").asText());
+        assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of("quill:symbol:v0:any"), true, 3, 20, 0))).path("error_code").asText());
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                  type_name, parameter_types, modifiers, annotations)
+                VALUES (1, 'METHOD', 'unique', 'unique():void', '()V', 'void', '[]', 'public', '[]')"""));
+        JsonNode unique = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of("OrderService#unique"), true, 3, 20, 0)));
+        assertEquals("unique", unique.path("selected_method_references").path("name").asText());
+        assertEquals(0, unique.path("selected_method_references").path("total").asInt());
+        assertEquals(old.path("tests"), unique.path("class_level_candidates").path("tests"));
+        assertTrue(unique.path("tests").isEmpty());
+        JsonNode typed = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of("OrderService#process( int )"), true, 3, 20, 0)));
+        assertEquals("(I)V", typed.path("selected_method_references").path("descriptor").asText());
+        assertEquals("SYMBOL_NOT_FOUND", JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of("OrderService#process(long)"), true, 3, 20, 0))).path("error_code").asText());
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                  type_name, parameter_types, modifiers, annotations)
+                VALUES (1, 'METHOD', 'process', 'process(int):java.lang.String', '(I)Ljava/lang/String;',
+                  'java.lang.String', '["int"]', 'public', '[]')"""));
+        assertEquals("AMBIGUOUS_SYMBOL", JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findImpactedTests(
+                readScope, List.of("OrderService#process(int)"), true, 3, 20, 0))).path("error_code").asText());
+
+    }
+
+    @Test
+    void methodTestImpactPreservesSourceIdentityForDuplicateClasses() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes(class_name, kind, interfaces, source_file, module, source_set)
+                    VALUES ('org.acme.OrderService', 'CLASS', '[]',
+                      'alt/src/main/java/org/acme/OrderService.java', 'alt', 'main')""");
+            handle.execute("""
+                    INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                      type_name, parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'work', 'work():void', '()V', 'void', '[]', 'public', '[]')""");
+        });
+        var cls = org.treblereel.mcp.db.IndexReader.findClassesByName(jdbi, "org.acme.OrderService")
+                .stream().filter(value -> value.sourceFile().startsWith("src/")).findFirst().orElseThrow();
+        String id = SymbolContract.id(cls, "METHOD", "work", "()V");
+        JsonNode result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new QuillToolQueries().findImpactedTests(
+                readScope, List.of(id), true, 3, 10, 0)));
+        assertFalse(result.has("error_code"), result.toString());
+        assertEquals(id, result.path("selected_method_references").path("symbol_id").asText());
+        assertFalse(result.path("answer_complete").asBoolean());
+        assertTrue(result.path("tests").isEmpty());
+    }
+
+    @Test
+    void methodTestImpactDistinguishesCallbackReferencesFromInvocations() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes(class_name, kind, interfaces, source_file, source_set)
+                    VALUES ('org.acme.CallbackTest', 'CLASS', '[]', 'src/test/java/org/acme/CallbackTest.java', 'test')""");
+            handle.execute("""
+                    INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                      type_name, parameter_types, modifiers, annotations)
+                    VALUES (1, 'METHOD', 'work', 'work():void', '()V', 'void', '[]', 'public', '[]')""");
+            handle.execute("""
+                    INSERT INTO method_calls(from_class_id, from_method, from_descriptor,
+                      to_class_id, to_method, to_descriptor, invocation_kind, occurrence_count, evidence_lines)
+                    VALUES (5, 'callback', '()V', 1, 'work', '()V', 'dynamic', 1, '[11]'),
+                      (5, 'invoke', '()V', 1, 'work', '()V', 'virtual', 2, '[20,21]')""");
+            handle.execute("INSERT INTO metadata(key,value) VALUES ('invokedynamic_evidence_protocol','2')");
+        });
+        JsonNode result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new QuillToolQueries().findImpactedTests(
+                readScope, List.of("OrderService#work()"), true, 3, 10, 0)));
+        assertFalse(result.has("error_code"), result.toString());
+        assertEquals(1, result.path("tests").size());
+        assertEquals(3, result.path("tests").get(0).path("reference_occurrences").asInt());
+        assertEquals(2, result.path("tests").get(0).path("invocation_instruction_occurrences").asInt());
+        assertEquals(2, result.path("tests").get(0).path("reference_indexes").size());
+        assertEquals(0, result.path("unclassified_reference_groups").asInt());
     }
 
     @Test
@@ -1345,6 +1595,11 @@ class QuillToolsTest {
         JsonNode exact = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.getCallHierarchy(readScope, "OrderService", "process", "(I)V", "inbound", false, 1, 10, 0)));
         assertEquals("(I)V", exact.path("descriptor").asText());
         assertEquals("process(int):void", exact.path("signature").asText());
+        JsonNode parameters = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.getCallHierarchy(
+                readScope, "OrderService", "process", "( int )",
+                "inbound", false, 1, 10, 0)));
+        assertEquals(exact.path("symbol_id"), parameters.path("symbol_id"));
+        assertEquals(exact.path("calls"), parameters.path("calls"));
         assertEquals(1, exact.path("total").asInt());
         assertEquals(List.of(31), exact.path("calls").get(0).path("evidence_lines")
                 .valueStream().map(JsonNode::asInt).toList());
@@ -1460,6 +1715,9 @@ class QuillToolsTest {
                 .analyzeExecutionOrder(readScope, "OrderService", "run", null)));
 
         assertEquals(2, result.path("event_count").asInt());
+        JsonNode noArguments = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new QuillToolQueries()
+                .analyzeExecutionOrder(readScope, "OrderService", "run", "()")));
+        assertEquals(result.path("bytecode_sequence"), noArguments.path("bytecode_sequence"));
         assertEquals(4, result.path("bytecode_sequence").get(0)
                 .path("instruction_ordinal").asInt());
         assertEquals("proven", result.path("persist_before_dispatch")
@@ -1701,6 +1959,11 @@ class QuillToolsTest {
         }
         assertEquals(1, method.path("total").asInt());
         assertEquals("(Ljava/lang/String;)V", method.path("descriptor").asText());
+        JsonNode byParameters = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findSymbolUsages(
+                readScope, "OrderService", "submit", "method", "(java.lang.String)",
+                "all", 10, 0)));
+        assertEquals(method.path("symbol_id"), byParameters.path("symbol_id"));
+        assertEquals(method.path("usages"), byParameters.path("usages"));
         assertEquals(List.of(31, 35), method.path("usages").get(0)
                 .path("evidence_lines").valueStream().map(JsonNode::asInt).toList());
         assertEquals("org.acme.StripePaymentService",
@@ -1722,6 +1985,9 @@ class QuillToolsTest {
         assertEquals(1, constructor.path("total").asInt());
         assertEquals("special", constructor.path("usages").get(0)
                 .path("invocation_kind").asText());
+        JsonNode constructorParameters = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findSymbolUsages(
+                readScope, "OrderService", null, "constructor", "(java.lang.String)", "all", 10, 0)));
+        assertEquals(constructor.path("symbol_id"), constructorParameters.path("symbol_id"));
 
         JsonNode reads = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findSymbolUsages(readScope, "OrderService", "status", "field", null, "read", 10, 0)));
         assertEquals(1, reads.path("total").asInt());
@@ -1828,6 +2094,9 @@ class QuillToolsTest {
                         && node.path("hierarchy_path").size() == 3));
         assertEquals(1, direct.path("total").asInt());
         assertEquals(1, overload.path("total").asInt());
+        JsonNode parameterOverload = JSON.readTree(tools.findMethodOverrides(
+                jdbi, "PaymentService", "processPayment", "(java.lang.String)", true, 10, 0));
+        assertEquals(overload.path("overrides"), parameterOverload.path("overrides"));
         assertEquals("processPayment(java.lang.String):void",
                 overload.path("overrides").get(0).path("base_signature").asText());
         assertEquals(3, kotlin.path("total").asInt());
@@ -1841,6 +2110,23 @@ class QuillToolsTest {
                 jdbi, symbolId, null, null, true, 10, 0));
         assertEquals(symbolId,
                 byId.path("base_declarations").get(0).path("symbol_id").asText());
+    }
+
+    @Test
+    void parameterSelectorNeverGuessesBetweenJvmReturnOverloads() throws Exception {
+        jdbi.useHandle(h -> h.execute("""
+                INSERT INTO class_members
+                  (class_id, kind, name, signature, descriptor, type_name,
+                   parameter_types, modifiers, annotations)
+                VALUES (2,'METHOD','get','get():java.lang.String','()Ljava/lang/String;',
+                        'java.lang.String','[]','public','[]'),
+                       (2,'METHOD','get','get():java.lang.Object','()Ljava/lang/Object;',
+                        'java.lang.Object','[]','public','[]')"""));
+        JsonNode result = JSON.readTree(new QuillTools().findMethodOverrides(
+                jdbi, "PaymentService", "get", "()", true, 10, 0));
+        assertEquals("AMBIGUOUS_METHOD", result.path("error_code").asText());
+        assertEquals(2, result.path("candidates").size());
+        assertTrue(result.path("retryable").asBoolean());
     }
 
     @Test
@@ -2724,12 +3010,22 @@ class QuillToolsTest {
         String result = tools.getInjectionPoints(jdbi, "OrderService");
         JsonNode root = JSON.readTree(result);
         assertEquals(2, root.get("injection_points").size());
+        assertEquals(2, root.path("injection_points_total").asInt());
+        assertEquals(2, root.path("injection_points_by_kind").path("FIELD").asInt());
+        assertEquals("@ApplicationScoped",root.path("scope").asText());
+        assertEquals("CLASS",root.path("bean_kind").asText());
+        assertEquals("@ApplicationScoped",root.path("injection_points").get(0).path("resolved_scope").asText());
+        assertFalse(root.path("injection_points").get(1).has("resolved_scope"));
         JsonNode unknown = root.get("injection_points").get(1);
         assertEquals("unknown", unknown.get("resolution").asText());
         assertEquals("STATIC_CDI", unknown.get("resolution_strategy").asText());
         assertEquals("NO_STATIC_CANDIDATE", unknown.get("reason").asText());
         assertEquals("low", unknown.get("confidence").asText());
-        assertFalse(unknown.get("limitations").isEmpty());
+        assertFalse(root.path("resolution_context").path("limitations").isEmpty());
+        assertTrue(unknown.path("limitations").isEmpty());
+        assertTrue(root.path("resolution_context").path("applies_to").asText().contains("All injection_points"));
+        assertFalse(root.path("resolution_context").has("applied_rules"));
+        assertTrue(root.path("injection_points").get(0).path("resolution_trace").path("applied_rules").toString().contains("TYPE_ASSIGNABILITY"));
         assertEquals(0, root.get("unsatisfied").size());
         assertEquals("runtimeProvidedService", root.get("unknown").get(0).asText());
         JsonNode selected = root.get("injection_points").get(0)
@@ -2737,8 +3033,30 @@ class QuillToolsTest {
         assertEquals("org.acme.StripePaymentService", selected.get("class").asText());
         assertEquals("src/main/java/org/acme/StripePaymentService.java",
                 selected.get("file").asText());
+        assertEquals("@ApplicationScoped", selected.path("scope").asText());
         assertEquals("selected", selected.get("disposition").asText());
         assertEquals("UNIQUE_ELIGIBLE_CANDIDATE", selected.get("reason").asText());
+    }
+
+    @Test
+    void injectionEvidenceSeparatesOwnerScopeFromProducerScope() throws Exception {
+        Jdbi jdbi = QuillDatabase.create(tempDir.resolve("producer.db"));
+        var classes = List.of(new ClassRecord(0,"example.Consumer","CLASS","java.lang.Object",List.of(),"Consumer.java",1,true,10),
+                new ClassRecord(0,"example.Factory","CLASS","java.lang.Object",List.of(),"Factory.java",1,true,10));
+        var beans = List.of(new BeanRecord(0,1,"CLASS","@Singleton",List.of("@Default"),List.of(),false,null,null,null,null,List.of("example.Consumer")),
+                new BeanRecord(0,2,"CLASS","@ApplicationScoped",List.of("@Default"),List.of(),false,null,null,null,null,List.of("example.Factory")),
+                new BeanRecord(0,2,"PRODUCER_METHOD","@RequestScoped",List.of("@Default"),List.of(),false,null,null,2,"create",List.of("example.Widget")));
+        var ips = List.of(InjectionPointRecord.staticAnalysis(0,1,"FIELD","example.Widget",List.of("@Default"),"widget",3,false,InjectionPointRecord.STATIC_CDI));
+        IndexWriter.writeIncremental(jdbi, new IndexFixture().classes(classes).beans(beans).injectionPoints(ips).snapshot());
+        var response=JSON.readTree(new QuillTools().getInjectionPoints(jdbi,"example.Consumer"));
+        assertEquals("@Singleton",response.path("scope").asText());
+        assertEquals(1,response.path("injection_points_total").asInt());
+        assertEquals(1,response.path("injection_points_by_kind").path("FIELD").asInt());
+        var point=response.path("injection_points").get(0);
+        assertEquals("@RequestScoped",point.path("resolved_scope").asText());
+        assertEquals("PRODUCER_METHOD",point.path("resolved_kind").asText());
+        assertEquals("create",point.path("resolved_member").asText());
+        assertEquals("example.Widget",point.path("resolved_produced_type").asText());
     }
 
     @Test

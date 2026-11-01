@@ -125,9 +125,9 @@ public final class QuillTools {
                 provider_repository.orElse(null), clamp(max_depth.orElse(3), 1, 10));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Find CDI/Spring beans.")
+    @Tool(readOnly = true, structured = true, description = "Beans by class or type.")
     public String list_beans(
-            @ToolArg(description = "Exact class/path or explicit * wildcard (e.g. *Delivery*); not a substring search") Optional<String> class_name,
+            @ToolArg(description = "Class/path/bean type or *") Optional<String> class_name,
             @ToolArg(description = "Scope") Optional<String> scope,
             @ToolArg(description = "Bean kind") Optional<String> kind,
             @ToolArg(description = "Build profile") Optional<String> profile,
@@ -208,7 +208,7 @@ public final class QuillTools {
             @ToolArg(description = "Member; optional for IDs/constructors") Optional<String> name,
             @ToolArg(description = "Kind; omit for symbol_id",
                     allowed = {"method", "constructor", "field", "property"}) Optional<String> kind,
-            @ToolArg(description = "Signature or JVM descriptor for overloads, e.g. (java.lang.String); or use a candidate symbol_id") Optional<String> signature,
+            @ToolArg(description = "Signature/descriptor or (java.lang.String)") Optional<String> signature,
             @ToolArg(description = "Read/write filter",
                     allowed = {"all", "read", "write"}) Optional<String> access,
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
@@ -244,16 +244,17 @@ public final class QuillTools {
     }
 
     @Tool(readOnly = true, structured = true,
-            description = "Get a compact change-ready context card for one or more classes.")
+            description = "Context; impact: direct callers/tests, overrides, counts.")
     public String get_context(
-            @ToolArg(description = "Classes or source paths") List<String> targets,
-            @ToolArg(description = "Include declared members; default false") Optional<Boolean> include_members,
-            @ToolArg(description = "Members, usages, and tests per section; default 10, max 25") Optional<Integer> limit,
+            @ToolArg(description = "Classes/paths or Class#method(Types); max 10") List<String> targets,
+            @ToolArg(description = "Class members; default false") Optional<Boolean> include_members,
+            @ToolArg(description = "Page limit: 10/full,25/impact; max25") Optional<Integer> limit,
+            @ToolArg(description = "full (default) or impact") Optional<String> view,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         boolean requestedMembers = include_members.orElse(false);
-        int requestedLimit = clamp(limit.orElse(10), 1, 25);
-        return forAllProjects(project.orElse(null), (p, context) -> queries.getContext(
-                context, targets, requestedMembers, requestedLimit));
+        int requestedLimit = clamp(limit.orElse(view.orElse("full").equals("impact")?25:10), 1, 25);
+        return forGraphProjects(project.orElse(null), (p, context) -> queries.getContext(
+                context, targets, requestedMembers, requestedLimit, view.orElse("full")));
     }
 
     @Tool(readOnly = true, structured = true,
@@ -294,9 +295,9 @@ public final class QuillTools {
                 detail.orElse("summary"), view.orElse("auto")));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Rank tests affected by changed classes.")
+    @Tool(readOnly = true, structured = true, description = "Rank tests; exact method refs.")
     public String find_impacted_tests(
-            @ToolArg(description = "Classes or source paths") List<String> targets,
+            @ToolArg(description = "Class/path, Class#method, symbol_id") List<String> targets,
             @ToolArg(description = "Traverse dependencies; default true") Optional<Boolean> transitive,
             @ToolArg(description = "Traversal depth; default 3") Optional<Integer> max_depth,
             @ToolArg(description = "Page size; default 100") Optional<Integer> limit,
@@ -348,7 +349,7 @@ public final class QuillTools {
     public String get_call_hierarchy(
             @ToolArg(description = "Class, path, or symbol_id") String target,
             @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
-            @ToolArg(description = "Signature or JVM descriptor for overloads, e.g. (java.lang.String)") Optional<String> signature,
+            @ToolArg(description = "Signature/descriptor or (java.lang.String)") Optional<String> signature,
             @ToolArg(description = "Direction",
                     allowed = {"inbound", "outbound", "both"}) Optional<String> direction,
             @ToolArg(description = "Traverse calls; default false") Optional<Boolean> transitive,
@@ -387,7 +388,7 @@ public final class QuillTools {
     public String analyze_execution_order(
             @ToolArg(description = "Class, path, or symbol_id") String target,
             @ToolArg(description = "Method; omit for symbol_id; <init> for constructors") Optional<String> method,
-            @ToolArg(description = "Signature or JVM descriptor for overloads") Optional<String> signature,
+            @ToolArg(description = "Signature/descriptor or (java.lang.String)") Optional<String> signature,
             @ToolArg(description = "Before terms") Optional<String> before_terms,
             @ToolArg(description = "After terms") Optional<String> after_terms,
             @ToolArg(description = "Repo") Optional<String> project) {
@@ -417,7 +418,7 @@ public final class QuillTools {
     public String find_method_overrides(
             @ToolArg(description = "Class, interface, path, or symbol_id") String target,
             @ToolArg(description = "Declared method; omit for symbol_id") Optional<String> method,
-            @ToolArg(description = "Optional exact signature to select one overload") Optional<String> signature,
+            @ToolArg(description = "Signature/descriptor or (java.lang.String)") Optional<String> signature,
             @ToolArg(description = "Include indirect descendants; default true") Optional<Boolean> transitive,
             @ToolArg(description = "Page size; default 50") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
@@ -830,19 +831,20 @@ public final class QuillTools {
                 (p, context) -> queries.inspectServiceDescriptors(context, service.orElse(null)));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Find configuration definitions and annotation/programmatic consumers without exposing values.")
+    @Tool(readOnly = true, structured = true, description = "Config refs; declared view adds safe source scalars.")
     public String find_configuration_references(
-            @ToolArg(description = "Exact key or * wildcard; omit for all") Optional<String> key,
-            @ToolArg(description = "Consumer class FQCN or short name") Optional<String> class_name,
-            @ToolArg(description = "Kind: all, property, prefix, or persistence") Optional<String> kind,
-            @ToolArg(description = "Exact module filter") Optional<String> module,
+            @ToolArg(description = "Key or * wildcard") Optional<String> key,
+            @ToolArg(description = "Consumer class") Optional<String> class_name,
+            @ToolArg(description = "all/property/prefix/persistence") Optional<String> kind,
+            @ToolArg(description = "Module") Optional<String> module,
             @ToolArg(description = "Limit; max 200") Optional<Integer> limit,
             @ToolArg(description = "Offset") Optional<Integer> offset,
+            @ToolArg(description = "index(default) or declared") Optional<String> view,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), (p, context) -> queries.findConfigurationReferences(
+        return forGraphProjects(project.orElse(null), (p, context) -> queries.findConfigurationReferences(
                 context, key.orElse(null), class_name.orElse(null), kind.orElse("all"),
                 module.orElse(null), clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE), view.orElse("index")));
     }
 
     @Tool(readOnly = true, structured = true, description = "Find classpath resources and programmatic consumers without reading resource contents.")
@@ -932,7 +934,7 @@ public final class QuillTools {
     public String find_framework_endpoints(
             @ToolArg(description = "spring, jax-rs, or all") Optional<String> framework,
             @ToolArg(description = "HTTP method") Optional<String> http_method,
-            @ToolArg(description = "Route path prefix") Optional<String> path_prefix,
+            @ToolArg(description = "Route path prefix") Optional<String> path,
             @ToolArg(description = "Module filter") Optional<String> module,
             @ToolArg(description = "Include generated") Optional<Boolean> include_generated,
             @ToolArg(description = "Include tests") Optional<Boolean> include_tests,
@@ -941,7 +943,7 @@ public final class QuillTools {
             @ToolArg(description = "Project") Optional<String> project) {
         return forGraphProjects(project.orElse(null), (p, context) -> queries.findFrameworkEndpoints(
                 context, framework.orElse(null), http_method.orElse(null),
-                path_prefix.orElse(null), module.orElse(null),
+                path.orElse(null), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
                 clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 100),
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
@@ -1131,7 +1133,7 @@ public final class QuillTools {
 
     String findConfigurationReferences(Jdbi jdbi, String key, String className,
             String kind, String module, int limit, int offset) {
-        return ReadQueryContext.read(jdbi, context -> queries.findConfigurationReferences(
+        return ReadQueryContext.readWithGraph(jdbi, context -> queries.findConfigurationReferences(
                 context, key, className, kind, module, limit, offset));
     }
 
@@ -1162,7 +1164,7 @@ public final class QuillTools {
     }
 
     String getContext(Jdbi jdbi, List<String> targets, boolean includeMembers, int limit) {
-        return ReadQueryContext.read(jdbi, context -> queries.getContext(context, targets, includeMembers, limit));
+        return ReadQueryContext.readWithGraph(jdbi, context -> queries.getContext(context, targets, includeMembers, limit));
     }
 
     String planChange(Jdbi jdbi, Path projectRoot, List<String> targets,

@@ -31,9 +31,14 @@ final class ToolResponseSupport {
         metaNode.put("index_id", meta.indexId());
         if (fresh(meta)) {
             // Every response carries _meta; when nothing is stale the full freshness breakdown is
-            // all false/zero/empty, so only the identifying fields and the verdict are kept.
+            // all false/zero/empty, so only the identifying fields and the verdict are kept. Edits
+            // that change no structure (docs, benchmark notes) only add the changed-file count.
             metaNode.put("indexed_at", meta.indexedAt());
             metaNode.put("indexed_commit", meta.lastCommit());
+            if (meta.worktreeDirty()) {
+                metaNode.put("worktree_dirty", true);
+                metaNode.put("worktree_changed_files", meta.worktreeChangedFiles());
+            }
             metaNode.put("stale_warning", false);
             metaNode.put("stale_scope", "current");
             metaNode.put("answer_confidence", "high");
@@ -63,7 +68,7 @@ final class ToolResponseSupport {
 
     private static boolean fresh(MetaEnvelope meta) {
         return !meta.staleWarning() && !meta.structureStale() && !meta.commitStale()
-                && !meta.worktreeDirty() && meta.staleReasons().isEmpty()
+                && meta.structuralChangedFiles() == 0 && meta.staleReasons().isEmpty()
                 && meta.currentCommit() != null;
     }
 

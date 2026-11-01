@@ -645,10 +645,11 @@ Paginated responses use the same `showing`, `total`, `limit`, `offset`, `has_mor
 Responses omit values a client can derive, so read absent fields by these rules:
 
 - **`_meta` on a fresh index** carries only `index_id`, `indexed_at`, `indexed_commit`,
-  `stale_warning: false`, `stale_scope: "current"` and `answer_confidence: "high"`. The full
-  freshness breakdown (`current_commit`, `commit_stale`, `worktree_dirty`,
-  `structure_stale`, `stale_reasons`, ...) appears whenever anything is stale; an absent
-  boolean there means `false`.
+  `stale_warning: false`, `stale_scope: "current"` and `answer_confidence: "high"`, plus
+  `worktree_dirty: true` and `worktree_changed_files` when only non-structural files changed.
+  The full freshness breakdown (`current_commit`, `commit_stale`, `structure_stale`,
+  `stale_reasons`, ...) appears whenever anything is stale; an absent boolean there means
+  `false`.
 - **Dispatch evidence** in `get_call_hierarchy` and `find_symbol_usages` is written once per
   distinct target in `dispatch_targets`; each edge or usage points to it with
   `dispatch_ref`. It omits `false` proof flags and empty lists, as stated in

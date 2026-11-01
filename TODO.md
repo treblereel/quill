@@ -58,9 +58,11 @@ Quill. Claude без Quill тратит медиану 9k на вопрос, с 
    группировка по префиксу. ≈ −30k.
    Сделано: `row_defaults_by_kind` в MCP-ответе (оценка на записанных ответах 355k → 292k, x0.82).
    Осталось: лимит для wildcard, `field_read_source`.
-5. [ ] `list_injection_points` (359k): `provider_evidence` 20% (общий `scope` в defaults,
+5. [~] `list_injection_points` (359k): `provider_evidence` 20% (общий `scope` в defaults,
    повтор artifact/framework), `resolution_trace` 20% с пустыми `applied_rules`/`candidates`,
    пустые `limitations`. ≈ −22k.
+   Сделано: `point_defaults` по самому частому значению (оценка 359k → 302k, x0.84).
+   Осталось: `resolution_trace.candidates`, `provider_evidence.declarations`.
 6. [ ] `get_call_hierarchy` (297k): `caller`/`callee` 44% — таблица методов один раз, рёбра по
    индексу; `dispatch_targets` 16%. ≈ −22k.
 7. [ ] `find_entry_points` (158k, в среднем 39k символов): `observer` 30%, `annotation_values` 16%.

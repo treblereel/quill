@@ -765,8 +765,9 @@ public final class QuillTools {
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "list_injection_points",
-                jdbi -> queries.getInjectionPoints(jdbi, target)));
+        return forAllProjects(project.orElse(null), (p, context) -> InjectionPointDefaults.compact(
+                routeClassQuery(p, context, target, "list_injection_points",
+                        jdbi -> queries.getInjectionPoints(jdbi, target))));
     }
 
     @Tool(readOnly = true, structured = true, description = "Rank files/classes by Git churn with lifecycle, authors, dates, and worktree changes.")

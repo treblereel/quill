@@ -669,6 +669,11 @@ Responses omit values a client can derive, so read absent fields by these rules:
   `resolution_strategy`, ...) is written once in `row_defaults_by_kind.<kind>`, and shared
   `declared_source` fields under its `declared_source`. A row without the field takes the
   default of its kind.
+- **Injection points** in `list_injection_points`: when every point carries `limitations`,
+  `resolution_strategy`, `resolution_trace.applied_rules`/`unsupported_rules` or
+  `provider_evidence.scope`/`runtime_resolution_proven`, the most common value is written once
+  in `point_defaults` (nested the same way) and a point without the field takes it. Empty
+  provider `profiles` lists are omitted.
 - **Member listings** in `get_symbol_details` give each member's `kind`, `name`,
   `signature` (methods and constructors) or `type` (fields), `descriptor`, and its
   `modifiers` and `annotations` when present; parameter annotations are under

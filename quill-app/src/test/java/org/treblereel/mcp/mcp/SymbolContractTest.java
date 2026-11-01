@@ -32,7 +32,7 @@ class SymbolContractTest {
     @Test
     void rejectsUnsupportedVersionsExplicitly() {
         for (String id : new String[] {
-                "quill:symbol:v1:anything", "quill:symbol:v3:anything"}) {
+                "quill:symbol:v1:anything", "quill:symbol:v4:anything"}) {
             SymbolContract.ParseException error = assertThrows(
                     SymbolContract.ParseException.class,
                     () -> SymbolContract.parse(id));

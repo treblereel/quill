@@ -59,7 +59,7 @@ class JavaDispatchEvidenceTest {
                 .map(c -> c.path("class").asText()).toList()));
         var child=dispatch.path("possible_targets").valueStream().filter(c -> c.path("class").asText().equals("p.Child")).findFirst().orElseThrow();
         assertEquals("()Ljava/lang/Integer;",child.path("descriptor").asText());
-        assertTrue(child.path("symbol_id").asText().startsWith("quill:symbol:v2:"));
+        assertTrue(child.path("symbol_id").asText().startsWith("quill:symbol:v3:"));
         assertEquals(1,usages("p.Contract","()Ljava/lang/Number;",10,0).path("total").asInt());
     }
     @Test void parentContractCallersDoNotBecomeExactCallsToAnOverride() throws Exception {

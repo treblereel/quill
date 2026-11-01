@@ -39,8 +39,7 @@ final class ClassTargetResolver {
             if (reference.isPresent()) {
                 var identity = reference.get();
                 var matches = reader.symbols.findClassesByName(identity.className()).stream()
-                        .filter(cls -> identity.sourceFile() == null || identity.sourceFile().isBlank()
-                                || identity.sourceFile().equals(cls.sourceFile())).toList();
+                        .filter(cls -> identity.matchesSource(cls.sourceFile())).toList();
                 if (matches.size() == 1) return Lookup.found(matches.getFirst());
                 if (matches.size() > 1) return Lookup.error("AMBIGUOUS_CLASS", "Ambiguous class context",
                         matches, List.of());

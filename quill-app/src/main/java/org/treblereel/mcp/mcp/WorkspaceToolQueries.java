@@ -759,8 +759,7 @@ final class WorkspaceToolQueries {
                     "usage_kind for this symbol must be " + expectedKind + " or all");
         }
         List<ProviderClass> providers = findProviderClasses(reference.className(), providerRepository)
-                .stream().filter(value -> reference.sourceFile().isBlank()
-                        || reference.sourceFile().equals(value.sourceFile())).toList();
+                .stream().filter(value -> reference.matchesSource(value.sourceFile())).toList();
         if (providers.size() != 1) {
             ObjectNode error = JSON.createObjectNode();
             ToolResponseSupport.appendError(error, providers.isEmpty()

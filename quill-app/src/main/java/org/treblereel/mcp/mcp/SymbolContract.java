@@ -16,6 +16,14 @@ final class SymbolContract {
 
     private static final String SYMBOL_PREFIX = "quill:symbol:";
     private static final String PREFIX = "quill:symbol:v2:";
+    /**
+     * v3 is the readable form "quill:symbol:v3:Class~kind~name~descriptor~sourceHash". It is
+     * about 60% shorter than v2, which base64-encoded every part including the source path, and
+     * it is repeated on every usage, edge and location. '~' and '%' inside a part are
+     * percent-encoded; sourceHash is the first 8 hex digits of SHA-256(source path) and only
+     * separates equal class names from different source files. v2 ids remain accepted.
+     */
+    private static final String PREFIX_V3 = "quill:symbol:v3:";
     private static final Set<String> TYPE_KINDS = Set.of(
             "CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD");
     private static final Set<String> MEMBER_KINDS = Set.of(
@@ -95,10 +103,30 @@ final class SymbolContract {
 
     private static String id(String className, String kind, String jvmName,
             String descriptor, String sourceFile) {
-        return PREFIX + encode(className) + ":" + kind.toLowerCase(Locale.ROOT) + ":"
-                + encode(jvmName == null ? "" : jvmName) + ":"
-                + encode(descriptor == null ? "" : descriptor) + ":"
-                + encode(sourceFile == null ? "" : sourceFile);
+        return PREFIX_V3 + escape(className) + "~" + kind.toLowerCase(Locale.ROOT) + "~"
+                + escape(jvmName == null ? "" : jvmName) + "~"
+                + escape(descriptor == null ? "" : descriptor) + "~"
+                + sourceHash(sourceFile);
+    }
+
+    static String sourceHash(String sourceFile) {
+        if (sourceFile == null || sourceFile.isBlank()) return "";
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(sourceFile.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest, 0, 4);
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    private static String escape(String value) {
+        return value.replace("%", "%25").replace("~", "%7E");
+    }
+
+    private static String unescape(String value) {
+        if (value.matches(".*%(?!25|7E).*")) throw new IllegalArgumentException("Bad escape");
+        return value.replace("%7E", "~").replace("%25", "%");
     }
 
     static String jvmRole(String semanticKind, String memberKind, String descriptor) {
@@ -116,6 +144,7 @@ final class SymbolContract {
 
     static Optional<Reference> parse(String value) {
         if (!isId(value)) return Optional.empty();
+        if (value.startsWith(PREFIX_V3)) return parseV3(value.substring(PREFIX_V3.length()));
         if (!value.startsWith(PREFIX)) {
             throw new ParseException("UNSUPPORTED_SYMBOL_ID_VERSION",
                     "Unsupported symbol_id version");
@@ -136,7 +165,29 @@ final class SymbolContract {
                 throw malformed(null);
             }
             return Optional.of(new Reference(
-                    className, kind, jvmName, descriptor, sourceFile));
+                    className, kind, jvmName, descriptor, sourceFile, sourceHash(sourceFile)));
+        } catch (ParseException error) {
+            throw error;
+        } catch (IllegalArgumentException error) {
+            throw malformed(error);
+        }
+    }
+
+    private static Optional<Reference> parseV3(String body) {
+        String[] parts = body.split("~", -1);
+        if (parts.length != 5) throw malformed(null);
+        try {
+            String className = unescape(parts[0]);
+            String kind = parts[1].toUpperCase(Locale.ROOT);
+            String jvmName = unescape(parts[2]);
+            String descriptor = unescape(parts[3]);
+            String hash = parts[4];
+            if (className.isBlank() || jvmName.isBlank() || !hash.matches("([0-9a-f]{8})?")
+                    || (!TYPE_KINDS.contains(kind) && !MEMBER_KINDS.contains(kind))
+                    || (MEMBER_KINDS.contains(kind) && !"PROPERTY".equals(kind) && descriptor.isBlank())) {
+                throw malformed(null);
+            }
+            return Optional.of(new Reference(className, kind, jvmName, descriptor, "", hash));
         } catch (ParseException error) {
             throw error;
         } catch (IllegalArgumentException error) {
@@ -197,7 +248,17 @@ final class SymbolContract {
     }
 
     record Reference(String className, String kind, String jvmName, String descriptor,
-            String sourceFile) {
+            String sourceFile, String sourceHash) {
+        Reference(String className, String kind, String jvmName, String descriptor, String sourceFile) {
+            this(className, kind, jvmName, descriptor, sourceFile, SymbolContract.sourceHash(sourceFile));
+        }
+
+        /** Whether a declaration from {@code candidateSource} is the one this id names. */
+        boolean matchesSource(String candidateSource) {
+            if (sourceHash == null || sourceHash.isBlank()) return true;
+            return sourceHash.equals(SymbolContract.sourceHash(candidateSource));
+        }
+
         String resolutionTarget() {
             return sourceFile == null || sourceFile.isBlank() ? className : sourceFile;
         }

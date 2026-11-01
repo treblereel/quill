@@ -643,6 +643,10 @@ Responses omit values a client can derive, so read absent fields by these rules:
   `evidence_defaults` (`absent_boolean_flags_mean: false`, `absent_lists_mean: "empty"`).
 - **`coverage`** (schema 2) names the never-proven guarantees once in `not_covered`
   instead of six `false` flags, and no longer repeats `index_id`/`indexed_at` from `_meta`.
+- **`symbol_id` v3** is readable and about 60% shorter:
+  `quill:symbol:v3:Class~kind~name~descriptor~sourceHash`, where `sourceHash` (8 hex digits)
+  only separates equal class names declared in different source files. v2 ids are still
+  accepted as input.
 - **Source locations** corroborated by the compiler carry `excerpt`, the referencing source
   line (bounded, up to 50 per response), when the file still matches the indexed hash.
 - **Call edges** omit `edge_kind` and `execution_semantics` for ordinary calls; the values

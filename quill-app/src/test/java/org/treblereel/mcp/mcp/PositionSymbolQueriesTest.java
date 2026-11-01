@@ -159,7 +159,7 @@ class PositionSymbolQueriesTest {
         assertEquals("submitOrderJvm", result.path("selected").path("jvm_name").asText());
         assertEquals("()V", result.path("selected").path("jvm_descriptor").asText());
         assertTrue(result.path("selected").path("symbol_id").asText()
-                .startsWith("quill:symbol:v2:"));
+                .startsWith("quill:symbol:v3:"));
         assertEquals("src/main/kotlin/acme/Orders.kt",
                 result.path("selected").path("location").path("path").asText());
         assertEquals("submitOrder", result.path("selected").path("kotlin_name").asText());

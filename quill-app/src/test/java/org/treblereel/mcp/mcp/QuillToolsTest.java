@@ -364,7 +364,7 @@ class QuillToolsTest {
         assertEquals("java", first.path("language").asText());
         assertEquals("OrderService", first.path("source_name").asText());
         assertEquals("org.acme.OrderService", first.path("jvm_name").asText());
-        assertTrue(first.path("symbol_id").asText().startsWith("quill:symbol:v2:"));
+        assertTrue(first.path("symbol_id").asText().startsWith("quill:symbol:v3:"));
         assertEquals("src/main/java/org/acme/OrderService.java",
                 first.path("location").path("path").asText());
         assertEquals("@ApplicationScoped", first.path("bean").path("scope").asText());
@@ -380,7 +380,7 @@ class QuillToolsTest {
         assertEquals("createOrder",
                 methods.path("members").get(0).path("jvm_name").asText());
         assertTrue(methods.path("members").get(0).path("symbol_id").asText()
-                .startsWith("quill:symbol:v2:"));
+                .startsWith("quill:symbol:v3:"));
         assertEquals("java.lang.String",
                 methods.path("members").get(0).path("parameters").get(0).asText());
     }
@@ -898,7 +898,7 @@ class QuillToolsTest {
 
         assertEquals("kotlin", result.path("language").asText());
         assertEquals("OrderService", result.path("source_name").asText());
-        assertTrue(result.path("symbol_id").asText().startsWith("quill:symbol:v2:"));
+        assertTrue(result.path("symbol_id").asText().startsWith("quill:symbol:v3:"));
         assertEquals("kotlin_metadata", result.path("semantic_model").asText());
         JsonNode function = result.path("kotlin_declarations").get(1);
         assertEquals("function", function.path("kind").asText());
@@ -1136,7 +1136,7 @@ class QuillToolsTest {
         assertEquals("kotlin", symbol.path("language").asText());
         assertEquals("createKotlinOrder", symbol.path("source_name").asText());
         assertEquals("createOrder", symbol.path("jvm_name").asText());
-        assertTrue(symbol.path("symbol_id").asText().startsWith("quill:symbol:v2:"));
+        assertTrue(symbol.path("symbol_id").asText().startsWith("quill:symbol:v3:"));
         assertEquals("src/main/java/org/acme/OrderService.java",
                 symbol.path("location").path("path").asText());
         assertEquals("createOrder", symbol.path("name").asText());
@@ -1337,7 +1337,7 @@ class QuillToolsTest {
         assertTrue(ambiguous.path("message").asText().startsWith("Ambiguous method"));
         assertEquals(2, ambiguous.path("candidates").size());
         String candidateId = ambiguous.path("candidates").get(0).path("symbol_id").asText();
-        assertTrue(candidateId.startsWith("quill:symbol:v2:"));
+        assertTrue(candidateId.startsWith("quill:symbol:v3:"));
         JsonNode byId = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.getCallHierarchy(readScope, candidateId, null, null, "inbound", false, 1, 10, 0)));
         assertFalse(byId.has("error"));
         assertEquals(candidateId, byId.path("symbol_id").asText());
@@ -1685,7 +1685,7 @@ class QuillToolsTest {
                 .contains("descriptor"));
         assertEquals(2, ambiguous.path("candidates").size());
         String candidateId = ambiguous.path("candidates").get(0).path("symbol_id").asText();
-        assertTrue(candidateId.startsWith("quill:symbol:v2:"));
+        assertTrue(candidateId.startsWith("quill:symbol:v3:"));
 
         JsonNode selectedById = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findSymbolUsages(readScope, candidateId, null, null, null, "all", 10, 0)));
         assertFalse(selectedById.has("error"));
@@ -1705,7 +1705,7 @@ class QuillToolsTest {
                 .path("evidence_lines").valueStream().map(JsonNode::asInt).toList());
         assertEquals("org.acme.StripePaymentService",
                 method.path("usages").get(0).path("caller").path("class").asText());
-        assertTrue(method.path("symbol_id").asText().startsWith("quill:symbol:v2:"));
+        assertTrue(method.path("symbol_id").asText().startsWith("quill:symbol:v3:"));
 
         JsonNode kotlinMethod = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.findSymbolUsages(readScope, "OrderService", "submitOrder", "method", null, "all", 10, 0)));
         assertEquals(1, kotlinMethod.path("total").asInt());
@@ -2884,7 +2884,7 @@ class QuillToolsTest {
         assertEquals(List.of("java", "kotlin"), capabilities.path("supported_languages")
                 .valueStream().map(JsonNode::asText).toList());
         assertTrue(capabilities.path("stable_symbol_ids").asBoolean());
-        assertEquals(2, capabilities.path("symbol_id_version").asInt());
+        assertEquals(3, capabilities.path("symbol_id_version").asInt());
         assertEquals("project", capabilities.path("symbol_id_scope").asText());
         assertTrue(capabilities.path("workspace_symbol_ids_require_project").asBoolean());
         assertTrue(capabilities.path("machine_readable_errors").asBoolean());

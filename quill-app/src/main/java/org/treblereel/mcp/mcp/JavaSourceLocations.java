@@ -20,6 +20,13 @@ final class JavaSourceLocations {
     private final JsonNode hashes;
     private final boolean fresh;
     private final Map<String, JsonNode> files = new HashMap<>();
+    /**
+     * Source lines of hash-verified files. Returning the referencing line saves the agent a
+     * read_file round just to see the code a location points at.
+     */
+    private static final int MAX_EXCERPTS = 50, MAX_EXCERPT_LENGTH = 160;
+    private final Map<String, List<String>> lines = new HashMap<>();
+    private int excerpts;
     JavaSourceLocations(ReadQueryContext db) {
         this.db = db;
         var metadata = db.index.getMetadata();
@@ -68,8 +75,21 @@ final class JavaSourceLocations {
             var location = locations.addObject().put("file", source).put("symbol_id", symbolId).put("usage_kind", mode)
                     .put("range_kind", "reference_expression");
             for (String coordinate : List.of("line", "column", "end_line", "end_column")) location.set(coordinate, reference.get(coordinate));
+            String excerpt = excerpt(source, reference.path("line").asInt());
+            if (excerpt != null) location.put("excerpt", excerpt);
         }
         evidence.put("status", locations.isEmpty() ? "no_matching_source_reference" : "corroborated");
+    }
+    private String excerpt(String source, int line) {
+        if (excerpts >= MAX_EXCERPTS || line < 1 || root == null) return null;
+        List<String> text = lines.computeIfAbsent(source, ignored -> {
+            try { return java.nio.file.Files.readAllLines(root.resolve(source).normalize()); }
+            catch (Exception unavailable) { return List.of(); }
+        });
+        if (line > text.size()) return null;
+        excerpts++;
+        String value = text.get(line - 1).strip();
+        return value.length() <= MAX_EXCERPT_LENGTH ? value : value.substring(0, MAX_EXCERPT_LENGTH) + "…";
     }
     private static JsonNode status(String value) { return JSON.createObjectNode().put("status", value); }
 }

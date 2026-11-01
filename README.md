@@ -643,6 +643,8 @@ Responses omit values a client can derive, so read absent fields by these rules:
   `evidence_defaults` (`absent_boolean_flags_mean: false`, `absent_lists_mean: "empty"`).
 - **`coverage`** (schema 2) names the never-proven guarantees once in `not_covered`
   instead of six `false` flags, and no longer repeats `index_id`/`indexed_at` from `_meta`.
+- **Source locations** corroborated by the compiler carry `excerpt`, the referencing source
+  line (bounded, up to 50 per response), when the file still matches the indexed hash.
 - **Call edges** omit `edge_kind` and `execution_semantics` for ordinary calls; the values
   are given once in `edge_defaults`. Endpoints no longer repeat `parameters` and
   `return_type`, which follow from `descriptor`; `source` has no `:0` suffix when the line

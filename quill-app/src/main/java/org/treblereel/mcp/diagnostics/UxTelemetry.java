@@ -49,6 +49,15 @@ public final class UxTelemetry {
 
     public static void record(String tool, String routedTool, long durationMillis,
             McpSchema.CallToolResult result) {
+        record(tool, routedTool, durationMillis, result, null, null);
+    }
+
+    /**
+     * @param client "name/version" from MCP initialize, when known
+     * @param model  the model reported by the client for this call, when the client sends one
+     */
+    public static void record(String tool, String routedTool, long durationMillis,
+            McpSchema.CallToolResult result, String client, String model) {
         Path destination = logFile;
         if (destination == null) return;
 
@@ -60,6 +69,8 @@ public final class UxTelemetry {
         event.put("tool_profile", toolProfile);
         event.put("tool", tool);
         if (routedTool != null && !routedTool.isBlank()) event.put("routed_tool", routedTool);
+        if (client != null) event.put("client", client);
+        if (model != null) event.put("model", model);
         event.put("duration_ms", Math.max(0, durationMillis));
         event.put("response_bytes", responseBytes(result));
         event.put("status", Boolean.TRUE.equals(result.isError()) ? "error" : "ok");

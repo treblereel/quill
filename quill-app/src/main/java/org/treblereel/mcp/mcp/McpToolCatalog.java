@@ -125,7 +125,8 @@ final class McpToolCatalog {
                         // the actual tool work parallel.
                         .map(result -> {
                             UxTelemetry.record(method.getName(), routedTool(method, request.arguments()),
-                                    (System.nanoTime() - started) / 1_000_000L, result);
+                                    (System.nanoTime() - started) / 1_000_000L, result,
+                                    clientOf(exchange), modelOf(request.meta()));
                             return result;
                         })
                         .publishOn(responseScheduler);
@@ -151,6 +152,26 @@ final class McpToolCatalog {
                     "After get_overview: " + annotation.description();
             default -> annotation.description();
         };
+    }
+
+    /** Client name/version from initialize; every MCP client sends it. */
+    private static String clientOf(io.modelcontextprotocol.server.McpAsyncServerExchange exchange) {
+        if (exchange == null) return null;
+        try {
+            var info = exchange.getClientInfo();
+            return info == null ? null : info.name() + "/" + info.version();
+        } catch (RuntimeException unavailable) {
+            return null;
+        }
+    }
+
+    /**
+     * The model, when the client reports it per call. Codex sends it in
+     * _meta.x-codex-turn-metadata.model; Claude Code does not report a model.
+     */
+    private static String modelOf(Map<String, Object> meta) {
+        if (meta == null || !(meta.get("x-codex-turn-metadata") instanceof Map<?, ?> codex)) return null;
+        return codex.get("model") instanceof String model && !model.isBlank() ? model : null;
     }
 
     private static String routedTool(Method method, Map<String, Object> arguments) {

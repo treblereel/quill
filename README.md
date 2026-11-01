@@ -718,7 +718,10 @@ contain local paths and dependency coordinates and should not be committed.
 To measure real MCP usage without recording code, queries, arguments, paths, or response
 contents, start the server with `--telemetry` (or set `QUILL_TELEMETRY=1`). Quill appends local
 JSONL measurements to `.quill/telemetry/mcp-tools.jsonl`: tool name, profile, duration, response
-byte count, success/error state, and non-content limitation flags such as stale or truncated.
+byte count, success/error state, non-content limitation flags such as stale or truncated,
+the MCP client (`client`, name/version from initialize) and, when the client reports it per
+call (Codex does, Claude Code does not), the `model`. This allows comparing profiles per
+client and model.
 Summarize a capture, or compare it with an earlier baseline, using:
 
 ```bash

@@ -71,6 +71,12 @@ final class ProjectOverviewQueries {
             project.set("auxiliary_build_projects", JSON.valueToTree(auxiliary));
         }
 
+        root.set("suggested_tools", JSON.valueToTree(suggestedTools(beanCount,
+                Integer.parseInt(meta.getOrDefault("configuration_usages", "0")),
+                reader.symbols.countAnnotatedClasses("jakarta.ws.rs.Path", true)
+                        + reader.symbols.countAnnotatedClasses(
+                                "org.springframework.web.bind.annotation.RestController", true))));
+
         ObjectNode scopeNode = root.putObject("beans_by_scope");
         reader.beans.countBeansByScope().forEach(scopeNode::put);
 
@@ -211,6 +217,20 @@ final class ProjectOverviewQueries {
         if (AUXILIARY_BY_INDEX.size() > 16) AUXILIARY_BY_INDEX.clear();
         return AUXILIARY_BY_INDEX.computeIfAbsent(indexId, ignored -> auxiliaryBuildProjects(
                 reader.index.findIndexedModules(), reader.index.findBuildDescriptors()));
+    }
+
+    /**
+     * Tools that fit this project, so an agent can call them by name instead of spending rounds
+     * on catalog search (in router mode Codex issued 74 search_tools calls for 29 executions).
+     */
+    static List<String> suggestedTools(int beans, int configurationUsages, int endpointClasses) {
+        List<String> tools = new ArrayList<>(List.of(
+                "search_classes", "get_symbol_details", "find_symbol_usages", "get_call_hierarchy",
+                "find_impacted_tests", "change_session"));
+        if (beans > 0) tools.addAll(List.of("list_beans", "list_injection_points"));
+        if (configurationUsages > 0) tools.add("find_configuration_references");
+        if (endpointClasses > 0) tools.add("find_framework_endpoints");
+        return List.copyOf(tools);
     }
 
     static List<String> auxiliaryBuildProjects(java.util.Collection<String> indexedModules,

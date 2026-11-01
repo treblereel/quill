@@ -656,7 +656,9 @@ Responses omit values a client can derive, so read absent fields by these rules:
 - **`get_overview`** names `architecture_hubs_ranked_by` once instead of `ranked_by` on
   every hub. Without `details`, each hub is a row in `architecture_hub_columns` order
   (`details=true` keeps one object per hub). The full `capabilities` contract is returned
-  only with `details=true`. The overview also lists
+  only with `details=true`. `suggested_tools` names the tools that fit the project (DI,
+  configuration, HTTP endpoints) so agents can call them, or pass them to `execute_tool` in
+  the router profile, without searching the catalog. The overview also lists
   `project.auxiliary_build_projects`: separate Maven/Gradle builds in the repository that
   are not part of the indexed modules.
 - **Annotation values.** The index (schema 32) keeps explicitly written annotation members

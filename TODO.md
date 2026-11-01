@@ -69,9 +69,11 @@ Quill. Claude без Quill тратит медиану 9k на вопрос, с 
    `dispatch_ref` в каждом ребре — в v3 не сработал ни разу. Исправлено (оценка 297k → 245k, x0.82).
 7. [ ] `find_entry_points` (158k, в среднем 39k символов): `observer` 30%, `annotation_values` 16%.
    ≈ −15k.
-8. [ ] `list_beans` (208k): `arc_retention` 20% — повторяющийся `note` вынести в defaults,
+8. [x] `list_beans` (208k): `arc_retention` 20% — повторяющийся `note` вынести в defaults,
    сигналы строкой; пустые `profiles`, суффикс `:0` в `source`. ≈ −10k.
-9. [ ] `get_project_dependencies` (90k): абсолютный путь `jar` 21% — только по запросу. ≈ −5k.
+   Сделано: `arc_retention_notes` один раз, без пустых `profiles` и `:0`.
+9. [x] `get_project_dependencies` (90k): абсолютный путь `jar` 21% — только по запросу. ≈ −5k.
+   Сделано: `maven_repository_root` + `jar_path_rule`; `jar` остаётся только для нестандартных путей.
 
 Итого фаза 1: ≈ −1.1M символов из 2.62M (≈ −42%, ≈ −260k токенов на прогон).
 

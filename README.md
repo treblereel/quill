@@ -674,6 +674,11 @@ Responses omit values a client can derive, so read absent fields by these rules:
   `provider_evidence.scope`/`runtime_resolution_proven`, the most common value is written once
   in `point_defaults` (nested the same way) and a point without the field takes it. Empty
   provider `profiles` lists are omitted.
+- **Beans** in `list_beans` omit an empty `profiles` list (active in every profile) and a
+  `:0` line suffix in `source`; what `arc_retention.removal_ruled_out` means is written once in
+  `arc_retention_notes`.
+- **Dependency jars** in `get_project_dependencies`: a jar at its standard place under
+  `maven_repository_root` has no `jar` field; `jar_path_rule` gives the path.
 - **Member listings** in `get_symbol_details` give each member's `kind`, `name`,
   `signature` (methods and constructors) or `type` (fields), `descriptor`, and its
   `modifiers` and `annotations` when present; parameter annotations are under

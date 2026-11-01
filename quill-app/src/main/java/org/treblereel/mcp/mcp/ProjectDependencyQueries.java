@@ -140,6 +140,7 @@ final class ProjectDependencyQueries {
             result.put("answer_complete", answerComplete);
             ArrayNode dependencies = result.putArray("dependencies");
             ordered.subList(from, to).forEach(view -> appendDependency(dependencies, view));
+            omitStandardJarPaths(result, dependencies);
             ObjectNode discovery = result.putObject("discovery");
             discovery.put("classpath_files", classpaths.size());
             discovery.put("build_invoked", false);
@@ -183,6 +184,39 @@ final class ProjectDependencyQueries {
         } finally {
             trace.close();
         }
+    }
+
+    /**
+     * A jar at its standard place in one local Maven repository is named by its coordinates; the
+     * repository root is written once and only jars elsewhere keep their path.
+     */
+    private static void omitStandardJarPaths(ObjectNode result, ArrayNode dependencies) {
+        String root = null;
+        for (var item : dependencies) {
+            String relative = mavenRelativePath(item);
+            String jar = item.path("jar").asText();
+            if (relative != null && jar.endsWith("/" + relative)) {
+                root = jar.substring(0, jar.length() - relative.length() - 1);
+                break;
+            }
+        }
+        if (root == null) return;
+        result.put("maven_repository_root", root);
+        result.put("jar_path_rule", "Absent jar = maven_repository_root/group-path/artifact/version/"
+                + "artifact-version[-classifier].jar");
+        for (var item : dependencies) {
+            String relative = mavenRelativePath(item);
+            if (relative != null && item.path("jar").asText().equals(root + "/" + relative))
+                ((ObjectNode) item).remove("jar");
+        }
+    }
+
+    private static String mavenRelativePath(com.fasterxml.jackson.databind.JsonNode item) {
+        if (!"maven_repository".equals(item.path("repository_layout").asText())) return null;
+        String artifact = item.path("artifact").asText(), version = item.path("version").asText();
+        String classifier = item.path("classifier").isTextual() ? "-" + item.path("classifier").asText() : "";
+        return item.path("group").asText().replace('.', '/') + "/" + artifact + "/" + version + "/"
+                + artifact + "-" + version + classifier + ".jar";
     }
 
     private static void appendDependency(ArrayNode dependencies, ArtifactView view) {

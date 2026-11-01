@@ -278,9 +278,13 @@ final class StructureToolQueries {
             if (bean.isDefault()) node.put("default_bean", true);
             node.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
             node.set("bean_types", JSON.valueToTree(bean.beanTypes()));
-            node.set("profiles", JSON.valueToTree(bean.profiles()));
+            // No profile list means the bean is active in every profile.
+            if (bean.profiles() != null && !bean.profiles().isEmpty())
+                node.set("profiles", JSON.valueToTree(bean.profiles()));
             if (beanClass != null) {
-                node.put("source", beanClass.sourceFile() + ":" + beanClass.sourceLine());
+                // Line 0 means the class has no recorded declaration line; the file alone says as much.
+                node.put("source", beanClass.sourceLine() > 0
+                        ? beanClass.sourceFile() + ":" + beanClass.sourceLine() : beanClass.sourceFile());
                 appendContext(node, beanClass);
                 appendOccurrences(node, occurrencesByClass.get(beanClass.id()));
                 naiveTokens += beanClass.sourceTokens();
@@ -291,6 +295,7 @@ final class StructureToolQueries {
             BeanEvidence.appendRetention(node, bean, injectedInto.getOrDefault(bean.id(), 0),
                     pageAnnotations.getOrDefault(bean.classId(), List.of()));
         }
+        BeanEvidence.appendRetentionNotes(root);
         ObjectNode originBreakdown = root.putObject("origin_breakdown");
         originBreakdown.put("application", beans.size());
         originBreakdown.put("dependency", externalBeans.size());

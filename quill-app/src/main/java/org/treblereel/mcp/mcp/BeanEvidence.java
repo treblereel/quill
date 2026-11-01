@@ -19,23 +19,35 @@ import org.treblereel.mcp.model.MemberAnnotationRecord;
 final class BeanEvidence {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final Map<String, String> CONDITIONS = Map.of(
-            "io.quarkus.arc.lookup.LookupIfProperty",
-            "Programmatic lookup (Instance) only: available when property `name` equals `stringValue` "
-                    + "(String.equals, case-sensitive); lookupIfMissing defaults to false. @Inject resolution is unaffected",
-            "io.quarkus.arc.lookup.LookupUnlessProperty",
-            "Programmatic lookup (Instance) only: hidden when property `name` equals `stringValue` "
-                    + "(String.equals, case-sensitive); @Inject resolution is unaffected",
-            "io.quarkus.arc.properties.IfBuildProperty",
-            "Build time: the bean is removed unless property `name` equals `stringValue`; enableIfMissing defaults to false",
-            "io.quarkus.arc.properties.UnlessBuildProperty",
-            "Build time: the bean is removed when property `name` equals `stringValue`",
-            "io.quarkus.arc.profile.IfBuildProfile", "Build time: kept only for the listed profiles",
-            "io.quarkus.arc.profile.UnlessBuildProfile", "Build time: removed for the listed profiles",
-            "org.springframework.boot.autoconfigure.condition.ConditionalOnProperty",
-            "Startup: registered when the property equals `havingValue` (case-insensitive; any value but false when empty); matchIfMissing defaults to false",
-            "org.springframework.context.annotation.Profile", "Startup: registered only for the listed profiles",
-            "org.springframework.context.annotation.Conditional", "Startup: registered when the listed Condition classes match");
+    private static final Map<String, String> CONDITIONS = Map.ofEntries(
+            Map.entry("io.quarkus.arc.lookup.LookupIfProperty",
+                    "Programmatic lookup (Instance) only: available when property `name` equals `stringValue` "
+                            + "(String.equals, case-sensitive); lookupIfMissing defaults to false. @Inject resolution is unaffected"),
+            Map.entry("io.quarkus.arc.lookup.LookupUnlessProperty",
+                    "Programmatic lookup (Instance) only: hidden when property `name` equals `stringValue` "
+                            + "(String.equals, case-sensitive); @Inject resolution is unaffected"),
+            Map.entry("io.quarkus.arc.properties.IfBuildProperty",
+                    "Build time: the bean is removed unless property `name` equals `stringValue`; enableIfMissing defaults to false"),
+            Map.entry("io.quarkus.arc.properties.UnlessBuildProperty",
+                    "Build time: the bean is removed when property `name` equals `stringValue`"),
+            Map.entry("io.quarkus.arc.profile.IfBuildProfile", "Build time: kept only for the listed profiles"),
+            Map.entry("io.quarkus.arc.profile.UnlessBuildProfile", "Build time: removed for the listed profiles"),
+            Map.entry("org.springframework.boot.autoconfigure.condition.ConditionalOnProperty",
+                    "Startup: registered when the property equals `havingValue` (case-insensitive; any value but false when empty); matchIfMissing defaults to false"),
+            Map.entry("org.springframework.boot.autoconfigure.condition.ConditionalOnBean",
+                    "Startup: registered only if beans of the listed types or names already exist when "
+                            + "this definition is processed; order-sensitive, reliable only in auto-configuration"),
+            Map.entry("org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean",
+                    "Startup: registered only if no bean of the listed types (default: the @Bean return "
+                            + "type) exists yet; typical for overridable auto-configuration defaults"),
+            Map.entry("org.springframework.boot.autoconfigure.condition.ConditionalOnClass",
+                    "Startup: registered only when the listed classes are on the classpath"),
+            Map.entry("org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass",
+                    "Startup: registered only when the listed classes are absent from the classpath"),
+            Map.entry("org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication",
+                    "Startup: registered only in a web application of the listed type"),
+            Map.entry("org.springframework.context.annotation.Profile", "Startup: registered only for the listed profiles"),
+            Map.entry("org.springframework.context.annotation.Conditional", "Startup: registered when the listed Condition classes match"));
     private static final String UNREMOVABLE = "io.quarkus.arc.Unremovable";
     private static final List<String> ROOT_ANNOTATIONS = List.of(
             "io.quarkus.runtime.Startup", "jakarta.ws.rs.Path", "io.quarkus.scheduler.Scheduled");

@@ -111,7 +111,7 @@ class McpToolCatalogTest {
                         .findFirst().orElseThrow().tool().description();
                 assertTrue(overview.startsWith("Server mode: " + (workspace ? "workspace" : "single_project")));
                 assertTrue(overview.contains(workspace ? "with view=compact" : "without arguments, not view=compact"));
-                assertTrue(overview.contains("even for narrow symbol tasks"));
+                assertTrue(overview.contains("once per session"));
                 if (profile.equals("full")) assertCompactCatalog(catalog);
                 for (var specification : catalog) {
                     if (Set.of("search_classes", "find_implementations", "find_annotated_symbols")

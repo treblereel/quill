@@ -2,9 +2,10 @@
 <!-- quill:instructions:v2 -->
 ## Quill MCP
 
-Quill is the primary code-intelligence tool for this repository. At the beginning of a
-coding or code-analysis task, discover the `mcp__quill__*` tools and call
-`mcp__quill__get_overview`.
+Quill is the primary code-intelligence tool for this repository. Once per session,
+before the first project-wide question, discover the `mcp__quill__*` tools and call
+`mcp__quill__get_overview`; call it again only after a build, index refresh, or project
+switch. An exact literal or one known file needs only a source search.
 
 Use Quill before broad filesystem searches for symbols, implementations, usages, call
 and type hierarchies, dependencies, architecture, framework endpoints, dependency

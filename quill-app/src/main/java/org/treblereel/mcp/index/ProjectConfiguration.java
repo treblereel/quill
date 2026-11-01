@@ -17,8 +17,10 @@ public final class ProjectConfiguration {
             <!-- quill:instructions:v3 -->
             ## Quill — Codebase Intelligence (MCP)
 
-            At the beginning of a coding or code-analysis task, discover only `get_overview`
-            by exact name, then call `get_overview`. Discover other Quill tools on demand by
+            Once per session, before the first project-wide question, discover only
+            `get_overview` by exact name, then call `get_overview`; call it again only after a
+            build, index refresh, or project switch. An exact literal or one known file needs only
+            a source search. Discover other Quill tools on demand by
             name or task; do not enumerate or print the entire tool catalog.
             Use `view=compact` only when server startup instructions or launch arguments
             confirm `--workspace` mode. A repository described as a workspace does not imply
@@ -69,9 +71,11 @@ public final class ProjectConfiguration {
             <!-- quill:instructions:v3 -->
             ## Quill MCP
 
-            Quill is the primary code-intelligence tool for this repository. At the beginning of a
-            coding or code-analysis task, discover only `mcp__quill__get_overview` by exact
-            name and call it first. Discover other Quill tools on demand by name or task;
+            Quill is the primary code-intelligence tool for this repository. Once per session,
+            before the first project-wide question, discover only `mcp__quill__get_overview` by
+            exact name and call it; call it again only after a build, index refresh, or project
+            switch. An exact literal or one known file needs only a source search. Discover other
+            Quill tools on demand by name or task;
             do not enumerate or print the entire tool catalog.
             Use `view=compact` only when server startup instructions or launch arguments
             confirm `--workspace` mode. A repository described as a workspace does not imply

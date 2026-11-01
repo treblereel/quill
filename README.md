@@ -670,6 +670,9 @@ Responses omit values a client can derive, so read absent fields by these rules:
   follow `member_symbol_id_format` (fill in `{kind}`, `{name}`, `{descriptor}`), and the
   language and source file are the class's. Kotlin members keep `source_name` when it differs
   from the JVM name.
+  When the class is in a Java file under 2,000 source tokens whose hash still matches the
+  index, and no `member_kind` or `member_offset` is given, the whole file comes back as
+  `source_text` with `members_replaced_by_source: true` instead of the listing.
 - **Source locations** corroborated by the compiler carry `excerpt`, the referencing source
   line (bounded, up to 50 per response), when the file still matches the indexed hash.
 - **Call edges** omit `edge_kind` and `execution_semantics` for ordinary calls; the values

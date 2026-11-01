@@ -685,6 +685,10 @@ Bean and injection evidence follows CDI and Spring semantics more closely:
 - Each SmallRye `@ConfigMapping` interface is a `SYNTHETIC` `@Dependent` bean with member
   `synthetic:ConfigMappingCreator`; Quarkus `@ConfigRoot` mappings in the default
   `BUILD_TIME` phase are not runtime beans and are skipped.
+- Each `@RegisterRestClient` interface is a `SYNTHETIC` bean qualified `@RestClient`, scoped by
+  its scope annotation or `@ApplicationScoped`, with member `synthetic:RestClient`.
+- Unresolved injection points list `dependency_candidates`: beans of the required type declared
+  in dependency JARs (for example framework producers), with artifact, scope and qualifiers.
 - Container-provided beans (`Event`, `Instance`, `Provider`, `InjectionPoint`,
   `BeanManager`, ...) resolve with status `RESOLVED`, reason `BUILTIN_BEAN` and no bean id.
 

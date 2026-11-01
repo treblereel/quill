@@ -73,6 +73,7 @@ public final class BeanRepository {
                 if (filter.containsKey("kind")) sql.append(" AND kind = :kind");
                 if (filter.containsKey("profile")) sql.append(" AND profiles LIKE :profile");
                 if (filter.containsKey("qualifier")) sql.append(" AND qualifiers LIKE :qualifier");
+                if (filter.containsKey("bean_type")) sql.append(" AND bean_types LIKE :beanType ESCAPE '!'");
             }
             sql.append(" ORDER BY class_name, framework, kind, member_name");
             var query = handle.createQuery(sql.toString());
@@ -90,6 +91,10 @@ public final class BeanRepository {
                 }
                 if (filter.containsKey("qualifier")) {
                     query.bind("qualifier", "%" + filter.get("qualifier") + "%");
+                }
+                if (filter.containsKey("bean_type")) {
+                    String type = filter.get("bean_type").replace("!", "!!").replace("%", "!%").replace("_", "!_");
+                    query.bind("beanType", "%\"" + type + "\"%");
                 }
             }
             return query.map((rs, ctx) -> new ExternalBeanRecord(

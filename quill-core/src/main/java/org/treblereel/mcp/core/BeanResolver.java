@@ -34,7 +34,10 @@ public final class BeanResolver {
             IF_PROFILE = n("io.quarkus.arc.profile.IfBuildProfile"),
             UNLESS_PROFILE = n("io.quarkus.arc.profile.UnlessBuildProfile"),
             CONFIG_MAPPING = n("io.smallrye.config.ConfigMapping"),
-            CONFIG_ROOT = n("io.quarkus.runtime.annotations.ConfigRoot");
+            CONFIG_ROOT = n("io.quarkus.runtime.annotations.ConfigRoot"),
+            REGISTER_REST_CLIENT = n("org.eclipse.microprofile.rest.client.inject.RegisterRestClient");
+    /** Provenance recorded as the member of synthetic REST client beans. */
+    static final String REST_CLIENT_CREATOR = "synthetic:RestClient";
     /** Provenance recorded as the member of synthetic config-mapping beans. */
     static final String CONFIG_MAPPING_CREATOR = "synthetic:ConfigMappingCreator";
     private static final Set<DotName> SCOPES = Set.of(n("jakarta.enterprise.context.ApplicationScoped"),
@@ -118,6 +121,19 @@ public final class BeanResolver {
             beans.add(new BeanRecord(nextBean++, classId, "SYNTHETIC", "@Dependent",
                     qualifiers(List.of(), lookup, true), List.of(), false, false, null,
                     profiles(c), null, CONFIG_MAPPING_CREATOR,
+                    typeClosure(Type.create(c.name(), Type.Kind.CLASS), lookup)));
+        }
+        for (ClassInfo c : classes) {
+            // Quarkus registers each @RegisterRestClient interface as a synthetic bean injected
+            // with @RestClient; its scope is the interface's scope annotation or @ApplicationScoped
+            // (quarkus.rest-client."config-key".scope can change it at build time).
+            if (!c.isInterface() || !c.hasDeclaredAnnotation(REGISTER_REST_CLIENT)) continue;
+            int classId = classIds.computeIfAbsent(c.name().toString(), x -> classIds.size() + 1);
+            String declaredScope = hasScope(c.declaredAnnotations(), lookup)
+                    ? scope(c.declaredAnnotations(), lookup) : "@ApplicationScoped";
+            beans.add(new BeanRecord(nextBean++, classId, "SYNTHETIC", declaredScope,
+                    List.of("@RestClient", BuiltinQualifier.ANY.annotation()), List.of(), false, false, null,
+                    profiles(c), null, REST_CLIENT_CREATOR,
                     typeClosure(Type.create(c.name(), Type.Kind.CLASS), lookup)));
         }
         int nextIp = 1;

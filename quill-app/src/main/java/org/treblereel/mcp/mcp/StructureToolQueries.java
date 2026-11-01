@@ -833,6 +833,10 @@ final class StructureToolQueries {
                         ignored -> "L" + (limitationKeys.size() + 1)));
             }
             appendResolutionTrace(node, point, resolvedBeans, resolvedClasses);
+            if (point.resolvedBeanId() == null && (point.resolutionStatus() == ResolutionStatus.UNKNOWN
+                    || point.resolutionStatus() == ResolutionStatus.UNSATISFIED)) {
+                appendDependencyCandidates(node, reader, point);
+            }
             if (point.resolutionStatus() == ResolutionStatus.AMBIGUOUS) {
                 node.putNull("resolved_to");
                 ambiguous.add(point.fieldName());
@@ -865,6 +869,30 @@ final class StructureToolQueries {
         InterceptionEvidence.append(root, reader, cls, bean.get());
         appendMeta(root, reader, cls.sourceTokens());
         return root.toString();
+    }
+
+    /**
+     * Beans of the required type found in dependency JARs (for example a framework producer such
+     * as Vert.x or Jackson). Application resolution does not consider them, so an agent would
+     * otherwise search the JARs itself.
+     */
+    private static void appendDependencyCandidates(ObjectNode node, ReadQueryContext reader,
+            InjectionPointRecord point) {
+        int generic = point.targetType().indexOf('<');
+        String type = generic < 0 ? point.targetType() : point.targetType().substring(0, generic);
+        var external = reader.beans.findExternalBeans(Map.of("bean_type", type));
+        if (external.isEmpty()) return;
+        ArrayNode candidates = node.putArray("dependency_candidates");
+        external.stream().limit(5).forEach(bean -> {
+            ObjectNode candidate = candidates.addObject().put("class", bean.className()).put("kind", bean.kind())
+                    .put("scope", bean.scope()).put("framework", bean.framework());
+            if (bean.memberName() != null) candidate.put("member", bean.memberName());
+            if (bean.artifact() != null) candidate.put("artifact", bean.artifact());
+            if (bean.defaultBean()) candidate.put("default_bean", true);
+            candidate.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+        });
+        node.put("dependency_candidates_note", "Beans of this type declared in dependency JARs; "
+                + "they satisfy the point only if their qualifiers match and the bean is enabled");
     }
 
     private static void appendResolutionTrace(ObjectNode node, InjectionPointRecord point,

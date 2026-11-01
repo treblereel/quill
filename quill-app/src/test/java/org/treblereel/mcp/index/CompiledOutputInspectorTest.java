@@ -70,6 +70,61 @@ class CompiledOutputInspectorTest {
     }
 
     @Test
+    void resourceOnlyMainWithCompiledTestsDoesNotRequireMainBytecode() throws Exception {
+        resources(root);
+        write(root.resolve("src/test/java/ResourceTest.java"), "class ResourceTest {}");
+        write(root.resolve("target/test-classes/ResourceTest.class"), "test bytecode");
+        assertEquals(CompiledOutputInspector.State.NOT_APPLICABLE, CompiledOutputInspector.inspect(root).state());
+        assertEquals(CompiledOutputInspector.State.NOT_APPLICABLE, CompiledOutputInspector.inspect(root, java.util.List.of(".")).state());
+    }
+
+    @Test
+    void mixedReactorDoesNotLetResourcesHideMissingJvmOutput() throws Exception {
+        write(root.resolve("pom.xml"), "<project><packaging>pom</packaging><modules><module>code</module><module>yaml</module></modules></project>");
+        Path code = root.resolve("code"), yaml = root.resolve("yaml");
+        resources(yaml);
+        write(code.resolve("pom.xml"), "<project/>");
+        write(code.resolve("src/main/java/App.java"), "class App {}");
+        assertEquals(java.util.List.of("code"), CompiledOutputInspector.inspect(root).staleModules());
+        write(code.resolve("target/classes/App.class"), "main bytecode");
+        long now = System.currentTimeMillis();
+        for (Path p : java.util.List.of(root.resolve("pom.xml"), code.resolve("pom.xml"), code.resolve("src/main/java/App.java")))
+            Files.setLastModifiedTime(p, FileTime.fromMillis(now - 2000));
+        assertEquals(CompiledOutputInspector.State.FRESH, CompiledOutputInspector.inspect(root).state());
+        assertEquals(CompiledOutputInspector.State.NOT_APPLICABLE, CompiledOutputInspector.inspect(root, java.util.List.of("yaml")).state());
+        write(yaml.resolve("target/generated-sources/annotations/Generated.java"), "class Generated {}");
+        assertEquals(java.util.List.of("yaml"), CompiledOutputInspector.inspect(root).staleModules());
+    }
+
+    @Test
+    void resourcesDoNotExemptProductionSources() throws Exception {
+        for (String path : java.util.List.of("src/main/java/App.java", "src/main/kotlin/App.kt",
+                "target/generated-sources/annotations/App.java", "custom/App.java", "src/main/scala/App.scala", "src/main/proto/app.proto")) {
+            Path module = root.resolve(Integer.toString(path.hashCode()));
+            resources(module);
+            write(module.resolve(path), "class App {}");
+            assertEquals(CompiledOutputInspector.State.MISSING, CompiledOutputInspector.inspect(module).state(), path);
+        }
+    }
+
+    @Test
+    void externalCustomSourceRootIsNotInferredToBeResourceOnly() throws Exception {
+        resources(root);
+        write(root.resolve("pom.xml"), "<project><build><sourceDirectory>../external-code</sourceDirectory></build></project>");
+        assertEquals(CompiledOutputInspector.State.MISSING, CompiledOutputInspector.inspect(root).state());
+    }
+
+    private static void resources(Path module) throws Exception {
+        write(module.resolve("pom.xml"), "<project/>");
+        write(module.resolve("src/main/resources/plan.yaml"), "steps: []");
+    }
+
+    private static void write(Path path, String value) throws Exception {
+        Files.createDirectories(path.getParent());
+        Files.writeString(path, value);
+    }
+
+    @Test
     void aggregatorPomIsNotTreatedAsAClassProducingModule() throws Exception {
         Files.writeString(root.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion>

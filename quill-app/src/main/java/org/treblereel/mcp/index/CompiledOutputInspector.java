@@ -72,7 +72,9 @@ public final class CompiledOutputInspector {
     }
 
     public record Module(long content, long buildInput, long output, boolean hasOutput,
-            com.fasterxml.jackson.databind.JsonNode compilation) {
+            com.fasterxml.jackson.databind.JsonNode compilation, boolean requiresClasses) {
+        public Module(long content, long buildInput, long output, boolean hasOutput,
+                com.fasterxml.jackson.databind.JsonNode compilation) { this(content, buildInput, output, hasOutput, compilation, true); }
         public Module(long content, long buildInput, long output, boolean hasOutput) { this(content, buildInput, output, hasOutput, null); }
     }
 
@@ -85,21 +87,26 @@ public final class CompiledOutputInspector {
         public Snapshot { modules = Map.copyOf(modules); sourceSets = List.copyOf(sourceSets); }
         public Report inspect(java.util.Collection<String> selected) {
             if (metadataOnly) return new Report(State.NOT_APPLICABLE, List.of());
+            var scoped = modules.entrySet().stream()
+                    .filter(e -> selected == null || selected.contains(e.getKey())).toList();
+            if (!scoped.isEmpty() && scoped.stream().noneMatch(e -> e.getValue().requiresClasses()))
+                return new Report(State.NOT_APPLICABLE, List.of());
             boolean hasOutputs = modules.entrySet().stream()
                     .anyMatch(e -> (selected == null || selected.contains(e.getKey())) && e.getValue().hasOutput());
             if (!hasOutputs) return new Report(State.MISSING, modules.entrySet().stream()
-                    .filter(e -> (selected == null || selected.contains(e.getKey())) && e.getValue().content() > 0)
+                    .filter(e -> (selected == null || selected.contains(e.getKey())) && e.getValue().requiresClasses() && e.getValue().content() > 0)
                     .map(Map.Entry::getKey).sorted().toList());
             long shared = sharedBuildInput;
             if (selected != null) for (String name : selected) {
                 Module module = modules.get(name);
-                if (module != null && module.content() == 0 && !module.hasOutput())
+                if (module != null && module.requiresClasses() && module.content() == 0 && !module.hasOutput())
                     shared = Math.max(shared, module.buildInput());
             }
             List<String> stale = new ArrayList<>();
             for (var entry : modules.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
                 if (selected != null && !selected.contains(entry.getKey())) continue;
                 Module module = entry.getValue();
+                if (!module.requiresClasses()) continue;
                 if (module.content() == 0 && !module.hasOutput()) continue;
                 boolean confirmed = module.compilation() != null && module.compilation().path("status").asText().equals("matching");
                 boolean changed = module.compilation() != null && module.compilation().path("status").asText().equals("changed");
@@ -116,9 +123,10 @@ public final class CompiledOutputInspector {
         Map<String, Module> modules = new LinkedHashMap<>();
         for (Path module : discovery.moduleDirectories()) {
             var compiled = outputs.getOrDefault(module, List.of());
+            var evidence = compilation(module, "main", compiled.stream().map(ProjectLayout.CompiledOutput::directory).toList());
             modules.put(moduleName(root, module), new Module(newestMainContent(module), newestModuleBuildInput(module),
                     compiled.stream().mapToLong(output -> newestModified(output.directory(), false)).max().orElse(0),
-                    !compiled.isEmpty(), compilation(module, "main", compiled.stream().map(ProjectLayout.CompiledOutput::directory).toList())));
+                    !compiled.isEmpty(), evidence, !compiled.isEmpty() || evidence != null || !resourceOnlyMain(module)));
         }
         var sourceSets = new java.util.ArrayList<com.fasterxml.jackson.databind.JsonNode>();
         for (Path module : discovery.moduleDirectories()) {
@@ -187,6 +195,26 @@ public final class CompiledOutputInspector {
 
     static boolean metadataOnly(Path root) {
         return ProjectCodeExpectation.inspect(root,BuildSystem.detect(root))==ProjectCodeExpectation.State.METADATA_ONLY;
+    }
+
+    private static boolean resourceOnlyMain(Path module) {
+        if (!Files.isRegularFile(module.resolve("pom.xml")) || !Files.isDirectory(module.resolve("src/main/resources"))) return false;
+        try {
+            String pom = Files.readString(module.resolve("pom.xml"));
+            // Without compiler evidence, custom/external source roots remain class-producing.
+            if (pom.contains("sourceDirectory") || pom.contains("build-helper-maven-plugin") || pom.contains("kotlin-maven-plugin")) return false;
+            var tests = List.of(module.resolve("src/test"), module.resolve("src/integration-test"),
+                    module.resolve("target/test-classes"), module.resolve("target/generated-test-sources"));
+            try (var paths = Files.walk(module)) {
+                return paths.noneMatch(path -> Files.isSymbolicLink(path)
+                        || (path.toString().endsWith(".java") || path.toString().endsWith(".kt")
+                            || Files.isRegularFile(path) && path.startsWith(module.resolve("src/main"))
+                                && !path.startsWith(module.resolve("src/main/resources")))
+                        && tests.stream().noneMatch(path::startsWith));
+            }
+        } catch (IOException | java.io.UncheckedIOException failure) {
+            return false;
+        }
     }
     private static long newestMainContent(Path module) {
         long newest = 0;

@@ -63,8 +63,10 @@ Quill. Claude без Quill тратит медиану 9k на вопрос, с 
    пустые `limitations`. ≈ −22k.
    Сделано: `point_defaults` по самому частому значению (оценка 359k → 302k, x0.84).
    Осталось: `resolution_trace.candidates`, `provider_evidence.declarations`.
-6. [ ] `get_call_hierarchy` (297k): `caller`/`callee` 44% — таблица методов один раз, рёбра по
+6. [~] `get_call_hierarchy` (297k): `caller`/`callee` 44% — таблица методов один раз, рёбра по
    индексу; `dispatch_targets` 16%. ≈ −22k.
+   Найдено: `GraphMetadata` (общие caller/callee через `shared_metadata`) молча отключался из-за
+   `dispatch_ref` в каждом ребре — в v3 не сработал ни разу. Исправлено (оценка 297k → 245k, x0.82).
 7. [ ] `find_entry_points` (158k, в среднем 39k символов): `observer` 30%, `annotation_values` 16%.
    ≈ −15k.
 8. [ ] `list_beans` (208k): `arc_retention` 20% — повторяющийся `note` вынести в defaults,

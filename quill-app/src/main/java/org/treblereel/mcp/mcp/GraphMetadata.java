@@ -21,10 +21,14 @@ final class GraphMetadata {
                     || root.has("shared_metadata") || root.has("reference_format")) return text;
             List<JsonNode> pages=root.findValues("calls");
             if(pages.isEmpty() || pages.stream().anyMatch(page->!page.isArray()))return text;
+            // dispatch_ref already points into dispatch_targets; sharing dispatch here would give the
+            // same name two meanings, and refusing the whole response left callers and callees inline.
+            List<String> fields = root.has("dispatch_targets")
+                    ? FIELDS.stream().filter(field -> !field.equals("dispatch")).toList() : FIELDS;
             Map<JsonNode, Integer> counts = new LinkedHashMap<>();
             for (JsonNode page : pages) for (JsonNode edge : page) {
                 if (!edge.isObject()) return text;
-                for (String field : FIELDS) {
+                for (String field : fields) {
                     if (edge.has(field + "_ref")) return text;
                     JsonNode node = edge.get(field);
                     if (node != null && node.isObject()) counts.merge(node, 1, Integer::sum);
@@ -39,7 +43,7 @@ final class GraphMetadata {
             ids.forEach((node, id) -> shared.set(id, node));
             root.put("reference_format", "In every nested calls array, FIELD_ref resolves to root shared_metadata[id], replacing FIELD without changing its meaning.");
             for (JsonNode page : pages) for (JsonNode edge : page) {
-                for (String field : FIELDS) {
+                for (String field : fields) {
                     String id = ids.get(edge.get(field));
                     if (id != null) {
                         ((ObjectNode) edge).remove(field);

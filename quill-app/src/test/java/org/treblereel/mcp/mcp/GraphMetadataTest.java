@@ -66,6 +66,18 @@ class GraphMetadataTest {
         assertTrue(c.get(1).has("callee")); assertFalse(c.get(1).has("callee_ref"));
         assertTrue(c.get(0).has("callee_ref"));
     }
+    @Test void dispatchTargetReferencesDoNotBlockSharingCallersAndCallees() throws Exception {
+        ObjectNode graph = graph();
+        graph.putObject("dispatch_targets").putObject("d1").put("owner", "unrelated.example.Owner");
+        graph.path("calls").forEach(edge -> ((ObjectNode) edge).put("dispatch_ref", "d1"));
+        JsonNode compact = JSON.readTree(GraphMetadata.compact(graph.toString()));
+        assertTrue(compact.has("shared_metadata"));
+        assertEquals(graph.path("dispatch_targets"), compact.path("dispatch_targets"));
+        compact.path("calls").forEach(edge -> {
+            assertEquals("d1", edge.path("dispatch_ref").asText());
+            assertTrue(edge.has("callee_ref"));
+        });
+    }
     @Test void noSavingsErrorsMalformedAndReservedNamesRemainExactlyUnchanged() {
         for (String text : List.of("not JSON", "null", "[]", "{\"calls\":[null]}",
                 "{\"calls\":[{\"callee\":{},\"caller\":{}}]}",

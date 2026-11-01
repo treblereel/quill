@@ -85,6 +85,15 @@ Quill. Claude без Quill тратит медиану 9k на вопрос, с 
     `LoggerProducer.getSimpleLogger` с подходящим `@Default`. Единственный подходящий producer
     из зависимости — отдельный статус разрешения, не `unknown`.
 
+15a. [ ] `list_injection_points io.cryostat.Producers` → `NOT_A_BEAN` в 5 сессиях: класс с
+    producer-методами без bean-defining аннотации ArC делает `@Dependent` бином
+    (`quarkus.arc.auto-producer-methods`, по умолчанию true). Индексировать такой бин.
+15b. [x] Найдено реплеем и исправлено: `find_cycles` scope=class падал на вложенном классе с
+    владельцем без рёбер; `change_session`/`plan_change`/`verify_change`/`find_impacted_tests`
+    с целью `Class#method` требовали граф (CQ-050).
+15c. [ ] Реплей: отделить внутренние ошибки (`TOOL_ERROR`) от ответов на неверный запрос
+    (`CLASS_NOT_FOUND`, `AMBIGUOUS_METHOD`, неверные аргументы) в `failures`.
+
 ### Фаза 4. Платная проверка
 15. [ ] Только после фаз 1–2 и реплея: повторить v3 (Quill-плечо, тот же baseline), отчёт по
     тем же метрикам + отдельно по «тяжёлым» задачам.

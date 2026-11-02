@@ -85,10 +85,16 @@ public final class PrefetchContext {
             // Scope is carried by indexed_references_complete, resource coverage and runtime/activation flags.
             fact.set("evidence",evidence);
         }
-        Set<Integer> seen=new HashSet<>();var matcher=IDENTIFIER.matcher(prompt);
+        Set<Integer> seen=new HashSet<>();Set<String> seenNames=new HashSet<>();var matcher=IDENTIFIER.matcher(prompt);
         while(matcher.find() && facts.size()+ambiguous.size()+unavailable.size()<3) {
             String token=matcher.group().replaceAll("\\.+$","");
             List<ClassRecord> matches=names.getOrDefault(token,List.of()).stream().distinct().toList();
+            if(matches.isEmpty() && token.contains(".") && seenNames.add(token)) {
+                // A qualified name that is no application class: a package, or a type from dependencies.
+                ObjectNode named=NameTargetPrefetch.packageFact(db,token);
+                if(named==null)named=NameTargetPrefetch.typeProviders(db,token);
+                if(named!=null){facts.add(named);continue;}
+            }
             while(matches.isEmpty() && token.contains(".")) {
                 token=token.substring(0,token.lastIndexOf('.'));
                 matches=names.getOrDefault(token,List.of()).stream().distinct().toList();

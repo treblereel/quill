@@ -14,7 +14,7 @@ public final class ProjectConfiguration {
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
     private static final String QUILL_CLAUDE_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v4 -->
+            <!-- quill:instructions:v5 -->
             ## Quill — Codebase Intelligence (MCP)
 
             Discover Quill tools on demand by exact name or task; do not enumerate or print the entire tool catalog.
@@ -66,11 +66,12 @@ public final class ProjectConfiguration {
             """;
     private static final String QUILL_AGENTS_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v4 -->
+            <!-- quill:instructions:v5 -->
             ## Quill MCP
 
-            Quill is the primary code-intelligence tool for this repository. Discover Quill tools
-            on demand by exact name or task; do not enumerate or print the entire tool catalog.
+            Quill is the primary code-intelligence tool for this repository. Call listed Quill
+            tools directly; search the catalog by exact tool name only for a tool that is not
+            listed, and do not enumerate or print the entire tool catalog.
             For a known target, query the relevant tool directly. Use `mcp__quill__get_overview`
             for orientation, inventory, or index/build status; it is not a prerequisite for other queries.
             Use `view=compact` only when server startup instructions or launch arguments
@@ -91,6 +92,10 @@ public final class ProjectConfiguration {
             missing tools. Use the client's tool-search capability when available. If tools are
             genuinely unavailable, report that limitation and the client/configuration context;
             do not claim the server is unconfigured from resource-list results alone.
+
+            Each model turn resends the whole conversation, so make every independent Quill query
+            a question needs in one script turn (several `tools.mcp__quill__*` calls awaited
+            together) instead of one query per turn.
 
             Use `rg` and direct source reads for exact literals, known files, and verification when
             Quill reports stale, partial, unknown, or unsupported evidence.

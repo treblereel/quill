@@ -120,7 +120,7 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(refreshed.contains("# User instructions"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v4 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v5 -->"));
         assertFalse(refreshed.contains("Old guidance."));
     }
 

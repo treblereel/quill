@@ -14,6 +14,8 @@ public final class PrefetchContext {
     private static final Pattern IDENTIFIER=Pattern.compile("[\\p{L}_$][\\p{L}\\p{N}_$.]*");
     private static final Pattern CONFIG_KEY=Pattern.compile("%?[\\p{L}_][\\p{L}\\p{N}_.-]*");
     private static final Pattern METHOD=Pattern.compile("([\\p{L}_$][\\p{L}\\p{N}_$.]*)#([\\p{L}_$][\\p{L}\\p{N}_$]*\\([^()\\n]*\\))");
+    // Class#member without a parameter list names a field; injected fields carry the resolution.
+    private static final Pattern FIELD=Pattern.compile("([\\p{L}_$][\\p{L}\\p{N}_$.]*)#([\\p{L}_$][\\p{L}\\p{N}_$]*)(?![\\p{L}\\p{N}_$(])");
     public static ObjectNode collect(ReadQueryContext db,Path root,String prompt) throws Exception {
         return collect(db,root,prompt,null);
     }
@@ -28,11 +30,21 @@ public final class PrefetchContext {
         if(EndpointPrefetch.hasRoute(prompt))return EndpointPrefetch.collect(db,root,prompt);
         JsonNode hashes=JSON.readTree(metadata.getOrDefault("java_source_hashes","{}"));
         var method=METHOD.matcher(prompt);
-        if(method.find()){
-            result.put("basis","exact indexed method impact").put("index_id",metadata.getOrDefault("index_id","unknown"));
+        boolean methods=method.find();
+        var field=FIELD.matcher(prompt);
+        boolean fields=field.find();
+        if(methods || fields){
+            result.put("basis",methods?"exact indexed method impact":"exact indexed injection points").put("index_id",metadata.getOrDefault("index_id","unknown"));
             var selected=result.putArray("facts");var missing=result.putArray("unavailable");result.putArray("ambiguities");
             Set<String> selectors=new HashSet<>();
-            do {
+            if(fields) do {
+                String owner=field.group(1),name=field.group(2);
+                if(!selectors.add(owner+"#"+name))continue;
+                if(selectors.size()>3){missing.addObject().put("status","member_target_limit");break;}
+                JsonNode point=injectionPointFact(db,owner,name,missing);
+                if(!point.isNull())selected.add(point);
+            }while(field.find());
+            if(methods) do {
                 String target=method.group(1),selector=method.group(2);
                 if(!selectors.add(target+"#"+selector))continue;
                 if(selectors.size()>3){missing.addObject().put("status","method_target_limit");break;}
@@ -97,6 +109,26 @@ public final class PrefetchContext {
             return EndpointPrefetch.collect(db,root,previousEndpoint,deliveredCurrentIndex);
         result.put("index_id",metadata.getOrDefault("index_id","unknown"));
         return result.put("status","ready");
+    }
+    /** The injection point a field target names, with its owner's bean, or why there is none. */
+    private static JsonNode injectionPointFact(ReadQueryContext db,String owner,String name,ArrayNode missing) throws Exception {
+        JsonNode points=JSON.readTree(new StructureToolQueries().getInjectionPoints(db,owner));
+        if(points.has("error") || points.has("error_code")){
+            ObjectNode gap=missing.addObject().put("target",owner+"#"+name);
+            gap.put("status",points.path("error_code").asText(points.path("error").asText("lookup_failed")));
+            return com.fasterxml.jackson.databind.node.NullNode.getInstance();
+        }
+        for(JsonNode point:points.path("injection_points")){
+            if(!name.equals(point.path("field").asText()) && !name.equals(point.path("member").asText()))continue;
+            ObjectNode fact=JSON.createObjectNode().put("kind","injection_point").put("tool","list_injection_points")
+                    .put("target",points.path("target").asText()+"#"+name)
+                    .put("owner_scope",points.path("scope").asText()).put("owner_bean_kind",points.path("bean_kind").asText());
+            fact.set("injection_point",point);
+            if(points.has("resolution_context"))fact.set("resolution_context",points.get("resolution_context"));
+            return fact;
+        }
+        missing.addObject().put("target",owner+"#"+name).put("status","not_an_injection_point");
+        return com.fasterxml.jackson.databind.node.NullNode.getInstance();
     }
     /** Portable hook budget: omit complete facts explicitly instead of letting clients cut JSON. */
     public static void boundContext(ObjectNode data){

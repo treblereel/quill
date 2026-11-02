@@ -1141,7 +1141,7 @@ final class WorkspaceToolQueries {
                 node.put("occurrences", 1);
                 node.put("origin", caller.origin());
                 if (caller.sourceFile() == null) node.putNull("source");
-                else node.put("source", caller.sourceFile() + ":" + caller.sourceLine());
+                else node.put("source", (caller.sourceLine() > 0 ? caller.sourceFile() + ":" + caller.sourceLine() : caller.sourceFile()));
                 if (caller.module() == null) node.putNull("module");
                 else node.put("module", caller.module());
                 if (caller.sourceSet() == null) node.putNull("source_set");

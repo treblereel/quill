@@ -97,7 +97,7 @@ final class ContextQueries {
             ObjectNode resolution = context.putObject("resolution");
             resolution.put("status", "resolved");
             resolution.put("class", cls.className());
-            resolution.put("source", cls.sourceFile() + ":" + cls.sourceLine());
+            resolution.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
             putNullable(resolution, "module", cls.module());
             putNullable(resolution, "source_set", cls.sourceSet());
             resolution.put("origin", cls.origin());

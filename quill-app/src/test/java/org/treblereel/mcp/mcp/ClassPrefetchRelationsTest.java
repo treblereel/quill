@@ -17,6 +17,7 @@ import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
+import org.treblereel.mcp.model.ExternalBeanRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
 
 class ClassPrefetchRelationsTest {
@@ -89,9 +90,44 @@ class ClassPrefetchRelationsTest {
         assertEquals(List.of("CLASS x.BucketStore @ApplicationScoped qualifiers [\"@Default\"] "
                         + "@io.quarkus.arc.lookup.LookupIfProperty(name=store.mode, stringValue=bucket)"),
                 strings(publisher, "instance_candidates"));
-        assertEquals("FIELD created: jakarta.enterprise.event.Event<x.Events.Created> [\"@Default\"] -> unresolved [UNKNOWN]",
+        assertEquals("FIELD created: jakarta.enterprise.event.Event<x.Events.Created> [\"@Default\"] -> not resolved by the application index [UNKNOWN]",
                 strings(publisher, "injects").get(0));
         assertEquals("java.util.List<x.Outer.Inner$1>", ClassPrefetchRelations.source("java.util.List<x.Outer$Inner$1>"));
+    }
+
+    @Test
+    void decoratorsAreNamedWithPriorityAndUnresolvedPointsListQualifiedDependencyProviders() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("decorators.db"));
+        IndexWriter.writeIncremental(db, new IndexFixture()
+                .classes(List.of(
+                        new ClassRecord(0, "x.Service", "INTERFACE", null, List.of(), "Service.java", 1, false, 10),
+                        new ClassRecord(0, "x.Impl", "CLASS", "java.lang.Object", List.of("x.Service"), "Impl.java", 1, true, 10),
+                        new ClassRecord(0, "x.Caching", "CLASS", "java.lang.Object", List.of("x.Service"), "Caching.java", 1, true, 10),
+                        new ClassRecord(0, "x.Audit", "CLASS", "java.lang.Object", List.of("x.Service"), "Audit.java", 1, true, 10)))
+                .beans(List.of(
+                        new BeanRecord(0, 2, "CLASS", "@ApplicationScoped", List.of("@Default"), List.of(), false, null, null, null, null, List.of("x.Impl", "x.Service")),
+                        new BeanRecord(0, 3, "DECORATOR", "@Dependent", List.of("@Default"), List.of(), false, 20, null, null, null, List.of("x.Caching", "x.Service")),
+                        new BeanRecord(0, 4, "DECORATOR", "@Dependent", List.of("@Default"), List.of(), false, 10, null, null, null, List.of("x.Audit", "x.Service"))))
+                .injectionPoints(List.of(
+                        InjectionPointRecord.staticAnalysis(0, 1, "FIELD", "org.Log", List.of("@Default"), "log", null, false, InjectionPointRecord.STATIC_CDI),
+                        InjectionPointRecord.staticAnalysis(0, 2, "FIELD", "x.Service", List.of("@Any"), "delegate", null, false, InjectionPointRecord.STATIC_CDI)))
+                .dependencies(List.of()).metadata(Map.of("index_id", "decorators")).snapshot());
+        IndexFixture.writeExternalBeans(db, List.of(
+                new ExternalBeanRecord(1, "dep.LogProducer", "PRODUCER_METHOD", "@Dependent", List.of("@Default", "@Any"), List.of(),
+                        false, false, null, List.of(), "simple", List.of("org.Log"), "cdi", "dep:log:1", "/tmp/log.jar", List.of()),
+                new ExternalBeanRecord(2, "dep.LogProducer", "PRODUCER_METHOD", "@Dependent", List.of("@dep.LogName", "@Any"), List.of(),
+                        false, false, null, List.of(), "named", List.of("org.Log"), "cdi", "dep:log:1", "/tmp/log.jar", List.of())));
+
+        ObjectNode service = relations(db, "x.Service");
+        ObjectNode impl = relations(db, "x.Impl");
+
+        assertEquals(List.of("x.Audit @Priority(10)", "x.Caching @Priority(20)"), strings(service, "decorators"));
+        assertEquals(List.of("x.Caching#delegate (FIELD x.Service) [UNKNOWN] in a decorator: a delegate point resolves to the decorated bean"),
+                strings(service, "injected_into"));
+        assertEquals(List.of("FIELD log: org.Log [\"@Default\"] -> not resolved by the application index; "
+                        + "dependency providers: dep.LogProducer#simple from dep:log:1 [UNKNOWN]"),
+                strings(impl, "injects"));
+        assertFalse(impl.has("decorators"));
     }
 
     private static ObjectNode relations(Jdbi db, String name) throws Exception {

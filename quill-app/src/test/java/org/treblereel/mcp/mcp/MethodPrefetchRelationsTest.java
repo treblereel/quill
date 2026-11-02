@@ -47,6 +47,58 @@ class MethodPrefetchRelationsTest {
     }
 
     @Test
+    void firedEventObserversAreThoseOfTheEventFieldsTheMethodReads() throws Exception {
+        String runtime = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) ";
+        var db = JavaEvidenceFixture.index(root, java.util.Map.of(
+                "src/main/java/jakarta/inject/Inject.java", "package jakarta.inject; " + runtime + "public @interface Inject {}",
+                "src/main/java/jakarta/enterprise/context/ApplicationScoped.java",
+                "package jakarta.enterprise.context; " + runtime + "public @interface ApplicationScoped {}",
+                "src/main/java/jakarta/enterprise/event/Event.java",
+                "package jakarta.enterprise.event; public interface Event<T> { void fire(T event); }",
+                "src/main/java/jakarta/enterprise/event/Observes.java",
+                "package jakarta.enterprise.event; " + runtime + "public @interface Observes {}",
+                "src/main/java/p/Publisher.java", """
+                        package p;
+                        import jakarta.enterprise.event.Event;
+                        @jakarta.enterprise.context.ApplicationScoped
+                        public class Publisher {
+                            public record Created() {}
+                            public record Deleted() {}
+                            @jakarta.inject.Inject Event<Created> created;
+                            @jakarta.inject.Inject Event<Deleted> deleted;
+                            void create() { created.fire(new Created()); }
+                            void delete() { deleted.fire(new Deleted()); }
+                        }
+                        """,
+                "src/main/java/p/Listener.java", """
+                        package p;
+                        import jakarta.enterprise.event.Observes;
+                        @jakarta.enterprise.context.ApplicationScoped
+                        public class Listener {
+                            void onCreated(@Observes Publisher.Created event) {}
+                            void onDeleted(@Observes Publisher.Deleted event) {}
+                        }
+                        """));
+        // The fixture indexes bytecode only, so the Publisher bean and its two Event points are added here.
+        db.useHandle(handle -> {
+            handle.execute("INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types) "
+                    + "SELECT id, 'CLASS', '@ApplicationScoped', '[\"@Default\"]', '[\"p.Publisher\"]' FROM classes WHERE class_name = 'p.Publisher'");
+            for (String field : List.of("created:Created", "deleted:Deleted"))
+                handle.execute("INSERT INTO injection_points(bean_id, kind, target_type, qualifiers, field_name, resolution_status, "
+                        + "resolution_strategy, resolution_reason, resolution_confidence) SELECT b.id, 'FIELD', "
+                        + "'jakarta.enterprise.event.Event<p.Publisher$" + field.split(":")[1] + ">', '[\"@Default\"]', '"
+                        + field.split(":")[0] + "', 'RESOLVED', 'STATIC_CDI', 'BUILTIN_BEAN', 'high' FROM beans b "
+                        + "JOIN classes c ON c.id = b.class_id WHERE c.class_name = 'p.Publisher'");
+        });
+        ObjectNode fact = JSON.createObjectNode().put("class", "p.Publisher").put("name", "create").put("descriptor", "()V");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, fact); return null; });
+
+        assertEquals(List.of("created jakarta.enterprise.event.Event<p.Publisher.Created> -> p.Listener#onCreated(@Observes p.Publisher.Created)"),
+                fact.path("observers_of_fired_events").valueStream().map(node -> node.asText()).toList(), fact.toString());
+        assertEquals("Event fields this method or its walked callees read", fact.path("observers_basis").asText());
+    }
+
+    @Test
     void impactCallersBecomeOneLinePerClassAndCoverageKeepsItsVerdict() {
         ObjectNode fact = JSON.createObjectNode();
         ArrayNode tests = fact.putArray("test_callers");

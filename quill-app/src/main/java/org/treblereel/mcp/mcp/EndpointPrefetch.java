@@ -56,7 +56,11 @@ final class EndpointPrefetch {
                 .set("methods",methods);
         if(!sourcesCurrent(db,root,owners)){facts.removeAll();result.remove("endpoint_anchor");return result.put("status","source_hash_unavailable_or_changed");}
         result.putArray("limitations").add("Only exact indexed production HTTP routes and at most two direct project callees; static calls do not prove runtime dispatch.")
-                .add("Only the HTTP handler body is preloaded; callee bodies remain available on demand. Compiler-generated helpers are not independent declaration targets.")
+                .add((methods.path(0).path("source_evidence").path("source_complete").asBoolean()
+                        ? "Only the HTTP handler body is preloaded; callee bodies remain available on demand."
+                        : "No method body is preloaded (" + methods.path(0).path("source_evidence").path("status").asText("source unavailable")
+                                + "); read the handler and callees on demand.")
+                        + " Compiler-generated helpers are not independent declaration targets.")
                 .add("Injection fields are restricted to declared fields accessed by each method. Configuration candidates cover directly indexed owned-field/programmatic reads only; indirect framework settings and overload-ambiguous programmatic reads are not inferred.")
                 .add("DI uses the indexed default application context, not an inferred runtime profile. Previously emitted facts are suppressed per session; follow-up questions reuse the selected operation until another explicit target or route is given.");
         return result;

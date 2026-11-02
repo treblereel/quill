@@ -71,7 +71,7 @@ final class TypeHierarchyQueries {
         ObjectNode root = JSON.createObjectNode();
         root.put("target", rootClass.className());
         root.put("kind", rootClass.kind());
-        root.put("source", rootClass.sourceFile() + ":" + rootClass.sourceLine());
+        root.put("source", (rootClass.sourceLine() > 0 ? rootClass.sourceFile() + ":" + rootClass.sourceLine() : rootClass.sourceFile()));
         root.put("direction", normalizedDirection);
         root.put("max_depth", maxDepth);
         root.put("ancestor_count", paths.values().stream()
@@ -92,7 +92,7 @@ final class TypeHierarchyQueries {
             if (path.indexedClass() != null) {
                 ClassRecord cls = path.indexedClass();
                 node.put("kind", cls.kind());
-                node.put("source", cls.sourceFile() + ":" + cls.sourceLine());
+                node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
                 node.put("origin", cls.origin());
                 if (cls.module() == null) node.putNull("module");
                 else node.put("module", cls.module());

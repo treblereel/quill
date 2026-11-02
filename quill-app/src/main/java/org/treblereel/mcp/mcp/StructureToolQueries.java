@@ -67,7 +67,7 @@ final class StructureToolQueries {
         for (ClassRecord value : limited) {
             ObjectNode node = arr.addObject();
             node.put("class", value.className());
-            node.put("source", value.sourceFile() + ":" + value.sourceLine());
+            node.put("source", (value.sourceLine() > 0 ? value.sourceFile() + ":" + value.sourceLine() : value.sourceFile()));
             node.put("origin", value.origin());
             node.put("lifecycle", value.lifecycle());
             appendContext(node, value);
@@ -125,7 +125,7 @@ final class StructureToolQueries {
             ObjectNode node = values.addObject();
             node.put("class", cls.className());
             node.put("match", directMatch ? "direct" : "meta");
-            node.put("source", cls.sourceFile() + ":" + cls.sourceLine());
+            node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
             node.put("origin", cls.origin());
             node.put("lifecycle", cls.lifecycle());
             appendContext(node, cls);
@@ -480,7 +480,7 @@ final class StructureToolQueries {
         ObjectNode root = JSON.createObjectNode();
         root.put("target", base.className());
         root.put("kind", base.kind());
-        root.put("source", base.sourceFile() + ":" + base.sourceLine());
+        root.put("source", (base.sourceLine() > 0 ? base.sourceFile() + ":" + base.sourceLine() : base.sourceFile()));
         root.put("origin", base.origin());
         appendContext(root, base);
         root.put("transitive", transitive);
@@ -512,7 +512,7 @@ final class StructureToolQueries {
             node.put("kind", implementation.kind());
             node.put("distance", result.distance());
             node.put("direct", result.distance() == 1);
-            node.put("source", implementation.sourceFile() + ":" + implementation.sourceLine());
+            node.put("source", (implementation.sourceLine() > 0 ? implementation.sourceFile() + ":" + implementation.sourceLine() : implementation.sourceFile()));
             node.put("origin", implementation.origin());
             appendContext(node, implementation);
             appendImplementationOccurrences(node, result.occurrences());

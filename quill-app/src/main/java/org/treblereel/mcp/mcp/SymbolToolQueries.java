@@ -46,7 +46,7 @@ final class SymbolToolQueries {
         if (cls.superclass() == null) root.putNull("superclass");
         else root.put("superclass", cls.superclass());
         root.set("interfaces", JSON.valueToTree(cls.interfaces()));
-        root.put("source", cls.sourceFile() + ":" + cls.sourceLine());
+        root.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
         root.put("origin", cls.origin());
         root.put("lifecycle", cls.lifecycle());
         root.put("source_tokens", cls.sourceTokens());

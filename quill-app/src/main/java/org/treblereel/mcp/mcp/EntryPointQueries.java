@@ -170,7 +170,7 @@ final class EntryPointQueries {
             if (candidate.detail() != null) node.set("service", candidate.detail());
             if (candidate.member() != null) appendAnnotationEvidence(node, candidate);
             if (cls.sourceFile() == null) node.putNull("source");
-            else node.put("source", cls.sourceFile() + ":" + cls.sourceLine());
+            else node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
             node.put("origin", cls.origin());
             if (cls.module() == null) node.putNull("module");
             else node.put("module", cls.module());

@@ -102,8 +102,10 @@ final class MethodPrefetchRelations {
         Set<String> lines = new LinkedHashSet<>();
         ArrayDeque<Method> queue = new ArrayDeque<>(List.of(new Method(classId, name, descriptor, 1)));
         seen.add(classId + "#" + name + descriptor);
+        List<String[]> visited = new java.util.ArrayList<>();
         while (!queue.isEmpty() && lines.size() < LIMIT * 2) {
             Method method = queue.removeFirst();
+            if (method.classId() == classId) visited.add(new String[] {method.name(), method.descriptor()});
             for (Map<String, Object> call : db.jdbi().withHandle(handle -> handle.createQuery("""
                     SELECT mc.to_class_id, c.class_name, mc.to_method, mc.to_descriptor, mc.invocation_kind
                     FROM method_calls mc JOIN classes c ON c.id = mc.to_class_id
@@ -138,22 +140,43 @@ final class MethodPrefetchRelations {
         }
         if (lines.isEmpty()) return;
         if (lines.stream().anyMatch(line -> line.contains(".event.Event#fire")))
-            firedEventObservers(db, fact, classId);
+            firedEventObservers(db, fact, classId, visited);
         ArrayNode values = fact.putArray("calls");
         lines.stream().limit(LIMIT).forEach(values::add);
         fact.put("calls_basis", "depth, callee, invocation; depth 2 = called by a depth-1 callee");
         if (lines.size() > LIMIT) fact.putObject("calls_truncated").put("shown", LIMIT).put("total", lines.size());
     }
 
-    /** The method fires an event: observers of each Event<T> its class injects (the fired one is among them). */
-    private static void firedEventObservers(ReadQueryContext db, ObjectNode fact, int classId) {
+    /**
+     * The method fires an event: observers of each Event<T> field the walked methods of its class
+     * read, or of every Event<T> its class injects when no such read is indexed.
+     */
+    private static void firedEventObservers(ReadQueryContext db, ObjectNode fact, int classId, List<String[]> visited) {
+        Set<String> read = new java.util.HashSet<>();
+        for (String[] method : visited)
+            read.addAll(db.jdbi().withHandle(handle -> handle.createQuery("""
+                    SELECT field_name FROM field_accesses
+                    WHERE from_class_id = :id AND to_class_id = :id AND from_method = :name
+                      AND from_descriptor = :descriptor AND access_kind = 'read_instance'""")
+                    .bind("id", classId).bind("name", method[0]).bind("descriptor", method[1])
+                    .mapTo(String.class).list()));
+        List<Map<String, Object>> points = db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT ip.field_name, ip.target_type FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
+                WHERE ob.class_id = :id ORDER BY ip.id""").bind("id", classId).mapToMap().list())
+                .stream().filter(point -> ClassPrefetchRelations.argument(String.valueOf(point.get("target_type")),
+                        List.of("jakarta.enterprise.event.Event", "javax.enterprise.event.Event")) != null).toList();
+        List<Map<String, Object>> fired = points.stream().filter(point -> read.contains(String.valueOf(point.get("field_name")))).toList();
+        boolean narrowed = !fired.isEmpty();
         ArrayNode observers = JSON.createArrayNode();
-        db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT ip.target_type FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
-                WHERE ob.class_id = :id ORDER BY ip.id""").bind("id", classId).mapTo(String.class).list())
-                .forEach(type -> ClassPrefetchRelations.eventObservers(db, type).forEach(observer ->
-                        observers.add(ClassPrefetchRelations.source(type) + " -> " + observer)));
-        if (!observers.isEmpty()) fact.set("observers_of_class_events", observers);
+        for (Map<String, Object> point : narrowed ? fired : points) {
+            String type = String.valueOf(point.get("target_type"));
+            ClassPrefetchRelations.eventObservers(db, type).forEach(observer ->
+                    observers.add(point.get("field_name") + " " + ClassPrefetchRelations.source(type) + " -> " + observer));
+        }
+        if (observers.isEmpty()) return;
+        fact.set("observers_of_fired_events", observers);
+        fact.put("observers_basis", narrowed ? "Event fields this method or its walked callees read"
+                : "every Event field of the class; which one is fired is not indexed");
     }
 
     private static void producer(ReadQueryContext db, ObjectNode fact, int classId, String name) {
@@ -177,7 +200,8 @@ final class MethodPrefetchRelations {
                     WHERE ip.bean_id = :id ORDER BY ip.id""").bind("id", id).mapToMap().list())
                     .forEach(row -> parameters.add(row.get("field_name") + ": " + row.get("target_type") + " "
                             + row.get("qualifiers") + " -> " + (row.get("resolved") == null
-                                    ? "unresolved" + dependencyProviders(db, String.valueOf(row.get("target_type")))
+                                    ? "not resolved by the application index" + dependencyProviders(db,
+                                            String.valueOf(row.get("target_type")), row.get("qualifiers"))
                                     : row.get("resolved"))
                             + " [" + row.get("resolution_status") + "]"));
             db.jdbi().withHandle(handle -> handle.createQuery("""
@@ -195,12 +219,32 @@ final class MethodPrefetchRelations {
         if (!injectedInto.isEmpty()) fact.set("produced_bean_injected_into", injectedInto);
     }
 
-    /** Dependency beans providing {@code type}, for a parameter the application index cannot resolve. */
-    private static String dependencyProviders(ReadQueryContext db, String type) {
+    /**
+     * Dependency beans providing {@code type} whose qualifiers include every required one, for an
+     * injection point the application index cannot resolve.
+     */
+    static String dependencyProviders(ReadQueryContext db, String type, Object requiredQualifiers) {
+        Set<String> required = new java.util.HashSet<>();
+        try {
+            if (requiredQualifiers != null) JSON.readTree(String.valueOf(requiredQualifiers)).forEach(q -> required.add(q.asText()));
+        } catch (Exception unreadable) {
+            // Unreadable qualifiers leave the providers unfiltered.
+        }
         List<String> providers = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT class_name || COALESCE('#' || member_name, '') || ' from ' || COALESCE(artifact, 'unknown')
-                FROM external_beans WHERE bean_types LIKE :type ORDER BY artifact, class_name LIMIT 5""")
-                .bind("type", "%\"" + type + "\"%").mapTo(String.class).list());
+                SELECT class_name, member_name, artifact, qualifiers FROM external_beans
+                WHERE bean_types LIKE :type ORDER BY artifact, class_name, member_name""")
+                .bind("type", "%\"" + type + "\"%").mapToMap().list()).stream()
+                .filter(row -> {
+                    try {
+                        Set<String> offered = new java.util.HashSet<>();
+                        JSON.readTree(String.valueOf(row.get("qualifiers"))).forEach(q -> offered.add(q.asText()));
+                        return offered.containsAll(required);
+                    } catch (Exception unreadable) {
+                        return true;
+                    }
+                })
+                .limit(5).map(row -> row.get("class_name") + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))
+                        + " from " + (row.get("artifact") == null ? "unknown" : row.get("artifact"))).toList();
         return providers.isEmpty() ? "" : "; dependency providers: " + String.join(", ", providers);
     }
 

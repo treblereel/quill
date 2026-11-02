@@ -28,14 +28,18 @@ public final class NameTargetPrefetch {
                   AND instr(substr(c.class_name, length(:package) + 2), '.') = 0
                 ORDER BY c.source_set, b.kind, c.class_name, b.member_name""")
                 .bind("prefix", name + ".%").bind("package", name).mapToMap().list());
-        int classes = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT count(*) FROM classes WHERE class_name LIKE :prefix AND lifecycle = 'current'
-                  AND instr(substr(class_name, length(:package) + 2), '.') = 0""")
-                .bind("prefix", name + ".%").bind("package", name).mapTo(Integer.class).one());
-        if (classes == 0) return null;
+        List<Map<String, Object>> counts = db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT COALESCE(source_set, 'unknown') AS source_set, count(*) AS classes FROM classes
+                WHERE class_name LIKE :prefix AND lifecycle = 'current'
+                  AND instr(substr(class_name, length(:package) + 2), '.') = 0
+                GROUP BY 1 ORDER BY 1""")
+                .bind("prefix", name + ".%").bind("package", name).mapToMap().list());
+        if (counts.isEmpty()) return null;
         ObjectNode fact = JSON.createObjectNode().put("kind", "package").put("package", name)
-                .put("scope_note", "beans of classes directly in the package; subpackages excluded")
-                .put("classes_in_package", classes);
+                .put("scope_note", "beans of classes directly in the package; subpackages excluded");
+        ObjectNode classes = fact.putObject("classes_in_package_by_source_set");
+        counts.forEach(row -> classes.put(String.valueOf(row.get("source_set")), ((Number) row.get("classes")).intValue()));
+        fact.put("classes_counted", "every indexed class, nested and anonymous ones included");
         ArrayNode beans = fact.putArray("beans");
         rows.stream().limit(LIMIT).forEach(row -> beans.add(row.get("source_set") + " " + row.get("kind") + " "
                 + row.get("class_name") + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))

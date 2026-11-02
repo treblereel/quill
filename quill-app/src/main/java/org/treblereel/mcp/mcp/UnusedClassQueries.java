@@ -84,7 +84,7 @@ final class UnusedClassQueries {
             node.put("kind", cls.kind());
             node.put("confidence", candidate.confidence());
             node.put("reason", "no_indexed_inbound_or_hierarchy_references");
-            node.put("source", cls.sourceFile() + ":" + cls.sourceLine());
+            node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
             node.put("origin", cls.origin());
             if (cls.module() == null) node.putNull("module");
             else node.put("module", cls.module());

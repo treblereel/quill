@@ -25,7 +25,7 @@ class NameTargetPrefetchTest {
         Jdbi db = index();
         var fact = TestReads.read(db, reader -> NameTargetPrefetch.packageFact(reader, "x.rbac"));
 
-        assertEquals(2, fact.path("classes_in_package").asInt(), fact.toString());
+        assertEquals(2, fact.path("classes_in_package_by_source_set").path("main").asInt(), fact.toString());
         assertEquals(List.of("main CLASS x.rbac.Mapper @Singleton qualifiers [\"@Default\"]",
                         "main PRODUCER_METHOD x.rbac.Mapper#clock @ApplicationScoped qualifiers [\"@Default\"] types [\"x.Clock\"]"),
                 fact.path("beans").valueStream().map(node -> node.asText()).toList());

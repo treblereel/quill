@@ -123,7 +123,7 @@ final class UnusedFieldQueries {
             node.put("write_occurrences", usage == null ? 0 : usage.writeOccurrences());
             node.put("writer_classes", usage == null ? 0 : usage.writerClassCount());
             if (cls.sourceFile() == null) node.putNull("source");
-            else node.put("source", cls.sourceFile() + ":" + cls.sourceLine());
+            else node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
             node.put("origin", cls.origin());
             if (cls.module() == null) node.putNull("module");
             else node.put("module", cls.module());

@@ -163,7 +163,7 @@ final class MethodOverrideQueries {
             node.put("distance", match.path().distance());
             node.put("direct", match.path().distance() == 1);
             node.set("hierarchy_path", JSON.valueToTree(match.path().classes()));
-            node.put("source", match.owner().sourceFile() + ":" + match.owner().sourceLine());
+            node.put("source", (match.owner().sourceLine() > 0 ? match.owner().sourceFile() + ":" + match.owner().sourceLine() : match.owner().sourceFile()));
             node.put("origin", match.owner().origin());
             if (match.owner().module() == null) node.putNull("module");
             else node.put("module", match.owner().module());

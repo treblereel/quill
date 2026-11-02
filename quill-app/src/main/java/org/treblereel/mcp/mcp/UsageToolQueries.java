@@ -108,7 +108,7 @@ final class UsageToolQueries {
                     value.put("instruction_occurrences", member.instructionOccurrences());
                 }
             }
-            node.put("source", usage.caller().sourceFile() + ":" + usage.caller().sourceLine());
+            node.put("source", (usage.caller().sourceLine() > 0 ? usage.caller().sourceFile() + ":" + usage.caller().sourceLine() : usage.caller().sourceFile()));
             node.put("origin", usage.caller().origin());
             appendContext(node, usage.caller());
             if (!usage.evidenceLines().isEmpty()) {

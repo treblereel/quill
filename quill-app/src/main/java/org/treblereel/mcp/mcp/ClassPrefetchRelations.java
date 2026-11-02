@@ -29,9 +29,9 @@ final class ClassPrefetchRelations {
                 LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
                 LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
                 WHERE ob.class_id = :id AND ob.member_name IS NULL
-                ORDER BY ip.id""").bind("id", cls.id()).mapToMap().list()), ClassPrefetchRelations::injects);
+                ORDER BY ip.id""").bind("id", cls.id()).mapToMap().list()), row -> injects(db, row));
         lines(fact, "injected_into", db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT DISTINCT oc.class_name AS owner, ob.member_name AS owner_member, ip.kind,
+                SELECT DISTINCT oc.class_name AS owner, ob.member_name AS owner_member, ob.kind AS owner_kind, ip.kind,
                        ip.field_name, ip.target_type, ip.resolution_status
                 FROM injection_points ip
                 JOIN beans ob ON ob.id = ip.bean_id
@@ -41,6 +41,14 @@ final class ClassPrefetchRelations {
                 ORDER BY oc.class_name, ip.field_name""")
                 .bind("name", cls.className()).bind("generic", "%<" + cls.className() + ">%")
                 .bind("id", cls.id()).mapToMap().list()), ClassPrefetchRelations::injectedInto);
+        lines(fact, "decorators", db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT c.class_name, b.priority FROM beans b JOIN classes c ON c.id = b.class_id
+                WHERE b.kind = 'DECORATOR' AND b.bean_types LIKE :type AND c.id <> :id
+                ORDER BY b.priority IS NULL, b.priority, c.class_name""")
+                .bind("type", "%\"" + cls.className() + "\"%").bind("id", cls.id()).mapToMap().list()),
+                row -> row.get("class_name") + " @Priority(" + (row.get("priority") == null ? "none" : row.get("priority")) + ")");
+        if (fact.has("decorators"))
+            fact.put("decorators_basis", "@Decorator beans with this bean type; a lower priority is invoked first, around the decorated bean");
         lines(fact, "test_classes", db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT DISTINCT tc.source_file
                 FROM dependencies d JOIN classes tc ON tc.id = d.from_class_id
@@ -203,8 +211,9 @@ final class ClassPrefetchRelations {
                 + " via @" + row.get("annotation") + "]";
     }
 
-    private static String injects(Map<String, Object> row) {
-        String resolved = row.get("resolved_class") == null ? "unresolved"
+    private static String injects(ReadQueryContext db, Map<String, Object> row) {
+        String resolved = row.get("resolved_class") == null ? "not resolved by the application index"
+                + MethodPrefetchRelations.dependencyProviders(db, String.valueOf(row.get("target_type")), row.get("qualifiers"))
                 : row.get("resolved_class") + (row.get("resolved_member") == null ? ""
                         : "#" + row.get("resolved_member")) + " (" + row.get("resolved_kind") + ")";
         return row.get("kind") + " " + row.get("field_name") + ": " + source(row.get("target_type"))
@@ -214,7 +223,8 @@ final class ClassPrefetchRelations {
     private static String injectedInto(Map<String, Object> row) {
         String owner = row.get("owner") + (row.get("owner_member") == null ? "" : "#" + row.get("owner_member"));
         return owner + "#" + row.get("field_name") + " (" + row.get("kind") + " " + source(row.get("target_type"))
-                + ") [" + row.get("resolution_status") + "]";
+                + ") [" + row.get("resolution_status") + "]"
+                + ("DECORATOR".equals(row.get("owner_kind")) ? " in a decorator: a delegate point resolves to the decorated bean" : "");
     }
 
     private static String qualifiers(Map<String, Object> row) {

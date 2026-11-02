@@ -77,6 +77,30 @@ class JavaCompilerSettingsTest {
         assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)).isEmpty());
     }
 
+    @Test void producerOnlyClassIsDependentWhenArcRuntimeIsIndexedWithoutFreshCapture() throws Exception {
+        Path src = Files.createDirectories(root.resolve("src/fixture"));
+        Files.writeString(src.resolve("Producers.java"), "package fixture; public class Producers { "
+                + "@jakarta.enterprise.inject.Produces java.time.Clock clock() { return null; } }");
+        Path produces = Files.createDirectories(root.resolve("src/jakarta/enterprise/inject")).resolve("Produces.java");
+        Files.writeString(produces, "package jakarta.enterprise.inject; @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Produces {}");
+        Path arcRuntime = Files.createDirectories(root.resolve("src/io/quarkus/arc")).resolve("Arc.java");
+        Files.writeString(arcRuntime, "package io.quarkus.arc; public final class Arc {}");
+        Path classes = Files.createDirectories(root.resolve("classes"));
+        assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(),
+                produces.toString(), arcRuntime.toString(), src.resolve("Producers.java").toString()));
+        var indexer = new org.jboss.jandex.Indexer();
+        for (String name : List.of("fixture/Producers.class", "io/quarkus/arc/Arc.class"))
+            try (var input = Files.newInputStream(classes.resolve(name))) { indexer.index(input); }
+        var index = indexer.complete();
+        var occurrence = new org.treblereel.mcp.model.ClassOccurrenceRecord(1, 1, "fixture.Producers", ".", "main", "classes", "Producers.class", "Producers.java", "application");
+
+        assertEquals(Map.of("fixture.Producers", "@Dependent"),
+                ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)));
+        // A fresh capture that says the module has no ArC still wins over the classpath.
+        var values = values(); values.setProperty("quarkusArc", "false"); save(values);
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)).isEmpty());
+    }
+
     @TestFactory Stream<DynamicTest> malformedMetadataCannotAppearUsable() {
         return Stream.of("negative", "excessive", "incomplete", "bad_sha", "identity", "no_inputs", "unknown_evidence", "bad_count", "unicode")
                 .map(label -> DynamicTest.dynamicTest(label, () -> {

@@ -245,7 +245,10 @@ public class ProjectInitializer {
             IndexView lookup, List<ClassOccurrenceRecord> occurrences) {
         Set<Path> confirmed = new HashSet<>();
         Set<Path> arc = new HashSet<>();
+        Set<Path> captured = new HashSet<>();
         for (var capture : JavaCompilerSettings.inspect(modules, buildSystem)) {
+            if ("main".equals(capture.path("source_set").asText()) && capture.path("compiled_settings_confirmed").asBoolean())
+                captured.add(Path.of(capture.path("module").asText()).toAbsolutePath().normalize());
             if ("main".equals(capture.path("source_set").asText())
                     && capture.path("compiled_settings_confirmed").asBoolean()
                     && "true".equals(capture.path("settings").path("quarkusRest").asText())) {
@@ -267,9 +270,15 @@ public class ProjectInitializer {
         });
         Map<String,String> scopes = new HashMap<>(org.treblereel.mcp.core.QuarkusRestDiscovery.scopes(lookup, eligible));
         arc.addAll(confirmed);
+        // Without a fresh capture (stale build inputs, no Quill extension) the ArC runtime on the
+        // indexed classpath still decides: ArC makes a class that only declares producers a
+        // @Dependent bean (quarkus.arc.auto-producer-methods), and calling it NOT_A_BEAN is false.
+        boolean arcRuntime = lookup.getClassByName(org.jboss.jandex.DotName.createSimple("io.quarkus.arc.Arc")) != null;
         for (var c : lookup.getKnownClasses()) {
             Set<Path> directories = owners.getOrDefault(c.name().toString(), Set.of());
-            if (!directories.isEmpty() && arc.containsAll(directories) && BeanResolver.quarkusProducerClass(c, lookup))
+            boolean arcModule = arc.containsAll(directories)
+                    || arcRuntime && directories.stream().noneMatch(captured::contains);
+            if (!directories.isEmpty() && arcModule && BeanResolver.quarkusProducerClass(c, lookup))
                 scopes.putIfAbsent(c.name().toString(), "@Dependent");
         }
         return Map.copyOf(scopes);

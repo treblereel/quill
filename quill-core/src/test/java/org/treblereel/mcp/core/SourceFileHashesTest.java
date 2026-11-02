@@ -26,4 +26,13 @@ class SourceFileHashesTest {
             assertTrue(SourceFileHashes.captureJava(root,List.of(source)).isEmpty());
         } finally { Files.deleteIfExists(outside); }
     }
+    @Test void inputHashesSkipPackageManagerTreesAndHiddenDirectories() throws Exception {
+        Path source = Files.createDirectories(root.resolve("src"));
+        Files.writeString(source.resolve("main.ts"),"export {}");
+        for (String dir : List.of("main/webui/node_modules/pkg", "main/webui/.git", "main/webui/.yarn/cache", "bower_components"))
+            Files.writeString(Files.createDirectories(source.resolve(dir)).resolve("index.js"),"x");
+        Files.writeString(Files.createDirectories(source.resolve("main/webui/src")).resolve("app.ts"),"y");
+        assertEquals(List.of("src/main.ts","src/main/webui/src/app.ts"),
+                List.copyOf(SourceFileHashes.captureInputsCached(root,List.of(source)).keySet()));
+    }
 }

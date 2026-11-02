@@ -34,6 +34,10 @@ public final class SourceFileHashes {
             for (Path sourceRoot : roots) {
                 if (!Files.isDirectory(sourceRoot)) continue;
                 Files.walkFileTree(sourceRoot,new java.nio.file.SimpleFileVisitor<Path>() {
+                    @Override public java.nio.file.FileVisitResult preVisitDirectory(Path dir,java.nio.file.attribute.BasicFileAttributes attributes) {
+                        return !dir.equals(sourceRoot) && excludedDirectory(dir) ? java.nio.file.FileVisitResult.SKIP_SUBTREE
+                                : java.nio.file.FileVisitResult.CONTINUE;
+                    }
                     @Override public java.nio.file.FileVisitResult visitFile(Path file,java.nio.file.attribute.BasicFileAttributes attributes) throws IOException {
                         if(!(allFiles || file.getFileName().toString().endsWith(".java") || kotlin && file.getFileName().toString().endsWith(".kt")) || (!attributes.isRegularFile() && !Files.isRegularFile(file)))
                             return java.nio.file.FileVisitResult.CONTINUE;
@@ -49,6 +53,15 @@ public final class SourceFileHashes {
             return java.util.Collections.unmodifiableMap(hashes);
         } catch (IOException unavailable) { throw new IllegalStateException("Could not capture Java source evidence", unavailable); }
     }
+    /**
+     * Package-manager trees and hidden directories (VCS metadata, tool caches) under a source root
+     * are not build inputs; a frontend's node_modules alone can hold hundreds of thousands of files.
+     */
+    static boolean excludedDirectory(Path dir) {
+        String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+        return name.equals("node_modules") || name.equals("bower_components") || name.startsWith(".");
+    }
+
     public static String hash(Path file) throws IOException {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

@@ -136,10 +136,23 @@ final class MethodPrefetchRelations {
             }
         }
         if (lines.isEmpty()) return;
+        if (lines.stream().anyMatch(line -> line.contains(".event.Event#fire")))
+            firedEventObservers(db, fact, classId);
         ArrayNode values = fact.putArray("calls");
         lines.stream().limit(LIMIT).forEach(values::add);
         fact.put("calls_basis", "depth, callee, invocation; depth 2 = called by a depth-1 callee");
         if (lines.size() > LIMIT) fact.putObject("calls_truncated").put("shown", LIMIT).put("total", lines.size());
+    }
+
+    /** The method fires an event: observers of each Event<T> its class injects (the fired one is among them). */
+    private static void firedEventObservers(ReadQueryContext db, ObjectNode fact, int classId) {
+        ArrayNode observers = JSON.createArrayNode();
+        db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT ip.target_type FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
+                WHERE ob.class_id = :id ORDER BY ip.id""").bind("id", classId).mapTo(String.class).list())
+                .forEach(type -> ClassPrefetchRelations.eventObservers(db, type).forEach(observer ->
+                        observers.add(ClassPrefetchRelations.source(type) + " -> " + observer)));
+        if (!observers.isEmpty()) fact.set("observers_of_class_events", observers);
     }
 
     private static void producer(ReadQueryContext db, ObjectNode fact, int classId, String name) {
@@ -162,7 +175,9 @@ final class MethodPrefetchRelations {
                     LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
                     WHERE ip.bean_id = :id ORDER BY ip.id""").bind("id", id).mapToMap().list())
                     .forEach(row -> parameters.add(row.get("field_name") + ": " + row.get("target_type") + " "
-                            + row.get("qualifiers") + " -> " + (row.get("resolved") == null ? "unresolved" : row.get("resolved"))
+                            + row.get("qualifiers") + " -> " + (row.get("resolved") == null
+                                    ? "unresolved" + dependencyProviders(db, String.valueOf(row.get("target_type")))
+                                    : row.get("resolved"))
                             + " [" + row.get("resolution_status") + "]"));
             db.jdbi().withHandle(handle -> handle.createQuery("""
                     SELECT DISTINCT oc.class_name AS owner, ip.field_name, ip.qualifiers, ip.resolution_status, oc.source_file
@@ -177,6 +192,15 @@ final class MethodPrefetchRelations {
         }
         if (!parameters.isEmpty()) fact.set("producer_parameters", parameters);
         if (!injectedInto.isEmpty()) fact.set("produced_bean_injected_into", injectedInto);
+    }
+
+    /** Dependency beans providing {@code type}, for a parameter the application index cannot resolve. */
+    private static String dependencyProviders(ReadQueryContext db, String type) {
+        List<String> providers = db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT class_name || COALESCE('#' || member_name, '') || ' from ' || COALESCE(artifact, 'unknown')
+                FROM external_beans WHERE bean_types LIKE :type ORDER BY artifact, class_name LIMIT 5""")
+                .bind("type", "%\"" + type + "\"%").mapTo(String.class).list());
+        return providers.isEmpty() ? "" : "; dependency providers: " + String.join(", ", providers);
     }
 
     private static String text(JsonNode value) {

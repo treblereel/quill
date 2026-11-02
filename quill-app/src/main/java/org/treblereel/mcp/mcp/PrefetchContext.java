@@ -132,6 +132,11 @@ public final class PrefetchContext {
                     .put("owner_scope",points.path("scope").asText()).put("owner_bean_kind",points.path("bean_kind").asText());
             fact.set("injection_point",point);
             if(points.has("resolution_context"))fact.set("resolution_context",points.get("resolution_context"));
+            String required=point.path("required_type").asText();
+            var candidates=ClassPrefetchRelations.instanceCandidates(db,required);
+            if(!candidates.isEmpty())fact.set("instance_candidates",JSON.valueToTree(candidates));
+            var observers=ClassPrefetchRelations.eventObservers(db,required);
+            if(!observers.isEmpty())fact.set("observers",JSON.valueToTree(observers));
             return fact;
         }
         missing.addObject().put("target",owner+"#"+name).put("status","not_an_injection_point");

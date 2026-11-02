@@ -58,6 +58,42 @@ class ClassPrefetchRelationsTest {
         assertFalse(service.has("injects"));
     }
 
+    @Test
+    void eventAndInstanceInjectionsNameTheirObserversAndConditionalCandidates() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("events.db"));
+        IndexWriter.writeIncremental(db, new IndexFixture()
+                .classes(List.of(
+                        new ClassRecord(0, "x.Publisher", "CLASS", "java.lang.Object", List.of(), "Publisher.java", 1, true, 10),
+                        new ClassRecord(0, "x.Events$Created", "CLASS", "java.lang.Object", List.of(), "Events.java", 1, false, 10),
+                        new ClassRecord(0, "x.Listener", "CLASS", "java.lang.Object", List.of(), "Listener.java", 1, true, 10),
+                        new ClassRecord(0, "x.BucketStore", "CLASS", "java.lang.Object", List.of("x.Store"), "BucketStore.java", 1, true, 10)))
+                .beans(List.of(
+                        new BeanRecord(0, 1, "CLASS", "@Singleton", List.of("@Default"), List.of(), false, null, null, null, null, List.of("x.Publisher")),
+                        new BeanRecord(0, 3, "CLASS", "@Singleton", List.of("@Default"), List.of(), false, null, null, null, null, List.of("x.Listener")),
+                        new BeanRecord(0, 4, "CLASS", "@ApplicationScoped", List.of("@Default"), List.of(), false, null, null, null, null, List.of("x.BucketStore", "x.Store"))))
+                .injectionPoints(List.of(
+                        InjectionPointRecord.staticAnalysis(0, 1, "FIELD", "jakarta.enterprise.event.Event<x.Events$Created>", List.of("@Default"), "created", null, false, InjectionPointRecord.STATIC_CDI),
+                        InjectionPointRecord.staticAnalysis(0, 1, "FIELD", "jakarta.enterprise.inject.Instance<x.Store>", List.of("@Default"), "stores", null, false, InjectionPointRecord.STATIC_CDI)))
+                .dependencies(List.of()).metadata(Map.of("index_id", "events")).snapshot());
+        db.useHandle(handle -> {
+            handle.execute("INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations,annotation_details) VALUES (3,'METHOD','onCreated','onCreated(x.Events$Created):void','(Lx/Events$Created;)V','void','[\"x.Events$Created\"]','void','[]',?)",
+                    "[{\"annotationName\":\"jakarta.enterprise.event.Observes\",\"targetKind\":\"METHOD_PARAMETER\",\"parameterIndex\":0,\"parameterName\":\"e\",\"parameterType\":\"x.Events$Created\",\"values\":{\"$defaults\":[\"notifyObserver\"],\"during\":\"AFTER_SUCCESS\"}}]");
+            handle.execute("INSERT INTO class_annotations(class_id,annotation_name,direct,annotation_values) VALUES (4,'io.quarkus.arc.lookup.LookupIfProperty',1,?)",
+                    "{\"$defaults\":[\"lookupIfMissing\"],\"name\":\"store.mode\",\"stringValue\":\"bucket\"}");
+        });
+
+        ObjectNode publisher = relations(db, "x.Publisher");
+
+        assertEquals(List.of("x.Listener#onCreated(@Observes x.Events.Created during=AFTER_SUCCESS)"),
+                strings(publisher, "observers_of_injected_events"));
+        assertEquals(List.of("CLASS x.BucketStore @ApplicationScoped qualifiers [\"@Default\"] "
+                        + "@io.quarkus.arc.lookup.LookupIfProperty(name=store.mode, stringValue=bucket)"),
+                strings(publisher, "instance_candidates"));
+        assertEquals("FIELD created: jakarta.enterprise.event.Event<x.Events.Created> [\"@Default\"] -> unresolved [UNKNOWN]",
+                strings(publisher, "injects").get(0));
+        assertEquals("java.util.List<x.Outer.Inner$1>", ClassPrefetchRelations.source("java.util.List<x.Outer$Inner$1>"));
+    }
+
     private static ObjectNode relations(Jdbi db, String name) throws Exception {
         return TestReads.read(db, reader -> {
             ClassRecord cls = reader.symbols.findClassesByName(name).getFirst();

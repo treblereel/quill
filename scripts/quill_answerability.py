@@ -52,13 +52,21 @@ def identifiers(value, found=None):
 
 
 def mentioned(token, text):
-    """A member reference like Class#method(args) counts when its class and member both appear."""
+    """A member reference counts when its owner and member both appear.
+
+    Oracles write members as Class#method(args) or, in prose, Owner.member with a lower-case
+    member (Credentials.onStart, target.jvmId); packs name the same member as pkg.Owner#member.
+    """
     if token in text:
         return True
     owner, _, member = token.partition("#")
+    if not member and "." in token and "/" not in token:
+        head, _, tail = token.rpartition(".")
+        if tail[:1].islower() and head.rsplit(".", 1)[-1][:1].isalpha():
+            owner, member = head, tail
     if member:
         name = member.split("(")[0].split(":")[0]
-        return owner in text and name in text
+        return owner in text and re.search(r"(?<![\w$])" + re.escape(name) + r"(?![\w$])", text) is not None
     return False
 
 

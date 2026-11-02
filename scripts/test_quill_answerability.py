@@ -45,6 +45,9 @@ class AnswerabilityTest(unittest.TestCase):
         self.assertTrue(a.mentioned("io.acme.Orders#place(java.lang.String)",
                                     '{"class":"io.acme.Orders","method":"place"}'))
         self.assertFalse(a.mentioned("io.acme.Orders#cancel", '{"class":"io.acme.Orders"}'))
+        self.assertTrue(a.mentioned("Orders.place", '{"callee":"io.acme.Orders#place"}'))
+        self.assertFalse(a.mentioned("Orders.place", '{"class":"io.acme.Orders","note":"replace"}'))
+        self.assertFalse(a.mentioned("orders.timeout", '{"class":"io.acme.Orders#timeoutMs"}'))
 
     def test_linked_prompts_share_one_session_and_coverage_counts_every_turn(self):
         oracles = {"cases": {

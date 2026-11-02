@@ -2,6 +2,8 @@
 
 Applies to every new Codex and Claude benchmark, including native prefetch.
 Accuracy and token savings alone do not establish successful consumption of Quill.
+Full-cost accounting, independent/continuous workloads, cache and pairing rules:
+[v2 accounting revision 3](measurement-policy-v3.md).
 
 For each suspected repeat, preserve the evidence chain:
 

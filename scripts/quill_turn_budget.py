@@ -9,6 +9,8 @@ other shell, final answer) and its input+output tokens are charged to that turn.
 Codex: rollout.jsonl, one ``token_count`` event per request; the response items recorded
 before it are that request's actions. Prewarm requests are on the wire, not in the rollout,
 and are not counted here. Claude: events.jsonl assistant messages grouped by message id.
+This is an action diagnostic, not full-cost accounting. Use quill_measurement_report.py
+with an audited summary for primary totals, prewarm and independent/linked comparisons.
 """
 import argparse
 import collections

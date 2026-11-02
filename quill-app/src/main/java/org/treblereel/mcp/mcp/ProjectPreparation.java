@@ -185,6 +185,8 @@ final class ProjectPreparation implements AutoCloseable {
         private long worktreeRevision, preparedWorktreeRevision = -1;
         private String announcedGeneration;
         private volatile String stage = "queued";
+        /** A marked Maven build is still writing outputs; preparation waits for its result. */
+        private volatile boolean buildRunning;
         private long preparingStarted, preparingRevision;
         private long retryDelay = TimeUnit.SECONDS.toNanos(1);
 
@@ -289,7 +291,9 @@ final class ProjectPreparation implements AutoCloseable {
                 if (preparing == null && (ready == null || preparedRevision != revision.get()
                         || ready.issues().stream().anyMatch(i -> i.code().equals("refresh_pending"))
                         || ready.projects().isEmpty() && System.nanoTime() >= retryAt)) {
-                    if (System.nanoTime() - changedAt >= TimeUnit.MILLISECONDS.toNanos(100)) schedule();
+                    // With a generation to serve, outputs a running build is still writing are checked once it ends.
+                    buildRunning = lastPrepared != null && RunningBuilds.running(project.root());
+                    if (!buildRunning && System.nanoTime() - changedAt >= TimeUnit.MILLISECONDS.toNanos(100)) schedule();
                 } else if (preparing == null && current() && !ready.projects().isEmpty()
                         && preparedWorktreeRevision != worktreeRevision) {
                     schedule(false);
@@ -433,14 +437,16 @@ final class ProjectPreparation implements AutoCloseable {
                 if (!ready.projects().isEmpty() || lastPrepared == null) return ready;
                 return previousResult(ready);
             }
+            boolean waitingForBuild = preparing == null && buildRunning;
             var reason = !events.active() ? ProjectRegistry.ReadinessReason.INPUT_OBSERVATION_RECOVERING
+                    : waitingForBuild ? ProjectRegistry.ReadinessReason.BUILD_RUNNING
                     : preparing == null || stage.equals("waiting_preparation_slot") ? ProjectRegistry.ReadinessReason.PREPARATION_QUEUED
                     : revision.get() != preparingRevision ? ProjectRegistry.ReadinessReason.INPUTS_CHANGING
                     : ProjectRegistry.ReadinessReason.INPUT_PREPARATION_RUNNING;
             var issue = new ProjectRegistry.ProjectIssue(project.name(), project.root(), "refresh_pending", null,
-                    "Input preparation: " + (preparing == null ? "queued" : stage),
+                    "Input preparation: " + (waitingForBuild ? "waiting for the running build" : preparing == null ? "queued" : stage),
                     "Retry the same query after preparation; do not narrow targets or start another build", false)
-                    .readiness(reason, preparing == null ? "queued" : stage,
+                    .readiness(reason, waitingForBuild ? "build_running" : preparing == null ? "queued" : stage,
                             preparing == null ? 0L : TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - preparingStarted),
                             1000L, lastPrepared != null || ready != null && (!ready.projects().isEmpty()
                                     || ready.issues().stream().anyMatch(ProjectRegistry.ProjectIssue::previousGenerationAvailable)));

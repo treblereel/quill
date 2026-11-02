@@ -352,6 +352,29 @@ class ProjectPreparationTest {
         }
     }
 
+    @Test void preparationWaitsForAMarkedBuildAndResumesWhenItEnds() throws Exception {
+        fixture();
+        try (var registry = registry()) {
+            registry.prewarm();
+            var previous = available(registry).observations();
+            Path marker = Files.createDirectories(root.resolve(RunningBuilds.DIRECTORY)).resolve("build");
+            Files.writeString(marker, "pid=" + ProcessHandle.current().pid() + "\nstarted=" + java.time.Instant.now() + "\n");
+            Path file = root.resolve("target/classes/Marker.class");
+            byte[] bytes = Files.readAllBytes(file); bytes[bytes.length-1] ^= 1;
+            Files.write(file, bytes);
+            var waiting = await(() -> registry.resolve().issues().stream()
+                    .filter(issue -> issue.reason() == ProjectRegistry.ReadinessReason.BUILD_RUNNING).findFirst().orElse(null));
+            assertEquals("build_running", waiting.stage());
+            Thread.sleep(500);
+            assertTrue(registry.resolve().projects().stream().allMatch(p -> p.observations() == previous
+                    || p.observations().freshness().staleReasons().contains("previous_generation")), "nothing prepared mid-build");
+
+            Files.delete(marker);
+            await(() -> registry.resolve().projects().stream().filter(p -> p.observations() != previous
+                    && p.observations().freshness().staleReasons().contains("compiled_snapshot_changed")).findFirst().orElse(null));
+        }
+    }
+
     @Test void newGenerationIsPreparedBeforeSwitchAndOldLeaseRemainsUsable() throws Exception {
         fixture();
         try (var registry = registry()) {

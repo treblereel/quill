@@ -99,7 +99,7 @@ public class ProjectRegistry implements AutoCloseable {
         PREPARATION_QUEUED("wait"), INPUT_PREPARATION_RUNNING("wait"),
         INPUTS_CHANGING("wait"), INPUT_OBSERVATION_RECOVERING("wait"),
         PREPARATION_RETRY_SCHEDULED("wait"), BUILD_EVENTS_QUEUED("wait"),
-        BUILD_EVENTS_PROCESSING("wait"), INDEX_REFRESH_RUNNING("wait"),
+        BUILD_EVENTS_PROCESSING("wait"), INDEX_REFRESH_RUNNING("wait"), BUILD_RUNNING("wait"),
         INDEX_REFRESH_FAILED("inspect_error"), BUILD_EVENT_PROCESSING_FAILED("inspect_error"),
         BUILD_FAILED("fix_build"), INPUTS_CHANGED_AFTER_BUILD("build"),
         TEST_EVIDENCE_MISSING("build"), SOURCE_SET_INPUTS_CHANGED("build"), READY("none"), INDEX_OUTDATED("refresh_index"),

@@ -911,7 +911,11 @@ Normal `quill init` installs a reversible build-result integration instead of Gi
 hooks. Maven uses `.mvn/extensions.xml`; Gradle gets a Quill-managed block in the root
 `settings.gradle[.kts]`. A successful build writes a small atomic JSON event below
 `.quill/build-events/`. Before serving the next MCP request, Quill consumes that event
-and refreshes the index from the bytecode produced by the build. The integration never
+and refreshes the index from the bytecode produced by the build. While a Maven build
+runs, the extension keeps a marker below `.quill/builds-running/`, and the MCP server
+holds its background re-checks of compiled outputs until the build ends, serving the
+previous generation with the `build_running` readiness reason meanwhile. A marker whose
+process is gone or that is older than three hours is ignored. The integration never
 starts a build itself and build failures do not replace the previous index. Use
 `--index-only` to skip all project configuration changes. `quill clean` removes only
 the Quill-managed integration and the entire `.quill` directory.

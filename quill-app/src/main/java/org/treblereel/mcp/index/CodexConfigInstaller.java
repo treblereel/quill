@@ -10,6 +10,9 @@ import java.util.Optional;
 
 public final class CodexConfigInstaller {
 
+    /** Codex lists the tools it would otherwise look up through search_tools; see McpToolProfile. */
+    static final String PROJECT_ARGS = "args = [\"--mcp\", \"--tools\", \"codex\"]";
+
     public enum Result {
         SKIPPED,
         NOT_PRESENT,
@@ -50,7 +53,7 @@ public final class CodexConfigInstaller {
             String content = Files.readString(config, StandardCharsets.UTF_8);
             if (definesQuillServer(content)) {
                 if (!shouldRepairManagedLauncher(content, binary)) {
-                    String updated = readOnlyDefaults(content);
+                    String updated = codexToolProfile(readOnlyDefaults(content));
                     if (!updated.equals(content)) {
                         writeAtomically(config, updated);
                         return Result.REPLACED;
@@ -329,7 +332,7 @@ public final class CodexConfigInstaller {
                 .append("enabled = true").append(newline)
                 .append("default_tools_approval_mode = ").append(tomlString(approvalMode)).append(newline)
                 .append("command = ").append(tomlString(command)).append(newline)
-                .append("args = [\"--mcp\"]").append(newline)
+                .append(PROJECT_ARGS).append(newline)
                 .append("cwd = ").append(tomlString(projectRoot.toAbsolutePath().normalize().toString()))
                 .append(newline);
         return content + block;
@@ -349,13 +352,33 @@ public final class CodexConfigInstaller {
                 .append("enabled = true").append(newline)
                 .append("default_tools_approval_mode = ").append(tomlString(approvalMode)).append(newline)
                 .append("command = ").append(tomlString(command)).append(newline)
-                .append("args = [\"--mcp\", \"--workspace\", ")
+                .append("args = [\"--mcp\", \"--tools\", \"codex\", \"--workspace\", ")
                 .append(tomlString(workspaceRoot.toAbsolutePath().normalize().toString()))
                 .append(']').append(newline)
                 .append("cwd = ")
                 .append(tomlString(projectRoot.toAbsolutePath().normalize().toString()))
                 .append(newline);
         return content + block;
+    }
+
+    /**
+     * Moves a project entry Quill wrote with the old bare {@code --mcp} launch to the Codex tool
+     * profile; an entry the user edited or wrote keeps its arguments.
+     */
+    private static String codexToolProfile(String content) {
+        if (content.lines().map(String::trim).noneMatch("# Added by Quill."::equals)) return content;
+        String newline = content.contains("\r\n") ? "\r\n" : "\n";
+        var lines = new java.util.ArrayList<>(java.util.Arrays.asList(content.split("\\R", -1)));
+        String table = "";
+        for (int i = 0; i < lines.size(); i++) {
+            String line = stripComment(lines.get(i)).trim();
+            if (line.startsWith("[")) table = tableName(line);
+            else if ("mcp_servers.quill".equals(table) && line.equals("args = [\"--mcp\"]")) {
+                lines.set(i, PROJECT_ARGS);
+                return String.join(newline, lines);
+            }
+        }
+        return content;
     }
 
     private static String readOnlyDefaults(String content) {

@@ -36,7 +36,7 @@ class CodexConfigInstallerTest {
         assertTrue(content.contains("[mcp_servers.quill]"));
         assertTrue(content.contains("enabled = true"));
         assertTrue(content.contains("default_tools_approval_mode = \"writes\""));
-        assertTrue(content.contains("args = [\"--mcp\"]"));
+        assertTrue(content.contains(CodexConfigInstaller.PROJECT_ARGS));
         assertTrue(content.contains(
                 "cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
     }
@@ -47,6 +47,7 @@ class CodexConfigInstallerTest {
         assertEquals(CodexConfigInstaller.Result.REPLACED,CodexConfigInstaller.installIfPresent(tempDir,null));
         String upgraded=Files.readString(config);
         assertTrue(upgraded.startsWith("approval_policy = \"on-request\""));
+        assertTrue(upgraded.contains(CodexConfigInstaller.PROJECT_ARGS));
         assertTrue(upgraded.contains("default_tools_approval_mode = \"writes\""));
         assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,CodexConfigInstaller.installIfPresent(tempDir,null));
         Files.writeString(config,upgraded.replace("\"writes\"","\"prompt\""));
@@ -105,7 +106,7 @@ class CodexConfigInstallerTest {
         assertTrue(content.startsWith("model = \"gpt-test\"\n"));
         assertTrue(content.contains("[mcp_servers.quill]"));
         assertTrue(content.contains("command = \"C:\\\\Tools\\\\Quill Лаунчер\\\\quill.exe\""));
-        assertTrue(content.contains("args = [\"--mcp\"]"));
+        assertTrue(content.contains(CodexConfigInstaller.PROJECT_ARGS));
         assertTrue(content.contains("cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
     }
 
@@ -116,7 +117,7 @@ class CodexConfigInstallerTest {
 
         String content = Files.readString(config);
         assertTrue(content.contains("command = \"quill\""));
-        assertTrue(content.contains("args = [\"--mcp\"]"));
+        assertTrue(content.contains(CodexConfigInstaller.PROJECT_ARGS));
     }
 
     @Test

@@ -491,6 +491,21 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void codexProfileListsTheToolsCodexRoutedToAndKeepsTheRouter() {
+        QuillTools quill = new QuillTools(new ProjectRegistry());
+        var codex = McpToolCatalog.create(quill, workers, responses,
+                Duration.ofSeconds(1), McpToolProfile.parse("codex"));
+        var names = codex.stream().map(spec -> spec.tool().name()).toList();
+        assertEquals(names.size(), new java.util.HashSet<>(names).size());
+        assertTrue(names.containsAll(Set.of("get_overview", "search_tools", "execute_tool",
+                "get_symbol_details", "change_session", "get_external_symbol_details",
+                "get_project_dependencies", "trace_state_lifecycle", "find_usages",
+                "find_entry_points", "get_annotated_classes")));
+        assertFalse(names.contains("find_git_hotspots"));
+        assertThrows(IllegalArgumentException.class, () -> McpToolProfile.parse("codex,git"));
+    }
+
+    @Test
     void routerProfileExposesThreeToolsAndDiscoversHiddenSchemas() {
         QuillTools quill = new QuillTools(new ProjectRegistry());
         var router = McpToolCatalog.create(
@@ -531,7 +546,8 @@ class McpToolCatalogTest {
                 .path("recommended_channel").asText());
         assertEquals("find_implementations", structured.path("guidance")
                 .path("recommended_tool").asText());
-        assertTrue(structured.path("tools").get(0).path("required_arguments").isArray());
+        assertFalse(structured.path("tools").get(0).has("required_arguments"));
+        assertFalse(structured.path("guidance").has("use_source_search_for"));
     }
 
     @Test

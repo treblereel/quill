@@ -390,8 +390,12 @@ and parameter variable names are not guessed. Ambiguous declarations still requi
 an exact signature or JVM descriptor.
 
 The default `--tools compact` profile exposes eight common queries, including `get_context`,
-plus overview and router fallback. Use `--tools full` for the complete initial catalog,
-or choose `router`, `core`, `code`, `di`, or `git`:
+plus overview and router fallback. The `codex` profile, which Quill writes into Codex
+configuration, adds `change_session`, `get_external_symbol_details`,
+`get_project_dependencies`, `trace_state_lifecycle`, `find_usages`, `find_entry_points` and
+`get_annotated_classes`: Codex otherwise spends a model turn on `search_tools` for each.
+Use `--tools full` for the complete initial catalog, or choose `router`, `core`, `code`,
+`di`, or `git`:
 
 ```bash
 quill --mcp --project /path/to/project --tools core
@@ -836,12 +840,13 @@ Alternatively, add a project-scoped entry to `.codex/config.toml`:
 enabled = true
 default_tools_approval_mode = "writes"
 command = "/absolute/path/to/quill"
-args = ["--mcp"]
+args = ["--mcp", "--tools", "codex"]
 cwd = "/absolute/path/to/project"
 ```
 
 `quill init` and `quill client refresh` create `.codex/config.toml` when missing,
-or add this section to an existing file. A native launch records its executable path; development runs from a
+or add this section to an existing file; an entry Quill wrote earlier with `args = ["--mcp"]`
+moves to the `codex` profile. A native launch records its executable path; development runs from a
 JAR fall back to `quill` from `PATH`, keeping the generated configuration binary-only.
 Other settings are preserved, repeated initialization is a no-op, and an existing
 user-owned `mcp_servers.quill` section is never overwritten. A Quill-managed project entry

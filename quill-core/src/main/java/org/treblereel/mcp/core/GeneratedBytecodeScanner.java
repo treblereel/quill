@@ -23,6 +23,8 @@ import org.objectweb.asm.Type;
  * {@code X_..._Synthetic_Bean}), read from {@code quarkus-app/quarkus/generated-bytecode.jar}.
  * Each entry names the application class it was generated for and the non-container types it
  * references, so a question about a generated class can be traced to the source to edit.
+ * Dependency classes the build generated an {@code X_Bean} for are listed too: they are the
+ * dependency beans, interceptors among them, that this application's container registered.
  */
 public final class GeneratedBytecodeScanner {
 
@@ -42,6 +44,7 @@ public final class GeneratedBytecodeScanner {
                 + "JDK, Jakarta APIs and the ArC container API (io.quarkus.arc, io.quarkus.arc.impl)");
         ArrayNode jarNodes = result.putArray("jars");
         ArrayNode classes = result.putArray("classes");
+        Set<String> dependencyBeans = new TreeSet<>();
         for (Path jar : jars) {
             String relative = root.relativize(jar).toString().replace('\\', '/');
             ObjectNode jarNode = jarNodes.addObject().put("path", relative);
@@ -57,7 +60,10 @@ public final class GeneratedBytecodeScanner {
                         if (!entry.getName().endsWith(".class")) continue;
                         String name = entry.getName().substring(0, entry.getName().length() - 6).replace('/', '.');
                         String source = sourceClass(name, applicationClasses);
-                        if (source == null) continue;
+                        if (source == null) {
+                            if (name.endsWith("_Bean")) dependencyBeans.add(name.substring(0, name.length() - 5));
+                            continue;
+                        }
                         count++;
                         ObjectNode node = classes.addObject().put("class", name).put("jar", relative)
                                 .put("entry", entry.getName()).put("source_class", source);
@@ -72,6 +78,8 @@ public final class GeneratedBytecodeScanner {
                 jarNode.put("status", "unreadable");
             }
         }
+        ArrayNode beans = result.putArray("dependency_bean_classes");
+        dependencyBeans.forEach(beans::add);
         return result.toString();
     }
 

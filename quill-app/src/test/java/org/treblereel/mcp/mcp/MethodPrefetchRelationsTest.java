@@ -24,7 +24,7 @@ class MethodPrefetchRelationsTest {
                 class Base { void inherited() {} }
                 class Fixture extends Base {
                     @Deprecated(since = "9")
-                    void start() { helper(); parent(); Runnable task = () -> other(); task.run(); }
+                    void start() { helper(); parent(); new Base(); Runnable task = () -> other(); task.run(); }
                     void helper() { deep(); }
                     void deep() { leaf(); }
                     void leaf() {}
@@ -43,6 +43,7 @@ class MethodPrefetchRelationsTest {
         assertTrue(calls.contains("1 java.lang.Runnable#run():void [external]"), calls.toString());
         assertFalse(calls.contains("3 p.Fixture#leaf [virtual]"), calls.toString());
         assertTrue(calls.contains("2 p.Fixture#inherited [virtual, inherited: declared by p.Base]"), calls.toString());
+        assertTrue(calls.contains("1 p.Base#<init> [special]"), calls.toString());
         assertTrue(calls.stream().noneMatch(call -> call.contains("lambda$")), calls.toString());
         assertEquals("(java.nio.file.Path, java.nio.file.LinkOption[]):boolean",
                 MethodPrefetchRelations.javaSignature("(Ljava/nio/file/Path;[Ljava/nio/file/LinkOption;)Z"));
@@ -113,7 +114,13 @@ class MethodPrefetchRelationsTest {
                 interceptor(3, "dep.AnyTxInterceptor", 100, "@tx.Tx(value=REQUIRED @Nonbinding)")));
         ObjectNode fact = JSON.createObjectNode().put("class", "p.Fixture").put("name", "start").put("descriptor", "()V");
         TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, fact); return null; });
+        db.useHandle(handle -> handle.execute("INSERT INTO metadata(key, value) VALUES ('quarkus_generated_classes', ?)",
+                "{\"jars\":[],\"classes\":[],\"dependency_bean_classes\":[\"dep.NeverInterceptor\"]}"));
+        ObjectNode registered = JSON.createObjectNode().put("class", "p.Fixture").put("name", "start").put("descriptor", "()V");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, registered); return null; });
 
+        assertEquals(List.of("dep.NeverInterceptor @Priority(200) via @tx.Tx(value=NEVER) from dep:tx:1"),
+                registered.path("dependency_interceptors").valueStream().map(node -> node.asText()).toList(), registered.toString());
         assertEquals(List.of("dep.AnyTxInterceptor @Priority(100) via @tx.Tx(value=REQUIRED @Nonbinding) from dep:tx:1",
                         "dep.NeverInterceptor @Priority(200) via @tx.Tx(value=NEVER) from dep:tx:1"),
                 fact.path("dependency_interceptors").valueStream().map(node -> node.asText()).toList(), fact.toString());

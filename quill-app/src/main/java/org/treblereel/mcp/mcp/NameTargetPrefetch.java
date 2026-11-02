@@ -168,6 +168,15 @@ public final class NameTargetPrefetch {
             }
     }
 
+    /** Dependency classes the Quarkus build registered as beans, or null without a generated-bytecode jar. */
+    static java.util.Set<String> registeredDependencyBeans(ReadQueryContext db) throws Exception {
+        JsonNode generated = generated(db);
+        if (generated == null || !generated.has("dependency_bean_classes")) return null;
+        java.util.Set<String> names = new java.util.HashSet<>();
+        generated.path("dependency_bean_classes").forEach(name -> names.add(name.asText()));
+        return names;
+    }
+
     private static JsonNode generated(ReadQueryContext db) throws Exception {
         String raw = db.index.getMetadata().get(org.treblereel.mcp.core.GeneratedBytecodeScanner.METADATA_KEY);
         return raw == null ? null : JSON.readTree(raw);

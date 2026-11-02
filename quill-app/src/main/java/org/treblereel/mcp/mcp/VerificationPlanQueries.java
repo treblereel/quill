@@ -75,7 +75,7 @@ final class VerificationPlanQueries {
                     var ids = new ArrayList<String>();
                     for (int i=0;i<count;i++) {
                         String id = values.getProperty("activeProfile."+i, "");
-                        if (!id.matches("[A-Za-z0-9_.-]+")) throw new IllegalArgumentException("Invalid profile id");
+                        if (!id.matches("[A-Za-z0-9_.+-]+")) throw new IllegalArgumentException("Invalid profile id");
                         ids.add(id);
                     }
                     profiles.put(name+":"+set, List.copyOf(ids));

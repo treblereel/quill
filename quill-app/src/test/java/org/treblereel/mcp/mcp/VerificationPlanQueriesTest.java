@@ -18,6 +18,21 @@ class VerificationPlanQueriesTest {
     @TempDir Path tempDir;
 
     @Test
+    void preservesLegalPlusInProfilesAndRejectsUnsafeDelimiters() throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>t</groupId><artifactId>app</artifactId><version>1</version></project>");
+        assertTrue(Files.writeString(tempDir.resolve("mvnw"), "#!/bin/sh\n").toFile().setExecutable(true));
+        var capture = tempDir.resolve("target/quill-java-test.properties"); Files.createDirectories(capture.getParent());
+        var contexts = JSON.createArrayNode(); contexts.addObject().putObject("resolution").put("module", ".").put("source_set", "test");
+        for (String id : List.of("jdk22+", "bad,other", "bad profile")) {
+            Files.writeString(capture, "sourceSet=test\nactiveProfile.count=1\nactiveProfile.0=" + id + "\n");
+            var result = new VerificationPlanQueries().plan(tempDir, contexts, JSON.createObjectNode());
+            assertEquals(id.equals("jdk22+"), result.path("profile_selection_complete").asBoolean(), id);
+            if (id.equals("jdk22+")) assertTrue(strings(result.path("commands").get(0).path("argv")).contains("-Pjdk22+"));
+            else assertTrue(result.path("commands").isEmpty());
+        }
+    }
+
+    @Test
     void combinesInheritedProfileSubsetsButRejectsUnrelatedVariants() throws Exception {
         Files.writeString(tempDir.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>t</groupId><artifactId>root</artifactId><version>1</version><packaging>pom</packaging><modules><module>a</module><module>b</module></modules></project>");
         var wrapper = Files.writeString(tempDir.resolve("mvnw"), "#!/bin/sh\n"); assertTrue(wrapper.toFile().setExecutable(true));

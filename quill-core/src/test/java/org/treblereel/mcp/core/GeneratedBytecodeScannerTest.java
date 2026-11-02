@@ -26,15 +26,16 @@ class GeneratedBytecodeScannerTest {
                 "package p; public class Mapper_ClientProxy { Object creator = new dep.Creator(); Object target = new Mapper(); }");
         Path dep = Files.createDirectories(root.resolve("gen-src/dep"));
         Files.writeString(dep.resolve("Creator.java"), "package dep; public class Creator {}");
+        Files.writeString(dep.resolve("Creator_Bean.java"), "package dep; public class Creator_Bean {}");
         Path classes = Files.createDirectories(root.resolve("gen-classes"));
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(),
                 sources.resolve("Mapper.java").toString(), sources.resolve("Mapper_ClientProxy.java").toString(),
-                dep.resolve("Creator.java").toString()));
+                dep.resolve("Creator.java").toString(), dep.resolve("Creator_Bean.java").toString()));
         Files.createDirectories(root.resolve("target/classes/p"));
         Files.copy(classes.resolve("p/Mapper.class"), root.resolve("target/classes/p/Mapper.class"));
         Path jar = Files.createDirectories(root.resolve("target/quarkus-app/quarkus")).resolve("generated-bytecode.jar");
         try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
-            for (String entry : List.of("p/Mapper_ClientProxy.class", "dep/Creator.class")) {
+            for (String entry : List.of("p/Mapper_ClientProxy.class", "dep/Creator.class", "dep/Creator_Bean.class")) {
                 output.putNextEntry(new JarEntry(entry));
                 Files.copy(classes.resolve(entry), output);
                 output.closeEntry();
@@ -51,6 +52,8 @@ class GeneratedBytecodeScannerTest {
         assertEquals("p.Mapper", generated.path("source_class").asText());
         assertEquals(List.of("dep.Creator", "p.Mapper"),
                 generated.path("references").valueStream().map(node -> node.asText()).toList());
+        assertEquals(List.of("dep.Creator"),
+                result.path("dependency_bean_classes").valueStream().map(node -> node.asText()).toList());
         assertEquals("p.Outer$Inner", GeneratedBytecodeScanner.sourceClass("p.Outer$Inner_Bean", Set.of("p.Outer$Inner", "p.Outer")));
         assertNull(GeneratedBytecodeScanner.sourceClass("p.Other_Bean", Set.of("p.Mapper")));
         assertNull(GeneratedBytecodeScanner.scan(root.resolve("target/classes"), Set.of("p.Mapper")));

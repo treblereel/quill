@@ -113,7 +113,7 @@ final class EndpointPrefetch {
                 ORDER BY fa.evidence_lines LIMIT 12""").bind("id",cls.id()).bind("method",name).bind("descriptor",descriptor).mapToMap().list());
         if(!reads.isEmpty()){
             var fieldReads=node.putArray("other_class_field_accesses");
-            reads.forEach(r->fieldReads.add(r.get("class_name")+"#"+r.get("field_name")+" "+r.get("access_kind")+" lines "+r.get("evidence_lines")));
+            reads.forEach(r->fieldReads.add(r.get("class_name")+"#"+r.get("field_name")+" "+r.get("access_kind")+" bytecode lines "+r.get("evidence_lines")));
         }
         JsonNode config=JSON.readTree(new ConfigurationReferenceQueries().find(db,null,owner,null,null,8,0));
         var references=node.putObject("configuration_references").put("scope","direct indexed owned-field/programmatic reads only");

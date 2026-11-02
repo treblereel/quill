@@ -122,6 +122,7 @@ final class MethodPrefetchRelations {
             carried.putIfAbsent(String.valueOf(row.get("annotation_name")),
                     row.get("annotation_values") == null ? JSON.createObjectNode() : JSON.readTree(String.valueOf(row.get("annotation_values"))));
         if (carried.isEmpty()) return;
+        Set<String> registered = NameTargetPrefetch.registeredDependencyBeans(db);
         ArrayNode lines = JSON.createArrayNode();
         for (Map<String, Object> row : db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT class_name, priority, artifact, interceptor_bindings FROM external_beans
@@ -133,6 +134,7 @@ final class MethodPrefetchRelations {
                 String annotation = text.substring(1, open < 0 ? text.length() : open);
                 JsonNode values = carried.get(annotation);
                 if (values == null || !bindingMatches(text, values)) continue;
+                if (registered != null && !registered.contains(String.valueOf(row.get("class_name")))) continue;
                 lines.add(row.get("class_name") + " @Priority(" + (row.get("priority") == null ? "none" : row.get("priority"))
                         + ") via " + text + " from " + row.get("artifact"));
             }
@@ -140,7 +142,9 @@ final class MethodPrefetchRelations {
         if (lines.isEmpty()) return;
         fact.set("dependency_interceptors", lines);
         fact.put("dependency_interceptors_basis", "interceptors in dependency jars bound by an annotation on this method "
-                + "or its class; a lower priority runs first; whether each jar is a bean archive in this application is not verified");
+                + "or its class; a lower priority runs first; " + (registered == null
+                        ? "whether each jar is a bean archive in this application is not verified"
+                        : "only interceptors the Quarkus build registered (an X_Bean in generated-bytecode.jar)"));
     }
 
     private static boolean bindingMatches(String binding, JsonNode values) {
@@ -245,6 +249,8 @@ final class MethodPrefetchRelations {
     }
 
     private static boolean declares(ReadQueryContext db, int classId, String name, String descriptor) {
+        // Constructors are indexed under the class's simple name and are never inherited.
+        if (name.equals("<init>")) return true;
         return db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT count(*) FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
                 .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(Integer.class).one()) > 0;

@@ -58,4 +58,26 @@ class GeneratedBytecodeScannerTest {
         assertNull(GeneratedBytecodeScanner.sourceClass("p.Other_Bean", Set.of("p.Mapper")));
         assertNull(GeneratedBytecodeScanner.scan(root.resolve("target/classes"), Set.of("p.Mapper")));
     }
+
+    @Test
+    void fingerprintIgnoresJarTimestampsButNotEntryContent() throws Exception {
+        assertEquals("", GeneratedBytecodeScanner.fingerprint(List.of(root)));
+        Path jar = Files.createDirectories(root.resolve("target/quarkus-app/quarkus")).resolve("generated-bytecode.jar");
+        writeJar(jar, 1_000_000L, new byte[] {1, 2});
+        String first = GeneratedBytecodeScanner.fingerprint(List.of(root));
+        writeJar(jar, 2_000_000_000L, new byte[] {1, 2});
+        assertEquals(first, GeneratedBytecodeScanner.fingerprint(List.of(root)));
+        writeJar(jar, 2_000_000_000L, new byte[] {2, 1});
+        org.junit.jupiter.api.Assertions.assertNotEquals(first, GeneratedBytecodeScanner.fingerprint(List.of(root)));
+    }
+
+    private static void writeJar(Path jar, long time, byte[] content) throws Exception {
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
+            JarEntry entry = new JarEntry("p/Mapper_Bean.class");
+            entry.setTime(time);
+            output.putNextEntry(entry);
+            output.write(content);
+            output.closeEntry();
+        }
+    }
 }

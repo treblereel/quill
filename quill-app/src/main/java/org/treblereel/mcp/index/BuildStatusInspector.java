@@ -137,6 +137,7 @@ public final class BuildStatusInspector {
             if (latest == null) compiled.putNull("latest_class_modified_at");
             else compiled.put("latest_class_modified_at", Instant.ofEpochMilli(latest).toString());
             compiled.put("changed_after_index", outputsChanged);
+            if (outputsChanged && Boolean.FALSE.equals(fingerprintChanged)) compiled.put("content_matches_index", true);
             result.putObject("build_events").put("pending", pendingEvents)
                     .put("consumed_before_tool_execution", true).put("protocol", 3);
             var index = result.putObject("index");
@@ -204,7 +205,8 @@ public final class BuildStatusInspector {
             return new Recommendation("refresh_pending", null,
                     "Make another MCP request to consume the build-result event");
         }
-        if (outputsChangedAfterIndex || Boolean.TRUE.equals(fingerprintChanged)
+        // Newer class timestamps with a matching content fingerprint are a rebuild from unchanged inputs.
+        if (outputsChangedAfterIndex && !Boolean.FALSE.equals(fingerprintChanged) || Boolean.TRUE.equals(fingerprintChanged)
                 || freshness.commitStale()) {
             return new Recommendation("index_refresh_required", null,
                     "Run quill update or make a new MCP request after a successful build event");

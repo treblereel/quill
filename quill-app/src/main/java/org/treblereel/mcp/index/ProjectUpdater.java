@@ -30,10 +30,10 @@ public final class ProjectUpdater {
                 String head = GitAnalyzer.resolveHead(normalized);
                 if (head == null || head.equals(metadata.get("last_commit"))) return false;
                 var discovery = ProjectLayout.discoverClassesDirs(normalized, false);
-                var classes = ClassFileSnapshot.capture(discovery.classesDirectories());
+                String classes = ClassFileSnapshot.fingerprint(discovery.classesDirectories());
                 var sources = SourceFileHashes.captureInputsCached(normalized,
                         ProjectLayout.findIndexInputRoots(normalized, discovery.outputs()));
-                if (!compiledInputsMatch(normalized, base, discovery.classesDirectories(), classes.fingerprint(), sources)) return false;
+                if (!compiledInputsMatch(normalized, base, discovery.classesDirectories(), classes, sources)) return false;
                 System.err.println("[quill] Refreshing commit " + head + " from unchanged compiled inputs; no build is started.");
                 var result = ProjectInitializer.initializeLockedDetailed(normalized, true,
                         Boolean.parseBoolean(metadata.get("compiled_before_index")), base, true);
@@ -63,8 +63,13 @@ public final class ProjectUpdater {
 
     static boolean hasCompiledOutputChanges(Path root, Map<String, String> metadata, List<Path> directories) {
         if (directories.isEmpty() || !metadata.containsKey("state_fingerprint") || !metadata.containsKey("last_commit")) return true;
-        return !metadata.get("state_fingerprint").equals(ProjectLayout.computeStateFingerprint(root, directories,
-                ClassFileSnapshot.capture(directories).fingerprint(), "unknown".equals(metadata.get("last_commit")) ? null : metadata.get("last_commit")));
+        try {
+            return !metadata.get("state_fingerprint").equals(ProjectLayout.computeStateFingerprint(root, directories,
+                    ClassFileSnapshot.fingerprint(directories), "unknown".equals(metadata.get("last_commit")) ? null : metadata.get("last_commit")));
+        } catch (RuntimeException outputsInFlux) {
+            // A build deleting or rewriting classes during the walk; the next observation settles it.
+            return true;
+        }
     }
 
     public static void updateAfterSuccessfulBuild(Path root) {

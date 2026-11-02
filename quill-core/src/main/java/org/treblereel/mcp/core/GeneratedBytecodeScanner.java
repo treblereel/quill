@@ -83,6 +83,34 @@ public final class GeneratedBytecodeScanner {
         return result.toString();
     }
 
+    /**
+     * Entry names, sizes and CRCs of the generated-bytecode jars of {@code modules}. A Quarkus rebuild
+     * from unchanged inputs rewrites the jar with new timestamps but the same entries, so this matches.
+     */
+    public static String fingerprint(List<Path> modules) {
+        StringBuilder result = new StringBuilder();
+        modules.stream().map(module -> module.toAbsolutePath().normalize()).sorted().forEach(module -> {
+            for (String output : List.of("target", "build")) {
+                Path jar = module.resolve(output).resolve("quarkus-app/quarkus").resolve(JAR);
+                if (!Files.isRegularFile(jar)) continue;
+                result.append(jar).append('\n');
+                try (JarFile file = new JarFile(jar.toFile())) {
+                    file.stream().map(entry -> entry.getName() + ' ' + entry.getSize() + ' ' + Long.toHexString(entry.getCrc()))
+                            .sorted().forEach(line -> result.append(line).append('\n'));
+                } catch (IOException | RuntimeException unreadable) {
+                    result.append("unreadable\n");
+                }
+            }
+        });
+        if (result.isEmpty()) return "";
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(result.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
     /** The longest application class name {@code name} extends with an underscore suffix. */
     static String sourceClass(String name, Set<String> applicationClasses) {
         for (int index = name.lastIndexOf('_'); index > 0; index = name.lastIndexOf('_', index - 1)) {

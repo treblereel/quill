@@ -11,10 +11,19 @@ final class SourceContentCache {
     private static final Set<String> LOCAL_VOLUMES=Set.of("apfs","hfs","ext4","xfs","btrfs","tmpfs","overlay");
     private record Token(Object key,Object device,long size,FileTime modified,FileTime changed) {}
     private record Entry(Token token,String hash) {}
-    private static final Map<Path,Entry> ENTRIES=new LinkedHashMap<>(16,.75f,true) {
-        @Override protected boolean removeEldestEntry(Map.Entry<Path,SourceContentCache.Entry> entry){return size()>4096;}
-    };
-    private static final ConcurrentHashMap<Path,CompletableFuture<Entry>> PENDING=new ConcurrentHashMap<>();
+    /** Reused hashes of one kind of file, bounded so a large output tree cannot evict the other kind. */
+    static final class Store {
+        private final Map<Path,Entry> entries;
+        private final ConcurrentHashMap<Path,CompletableFuture<Entry>> pending=new ConcurrentHashMap<>();
+        Store(int capacity) {
+            entries=new LinkedHashMap<>(16,.75f,true) {
+                @Override protected boolean removeEldestEntry(Map.Entry<Path,SourceContentCache.Entry> entry){return size()>capacity;}
+            };
+        }
+    }
+    private static final Store SOURCES=new Store(4096);
+    /** Compiled classes; sized for large multi-module outputs. */
+    static final Store CLASSES=new Store(1<<17);
     record Volume(Object device,boolean supported) {}
     static Volume volume(Path root) {
         try {return new Volume(Files.getAttribute(root,"unix:dev"),LOCAL_VOLUMES.contains(Files.getFileStore(root).type().toLowerCase(Locale.ROOT)));}
@@ -27,14 +36,15 @@ final class SourceContentCache {
     }
     @FunctionalInterface interface Reader {String read(Path file) throws IOException;}
     static String hash(Path file,Volume volume) throws IOException {return hash(file,volume,SourceFileHashes::hash);}
-    static String hash(Path file,Volume volume,Reader reader) throws IOException {
+    static String hash(Path file,Volume volume,Reader reader) throws IOException {return hash(file,volume,reader,SOURCES);}
+    static String hash(Path file,Volume volume,Reader reader,Store store) throws IOException {
         if(!volume.supported())return reader.read(file);
         Token before;
         try {before=token(file);}catch(UnsupportedOperationException|IllegalArgumentException unsupported){return reader.read(file);}
         if(before.key()==null || !Objects.equals(volume.device(),before.device()) || before.changed().toInstant().getNano()==0)
             return reader.read(file);
-        synchronized(ENTRIES){var entry=ENTRIES.get(file);if(entry!=null && entry.token().equals(before))return entry.hash();}
-        var future=new CompletableFuture<Entry>();var existing=PENDING.putIfAbsent(file,future);
+        synchronized(store.entries){var entry=store.entries.get(file);if(entry!=null && entry.token().equals(before))return entry.hash();}
+        var future=new CompletableFuture<Entry>();var existing=store.pending.putIfAbsent(file,future);
         if(existing!=null) {
             try {
                 Entry entry=existing.get();
@@ -47,8 +57,8 @@ final class SourceContentCache {
         try {
             String hash=reader.read(file);Token after=token(file);
             if(!before.equals(after))throw new IOException("Source changed during content observation");
-            var entry=new Entry(after,hash);synchronized(ENTRIES){ENTRIES.put(file,entry);}future.complete(entry);return hash;
+            var entry=new Entry(after,hash);synchronized(store.entries){store.entries.put(file,entry);}future.complete(entry);return hash;
         } catch(IOException|RuntimeException|Error error){future.completeExceptionally(error);throw error;}
-        finally {PENDING.remove(file,future);}
+        finally {store.pending.remove(file,future);}
     }
 }

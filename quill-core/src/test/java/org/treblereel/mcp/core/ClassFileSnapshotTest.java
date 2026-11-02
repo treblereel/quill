@@ -36,4 +36,29 @@ class ClassFileSnapshotTest {
         Files.delete(file);
         assertNotEquals(rewritten.fingerprint(), ClassFileSnapshot.capture(List.of(output)).fingerprint());
     }
+
+    @Test void streamingFingerprintMatchesTheIndexedSnapshotAndSeesRewritesAndDeletions() throws Exception {
+        Path first = Files.createDirectories(root.resolve("first/p"));
+        Path second = Files.createDirectories(root.resolve("second"));
+        Files.write(first.resolve("A.class"), new byte[] {1, 2});
+        Files.write(second.resolve("B.class"), new byte[] {3});
+        List<Path> outputs = List.of(root.resolve("first"), second);
+        String indexed = ClassFileSnapshot.capture(outputs).fingerprint();
+        assertEquals(indexed, ClassFileSnapshot.fingerprint(outputs));
+        assertEquals(indexed, ClassFileSnapshot.fingerprint(List.of(second, root.resolve("first"))));
+
+        Path file = first.resolve("A.class");
+        var timestamp = Files.getLastModifiedTime(file);
+        Files.write(file, new byte[] {2, 1});
+        Files.setLastModifiedTime(file, timestamp);
+        String rewritten = ClassFileSnapshot.fingerprint(outputs);
+        assertNotEquals(indexed, rewritten);
+        assertEquals(ClassFileSnapshot.capture(outputs).fingerprint(), rewritten);
+
+        Files.delete(file);
+        Files.write(file, new byte[] {1, 2});
+        assertEquals(indexed, ClassFileSnapshot.fingerprint(outputs), "same content written again");
+        Files.delete(second.resolve("B.class"));
+        assertNotEquals(indexed, ClassFileSnapshot.fingerprint(outputs));
+    }
 }

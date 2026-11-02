@@ -504,6 +504,10 @@ final class ProjectPreparation implements AutoCloseable {
                 var build = BuildStatusInspector.capture(entry.root(), metadata, freshness);
                 stage = "checking_compiled_outputs";
                 var compiled = UsageCoverage.buildFreshness(metadata);
+                // Rebuilt classes with the indexed content are newer by timestamp only.
+                boolean rebuiltUnchanged = Boolean.FALSE.equals(build.fingerprintChanged()) && compiled.path("changed_after_index").asBoolean();
+                if (rebuiltUnchanged) ((com.fasterxml.jackson.databind.node.ObjectNode) compiled)
+                        .put("changed_after_index", false).put("content_matches_index", true);
                 if (Boolean.TRUE.equals(build.fingerprintChanged()) || compiled.path("changed_after_index").asBoolean()
                         || compiled.path("state").asText().equals("unknown")) {
                     var reasons = new ArrayList<>(freshness.staleReasons()); reasons.add("compiled_snapshot_changed");

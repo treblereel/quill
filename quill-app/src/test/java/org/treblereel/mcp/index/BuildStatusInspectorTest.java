@@ -32,6 +32,29 @@ class BuildStatusInspectorTest {
                 .anyMatch(item -> item.path("module").asText().equals(root.resolve("module-104").toString())));
     }
 
+    @Test void rebuiltClassesWithIndexedContentDoNotRequireARefresh() throws Exception {
+        Files.writeString(root.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>test</groupId>"
+                + "<artifactId>app</artifactId><version>1</version></project>");
+        Path output = root.resolve("target/classes/Marker.class");
+        Files.createDirectories(output.getParent()); Files.write(output, new byte[]{1});
+        var directories = ProjectLayout.discoverClassesDirs(root, false).classesDirectories();
+        var metadata = Map.of("index_id", "i", "last_commit", "unknown", "indexed_at", "2020-01-01T00:00:00Z",
+                "state_fingerprint", ProjectLayout.computeStateFingerprint(root, directories,
+                        org.treblereel.mcp.core.ClassFileSnapshot.fingerprint(directories), null));
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        var rebuilt = json.readTree(BuildStatusInspector.inspect(root, metadata));
+        assertTrue(rebuilt.at("/compiled_outputs/changed_after_index").asBoolean(), rebuilt.toString());
+        assertTrue(rebuilt.at("/compiled_outputs/content_matches_index").asBoolean(), rebuilt.toString());
+        assertFalse(rebuilt.at("/index/project_fingerprint_changed").asBoolean());
+        assertNotEquals("index_refresh_required", rebuilt.path("status").asText());
+
+        Files.write(output, new byte[]{2});
+        var changed = json.readTree(BuildStatusInspector.inspect(root, metadata));
+        assertTrue(changed.at("/index/project_fingerprint_changed").asBoolean(), changed.toString());
+        assertFalse(changed.at("/compiled_outputs/content_matches_index").asBoolean());
+    }
+
     @Test void commitOnlyLegacyWorktreeFingerprintIsNotACompilationFailure() throws Exception {
         Files.writeString(root.resolve("pom.xml"), "<project/>");
         Path output = root.resolve("target/classes/Marker.class");

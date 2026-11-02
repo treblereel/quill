@@ -56,26 +56,80 @@ public final class ClassFileSnapshot {
         return entries;
     }
 
-    private static String fingerprint(List<Path> directories, List<Entry> entries) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            List<Path> orderedDirectories = directories.stream()
-                    .sorted(Comparator.comparing(Path::toString))
-                    .toList();
-            Map<Path, List<Entry>> byDirectory = new HashMap<>();
-            for (Entry entry : entries) {
-                byDirectory.computeIfAbsent(entry.classesDirectory(), ignored -> new ArrayList<>()).add(entry);
-            }
-            byDirectory.values().forEach(values -> values.sort(Comparator.comparing(entry -> entry.path().toString())));
-            for (Path directory : orderedDirectories) {
-                update(digest, "classesDir", directory.toString());
-                byDirectory.getOrDefault(directory, List.of()).forEach(entry -> {
-                    update(digest, "file", directory.relativize(entry.path()).toString());
-                    digest.update(entry.bytecode());
-                    digest.update((byte) 0);
+    /**
+     * {@link #fingerprint()} of the outputs as they are now, without keeping their bytecode. Hashes are
+     * reused for class files whose identity, size and timestamps are unchanged, and the rest are read
+     * in parallel, so checking outputs after a build reads each new class once.
+     */
+    public static String fingerprint(List<Path> classesDirectories) {
+        List<Path> directories = classesDirectories.stream().map(path -> path.toAbsolutePath().normalize()).toList();
+        Map<Path, List<Path>> files = new HashMap<>();
+        List<Path[]> all = new ArrayList<>();
+        for (Path directory : directories) {
+            List<Path> classes = new ArrayList<>();
+            try {
+                // The walk's own attributes avoid a second stat per class file.
+                Files.walkFileTree(directory, new java.nio.file.SimpleFileVisitor<>() {
+                    @Override public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attributes) {
+                        if (file.toString().endsWith(".class")
+                                && (attributes.isRegularFile() || attributes.isSymbolicLink() && Files.isRegularFile(file))) classes.add(file);
+                        return java.nio.file.FileVisitResult.CONTINUE;
+                    }
                 });
+                files.put(directory, classes);
+                classes.forEach(file -> all.add(new Path[] {directory, file}));
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to capture bytecode from " + directory, e);
             }
-            return HexFormat.of().formatHex(digest.digest());
+        }
+        Map<Path, SourceContentCache.Volume> volumes = new HashMap<>();
+        directories.forEach(directory -> volumes.put(directory, SourceContentCache.volume(directory)));
+        Map<Path, String> hashes = new java.util.concurrent.ConcurrentHashMap<>();
+        all.parallelStream().forEach(pair -> {
+            try {
+                hashes.put(pair[1], SourceContentCache.hash(pair[1], volumes.get(pair[0]),
+                        file -> contentHash(Files.readAllBytes(file)), SourceContentCache.CLASSES));
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to capture bytecode from " + pair[1], e);
+            }
+        });
+        return fingerprint(directories, files, hashes::get);
+    }
+
+    private static String fingerprint(List<Path> directories, List<Entry> entries) {
+        Map<Path, List<Path>> files = new HashMap<>();
+        Map<Path, byte[]> bytecode = new HashMap<>();
+        for (Entry entry : entries) {
+            files.computeIfAbsent(entry.classesDirectory(), ignored -> new ArrayList<>()).add(entry.path());
+            bytecode.put(entry.path(), entry.bytecode());
+        }
+        return fingerprint(directories, files, path -> contentHash(bytecode.get(path)));
+    }
+
+    /** One digest over each output directory and the relative path and content hash of every class in it. */
+    private static String fingerprint(List<Path> directories, Map<Path, List<Path>> files,
+            java.util.function.Function<Path, String> contentHash) {
+        MessageDigest digest = sha256();
+        List<Path> orderedDirectories = directories.stream()
+                .sorted(Comparator.comparing(Path::toString))
+                .toList();
+        for (Path directory : orderedDirectories) {
+            update(digest, "classesDir", directory.toString());
+            files.getOrDefault(directory, List.of()).stream().sorted(Comparator.comparing(Path::toString)).forEach(path -> {
+                update(digest, "file", directory.relativize(path).toString());
+                update(digest, "sha256", contentHash.apply(path));
+            });
+        }
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    private static String contentHash(byte[] bytecode) {
+        return HexFormat.of().formatHex(sha256().digest(bytecode));
+    }
+
+    private static MessageDigest sha256() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is not available", e);
         }

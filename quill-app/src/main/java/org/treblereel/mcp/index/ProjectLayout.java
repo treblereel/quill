@@ -161,7 +161,7 @@ public final class ProjectLayout {
 
     public static String computeStateFingerprint(Path root, List<Path> classesDirs) {
         return computeStateFingerprint(
-                root, classesDirs, ClassFileSnapshot.capture(classesDirs).fingerprint());
+                root, classesDirs, ClassFileSnapshot.fingerprint(classesDirs));
     }
 
     public static List<Path> staleTestOutputModules(List<CompiledOutput> outputs) {
@@ -214,6 +214,8 @@ public final class ProjectLayout {
             updateDigest(digest, "build",
                     DependencyIndexer.buildFingerprint(root, buildSystem, owners.values()));
             updateDigest(digest, "classFiles", classContentFingerprint);
+            updateDigest(digest, "generatedBytecode", org.treblereel.mcp.core.GeneratedBytecodeScanner.fingerprint(
+                    owners.values().stream().distinct().toList()));
 
             Map<Path, List<Path>> outputsByModule = classesDirs.stream()
                     .map(path -> path.toAbsolutePath().normalize())

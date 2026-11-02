@@ -42,6 +42,10 @@ public final class PrefetchCommand implements Callable<Integer> {
                 try (var db=org.treblereel.mcp.db.ReadQueryContext.openWithGraph(QuillDatabase.open(index))) {
                     data=PrefetchContext.collect(db,root,hook.path("prompt").asText(),delivered.path("_endpoint").asText(null),
                             db.index.getMetadata().getOrDefault("index_id","").equals(delivered.path("_index_id").asText()));
+                    // A session's first prompt that names nothing indexed still gets the project's shape once.
+                    if(!delivered.has("_index_id") && "ready".equals(data.path("status").asText()) && data.path("facts").isEmpty()
+                            && data.path("unavailable").isEmpty() && data.path("ambiguities").isEmpty())
+                        data.withArray("facts").add(org.treblereel.mcp.mcp.NameTargetPrefetch.projectFact(db,root));
                 }
                 // shortcut: cache tracks stdout emission, not host acknowledgement; verify delivery in future CLI captures.
                 if(!data.path("index_id").asText().equals(delivered.path("_index_id").asText()))delivered.removeAll();

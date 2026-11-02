@@ -62,6 +62,10 @@ class PrefetchLifecycleTest {
         var missing=hook("UserPromptSubmit","route","GET /missing");assertTrue(missing.contains("endpoint_not_found"));
         assertFalse(missing.contains("completed Quill reads"));
         assertEquals("",hook("UserPromptSubmit","route","What configuration does it use?"));
-        assertEquals("",hook("SessionStart","route"));assertEquals("",hook("UserPromptSubmit","route","Continue"));
+        assertEquals("",hook("SessionStart","route"));
+        // A reset drops the anchor; the new session's first untargeted prompt only gets the project shape.
+        var restarted=hook("UserPromptSubmit","route","Continue");
+        assertFalse(restarted.contains("endpoint_anchor"));assertTrue(restarted.contains("\\\"kind\\\":\\\"project\\\""),restarted);
+        assertEquals("",hook("UserPromptSubmit","route","Continue"));
     }
 }

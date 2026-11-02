@@ -129,7 +129,8 @@ final class MethodPrefetchRelations {
                 for (JsonNode call : JSON.readTree(external)) {
                     // line|ordinal|owner|method|descriptor|...
                     String[] parts = call.asText().split("\\|", -1);
-                    if (parts.length > 3) lines.add(method.depth() + " " + parts[2] + "#" + parts[3] + " [external]");
+                    if (parts.length > 3) lines.add(method.depth() + " " + parts[2] + "#" + parts[3]
+                            + (parts.length > 4 ? javaSignature(parts[4]) : "") + " [external]");
                 }
             } catch (Exception unreadable) {
                 // Evidence rows are written by the indexer; an unreadable row only drops its external calls.
@@ -201,6 +202,47 @@ final class MethodPrefetchRelations {
                 FROM external_beans WHERE bean_types LIKE :type ORDER BY artifact, class_name LIMIT 5""")
                 .bind("type", "%\"" + type + "\"%").mapTo(String.class).list());
         return providers.isEmpty() ? "" : "; dependency providers: " + String.join(", ", providers);
+    }
+
+    /** (Ljava/nio/file/Path;[I)Z reads (java.nio.file.Path, int[]):boolean; malformed input reads as empty. */
+    static String javaSignature(String descriptor) {
+        int close = descriptor.indexOf(')');
+        if (!descriptor.startsWith("(") || close < 0) return "";
+        List<String> parameters = new java.util.ArrayList<>();
+        int[] at = {1};
+        while (at[0] < close) {
+            String type = javaType(descriptor, at);
+            if (type == null) return "";
+            parameters.add(type);
+        }
+        at[0] = close + 1;
+        String result = javaType(descriptor, at);
+        return result == null ? "" : "(" + String.join(", ", parameters) + "):" + result;
+    }
+
+    private static String javaType(String descriptor, int[] at) {
+        if (at[0] >= descriptor.length()) return null;
+        char kind = descriptor.charAt(at[0]++);
+        switch (kind) {
+            case '[': { String element = javaType(descriptor, at); return element == null ? null : element + "[]"; }
+            case 'L': {
+                int end = descriptor.indexOf(';', at[0]);
+                if (end < 0) return null;
+                String name = descriptor.substring(at[0], end).replace('/', '.');
+                at[0] = end + 1;
+                return ClassPrefetchRelations.source(name);
+            }
+            case 'Z': return "boolean";
+            case 'B': return "byte";
+            case 'C': return "char";
+            case 'S': return "short";
+            case 'I': return "int";
+            case 'J': return "long";
+            case 'F': return "float";
+            case 'D': return "double";
+            case 'V': return "void";
+            default: return null;
+        }
     }
 
     private static String text(JsonNode value) {

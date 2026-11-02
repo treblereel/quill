@@ -210,6 +210,12 @@ Quill. Claude без Quill тратит медиану 9k на вопрос, с 
     (Quarkus REST делает его `@Singleton`), и его точки внедрения не индексировались —
     `Reports#reportAggregator`, `ActiveRecordingsDownload#base64Url`. Теперь при отсутствии свежего
     захвата решает Quarkus REST на индексированном classpath. В фикстуре cryostat: 101 → 133 бина.
+15e. [ ] Привязки внешних interceptors не индексируются: `external_beans` для
+    `TransactionalInterceptorRequired` хранит только `@Default/@Any`, поэтому `@Transactional`
+    метода нельзя связать с interceptor из зависимости (CQ-026). Индексировать interceptor bindings
+    (и `@Priority`) бинов зависимостей.
+15f. [ ] Сгенерированные Quarkus классы (`*_ClientProxy`, `*_Synthetic_Bean` в
+    `generated-bytecode.jar`) не индексируются (CQ-048, часть CQ-024).
 15b. [x] Найдено реплеем и исправлено: `find_cycles` scope=class падал на вложенном классе с
     владельцем без рёбер; `change_session`/`plan_change`/`verify_change`/`find_impacted_tests`
     с целью `Class#method` требовали граф (CQ-050).

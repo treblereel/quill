@@ -66,7 +66,7 @@ final class ClassPrefetchRelations {
                 SELECT key, kind, member, annotation, NULL AS file, NULL AS line FROM configuration_usages
                 WHERE class_name = :name OR class_name LIKE :nested
                 UNION ALL
-                SELECT key, kind, NULL, NULL, file, line FROM configuration_definitions
+                SELECT key, kind, NULL, json_extract(evidence, '$.declaring_class'), file, line FROM configuration_definitions
                 WHERE evidence LIKE :declared OR evidence LIKE :declaredNested
                 ORDER BY 1""").bind("name", cls.className()).bind("nested", cls.className() + "$%")
                 .bind("declared", "%\"declaring_class\":\"" + cls.className() + "\"%")
@@ -196,7 +196,9 @@ final class ClassPrefetchRelations {
 
     private static String configuration(Map<String, Object> row) {
         if (row.get("file") != null)
-            return row.get("key") + " [" + row.get("kind") + " declared] " + row.get("file") + ":" + row.get("line");
+            return row.get("key") + " [" + row.get("kind") + " declared"
+                    + (row.get("annotation") == null ? "" : " by " + source(row.get("annotation"))) + "] "
+                    + row.get("file") + ":" + row.get("line");
         return row.get("key") + " [" + row.get("kind") + " read" + (row.get("member") == null ? "" : " by " + row.get("member"))
                 + " via @" + row.get("annotation") + "]";
     }

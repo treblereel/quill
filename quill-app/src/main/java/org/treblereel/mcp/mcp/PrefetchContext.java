@@ -58,7 +58,7 @@ public final class PrefetchContext {
                 ObjectNode impact=new MethodImpactQueries().get(db,target,selector,200);
                 if(impact.has("error") || impact.has("error_code")){missing.add(impact);continue;}
                 if(!hash.equals(SourceFileHashes.hash(file))){missing.addObject().put("status","inputs_changed");continue;}
-                impact.remove("_meta");impact.put("source_sha256",hash);selected.add(impact);
+                impact.remove("_meta");MethodPrefetchRelations.compactImpact(impact);MethodPrefetchRelations.append(db,impact);impact.put("source_sha256",hash);selected.add(impact);
             }while(method.find());
             return result.put("status","ready");
         }
@@ -145,7 +145,7 @@ public final class PrefetchContext {
         }
     }
     private static int size(JsonNode data){return data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;}
-    /** Halves the largest list of at least four items and records shown/total next to it. */
+    /** Halves the largest list of at least two items and records shown/total next to it. */
     private static boolean trimLongestList(JsonNode node){
         ObjectNode[] owner={null};String[] field={null};int[] best={0};
         findLongestList(node,owner,field,best);
@@ -161,7 +161,7 @@ public final class PrefetchContext {
     private static void findLongestList(JsonNode node,ObjectNode[] owner,String[] field,int[] best){
         if(node instanceof ObjectNode object){
             object.properties().forEach(entry->{
-                if(entry.getValue() instanceof ArrayNode list && list.size()>=4){
+                if(entry.getValue() instanceof ArrayNode list && list.size()>=2){
                     int bytes=size(list);
                     if(bytes>best[0]){best[0]=bytes;owner[0]=object;field[0]=entry.getKey();}
                 }

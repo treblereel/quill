@@ -43,11 +43,11 @@ final class RouterTools {
     public String search_tools(
             @ToolArg(description = "Words to match against tool names, descriptions, and arguments")
                     String query,
-            @ToolArg(description = "Maximum matches; default 10, max 30") Optional<Integer> limit) {
+            @ToolArg(description = "Maximum matches; default 5, max 30") Optional<Integer> limit) {
         try (DebugTrace.Trace trace = DebugTrace.start("router_search")) {
             String[] terms = Arrays.stream(query.strip().toLowerCase().split("\\s+"))
                     .filter(term -> !term.isBlank()).toArray(String[]::new);
-            int pageSize = Math.max(1, Math.min(30, limit.orElse(10)));
+            int pageSize = Math.max(1, Math.min(30, limit.orElse(5)));
             List<Method> catalog = Arrays.stream(QuillTools.class.getDeclaredMethods())
                     .filter(method -> method.isAnnotationPresent(Tool.class))
                     .filter(method -> method.getAnnotation(Tool.class).readOnly()).toList();
@@ -69,18 +69,9 @@ final class RouterTools {
             result.put("showing", Math.min(pageSize, matches.size()));
             ObjectNode guidance = result.putObject("guidance");
             guidance.put("recommended_channel", channel);
-            if (!matches.isEmpty()) {
-                guidance.put("recommended_tool", matches.getFirst().method().getName());
-                guidance.put("selection_reason", "highest keyword match in Quill's tool catalog");
-            }
-            guidance.put("use_source_search_for",
-                    "exact literals, known paths, and confirming one concrete source occurrence");
-            guidance.put("use_quill_for",
-                    "semantic symbols, dependency/call graphs, DI, generated code, history, and risk");
-            guidance.put("fallback_when",
-                    "use source or build evidence when Quill reports stale, partial, unknown, or unsupported results");
-            guidance.put("response_budget",
-                    "prefer the smallest useful limit and continue with offset only when needed");
+            // When to prefer source search or Quill is in the server instructions; repeating it in
+            // every search answer was a third of each response.
+            if (!matches.isEmpty()) guidance.put("recommended_tool", matches.getFirst().method().getName());
             ArrayNode listed = result.putArray("tools");
             matches.stream().limit(pageSize).forEach(candidate -> {
                 Method method = candidate.method();
@@ -89,7 +80,6 @@ final class RouterTools {
                 item.put("description", method.getAnnotation(Tool.class).description());
                 Map<String, Object> schema = McpToolCatalog.inputSchema(method);
                 item.set("input_schema", JSON.valueToTree(schema));
-                item.set("required_arguments", JSON.valueToTree(schema.getOrDefault("required", List.of())));
                 item.put("match_score", candidate.score());
             });
             return result.toString();

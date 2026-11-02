@@ -117,7 +117,8 @@ final class MethodPrefetchRelations {
                 String calleeDescriptor = String.valueOf(call.get("to_descriptor"));
                 boolean lambda = callee.startsWith("lambda$");
                 if (!lambda) lines.add(method.depth() + " " + call.get("class_name") + "#" + callee
-                        + " [" + call.get("invocation_kind") + "]");
+                        + " [" + call.get("invocation_kind") + (declares(db, calleeClass, callee, calleeDescriptor) ? ""
+                                : ", inherited: not declared in this class") + "]");
                 int next = lambda ? method.depth() : method.depth() + 1;
                 if (next <= DEPTH && seen.add(calleeClass + "#" + callee + calleeDescriptor))
                     queue.addLast(new Method(calleeClass, callee, calleeDescriptor, next));
@@ -145,6 +146,12 @@ final class MethodPrefetchRelations {
         lines.stream().limit(LIMIT).forEach(values::add);
         fact.put("calls_basis", "depth, callee, invocation; depth 2 = called by a depth-1 callee");
         if (lines.size() > LIMIT) fact.putObject("calls_truncated").put("shown", LIMIT).put("total", lines.size());
+    }
+
+    private static boolean declares(ReadQueryContext db, int classId, String name, String descriptor) {
+        return db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT count(*) FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
+                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(Integer.class).one()) > 0;
     }
 
     /**

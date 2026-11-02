@@ -21,12 +21,14 @@ class MethodPrefetchRelationsTest {
     void methodFactListsAnnotationValuesAndCallsTwoLevelsDownThroughLambdas() throws Exception {
         var db = JavaEvidenceFixture.index(root, """
                 package p;
-                class Fixture {
+                class Base { void inherited() {} }
+                class Fixture extends Base {
                     @Deprecated(since = "9")
-                    void start() { helper(); Runnable task = () -> other(); task.run(); }
+                    void start() { helper(); parent(); Runnable task = () -> other(); task.run(); }
                     void helper() { deep(); }
                     void deep() { leaf(); }
                     void leaf() {}
+                    void parent() { inherited(); }
                     void other() { System.out.println("x"); }
                 }
                 """);
@@ -40,6 +42,7 @@ class MethodPrefetchRelationsTest {
         assertTrue(calls.contains("2 p.Fixture#deep [virtual]"), calls.toString());
         assertTrue(calls.contains("1 java.lang.Runnable#run():void [external]"), calls.toString());
         assertFalse(calls.contains("3 p.Fixture#leaf [virtual]"), calls.toString());
+        assertTrue(calls.contains("2 p.Fixture#inherited [virtual, inherited: not declared in this class]"), calls.toString());
         assertTrue(calls.stream().noneMatch(call -> call.contains("lambda$")), calls.toString());
         assertEquals("(java.nio.file.Path, java.nio.file.LinkOption[]):boolean",
                 MethodPrefetchRelations.javaSignature("(Ljava/nio/file/Path;[Ljava/nio/file/LinkOption;)Z"));

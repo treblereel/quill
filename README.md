@@ -394,6 +394,8 @@ plus overview and router fallback. The `codex` profile, which Quill writes into 
 configuration, adds `change_session`, `get_external_symbol_details`,
 `get_project_dependencies`, `trace_state_lifecycle`, `find_usages`, `find_entry_points` and
 `get_annotated_classes`: Codex otherwise spends a model turn on `search_tools` for each.
+The `claude` profile, which Quill writes into `.mcp.json`, is currently the compact catalog:
+Claude loads every listed schema into each request, so it is tuned separately from Codex.
 Use `--tools full` for the complete initial catalog, or choose `router`, `core`, `code`,
 `di`, or `git`:
 

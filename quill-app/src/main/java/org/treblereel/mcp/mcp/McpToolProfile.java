@@ -48,7 +48,7 @@ public final class McpToolProfile {
     private static final Set<String> CODEX = union(COMPACT, Set.of(
             "change_session", "get_external_symbol_details", "get_project_dependencies",
             "trace_state_lifecycle", "find_usages", "find_entry_points", "get_annotated_classes"));
-    private static final Set<String> NAMES = Set.of("full", "router", "compact", "codex", "core", "code", "di", "git");
+    private static final Set<String> NAMES = Set.of("full", "router", "compact", "codex", "claude", "core", "code", "di", "git");
 
     private final boolean full;
     private final boolean router;
@@ -72,7 +72,9 @@ public final class McpToolProfile {
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         if (names.equals(Set.of("compact"))) return new McpToolProfile(false, true, COMPACT);
         if (names.equals(Set.of("codex"))) return new McpToolProfile(false, true, CODEX);
-        for (String routed : List.of("compact", "codex")) {
+        // Claude loads every listed schema into each request, so it keeps the compact catalog.
+        if (names.equals(Set.of("claude"))) return new McpToolProfile(false, true, COMPACT);
+        for (String routed : List.of("compact", "codex", "claude")) {
             if (names.contains(routed)) {
                 throw new IllegalArgumentException("MCP tool profile '" + routed + "' must be used alone");
             }
@@ -88,7 +90,7 @@ public final class McpToolProfile {
         for (String name : names) {
             if (!NAMES.contains(name)) {
                 throw new IllegalArgumentException("Unknown MCP tool profile '" + name
-                        + "'; expected full, router, compact, codex, core, code, di, git, or a comma-separated union");
+                        + "'; expected full, router, compact, codex, claude, core, code, di, git, or a comma-separated union");
             }
             if (name.equals("full")) return full();
             selected.addAll(switch (name) {

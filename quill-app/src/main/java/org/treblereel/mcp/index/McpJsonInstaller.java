@@ -23,6 +23,8 @@ public final class McpJsonInstaller {
     }
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    /** Named explicitly so Claude's catalog can change without changing the server default. */
+    static final String CLAUDE_PROFILE = "claude";
 
     private McpJsonInstaller() {}
 
@@ -117,6 +119,8 @@ public final class McpJsonInstaller {
         args.add("--mcp");
         args.add("--workspace");
         args.add(workspaceRoot.toAbsolutePath().normalize().toString());
+        args.add("--tools");
+        args.add(CLAUDE_PROFILE);
         return server;
     }
 
@@ -125,7 +129,7 @@ public final class McpJsonInstaller {
         server.put("type", "stdio");
         server.put("command", binary == null ? "quill" : binary);
         server.put("alwaysLoad", true);
-        server.putArray("args").add("--mcp");
+        server.putArray("args").add("--mcp").add("--tools").add(CLAUDE_PROFILE);
         server.put("cwd", projectRoot.toString());
         return server;
     }

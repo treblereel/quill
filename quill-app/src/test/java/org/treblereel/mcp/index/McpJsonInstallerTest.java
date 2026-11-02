@@ -26,7 +26,7 @@ class McpJsonInstallerTest {
                 .path("mcpServers").path("quill");
         assertEquals("stdio", quill.path("type").asText());
         assertEquals("/opt/quill", quill.path("command").asText());
-        assertEquals("--mcp", quill.path("args").get(0).asText());
+        assertEquals(JSON.readTree("[\"--mcp\",\"--tools\",\"claude\"]"), quill.path("args"));
         assertTrue(quill.path("alwaysLoad").asBoolean());
         assertEquals(project.toAbsolutePath().normalize().toString(),
                 quill.path("cwd").asText());

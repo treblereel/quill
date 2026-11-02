@@ -44,7 +44,7 @@ public class QuillTopCommand implements Callable<Integer> {
     @Option(names = "--workspace", description = "Initialized workspace root to serve via MCP")
     Path workspace;
 
-    @Option(names = "--tools", description = "MCP tool profiles: full, router, compact, codex, core, code, di, git; "
+    @Option(names = "--tools", description = "MCP tool profiles: full, router, compact, codex, claude, core, code, di, git; "
             + "comma-separated unions are allowed (default: compact)")
     String toolProfiles = "compact";
 

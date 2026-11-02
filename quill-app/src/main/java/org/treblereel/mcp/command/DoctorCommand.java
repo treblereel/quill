@@ -396,7 +396,8 @@ public class DoctorCommand implements Callable<Integer> {
             for (int i = 0; i + 1 < args.size(); i++) {
                 if ("--tools".equals(args.get(i).asText())) return args.get(i + 1).asText();
             }
-            return "full";
+            // Without --tools the server starts with its default profile.
+            return "compact";
         } catch (IOException error) {
             return null;
         }

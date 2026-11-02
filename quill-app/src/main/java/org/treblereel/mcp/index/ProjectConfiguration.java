@@ -17,7 +17,10 @@ public final class ProjectConfiguration {
             <!-- quill:instructions:v5 -->
             ## Quill — Codebase Intelligence (MCP)
 
-            Discover Quill tools on demand by exact name or task; do not enumerate or print the entire tool catalog.
+            Call listed Quill tools directly; search the catalog by exact tool name only for a tool
+            that is not listed, and do not enumerate or print the entire tool catalog.
+            Each turn resends the whole conversation, so issue the independent Quill queries a
+            question needs as parallel tool calls in one message rather than one per turn.
             For a known target, query the relevant tool directly. Use `get_overview` for
             orientation, inventory, or index/build status; it is not a prerequisite for other queries.
             Use `view=compact` only when server startup instructions or launch arguments

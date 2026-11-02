@@ -76,6 +76,19 @@ def prefetch(command, project, session, prompt, timeout):
         return result.stdout
 
 
+def pack_gaps(pack):
+    """Why a pack left something out: its unavailable statuses and lookup error codes."""
+    try:
+        data = json.loads(pack)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    gaps = [item.get("status") or item.get("error_code") for item in data.get("unavailable", [])
+            if isinstance(item, dict)]
+    if data.get("status") not in (None, "ready"):
+        gaps.append("pack_" + data["status"])
+    return [gap for gap in gaps if gap]
+
+
 def case_prompts(manager):
     """Exact prompts per case, in turn order, from one client's sessions of the run."""
     prompts = {}
@@ -94,12 +107,13 @@ def measure(oracles, prompts, command, project, timeout):
         packs = [prefetch(command, project, session, prompt, timeout) for prompt in prompts[case]]
         text = "\n".join(packs)
         covered = [token for token in expected if mentioned(token, text)]
+        gaps = sorted({gap for pack in packs for gap in pack_gaps(pack)})
         cases.append({
             "case": case, "turns": len(packs), "pack_chars": len(text),
             "pack_tokens_estimate": len(text) // 4, "packs_delivered": sum(bool(p) for p in packs),
             "identifiers": len(expected), "covered": len(covered),
             "coverage": round(len(covered) / len(expected), 3) if expected else None,
-            "missing": [token for token in expected if token not in covered][:30]})
+            "gaps": gaps, "missing": [token for token in expected if token not in covered][:30]})
     scored = [case for case in cases if case["coverage"] is not None]
     return {
         "cases": cases,
@@ -121,8 +135,9 @@ def print_report(report, out=None):
           f"mean pack ≈{summary['mean_pack_tokens']} tokens", file=out)
     for case in report["cases"]:
         coverage = "n/a" if case["coverage"] is None else f"{case['coverage']:.0%}"
+        gaps = f" gaps: {', '.join(case['gaps'])}" if case["gaps"] else ""
         print(f"  {case['case']}: {case['covered']}/{case['identifiers']} ({coverage}), "
-              f"pack ≈{case['pack_tokens_estimate']} tokens", file=out)
+              f"pack ≈{case['pack_tokens_estimate']} tokens{gaps}", file=out)
 
 
 def main(argv=None):

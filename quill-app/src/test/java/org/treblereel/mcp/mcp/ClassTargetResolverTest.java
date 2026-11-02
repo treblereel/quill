@@ -33,6 +33,25 @@ class ClassTargetResolverTest {
     }
 
     @Test
+    void resolvesSourceSpellingOfNestedClassesToTheirBinaryName() {
+        Jdbi jdbi = database(List.of(
+                current("io.acme.Credential"),
+                current("io.acme.Credential$Listener"),
+                current("io.acme.Outer$Middle$Inner")));
+
+        var listener = ReadQueryContext.readWithGraph(jdbi,
+                readScope -> ClassTargetResolver.resolve(readScope, "io.acme.Credential.Listener"));
+        var inner = ReadQueryContext.readWithGraph(jdbi,
+                readScope -> ClassTargetResolver.resolve(readScope, "io.acme.Outer.Middle.Inner"));
+        var missing = ReadQueryContext.readWithGraph(jdbi,
+                readScope -> ClassTargetResolver.resolve(readScope, "io.acme.Credential.Missing"));
+
+        assertEquals("io.acme.Credential$Listener", listener.cls().className());
+        assertEquals("io.acme.Outer$Middle$Inner", inner.cls().className());
+        assertEquals("CLASS_NOT_FOUND", missing.errorCode());
+    }
+
+    @Test
     void reportsAmbiguousTargetWhenMultipleCurrentClassesHaveSameShortName() {
         Jdbi jdbi = database(List.of(
                 current("first.BeanManager"),

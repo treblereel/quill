@@ -47,6 +47,18 @@ class ConfigurationMethodSourceTest {
         assertEquals("partial",data.path("status").asText());assertTrue(data.path("context_truncated").asBoolean());assertTrue(data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=10000);
         var before=data.deepCopy();PrefetchContext.boundContext(data);assertEquals(before,data);
     }
+    @Test void hookBudgetHalvesLongListsAndStatesTheCutBeforeOmittingFacts() throws Exception {
+        var data=json.createObjectNode().put("status","ready");var facts=data.putArray("facts");
+        var fact=facts.addObject().put("kind","method_impact");var callers=fact.putArray("callers");
+        for(int i=0;i<200;i++)callers.addObject().put("caller","p.Caller"+i+"#call"+"x".repeat(60));
+        fact.putArray("tests").add("p.ATest").add("p.BTest");
+        PrefetchContext.boundContext(data);
+        assertEquals(1,facts.size());assertEquals(2,fact.path("tests").size());
+        assertEquals(200,fact.path("callers_truncated").path("total").asInt());
+        assertEquals(fact.path("callers").size(),fact.path("callers_truncated").path("shown").asInt());
+        assertEquals("p.Caller0#call"+"x".repeat(60),fact.path("callers").get(0).path("caller").asText());
+        assertEquals("partial",data.path("status").asText());assertTrue(data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=10000);
+    }
     @Test void changedSourceCannotLeaveOldSnippetInFallback() throws Exception {
         var e=evidence();Files.writeString(root.resolve("src/main/java/p/Fixture.java"),"// CHANGED_SOURCE_SENTINEL");TestReads.read(db, readScope -> { ConfigurationMethodSource.append(readScope,e); return null; });
         assertTrue(e.path("field_read_source").path("files").isEmpty());assertFalse(e.toString().contains("CHANGED_SOURCE_SENTINEL"));

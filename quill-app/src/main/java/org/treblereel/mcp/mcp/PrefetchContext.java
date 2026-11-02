@@ -102,12 +102,39 @@ public final class PrefetchContext {
     public static void boundContext(ObjectNode data){
         final int limit=10000;
         if(!(data.path("facts") instanceof ArrayNode facts))return;
-        while(data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>limit && !facts.isEmpty()){
+        // Long lists are cut in half, each cut stated beside the list, before whole facts go.
+        while(size(data)>limit && trimLongestList(facts)) data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
+        while(size(data)>limit && !facts.isEmpty()){
             JsonNode omitted=facts.remove(facts.size()-1);
             data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
             var missing=data.withArray("unavailable").addObject().put("status","prefetch_context_limit");
             for(String key:List.of("kind","tool","arguments"))if(omitted.has(key))missing.set(key,omitted.get(key));
         }
+    }
+    private static int size(JsonNode data){return data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;}
+    /** Halves the largest list of at least four items and records shown/total next to it. */
+    private static boolean trimLongestList(JsonNode node){
+        ObjectNode[] owner={null};String[] field={null};int[] best={0};
+        findLongestList(node,owner,field,best);
+        if(owner[0]==null)return false;
+        ArrayNode list=(ArrayNode)owner[0].get(field[0]);
+        String marker=field[0]+"_truncated";
+        int total=owner[0].path(marker).path("total").asInt(list.size());
+        int keep=list.size()/2;
+        while(list.size()>keep)list.remove(list.size()-1);
+        owner[0].putObject(marker).put("shown",keep).put("total",total);
+        return true;
+    }
+    private static void findLongestList(JsonNode node,ObjectNode[] owner,String[] field,int[] best){
+        if(node instanceof ObjectNode object){
+            object.properties().forEach(entry->{
+                if(entry.getValue() instanceof ArrayNode list && list.size()>=4){
+                    int bytes=size(list);
+                    if(bytes>best[0]){best[0]=bytes;owner[0]=object;field[0]=entry.getKey();}
+                }
+                findLongestList(entry.getValue(),owner,field,best);
+            });
+        }else if(node instanceof ArrayNode list)for(JsonNode child:list)findLongestList(child,owner,field,best);
     }
     private PrefetchContext(){}
 }

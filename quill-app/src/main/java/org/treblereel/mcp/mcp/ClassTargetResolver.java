@@ -60,6 +60,18 @@ final class ClassTargetResolver {
         var exactPath = reader.symbols.findClassByPath(target);
         if (exactPath.isPresent()) return Lookup.found(exactPath.get());
 
+        // Source spells a nested class Outer.Inner; the index holds its binary name Outer$Inner.
+        if (!target.contains("/") && !target.contains("$")) {
+            String binary = target;
+            for (int dot = binary.lastIndexOf('.'); dot > 0; dot = binary.lastIndexOf('.', dot - 1)) {
+                binary = binary.substring(0, dot) + '$' + binary.substring(dot + 1);
+                var nested = reader.symbols.findClassesByName(binary);
+                if (nested.size() == 1) return Lookup.found(nested.getFirst());
+                if (nested.size() > 1) return Lookup.error("AMBIGUOUS_CLASS", "Ambiguous class context",
+                        nested, List.of());
+            }
+        }
+
         if (!target.contains(".")) {
             List<ClassRecord> shortNameCandidates =
                     reader.symbols.findClassesByShortName(target);

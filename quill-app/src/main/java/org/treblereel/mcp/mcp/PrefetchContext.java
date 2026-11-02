@@ -103,6 +103,7 @@ public final class PrefetchContext {
             String hash=hashes.path(relative).asText();
             if(hash.isBlank() || !hash.equals(SourceFileHashes.hash(file))){unavailable.addObject().put("class",cls.className()).put("status","source_hash_unavailable_or_changed");continue;}
             ObjectNode fact=(ObjectNode)JSON.readTree(new SymbolToolQueries().getSymbolDetails(db,cls.className(),false,null,10,0));
+            ClassPrefetchRelations.append(db,fact,cls);
             fact.put("source_sha256",hash);facts.add(fact);
         }
         if(facts.isEmpty() && ambiguous.isEmpty() && unavailable.isEmpty() && previousEndpoint!=null)

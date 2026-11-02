@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -110,6 +111,72 @@ public final class NameTargetPrefetch {
         if (dependencies.path("total").asInt() > direct.size())
             fact.putObject("direct_dependencies_truncated").put("shown", direct.size()).put("total", dependencies.path("total").asInt());
         return fact;
+    }
+
+    /**
+     * A class the Quarkus build generated, named in a prompt: its jar entry and the application
+     * class it was generated for, whose source is what to edit. Null when {@code name} is none.
+     */
+    static ObjectNode generatedClassFact(ReadQueryContext db, String name) throws Exception {
+        JsonNode generated = generated(db);
+        if (generated == null) return null;
+        for (JsonNode entry : generated.path("classes")) {
+            if (!entry.path("class").asText().equals(name) && !entry.path("class").asText().replace('$', '.').equals(name)) continue;
+            ObjectNode fact = JSON.createObjectNode().put("kind", "generated_class").put("class", entry.path("class").asText())
+                    .put("scope_note", "Quarkus build output; regenerated from application sources on the next build, so "
+                            + "edit the source class, not this one");
+            fact.put("artifact", entry.path("jar").asText() + "!/" + entry.path("entry").asText());
+            fact.put("generated_for", entry.path("source_class").asText());
+            String source = sourceFile(db, entry.path("source_class").asText());
+            if (source != null) fact.put("generated_for_source", source);
+            fact.set("references", entry.path("references"));
+            freshness(generated, entry.path("jar").asText(), fact);
+            return fact;
+        }
+        return null;
+    }
+
+    /** Generated classes recorded for {@code className}, one line each, onto a class fact. */
+    static void appendGenerated(ReadQueryContext db, ObjectNode fact, String className) throws Exception {
+        JsonNode generated = generated(db);
+        if (generated == null) return;
+        ArrayNode lines = JSON.createArrayNode();
+        String jar = null;
+        for (JsonNode entry : generated.path("classes")) {
+            if (!entry.path("source_class").asText().equals(className)) continue;
+            jar = entry.path("jar").asText();
+            List<String> references = new java.util.ArrayList<>();
+            entry.path("references").forEach(reference -> {
+                if (!reference.asText().equals(className)) references.add(reference.asText());
+            });
+            lines.add(entry.path("jar").asText() + "!/" + entry.path("entry").asText()
+                    + (references.isEmpty() ? "" : " references " + String.join(", ", references)));
+        }
+        if (lines.isEmpty()) return;
+        fact.set("generated_classes", lines);
+        ObjectNode note = fact.putObject("generated_classes_basis")
+                .put("scope", "Quarkus build output generated for this class; edit this class's source, not them");
+        freshness(generated, jar, note);
+    }
+
+    private static void freshness(JsonNode generated, String jar, ObjectNode target) {
+        for (JsonNode node : generated.path("jars"))
+            if (node.path("path").asText().equals(jar)) {
+                if (node.has("modified")) target.put("jar_modified", node.path("modified").asText());
+                if (node.has("older_than_compiled_classes"))
+                    target.put("jar_older_than_compiled_classes", node.path("older_than_compiled_classes").asBoolean());
+            }
+    }
+
+    private static JsonNode generated(ReadQueryContext db) throws Exception {
+        String raw = db.index.getMetadata().get(org.treblereel.mcp.core.GeneratedBytecodeScanner.METADATA_KEY);
+        return raw == null ? null : JSON.readTree(raw);
+    }
+
+    private static String sourceFile(ReadQueryContext db, String className) {
+        return db.jdbi().withHandle(handle -> handle.createQuery(
+                "SELECT source_file FROM classes WHERE class_name = :name AND lifecycle = 'current' LIMIT 1")
+                .bind("name", className).mapTo(String.class).findOne().orElse(null));
     }
 
     private static String provider(Map<String, Object> row) {

@@ -40,6 +40,13 @@ class EndpointPrefetchTest {
             assertTrue(multiple.path("facts").isEmpty());assertFalse(multiple.path("ambiguities").isEmpty());
         } finally {}
     }
+    @Test void handlerFieldReadsOfOtherClassesAreListed() throws Exception {
+        var db=JavaEvidenceFixture.index(root,"package p; class Fixture { Service service; int fetch(){ return service.count; }} class Service {int count;}");
+        routes(db,"GET");
+        var packet=TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"GET /warehouse/items/{key}"));
+        var handler=packet.path("facts").get(1).path("methods").get(0);
+        assertEquals("p.Service#count read_instance lines [1]",handler.path("other_class_field_accesses").get(0).asText(),packet.toString());
+    }
     @Test void duplicateMappingsAreAmbiguousAndChangedSourcesNeverBecomeFreshFacts() throws Exception {
         var db=JavaEvidenceFixture.index(root,"package p; class Fixture {int fetch(){return 1;}}");
         try {

@@ -11,7 +11,8 @@ import org.treblereel.mcp.model.ClassRecord;
 /**
  * The CDI and test relations a class fact needs for a first-turn answer, one line per relation:
  * what the class injects, which injection points require or resolve to it, and which test
- * classes depend on it. Lines are indexed static evidence; runtime selection is not implied.
+ * classes depend on it. Related source files are the production files that inject, implement or
+ * call the class. Lines are indexed static evidence; runtime selection is not implied.
  */
 final class ClassPrefetchRelations {
 
@@ -67,6 +68,10 @@ final class ClassPrefetchRelations {
                 SELECT source_file FROM classes
                 WHERE lifecycle = 'current' AND source_file IS NOT NULL
                   AND (superclass = :name OR interfaces LIKE :interface)
+                UNION
+                SELECT c.source_file FROM method_calls mc JOIN classes c ON c.id = mc.from_class_id
+                WHERE mc.to_class_id = :id AND mc.from_class_id <> :id AND c.lifecycle = 'current'
+                  AND c.source_file IS NOT NULL AND c.source_set = 'main'
                 ORDER BY 1""").bind("name", cls.className()).bind("generic", "%<" + cls.className() + ">%")
                 .bind("interface", "%\"" + cls.className() + "\"%").bind("id", cls.id()).mapToMap().list()),
                 row -> String.valueOf(row.values().iterator().next()));

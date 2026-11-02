@@ -112,7 +112,7 @@ public final class IndexWriter {
     private static final TableSpec EXTERNAL_BEANS = new TableSpec("external_beans",
             "id", "class_name", "kind", "scope", "qualifiers", "stereotypes", "is_alternative",
             "is_default", "priority", "profiles", "member_name", "bean_types", "framework",
-            "artifact", "jar_path", "injection_points");
+            "artifact", "jar_path", "injection_points", "interceptor_bindings");
     private static final List<TableSpec> INSERT_ORDER = List.of(
             FILES, CLASSES, CLASS_OCCURRENCES, CLASS_ANNOTATIONS, CLASS_MEMBERS, JVM_API,
             METHOD_EVIDENCE, METHOD_CALLS, FIELD_ACCESSES, CONFIGURATION_DEFINITIONS, CONFIGURATION_USAGES,
@@ -662,6 +662,7 @@ public final class IndexWriter {
                         statement.setString(15, bean.jarPath());
                         statement.setString(16,
                                 jsonArray(bean.injectionPoints()));
+                        statement.setString(17, jsonArray(bean.interceptorBindings()));
                     });
     }
 

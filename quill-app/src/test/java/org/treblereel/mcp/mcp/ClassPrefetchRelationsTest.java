@@ -45,7 +45,11 @@ class ClassPrefetchRelationsTest {
                         InjectionPointRecord.staticAnalysis(0, 2, "FIELD", "jakarta.enterprise.inject.Instance<x.Service>", List.of(), "services", null, false, InjectionPointRecord.STATIC_CDI)))
                 .dependencies(List.of(new DependencyRecord(5, 1, "TYPE_REFERENCE", null, 1, List.of())))
                 .metadata(Map.of("index_id", "relations")).snapshot());
-        db.useHandle(handle -> handle.execute("UPDATE classes SET source_set = CASE WHEN class_name = 'x.ServiceTest' THEN 'test' ELSE 'main' END"));
+        db.useHandle(handle -> {
+            handle.execute("UPDATE classes SET source_set = CASE WHEN class_name = 'x.ServiceTest' THEN 'test' ELSE 'main' END");
+            handle.execute("INSERT INTO method_calls(from_class_id, from_method, from_descriptor, to_class_id, to_method, to_descriptor, "
+                    + "invocation_kind) VALUES (4, 'tick', '()V', 1, 'key', '()Ljava/lang/String;', 'static')");
+        });
 
         ObjectNode service = relations(db, "x.Service");
         ObjectNode impl = relations(db, "x.Impl");
@@ -54,6 +58,7 @@ class ClassPrefetchRelationsTest {
                         "x.Consumer#services (FIELD jakarta.enterprise.inject.Instance<x.Service>) [UNKNOWN]"),
                 strings(service, "injected_into"));
         assertEquals(List.of("src/test/java/x/ServiceTest.java"), strings(service, "test_classes"));
+        assertEquals(List.of("Clock.java", "Consumer.java", "Impl.java"), strings(service, "related_source_files"));
         assertEquals(List.of("FIELD clock: x.Clock [\"@Default\"] -> x.Clock (CLASS) [RESOLVED]"), strings(impl, "injects"));
         assertEquals(List.of("x.Consumer#service (FIELD x.Service) [RESOLVED]"), strings(impl, "injected_into"));
         assertFalse(service.has("injects"));

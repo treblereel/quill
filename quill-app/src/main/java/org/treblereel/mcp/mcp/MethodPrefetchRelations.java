@@ -57,6 +57,11 @@ final class MethodPrefetchRelations {
     }
 
     static void append(ReadQueryContext db, ObjectNode fact) throws Exception {
+        append(db, null, fact);
+    }
+
+    /** With {@code root}, a callee inherited from a dependency class names the class that declares it. */
+    static void append(ReadQueryContext db, java.nio.file.Path root, ObjectNode fact) throws Exception {
         String owner = fact.path("class").asText(null);
         String name = fact.path("name").asText(null);
         String descriptor = fact.path("descriptor").asText(null);
@@ -66,7 +71,8 @@ final class MethodPrefetchRelations {
                 .bind("name", owner).mapTo(Integer.class).findOne().orElse(null));
         if (classId == null) return;
         annotations(db, fact, classId, name, descriptor);
-        callees(db, fact, classId, name, descriptor);
+        interceptors(db, fact, classId, name, descriptor);
+        callees(db, root, fact, classId, name, descriptor);
         producer(db, fact, classId, name);
     }
 
@@ -94,8 +100,64 @@ final class MethodPrefetchRelations {
         if (!lines.isEmpty()) fact.set("annotations", lines);
     }
 
+    /**
+     * Dependency interceptors bound by an annotation on the method or its class. A binding member
+     * the interceptor declares without @Nonbinding must equal the method's explicit value; a value
+     * left at its default is not compared.
+     */
+    private static void interceptors(ReadQueryContext db, ObjectNode fact, int classId, String name,
+            String descriptor) throws Exception {
+        Map<String, JsonNode> carried = new java.util.LinkedHashMap<>();
+        String details = db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT annotation_details FROM class_members
+                WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
+                .bind("id", classId).bind("name", name).bind("descriptor", descriptor)
+                .mapTo(String.class).findOne().orElse("[]"));
+        for (JsonNode annotation : JSON.readTree(details))
+            if (annotation.path("parameterIndex").asInt(-1) < 0)
+                carried.put(annotation.path("annotationName").asText(), annotation.path("values"));
+        for (Map<String, Object> row : db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT annotation_name, annotation_values FROM class_annotations WHERE class_id = :id AND direct = 1""")
+                .bind("id", classId).mapToMap().list()))
+            carried.putIfAbsent(String.valueOf(row.get("annotation_name")),
+                    row.get("annotation_values") == null ? JSON.createObjectNode() : JSON.readTree(String.valueOf(row.get("annotation_values"))));
+        if (carried.isEmpty()) return;
+        ArrayNode lines = JSON.createArrayNode();
+        for (Map<String, Object> row : db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT class_name, priority, artifact, interceptor_bindings FROM external_beans
+                WHERE kind = 'INTERCEPTOR' AND interceptor_bindings <> '[]'
+                ORDER BY priority IS NULL, priority, class_name""").mapToMap().list())) {
+            for (JsonNode binding : JSON.readTree(String.valueOf(row.get("interceptor_bindings")))) {
+                String text = binding.asText();
+                int open = text.indexOf('(');
+                String annotation = text.substring(1, open < 0 ? text.length() : open);
+                JsonNode values = carried.get(annotation);
+                if (values == null || !bindingMatches(text, values)) continue;
+                lines.add(row.get("class_name") + " @Priority(" + (row.get("priority") == null ? "none" : row.get("priority"))
+                        + ") via " + text + " from " + row.get("artifact"));
+            }
+        }
+        if (lines.isEmpty()) return;
+        fact.set("dependency_interceptors", lines);
+        fact.put("dependency_interceptors_basis", "interceptors in dependency jars bound by an annotation on this method "
+                + "or its class; a lower priority runs first; whether each jar is a bean archive in this application is not verified");
+    }
+
+    private static boolean bindingMatches(String binding, JsonNode values) {
+        int open = binding.indexOf('(');
+        if (open < 0) return true;
+        for (String member : binding.substring(open + 1, binding.length() - 1).split(", ")) {
+            if (member.endsWith(" @Nonbinding")) continue;
+            int equals = member.indexOf('=');
+            if (equals < 0) continue;
+            JsonNode value = values.get(member.substring(0, equals));
+            if (value != null && !text(value).equals(member.substring(equals + 1))) return false;
+        }
+        return true;
+    }
+
     /** Callees breadth-first to {@link #DEPTH}; a lambda body is expanded at its declarer's depth. */
-    private static void callees(ReadQueryContext db, ObjectNode fact, int classId, String name,
+    private static void callees(ReadQueryContext db, java.nio.file.Path root, ObjectNode fact, int classId, String name,
             String descriptor) {
         record Method(int classId, String name, String descriptor, int depth) {}
         Set<String> seen = new LinkedHashSet<>();
@@ -118,7 +180,7 @@ final class MethodPrefetchRelations {
                 boolean lambda = callee.startsWith("lambda$");
                 if (!lambda) lines.add(method.depth() + " " + call.get("class_name") + "#" + callee
                         + " [" + call.get("invocation_kind") + (declares(db, calleeClass, callee, calleeDescriptor) ? ""
-                                : ", inherited: not declared in this class") + "]");
+                                : ", inherited: " + inheritedFrom(db, root, calleeClass, callee)) + "]");
                 int next = lambda ? method.depth() : method.depth() + 1;
                 if (next <= DEPTH && seen.add(calleeClass + "#" + callee + calleeDescriptor))
                     queue.addLast(new Method(calleeClass, callee, calleeDescriptor, next));
@@ -146,6 +208,40 @@ final class MethodPrefetchRelations {
         lines.stream().limit(LIMIT).forEach(values::add);
         fact.put("calls_basis", "depth, callee, invocation; depth 2 = called by a depth-1 callee");
         if (lines.size() > LIMIT) fact.putObject("calls_truncated").put("shown", LIMIT).put("total", lines.size());
+    }
+
+    /** The nearest superclass declaring {@code name}, searched through application and dependency bytecode. */
+    private static String inheritedFrom(ReadQueryContext db, java.nio.file.Path root, int classId, String name) {
+        String type = db.jdbi().withHandle(handle -> handle.createQuery("SELECT superclass FROM classes WHERE id = :id")
+                .bind("id", classId).mapTo(String.class).findOne().orElse(null));
+        ExternalSymbolQueries external = new ExternalSymbolQueries();
+        for (int depth = 0; type != null && !type.equals("java.lang.Object") && depth < 8; depth++) {
+            String current = type;
+            Integer local = db.jdbi().withHandle(handle -> handle.createQuery(
+                    "SELECT id FROM classes WHERE class_name = :name AND lifecycle = 'current' LIMIT 1")
+                    .bind("name", current).mapTo(Integer.class).findOne().orElse(null));
+            if (local != null) {
+                boolean found = db.jdbi().withHandle(handle -> handle.createQuery(
+                        "SELECT count(*) FROM class_members WHERE class_id = :id AND name = :name")
+                        .bind("id", local).bind("name", name).mapTo(Integer.class).one()) > 0;
+                if (found) return "declared by " + current;
+                type = db.jdbi().withHandle(handle -> handle.createQuery("SELECT superclass FROM classes WHERE id = :id")
+                        .bind("id", local).mapTo(String.class).findOne().orElse(null));
+                continue;
+            }
+            if (root == null) break;
+            try {
+                JsonNode details = JSON.readTree(external.details(db, root, current, 1000, 0));
+                if (details.has("error")) break;
+                for (JsonNode member : details.path("members"))
+                    if (member.path("kind").asText().equals("method") && member.path("name").asText().equals(name))
+                        return "declared by " + current + " (" + details.path("artifact").asText() + ")";
+                type = details.path("superclass").asText(null);
+            } catch (Exception unreadable) {
+                break;
+            }
+        }
+        return "not declared in this class";
     }
 
     private static boolean declares(ReadQueryContext db, int classId, String name, String descriptor) {

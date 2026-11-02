@@ -9,7 +9,7 @@ import org.jdbi.v3.core.Jdbi;
 
 /** Schema for rebuildable indexes; incompatible generations are never migrated in place. */
 public final class IndexSchema {
-    public static final int VERSION = 33;
+    public static final int VERSION = 34;
     private static final String TABLES = read("schema.sql");
     private static final String INDEXES = read("indexes.sql");
 

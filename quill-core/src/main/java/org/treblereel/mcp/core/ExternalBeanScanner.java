@@ -78,7 +78,10 @@ public final class ExternalBeanScanner {
                         bean.beanTypes(), resolution.framework(), coordinates(jar),
                         jar == null ? null : jar.toString(), externalInjections(
                                 dependencyIndex.getClassByName(className),
-                                injections.getOrDefault(bean.id(), List.of()), dependencyIndex)));
+                                injections.getOrDefault(bean.id(), List.of()), dependencyIndex),
+                        "INTERCEPTOR".equals(bean.kind())
+                                ? interceptorBindings(dependencyIndex.getClassByName(className), dependencyIndex)
+                                : List.of()));
             }
         }
         result.sort(Comparator.comparing(ExternalBeanRecord::className)
@@ -92,10 +95,57 @@ public final class ExternalBeanScanner {
                     bean.scope(), bean.qualifiers(), bean.stereotypes(), bean.alternative(),
                     bean.defaultBean(), bean.priority(), bean.profiles(), bean.memberName(),
                     bean.beanTypes(), bean.framework(), bean.artifact(), bean.jarPath(),
-                    bean.injectionPoints()));
+                    bean.injectionPoints(), bean.interceptorBindings()));
         }
         return List.copyOf(numbered);
     }
+
+    /**
+     * Interceptor binding annotations on an interceptor class, written
+     * {@code @Binding(member=value @Nonbinding, ...)}: a @Nonbinding member does not restrict the
+     * methods the interceptor binds to (CDI 4.1, 9.5.2).
+     */
+    static List<String> interceptorBindings(ClassInfo interceptor, IndexView index) {
+        if (interceptor == null) return List.of();
+        List<String> bindings = new ArrayList<>();
+        for (AnnotationInstance annotation : interceptor.declaredAnnotations()) {
+            ClassInfo declaration = index.getClassByName(annotation.name());
+            if (declaration == null || !(declaration.hasDeclaredAnnotation(INTERCEPTOR_BINDING)
+                    || declaration.hasDeclaredAnnotation(JAVAX_INTERCEPTOR_BINDING))) continue;
+            List<String> members = new ArrayList<>();
+            for (MethodInfo member : declaration.methods()) {
+                AnnotationValue value = annotation.value(member.name());
+                if (value == null) value = member.defaultValue();
+                if (value == null) continue;
+                boolean nonbinding = member.hasAnnotation(NONBINDING) || member.hasAnnotation(JAVAX_NONBINDING);
+                members.add(member.name() + "=" + memberValue(value) + (nonbinding ? " @Nonbinding" : ""));
+            }
+            members.sort(null);
+            bindings.add("@" + annotation.name() + (members.isEmpty() ? "" : "(" + String.join(", ", members) + ")"));
+        }
+        bindings.sort(null);
+        return List.copyOf(bindings);
+    }
+
+    private static String memberValue(AnnotationValue value) {
+        return switch (value.kind()) {
+            case ENUM -> value.asEnum();
+            case STRING -> value.asString();
+            case CLASS -> value.asClass().name().toString();
+            case ARRAY -> "[" + String.join(", ", value.asArrayList().stream().map(ExternalBeanScanner::memberValue).toList()) + "]";
+            case NESTED -> "@" + value.asNested().name();
+            default -> String.valueOf(value.value());
+        };
+    }
+
+    private static final org.jboss.jandex.DotName INTERCEPTOR_BINDING =
+            org.jboss.jandex.DotName.createSimple("jakarta.interceptor.InterceptorBinding");
+    private static final org.jboss.jandex.DotName JAVAX_INTERCEPTOR_BINDING =
+            org.jboss.jandex.DotName.createSimple("javax.interceptor.InterceptorBinding");
+    private static final org.jboss.jandex.DotName NONBINDING =
+            org.jboss.jandex.DotName.createSimple("jakarta.enterprise.util.Nonbinding");
+    private static final org.jboss.jandex.DotName JAVAX_NONBINDING =
+            org.jboss.jandex.DotName.createSimple("javax.enterprise.util.Nonbinding");
 
     private static List<ExternalInjectionPointRecord> externalInjections(
             ClassInfo owner, List<InjectionPointRecord> injections, IndexView index) {

@@ -107,6 +107,14 @@ final class EndpointPrefetch {
             if("resolved".equals(point.path("resolution").asText()))compact.remove("resolution_trace");
             points.add(compact);
         }
+        var reads=db.jdbi().withHandle(h->h.createQuery("""
+                SELECT c.class_name, fa.field_name, fa.access_kind, fa.evidence_lines FROM field_accesses fa JOIN classes c ON c.id=fa.to_class_id
+                WHERE fa.from_class_id=:id AND fa.to_class_id<>:id AND fa.from_method=:method AND fa.from_descriptor=:descriptor
+                ORDER BY fa.evidence_lines LIMIT 12""").bind("id",cls.id()).bind("method",name).bind("descriptor",descriptor).mapToMap().list());
+        if(!reads.isEmpty()){
+            var fieldReads=node.putArray("other_class_field_accesses");
+            reads.forEach(r->fieldReads.add(r.get("class_name")+"#"+r.get("field_name")+" "+r.get("access_kind")+" lines "+r.get("evidence_lines")));
+        }
         JsonNode config=JSON.readTree(new ConfigurationReferenceQueries().find(db,null,owner,null,null,8,0));
         var references=node.putObject("configuration_references").put("scope","direct indexed owned-field/programmatic reads only");
         boolean uniqueMethod=db.symbols.findClassMembers(cls.id()).stream().filter(m->m.kind().equals("METHOD") && m.name().equals(name)).count()==1;

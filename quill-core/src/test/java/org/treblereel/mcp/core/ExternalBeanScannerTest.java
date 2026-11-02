@@ -119,6 +119,54 @@ class ExternalBeanScannerTest {
                 "An empty ConfigProperty default does not satisfy Quarkus configuration");
     }
 
+    @Test
+    void interceptorBindingsKeepMemberValuesAndMarkNonbindingMembers() throws Exception {
+        Path sources = Files.createDirectories(tempDir.resolve("bindings"));
+        source(sources, "jakarta/interceptor/InterceptorBinding.java", """
+                package jakarta.interceptor;
+                @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+                public @interface InterceptorBinding {}
+                """);
+        source(sources, "jakarta/enterprise/util/Nonbinding.java", """
+                package jakarta.enterprise.util;
+                @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+                public @interface Nonbinding {}
+                """);
+        source(sources, "tx/Tx.java", """
+                package tx;
+                @jakarta.interceptor.InterceptorBinding
+                @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+                public @interface Tx {
+                    enum Type { REQUIRED, NEVER }
+                    Type value() default Type.REQUIRED;
+                    @jakarta.enterprise.util.Nonbinding Class<?>[] rollbackOn() default {};
+                }
+                """);
+        source(sources, "tx/NeverInterceptor.java", """
+                package tx;
+                @Tx(Tx.Type.NEVER)
+                @Deprecated
+                public class NeverInterceptor {}
+                """);
+        Path classes = Files.createDirectories(tempDir.resolve("binding-classes"));
+        List<String> arguments = new java.util.ArrayList<>(List.of("-d", classes.toString()));
+        try (var walk = Files.walk(sources)) {
+            walk.filter(path -> path.toString().endsWith(".java")).forEach(path -> arguments.add(path.toString()));
+        }
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, arguments.toArray(String[]::new)));
+        Indexer indexer = new Indexer();
+        try (var walk = Files.walk(classes)) {
+            for (Path file : walk.filter(path -> path.toString().endsWith(".class")).toList())
+                try (InputStream input = Files.newInputStream(file)) {
+                    indexer.index(input);
+                }
+        }
+        var index = indexer.complete();
+
+        assertEquals(List.of("@tx.Tx(rollbackOn=[] @Nonbinding, value=NEVER)"), ExternalBeanScanner.interceptorBindings(
+                index.getClassByName(org.jboss.jandex.DotName.createSimple("tx.NeverInterceptor")), index));
+    }
+
     private static void source(Path root, String relative, String content) throws Exception {
         Path file = root.resolve(relative);
         Files.createDirectories(file.getParent());

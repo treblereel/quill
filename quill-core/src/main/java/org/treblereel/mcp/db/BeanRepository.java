@@ -98,7 +98,8 @@ public final class BeanRepository {
                     fromJson(rs.getString("profiles")), rs.getString("member_name"),
                     fromJson(rs.getString("bean_types")), rs.getString("framework"),
                     rs.getString("artifact"), rs.getString("jar_path"),
-                    externalInjectionsFromJson(rs.getString("injection_points")))).list();
+                    externalInjectionsFromJson(rs.getString("injection_points")),
+                    fromJson(rs.getString("interceptor_bindings")))).list();
             return beans.stream()
                     .filter(b -> filter == null || !filter.containsKey("bean_type") || matchesBeanType(b.beanTypes(), filter.get("bean_type")))
                     .filter(b -> filter == null || !filter.containsKey("profile") || matchesProfile(b.profiles(), filter.get("profile")))

@@ -42,7 +42,7 @@ class MethodPrefetchRelationsTest {
         assertTrue(calls.contains("2 p.Fixture#deep [virtual]"), calls.toString());
         assertTrue(calls.contains("1 java.lang.Runnable#run():void [external]"), calls.toString());
         assertFalse(calls.contains("3 p.Fixture#leaf [virtual]"), calls.toString());
-        assertTrue(calls.contains("2 p.Fixture#inherited [virtual, inherited: not declared in this class]"), calls.toString());
+        assertTrue(calls.contains("2 p.Fixture#inherited [virtual, inherited: declared by p.Base]"), calls.toString());
         assertTrue(calls.stream().noneMatch(call -> call.contains("lambda$")), calls.toString());
         assertEquals("(java.nio.file.Path, java.nio.file.LinkOption[]):boolean",
                 MethodPrefetchRelations.javaSignature("(Ljava/nio/file/Path;[Ljava/nio/file/LinkOption;)Z"));
@@ -99,6 +99,30 @@ class MethodPrefetchRelationsTest {
         assertEquals(List.of("created jakarta.enterprise.event.Event<p.Publisher.Created> -> p.Listener#onCreated(@Observes p.Publisher.Created)"),
                 fact.path("observers_of_fired_events").valueStream().map(node -> node.asText()).toList(), fact.toString());
         assertEquals("Event fields this method or its walked callees read", fact.path("observers_basis").asText());
+    }
+
+    @Test
+    void dependencyInterceptorsBoundByTheMethodAnnotationAreListedByPriority() throws Exception {
+        String runtime = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) ";
+        var db = JavaEvidenceFixture.index(root, java.util.Map.of(
+                "src/main/java/tx/Tx.java", "package tx; " + runtime + "public @interface Tx { String value() default \"REQUIRED\"; }",
+                "src/main/java/p/Fixture.java", "package p; class Fixture { @tx.Tx(\"NEVER\") void start() {} }"));
+        org.treblereel.mcp.db.IndexFixture.writeExternalBeans(db, List.of(
+                interceptor(1, "dep.NeverInterceptor", 200, "@tx.Tx(value=NEVER)"),
+                interceptor(2, "dep.RequiredInterceptor", 200, "@tx.Tx(value=REQUIRED)"),
+                interceptor(3, "dep.AnyTxInterceptor", 100, "@tx.Tx(value=REQUIRED @Nonbinding)")));
+        ObjectNode fact = JSON.createObjectNode().put("class", "p.Fixture").put("name", "start").put("descriptor", "()V");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, fact); return null; });
+
+        assertEquals(List.of("dep.AnyTxInterceptor @Priority(100) via @tx.Tx(value=REQUIRED @Nonbinding) from dep:tx:1",
+                        "dep.NeverInterceptor @Priority(200) via @tx.Tx(value=NEVER) from dep:tx:1"),
+                fact.path("dependency_interceptors").valueStream().map(node -> node.asText()).toList(), fact.toString());
+    }
+
+    private static org.treblereel.mcp.model.ExternalBeanRecord interceptor(int id, String name, int priority, String binding) {
+        return new org.treblereel.mcp.model.ExternalBeanRecord(id, name, "INTERCEPTOR", "@Dependent", List.of("@Default", "@Any"),
+                List.of(), false, false, priority, List.of(), null, List.of(name), "cdi", "dep:tx:1", "/tmp/tx.jar", List.of(),
+                List.of(binding));
     }
 
     @Test

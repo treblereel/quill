@@ -237,6 +237,7 @@ CREATE TABLE IF NOT EXISTS external_beans (
     artifact TEXT,
     jar_path TEXT,
     injection_points TEXT NOT NULL,
+    interceptor_bindings TEXT NOT NULL DEFAULT '[]',
     UNIQUE(framework, class_name, kind, member_name)
 );
 

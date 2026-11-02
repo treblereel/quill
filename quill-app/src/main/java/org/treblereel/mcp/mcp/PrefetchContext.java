@@ -58,7 +58,7 @@ public final class PrefetchContext {
                 ObjectNode impact=new MethodImpactQueries().get(db,target,selector,200);
                 if(impact.has("error") || impact.has("error_code")){missing.add(impact);continue;}
                 if(!hash.equals(SourceFileHashes.hash(file))){missing.addObject().put("status","inputs_changed");continue;}
-                impact.remove("_meta");MethodPrefetchRelations.compactImpact(impact);MethodPrefetchRelations.append(db,impact);impact.put("source_sha256",hash);selected.add(impact);
+                impact.remove("_meta");MethodPrefetchRelations.compactImpact(impact);MethodPrefetchRelations.append(db,root,impact);impact.put("source_sha256",hash);selected.add(impact);
             }while(method.find());
             return result.put("status","ready");
         }
@@ -92,7 +92,7 @@ public final class PrefetchContext {
             if(matches.isEmpty() && token.contains(".") && seenNames.add(token)) {
                 // A qualified name that is no application class: a package, or a type from dependencies.
                 ObjectNode named=NameTargetPrefetch.packageFact(db,token);
-                if(named==null)named=NameTargetPrefetch.typeProviders(db,token);
+                if(named==null)named=NameTargetPrefetch.typeProviders(db,token);if(named==null)named=NameTargetPrefetch.generatedClassFact(db,token);
                 if(named!=null){facts.add(named);continue;}
             }
             while(matches.isEmpty() && token.contains(".")) {
@@ -109,7 +109,7 @@ public final class PrefetchContext {
             String hash=hashes.path(relative).asText();
             if(hash.isBlank() || !hash.equals(SourceFileHashes.hash(file))){unavailable.addObject().put("class",cls.className()).put("status","source_hash_unavailable_or_changed");continue;}
             ObjectNode fact=(ObjectNode)JSON.readTree(new SymbolToolQueries().getSymbolDetails(db,cls.className(),false,null,10,0));
-            ClassPrefetchRelations.append(db,fact,cls);
+            ClassPrefetchRelations.append(db,fact,cls);NameTargetPrefetch.appendGenerated(db,fact,cls.className());
             fact.put("source_sha256",hash);facts.add(fact);
         }
         if(facts.isEmpty() && ambiguous.isEmpty() && unavailable.isEmpty() && previousEndpoint!=null)

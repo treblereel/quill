@@ -659,6 +659,10 @@ public class ProjectInitializer {
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("indexed_at", Instant.now().toString());
         metadata.put("index_id", indexId);
+        Set<String> applicationClassNames = new HashSet<>();
+        classes.forEach(cls -> { if (cls.lifecycle().equals("current")) applicationClassNames.add(cls.className()); });
+        String generated = org.treblereel.mcp.core.GeneratedBytecodeScanner.scan(root, applicationClassNames);
+        if (generated != null) metadata.put(org.treblereel.mcp.core.GeneratedBytecodeScanner.METADATA_KEY, generated);
         metadata.put("project_root", root.toString());
         metadata.put("last_commit", lastCommit != null ? lastCommit : "unknown");
         metadata.put("git_scanned_commits", Integer.toString(gitResult.scannedCommits()));

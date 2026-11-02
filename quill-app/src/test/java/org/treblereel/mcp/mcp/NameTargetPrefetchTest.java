@@ -44,6 +44,30 @@ class NameTargetPrefetchTest {
         assertNull(TestReads.read(db, reader -> NameTargetPrefetch.typeProviders(reader, "x.Nobody")));
     }
 
+    @Test
+    void generatedClassesTraceToTheApplicationSourceToEdit() throws Exception {
+        Jdbi db = index();
+        String generated = "{\"jars\":[{\"path\":\"target/quarkus-app/quarkus/generated-bytecode.jar\",\"modified\":\"2026-01-01T00:00:00Z\","
+                + "\"older_than_compiled_classes\":true}],\"classes\":[{\"class\":\"x.rbac.Mapper_ClientProxy\","
+                + "\"jar\":\"target/quarkus-app/quarkus/generated-bytecode.jar\",\"entry\":\"x/rbac/Mapper_ClientProxy.class\","
+                + "\"source_class\":\"x.rbac.Mapper\",\"references\":[\"dep.Creator\",\"x.rbac.Mapper\"]}]}";
+        db.useHandle(handle -> handle.execute("INSERT INTO metadata(key, value) VALUES ('quarkus_generated_classes', ?)", generated));
+
+        var fact = TestReads.read(db, reader -> NameTargetPrefetch.generatedClassFact(reader, "x.rbac.Mapper_ClientProxy"));
+        assertEquals("target/quarkus-app/quarkus/generated-bytecode.jar!/x/rbac/Mapper_ClientProxy.class", fact.path("artifact").asText());
+        assertEquals("Mapper.java", fact.path("generated_for_source").asText());
+        assertEquals(true, fact.path("jar_older_than_compiled_classes").asBoolean());
+        assertNull(TestReads.read(db, reader -> NameTargetPrefetch.generatedClassFact(reader, "x.rbac.Mapper_Bean")));
+
+        var classFact = TestReads.read(db, reader -> {
+            var node = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+            NameTargetPrefetch.appendGenerated(reader, node, "x.rbac.Mapper");
+            return node;
+        });
+        assertEquals(List.of("target/quarkus-app/quarkus/generated-bytecode.jar!/x/rbac/Mapper_ClientProxy.class references dep.Creator"),
+                classFact.path("generated_classes").valueStream().map(node -> node.asText()).toList());
+    }
+
     private Jdbi index() {
         Jdbi db = QuillDatabase.create(root.resolve("index.db"));
         IndexWriter.writeIncremental(db, new IndexFixture()

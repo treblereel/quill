@@ -8,13 +8,10 @@ import static org.treblereel.mcp.mcp.ToolResponseSupport.errorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
@@ -28,7 +25,6 @@ import org.treblereel.mcp.model.KotlinDeclarationRecord;
 final class SymbolToolQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final int SOURCE_TOKEN_LIMIT = 2_000;
     private static final Set<String> MEMBER_KINDS = Set.of("FIELD", "CONSTRUCTOR", "METHOD");
 
     String getSymbolDetails(ReadQueryContext reader, String target, boolean includeMembers,
@@ -89,15 +85,6 @@ final class SymbolToolQueries {
             appendMeta(root, reader, cls.sourceTokens());
             return root.toString();
         }
-        // A small unchanged file costs less than its member listing, and agents read it anyway.
-        String source = normalizedKind == null && memberOffset == 0 ? smallFreshSource(reader, cls) : null;
-        if (source != null) {
-            root.put("members_included", false);
-            root.put("members_replaced_by_source", true);
-            root.put("source_text", source);
-            appendMeta(root, reader, cls.sourceTokens());
-            return root.toString();
-        }
         List<ClassMemberRecord> members = reader.symbols.findClassMembers(cls.id()).stream()
                 .filter(member -> normalizedKind == null || normalizedKind.equals(member.kind()))
                 .toList();
@@ -134,27 +121,6 @@ final class SymbolToolQueries {
         appendPage(root, page.size(), members.size(), memberLimit, memberOffset);
         appendMeta(root, reader, cls.sourceTokens());
         return root.toString();
-    }
-
-    /** The whole Java file when it is under {@link #SOURCE_TOKEN_LIMIT} and matches its indexed hash. */
-    private static String smallFreshSource(ReadQueryContext reader, ClassRecord cls) {
-        if (cls.sourceTokens() <= 0 || cls.sourceTokens() > SOURCE_TOKEN_LIMIT
-                || cls.sourceFile() == null || !cls.sourceFile().endsWith(".java")) return null;
-        try {
-            Map<String, String> metadata = reader.index.getMetadata();
-            if (!metadata.containsKey("project_root")) return null;
-            Path root = Path.of(metadata.get("project_root")).toRealPath();
-            Path file = root.resolve(cls.sourceFile()).toRealPath();
-            if (!file.startsWith(root)) return null;
-            String relative = root.relativize(file).toString().replace('\\', '/');
-            String expected = JSON.readTree(metadata.getOrDefault("java_source_hashes", "{}"))
-                    .path(relative).asText();
-            if (expected.isBlank() || Files.size(file) > SOURCE_TOKEN_LIMIT * 8L) return null;
-            String text = Files.readString(file);
-            return expected.equals(SourceFileHashes.hash(file)) ? text : null;
-        } catch (Exception unavailable) {
-            return null;
-        }
     }
 
     private static void appendKotlinDeclarations(

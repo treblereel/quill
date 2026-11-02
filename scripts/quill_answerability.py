@@ -42,8 +42,12 @@ def identifiers(value, found=None):
     elif isinstance(value, str):
         for match in IDENTIFIER.findall(value):
             token = match.strip(".-/")
-            if not IGNORED.search(token) and not re.fullmatch(r"\d[\d.]*", token):
-                found.add(token)
+            if IGNORED.search(token) or re.fullmatch(r"\d[\d.]*", token):
+                continue
+            # "dynamic/reflection" or "logger/EventBus" is prose; a path names a file.
+            if "/" in token and not re.search(r"\.[A-Za-z]\w*$", token):
+                continue
+            found.add(token)
     return found
 
 

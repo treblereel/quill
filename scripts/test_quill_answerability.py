@@ -31,11 +31,15 @@ class AnswerabilityTest(unittest.TestCase):
     def test_identifiers_skip_prose_versions_and_java_lang(self):
         found = a.identifiers({"beans": ["io.acme.Orders#place(java.lang.String):id", "see e.g. text"],
                                "version": "3.40.1.1", "type": "java.lang.String",
-                               "key": "orders.timeout"})
+                               "key": "orders.timeout", "why": "dynamic/reflection or logger/EventBus",
+                               "file": "src/main/java/io/acme/Orders.java"})
         self.assertIn("io.acme.Orders#place", found)
         self.assertIn("orders.timeout", found)
         self.assertNotIn("3.40.1.1", found)
         self.assertNotIn("java.lang.String", found)
+        self.assertNotIn("dynamic/reflection", found)
+        self.assertNotIn("logger/EventBus", found)
+        self.assertIn("src/main/java/io/acme/Orders.java", found)
 
     def test_member_reference_counts_when_class_and_member_are_named(self):
         self.assertTrue(a.mentioned("io.acme.Orders#place(java.lang.String)",

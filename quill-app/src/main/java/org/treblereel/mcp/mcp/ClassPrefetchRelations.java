@@ -46,6 +46,39 @@ final class ClassPrefetchRelations {
                 WHERE d.to_class_id = :id AND tc.source_set = 'test' AND tc.source_file IS NOT NULL
                 ORDER BY tc.source_file""").bind("id", cls.id()).mapToMap().list()),
                 row -> String.valueOf(row.get("source_file")));
+        lines(fact, "related_source_files", db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT DISTINCT oc.source_file
+                FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id
+                JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
+                WHERE (ip.target_type = :name OR ip.target_type LIKE :generic
+                   OR ip.resolved_bean_id IN (SELECT id FROM beans WHERE class_id = :id AND member_name IS NULL))
+                  AND oc.source_file IS NOT NULL
+                UNION
+                SELECT source_file FROM classes
+                WHERE lifecycle = 'current' AND source_file IS NOT NULL
+                  AND (superclass = :name OR interfaces LIKE :interface)
+                ORDER BY 1""").bind("name", cls.className()).bind("generic", "%<" + cls.className() + ">%")
+                .bind("interface", "%\"" + cls.className() + "\"%").bind("id", cls.id()).mapToMap().list()),
+                row -> String.valueOf(row.values().iterator().next()));
+        lines(fact, "configuration", db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT key, kind, member, annotation, NULL AS file, NULL AS line FROM configuration_usages
+                WHERE class_name = :name OR class_name LIKE :nested
+                UNION ALL
+                SELECT key, kind, NULL, NULL, file, line FROM configuration_definitions
+                WHERE evidence LIKE :declared OR evidence LIKE :declaredNested
+                ORDER BY 1""").bind("name", cls.className()).bind("nested", cls.className() + "$%")
+                .bind("declared", "%\"declaring_class\":\"" + cls.className() + "\"%")
+                .bind("declaredNested", "%\"declaring_class\":\"" + cls.className() + "$%")
+                .mapToMap().list()), ClassPrefetchRelations::configuration);
+        ConfigMappingKeys.append(db, fact, cls);
+    }
+
+    private static String configuration(Map<String, Object> row) {
+        if (row.get("file") != null)
+            return row.get("key") + " [" + row.get("kind") + " declared] " + row.get("file") + ":" + row.get("line");
+        return row.get("key") + " [" + row.get("kind") + " read" + (row.get("member") == null ? "" : " by " + row.get("member"))
+                + " via @" + row.get("annotation") + "]";
     }
 
     private static String injects(Map<String, Object> row) {

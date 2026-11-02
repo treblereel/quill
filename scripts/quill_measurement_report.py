@@ -155,6 +155,7 @@ def record_report(record, summary, reuse_reports):
     u = record.get('usage') or {}; grades = (record.get('grade') or {}).get('turns', [])
     expected = len(record['prompts']); grade_complete = len(grades) == expected and all(type(g.get('correct')) is bool for g in grades)
     d = session_directory(record, summary); issues = []; ledger = []; duplicates = []
+    rr = reuse_reports.get(record['key'], {})
     raw_present = d is not None and ((d / 'wire').exists() or (d / 'transport').exists())
     turns = load(d / 'turns.json') if d else []
     for g, t in zip(grades, turns):
@@ -171,7 +172,6 @@ def record_report(record, summary, reuse_reports):
                 boundaries.append((n, start['at']))
         try:
             frames = reuse.cycles(d, issues)
-            rr = reuse_reports.get(record['key'], {})
             ledger, duplicates = cycle_ledger(frames, boundaries, rr.get('findings', []))
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             issues.append('raw_detail_unreadable; usage unknown')
@@ -209,6 +209,8 @@ def record_report(record, summary, reuse_reports):
             'usage_complete': known, 'usage': {k: u[k] for k in FIELDS} if known else None,
             'observed_completed_record_usage': {k: u.get(k) for k in FIELDS},
             'raw_available': raw_present, 'raw_issues': issues, 'cycles': ledger, 'stage_totals': stage_totals,
+            'reuse_review':{'available':bool(rr),'coverage_complete':rr.get('coverage_complete'),
+                            'review_required':rr.get('review_required'),'issues':rr.get('issues')},
             'provider_requests':len(ledger) if raw_present and known else (u.get('provider_responses') if record['client']=='codex' else u.get('provider_messages')) if known else None,
             'answers': answers, 'wall_seconds_including_startup': record.get('seconds'),
             'cli_startup_seconds': meta.get('startup_seconds'),
@@ -316,6 +318,8 @@ def report(summary, reuse_summary=None):
                             'repeat_ratio_range_not_confidence_interval':[min(spread),max(spread)] if len(spread)>1 and all(v is not None for v in spread) else None,
                             'confirmation':'diagnostic; historical/cache controls, repeat spread and reuse need review'})
     return {'schema_version':1,'measurement_contract':CONTRACT,'summary':str(summary),'summary_sha256':digest(summary),
+            'reuse_summary':str(reuse_summary) if reuse_summary else None,
+            'reuse_summary_sha256':digest(reuse_summary) if reuse_summary else None,
             'provider_calls':0,'tables':tables,'records':records,'pairs':pairs,'paired_comparisons':comparisons,
             'unmatched_source_keys':[list(k) for k in sorted(set(source)-matched)],
             'automatic_acceptance':False,'acceptance_reason':'Descriptive report; uncontrolled cache, historical references and unresolved reuse require review. No acquisition or original acceptance is rewritten.',

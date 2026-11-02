@@ -54,6 +54,8 @@ class MeasurementTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             s=Path(d)/'summary.json';s.write_text('{}')
             a=m.record_report(record(),s,{})
+            self.assertFalse(a['reuse_review']['available'])
+            self.assertIsNone(a['reuse_review']['coverage_complete'])
             b=m.record_report(dict(record('failed',False),status='failed'),s,{})
             total=m.aggregate([a,b])
             self.assertEqual(total['usage']['all'],220)

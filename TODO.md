@@ -206,6 +206,10 @@ Quill. Claude без Quill тратит медиану 9k на вопрос, с 
     Причина: поддержка была, но только при свежем захвате настроек компиляции; в фикстуре
     захват устарел (`.quill/fixture-build/*.xml`). Теперь без свежего захвата решает ArC на
     индексированном classpath (`io.quarkus.arc.Arc`). В v4 из-за этого неверен CQ-018 Claude.
+15d. [x] Как 15a, но для REST-ресурсов: класс с `@Path` без свежего захвата настроек не был бином
+    (Quarkus REST делает его `@Singleton`), и его точки внедрения не индексировались —
+    `Reports#reportAggregator`, `ActiveRecordingsDownload#base64Url`. Теперь при отсутствии свежего
+    захвата решает Quarkus REST на индексированном classpath. В фикстуре cryostat: 101 → 133 бина.
 15b. [x] Найдено реплеем и исправлено: `find_cycles` scope=class падал на вложенном классе с
     владельцем без рёбер; `change_session`/`plan_change`/`verify_change`/`find_impacted_tests`
     с целью `Class#method` требовали граф (CQ-050).

@@ -77,6 +77,31 @@ class JavaCompilerSettingsTest {
         assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)).isEmpty());
     }
 
+    @Test void restResourceIsBeanWhenQuarkusRestRuntimeIsIndexedWithoutFreshCapture() throws Exception {
+        Path src = Files.createDirectories(root.resolve("src/fixture"));
+        Files.writeString(src.resolve("Resource.java"), "package fixture; @jakarta.ws.rs.Path(\"/r\") public class Resource {}");
+        Path path = Files.createDirectories(root.resolve("src/jakarta/ws/rs")).resolve("Path.java");
+        Files.writeString(path, "package jakarta.ws.rs; @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Path { String value(); }");
+        Path recorder = Files.createDirectories(root.resolve("src/io/quarkus/resteasy/reactive/server/runtime")).resolve("ResteasyReactiveRecorder.java");
+        Files.writeString(recorder, "package io.quarkus.resteasy.reactive.server.runtime; public class ResteasyReactiveRecorder {}");
+        Path classes = Files.createDirectories(root.resolve("classes"));
+        assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(),
+                path.toString(), recorder.toString(), src.resolve("Resource.java").toString()));
+        var occurrence = new org.treblereel.mcp.model.ClassOccurrenceRecord(1, 1, "fixture.Resource", ".", "main", "classes", "Resource.class", "Resource.java", "application");
+        var withRuntime = new org.jboss.jandex.Indexer();
+        for (String name : List.of("fixture/Resource.class", "io/quarkus/resteasy/reactive/server/runtime/ResteasyReactiveRecorder.class"))
+            try (var input = Files.newInputStream(classes.resolve(name))) { withRuntime.index(input); }
+        var withoutRuntime = new org.jboss.jandex.Indexer();
+        try (var input = Files.newInputStream(classes.resolve("fixture/Resource.class"))) { withoutRuntime.index(input); }
+
+        assertEquals(Map.of("fixture.Resource", "@Singleton"),
+                ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, withRuntime.complete(), List.of(occurrence)));
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, withoutRuntime.complete(), List.of(occurrence)).isEmpty());
+        // A fresh capture without Quarkus REST still wins over the classpath.
+        var values = values(); values.setProperty("quarkusRest", "false"); save(values);
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, withRuntime.complete(), List.of(occurrence)).isEmpty());
+    }
+
     @Test void producerOnlyClassIsDependentWhenArcRuntimeIsIndexedWithoutFreshCapture() throws Exception {
         Path src = Files.createDirectories(root.resolve("src/fixture"));
         Files.writeString(src.resolve("Producers.java"), "package fixture; public class Producers { "

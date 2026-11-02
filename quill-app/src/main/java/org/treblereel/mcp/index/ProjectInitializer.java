@@ -264,9 +264,14 @@ public class ProjectInitializer {
             owners.computeIfAbsent(occurrence.className(), ignored -> new HashSet<>())
                     .add(root.resolve(occurrence.module()).toAbsolutePath().normalize());
         }
+        // As for ArC below: without a fresh capture, Quarkus REST on the indexed classpath decides
+        // that resource classes are beans (@Singleton unless annotated otherwise).
+        boolean restRuntime = lookup.getClassByName(org.jboss.jandex.DotName.createSimple(
+                "io.quarkus.resteasy.reactive.server.runtime.ResteasyReactiveRecorder")) != null;
         Set<String> eligible = new HashSet<>();
         owners.forEach((name, directories) -> {
-            if (!directories.isEmpty() && confirmed.containsAll(directories)) eligible.add(name);
+            if (!directories.isEmpty() && (confirmed.containsAll(directories)
+                    || restRuntime && directories.stream().noneMatch(captured::contains))) eligible.add(name);
         });
         Map<String,String> scopes = new HashMap<>(org.treblereel.mcp.core.QuarkusRestDiscovery.scopes(lookup, eligible));
         arc.addAll(confirmed);

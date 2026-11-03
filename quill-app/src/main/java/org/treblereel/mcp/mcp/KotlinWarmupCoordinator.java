@@ -12,11 +12,21 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/** Watches the recently queried module while the worker can retain inactive FIR snapshots. */
+/**
+ * Watches the recently queried module while the worker can retain inactive FIR snapshots. A
+ * re-analysis after an edit costs about as much as the query it prepares for, so edits re-warm
+ * the worker only while someone is using it: within {@link #IDLE} of the last query. Later edits
+ * leave the next query to analyze the module itself.
+ */
 final class KotlinWarmupCoordinator implements AutoCloseable {
     private static final ObjectMapper JSON = new ObjectMapper();
+    static final Duration IDLE = Duration.ofMinutes(5);
     private final Function<JsonNode, JsonNode> worker;
     private final long debounceMillis;
+    private final long idleNanos;
+    private final java.util.function.LongSupplier clock;
+    /** When the last foreground query started; null before any. */
+    private Long lastQuery;
     private final KotlinDirectoryWatcher.Factory eventFactory;
     private final Object state = new Object();
     private final ReentrantLock operation = new ReentrantLock(true);
@@ -35,9 +45,16 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
     }
 
     KotlinWarmupCoordinator(Function<JsonNode, JsonNode> worker, Duration debounce, KotlinDirectoryWatcher.Factory factory) {
+        this(worker, debounce, factory, IDLE, System::nanoTime);
+    }
+
+    KotlinWarmupCoordinator(Function<JsonNode, JsonNode> worker, Duration debounce, KotlinDirectoryWatcher.Factory factory,
+            Duration idle, java.util.function.LongSupplier clock) {
         this.worker = worker;
         this.debounceMillis = debounce.toMillis();
         this.eventFactory = factory;
+        this.idleNanos = idle.toNanos();
+        this.clock = clock;
     }
 
     boolean prewarm(String key, Supplier<JsonNode> background) {
@@ -70,6 +87,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                 if (closed) return status("unavailable");
                 if (!key.equals(active)) activate(key);
                 provider = background;
+                lastQuery = clock.getAsLong();
             }
             // A query takes over a queued debounce; an already running warmup holds
             // operation until it completes. Recollect inputs only after that wait.
@@ -107,6 +125,8 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
             if (closed || expectedEpoch != epoch || provider == null) return;
             revision++;
             cancelPending();
+            // Nobody has queried lately; the next query analyzes the edited module itself.
+            if (lastQuery == null || clock.getAsLong() - lastQuery > idleNanos) return;
             long version = revision;
             pending = scheduler.schedule(() -> warm(expectedEpoch, version), debounceMillis, TimeUnit.MILLISECONDS);
         }

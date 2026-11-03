@@ -140,6 +140,31 @@ class KotlinWarmupCoordinatorTest {
                     () -> request.deepCopy().put("offset", -1)).path("status").asText());
         }
     }
+    @Test void editsReWarmOnlyWhileTheWorkerIsBeingQueried() throws Exception {
+        var request = request(); var now = new AtomicLong(); var warms = new LinkedBlockingQueue<Long>();
+        try (var coordinator = new KotlinWarmupCoordinator(r -> {
+            if (r.path("offset").asInt() == -1) warms.add(now.get());
+            return result(r);
+        }, Duration.ZERO, KotlinDirectoryWatcher.DEFAULT, Duration.ofMinutes(5), now::get)) {
+            assertTrue(coordinator.prewarm("main", () -> request.deepCopy().put("offset", -1)));
+            assertNotNull(warms.poll(5, TimeUnit.SECONDS), "startup still warms once");
+            coordinator.changed();
+            assertNull(warms.poll(300, TimeUnit.MILLISECONDS), "no query yet, so an edit does not re-warm");
+
+            coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
+            now.set(Duration.ofMinutes(4).toNanos());
+            coordinator.changed();
+            assertNotNull(warms.poll(5, TimeUnit.SECONDS), "an edit soon after a query re-warms");
+
+            now.set(Duration.ofMinutes(10).toNanos());
+            coordinator.changed();
+            assertNull(warms.poll(300, TimeUnit.MILLISECONDS), "an idle worker is left alone");
+
+            coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
+            coordinator.changed();
+            assertNotNull(warms.poll(5, TimeUnit.SECONDS), "a new query resumes re-warming");
+        }
+    }
     @Test void closeInterruptsWarmupRejectsQueriesAndIsIdempotent() throws Exception {
         var request = request(); var entered = new CountDownLatch(1); var stopped = new CountDownLatch(1);
         var coordinator = new KotlinWarmupCoordinator(r -> {

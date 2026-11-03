@@ -56,6 +56,36 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void mavenClasspathKeepsTheProjectsManagedTransitiveVersions() throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("managed"));
+        // Guava 31.1 asks for failureaccess 1.0.1; the project's dependencyManagement pins 1.0.2.
+        Files.writeString(project.resolve("pom.xml"), pom("managed", "jar", """
+                <dependencyManagement>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.google.guava</groupId>
+                      <artifactId>failureaccess</artifactId>
+                      <version>1.0.2</version>
+                    </dependency>
+                  </dependencies>
+                </dependencyManagement>
+                <dependencies>
+                  <dependency>
+                    <groupId>com.google.guava</groupId>
+                    <artifactId>guava</artifactId>
+                    <version>31.1-jre</version>
+                  </dependency>
+                </dependencies>
+                """));
+
+        DependencyIndexer.ClasspathGenerationResult generated = MavenClasspathResolver.generate(project);
+        assertTrue(generated.successful(), generated.detail());
+        String classpath = Files.readString(project.resolve("target/quill-classpath.txt"));
+        assertTrue(classpath.contains("failureaccess-1.0.2.jar"), classpath);
+        assertFalse(classpath.contains("failureaccess-1.0.1.jar"), classpath);
+    }
+
+    @Test
     void mavenReactorClasspathDoesNotRequireInternalArtifactsInLocalRepository()
             throws Exception {
         Path project = Files.createDirectories(tempDir.resolve("reactor"));

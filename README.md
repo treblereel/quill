@@ -915,7 +915,13 @@ and refreshes the index from the bytecode produced by the build. While a Maven b
 runs, the extension keeps a marker below `.quill/builds-running/`, and the MCP server
 holds its background re-checks of compiled outputs until the build ends, serving the
 previous generation with the `build_running` readiness reason meanwhile. A marker whose
-process is gone or that is older than three hours is ignored. The integration never
+process is gone or that is older than three hours is ignored. When several MCP servers
+of the same Quill version serve one project, for example one per AI client, the first to
+lock `.quill/leader-v<schema>.lock` does the background work: watching inputs, consuming
+build results and refreshing the index. The others answer queries from the published
+generations and re-prepare when the leader announces new evidence in
+`.quill/leader-v<schema>.revision`; when the leader exits, one of them takes over. The
+integration never
 starts a build itself and build failures do not replace the previous index. Use
 `--index-only` to skip all project configuration changes. `quill clean` removes only
 the Quill-managed integration and the entire `.quill` directory.

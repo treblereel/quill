@@ -162,6 +162,19 @@ public class ProjectRegistry implements AutoCloseable {
         return Math.min(MAX_FAILED_REPAIR_RETRY_NANOS, FAILED_REPAIR_RETRY_NANOS << Math.min(failures - 1, 6));
     }
     private final ConcurrentHashMap<Path, SchemaRepair> schemaRepairs = new ConcurrentHashMap<>();
+    /** Projects whose background work another Quill server leads; see {@link BackgroundLeadership}. */
+    private final Set<Path> followedRoots = ConcurrentHashMap.newKeySet();
+    /** Stands for a build result the leading server is processing; it never completes here. */
+    private static final CompletableFuture<String> LEADER_REFRESH = new CompletableFuture<>();
+
+    void backgroundRole(Path projectRoot, boolean leading) {
+        Path root = projectRoot.toAbsolutePath().normalize();
+        if (leading) followedRoots.remove(root); else followedRoots.add(root);
+    }
+
+    boolean leads(Path projectRoot) {
+        return !followedRoots.contains(projectRoot.toAbsolutePath().normalize());
+    }
     private final java.util.concurrent.ExecutorService schemaRepairWorkers =
             java.util.concurrent.Executors.newThreadPerTaskExecutor(
                     Thread.ofVirtual().name("quill-schema-repair-", 0).factory());
@@ -239,7 +252,9 @@ public class ProjectRegistry implements AutoCloseable {
                 Path projectRoot = p.root().toAbsolutePath().normalize();
                 selectedRoots.add(projectRoot);
                 boolean refreshing = false;
-                CompletableFuture<String> refresh = buildEvents.consumeAsync(projectRoot);
+                // Only the leading server consumes build results; a follower waits for its publication.
+                CompletableFuture<String> refresh = leads(projectRoot) ? buildEvents.consumeAsync(projectRoot)
+                        : BuildEventConsumer.hasPendingEvents(projectRoot) ? LEADER_REFRESH : null;
                 if (refresh != null) {
                     readiness.invalidate(projectRoot);
                     boolean pending = !refresh.isDone();
@@ -267,7 +282,8 @@ public class ProjectRegistry implements AutoCloseable {
                 }
                 Path candidateDb = ProjectIndexStore.findBestAvailableDb(p.root());
                 if (candidateDb == null) {
-                    ProjectIssue repairIssue = outdatedSchemaRepair(p, projectRoot);
+                    ProjectIssue repairIssue = leads(projectRoot) ? outdatedSchemaRepair(p, projectRoot)
+                            : leaderSchemaRepair(p, projectRoot);
                     if (repairIssue != null) {
                         issues.add(repairIssue);
                         errors.add(repairIssue.legacyMessage());
@@ -518,6 +534,15 @@ public class ProjectRegistry implements AutoCloseable {
                         + Duration.ofNanos(repairRetryNanos(repair.failures() + 1)).toMinutes() + " minute(s)", false)
                 .readiness(ReadinessReason.INDEX_REFRESH_FAILED, "rebuilding_outdated_index",
                         null, null, false);
+    }
+
+    /** A follower's view of an outdated index: the leading server rebuilds it. */
+    private ProjectIssue leaderSchemaRepair(ProjectScope.Project project, Path projectRoot) {
+        if (!ProjectIndexStore.hasOutdatedGenerations(projectRoot)) return null;
+        return new ProjectIssue(project.name(), projectRoot, "refresh_pending", null,
+                "The index uses an outdated schema and the leading Quill server is rebuilding it",
+                "Retry the same query after the rebuild; no build is required", false)
+                .readiness(ReadinessReason.INDEX_REFRESH_RUNNING, "rebuilding_outdated_index", null, 2000L, false);
     }
 
     public void upgradeBuildIntegrations() {

@@ -375,6 +375,32 @@ class ProjectPreparationTest {
         }
     }
 
+    @Test void aFollowerServesTheLeadersPreparationsAndTakesOverWhenItStops() throws Exception {
+        fixture();
+        var leader = registry();
+        try (var follower = registry()) {
+            leader.prewarm();
+            available(leader);
+            follower.prewarm();
+            var previous = available(follower).observations();
+            assertTrue(leader.leads(root));
+            assertFalse(follower.leads(root));
+
+            Path file = root.resolve("target/classes/Marker.class");
+            byte[] bytes = Files.readAllBytes(file); bytes[bytes.length-1] ^= 1;
+            Files.write(file, bytes);
+            // The follower has no watcher of its own; the leader's announcement wakes it.
+            await(() -> follower.resolve().projects().stream().filter(p -> p.observations() != previous
+                    && p.observations().freshness().staleReasons().contains("compiled_snapshot_changed")).findFirst().orElse(null));
+
+            leader.close();
+            await(() -> follower.leads(root) ? Boolean.TRUE : null);
+            available(follower);
+        } finally {
+            leader.close();
+        }
+    }
+
     @Test void newGenerationIsPreparedBeforeSwitchAndOldLeaseRemainsUsable() throws Exception {
         fixture();
         try (var registry = registry()) {

@@ -187,6 +187,11 @@ final class ProjectPreparation implements AutoCloseable {
         private volatile String stage = "queued";
         /** A marked Maven build is still writing outputs; preparation waits for its result. */
         private volatile boolean buildRunning;
+        final BackgroundLeadership leadership;
+        /** This server does the project's background work; followers only re-prepare on announcements. */
+        private volatile boolean leading;
+        private Set<Path> watchedRoots = Set.of();
+        private long nextLeadershipCheck;
         private long preparingStarted, preparingRevision;
         private long retryDelay = TimeUnit.SECONDS.toNanos(1);
 
@@ -222,10 +227,16 @@ final class ProjectPreparation implements AutoCloseable {
             }
             gitRoots = Set.copyOf(repositories);
             var roots = new HashSet<>(contentRoots); roots.addAll(gitRoots);
-            events.configure(roots, this::relevant);
-            controls = controls(project.root(), git);
+            watchedRoots = Set.copyOf(roots);
+            leadership = new BackgroundLeadership(project.root());
+            leading = leadership.tryLead();
+            registry.backgroundRole(project.root(), leading);
+            if (leading) events.configure(roots, this::relevant);
+            else System.err.println("[quill] Another Quill server leads background work for " + project.name()
+                    + "; this one serves queries from its published index");
+            controls = controls(project.root(), git, !leading);
             try { schedule(); }
-            catch (RuntimeException | Error failure) { events.close(); throw failure; }
+            catch (RuntimeException | Error failure) { events.close(); leadership.close(); throw failure; }
         }
 
         boolean relevant(Path path) {
@@ -277,21 +288,43 @@ final class ProjectPreparation implements AutoCloseable {
         }
 
         void checkControls() {
-            Map<Path, Object> next = controls(project.root(), git);
+            Map<Path, Object> next = controls(project.root(), git, !leading);
             if (!next.equals(controls)) { controls = next; changed(); }
             ProjectRegistry.ProjectEntry active;
             synchronized (this) { active = current() && !ready.projects().isEmpty() ? ready.projects().getFirst() : null; }
             if (active != null && !active.generation().matches(active.generation().path())) changed();
         }
 
+        /** Takes over when the leading server exits, and steps down if a leader appears. */
+        private void checkLeadership() {
+            if (System.nanoTime() < nextLeadershipCheck) return;
+            nextLeadershipCheck = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            boolean now = leadership.tryLead();
+            if (now == leading) return;
+            leading = now;
+            registry.backgroundRole(project.root(), now);
+            controls = controls(project.root(), git, !now);
+            if (now) {
+                System.err.println("[quill] Took over background work for " + project.name());
+                events.configure(watchedRoots, this::relevant);
+            } else {
+                events.configure(Set.of(), path -> false);
+            }
+            changed();
+        }
+
         void tick() {
             if (stopped) return;
+            checkLeadership();
             checkControls();
-            events.checkHealth();
-            if (!events.active() && events.recover()) changed();
+            if (leading) {
+                events.checkHealth();
+                if (!events.active() && events.recover()) changed();
+            }
             synchronized (this) {
+                // A follower does not poll a refresh it does not run; the leader's announcement wakes it.
                 if (preparing == null && (ready == null || preparedRevision != revision.get()
-                        || ready.issues().stream().anyMatch(i -> i.code().equals("refresh_pending"))
+                        || leading && ready.issues().stream().anyMatch(i -> i.code().equals("refresh_pending"))
                         || ready.projects().isEmpty() && System.nanoTime() >= retryAt)) {
                     // With a generation to serve, outputs a running build is still writing are checked once it ends.
                     buildRunning = lastPrepared != null && RunningBuilds.running(project.root());
@@ -352,7 +385,7 @@ final class ProjectPreparation implements AutoCloseable {
                 if (lastPrepared != null && result.issues().stream().anyMatch(i ->
                         i.code().equals("refresh_pending") || i.code().equals("index_refresh_failed")))
                     result = new ProjectRegistry.Resolution(List.of(), result.errors(), result.issues());
-                if (inputsChanged && !result.projects().isEmpty()
+                if (inputsChanged && leading && !result.projects().isEmpty()
                         && result.issues().stream().allMatch(issue -> issue.code().equals("build_required"))) {
                     var entry = result.projects().getFirst();
                     String indexed = entry.read(reader -> reader.index.getMetadata().get("last_commit"));
@@ -369,7 +402,8 @@ final class ProjectPreparation implements AutoCloseable {
                 for (var entry : result.projects()) {
                     var previous = lastPrepared != null && lastPrepared.generation() == entry.generation() ? lastPrepared : null;
                     stage = inputsChanged ? "capturing_input_evidence" : "refreshing_worktree_status";
-                    var observations = inputsChanged ? capture(entry, previous == null ? null : previous.observations(), events.active())
+                    // A follower relies on the leader's watcher, which announces every change it prepares.
+                    var observations = inputsChanged ? capture(entry, previous == null ? null : previous.observations(), events.active() || !leading)
                             : captureWorktree(entry);
                     prepared.add(new ProjectRegistry.ProjectEntry(entry.name(), entry.root(), entry.generation(), observations));
                 }
@@ -407,6 +441,7 @@ final class ProjectPreparation implements AutoCloseable {
                     if (result.issues().stream().anyMatch(i -> i.code().equals("refresh_pending") || i.code().equals("index_refresh_failed")))
                         ready = new ProjectRegistry.Resolution(List.of(), result.errors(), result.issues());
                     preparedRevision = version; preparedWorktreeRevision = worktreeVersion;
+                    if (inputsChanged && leading) leadership.announcePrepared();
                     if (!result.projects().isEmpty()) {
                         lastPrepared = result.projects().getFirst();
                         fallback = null;
@@ -440,7 +475,7 @@ final class ProjectPreparation implements AutoCloseable {
                 return previousResult(ready);
             }
             boolean waitingForBuild = preparing == null && buildRunning;
-            var reason = !events.active() ? ProjectRegistry.ReadinessReason.INPUT_OBSERVATION_RECOVERING
+            var reason = leading && !events.active() ? ProjectRegistry.ReadinessReason.INPUT_OBSERVATION_RECOVERING
                     : waitingForBuild ? ProjectRegistry.ReadinessReason.BUILD_RUNNING
                     : preparing == null || stage.equals("waiting_preparation_slot") ? ProjectRegistry.ReadinessReason.PREPARATION_QUEUED
                     : revision.get() != preparingRevision ? ProjectRegistry.ReadinessReason.INPUTS_CHANGING
@@ -538,6 +573,7 @@ final class ProjectPreparation implements AutoCloseable {
         @Override public void close() {
             synchronized (this) { stopped = true; if (preparing != null) preparing.cancel(true); notifyAll(); }
             events.close();
+            leadership.close();
         }
     }
 
@@ -562,9 +598,11 @@ final class ProjectPreparation implements AutoCloseable {
     }
 
     private record Stamp(Object identity, long size, Object modified, Object changed) {}
-    private static Map<Path,Object> controls(Path root, Path git) {
+    private static Map<Path,Object> controls(Path root, Path git, boolean following) {
         List<Path> files = new ArrayList<>(List.of(root.resolve(".quill/refs.json"),
                 root.resolve(".quill/build-state.json"), root.resolve(".quill/build-events")));
+        // Only a follower watches the leader's announcements; the leader writes them.
+        if (following) files.add(root.resolve(BackgroundLeadership.REVISION));
         if (git != null) files.addAll(List.of(git.resolve("HEAD"), git.resolve("index"), git.resolve("packed-refs")));
         for (Path parent = root.getParent(); parent != null; parent = parent.getParent()) files.add(parent.resolve("pom.xml"));
         Map<Path,Object> result = new HashMap<>();

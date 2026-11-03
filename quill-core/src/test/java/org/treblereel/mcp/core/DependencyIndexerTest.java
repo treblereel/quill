@@ -845,4 +845,16 @@ class DependencyIndexerTest {
         writer.visitEnd();
         return writer.toByteArray();
     }
+
+    @org.junit.jupiter.api.Test
+    void anUnchangedClasspathFingerprintIsNotRewritten(@org.junit.jupiter.api.io.TempDir Path module) throws Exception {
+        Path file = Files.createDirectories(module.resolve("target")).resolve("quill-classpath.sha256");
+        DependencyIndexer.writeFingerprint(module, BuildSystem.MAVEN, "abc");
+        FileTime old = FileTime.from(Instant.parse("2020-01-01T00:00:00Z"));
+        Files.setLastModifiedTime(file, old);
+        DependencyIndexer.writeFingerprint(module, BuildSystem.MAVEN, "abc");
+        assertEquals(old, Files.getLastModifiedTime(file), "watchers must not see an identical rewrite");
+        DependencyIndexer.writeFingerprint(module, BuildSystem.MAVEN, "def");
+        assertEquals("def", Files.readString(file));
+    }
 }

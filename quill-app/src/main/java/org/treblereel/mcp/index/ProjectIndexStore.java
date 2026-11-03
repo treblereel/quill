@@ -36,6 +36,7 @@ import org.treblereel.mcp.db.QuillDatabase;
 public final class ProjectIndexStore {
 
     private static final int MAX_INDEXES = 5;
+    static final java.time.Duration OUTDATED_GENERATION_GRACE = java.time.Duration.ofDays(1);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final ConcurrentMap<Path, ValidatedDatabase> VALID_DATABASES =
             new ConcurrentHashMap<>();
@@ -105,12 +106,16 @@ public final class ProjectIndexStore {
 
     private static void cleanupLru(Path root, Map<String, String> refs, String activeIndex) {
         Path quillDir = root.resolve(".quill");
-        // Generations with an outdated schema can never be served again. They are kept until a
-        // replacement is published (this runs after activation) and removed here; their refs
-        // are dropped below because the databases no longer exist.
+        // Generations with an outdated schema can never be served by this version. They are kept
+        // until a replacement is published (this runs after activation) and removed here; their
+        // refs are dropped below because the databases no longer exist. An older Quill still
+        // serving the project keeps writing fresh ones, and deleting those would only make it
+        // rebuild, so only generations untouched for a grace period go.
+        java.time.Instant abandoned = java.time.Instant.now().minus(OUTDATED_GENERATION_GRACE);
         for (Path outdated : outdatedGenerations(root)) {
             String fileName = outdated.getFileName().toString();
-            if (!fileName.substring(0, fileName.length() - ".db".length()).equals(activeIndex)) {
+            if (!fileName.substring(0, fileName.length() - ".db".length()).equals(activeIndex)
+                    && lastModified(outdated).toInstant().isBefore(abandoned)) {
                 deleteDatabaseArtifacts(outdated);
             }
         }
@@ -200,21 +205,27 @@ public final class ProjectIndexStore {
         return new RefsState(new LinkedHashMap<>(), false);
     }
 
-    private static void writeRefs(Path refsPath, Map<String, String> refs) {
+    /** Writes {@code refs} unless the file already holds them; true when the file changed. */
+    private static boolean writeRefs(Path refsPath, Map<String, String> refs) {
         try {
-            writeRefsOrThrow(refsPath, refs);
+            return writeRefsOrThrow(refsPath, refs);
         } catch (RuntimeException e) {
             System.err.println("[quill] Warning: could not write refs.json: " + rootMessage(e));
+            return false;
         }
     }
 
-    private static void writeRefsOrThrow(Path refsPath, Map<String, String> refs) {
+    private static boolean writeRefsOrThrow(Path refsPath, Map<String, String> refs) {
+        // Other Quill servers watch this file; an identical rewrite would only wake them.
+        RefsState existing = readRefsState(refsPath);
+        if (existing.readable() && Files.isRegularFile(refsPath) && existing.refs().equals(refs)) return false;
         Path temp = refsPath.resolveSibling("." + refsPath.getFileName() + "."
                 + UUID.randomUUID() + ".tmp");
         try {
             Files.createDirectories(refsPath.toAbsolutePath().normalize().getParent());
             MAPPER.writerWithDefaultPrettyPrinter().writeValue(temp.toFile(), refs);
             atomicMoveWithRetry(temp, refsPath);
+            return true;
         } catch (IOException e) {
             throw new RuntimeException("Could not write " + refsPath, e);
         } finally {
@@ -361,6 +372,14 @@ public final class ProjectIndexStore {
                 .anyMatch(indexId -> referencedDatabase(root, indexId, null) == null);
         boolean orphanedDatabases = state.refs().isEmpty() && hasDatabases(root);
         if (state.readable() && !invalidTarget && !orphanedDatabases) return state.refs();
+        // Another Quill version shares this project: its generations are intact, only unreadable here.
+        // Rewriting refs.json would wake that server to rewrite them back, so read this version's
+        // generations alongside its refs without touching the file.
+        if (state.readable() && !orphanedDatabases && state.refs().values().stream().distinct()
+                .filter(indexId -> referencedDatabase(root, indexId, null) == null)
+                .allMatch(indexId -> foreignSchema(root, indexId))) {
+            return withCandidates(root, state.refs());
+        }
         String reason = !state.readable() ? "refs_corrupt"
                 : invalidTarget ? "referenced_generation_invalid" : "refs_missing";
         return recoverRefs(root, state.refs(), reason);
@@ -377,6 +396,26 @@ public final class ProjectIndexStore {
         }
 
         List<DatabaseCandidate> candidates = databaseCandidates(root);
+        Map<String, String> recovered = withCandidates(root, existingRefs, candidates);
+        if (!recovered.isEmpty()) {
+            String head = GitAnalyzer.resolveHead(root);
+            boolean refsChanged = writeRefs(root.resolve(".quill/refs.json"), recovered);
+            String selected = head != null ? recovered.get(headRef(head)) : recovered.get("@worktree");
+            if (selected == null) selected = candidates.get(0).indexId();
+            writeRecovery(root, new RecoveryStatus(reason, selected, Instant.now().toString()));
+            if (refsChanged) System.err.println("[quill] Recovered index refs; using generation " + selected
+                    + " (" + reason + ").");
+        }
+        return recovered;
+    }
+
+    private static Map<String, String> withCandidates(Path root, Map<String, String> existingRefs) {
+        return withCandidates(root, existingRefs, databaseCandidates(root));
+    }
+
+    /** The readable refs of {@code existingRefs} plus this version's published generations by commit. */
+    private static Map<String, String> withCandidates(Path root, Map<String, String> existingRefs,
+            List<DatabaseCandidate> candidates) {
         Map<String, String> recovered = new LinkedHashMap<>();
         existingRefs.forEach((ref, indexId) -> {
             if (referencedDatabase(root, indexId, null) != null) recovered.put(ref, indexId);
@@ -388,22 +427,25 @@ public final class ProjectIndexStore {
                 recovered.putIfAbsent(headRef(candidate.lastCommit()), candidate.indexId());
             }
         }
-
         String head = GitAnalyzer.resolveHead(root);
         String branch = GitAnalyzer.resolveCurrentBranch(root);
         if (head != null && branch != null) {
             String exact = recovered.get(headRef(head));
             if (exact != null) recovered.put(branch, exact);
         }
-        if (!recovered.isEmpty()) {
-            writeRefs(root.resolve(".quill/refs.json"), recovered);
-            String selected = head != null ? recovered.get(headRef(head)) : recovered.get("@worktree");
-            if (selected == null) selected = candidates.get(0).indexId();
-            writeRecovery(root, new RecoveryStatus(reason, selected, Instant.now().toString()));
-            System.err.println("[quill] Recovered index refs; using generation " + selected
-                    + " (" + reason + ").");
-        }
         return recovered;
+    }
+
+    /** A healthy generation file whose schema belongs to another Quill version. */
+    private static boolean foreignSchema(Path root, String indexId) {
+        if (indexId == null || indexId.isBlank() || indexId.contains("/") || indexId.contains("\\")) return false;
+        Path database = root.resolve(".quill").resolve(indexId + ".db");
+        try {
+            int version = org.treblereel.mcp.db.IndexSchema.inspectVersion(database);
+            return version > 0 && version != org.treblereel.mcp.db.IndexSchema.VERSION;
+        } catch (RuntimeException unreadable) {
+            return false;
+        }
     }
 
     private static List<DatabaseCandidate> databaseCandidates(Path root) {
@@ -479,6 +521,10 @@ public final class ProjectIndexStore {
 
     private static void writeRecovery(Path root, RecoveryStatus recovery) {
         Path target = root.resolve(".quill/recovery.json");
+        // The same recovery repeated is not news, and a rewrite would wake other servers.
+        var previous = readRecovery(root).orElse(null);
+        if (previous != null && java.util.Objects.equals(previous.reason(), recovery.reason())
+                && java.util.Objects.equals(previous.selectedIndexId(), recovery.selectedIndexId())) return;
         Path temp = target.resolveSibling("." + target.getFileName() + "." + UUID.randomUUID() + ".tmp");
         try {
             Map<String, String> values = new LinkedHashMap<>();

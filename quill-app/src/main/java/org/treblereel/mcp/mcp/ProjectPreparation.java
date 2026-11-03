@@ -248,6 +248,8 @@ final class ProjectPreparation implements AutoCloseable {
                 if (relative.equals(segment) || relative.startsWith(segment + "/") || relative.contains("/" + segment + "/")) return false;
             if (Files.isDirectory(path) || !Files.exists(path)) return true;
             String name = path.getFileName().toString();
+            // Quill's own record of the last resolved classpath, written while indexing; not a build input.
+            if (name.equals("quill-classpath.sha256")) return false;
             boolean output = relative.startsWith("target/") || relative.contains("/target/")
                     || relative.startsWith("build/") || relative.contains("/build/");
             return !output || name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".class")

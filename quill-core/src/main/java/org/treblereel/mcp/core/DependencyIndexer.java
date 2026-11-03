@@ -451,9 +451,12 @@ public final class DependencyIndexer {
         return name.equals("target") || name.equals("build") || name.equals(".gradle");
     }
 
-    private static void writeFingerprint(Path moduleDir, BuildSystem buildSystem, String fingerprint) {
+    static void writeFingerprint(Path moduleDir, BuildSystem buildSystem, String fingerprint) {
+        Path file = buildSystem.classpathFingerprintFile(moduleDir);
         try {
-            Files.writeString(buildSystem.classpathFingerprintFile(moduleDir), fingerprint);
+            // Quill servers watch build outputs; rewriting the same fingerprint would wake them all.
+            if (Files.isRegularFile(file) && Files.readString(file).trim().equals(fingerprint)) return;
+            Files.writeString(file, fingerprint);
         } catch (IOException e) {
             System.err.println("[quill] Warning: could not persist dependency classpath fingerprint for "
                     + moduleDir + ": " + e.getMessage());

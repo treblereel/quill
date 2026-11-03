@@ -23,6 +23,59 @@ class ProjectIndexStoreRecoveryTest {
     Path tempDir;
 
     @Test
+    void generationsOfAnotherQuillVersionAreReadAroundWithoutRewritingRefs() throws Exception {
+        createDatabase("own", "unknown");
+        for (int version : new int[] {org.treblereel.mcp.db.IndexSchema.VERSION + 1, org.treblereel.mcp.db.IndexSchema.VERSION - 1}) {
+            Path foreign = createDatabase("foreign" + version, "unknown");
+            QuillDatabase.openWritable(foreign).useHandle(handle -> handle.execute("PRAGMA user_version = " + version));
+            Path refs = tempDir.resolve(".quill/refs.json");
+            Files.writeString(refs, "{\"@worktree\":\"foreign" + version + "\"}");
+            var written = java.nio.file.attribute.FileTime.fromMillis(1_000_000);
+            Files.setLastModifiedTime(refs, written);
+
+            assertEquals(tempDir.resolve(".quill/own.db").toAbsolutePath(), ProjectIndexStore.findBestAvailableDb(tempDir));
+            assertEquals("{\"@worktree\":\"foreign" + version + "\"}", Files.readString(refs));
+            assertEquals(written, Files.getLastModifiedTime(refs), "the other version's server must not be woken");
+            assertTrue(ProjectIndexStore.readRecovery(tempDir).isEmpty());
+        }
+    }
+
+    @Test
+    void identicalRefsAndRecoveryAreNotRewritten() throws Exception {
+        createDatabase("only", "unknown");
+        ProjectIndexStore.updateRefs(tempDir, "unknown", "only");
+        Path refs = tempDir.resolve(".quill/refs.json");
+        var written = java.nio.file.attribute.FileTime.fromMillis(1_000_000);
+        Files.setLastModifiedTime(refs, written);
+        ProjectIndexStore.updateRefs(tempDir, "unknown", "only");
+        assertEquals(written, Files.getLastModifiedTime(refs));
+
+        Files.writeString(refs, "{\"@worktree\":\"missing\"}");
+        assertEquals(tempDir.resolve(".quill/only.db").toAbsolutePath(), ProjectIndexStore.findBestAvailableDb(tempDir));
+        Path recovery = tempDir.resolve(".quill/recovery.json");
+        Files.setLastModifiedTime(recovery, written);
+        Files.writeString(refs, "{\"@worktree\":\"missing\"}");
+        ProjectIndexStore.findBestAvailableDb(tempDir);
+        assertEquals(written, Files.getLastModifiedTime(recovery), "the same recovery is recorded once");
+    }
+
+    @Test
+    void recentlyWrittenOlderSchemaGenerationsSurviveCleanup() throws Exception {
+        Path recent = createDatabase("recent-old", "unknown");
+        Path abandoned = createDatabase("abandoned-old", "unknown");
+        for (Path old : List.of(recent, abandoned))
+            QuillDatabase.openWritable(old).useHandle(handle -> handle.execute("PRAGMA user_version = "
+                    + (org.treblereel.mcp.db.IndexSchema.VERSION - 1)));
+        Files.setLastModifiedTime(abandoned, java.nio.file.attribute.FileTime.from(
+                java.time.Instant.now().minus(java.time.Duration.ofDays(2))));
+        createDatabase("current", "unknown");
+        ProjectIndexStore.updateRefs(tempDir, "unknown", "current");
+
+        assertTrue(Files.isRegularFile(recent), "an older Quill may still be serving it");
+        assertTrue(Files.notExists(abandoned));
+    }
+
+    @Test
     void fallsBackToPreviousGenerationWhenActiveDatabaseIsCorrupt() throws Exception {
         Path previous = createDatabase("previous", "unknown");
         Path active = createDatabase("active", "unknown");

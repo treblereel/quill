@@ -152,8 +152,15 @@ public class ProjectRegistry implements AutoCloseable {
     private final ConcurrentHashMap<Path, IndexHandle> databases = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, AtomicLong> projectRoots = new ConcurrentHashMap<>();
     /** Background rebuilds of outdated indexes; a failure is kept briefly to avoid rebuild loops. */
-    private record SchemaRepair(CompletableFuture<String> result, long startedNanos) {}
+    /** {@code failures} counts the consecutive failed rebuilds before this one. */
+    private record SchemaRepair(CompletableFuture<String> result, long startedNanos, int failures) {}
     private static final long FAILED_REPAIR_RETRY_NANOS = Duration.ofMinutes(1).toNanos();
+    private static final long MAX_FAILED_REPAIR_RETRY_NANOS = Duration.ofHours(1).toNanos();
+
+    /** A failing rebuild is a full indexing run, so its retries back off: 1, 2, 4 ... 60 minutes. */
+    static long repairRetryNanos(int failures) {
+        return Math.min(MAX_FAILED_REPAIR_RETRY_NANOS, FAILED_REPAIR_RETRY_NANOS << Math.min(failures - 1, 6));
+    }
     private final ConcurrentHashMap<Path, SchemaRepair> schemaRepairs = new ConcurrentHashMap<>();
     private final java.util.concurrent.ExecutorService schemaRepairWorkers =
             java.util.concurrent.Executors.newThreadPerTaskExecutor(
@@ -479,15 +486,19 @@ public class ProjectRegistry implements AutoCloseable {
     private ProjectIssue outdatedSchemaRepair(ProjectScope.Project project, Path projectRoot) {
         if (!ProjectIndexStore.hasOutdatedGenerations(projectRoot)) return null;
         SchemaRepair repair = schemaRepairs.compute(projectRoot, (root, existing) -> {
-            boolean retry = existing != null && existing.result().isDone()
-                    && existing.result().getNow(null) != null
-                    && System.nanoTime() - existing.startedNanos() > FAILED_REPAIR_RETRY_NANOS;
+            boolean failed = existing != null && existing.result().isDone() && existing.result().getNow(null) != null;
+            boolean retry = failed && System.nanoTime() - existing.startedNanos() > repairRetryNanos(existing.failures() + 1);
             if (existing != null && !retry) return existing;
+            int failures = failed ? existing.failures() + 1 : 0;
             return new SchemaRepair(CompletableFuture.supplyAsync(() -> {
                 ProjectInitializer.InitializationResult result =
                         ProjectInitializer.initializeDetailed(root, true);
-                return result.successful() ? null : result.diagnostic();
-            }, schemaRepairWorkers).exceptionally(ProjectRegistry::safeMessage), System.nanoTime());
+                if (result.successful()) return null;
+                System.err.println("[quill] Could not rebuild the outdated index of " + root + " (attempt "
+                        + (failures + 1) + "); next attempt in "
+                        + Duration.ofNanos(repairRetryNanos(failures + 1)).toMinutes() + " min: " + result.diagnostic());
+                return result.diagnostic();
+            }, schemaRepairWorkers).exceptionally(ProjectRegistry::safeMessage), System.nanoTime(), failures);
         });
         if (!repair.result().isDone()) {
             return new ProjectIssue(project.name(), projectRoot, "refresh_pending", null,
@@ -503,7 +514,8 @@ public class ProjectRegistry implements AutoCloseable {
         }
         return new ProjectIssue(project.name(), projectRoot, "index_refresh_failed", null,
                 "Could not rebuild the outdated index: " + failure,
-                "Inspect the failure, then retry; the rebuild is retried after one minute", false)
+                "Inspect the failure, then retry; the rebuild is retried after "
+                        + Duration.ofNanos(repairRetryNanos(repair.failures() + 1)).toMinutes() + " minute(s)", false)
                 .readiness(ReadinessReason.INDEX_REFRESH_FAILED, "rebuilding_outdated_index",
                         null, null, false);
     }

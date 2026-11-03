@@ -407,6 +407,12 @@ class ProjectRegistryTest {
     }
 
     @Test
+    void failedOutdatedIndexRebuildsBackOffToAnHour() {
+        assertEquals(List.of(1L, 2L, 4L, 8L, 16L, 32L, 60L, 60L), java.util.stream.IntStream.rangeClosed(1, 8)
+                .mapToObj(failures -> java.time.Duration.ofNanos(ProjectRegistry.repairRetryNanos(failures)).toMinutes()).toList());
+    }
+
+    @Test
     void concurrentFirstRequestsRebuildAnOutdatedSchemaInTheBackgroundWithoutRunningABuild() throws Exception {
         Path project = Files.createDirectories(tempDir.resolve("outdated-project"));
         Files.writeString(project.resolve("pom.xml"), """

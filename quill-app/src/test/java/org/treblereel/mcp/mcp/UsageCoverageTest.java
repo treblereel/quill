@@ -27,6 +27,23 @@ class UsageCoverageTest {
     }
     void metadata(String key,String value) { db.useHandle(h -> h.execute("INSERT OR REPLACE INTO metadata(key,value) VALUES(?,?)",key,value)); }
     Set<String> reasons(JsonNode result) { return new HashSet<>(result.path("coverage").path("incomplete_reasons").valueStream().map(JsonNode::asText).toList()); }
+    @Test void preparedBuildCoverageUsesOneObservationEvenIfOutputsChangeLater() throws Exception {
+        var dirs = org.treblereel.mcp.index.ProjectInitializer.findClassesDirs(root);
+        var metadata = Map.of("index_id", "prepared", "last_commit", org.treblereel.mcp.core.GitAnalyzer.resolveHead(root), "indexed_at", "2020-01-01T00:00:00Z",
+                "state_fingerprint", org.treblereel.mcp.index.ProjectLayout.computeStateFingerprint(root, dirs));
+        var observation = org.treblereel.mcp.index.BuildStatusInspector.capture(root, metadata,
+                org.treblereel.mcp.index.BuildStatusInspector.freshness(metadata, 0, 0));
+        assertEquals(false, observation.fingerprintChanged());
+        var before = UsageCoverage.buildFreshness(observation);
+        assertFalse(before.path("changed_after_index").asBoolean());
+        assertTrue(before.path("content_matches_index").asBoolean());
+        Path output = root.resolve("target/classes/p/Target.class");
+        Files.delete(output);
+        assertEquals(before, UsageCoverage.buildFreshness(observation), "Do not mix a second disk observation into prepared evidence");
+        var next = org.treblereel.mcp.index.BuildStatusInspector.capture(root, metadata,
+                org.treblereel.mcp.index.BuildStatusInspector.freshness(metadata, 0, 0));
+        assertEquals(true, next.fingerprintChanged(), "The next observation must still detect the deleted class");
+    }
     @Test void repositoryObservationsAreReusedWithinAResponseAndRefreshedForTheNext() throws Exception {
         int target = db.withHandle(repositoryHandle1 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle1).findClassByName("p.Target")).orElseThrow().id();
         ReadQueryContext.readWithGraph(db, context -> {

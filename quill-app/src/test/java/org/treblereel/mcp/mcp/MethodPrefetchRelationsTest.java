@@ -18,6 +18,15 @@ class MethodPrefetchRelationsTest {
     @TempDir Path root;
 
     @Test
+    void exposesMissingExternalOnlyLambdaEvidence() throws Exception {
+        var db = JavaEvidenceFixture.index(root, "package p; class Fixture { void start() { Runnable r = () -> System.out.println(1); r.run(); } }");
+        ObjectNode fact = JSON.createObjectNode().put("class", "p.Fixture").put("name", "start").put("descriptor", "()V");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, root, fact); return null; });
+        assertTrue(fact.path("lambda_evidence_gap").asBoolean(), fact.toString());
+        assertTrue(fact.has("selected_method_source") || fact.has("selected_method_source_status"));
+    }
+
+    @Test
     void methodFactListsAnnotationValuesAndCallsTwoLevelsDownThroughLambdas() throws Exception {
         var db = JavaEvidenceFixture.index(root, """
                 package p;
@@ -58,7 +67,7 @@ class MethodPrefetchRelationsTest {
                 "src/main/java/jakarta/enterprise/context/ApplicationScoped.java",
                 "package jakarta.enterprise.context; " + runtime + "public @interface ApplicationScoped {}",
                 "src/main/java/jakarta/enterprise/event/Event.java",
-                "package jakarta.enterprise.event; public interface Event<T> { void fire(T event); }",
+                "package jakarta.enterprise.event; public interface Event<T> { void fire(T event); void fireAsync(T event); }",
                 "src/main/java/jakarta/enterprise/event/Observes.java",
                 "package jakarta.enterprise.event; " + runtime + "public @interface Observes {}",
                 "src/main/java/p/Publisher.java", """
@@ -71,6 +80,7 @@ class MethodPrefetchRelationsTest {
                             @jakarta.inject.Inject Event<Created> created;
                             @jakarta.inject.Inject Event<Deleted> deleted;
                             void create() { created.fire(new Created()); }
+                            void createAsync() { created.fireAsync(new Created()); }
                             void delete() { deleted.fire(new Deleted()); }
                         }
                         """,
@@ -100,6 +110,20 @@ class MethodPrefetchRelationsTest {
         assertEquals(List.of("created jakarta.enterprise.event.Event<p.Publisher.Created> -> p.Listener#onCreated(@Observes p.Publisher.Created)"),
                 fact.path("observers_of_fired_events").valueStream().map(node -> node.asText()).toList(), fact.toString());
         assertEquals("Event fields this method or its walked callees read", fact.path("observers_basis").asText());
+        var event=fact.path("event_dispatches").get(0);
+        assertEquals("p.Publisher$Created",event.path("event_type").asText());
+        assertEquals("fire",event.path("dispatch_methods").get(0).asText());
+        assertEquals(List.of("@Default","@Any"),event.path("event_qualifiers").valueStream().map(n -> n.asText()).toList());
+        assertTrue(event.path("entry_points").toString().contains("onCreated"));
+        assertFalse(fact.path("event_delivery_proven").asBoolean());
+        assertTrue(fact.path("event_delivery_semantics").asText().contains("synchronization"));
+        var packet=JSON.createObjectNode();packet.putArray("facts").add(fact.deepCopy());
+        PrefetchContext.boundContext(packet);
+        assertTrue(packet.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=10000);
+        assertTrue(packet.toString().contains("event_dispatches"));
+        ObjectNode async=JSON.createObjectNode().put("class","p.Publisher").put("name","createAsync").put("descriptor","()V");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, async); return null; });
+        assertEquals(List.of("fireAsync"),async.path("event_dispatches").get(0).path("dispatch_methods").valueStream().map(n -> n.asText()).toList());
     }
 
     @Test
@@ -145,7 +169,7 @@ class MethodPrefetchRelationsTest {
 
         MethodPrefetchRelations.compactImpact(fact);
 
-        assertEquals("p.FixtureTest src/test/java/p/FixtureTest.java via a, b", fact.path("test_callers").get(0).asText());
+        assertEquals("p.FixtureTest src/test/java/p/FixtureTest.java via a lines [1], b", fact.path("test_callers").get(0).asText());
         assertTrue(fact.path("coverage").path("scan_complete").asBoolean());
         assertEquals(1, fact.path("coverage").path("incomplete_reasons").size());
         assertFalse(fact.path("coverage").has("snapshot_freshness"));

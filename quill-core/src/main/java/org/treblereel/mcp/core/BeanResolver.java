@@ -124,6 +124,8 @@ public final class BeanResolver {
             // ConfigBuildStep, or the SmallRye ConfigExtension elsewhere). No scope is configured,
             // so the bean is @Dependent with @Default/@Any; the creator, not a bean class, builds it.
             if (!c.isInterface() || !c.hasDeclaredAnnotation(CONFIG_MAPPING) || buildTimeConfigRoot(c)) continue;
+            if (lookup.getClassByName(n("io.quarkus.arc.runtime.ConfigMappingCreator")) == null
+                    && lookup.getClassByName(n("io.smallrye.config.inject.ConfigExtension")) == null) continue;
             int classId = classIds.computeIfAbsent(c.name().toString(), x -> classIds.size() + 1);
             beans.add(new BeanRecord(nextBean++, classId, "SYNTHETIC", "@Dependent",
                     qualifiers(List.of(), lookup, true), List.of(), false, false, null,

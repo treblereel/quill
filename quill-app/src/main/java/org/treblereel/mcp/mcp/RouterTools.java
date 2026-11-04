@@ -22,6 +22,8 @@ final class RouterTools {
         this.tools = tools;
     }
 
+    java.util.concurrent.CompletableFuture<Void> awaitPrepared(String selector) { return tools.awaitPrepared(selector); }
+
     boolean workspaceMode() {
         return tools.workspaceMode();
     }
@@ -39,20 +41,27 @@ final class RouterTools {
     }
 
     @Tool(readOnly = true, structured = true,
-            description = "Search Quill's hidden tool catalog by name, purpose, or argument.")
+            description = "Search Quill's hidden tool catalog by name, purpose, or argument; inspect selected schemas, then invoke execute_tool with matching arguments.")
     public String search_tools(
             @ToolArg(description = "Words to match against tool names, descriptions, and arguments")
                     String query,
             @ToolArg(description = "Maximum matches; default 5, max 30") Optional<Integer> limit) {
         try (DebugTrace.Trace trace = DebugTrace.start("router_search")) {
-            String[] terms = Arrays.stream(query.strip().toLowerCase().split("\\s+"))
-                    .filter(term -> !term.isBlank()).toArray(String[]::new);
+            String normalizedQuery = switch (query.strip().toLowerCase()) {
+                case "resolve_injection" -> "list_injection_points";
+                case "find_references" -> "find_usages";
+                default -> query;
+            };
+            String intent = normalizedQuery.strip().toLowerCase().replace('_', ' ').replace('-', ' ');
+            if (intent.contains("dependency") && intent.contains("source")) intent += " bytecode";
+            String[] terms = Arrays.stream(intent.split("\\s+"))
+                    .filter(term -> !term.isBlank()).distinct().toArray(String[]::new);
             int pageSize = Math.max(1, Math.min(30, limit.orElse(5)));
             List<Method> catalog = Arrays.stream(QuillTools.class.getDeclaredMethods())
                     .filter(method -> method.isAnnotationPresent(Tool.class))
                     .filter(method -> method.getAnnotation(Tool.class).readOnly()).toList();
             List<Candidate> matches = catalog.stream()
-                    .map(method -> new Candidate(method, score(method, terms)))
+                    .map(method -> new Candidate(method, score(method, terms) + (method.getName().equals(normalizedQuery.strip()) ? 1000 : 0)))
                     .filter(candidate -> candidate.score() > 0)
                     .sorted(Comparator.comparingInt(Candidate::score).reversed()
                             .thenComparing(candidate -> candidate.method().getName()))
@@ -129,24 +138,31 @@ final class RouterTools {
                 + McpToolCatalog.inputSchema(method)).toLowerCase();
         String name = method.getName().toLowerCase();
         int score = 0;
+        int matched = 0;
         for (String term : terms) {
             String normalized = normalizeTerm(term);
             if (normalized.length() < 3) continue;
-            if (name.contains(normalized)) score += 3;
-            else if (searchable.contains(normalized)) score++;
+            if (name.contains(normalized)) { score += 3; matched++; }
+            else if (searchable.contains(normalized)) { score++; matched++; }
         }
-        return score;
+        return score + matched * matched;
     }
 
     private static String normalizeTerm(String term) {
         return switch (term) {
+            case "inspect", "inspection" -> "details";
             case "annotated", "annotations" -> "annotation";
+            case "references" -> "usages";
             case "endpoints" -> "endpoint";
             case "implementations", "implementors" -> "implementation";
             case "affected", "impacted" -> "impact";
             case "errors" -> "error";
             case "problems" -> "problem";
             case "modules" -> "module";
+            case "observers" -> "observer";
+            case "events" -> "event";
+            case "consumers" -> "consumer";
+            case "transactional" -> "transaction";
             default -> term;
         };
     }
@@ -156,7 +172,9 @@ final class RouterTools {
                 .anyMatch(SetLikeTerms.BUILD::contains)) {
             return "build";
         }
-        if (Arrays.stream(terms).anyMatch(SetLikeTerms.SOURCE::contains)) {
+        if (Arrays.stream(terms).anyMatch(SetLikeTerms.SOURCE::contains)
+                && Arrays.stream(terms).map(RouterTools::normalizeTerm)
+                        .noneMatch(SetLikeTerms.QUILL::contains)) {
             return "source_search";
         }
         if (Arrays.stream(terms).map(RouterTools::normalizeTerm)
@@ -173,7 +191,7 @@ final class RouterTools {
                 "dependency", "dependencies", "graph", "call", "injection", "bean",
                 "history", "risk", "generated", "override", "implementation",
                 "annotation", "endpoint", "impact", "symbol", "module", "context",
-                "plan", "change", "verify", "verification");
+                "plan", "change", "verify", "verification", "observer", "event");
         private static final java.util.Set<String> BUILD = java.util.Set.of(
                 "build", "compile", "compiler", "maven", "gradle", "failure", "error",
                 "problem");

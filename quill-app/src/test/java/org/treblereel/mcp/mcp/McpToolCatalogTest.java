@@ -77,8 +77,9 @@ class McpToolCatalogTest {
         assertTrue(full.contains("never runs builds or tests"));
         assertTrue(full.contains("tools, not resources"));
         String router = McpStdioServer.serverInstructions(McpToolProfile.parse("router"));
-        assertTrue(router.contains("search_tools"));
+        assertTrue(router.contains("catalog discovery"));
         assertTrue(router.contains("execute_tool"));
+        assertFalse(router.contains("search_tools"), "Shared instructions are appended to every tool description by some clients; discovery keywords belong to the local router description");
         assertFalse(McpStdioServer.serverInstructions(McpToolProfile.parse("di"))
                 .contains("change_session"), "Do not direct clients to a tool absent from the profile");
     }
@@ -578,6 +579,15 @@ class McpToolCatalogTest {
         assertRouterChoice(router, "verify change", "verify_change", "quill");
         assertRouterChoice(router, "change session", "change_session", "quill");
         assertRouterChoice(router, "build problems", "get_build_problems", "build");
+        assertRouterChoice(router, "class source decompile", "get_external_symbol_details", "quill_if_semantic");
+        assertRouterChoice(router, "resolve_injection", "list_injection_points", "quill");
+        assertRouterChoice(router, "find_references", "find_usages", "quill_if_semantic");
+        assertRouterChoice(router, "get_dependency_source", "get_external_symbol_details", "quill");
+        assertRouterChoice(router, "inspect_dependency", "get_external_symbol_details", "quill");
+        assertRouterChoice(router, "get_external_symbol_details", "get_external_symbol_details", "quill");
+        assertRouterChoice(router, "dependency path artifact extension", "get_project_dependencies", "quill");
+        for (String query : List.of("event observers", "CDI observers", "transactional observer", "event consumers"))
+            assertRouterChoice(router, query, "find_entry_points", "quill");
     }
 
     @Test
@@ -823,6 +833,45 @@ class McpToolCatalogTest {
         public String quick() {
             return "completed";
         }
+    }
+
+    @Test
+    void usageAliasesPreserveCanonicalSelector() throws Exception {
+        var tools = new SelectorAliasTools();
+        var method = SelectorAliasTools.class.getDeclaredMethod("find_usages", String.class);
+        for (String alias : List.of("symbol", "class_name")) {
+            var result = McpToolCatalog.invokeMethod(tools, method, Map.of(alias, "example.Service#run()"));
+            assertFalse(result.error());
+            assertEquals("example.Service#run()", result.text());
+        }
+    }
+
+    @Test
+    void beanAndInjectionAliasesPreserveClassSelector() throws Exception {
+        var tools = new SelectorAliasTools();
+        for (var entry : Map.of("list_beans", "type", "list_injection_points", "class_name").entrySet()) {
+            var method = SelectorAliasTools.class.getDeclaredMethod(entry.getKey(), String.class);
+            var result = McpToolCatalog.invokeMethod(tools, method, Map.of(entry.getValue(), "example.Service"));
+            assertFalse(result.error());
+            assertEquals("example.Service", result.text());
+        }
+    }
+
+    @Test
+    void selectorAliasesRejectConflictsAndUnrelatedArguments() throws Exception {
+        var tools = new SelectorAliasTools();
+        var method = SelectorAliasTools.class.getDeclaredMethod("find_usages", String.class);
+        for (var args : List.of(Map.<String,Object>of("symbol", "A", "target", "B"),
+                Map.<String,Object>of("symbol", "A", "class_name", "B"),
+                Map.<String,Object>of("target", "A", "unexpected", true))) {
+            assertTrue(McpToolCatalog.invokeMethod(tools, method, args).error());
+        }
+    }
+
+    static final class SelectorAliasTools {
+        @Tool(description = "Usage selector") public String find_usages(String target) { return target; }
+        @Tool(description = "Bean selector") public String list_beans(String class_name) { return class_name; }
+        @Tool(description = "Injection selector") public String list_injection_points(String target) { return target; }
     }
 
     static final class ValidationTools {

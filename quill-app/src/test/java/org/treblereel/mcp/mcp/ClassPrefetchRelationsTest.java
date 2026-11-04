@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +24,28 @@ import org.treblereel.mcp.model.InjectionPointRecord;
 class ClassPrefetchRelationsTest {
 
     @TempDir Path root;
+
+    @Test
+    void contractCallersIncludeImplementationSelfCallsButNotUnrelatedMethods() throws Exception {
+        var db = JavaEvidenceFixture.index(root, """
+                package x;
+                interface Service { void run(); }
+                class Impl implements Service {
+                    public void run() {}
+                    void repeat() { run(); }
+                    void unrelated() {}
+                }
+                class Consumer { void call(Service s) { s.run(); } }
+                class Other { void call(Impl i) { i.unrelated(); } }
+                """);
+        ObjectNode fact = relations(db, "x.Service");
+        assertEquals(2, fact.path("contract_caller_classes").asInt(), fact.toString());
+        assertEquals(2, strings(fact, "contract_callers").size());
+        assertTrue(strings(fact, "contract_callers").stream().allMatch(line -> line.contains("run()V")));
+        assertEquals(0, fact.path("contract_application_producer_count").asInt(-1));
+        assertTrue(strings(fact, "contract_callers").stream().anyMatch(line -> line.startsWith("x.Impl ")));
+        assertTrue(strings(fact, "contract_callers").stream().noneMatch(line -> line.startsWith("x.Other ")));
+    }
 
     @Test
     void classFactListsWhatItInjectsWhereItIsInjectedAndItsTests() throws Exception {
@@ -54,13 +77,13 @@ class ClassPrefetchRelationsTest {
         ObjectNode service = relations(db, "x.Service");
         ObjectNode impl = relations(db, "x.Impl");
 
-        assertEquals(List.of("x.Consumer#service (FIELD x.Service) [RESOLVED]",
+        assertEquals(List.of("x.Consumer#service (FIELD x.Service) [\"@Default\"] [RESOLVED]",
                         "x.Consumer#services (FIELD jakarta.enterprise.inject.Instance<x.Service>) [UNKNOWN]"),
                 strings(service, "injected_into"));
         assertEquals(List.of("src/test/java/x/ServiceTest.java"), strings(service, "test_classes"));
         assertEquals(List.of("Clock.java", "Consumer.java", "Impl.java"), strings(service, "related_source_files"));
         assertEquals(List.of("FIELD clock: x.Clock [\"@Default\"] -> x.Clock (CLASS) [RESOLVED]"), strings(impl, "injects"));
-        assertEquals(List.of("x.Consumer#service (FIELD x.Service) [RESOLVED]"), strings(impl, "injected_into"));
+        assertEquals(List.of("x.Consumer#service (FIELD x.Service) [\"@Default\"] [RESOLVED]"), strings(impl, "injected_into"));
         assertFalse(service.has("injects"));
     }
 
@@ -127,7 +150,7 @@ class ClassPrefetchRelationsTest {
         ObjectNode impl = relations(db, "x.Impl");
 
         assertEquals(List.of("x.Audit @Priority(10)", "x.Caching @Priority(20)"), strings(service, "decorators"));
-        assertEquals(List.of("x.Caching#delegate (FIELD x.Service) [UNKNOWN] in a decorator: a delegate point resolves to the decorated bean"),
+        assertEquals(List.of("x.Caching#delegate (FIELD x.Service) [\"@Any\"] [UNKNOWN] in a decorator: a delegate point resolves to the decorated bean"),
                 strings(service, "injected_into"));
         assertEquals(List.of("FIELD log: org.Log [\"@Default\"] -> not resolved by the application index; "
                         + "dependency providers: dep.LogProducer#simple from dep:log:1 [UNKNOWN]"),

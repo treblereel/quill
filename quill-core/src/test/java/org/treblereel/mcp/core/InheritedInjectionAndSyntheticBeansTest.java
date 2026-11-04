@@ -143,6 +143,12 @@ class InheritedInjectionAndSyntheticBeansTest {
                 }
                 """);
 
+        var withoutIntegration = BeanResolver.resolve(index(sources));
+        assertTrue(withoutIntegration.beans().stream().noneMatch(bean -> "SYNTHETIC".equals(bean.kind())));
+        sources.put("io/quarkus/arc/runtime/ConfigMappingCreator.java", """
+                package io.quarkus.arc.runtime;
+                public class ConfigMappingCreator {}
+                """);
         var result = BeanResolver.resolve(index(sources));
         Map<Integer, String> classNames = classNames(result);
         List<BeanRecord> synthetic = result.beans().stream()

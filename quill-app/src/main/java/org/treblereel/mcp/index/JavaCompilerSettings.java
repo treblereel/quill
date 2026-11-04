@@ -19,6 +19,10 @@ public final class JavaCompilerSettings {
     private JavaCompilerSettings() {}
 
     public static ArrayNode inspect(Collection<Path> modules, BuildSystem buildSystem) {
+        return inspect(modules, buildSystem, new HashMap<>());
+    }
+
+    static ArrayNode inspect(Collection<Path> modules, BuildSystem buildSystem, Map<Path, ObjectNode> observed) {
         ArrayNode result = JSON.createArrayNode();
         for (Path module : modules.stream().distinct().sorted().limit(100).toList()) {
             Path output = module.resolve(buildSystem == BuildSystem.MAVEN ? "target" : "build");
@@ -32,7 +36,7 @@ public final class JavaCompilerSettings {
                             captures.put(name.substring(11, name.length() - 11), path);
                         });
             } catch (IOException ignored) { }
-            for (var capture : captures.entrySet()) result.add(read(module, capture.getKey(), capture.getValue()));
+            for (var capture : captures.entrySet()) result.add(observed.computeIfAbsent(capture.getValue(), path -> read(module, capture.getKey(), path)));
         }
         return result;
     }

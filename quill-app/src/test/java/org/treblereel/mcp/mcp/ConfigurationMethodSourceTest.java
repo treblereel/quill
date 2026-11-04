@@ -20,6 +20,15 @@ class ConfigurationMethodSourceTest {
         p.setProperty("sourceRoot.count","1");p.setProperty("sourceRoot.0",root.resolve("src/main/java").toString());p.setProperty("compileClasspath.count","0");p.setProperty("argument.count","0");p.setProperty("buildInput.count","1");p.setProperty("buildInput.path.0",root.resolve("pom.xml").toString());p.setProperty("buildInput.sha256.0",SourceFileHashes.hash(root.resolve("pom.xml")));
         try(var w=Files.newBufferedWriter(root.resolve("target/quill-java-main.properties"))){p.store(w,"fixture");}
     }
+    @Test void budgetKeepsAllConstructorDependenciesBeforeNavigation() {
+        var data=json.createObjectNode();var facts=data.putArray("facts");var fact=facts.addObject();
+        fact.putArray("injects").add("Logger").add("Config").add("Factory");
+        fact.putArray("related_source_files").add("x".repeat(11000));
+        PrefetchContext.boundContext(data);
+        assertEquals(3,fact.path("injects").size());
+        assertEquals(1,facts.size());
+        assertFalse(fact.has("related_source_files"));
+    }
     @AfterEach void close(){JavaSemanticQueries.close();}
     ObjectNode evidence() throws Exception {
         var e=json.createObjectNode();var r=e.putArray("references").addObject().put("className","p.Fixture");var sites=r.putObject("field_reads").put("truncated",false).putArray("sites");

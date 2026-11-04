@@ -793,7 +793,9 @@ final class StructureToolQueries {
         int nested = cls.className().indexOf('$');
         if (nested > 0) addRelatedBean(reader, related, cls.className().substring(0, nested), "enclosing_class");
         if (cls.superclass() != null) addRelatedBean(reader, related, cls.superclass(), "superclass");
-        root.putObject("next_step").put("tool", "get_symbol_details")
+        root.put("query_direction", "dependencies_injected_into_bean");
+        root.put("consumer_guidance", "To find consumers injecting this type, use find_usages; an interface need not itself be a bean.");
+        root.putObject("next_step").put("tool", "INTERFACE".equals(cls.kind()) ? "find_usages" : "get_symbol_details")
                 .putObject("arguments").put("target", cls.className());
         appendMeta(root, reader, 0);
         return root.toString();

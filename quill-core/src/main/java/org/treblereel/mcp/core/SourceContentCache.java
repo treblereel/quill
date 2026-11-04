@@ -9,6 +9,10 @@ import java.util.concurrent.*;
 /** SHA reuse only on local volumes with a nanosecond change-time and stable inode identity. */
 final class SourceContentCache {
     private static final Set<String> LOCAL_VOLUMES=Set.of("apfs","hfs","ext4","xfs","btrfs","tmpfs","overlay");
+    private static final ExecutorService VOLUME_PROBE=Executors.newSingleThreadExecutor(task->{
+        Thread thread=new Thread(task,"quill-volume-probe");thread.setDaemon(true);return thread;
+    });
+    private static final ConcurrentHashMap<Object,CompletableFuture<Boolean>> VOLUMES=new ConcurrentHashMap<>();
     private record Token(Object key,Object device,long size,FileTime modified,FileTime changed) {}
     private record Entry(Token token,String hash) {}
     /** Reused hashes of one kind of file, bounded so a large output tree cannot evict the other kind. */
@@ -26,8 +30,22 @@ final class SourceContentCache {
     static final Store CLASSES=new Store(1<<17);
     record Volume(Object device,boolean supported) {}
     static Volume volume(Path root) {
-        try {return new Volume(Files.getAttribute(root,"unix:dev"),LOCAL_VOLUMES.contains(Files.getFileStore(root).type().toLowerCase(Locale.ROOT)));}
+        try {
+            Object device=Files.getAttribute(root,"unix:dev");
+            if(VOLUMES.size()>128)VOLUMES.clear();
+            var probe=VOLUMES.computeIfAbsent(device,ignored->CompletableFuture.supplyAsync(()->{
+                try{return LOCAL_VOLUMES.contains(Files.getFileStore(root).type().toLowerCase(Locale.ROOT));}
+                catch(IOException|RuntimeException unknown){return false;}
+            },VOLUME_PROBE));
+            return awaitVolume(device,probe);
+        }
         catch(IOException|UnsupportedOperationException|IllegalArgumentException unknown){return new Volume(null,false);}
+    }
+    // A stalled mount-table query must disable SHA reuse, not stall the caller.
+    static Volume awaitVolume(Object device,CompletableFuture<Boolean> probe) {
+        try{return new Volume(device,probe.get(50,TimeUnit.MILLISECONDS));}
+        catch(InterruptedException interrupted){Thread.currentThread().interrupt();return new Volume(device,false);}
+        catch(ExecutionException|TimeoutException unknown){return new Volume(device,false);}
     }
     private static Token token(Path file) throws IOException {
         var attributes=Files.readAttributes(file,"unix:fileKey,dev,size,lastModifiedTime,ctime");

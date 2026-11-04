@@ -27,6 +27,7 @@ class ProjectPreparationTest {
             var entered = new java.util.concurrent.CountDownLatch(1);
             var release = new java.util.concurrent.CountDownLatch(1);
             var output = System.err;
+            java.util.concurrent.CompletableFuture<Void> pendingRead = null;
             try (var lease = previous.jdbi().open()) {
                 System.setErr(new java.io.PrintStream(output) {
                     @Override public void println(String message) {
@@ -44,10 +45,13 @@ class ProjectPreparationTest {
                     var pending = registry.resolve();
                     assertPrevious(pending, previous, "refresh_pending");
                     assertEquals(oldId, lease.createQuery("SELECT value FROM metadata WHERE key='index_id'").mapTo(String.class).one());
+                    pendingRead = registry.awaitPrepared(null);
+                    assertFalse(pendingRead.isDone(), "Wait for publication, without holding the index lease lock");
                 } finally { release.countDown(); System.setErr(output); }
                 var current = await(() -> registry.resolve().projects().stream().filter(entry ->
                         !entry.observations().freshness().indexId().equals(oldId)
                         && !entry.observations().freshness().structureStale()).findFirst().orElse(null));
+                pendingRead.get(5, java.util.concurrent.TimeUnit.SECONDS);
                 assertFalse(current.observations().freshness().commitStale());
                 assertTrue(current.observations().freshness().staleReasons().isEmpty());
                 assertGraphPrepared(current);

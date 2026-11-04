@@ -122,13 +122,16 @@ final class McpToolCatalog {
                 .tool(tool)
                 .callHandler((exchange, request) -> {
                     long started = System.nanoTime();
-                    return Mono.fromCallable(() -> invoke(tools, method, request.arguments(), profile))
-                        .subscribeOn(toolScheduler)
-                        .timeout(requestTimeout)
+                    var waiting = new java.util.concurrent.atomic.AtomicBoolean();
+                    return invokePrepared(tools, method, request.arguments(), profile, toolScheduler, waiting)
+                        .timeout(requestTimeout.minus(requestTimeout.dividedBy(10).compareTo(Duration.ofSeconds(1)) < 0
+                                ? requestTimeout.dividedBy(10) : Duration.ofSeconds(1)))
                         .onErrorResume(RejectedExecutionException.class,
                                 ignored -> Mono.just(result("Server busy; retry later", true,
                                         annotation.structured())))
-                        .onErrorResume(TimeoutException.class, ignored -> Mono.just(result(
+                        .onErrorResume(TimeoutException.class, ignored -> Mono.just(waiting.get() ? result(
+                                "{\"error_code\":\"INDEX_REFRESH_TIMEOUT\",\"message\":\"Index preparation did not finish within the request deadline; retry this request\",\"retryable\":true}",
+                                true, true) : result(
                                 "Tool timed out after " + requestTimeout.toSeconds()
                                         + " seconds; retry with a narrower query or increase "
                                         + "QUILL_MCP_REQUEST_TIMEOUT",
@@ -145,6 +148,44 @@ final class McpToolCatalog {
                         .publishOn(responseScheduler);
                 })
                 .build();
+    }
+
+    private static Mono<McpSchema.CallToolResult> invokePrepared(Object tools, Method method,
+            Map<String, Object> arguments, McpToolProfile profile, Scheduler scheduler,
+            java.util.concurrent.atomic.AtomicBoolean waiting) {
+        return Mono.defer(() -> {
+            Map<?, ?> query = arguments == null ? Map.of() : arguments;
+            if (method.getName().equals("execute_tool") && query.get("arguments") instanceof Map<?, ?> nested) query = nested;
+            String selector = query.get("project") instanceof String project ? project : null;
+            boolean indexed = !method.getName().equals("search_tools");
+            waiting.set(indexed && (tools instanceof QuillTools || tools instanceof RouterTools));
+            Mono<Void> ready = !waiting.get() ? Mono.empty() : Mono.fromFuture(tools instanceof QuillTools quill
+                    ? quill.awaitPrepared(selector) : ((RouterTools) tools).awaitPrepared(selector));
+            return ready.then(Mono.fromCallable(() -> {
+                        waiting.set(false);
+                        return invoke(tools, method, arguments, profile);
+                    }).subscribeOn(scheduler))
+                    .flatMap(result -> {
+                        if (!waitingSupported(tools) || !refreshPending(JSON.valueToTree(result.structuredContent()))) return Mono.just(result);
+                        var next = tools instanceof QuillTools quill ? quill.awaitPrepared(selector)
+                                : ((RouterTools) tools).awaitPrepared(selector);
+                        // A completed preparation may be an actionable failure; do not spin on it.
+                        if (next.isDone()) return Mono.fromCallable(() -> invoke(tools, method, arguments, profile)).subscribeOn(scheduler);
+                        waiting.set(true);
+                        return Mono.fromFuture(next).then(invokePrepared(tools, method, arguments, profile, scheduler, waiting));
+                    });
+        });
+    }
+
+    private static boolean waitingSupported(Object tools) { return tools instanceof QuillTools || tools instanceof RouterTools; }
+
+    private static boolean refreshPending(com.fasterxml.jackson.databind.JsonNode value) {
+        if (value == null || !value.isContainerNode()) return false;
+        if ("REFRESH_PENDING".equals(value.path("error_code").asText())
+                || "refresh_pending".equals(value.path("status").asText())
+                || "INDEX_REFRESH_PENDING".equals(value.path("code").asText())) return true;
+        for (var child : value) if (refreshPending(child)) return true;
+        return false;
     }
 
     private static String description(Object tools, Method method, Tool annotation) {
@@ -364,7 +405,10 @@ final class McpToolCatalog {
     /** Spellings agents used for the router's arguments in recorded sessions. */
     private static final Map<String, Map<String, String>> ARGUMENT_ALIASES = Map.of(
             "execute_tool", Map.of("tool_name", "name", "tool", "name",
-                    "args", "arguments", "parameters", "arguments", "input", "arguments"));
+                    "args", "arguments", "parameters", "arguments", "input", "arguments"),
+            "find_usages", Map.of("symbol", "target", "class_name", "target"),
+            "list_injection_points", Map.of("class_name", "target"),
+            "list_beans", Map.of("type", "class_name"));
 
     private static Map<String, Object> withAliases(String tool, Map<String, Object> arguments) {
         Map<String, String> aliases = ARGUMENT_ALIASES.get(tool);
@@ -372,7 +416,12 @@ final class McpToolCatalog {
         Map<String, Object> normalized = new LinkedHashMap<>();
         arguments.forEach((key, value) -> {
             String canonical = aliases.getOrDefault(key, key);
-            // An explicitly named canonical argument always wins over an alias.
+            // Keep ambiguous query inputs invalid; router compatibility retains its canonical-wins rule.
+            if (!canonical.equals(key) && !tool.equals("execute_tool")
+                    && (arguments.containsKey(canonical) || normalized.containsKey(canonical))) {
+                normalized.put(key, value);
+                return;
+            }
             if (!canonical.equals(key) && arguments.containsKey(canonical)) return;
             normalized.put(canonical, value);
         });

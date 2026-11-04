@@ -392,6 +392,10 @@ class QuillToolsTest {
         assertEquals(1, matching.path("total").asInt());
         assertEquals(0, excluded.path("total").asInt());
         assertTrue(invalid.path("message").asText().startsWith("Invalid usage_kind"));
+        JsonNode alias = JSON.readTree(tools.findUsages(jdbi, "AuditService", "di", null, 10, 0));
+        JsonNode canonical = JSON.readTree(tools.findUsages(jdbi, "AuditService", "injection", null, 10, 0));
+        assertEquals(canonical.path("usages"), alias.path("usages"));
+        assertEquals("injection", alias.path("usage_kind").asText());
     }
 
     @Test
@@ -3034,6 +3038,14 @@ class QuillToolsTest {
         JsonNode outbound = page.get("depends_on");
         if (outbound != null && !outbound.isEmpty()) return outbound.get(0).get("class").asText();
         return page.get("depended_by").get(0).get("class").asText();
+    }
+
+    @Test
+    void interfaceInjectionQueryGuidesToConsumers() throws Exception {
+        JsonNode result = JSON.readTree(new QuillTools().getInjectionPoints(jdbi, "PaymentService"));
+        assertEquals("dependencies_injected_into_bean", result.path("query_direction").asText());
+        assertEquals("find_usages", result.path("next_step").path("tool").asText());
+        assertEquals("org.acme.PaymentService", result.path("next_step").path("arguments").path("target").asText());
     }
 
     @Test

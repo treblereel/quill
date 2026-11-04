@@ -55,6 +55,27 @@ class BuildStatusInspectorTest {
         assertFalse(changed.at("/compiled_outputs/content_matches_index").asBoolean());
     }
 
+    @Test void fingerprintUsesTheSameRepositoryBoundaryAsTheIndex() throws Exception {
+        Files.createDirectory(root.resolve(".git"));
+        Files.writeString(root.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>test</groupId>"
+                + "<artifactId>parent</artifactId><version>1</version><modules><module>child</module></modules></project>");
+        Path child = Files.createDirectories(root.resolve("child/.git")).getParent();
+        Files.writeString(child.resolve("pom.xml"), "<project/>");
+        Path own = root.resolve("target/classes/Own.class"), nested = child.resolve("target/classes/Nested.class");
+        Files.createDirectories(own.getParent()); Files.write(own, new byte[]{1});
+        Files.createDirectories(nested.getParent()); Files.write(nested, new byte[]{2});
+        var dirs = ProjectInitializer.findClassesDirs(root);
+        assertEquals(java.util.List.of(own.getParent()), dirs);
+        var metadata = Map.of("index_id", "i", "last_commit", "unknown", "indexed_at", "2020-01-01T00:00:00Z",
+                "state_fingerprint", ProjectLayout.computeStateFingerprint(root, dirs,
+                        org.treblereel.mcp.core.ClassFileSnapshot.fingerprint(dirs), null));
+        assertEquals(false, BuildStatusInspector.capture(root, metadata, BuildStatusInspector.freshness(metadata, 0, 0)).fingerprintChanged());
+        Files.write(nested, new byte[]{3});
+        assertEquals(false, BuildStatusInspector.capture(root, metadata, BuildStatusInspector.freshness(metadata, 0, 0)).fingerprintChanged());
+        Files.write(own, new byte[]{4});
+        assertEquals(true, BuildStatusInspector.capture(root, metadata, BuildStatusInspector.freshness(metadata, 0, 0)).fingerprintChanged());
+    }
+
     @Test void commitOnlyLegacyWorktreeFingerprintIsNotACompilationFailure() throws Exception {
         Files.writeString(root.resolve("pom.xml"), "<project/>");
         Path output = root.resolve("target/classes/Marker.class");

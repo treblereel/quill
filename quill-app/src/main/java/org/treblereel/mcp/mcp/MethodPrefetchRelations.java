@@ -28,7 +28,7 @@ final class MethodPrefetchRelations {
 
     /**
      * Callers become one line per class (class, file, calling methods) and coverage keeps its
-     * verdict and gaps: per-call evidence lines fit poorly in a hook and stay one tool call away.
+     * verdict, gaps and compact caller line references.
      */
     static void compactImpact(ObjectNode fact) {
         for (String field : List.of("production_callers", "test_callers", "unclassified_callers",
@@ -38,7 +38,10 @@ final class MethodPrefetchRelations {
             for (JsonNode caller : callers) {
                 Set<String> methods = new LinkedHashSet<>();
                 caller.path("methods").forEach(method -> methods.add(method.path("method").asText()
-                        + (method.has("depth") ? "@" + method.path("depth").asInt() : "")));
+                        + (method.has("depth") ? "@" + method.path("depth").asInt() : "")
+                        + (method.hasNonNull("evidence_lines") ? " lines "
+                            + (method.get("evidence_lines").isTextual() ? method.get("evidence_lines").asText()
+                                : method.get("evidence_lines").toString()) : "")));
                 lines.add(caller.path("class").asText() + " " + caller.path("source").asText()
                         + (methods.isEmpty() ? "" : " via " + String.join(", ", methods)));
             }
@@ -51,7 +54,7 @@ final class MethodPrefetchRelations {
             fact.set("coverage", compact);
         }
         if (fact.get("override_evidence") instanceof ObjectNode overrides) {
-            overrides.remove(List.of("selected_declarations", "limitations", "showing", "has_more"));
+            overrides.remove("selected_declarations");
         }
         fact.remove(List.of("reference_page_counts", "evidence_detail"));
     }
@@ -74,6 +77,26 @@ final class MethodPrefetchRelations {
         interceptors(db, fact, classId, name, descriptor);
         callees(db, root, fact, classId, name, descriptor);
         producer(db, fact, classId, name);
+        if (root != null && missingLambdaEvidence(db, classId, name, descriptor)) {
+            fact.put("lambda_evidence_gap", true);
+            var cls = db.symbols.findClassByName(owner).orElse(null);
+            if (cls != null) {
+                JsonNode source = new MethodContextQueries().get(db, cls, name + descriptor);
+                if (source.path("source_complete").asBoolean() && source.path("source").asText().length() <= 4000)
+                    fact.set("selected_method_source", source);
+                else fact.put("selected_method_source_status", source.path("status").asText("source_budget"));
+            }
+        }
+    }
+
+    private static boolean missingLambdaEvidence(ReadQueryContext db, int id, String name, String descriptor) {
+        return db.jdbi().withHandle(h -> h.createQuery("""
+                SELECT count(*) FROM method_calls mc
+                LEFT JOIN method_evidence me ON me.from_class_id = mc.to_class_id
+                  AND me.from_method = mc.to_method AND me.from_descriptor = mc.to_descriptor
+                WHERE mc.from_class_id = :id AND mc.from_method = :name AND mc.from_descriptor = :descriptor
+                  AND mc.to_method LIKE 'lambda$%' AND me.from_class_id IS NULL""")
+                .bind("id", id).bind("name", name).bind("descriptor", descriptor).mapTo(Integer.class).one()) > 0;
     }
 
     private static void annotations(ReadQueryContext db, ObjectNode fact, int classId, String name,
@@ -206,8 +229,12 @@ final class MethodPrefetchRelations {
             }
         }
         if (lines.isEmpty()) return;
-        if (lines.stream().anyMatch(line -> line.contains(".event.Event#fire")))
-            firedEventObservers(db, fact, classId, visited);
+        Set<String> dispatch = new LinkedHashSet<>();
+        for (String line : lines) {
+            if (line.contains(".event.Event#fireAsync")) dispatch.add("fireAsync");
+            else if (line.contains(".event.Event#fire")) dispatch.add("fire");
+        }
+        if (!dispatch.isEmpty()) firedEventObservers(db, fact, classId, visited, dispatch);
         ArrayNode values = fact.putArray("calls");
         lines.stream().limit(LIMIT).forEach(values::add);
         fact.put("calls_basis", "depth, callee, invocation; depth 2 = called by a depth-1 callee");
@@ -260,7 +287,8 @@ final class MethodPrefetchRelations {
      * The method fires an event: observers of each Event<T> field the walked methods of its class
      * read, or of every Event<T> its class injects when no such read is indexed.
      */
-    private static void firedEventObservers(ReadQueryContext db, ObjectNode fact, int classId, List<String[]> visited) {
+    private static void firedEventObservers(ReadQueryContext db, ObjectNode fact, int classId, List<String[]> visited,
+            Set<String> dispatch) {
         Set<String> read = new java.util.HashSet<>();
         for (String[] method : visited)
             read.addAll(db.jdbi().withHandle(handle -> handle.createQuery("""
@@ -270,20 +298,49 @@ final class MethodPrefetchRelations {
                     .bind("id", classId).bind("name", method[0]).bind("descriptor", method[1])
                     .mapTo(String.class).list()));
         List<Map<String, Object>> points = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT ip.field_name, ip.target_type FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
+                SELECT ip.field_name, ip.target_type, ip.qualifiers FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
                 WHERE ob.class_id = :id ORDER BY ip.id""").bind("id", classId).mapToMap().list())
                 .stream().filter(point -> ClassPrefetchRelations.argument(String.valueOf(point.get("target_type")),
                         List.of("jakarta.enterprise.event.Event", "javax.enterprise.event.Event")) != null).toList();
         List<Map<String, Object>> fired = points.stream().filter(point -> read.contains(String.valueOf(point.get("field_name")))).toList();
         boolean narrowed = !fired.isEmpty();
         ArrayNode observers = JSON.createArrayNode();
-        for (Map<String, Object> point : narrowed ? fired : points) {
+        List<Map<String, Object>> selected = narrowed ? fired : points;
+        ArrayNode events = JSON.createArrayNode();
+        for (Map<String, Object> point : selected) {
             String type = String.valueOf(point.get("target_type"));
             ClassPrefetchRelations.eventObservers(db, type).forEach(observer ->
                     observers.add(point.get("field_name") + " " + ClassPrefetchRelations.source(type) + " -> " + observer));
+            if (events.size() >= 3) continue;
+            String event = ClassPrefetchRelations.argument(type,
+                    List.of("jakarta.enterprise.event.Event", "javax.enterprise.event.Event"));
+            ObjectNode value = events.addObject().put("field", String.valueOf(point.get("field_name")))
+                    .put("event_type", event);
+            value.set("dispatch_methods", JSON.valueToTree(dispatch));
+            value.put("field_to_fire_binding_proven", false);
+            try {
+                ArrayNode qualifiers = (ArrayNode) JSON.readTree(String.valueOf(point.get("qualifiers")));
+                if (qualifiers.isEmpty()) qualifiers.add("@Default");
+                if (qualifiers.valueStream().noneMatch(q -> q.asText().equals("@Any")
+                        || q.asText().equals("@jakarta.enterprise.inject.Any") || q.asText().equals("@javax.enterprise.inject.Any")))
+                    qualifiers.add("@Any");
+                value.set("event_qualifiers", qualifiers);
+            } catch (Exception unreadable) { value.put("qualifier_evidence_status", "unreadable"); }
+            try {
+                JsonNode candidates = JSON.readTree(new EntryPointQueries().findEntryPoints(
+                        db, "observer", null, false, true, 10, 0, event));
+                for (String key : List.of("entry_points", "observer_selection", "showing", "total", "has_more", "truncated", "next_page_request"))
+                    if (candidates.has(key)) value.set(key, candidates.get(key));
+            } catch (Exception unreadable) { value.put("observer_evidence_status", "unreadable"); }
         }
-        if (observers.isEmpty()) return;
-        fact.set("observers_of_fired_events", observers);
+        if (events.isEmpty()) return;
+        fact.set("event_dispatches", events);
+        if (selected.size() > events.size()) fact.putObject("event_dispatches_truncated")
+                .put("shown", events.size()).put("total", selected.size());
+        fact.put("event_delivery_proven", false);
+        fact.put("answer_complete_scope", "Direct indexed method consumers/contracts only; event candidates do not prove qualifier eligibility, bean activation or delivery");
+        fact.put("event_delivery_semantics", "CDI contract: fire notifies synchronous @Observes; fireAsync notifies @ObservesAsync. Without an active transaction, transactional observers run immediately. With an active transaction, AFTER_SUCCESS runs only after successful completion, not rollback; if synchronization cannot be registered it is skipped. Other transaction phases retain their declared semantics. Runtime transaction state and observer activation are not observed.");
+        if (!observers.isEmpty()) fact.set("observers_of_fired_events", observers);
         fact.put("observers_basis", narrowed ? "Event fields this method or its walked callees read"
                 : "every Event field of the class; which one is fired is not indexed");
     }

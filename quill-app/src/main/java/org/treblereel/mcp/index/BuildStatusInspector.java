@@ -68,7 +68,9 @@ public final class BuildStatusInspector {
         Path root = projectRoot.toAbsolutePath().normalize();
         BuildSystem system = BuildSystem.detect(root);
         var discovery = ProjectLayout.discoverClassesDirs(root, false);
-        var compiled = CompiledOutputInspector.capture(root, discovery);
+        // Share content validation only within this observation; later observations re-read every input.
+        Map<Path, ObjectNode> observed = new java.util.HashMap<>();
+        var compiled = CompiledOutputInspector.capture(root, discovery, observed);
         var integration = BuildIntegrationInstaller.inspect(root);
         Map<Path, Long> times = new java.util.HashMap<>();
         for (Path output : discovery.classesDirectories()) {
@@ -76,10 +78,12 @@ public final class BuildStatusInspector {
             if (modified != null) times.put(output, modified);
         }
         Boolean fingerprintChanged = metadata.get("index_id") == null ? null
-                : ProjectUpdater.hasCompiledOutputChanges(root, metadata, discovery.classesDirectories());
+                : ProjectUpdater.hasCompiledOutputChanges(root, metadata,
+                        ProjectInitializer.independentOutputs(root, discovery.outputs()).stream()
+                                .map(ProjectLayout.CompiledOutput::directory).distinct().toList());
         ArrayNode settings = JSON.createArrayNode();
         discovery.moduleDirectories().stream().sorted().forEach(module ->
-                settings.addAll(JavaCompilerSettings.inspect(List.of(module), system)));
+                settings.addAll(JavaCompilerSettings.inspect(List.of(module), system, observed)));
         return new Observation(root, java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(metadata)), system, freshness, discovery, compiled,
                 integration, pendingEvents(root), Map.copyOf(times), fingerprintChanged,
                 BuildIntegrationCapabilities.inspect(root, system), settings);

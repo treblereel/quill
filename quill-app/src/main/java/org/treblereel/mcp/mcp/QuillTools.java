@@ -38,6 +38,8 @@ public final class QuillTools {
     private final ExternalSymbolQueries externalSymbols;
     private final WorkspaceToolQueries workspace;
 
+    java.util.concurrent.CompletableFuture<Void> awaitPrepared(String selector) { return registry.awaitPrepared(selector); }
+
     boolean workspaceMode() {
         return registry.workspaceScope() != null;
     }
@@ -187,7 +189,7 @@ public final class QuillTools {
     @Tool(readOnly = true, structured = true, description = "Find class usages from bytecode, DI, inheritance, annotations and ServiceLoader.")
     public String find_usages(
             @ToolArg(description = "Current class name (short or FQCN), or its source path") String target,
-            @ToolArg(description = "Usage kind; omit or use all for every supported kind") Optional<String> usage_kind,
+            @ToolArg(description = "Usage kind: injection (di), method_call, constructor_call, field_access, inheritance, annotation, service_loader, type_reference, callback_reference, method_handle_reference, field_handle_reference, bootstrap_reference; omit or all for every kind") Optional<String> usage_kind,
             @ToolArg(description = "Module path filter relative to the project root") Optional<String> module,
             @ToolArg(description = "Usage groups per page (default: 50, max: 200)") Optional<Integer> limit,
             @ToolArg(description = "Result offset for pagination (default: 0)") Optional<Integer> offset,
@@ -499,9 +501,11 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Find application and framework entry points with detection evidence.")
+    @Tool(readOnly = true, structured = true, description = "Find application/framework entry points, including CDI event observers with event types, qualifiers and transaction phases. For a specific event use kind=observer and event_type; summary is compact, full adds detection evidence.")
     public String find_entry_points(
             @ToolArg(description = "Kind: main, rest_resource, rest_endpoint, observer, scheduled, message_consumer, annotation_processor, service_provider, or all") Optional<String> kind,
+            @ToolArg(description = "For kind=observer: fired event FQCN; includes compatible supertypes and uncertain generic/hierarchy candidates") Optional<String> event_type,
+            @ToolArg(description = "summary (default): compact bounded rows; full: annotation/detection evidence", allowed = {"summary", "full"}) Optional<String> detail,
             @ToolArg(description = "Module path filter; omit for all modules") Optional<String> module,
             @ToolArg(description = "Include generated classes; default false") Optional<Boolean> include_generated,
             @ToolArg(description = "Include test classes; default false") Optional<Boolean> include_tests,
@@ -512,7 +516,7 @@ public final class QuillTools {
                 context, kind.orElse(null), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
                 clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE), event_type.orElse(null), detail.orElse("summary")));
     }
 
     @Tool(readOnly = true, structured = true, description = "Inspect direct project-module dependencies and transitive classpath visibility.")
@@ -631,15 +635,16 @@ public final class QuillTools {
     }
 
     @Tool(readOnly = true, structured = true,
-            description = "Inspect an external dependency class and its bytecode-indexed members.")
+            description = "Inspect dependency class members, annotations and defaults for library source/decompile evidence. detail=summary by default; source returns only locally available companion source evidence; full adds bounded bytecode calls, constants and source. Runtime activation is not proven.")
     public String get_external_symbol_details(
             @ToolArg(description = "External class short name or FQCN") String class_name,
-            @ToolArg(description = "Members per page; default 100, max 200") Optional<Integer> limit,
+            @ToolArg(description = "summary (default), full (bytecode and source), source (source excerpt only)", allowed = {"summary", "full", "source"}) Optional<String> detail,
+            @ToolArg(description = "Members per page; default 20, max 200") Optional<Integer> limit,
             @ToolArg(description = "Member page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> externalSymbols.details(
-                context, p.root(), class_name, clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+                context, p.root(), class_name, clamp(limit.orElse(20), 1, 200),
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE), detail.orElse("summary")));
     }
 
     @Tool(readOnly = true, structured = true, description = "Inspect package dependency coupling.")
@@ -761,7 +766,7 @@ public final class QuillTools {
                 clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
     }
 
-    @Tool(readOnly = true, structured = true, description = "Inspect bean injection resolution and candidates.")
+    @Tool(readOnly = true, structured = true, description = "Inspect dependencies injected INTO a bean and their resolution candidates. For consumers injecting a type/interface, use find_usages instead.")
     public String list_injection_points(
             @ToolArg(description = "Bean class name (short or FQCN)") String target,
             @ToolArg(description = "Project from get_overview; omit for all") Optional<String> project) {

@@ -217,6 +217,11 @@ public final class QuillToolQueries {
                 includeGenerated, includeTests, limit, offset);
     }
 
+    String findEntryPoints(ReadQueryContext reader, String kind, String module,
+            boolean includeGenerated, boolean includeTests, int limit, int offset, String eventType, String detail) {
+        return entryPoints.findEntryPoints(reader, kind, module, includeGenerated, includeTests, limit, offset, eventType, detail);
+    }
+
     String getModuleGraph(ReadQueryContext reader, String module, String direction,
             int depth, int limit, int offset) {
         return moduleGraph.getModuleGraph(reader, module, direction, depth, limit, offset);

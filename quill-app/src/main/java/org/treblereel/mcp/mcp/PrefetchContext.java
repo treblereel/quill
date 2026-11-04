@@ -109,7 +109,7 @@ public final class PrefetchContext {
             String hash=hashes.path(relative).asText();
             if(hash.isBlank() || !hash.equals(SourceFileHashes.hash(file))){unavailable.addObject().put("class",cls.className()).put("status","source_hash_unavailable_or_changed");continue;}
             ObjectNode fact=(ObjectNode)JSON.readTree(new SymbolToolQueries().getSymbolDetails(db,cls.className(),false,null,10,0));
-            ClassPrefetchRelations.append(db,fact,cls);NameTargetPrefetch.appendGenerated(db,fact,cls.className());
+            ClassPrefetchRelations.append(db,fact,cls);NameTargetPrefetch.appendGenerated(db,fact,cls.className(),root);
             fact.put("source_sha256",hash);facts.add(fact);
         }
         if(facts.isEmpty() && ambiguous.isEmpty() && unavailable.isEmpty() && previousEndpoint!=null)
@@ -146,6 +146,12 @@ public final class PrefetchContext {
     public static void boundContext(ObjectNode data){
         final int limit=10000;
         if(!(data.path("facts") instanceof ArrayNode facts))return;
+        // Direct evidence takes precedence over navigation and index diagnostics.
+        for(String field:List.of("class_occurrences","meta_annotations","dependency_metrics",
+                "external_dependencies","external_dependency_breakdown","test_classes","related_source_files")) {
+            if(size(data)<=limit)break;
+            for(JsonNode fact:facts)if(fact instanceof ObjectNode object)object.remove(field);
+        }
         // Long lists are cut in half, each cut stated beside the list, before whole facts go.
         while(size(data)>limit && trimLongestList(facts)) data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
         while(size(data)>limit && !facts.isEmpty()){
@@ -172,7 +178,7 @@ public final class PrefetchContext {
     private static void findLongestList(JsonNode node,ObjectNode[] owner,String[] field,int[] best){
         if(node instanceof ObjectNode object){
             object.properties().forEach(entry->{
-                if(entry.getValue() instanceof ArrayNode list && list.size()>=2){
+                if(!entry.getKey().equals("facts") && entry.getValue() instanceof ArrayNode list && list.size()>=2){
                     int bytes=size(list);
                     if(bytes>best[0]){best[0]=bytes;owner[0]=object;field[0]=entry.getKey();}
                 }

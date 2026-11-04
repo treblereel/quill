@@ -41,7 +41,21 @@ class NameTargetPrefetchTest {
                 fact.path("application_providers").valueStream().map(node -> node.asText()).toList());
         assertEquals(List.of("PRODUCER_METHOD dep.ClockProducer#clock @Singleton qualifiers [\"@Default\"] from dep:clock:1 (cdi)"),
                 fact.path("dependency_providers").valueStream().map(node -> node.asText()).toList());
+        assertEquals("get_external_symbol_details", fact.path("dependency_provider_evidence").get(0).path("inspect").path("tool").asText());
         assertNull(TestReads.read(db, reader -> NameTargetPrefetch.typeProviders(reader, "x.Nobody")));
+    }
+
+    @Test
+    void defaultProvidersPrecedeNamedProvidersInBoundedEvidence() throws Exception {
+        Jdbi db = index();
+        IndexFixture.writeExternalBeans(db, List.of(
+                new ExternalBeanRecord(1, "dep.ANamedProducer", "PRODUCER_METHOD", "@Singleton",
+                        List.of("@Named(custom)"), List.of(), false, false, null, List.of(), "named", List.of("x.Clock"), "cdi", "dep:clock:1", "/tmp/clock.jar", List.of()),
+                new ExternalBeanRecord(2, "dep.ClockProducer", "PRODUCER_METHOD", "@Singleton",
+                        List.of("@Default"), List.of(), false, false, null, List.of(), "clock", List.of("x.Clock"), "cdi", "dep:clock:1", "/tmp/clock.jar", List.of())));
+        var fact = TestReads.read(db, reader -> NameTargetPrefetch.typeProviders(reader, "x.Clock"));
+        assertEquals(true, fact.path("dependency_providers").get(0).asText().contains("dep.ClockProducer#clock"));
+        assertEquals("dep.ClockProducer", fact.path("dependency_provider_evidence").get(0).path("class").asText());
     }
 
     @Test
@@ -66,6 +80,52 @@ class NameTargetPrefetchTest {
         });
         assertEquals(List.of("target/quarkus-app/quarkus/generated-bytecode.jar!/x/rbac/Mapper_ClientProxy.class references dep.Creator"),
                 classFact.path("generated_classes").valueStream().map(node -> node.asText()).toList());
+    }
+
+    @Test
+    void generatedCreationIncludesDirectConstructorEvidence() throws Exception {
+        Jdbi db = index();
+        var writer = new org.objectweb.asm.ClassWriter(0);
+        writer.visit(61, 1, "x/rbac/Mapper_Bean", null, "java/lang/Object", null);
+        var method = writer.visitMethod(1, "doCreate", "()Lx/rbac/Mapper;", null, null);
+        method.visitCode();
+        for (int i = 0; i < 20; i++)
+            method.visitMethodInsn(184, "x/Helper", "prepare", "()V", false);
+        method.visitTypeInsn(187, "x/rbac/Mapper");
+        method.visitInsn(89);
+        method.visitMethodInsn(183, "x/rbac/Mapper", "<init>", "()V", false);
+        method.visitInsn(176);
+        method.visitMaxs(2, 1);
+        method.visitEnd();
+        writer.visitEnd();
+        var jar = root.resolve("generated.jar");
+        try (var output = new java.util.jar.JarOutputStream(java.nio.file.Files.newOutputStream(jar))) {
+            output.putNextEntry(new java.util.jar.JarEntry("x/rbac/Mapper_Bean.class"));
+            output.write(writer.toByteArray());
+            output.closeEntry();
+        }
+        db.useHandle(handle -> handle.execute("INSERT INTO metadata(key, value) VALUES ('quarkus_generated_classes', ?)",
+                "{\"classes\":[{\"class\":\"x.rbac.Mapper_Bean\",\"jar\":\"generated.jar\",\"source_class\":\"x.rbac.Mapper\"}]}"));
+        var fact = TestReads.read(db, reader -> {
+            var node = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+            NameTargetPrefetch.appendGenerated(reader, node, "x.rbac.Mapper", root);
+            return node;
+        });
+        assertEquals(1, fact.path("generated_creation_evidence").size());
+        assertEquals(true, fact.path("generated_creation_evidence").toString().contains("x.rbac.Mapper#<init>"));
+        var creation = fact.path("generated_creation_evidence").get(0).path("method_calls")
+                .path("doCreate()Lx/rbac/Mapper;");
+        assertEquals("x.rbac.Mapper#<init>()V", creation.asText());
+        for (int i = 0; i < 20; i++) fact.withArray("navigation").add("helper-" + i + "x".repeat(50));
+        var envelope = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        envelope.putArray("facts").add(fact);
+        int bytes = envelope.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        fact.put("other_evidence", "x".repeat(10100 - bytes));
+        PrefetchContext.boundContext(envelope);
+        assertEquals(true, envelope.path("context_truncated").asBoolean());
+        assertEquals(1, envelope.path("facts").size());
+        assertEquals("x.rbac.Mapper#<init>()V", creation.asText());
+        assertEquals(true, fact.path("navigation").size() < 20);
     }
 
     private Jdbi index() {

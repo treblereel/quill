@@ -33,7 +33,7 @@ final class ClassPrefetchRelations {
                 ORDER BY ip.id""").bind("id", cls.id()).mapToMap().list()), row -> injects(db, row));
         lines(fact, "injected_into", db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT DISTINCT oc.class_name AS owner, ob.member_name AS owner_member, ob.kind AS owner_kind, ip.kind,
-                       ip.field_name, ip.target_type, ip.resolution_status
+                       ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status
                 FROM injection_points ip
                 JOIN beans ob ON ob.id = ip.bean_id
                 JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
@@ -85,6 +85,38 @@ final class ClassPrefetchRelations {
                 .bind("declared", "%\"declaring_class\":\"" + cls.className() + "\"%")
                 .bind("declaredNested", "%\"declaring_class\":\"" + cls.className() + "$%")
                 .mapToMap().list()), ClassPrefetchRelations::configuration);
+        if ("INTERFACE".equals(cls.kind())) {
+            var callers = db.jdbi().withHandle(handle -> handle.createQuery("""
+                    SELECT caller.class_name, caller.source_file, group_concat(DISTINCT mc.to_method || mc.to_descriptor) AS methods
+                    FROM method_calls mc JOIN classes caller ON caller.id = mc.from_class_id
+                    JOIN classes callee ON callee.id = mc.to_class_id
+                    WHERE caller.lifecycle = 'current' AND caller.source_set = 'main'
+                      AND (callee.id = :id OR (callee.lifecycle = 'current' AND callee.interfaces LIKE :type
+                        AND EXISTS (SELECT 1 FROM class_members cm WHERE cm.class_id = :id
+                          AND cm.name = mc.to_method AND cm.descriptor = mc.to_descriptor
+                          AND COALESCE(cm.modifiers, '') NOT LIKE '%static%')))
+                    GROUP BY caller.class_name, caller.source_file
+                    ORDER BY caller.class_name, caller.source_file""")
+                    .bind("id", cls.id()).bind("type", "%\"" + cls.className() + "\"%")
+                    .mapToMap().list());
+            lines(fact, "contract_callers", callers, row -> row.get("class_name") + " " + row.get("source_file") + " calls " + row.get("methods"));
+            fact.put("contract_caller_classes", callers.size());
+            var beans = db.jdbi().withHandle(h -> h.createQuery("""
+                    SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers, b.profiles, b.priority
+                    FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                    WHERE c.lifecycle = 'current' AND b.bean_types LIKE :type
+                    ORDER BY c.class_name, b.member_name""")
+                    .bind("type", "%\"" + cls.className() + "\"%").mapToMap().list());
+            lines(fact, "contract_beans", beans, row -> row.get("class_name")
+                    + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))
+                    + " " + row.get("kind") + " " + row.get("scope") + " qualifiers " + row.get("qualifiers")
+                    + " profiles " + row.get("profiles") + " priority " + row.get("priority"));
+            fact.put("contract_application_producer_count", beans.stream()
+                    .filter(row -> String.valueOf(row.get("kind")).startsWith("PRODUCER_")).count());
+            fact.put("contract_beans_scope", "All matching declarations in current application index; profile eligibility, dependency producers and runtime extensions not established");
+
+            fact.put("contract_callers_scope", "Distinct current production classes calling this interface or matching instance methods on direct implementors, including self-calls; inherited implementors and runtime dispatch are not covered");
+        }
         ConfigMappingKeys.append(db, fact, cls);
         List<String> types = db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT ip.target_type FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
@@ -228,7 +260,7 @@ final class ClassPrefetchRelations {
     private static String injectedInto(Map<String, Object> row) {
         String owner = row.get("owner") + (row.get("owner_member") == null ? "" : "#" + row.get("owner_member"));
         return owner + "#" + row.get("field_name") + " (" + row.get("kind") + " " + source(row.get("target_type"))
-                + ") [" + row.get("resolution_status") + "]"
+                + ")" + qualifiers(row) + " [" + row.get("resolution_status") + "]"
                 + ("DECORATOR".equals(row.get("owner_kind")) ? " in a decorator: a delegate point resolves to the decorated bean" : "");
     }
 

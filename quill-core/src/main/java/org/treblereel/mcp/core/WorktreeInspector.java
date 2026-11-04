@@ -1,7 +1,6 @@
 package org.treblereel.mcp.core;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +21,8 @@ import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 
 /** Reads the live worktree state that is intentionally absent from commit history. */
 public final class WorktreeInspector {
+
+    private static final SourceContentCache.Store CONTENT_HASHES = new SourceContentCache.Store(1 << 18);
 
     private WorktreeInspector() {}
 
@@ -195,16 +196,15 @@ public final class WorktreeInspector {
     private static String fingerprint(Path repositoryRoot, List<Change> changes,Map<String,String> gitlinks) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            var volume = changes.isEmpty() ? new SourceContentCache.Volume(null, false) : SourceContentCache.volume(repositoryRoot);
             for (Change change : changes) {
                 update(digest, change.repositoryPath());
                 update(digest, change.status());
                 if(gitlinks.containsKey(change.repositoryPath()))update(digest,gitlinks.get(change.repositoryPath()));
                 Path file = repositoryRoot.resolve(change.repositoryPath()).normalize();
                 if (!file.startsWith(repositoryRoot) || !Files.isRegularFile(file)) continue;
-                try (InputStream input = Files.newInputStream(file)) {
-                    byte[] buffer = new byte[8192];
-                    int read;
-                    while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+                try {
+                    update(digest, SourceContentCache.hash(file, volume, SourceFileHashes::hash, CONTENT_HASHES));
                 } catch (IOException e) {
                     update(digest, "unreadable");
                 }

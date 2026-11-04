@@ -50,18 +50,40 @@ class McpStartupTest {
             assertFalse(read(responses, reads).path("result").path("tools").isEmpty());
             client.write("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"get_overview\",\"arguments\":{}}}\n");
             client.flush();
-            JsonNode pending = read(responses, reads).path("result").path("structuredContent");
-            assertEquals("refresh_pending", pending.path("status").asText(), pending.toString());
-            assertEquals("wait", pending.path("action").asText());
-            assertEquals("discovering_projects", pending.path("stage").asText());
-            assertTrue(pending.path("elapsed_ms").asLong() > 0, pending.toString());
-            assertFalse(pending.path("previous_generation_available").asBoolean());
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (registry.waitingRequests() == 0 && System.nanoTime() < deadline) Thread.sleep(10);
+            assertEquals(1, registry.waitingRequests(), "Overview waits without occupying the transport");
+            // Readiness probes race catalog requests during client startup.
+            var collected = reads.submit(() -> {
+                var ids = new java.util.HashSet<Integer>();
+                for (int i = 0; i < 200; i++) ids.add(JSON.readTree(responses.readLine()).path("id").asInt());
+                return ids;
+            });
+            for (int i = 0; i < 200; i++) {
+                String method = i % 2 == 0 ? "tools/list" : "tools/call";
+                String params = i % 2 == 0 ? "{}" : "{\"name\":\"search_tools\",\"arguments\":{\"query\":\"get_overview\",\"limit\":1}}";
+                client.write("{\"jsonrpc\":\"2.0\",\"id\":" + (100 + i)
+                        + ",\"method\":\"" + method + "\",\"params\":" + params + "}\n");
+                client.flush();
+            }
+            assertEquals(200, collected.get(15, TimeUnit.SECONDS).size(), "Every startup request needs a response");
+            client.write("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":3,\"reason\":\"test cancellation\"}}\n");
+            client.flush();
+            deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (registry.waitingRequests() != 0 && System.nanoTime() < deadline) Thread.sleep(10);
+            assertEquals(0, registry.waitingRequests(), "Wire cancellation removes the waiting request");
+            client.write("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"get_overview\",\"arguments\":{}}}\n");
+            client.flush();
+            deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (registry.waitingRequests() == 0 && System.nanoTime() < deadline) Thread.sleep(10);
+            assertEquals(1, registry.waitingRequests(), "Cancelling one request does not stop preparation");
             JsonNode build = JSON.readTree(new QuillTools(registry).get_build_status(java.util.Optional.empty(), java.util.Optional.empty(), java.util.Optional.empty(), java.util.Optional.empty(), java.util.Optional.empty(), java.util.Optional.empty()));
             assertEquals("refresh_pending", build.path("status").asText(), build.toString());
             client.close();
             server.join(Duration.ofSeconds(5));
             assertFalse(server.isAlive(), "Disconnect must cancel background startup");
             assertTrue(interrupted.await(2, TimeUnit.SECONDS));
+            assertEquals(0, registry.waitingRequests());
             assertNull(failure.get(), () -> String.valueOf(failure.get()));
             assertThrows(IllegalStateException.class, registry::prewarmAsync);
         } finally {

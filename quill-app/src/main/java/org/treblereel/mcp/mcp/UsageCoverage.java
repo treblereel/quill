@@ -95,6 +95,20 @@ final class UsageCoverage {
             return node!=null && node.isArray() && node.valueStream().allMatch(JsonNode::isTextual) ? node : null;
         } catch (Exception invalid) { return null; }
     }
+    static JsonNode buildFreshness(BuildStatusInspector.Observation observation) {
+        var report = observation.compiledSnapshot().inspect(null);
+        var result = JSON.createObjectNode().put("state", report.state().name().toLowerCase(Locale.ROOT))
+                .put("basis", "prepared_build_observation").put("bytecode_identity_proven", false);
+        result.set("stale_modules", JSON.valueToTree(report.staleModules()));
+        Instant indexed;
+        try { indexed = Instant.parse(observation.metadata().get("indexed_at")); }
+        catch (RuntimeException unavailable) { return result.put("state", "unknown"); }
+        boolean changed = observation.classTimes().values().stream().anyMatch(time -> time > indexed.toEpochMilli());
+        result.put("changed_after_index", changed && !Boolean.FALSE.equals(observation.fingerprintChanged()));
+        if (Boolean.FALSE.equals(observation.fingerprintChanged())) result.put("content_matches_index", true);
+        return result;
+    }
+
     static JsonNode buildFreshness(Map<String,String> metadata) {
         var result=JSON.createObjectNode().put("state","unknown").put("basis","observed_files_and_timestamps")
                 .put("bytecode_identity_proven",false);

@@ -69,13 +69,28 @@ final class EntryPointQueries {
 
     String findEntryPoints(ReadQueryContext reader, String kind, String module,
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
+        return findEntryPoints(reader, kind, module, includeGenerated, includeTests, limit, offset, null);
+    }
+
+    String findEntryPoints(ReadQueryContext reader, String kind, String module,
+            boolean includeGenerated, boolean includeTests, int limit, int offset, String eventType) {
+        return findEntryPoints(reader, kind, module, includeGenerated, includeTests, limit, offset, eventType, "summary");
+    }
+
+    String findEntryPoints(ReadQueryContext reader, String kind, String module,
+            boolean includeGenerated, boolean includeTests, int limit, int offset, String eventType, String detail) {
+        if (!Set.of("summary", "full").contains(detail)) return errorResponse("detail must be summary or full");
+        boolean summary = detail.equals("summary");
         String normalizedKind = normalizeKind(kind);
+        if (eventType != null && (!"observer".equals(normalizedKind) || eventType.isBlank()))
+            return errorResponse("event_type requires kind=observer and a nonblank event type");
         if (normalizedKind != null && !KINDS.contains(normalizedKind)) {
             return errorResponse("Invalid kind: expected main, rest_resource, rest_endpoint, "
                     + "observer, scheduled, message_consumer, annotation_processor, "
                     + "service_provider, or all");
         }
         List<ClassRecord> classes = reader.symbols.findAllClasses();
+        ObserverEventFilter eventFilter = eventType == null ? null : new ObserverEventFilter(eventType, classes);
         Map<String, ClassRecord> classesByName = new HashMap<>();
         for (ClassRecord cls : classes) {
             classesByName.put(cls.className(), cls);
@@ -116,10 +131,15 @@ final class EntryPointQueries {
 
         int unavailableProviders = addServiceProviders(
                 reader, entries, classesByName, module, includeGenerated, includeTests);
-        List<Candidate> result = entries.values().stream()
+        List<Candidate> scoped = entries.values().stream()
                 .filter(candidate -> normalizedKind == null
                         || normalizedKind.equals(candidate.kind()))
+                .toList();
+        List<Candidate> result = scoped.stream()
+                .filter(candidate -> eventFilter == null || eventFilter.match(observedType(candidate))
+                        != ObserverEventFilter.Match.INCOMPATIBLE)
                 .sorted(Comparator.comparing(Candidate::kind)
+                        .thenComparingInt(candidate -> eventFilter == null ? 0 : eventFilter.match(observedType(candidate)).ordinal())
                         .thenComparing(candidate -> candidate.owner().className())
                         .thenComparing(candidate -> candidate.member() == null
                                 ? "" : candidate.member().signature()))
@@ -135,6 +155,18 @@ final class EntryPointQueries {
         else root.put("module_filter", module);
         root.put("include_generated", includeGenerated);
         root.put("include_tests", includeTests);
+        root.put("detail", detail);
+        if (eventFilter != null) {
+            root.put("event_type_filter", eventType);
+            ObjectNode selection = root.putObject("observer_selection");
+            selection.put("scanned", scoped.size());
+            selection.put("type_compatible", result.stream().filter(candidate -> eventFilter.match(observedType(candidate))
+                    == ObserverEventFilter.Match.COMPATIBLE).count());
+            selection.put("uncertain", result.stream().filter(candidate -> eventFilter.match(observedType(candidate))
+                    == ObserverEventFilter.Match.UNKNOWN).count());
+            selection.set("unindexed_types", JSON.valueToTree(eventFilter.missingTypes()));
+            selection.put("scope", "Type candidates only; qualifiers, activation and runtime delivery are not resolved. Generic or incomplete hierarchy matches remain uncertain candidates.");
+        }
         root.put("unresolved_service_providers", unavailableProviders);
         Map<String, Long> counts = new LinkedHashMap<>();
         for (String supportedKind : KINDS.stream().sorted().toList()) {
@@ -145,10 +177,14 @@ final class EntryPointQueries {
         ArrayNode limitations = root.putArray("limitations");
         limitations.add("Only compiled signatures, indexed annotations, type hierarchy, and project-local META-INF/services descriptors are analyzed");
         limitations.add("XML, YAML, programmatic route registration, build extensions, reflection, and external deployment descriptors may define additional entry points");
-        limitations.add("annotation_values lists explicitly written members only; defaults declared by the annotation type are absent");
+        limitations.add("Annotation evidence contains indexed values; resolved defaults, when available, are marked by $defaults");
         limitations.add("Composed method annotations are reported only when their concrete annotation type is one of the supported framework entry-point annotations");
 
         ArrayNode values = root.putArray("entry_points");
+        if (normalizedKind == null || normalizedKind.equals("observer")) {
+            root.put("observer_semantics", "No observed qualifiers means any qualifiers are accepted; otherwise every observed qualifier must match. Non-qualifier parameter annotations are ignored. @Observes is synchronous; @ObservesAsync is asynchronous. Transaction phase does not prove actual delivery.");
+            if (summary) root.put("full_detail_available", true);
+        }
         Set<Integer> countedClasses = new HashSet<>();
         int naiveTokens = 0;
         for (Candidate candidate : page) {
@@ -169,6 +205,7 @@ final class EntryPointQueries {
             node.set("annotations", JSON.valueToTree(candidate.annotations()));
             if (candidate.detail() != null) node.set("service", candidate.detail());
             if (candidate.member() != null) appendAnnotationEvidence(node, candidate);
+            if (eventFilter != null) node.put("type_match", eventFilter.match(observedType(candidate)).name().toLowerCase(Locale.ROOT));
             if (cls.sourceFile() == null) node.putNull("source");
             else node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
             node.put("origin", cls.origin());
@@ -176,9 +213,30 @@ final class EntryPointQueries {
             else node.put("module", cls.module());
             if (cls.sourceSet() == null) node.putNull("source_set");
             else node.put("source_set", cls.sourceSet());
+            if (summary && candidate.kind().equals("observer")) {
+                node.remove(List.of("symbol_kind", "detection_rule", "confidence", "annotations", "annotation_values", "origin", "module"));
+                if (node.get("observer") instanceof ObjectNode observer) observer.remove("qualifier_rule");
+            }
+            if (summary && values.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 6000) {
+                values.remove(values.size() - 1);
+                root.put("entry_budget_bytes", 6000);
+                root.put("budget_limited", true);
+                break;
+            }
             if (countedClasses.add(cls.id())) naiveTokens += cls.sourceTokens();
         }
-        appendPage(root, page.size(), result.size(), limit, offset);
+        appendPage(root, values.size(), result.size(), limit, offset);
+        if (root.path("has_more").asBoolean()) {
+            ObjectNode next = root.putObject("next_page_request");
+            if (kind != null) next.put("kind", kind);
+            if (module != null) next.put("module", module);
+            if (eventType != null) next.put("event_type", eventType);
+            next.put("include_generated", includeGenerated);
+            next.put("include_tests", includeTests);
+            next.put("limit", limit);
+            next.put("offset", offset + values.size());
+            next.put("detail", values.isEmpty() ? "full" : detail);
+        }
         appendMeta(root, reader, naiveTokens);
         return root.toString();
     }
@@ -291,6 +349,12 @@ final class EntryPointQueries {
 
     private record EntryKey(int classId, String signature, String kind) {}
 
+    private static String observedType(Candidate candidate) {
+        return candidate.member().annotationDetails().stream()
+                .filter(detail -> OBSERVER_ANNOTATIONS.contains(detail.annotationName()) && detail.parameterIndex() != null)
+                .map(detail -> detail.parameterType()).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+    }
+
     /**
      * Route paths, schedules, topics and observer settings come from the indexed annotation
      * values. Observers also report the observed event type and qualifiers: an observer without
@@ -314,6 +378,11 @@ final class EntryPointQueries {
                             .map(detail -> detail.annotationName())
                             .filter(name -> !OBSERVER_ANNOTATIONS.contains(name)).distinct().sorted().toList();
                     observer.set("observed_parameter_annotations", JSON.valueToTree(parameterAnnotations));
+                    ObjectNode parameterValues = JSON.createObjectNode();
+                    details.stream().filter(detail -> observes.parameterIndex().equals(detail.parameterIndex()))
+                            .filter(detail -> !OBSERVER_ANNOTATIONS.contains(detail.annotationName()) && !detail.values().isEmpty())
+                            .forEach(detail -> parameterValues.set(detail.annotationName(), JSON.valueToTree(detail.values())));
+                    if (!parameterValues.isEmpty()) observer.set("parameter_annotation_values", parameterValues);
                     observer.put("during", String.valueOf(observes.values().getOrDefault("during", "IN_PROGRESS")));
                     observer.put("notify_observer", String.valueOf(
                             observes.values().getOrDefault("notifyObserver", "ALWAYS")));

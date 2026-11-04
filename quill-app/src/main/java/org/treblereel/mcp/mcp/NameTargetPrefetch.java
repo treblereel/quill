@@ -54,17 +54,22 @@ public final class NameTargetPrefetch {
     static ObjectNode typeProviders(ReadQueryContext db, String type) {
         String quoted = "%\"" + type + "\"%";
         List<Map<String, Object>> external = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT class_name, kind, member_name, scope, qualifiers, artifact, framework, profiles
-                FROM external_beans WHERE bean_types LIKE :type ORDER BY artifact, class_name, member_name""")
+                SELECT class_name, kind, member_name, scope, qualifiers, artifact, framework, profiles, jar_path
+                FROM external_beans WHERE bean_types LIKE :type
+                ORDER BY CASE WHEN EXISTS (SELECT 1 FROM json_each(external_beans.qualifiers) WHERE value = '@Default')
+                              THEN 0 ELSE 1 END, artifact, class_name, member_name""")
                 .bind("type", quoted).mapToMap().list());
         List<Map<String, Object>> application = db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers
                 FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
-                WHERE b.bean_types LIKE :type ORDER BY c.class_name, b.member_name""")
+                WHERE b.bean_types LIKE :type
+                ORDER BY CASE WHEN EXISTS (SELECT 1 FROM json_each(b.qualifiers) WHERE value = '@Default')
+                              THEN 0 ELSE 1 END, c.class_name, b.member_name""")
                 .bind("type", quoted).mapToMap().list());
         if (external.isEmpty() && application.isEmpty()) return null;
         ObjectNode fact = JSON.createObjectNode().put("kind", "bean_type_providers").put("bean_type", type)
-                .put("scope_note", "indexed bean declarations by type; eligibility and runtime selection not proven");
+                .put("scope_note", "indexed bean declarations by type, default-qualified first; eligibility and runtime selection not proven");
+        fact.put("application_provider_count", application.size());
         if (!application.isEmpty()) {
             ArrayNode values = fact.putArray("application_providers");
             application.stream().limit(LIMIT).forEach(row -> values.add(provider(row) + " " + row.get("scope")
@@ -77,6 +82,23 @@ public final class NameTargetPrefetch {
                     + " (" + row.get("framework") + ")"
                     + ("[]".equals(String.valueOf(row.get("profiles"))) ? "" : " profiles " + row.get("profiles"))));
         }
+        try {
+            var registered = registeredDependencyBeans(db);
+            ArrayNode evidence = fact.putArray("dependency_provider_evidence");
+            for (var row : external.stream().limit(4).toList()) {
+                String owner = String.valueOf(row.get("class_name"));
+                ObjectNode item = evidence.addObject().put("class", owner);
+                item.set("producer_bytecode", ExternalSymbolQueries.producerEvidence(
+                        java.nio.file.Path.of(String.valueOf(row.get("jar_path"))), owner,
+                        String.valueOf(row.get("member_name"))));
+                item.putObject("inspect").put("tool", "get_external_symbol_details")
+                        .putObject("arguments").put("class_name", owner);
+                if (registered != null) item.put("class_registered_in_generated_build", registered.contains(owner));
+                else item.put("registration_evidence", "generated_build_unavailable");
+                item.put("registration_scope", "indexed generated build classes; not runtime activation or method selection");
+            }
+            if (external.size() > 4) fact.put("dependency_provider_evidence_truncated", true);
+        } catch (Exception unavailable) { fact.put("registration_evidence", "unavailable"); }
         return fact;
     }
 
@@ -138,6 +160,10 @@ public final class NameTargetPrefetch {
 
     /** Generated classes recorded for {@code className}, one line each, onto a class fact. */
     static void appendGenerated(ReadQueryContext db, ObjectNode fact, String className) throws Exception {
+        appendGenerated(db, fact, className, null);
+    }
+
+    static void appendGenerated(ReadQueryContext db, ObjectNode fact, String className, java.nio.file.Path root) throws Exception {
         JsonNode generated = generated(db);
         if (generated == null) return;
         ArrayNode lines = JSON.createArrayNode();
@@ -145,6 +171,26 @@ public final class NameTargetPrefetch {
         for (JsonNode entry : generated.path("classes")) {
             if (!entry.path("source_class").asText().equals(className)) continue;
             jar = entry.path("jar").asText();
+            if (root != null && entry.path("class").asText().endsWith("_Bean")
+                    && fact.path("generated_creation_evidence").size() < 2) {
+                String generatedName = entry.path("class").asText();
+                var creation = ExternalSymbolQueries.producerEvidence(root.resolve(jar), generatedName, "doCreate");
+                if (creation.path("declarations").isEmpty())
+                    creation = ExternalSymbolQueries.producerEvidence(root.resolve(jar), generatedName, "create");
+                var resultCalls = JSON.createObjectNode();
+                creation.path("method_calls").properties().forEach(call -> {
+                    if (call.getValue().has("result_calls"))
+                        resultCalls.put(call.getKey(), call.getValue().path("result_calls").asText());
+                });
+                creation.remove("declarations");
+                creation.set("method_calls", resultCalls);
+                creation.put("scope", "Direct calls that construct or return the generated method result type; runtime execution not proven");
+                if (!resultCalls.isEmpty()) {
+                    creation.put("generated_class", generatedName);
+                    freshness(generated, jar, creation);
+                    fact.withArray("generated_creation_evidence").add(creation);
+                }
+            }
             List<String> references = new java.util.ArrayList<>();
             entry.path("references").forEach(reference -> {
                 if (!reference.asText().equals(className)) references.add(reference.asText());

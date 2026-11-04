@@ -99,6 +99,11 @@ final class ExternalSymbolQueries {
     }
 
     String details(ReadQueryContext reader, Path root, String className, int limit, int offset) {
+        return details(reader, root, className, limit, offset, "full");
+    }
+
+    String details(ReadQueryContext reader, Path root, String className, int limit, int offset, String detail) {
+        if (!java.util.Set.of("summary", "full", "source").contains(detail)) return error("detail must be summary, full or source");
         Catalog catalog = catalog(reader, root);
         List<ClassRef> refs = catalog.classes().stream()
                 .filter(candidate -> candidate.className().equals(className)
@@ -123,14 +128,18 @@ final class ExternalSymbolQueries {
         List<Member> members = new ArrayList<>();
         for (FieldInfo field : info.fields()) {
             members.add(new Member("field", field.name(), field.toString(),
-                    field.type().toString(), java.lang.reflect.Modifier.toString(field.flags())));
+                    field.type().toString(), java.lang.reflect.Modifier.toString(field.flags()),
+                    field.annotations().stream().map(a -> a.toString(false)).sorted().toList()));
         }
         for (MethodInfo method : info.methods()) {
             if (method.name().equals("<clinit>")) continue;
             members.add(new Member(method.name().equals("<init>") ? "constructor" : "method",
                     method.name().equals("<init>") ? simpleName(ref.className()) : method.name(),
                     method.toString(), method.returnType().toString(),
-                    java.lang.reflect.Modifier.toString(method.flags())));
+                    java.lang.reflect.Modifier.toString(method.flags()),
+                    method.annotations().stream().filter(a -> a.target() != null
+                            && a.target().kind() == org.jboss.jandex.AnnotationTarget.Kind.METHOD)
+                            .map(a -> a.toString(false)).sorted().toList()));
         }
         members.sort(Comparator.comparing(Member::kind).thenComparing(Member::name)
                 .thenComparing(Member::signature));
@@ -139,6 +148,9 @@ final class ExternalSymbolQueries {
         ObjectNode result = JSON.createObjectNode();
         result.put("class_name", ref.className());
         result.put("kind", classKind(info));
+        result.set("annotations", JSON.valueToTree(info.declaredAnnotations().stream()
+                .map(a -> a.toString(false)).sorted().toList()));
+        result.put("runtime_resolution_proven", false);
         if (info.superName() != null) result.put("superclass", info.superName().toString());
         ArrayNode interfaces = result.putArray("interfaces");
         info.interfaceNames().forEach(name -> interfaces.add(name.toString()));
@@ -148,7 +160,15 @@ final class ExternalSymbolQueries {
         refs.forEach(candidate -> occurrences.addObject()
                 .put("artifact", candidate.artifact()).put("jar", candidate.jar().toString()));
         result.put("version_count", refs.size());
-        result.put("source_available", false);
+        result.put("detail", detail);
+        appendSource(ref, result, !detail.equals("summary"));
+        if (detail.equals("source")) return result.toString();
+        if (detail.equals("full")) {
+            result.set("bytecode_method_calls", methodCalls(ref));
+            result.put("bytecode_method_calls_scope", "At most 40 invocation instructions and 12 string constants per method, 200 invocations and 60 constants per class; omitted invokedynamic bodies, reflection and runtime dispatch are not inferred");
+        } else {
+            result.putObject("bytecode_request").put("class_name", ref.className()).put("detail", "full");
+        }
         result.put("source", "resolved_dependency_bytecode");
         result.put("total_members", members.size());
         result.put("showing", to - from);
@@ -162,11 +182,44 @@ final class ExternalSymbolQueries {
             item.put("signature", member.signature());
             item.put("type", member.type());
             item.put("modifiers", member.modifiers());
+            item.set("annotations", JSON.valueToTree(member.annotations()));
+            if (info.isAnnotation()) info.methods().stream()
+                    .filter(method -> method.name().equals(member.name()) && method.defaultValue() != null)
+                    .findFirst().ifPresent(method -> item.put("annotation_default", method.defaultValue().toString()));
         });
         result.putArray("limitations")
-                .add("Dependency source JARs are not indexed; declaration source lines are unavailable")
+                .add("Declaration annotations are bytecode evidence; method bodies, build-time registration and runtime activation are not established")
+                .add("Companion source JARs are read only for this class when locally available; excerpts are bounded to 12000 bytes")
                 .add("Class-name catalog is cached; bytecode details are read only for the selected class");
         return result.toString();
+    }
+
+    private static void appendSource(ClassRef ref, ObjectNode result, boolean includeText) {
+        result.put("source_available", false);
+        String filename = ref.jar().getFileName().toString();
+        Path sources = ref.jar().resolveSibling(filename.substring(0, filename.length() - 4) + "-sources.jar");
+        if (!Files.isRegularFile(sources)) return;
+        String entryName = ref.className().split("\\$", 2)[0].replace('.', '/') + ".java";
+        try (JarFile jar = new JarFile(sources.toFile())) {
+            JarEntry entry = jar.getJarEntry(entryName);
+            if (entry == null) return;
+            result.put("source_available", true);
+            if (!includeText) {
+                result.putObject("source_request").put("class_name", ref.className()).put("detail", "source");
+                return;
+            }
+            try (InputStream input = jar.getInputStream(entry)) {
+                byte[] bytes = input.readNBytes(12001);
+                result.put("source_available", true);
+                ObjectNode source = result.putObject("source_excerpt");
+                source.put("artifact", sources + "!/" + entryName);
+                source.put("text", new String(bytes, 0, Math.min(bytes.length, 12000), java.nio.charset.StandardCharsets.UTF_8));
+                source.put("truncated", bytes.length > 12000);
+                source.put("scope", "Companion source artifact; not proof that source matches compiled bytecode");
+            }
+        } catch (IOException | RuntimeException unavailable) {
+            result.put("source_status", "unreadable");
+        }
     }
 
     private static String searchMembers(Catalog catalog, List<ClassRef> candidates,
@@ -280,6 +333,74 @@ final class ExternalSymbolQueries {
         }
     }
 
+    static ObjectNode producerEvidence(Path jar, String owner, String member) {
+        var ref = new ClassRef(owner, jar, owner.replace('.', '/') + ".class", "");
+        ObjectNode evidence = JSON.createObjectNode();
+        ClassInfo info = readClass(ref);
+        if (info == null) return evidence.put("status", "unavailable");
+        ArrayNode declarations = evidence.putArray("declarations");
+        for (MethodInfo method : info.methods()) {
+            if (!method.name().equals(member)) continue;
+            var declaration = declarations.addObject().put("signature", method.toString());
+            declaration.set("annotations", JSON.valueToTree(method.annotations().stream()
+                    .filter(a -> a.target() != null && a.target().kind() == org.jboss.jandex.AnnotationTarget.Kind.METHOD)
+                    .map(a -> a.toString(false)).sorted().toList()));
+        }
+        ObjectNode calls = evidence.putObject("method_calls");
+        methodCalls(ref, member).properties().stream()
+                .forEach(e -> calls.set(e.getKey(), e.getValue()));
+        evidence.put("scope", "Selected producer declarations and direct invocation instructions; runtime activation not proven");
+        return evidence;
+    }
+
+    private static ObjectNode methodCalls(ClassRef ref) {
+        return methodCalls(ref, null);
+    }
+
+    private static ObjectNode methodCalls(ClassRef ref, String selectedMember) {
+        ObjectNode methods = JSON.createObjectNode();
+        try (JarFile jar = new JarFile(ref.jar().toFile());
+                InputStream input = jar.getInputStream(jar.getJarEntry(ref.entry()))) {
+            new org.objectweb.asm.ClassReader(input).accept(new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                int total;
+                int totalConstants;
+                @Override public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    if (selectedMember != null && !name.equals(selectedMember)) return null;
+                    return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                        int count;
+                        int literalCount;
+                        int resultCallCount;
+                        @Override public void visitLdcInsn(Object value) {
+                            if (!(value instanceof String text) || text.length() > 200) return;
+                            if (totalConstants++ >= 60) { methods.put("constants_truncated", true); return; }
+                            ObjectNode evidence = methods.withObject(name + descriptor);
+                            if (literalCount++ < 12) evidence.withArray("string_constants").add(text);
+                            else evidence.put("constants_truncated", true);
+                        }
+                        @Override public void visitMethodInsn(int opcode, String owner, String member, String desc, boolean itf) {
+                            if (total++ >= 200) { methods.put("truncated", true); return; }
+                            ObjectNode evidence = methods.withObject(name + descriptor);
+                            String resultType = org.objectweb.asm.Type.getReturnType(descriptor).getDescriptor();
+                            boolean constructsResult = member.equals("<init>") && resultType.equals("L" + owner + ";");
+                            boolean returnsResult = !resultType.equals("V") && resultType.equals(org.objectweb.asm.Type.getReturnType(desc).getDescriptor());
+                            if ((constructsResult || returnsResult) && resultCallCount++ < 4) {
+                                String call = owner.replace('/', '.') + "#" + member + desc;
+                                String previous = evidence.path("result_calls").asText();
+                                evidence.put("result_calls", previous.isEmpty() ? call : previous + "; " + call);
+                            }
+                            ArrayNode calls = evidence.withArray("calls");
+                            if (count++ < 40) calls.add(owner.replace('/', '.') + "#" + member + desc);
+                            else evidence.put("truncated", true);
+                        }
+                    };
+                }
+            }, org.objectweb.asm.ClassReader.SKIP_DEBUG | org.objectweb.asm.ClassReader.SKIP_FRAMES);
+        } catch (IOException | RuntimeException unavailable) {
+            methods.removeAll(); methods.put("status", "unavailable");
+        }
+        return methods;
+    }
+
     private static ClassInfo readClass(ClassRef ref) {
         try (JarFile jar = new JarFile(ref.jar().toFile())) {
             JarEntry entry = jar.getJarEntry(ref.entry());
@@ -338,7 +459,11 @@ final class ExternalSymbolQueries {
         }
     }
     private record Member(String kind, String name, String signature,
-            String type, String modifiers) {}
+            String type, String modifiers, List<String> annotations) {
+        Member(String kind, String name, String signature, String type, String modifiers) {
+            this(kind, name, signature, type, modifiers, List.of());
+        }
+    }
     private record ExternalMember(ClassRef ref, Member member) {}
 
     private enum MatchMode {

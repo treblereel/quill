@@ -118,12 +118,17 @@ public final class CompiledOutputInspector {
     }
 
     public static Snapshot capture(Path root, ProjectLayout.ClassesDiscovery discovery) {
+        return capture(root, discovery, new java.util.HashMap<>());
+    }
+
+    static Snapshot capture(Path root, ProjectLayout.ClassesDiscovery discovery,
+            Map<Path, com.fasterxml.jackson.databind.node.ObjectNode> observed) {
         var outputs = discovery.outputs().stream().filter(output -> output.sourceSet().equals("main"))
                 .collect(java.util.stream.Collectors.groupingBy(ProjectLayout.CompiledOutput::moduleDirectory));
         Map<String, Module> modules = new LinkedHashMap<>();
         for (Path module : discovery.moduleDirectories()) {
             var compiled = outputs.getOrDefault(module, List.of());
-            var evidence = compilation(module, "main", compiled.stream().map(ProjectLayout.CompiledOutput::directory).toList());
+            var evidence = compilation(module, "main", compiled.stream().map(ProjectLayout.CompiledOutput::directory).toList(), observed);
             modules.put(moduleName(root, module), new Module(newestMainContent(module), newestModuleBuildInput(module),
                     compiled.stream().mapToLong(output -> newestModified(output.directory(), false)).max().orElse(0),
                     !compiled.isEmpty(), evidence, !compiled.isEmpty() || evidence != null || !resourceOnlyMain(module)));
@@ -136,7 +141,7 @@ public final class CompiledOutputInspector {
             for (String set : sets) {
                 var evidence = set.equals("main") ? modules.get(moduleName(root, module)).compilation() : compilation(module, set, discovery.outputs().stream()
                         .filter(output -> output.moduleDirectory().equals(module) && output.sourceSet().equals(set))
-                        .map(ProjectLayout.CompiledOutput::directory).toList());
+                        .map(ProjectLayout.CompiledOutput::directory).toList(), observed);
                 if (evidence != null) {
                     var item = (com.fasterxml.jackson.databind.node.ObjectNode) evidence.deepCopy();
                     item.put("module", moduleName(root, module)).put("source_set", set); sourceSets.add(item);
@@ -149,13 +154,18 @@ public final class CompiledOutputInspector {
     static com.fasterxml.jackson.databind.JsonNode compilation(Path module, String sourceSet) { return compilation(module, sourceSet, null); }
 
     static com.fasterxml.jackson.databind.JsonNode compilation(Path module, String sourceSet, List<Path> expectedOutputs) {
+        return compilation(module, sourceSet, expectedOutputs, new java.util.HashMap<>());
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode compilation(Path module, String sourceSet, List<Path> expectedOutputs,
+            Map<Path, com.fasterxml.jackson.databind.node.ObjectNode> observed) {
         var json = new com.fasterxml.jackson.databind.ObjectMapper();
         var captures = new java.util.LinkedHashMap<String, com.fasterxml.jackson.databind.JsonNode>();
         com.fasterxml.jackson.databind.JsonNode invalid = null;
         for (String directory : Files.isRegularFile(module.resolve("pom.xml")) ? List.of("target") : List.of("build")) for (String language : List.of("java", "kotlin")) {
             Path file = module.resolve(directory + "/quill-" + language + "-" + sourceSet + ".properties");
             if (!Files.isRegularFile(file)) continue;
-            var data = JavaCompilerSettings.read(module, sourceSet, file);
+            var data = observed.computeIfAbsent(file, path -> JavaCompilerSettings.read(module, sourceSet, path));
             var evidence = data.get("compilation");
             if (evidence != null) {
                 Path capturedOutput = Path.of(evidence.path("output").asText());

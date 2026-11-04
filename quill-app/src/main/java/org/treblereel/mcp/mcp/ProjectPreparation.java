@@ -37,6 +37,43 @@ final class ProjectPreparation implements AutoCloseable {
 
     CompletableFuture<Void> initialPreparation() { return initial; }
 
+    private record Waiter(String selector, CompletableFuture<Void> completion) {}
+    private final Set<Waiter> waiters = ConcurrentHashMap.newKeySet();
+
+    CompletableFuture<Void> awaitReady(String selector) {
+        var completion = new CompletableFuture<Void>();
+        var waiter = new Waiter(selector, completion);
+        waiters.add(waiter);
+        completion.whenComplete((ignored, failure) -> waiters.remove(waiter));
+        signalWaiters();
+        return completion;
+    }
+
+    int waitingRequests() { return waiters.size(); }
+
+    private void signalWaiters() {
+        for (var waiter : waiters) {
+            if (!pending(waiter.selector()) && waiters.remove(waiter)) waiter.completion().complete(null);
+        }
+    }
+
+    private boolean pending(String selector) {
+        if (closed || startupFailure != null) return false;
+        var snapshot = projects;
+        if (snapshot == null) return true;
+        for (var project : select(snapshot, selector)) {
+            var state = states.get(project.root());
+            if (state == null) continue;
+            synchronized (state) {
+                if (state.stopped) continue;
+                if (state.ready == null || state.preparedRevision != state.revision.get()
+                        || state.ready.issues().stream().anyMatch(issue -> issue.code().equals("refresh_pending"))) return true;
+            }
+        }
+        return false;
+    }
+
+
     void startAsync() {
         workers.execute(() -> {
             try {
@@ -48,7 +85,7 @@ final class ProjectPreparation implements AutoCloseable {
             } catch (Throwable failure) {
                 startupFailure = ProjectRegistry.safeMessage(failure);
                 initial.completeExceptionally(failure);
-            }
+            } finally { signalWaiters(); }
         });
     }
 
@@ -369,6 +406,7 @@ final class ProjectPreparation implements AutoCloseable {
                     completion.completeExceptionally(failure);
                 } finally {
                     synchronized (this) { preparing = null; notifyAll(); }
+                    signalWaiters();
                 }
             });
         }
@@ -546,11 +584,7 @@ final class ProjectPreparation implements AutoCloseable {
                 stage = "checking_build_inputs";
                 var build = BuildStatusInspector.capture(entry.root(), metadata, freshness);
                 stage = "checking_compiled_outputs";
-                var compiled = UsageCoverage.buildFreshness(metadata);
-                // Rebuilt classes with the indexed content are newer by timestamp only.
-                boolean rebuiltUnchanged = Boolean.FALSE.equals(build.fingerprintChanged()) && compiled.path("changed_after_index").asBoolean();
-                if (rebuiltUnchanged) ((com.fasterxml.jackson.databind.node.ObjectNode) compiled)
-                        .put("changed_after_index", false).put("content_matches_index", true);
+                var compiled = UsageCoverage.buildFreshness(build);
                 if (Boolean.TRUE.equals(build.fingerprintChanged()) || compiled.path("changed_after_index").asBoolean()
                         || compiled.path("state").asText().equals("unknown")) {
                     var reasons = new ArrayList<>(freshness.staleReasons()); reasons.add("compiled_snapshot_changed");
@@ -620,6 +654,7 @@ final class ProjectPreparation implements AutoCloseable {
 
     @Override public void close() {
         closed = true;
+        signalWaiters();
         initial.cancel(true);
         timer.shutdownNow();
         workers.shutdownNow();

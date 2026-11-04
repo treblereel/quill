@@ -194,7 +194,8 @@ final class UsageToolQueries {
         if (usageKind == null || usageKind.isBlank() || "all".equalsIgnoreCase(usageKind)) {
             return null;
         }
-        return usageKind.trim().toLowerCase(java.util.Locale.ROOT);
+        String normalized = usageKind.trim().toLowerCase(java.util.Locale.ROOT);
+        return "di".equals(normalized) ? "injection" : normalized;
     }
 
     private static boolean matchesModule(ClassRecord caller,

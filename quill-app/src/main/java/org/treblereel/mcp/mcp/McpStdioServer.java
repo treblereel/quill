@@ -47,7 +47,6 @@ public final class McpStdioServer {
         CountDownLatch eof = new CountDownLatch(1);
         InputStream serverInput = new EofAwareInputStream(input, eof);
         var mapper = new JacksonMcpJsonMapper(new ObjectMapper());
-        var transport = new StdioServerTransportProvider(mapper, serverInput, output);
         Scheduler toolScheduler = Schedulers.newBoundedElastic(
                 positiveEnvironmentValue("QUILL_MCP_MAX_CONCURRENCY",
                         DEFAULT_MAX_CONCURRENT_REQUESTS),
@@ -55,6 +54,24 @@ public final class McpStdioServer {
                         DEFAULT_MAX_QUEUED_REQUESTS_PER_WORKER),
                 "quill-mcp");
         Scheduler responseScheduler = Schedulers.newSingle("quill-mcp-response");
+        var transport = new StdioServerTransportProvider(mapper, serverInput, output) {
+            @Override public void setSessionFactory(io.modelcontextprotocol.spec.McpServerSession.Factory factory) {
+                super.setSessionFactory(delegate -> {
+                    var serialized = new io.modelcontextprotocol.spec.McpServerTransport() {
+                    @Override public reactor.core.publisher.Mono<Void> sendMessage(io.modelcontextprotocol.spec.McpSchema.JSONRPCMessage message) {
+                        // Catalog, handshake and tool responses share the SDK's single-producer sink.
+                        return reactor.core.publisher.Mono.defer(() -> delegate.sendMessage(message)).subscribeOn(responseScheduler);
+                    }
+                    @Override public <T> T unmarshalFrom(Object data, io.modelcontextprotocol.json.TypeRef<T> type) {
+                        return delegate.unmarshalFrom(data, type);
+                    }
+                    @Override public reactor.core.publisher.Mono<Void> closeGracefully() { return delegate.closeGracefully(); }
+                    @Override public void close() { delegate.close(); }
+                    };
+                    return new CancellableMcpSession(factory.create(serialized), serialized, requestTimeout);
+                });
+            }
+        };
         var specifications = McpToolCatalog.create(
                 tools, toolType, toolScheduler, responseScheduler, requestTimeout, profile);
 
@@ -111,7 +128,7 @@ public final class McpStdioServer {
 
     static String serverInstructions(McpToolProfile profile, Boolean workspaceMode) {
         String instructions = "Quill supplies read-only code intelligence for indexed JVM projects. "
-                + "Discover tools by exact name or task on demand, not the entire catalog. Known targets can be queried directly; get_overview is optional orientation or index/build status. ";
+                + "Known targets can be queried directly; discover exact tools on demand and print only selected schemas. ";
         instructions += workspaceMode == null
                 ? "For get_overview, use view=compact only if launch arguments confirm --workspace; otherwise omit arguments. "
                 : workspaceMode
@@ -129,10 +146,9 @@ public final class McpStdioServer {
         if (profile.router()) {
             if (!profile.tools().isEmpty()) {
                 return instructions + " Call available queries directly. For other operations, "
-                        + "discover their arguments with search_tools, then execute_tool.";
+                        + "obtain arguments through catalog discovery, then execute_tool.";
             }
-            return instructions + " This profile exposes get_overview, search_tools and execute_tool; "
-                    + "discover change_session and other queries with search_tools, then execute_tool.";
+            return instructions + " Obtain query schemas through catalog discovery, then execute_tool.";
         }
         return instructions + " If a query is not in this profile, use the available specialized tools.";
     }

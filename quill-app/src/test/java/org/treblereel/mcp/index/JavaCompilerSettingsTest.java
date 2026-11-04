@@ -37,6 +37,21 @@ class JavaCompilerSettingsTest {
         assertEquals("stale", JavaCompilerSettings.read(root, "main", file).path("status").asText());
         Files.delete(pom); assertEquals("stale", JavaCompilerSettings.read(root, "main", file).path("status").asText());
     }
+    @Test void reusesValidationOnlyWithinOneObservation() throws Exception {
+        Path capture = save(values());
+        var observed = new HashMap<Path, com.fasterxml.jackson.databind.node.ObjectNode>();
+        var first = JavaCompilerSettings.inspect(List.of(root), BuildSystem.MAVEN, observed);
+        var again = JavaCompilerSettings.inspect(List.of(root), BuildSystem.MAVEN, observed);
+        assertSame(first.get(0), again.get(0));
+        assertSame(observed.get(capture), again.get(0));
+        Path pom = root.resolve("pom.xml");
+        var time = Files.getLastModifiedTime(pom);
+        Files.writeString(pom, "bbbb");
+        Files.setLastModifiedTime(pom, time);
+        var next = JavaCompilerSettings.inspect(List.of(root), BuildSystem.MAVEN);
+        assertEquals("stale", next.get(0).path("status").asText());
+        assertEquals("captured", first.get(0).path("status").asText());
+    }
     @Test void distinguishesConfiguredTaskAndCapturesCustomSourceSet() throws Exception {
         var values = values(); values.setProperty("evidence", "configured_task"); values.setProperty("sourceSet", "integrationTest");
         Path file = root.resolve("build/quill-java-integrationTest.properties"); Files.createDirectories(file.getParent());

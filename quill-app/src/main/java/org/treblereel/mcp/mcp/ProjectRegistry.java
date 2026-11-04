@@ -550,6 +550,13 @@ public class ProjectRegistry implements AutoCloseable {
                 .forEach(org.treblereel.mcp.index.MavenExtensionUpdater::upgrade);
     }
 
+    CompletableFuture<Void> awaitPrepared(String selector) {
+        var active = preparation;
+        return active == null ? CompletableFuture.completedFuture(null) : active.awaitReady(selector);
+    }
+
+    int waitingRequests() { return preparation == null ? 0 : preparation.waitingRequests(); }
+
     public void prewarm() {
         prewarmAsync().join();
     }

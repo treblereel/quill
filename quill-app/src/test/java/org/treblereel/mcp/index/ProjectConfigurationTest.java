@@ -31,7 +31,6 @@ class ProjectConfigurationTest {
         assertTrue(installed.contains("`retry_with`"));
         assertTrue(installed.contains("`structuredContent`"));
         assertTrue(installed.contains("call `change_session` before editing"));
-        assertTrue(installed.contains("is not a request to change it"));
         assertTrue(installed.contains("`directive.primary_action`"));
         assertTrue(installed.contains("`phase_gate`"));
         assertTrue(installed.contains("`review_checklist`"));
@@ -79,7 +78,6 @@ class ProjectConfigurationTest {
 
         String installed = Files.readString(agents);
         assertTrue(installed.contains("before editing source or choosing"));
-        assertTrue(installed.contains("is not a request to change it"));
         assertTrue(installed.contains("Tool discovery is not MCP resource discovery"));
         assertTrue(installed.startsWith("# User instructions\n"));
         assertTrue(installed.contains("`mcp__quill__get_overview`"));

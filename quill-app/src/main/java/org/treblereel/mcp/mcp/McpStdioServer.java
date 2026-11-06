@@ -138,8 +138,7 @@ public final class McpStdioServer {
         if (profile.router() || profile.includes("change_session")) {
             instructions += "For a code change, query change_session "
                 + "before editing or choosing a build, then follow directive.primary_action and "
-                + "phase_gate; refresh after edits and external compilation. "
-                + "A question about how to change code stays read-only unless the user asked to apply it. ";
+                + "phase_gate; refresh after edits and external compilation. ";
         }
         instructions += "Quill never runs builds "
                 + "or tests. Use source reads for known files and stale/unsupported evidence. "

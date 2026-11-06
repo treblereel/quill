@@ -43,8 +43,6 @@ public final class ProjectConfiguration {
 
             For a code change, call `change_session` before editing source or choosing a build.
             This is the required first workflow step, not a suggestion to wait for a user reminder.
-            A question about how to change code is not a request to change it: answer with the plan
-            and leave files unchanged unless the user asked you to apply it.
             The call returns one stateless snapshot of the plan,
             verification evidence, and ordered next actions; repeat it with the same targets and
             change description to refresh the snapshot, or omit targets after editing to infer them
@@ -107,8 +105,6 @@ public final class ProjectConfiguration {
 
             For a code change, call `mcp__quill__change_session` before editing source or choosing
             a build. This is the required first workflow step; do not wait for a user reminder.
-            A question about how to change code is not a request to change it: answer with the plan
-            and leave files unchanged unless the user asked you to apply it.
             The call returns one stateless snapshot of the
             plan, verification evidence, and ordered next actions; repeat it with the same targets
             and change description to refresh the snapshot, or omit targets after editing to infer

@@ -17,7 +17,7 @@ final class JavaSemanticQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final JavaWorkerClient WORKER = new JavaWorkerClient();
     private static KotlinWarmupCoordinator coordinator;
-    static { Runtime.getRuntime().addShutdownHook(new Thread(JavaSemanticQueries::close, "quill-java-shutdown")); }
+    static { org.treblereel.mcp.diagnostics.ShutdownHooks.add(JavaSemanticQueries::close, "quill-java-shutdown"); }
     private static synchronized KotlinWarmupCoordinator coordinator() {
         if (coordinator == null) coordinator = new KotlinWarmupCoordinator(JavaSemanticQueries::queryWorker, Duration.ofMillis(150));
         return coordinator;

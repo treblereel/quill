@@ -16,7 +16,7 @@ final class KotlinSemanticQueries {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static KotlinWarmupCoordinator warmup;
     static {
-        Runtime.getRuntime().addShutdownHook(new Thread(KotlinSemanticQueries::closeWarmup, "quill-k2-watch-shutdown"));
+        org.treblereel.mcp.diagnostics.ShutdownHooks.add(KotlinSemanticQueries::closeWarmup, "quill-k2-watch-shutdown");
     }
     private static synchronized KotlinWarmupCoordinator warmup() {
         if (warmup == null) warmup = new KotlinWarmupCoordinator(

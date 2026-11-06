@@ -22,7 +22,7 @@ public final class KotlinWorkerClient implements AutoCloseable {
     private static final KotlinWorkerClient SHARED = new KotlinWorkerClient(
             new RuntimeProvider(KotlinRuntime::workerCommand, KotlinRuntime::workerIdentity), Duration.ofSeconds(30));
     static {
-        Runtime.getRuntime().addShutdownHook(new Thread(SHARED::close, "quill-k2-shutdown"));
+        org.treblereel.mcp.diagnostics.ShutdownHooks.add(SHARED::close, "quill-k2-shutdown");
     }
     @FunctionalInterface interface Command { List<String> get() throws IOException; }
     @FunctionalInterface interface Identity { String get() throws IOException; }

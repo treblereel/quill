@@ -1,0 +1,34 @@
+{
+  "sse": {
+    "requests": 1,
+    "native_trace_inferences": 1,
+    "cli_usage": {
+      "input_tokens": 20,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 2,
+      "reasoning_output_tokens": 0
+    },
+    "synthetic_wire_input_tokens": 20,
+    "transport_preserved": true,
+    "all_request_payloads_byte_identical": true,
+    "auth_delivered_to_upstream_but_not_persisted": true,
+    "external_provider_calls": 0
+  },
+  "ws": {
+    "requests": 2,
+    "native_trace_inferences": 1,
+    "cli_usage": {
+      "input_tokens": 20,
+      "cached_input_tokens": 0,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 2,
+      "reasoning_output_tokens": 0
+    },
+    "synthetic_wire_input_tokens": 40,
+    "transport_preserved": true,
+    "all_request_payloads_byte_identical": true,
+    "auth_delivered_to_upstream_but_not_persisted": true,
+    "external_provider_calls": 0
+  }
+}

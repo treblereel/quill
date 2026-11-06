@@ -1,0 +1,55 @@
+[
+  {
+    "method": "hook/completed",
+    "params": {
+      "threadId": "01a19b19-1390-7271-87ff-28291129040b",
+      "turnId": "01a19b1b-74c4-7c41-8577-84ef3b1f870a",
+      "run": {
+        "id": "session-start:0:/tmp/quill-cryostat-full-paired-v5/project/.codex/hooks.json",
+        "eventName": "sessionStart",
+        "handlerType": "command",
+        "executionMode": "sync",
+        "scope": "thread",
+        "sourcePath": "/tmp/quill-cryostat-full-paired-v5/project/.codex/hooks.json",
+        "source": "project",
+        "displayOrder": 0,
+        "status": "completed",
+        "statusMessage": null,
+        "startedAt": 1793603631,
+        "completedAt": 1793603631,
+        "durationMs": 151,
+        "entries": []
+      }
+    },
+    "emittedAtMs": 1793603631763
+  },
+  {
+    "method": "hook/completed",
+    "params": {
+      "threadId": "01a19b19-1390-7271-87ff-28291129040b",
+      "turnId": "01a19b1b-74c4-7c41-8577-84ef3b1f870a",
+      "run": {
+        "id": "user-prompt-submit:1:/tmp/quill-cryostat-full-paired-v5/project/.codex/hooks.json",
+        "eventName": "userPromptSubmit",
+        "handlerType": "command",
+        "executionMode": "sync",
+        "scope": "turn",
+        "sourcePath": "/tmp/quill-cryostat-full-paired-v5/project/.codex/hooks.json",
+        "source": "project",
+        "displayOrder": 1,
+        "status": "failed",
+        "statusMessage": null,
+        "startedAt": 1793603631,
+        "completedAt": 1793603661,
+        "durationMs": 30003,
+        "entries": [
+          {
+            "kind": "error",
+            "text": "hook timed out after 30s"
+          }
+        ]
+      }
+    },
+    "emittedAtMs": 1793603661768
+  }
+]

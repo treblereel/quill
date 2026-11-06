@@ -55,3 +55,6 @@ __pycache__/
 benchmarks/results/**/*.tar.gz
 # Copies of Quill sources captured by benchmark runs (the repository is the source of truth)
 benchmarks/results/*/sources/
+# Per-session provider traffic and Maven repository clones: millions of small files, analysed locally
+benchmarks/results/**/wire/
+benchmarks/results/**/build-env/

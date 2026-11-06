@@ -380,6 +380,30 @@ class ProjectPreparationTest {
         }
     }
 
+    @Test void aFollowerAnswersFromItsGenerationWhileTheLeaderIsBusy() throws Exception {
+        fixture();
+        var scope = new SingleProjectScope(); scope.register(root);
+        // The leader queues the build result and never gets to it, as a busy server would.
+        var jobs = new java.util.concurrent.LinkedBlockingQueue<Runnable>();
+        try (var leader = new ProjectRegistry(scope, new BuildEventConsumer(jobs::add)); var follower = registry()) {
+            leader.prewarm();
+            available(leader);
+            follower.prewarm();
+            var previous = available(follower);
+            assertFalse(follower.leads(root));
+
+            var events = Files.createDirectories(root.resolve(".quill/build-events"));
+            Files.writeString(events.resolve("event.json"), "{\"version\":3,\"buildTool\":\"maven\",\"successful\":true,\"finishedAt\":"
+                    + System.currentTimeMillis() + ",\"captureScope\":\"exception_chain\",\"failureMessagesBase64\":[],\"diagnosticsBase64\":[]}");
+            assertNotNull(jobs.poll(60, java.util.concurrent.TimeUnit.SECONDS), "the leader took the build result");
+            await(() -> follower.resolve().issues().stream().anyMatch(i -> i.code().equals("refresh_pending")) ? Boolean.TRUE : null);
+
+            follower.awaitPrepared(null).get(2, java.util.concurrent.TimeUnit.SECONDS);
+            assertPrevious(follower.resolve(), previous, "refresh_pending");
+            assertFalse(leader.awaitPrepared(null).isDone(), "the leader still waits for its own work");
+        }
+    }
+
     @Test void aFollowerServesTheLeadersPreparationsAndTakesOverWhenItStops() throws Exception {
         fixture();
         var leader = registry();

@@ -75,6 +75,9 @@ final class ProjectPreparation implements AutoCloseable {
             if (state == null) continue;
             synchronized (state) {
                 if (state.stopped) continue;
+                // A follower cannot speed up the leader's work, and a busy leader keeps announcing new
+                // revisions: answer from the generation in hand, marked stale, rather than time out.
+                if (!state.leading && state.lastPrepared != null) continue;
                 if (state.ready == null || state.preparedRevision != state.revision.get()
                         || state.ready.issues().stream().anyMatch(issue -> issue.code().equals("refresh_pending"))) return true;
             }

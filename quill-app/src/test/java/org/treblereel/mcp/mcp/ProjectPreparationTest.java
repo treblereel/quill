@@ -11,6 +11,7 @@ import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.index.*;
+import org.treblereel.mcp.workspace.ProjectScope;
 import org.treblereel.mcp.workspace.SingleProjectScope;
 
 class ProjectPreparationTest {
@@ -663,33 +664,47 @@ class ProjectPreparationTest {
     }
 
     @Test void aSlowNativeDeliveryBarrierCannotBlockRequestsOrLeaveEvidenceVerified() throws Exception {
+        var parent = root;
+        root = Files.createDirectory(parent.resolve("healthy"));
         fixture();
-        var scope = new SingleProjectScope(); scope.register(root);
+        var healthy = root;
+        root = Files.createDirectory(parent.resolve("slow"));
+        fixture();
+        var slow = root.toRealPath();
+        ProjectScope scope = () -> new ProjectScope.Snapshot(1, List.of(
+                new ProjectScope.Project("slow", root), new ProjectScope.Project("healthy", healthy)));
         var blocked = new AtomicBoolean();
         var entered = new java.util.concurrent.CountDownLatch(1);
         var release = new java.util.concurrent.CountDownLatch(1);
         try (var registry = new ProjectRegistry(scope);
-             var preparation = new ProjectPreparation(registry, scope, (roots, listener, visitor, barrier) ->
-                     KotlinDirectoryWatcher.DEFAULT.create(roots, listener, visitor, flush -> barrier.accept(() -> {
-                         if (blocked.get()) {
+             var preparation = new ProjectPreparation(registry, scope, (roots, listener, visitor, barrier) -> {
+                     barrier.accept(() -> {
+                         if (blocked.get() && roots.contains(slow)) {
                              entered.countDown();
                              try { release.await(); }
                              catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
                          }
-                         flush.run();
-                     })))) {
+                     });
+                     return io.methvin.watcher.DirectoryWatcher.builder().paths(roots).listener(listener)
+                             .fileTreeVisitor(visitor).fileHashing(false)
+                             .watchService(FileSystems.getDefault().newWatchService()).build();
+             })) {
             preparation.start();
-            var availableBefore = await(() -> preparation.resolve(null).projects().stream()
+            var availableBefore = await(() -> preparation.resolve("slow").projects().stream()
+                    .filter(p -> !p.observations().freshness().structureStale()).findFirst().orElse(null));
+            await(() -> preparation.resolve("healthy").projects().stream()
                     .filter(p -> !p.observations().freshness().structureStale()).findFirst().orElse(null));
             blocked.set(true);
             try {
                 var pending = assertTimeoutPreemptively(Duration.ofSeconds(ProjectPreparation.READ_BARRIER_SECONDS + 2), () -> preparation.resolve(null));
                 assertEquals(0, entered.getCount());
-                assertPrevious(pending, availableBefore, "refresh_pending");
+                var unaffected = pending.projects().stream().filter(p -> p.name().equals("healthy")).findFirst().orElseThrow();
+                assertFalse(unaffected.observations().freshness().structureStale(), pending.toString());
+                assertTrue(pending.issues().stream().noneMatch(i -> i.project().equals("healthy")), pending.toString());
                 assertTrue(pending.issues().stream().anyMatch(i -> i.code().equals("refresh_pending")));
-                assertTimeoutPreemptively(Duration.ofSeconds(1), () -> assertPrevious(preparation.resolve(null), availableBefore, "refresh_pending"));
+                assertTimeoutPreemptively(Duration.ofSeconds(1), () -> assertPrevious(preparation.resolve("slow"), availableBefore, "refresh_pending"));
             } finally { blocked.set(false); release.countDown(); }
-            assertNotNull(await(() -> preparation.resolve(null).projects().stream()
+            assertNotNull(await(() -> preparation.resolve("slow").projects().stream()
                     .filter(p -> !p.observations().freshness().structureStale()).findFirst().orElse(null)));
         } finally { release.countDown(); }
     }

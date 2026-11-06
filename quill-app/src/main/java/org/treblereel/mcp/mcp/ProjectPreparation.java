@@ -178,21 +178,18 @@ final class ProjectPreparation implements AutoCloseable {
         // Name and path selection use the already reconciled scope; coordinate aliases are
         // resolved by the workspace catalog during background reconciliation.
         var selected = select(snapshot, selector).stream().map(p -> states.get(p.root())).filter(Objects::nonNull).toList();
-        var barriers = new ArrayList<CompletableFuture<Void>>();
+        var barriers = new HashMap<State, CompletableFuture<Void>>();
         for (State state : selected) {
             state.checkControls();
-            if (state.current() && state.events.active()) barriers.add(
+            if (state.current() && state.events.active()) barriers.put(state,
                     CompletableFuture.supplyAsync(state.events::awaitDelivery, workers).thenCompose(barrier -> barrier));
         }
-        try { CompletableFuture.allOf(barriers.toArray(CompletableFuture[]::new)).get(READ_BARRIER_SECONDS, TimeUnit.SECONDS); }
+        try { CompletableFuture.allOf(barriers.values().toArray(CompletableFuture[]::new)).get(READ_BARRIER_SECONDS, TimeUnit.SECONDS); }
         catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException("Input observation interrupted", interrupted); }
-        catch (TimeoutException late) {
-            // Late is not dead: the heartbeat decides that. This read just cannot prove it saw every edit.
-            selected.forEach(State::changed);
-        } catch (ExecutionException unavailable) {
-            selected.forEach(state -> {
-                state.changed();
-                workers.execute(() -> state.events.deliveryMissing(unavailable));
+        catch (ExecutionException | TimeoutException unavailable) {
+            // This read cannot prove freshness for projects whose own barriers did not arrive.
+            barriers.forEach((state, barrier) -> {
+                if (!barrier.isDone() || barrier.isCompletedExceptionally()) state.changed();
             });
         }
         for (State state : selected) {
@@ -473,13 +470,6 @@ final class ProjectPreparation implements AutoCloseable {
                                 ? issue.readiness(issue.reason(), issue.stage(), issue.elapsedMs(),
                                         TimeUnit.NANOSECONDS.toMillis(retryDelay), issue.previousGenerationAvailable()) : issue)
                         .toList());
-                // Deliver edits that raced capture before publishing the observed revision.
-                if (events.active()) {
-                    stage = "waiting_input_event_delivery";
-                    // Nothing waits on this thread, and evidence is not published until the barrier arrives.
-                    try { events.awaitDelivery().get(KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS, TimeUnit.NANOSECONDS); }
-                    catch (ExecutionException | TimeoutException unavailable) { events.deliveryMissing(unavailable); }
-                }
                 if (scope instanceof WorkspaceProjectScope workspace) {
                     var catalog = WorkspaceCoordinateCatalog.discover(workspace.manifest());
                     Map<String,Set<Path>> aliases = new HashMap<>();
@@ -488,6 +478,17 @@ final class ProjectPreparation implements AutoCloseable {
                                     .map(ProjectScope.Project::root).findFirst().orElse(null))
                             .filter(Objects::nonNull).collect(java.util.stream.Collectors.toUnmodifiableSet())));
                     coordinates = Map.copyOf(aliases);
+                }
+                // Deliver edits that raced capture before publishing, without holding a preparation slot.
+                slots.release(); acquired = false;
+                if (events.active()) {
+                    stage = "waiting_input_event_delivery";
+                    try {
+                        CompletableFuture.supplyAsync(events::awaitDelivery, workers).thenCompose(barrier -> barrier)
+                                .get(KotlinDirectoryWatcher.DELIVERY_TIMEOUT_NANOS, TimeUnit.NANOSECONDS);
+                    } catch (ExecutionException | TimeoutException unavailable) {
+                        changed();
+                    }
                 }
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();

@@ -140,18 +140,25 @@ class KotlinDirectoryWatcherTest {
             assertFalse(Files.exists(healthFile.getParent()));
         }
     }
-    @Test void aReadCannotReuseAHeartbeatStartedBeforeThatRead() throws Exception {
+    @Test void queuedReadsShareOnlyTheNextMarkerAndCancellationIsLocal() throws Exception {
         var callbacks = new AtomicReference<DirectoryChangeListener>();
         var flushes = new AtomicInteger();
+        var acknowledged = new AtomicReference<CompletableFuture<Void>>();
         try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor, barrier) -> {
-            callbacks.set(listener); barrier.accept(flushes::incrementAndGet);
+            callbacks.set(listener); barrier.accept(() -> {
+                if (flushes.incrementAndGet() == 2) assertTrue(acknowledged.get().isDone());
+            });
             return DirectoryWatcher.builder().paths(roots).listener(listener).fileTreeVisitor(visitor).fileHashing(false)
-                    .watchService(FileSystems.getDefault().newWatchService()).build();
+                    .watchService(new io.methvin.watchservice.SilentMacOSWatchService()).build();
         }, () -> {}, () -> fail("Delivery failed"))) {
             assertTrue(watcher.configure(Set.of(temp.toRealPath()), path -> true));
             var earlier = watcher.awaitDelivery();
+            acknowledged.set(earlier);
             Path firstMarker = watcher.deliveryFile();
             var current = watcher.awaitDelivery();
+            var another = watcher.awaitDelivery();
+            var cancelled = watcher.awaitDelivery();
+            assertTrue(cancelled.cancel(false));
             assertNotSame(earlier, current);
             callbacks.get().onEvent(probeEvent(watcher));
             assertFalse(earlier.isDone(), "A periodic heartbeat cannot acknowledge an input barrier");
@@ -159,6 +166,7 @@ class KotlinDirectoryWatcherTest {
                     firstMarker, null, 1, firstMarker.getParent()));
             assertTrue(earlier.isDone());
             assertFalse(current.isDone(), "The earlier heartbeat cannot acknowledge a later read");
+            assertFalse(another.isDone());
             assertEquals(2, flushes.get());
             callbacks.get().onEvent(new DirectoryChangeEvent(DirectoryChangeEvent.EventType.MODIFY, false,
                     firstMarker, null, 1, firstMarker.getParent()));
@@ -166,8 +174,37 @@ class KotlinDirectoryWatcherTest {
             Path secondMarker = watcher.deliveryFile();
             callbacks.get().onEvent(new DirectoryChangeEvent(DirectoryChangeEvent.EventType.CREATE, false,
                     secondMarker, null, 1, secondMarker.getParent()));
-            assertTrue(current.isDone());
+            current.get(1, TimeUnit.SECONDS);
+            another.get(1, TimeUnit.SECONDS);
+            assertEquals(2, flushes.get(), "All queued reads need only one more flush");
             assertFalse(Files.exists(firstMarker)); assertFalse(Files.exists(secondMarker));
+        }
+    }
+
+    @Test void aLostMarkerExpiresWithoutRestartingTheSubscription() throws Exception {
+        var clock = new AtomicLong(); var callbacks = new AtomicReference<DirectoryChangeListener>();
+        try (var watcher = new KotlinDirectoryWatcher((roots, listener, visitor, barrier) -> {
+            callbacks.set(listener);
+            return DirectoryWatcher.builder().paths(roots).listener(listener).fileTreeVisitor(visitor).fileHashing(false)
+                    .watchService(new io.methvin.watchservice.SilentMacOSWatchService()).build();
+        }, () -> fail("Marker is not an input"), () -> fail("Subscription must stay active"), clock::get)) {
+            assertTrue(watcher.configure(Set.of(temp.toRealPath()), path -> true));
+            var current = watcher.awaitDelivery();
+            var queued = watcher.awaitDelivery();
+            var expired = watcher.deliveryFile();
+            clock.addAndGet(KotlinDirectoryWatcher.DELIVERY_TIMEOUT_NANOS);
+            watcher.checkHealth();
+            assertTrue(current.isCompletedExceptionally());
+            assertTrue(queued.isCompletedExceptionally());
+            assertTrue(watcher.active());
+            var fresh = watcher.awaitDelivery();
+            callbacks.get().onEvent(new DirectoryChangeEvent(DirectoryChangeEvent.EventType.MODIFY, false,
+                    expired, null, 1, expired.getParent()));
+            assertFalse(fresh.isDone());
+            Path marker = watcher.deliveryFile();
+            callbacks.get().onEvent(new DirectoryChangeEvent(DirectoryChangeEvent.EventType.MODIFY, false,
+                    marker, null, 1, marker.getParent()));
+            fresh.get(1, TimeUnit.SECONDS);
         }
     }
 

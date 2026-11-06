@@ -285,7 +285,7 @@ public final class QuillTools {
     }
 
     @Tool(readOnly = true, structured = true,
-            description = "Plan a code change before editing, or check next steps after edits/builds. Returns a stateless snapshot: primary action, evidence gaps, phase gate, verification receipt; never runs builds.")
+            description = "Plan a code change before editing, or check next steps after edits/builds. Planning does not authorize edits. Returns a stateless snapshot: primary action, evidence gaps, phase gate, verification receipt; never runs builds.")
     public String change_session(
             @ToolArg(description = "Classes or source paths; omit to infer up to 10 dirty JVM files") Optional<List<String>> targets,
             @ToolArg(description = "Concise description of the intended change") String change,

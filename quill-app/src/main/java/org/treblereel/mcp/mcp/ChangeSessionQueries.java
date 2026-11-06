@@ -409,7 +409,7 @@ final class ChangeSessionQueries {
         directive.put("schema_version", 1);
         directive.put("status", phase);
         directive.put("headline", switch (phase) {
-            case "planned" -> "Inspect the change plan before editing";
+            case "planned" -> "Inspect the change plan; edit only if the user asked to apply it";
             case "review_required" -> "Resolve review evidence before verification";
             case "verification_required" -> "Capture fresh compile evidence";
             case "blocked" -> "Fix build diagnostics before retrying verification";

@@ -829,6 +829,8 @@ class QuillToolsTest {
         assertEquals("planned", first.path("phase").asText());
         assertEquals("apply_structural_change",
                 first.path("phase_gate").path("transition").asText());
+        assertEquals("Inspect the change plan; edit only if the user asked to apply it",
+                first.path("directive").path("headline").asText());
         assertEquals(first.path("session_id").asText(), second.path("session_id").asText());
         assertEquals(first.path("next_actions").get(0).path("action_id").asText(),
                 second.path("next_actions").get(0).path("action_id").asText());

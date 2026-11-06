@@ -126,7 +126,7 @@ final class ChangePlanQueries {
 
         ArrayNode sequence = root.putArray("sequence");
         step(sequence, 1, "inspect_primary", "Inspect the resolved declarations and member contracts before editing");
-        step(sequence, 2, "edit_primary", "Implement the requested change in the primary files");
+        step(sequence, 2, "edit_primary", "If the user asked to apply the change, implement it in the primary files");
         step(sequence, 3, "review_dependencies", "Review usage candidates for contract or behavior fallout");
         step(sequence, 4, "update_tests", "Update or add focused tests, starting with the ranked affected tests");
         step(sequence, 5, "verify", "Run focused tests, then the owning modules' build and refresh the index");

@@ -56,6 +56,18 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void buildFingerprintSkipsTreesGitIgnoresWithoutReadingThem() throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("captures"));
+        Files.writeString(project.resolve("pom.xml"), pom("captures", "jar", ""));
+        Files.writeString(project.resolve(".gitignore"), "results/**/wire/\n");
+        String indexed = DependencyIndexer.buildFingerprint(project);
+        Files.writeString(Files.createDirectories(project.resolve("results/run/wire/copy")).resolve("pom.xml"), "<project/>");
+        assertEquals(indexed, DependencyIndexer.buildFingerprint(project));
+        Files.writeString(Files.createDirectories(project.resolve("results/run/kept")).resolve("pom.xml"), "<project/>");
+        assertNotEquals(indexed, DependencyIndexer.buildFingerprint(project));
+    }
+
+    @Test
     void buildFingerprintIgnoresPackageTreesAndHiddenDirectoriesButNotModules() throws Exception {
         Path project = Files.createDirectories(tempDir.resolve("frontend-app"));
         Files.writeString(project.resolve("pom.xml"), pom("frontend-app", "jar", ""));

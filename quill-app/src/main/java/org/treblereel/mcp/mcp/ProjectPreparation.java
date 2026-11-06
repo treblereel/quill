@@ -221,6 +221,9 @@ final class ProjectPreparation implements AutoCloseable {
         final Path git;
         final Path watchRoot;
         final Set<Path> contentRoots;
+        /** What a build writes, which a project's ignore file usually lists, and the modules leading to it. */
+        private final Set<Path> buildOutputs = new HashSet<>(), modules = new HashSet<>();
+        private final org.treblereel.mcp.core.IgnoredTrees ignoredTrees;
         final Set<Path> gitRoots;
         final KotlinDirectoryWatcher events;
         final AtomicLong revision = new AtomicLong();
@@ -260,12 +263,15 @@ final class ProjectPreparation implements AutoCloseable {
                 var paths = new ArrayList<>(layout.moduleDirectories());
                 layout.outputs().forEach(output -> paths.add(output.directory()));
                 for (Path path : paths) if (Files.isDirectory(path)) inputs.add(path.toRealPath());
+                for (Path module : layout.moduleDirectories()) if (Files.isDirectory(module)) modules.add(module.toRealPath());
+                for (var output : layout.outputs()) if (Files.isDirectory(output.directory())) buildOutputs.add(output.directory().toRealPath());
             } catch (IOException | RuntimeException unavailable) { /* Resolution reports invalid layouts. */ }
             var minimal = new ArrayList<Path>();
             inputs.stream().sorted(Comparator.comparingInt(Path::getNameCount)).forEach(path -> {
                 if (minimal.stream().noneMatch(path::startsWith)) minimal.add(path);
             });
             contentRoots = Set.copyOf(minimal);
+            ignoredTrees = org.treblereel.mcp.core.IgnoredTrees.of(watchRoot);
             var repositories = new HashSet<Path>();
             if (git != null) {
                 repositories.add(git);
@@ -306,6 +312,11 @@ final class ProjectPreparation implements AutoCloseable {
                     || relative.equals(".quill/build-state.json") || relative.startsWith(".quill/build-events");
             for (String segment : List.of(".git", ".gradle", "node_modules"))
                 if (relative.equals(segment) || relative.startsWith(segment + "/") || relative.contains("/" + segment + "/")) return false;
+            boolean buildPath = relative.startsWith("target/") || relative.contains("/target/") || relative.equals("target")
+                    || relative.startsWith("build/") || relative.contains("/build/") || relative.equals("build")
+                    || modules.stream().anyMatch(module -> module.startsWith(path))
+                    || buildOutputs.stream().anyMatch(output -> output.startsWith(path) || path.startsWith(output));
+            if (!buildPath && ignoredTrees.ignored(path)) return false;
             if (Files.isDirectory(path) || !Files.exists(path)) return true;
             String name = path.getFileName().toString();
             // Quill's own record of the last resolved classpath, written while indexing; not a build input.

@@ -392,6 +392,7 @@ public final class DependencyIndexer {
                 independentScanRoots.add(candidate);
             }
         }
+        IgnoredTrees ignored = IgnoredTrees.of(normalizedRoot);
         for (Path scanRoot : independentScanRoots) {
             if (Files.isDirectory(scanRoot)) {
                 try {
@@ -400,7 +401,7 @@ public final class DependencyIndexer {
                         public FileVisitResult preVisitDirectory(
                                 Path directory, BasicFileAttributes attributes) {
                             if (!directory.equals(scanRoot) && (isBuildOutputDirectory(directory)
-                                    || SourceFileHashes.excludedDirectory(directory))) {
+                                    || SourceFileHashes.excludedDirectory(directory) || ignored.ignored(directory))) {
                                 return FileVisitResult.SKIP_SUBTREE;
                             }
                             return FileVisitResult.CONTINUE;

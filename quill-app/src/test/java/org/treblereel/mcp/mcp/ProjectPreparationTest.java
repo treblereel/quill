@@ -609,6 +609,26 @@ class ProjectPreparationTest {
         }
     }
 
+    @Test void treesGitIgnoresAreNotWatchedButBuildOutputsAre() throws Exception {
+        fixture();
+        Files.writeString(root.resolve(".gitignore"), "target/\n.quill/\nresults/**/wire/\n");
+        Path wire = Files.createDirectories(root.resolve("results/run/wire"));
+        var visited = java.util.concurrent.ConcurrentHashMap.<Path>newKeySet();
+        var scope = new SingleProjectScope(); scope.register(root);
+        try (var registry = new ProjectRegistry(scope);
+             var preparation = new ProjectPreparation(registry, scope, (roots, listener, visitor, barrier) ->
+                     KotlinDirectoryWatcher.DEFAULT.create(roots, listener, (start, onDirectory, onFile) ->
+                             visitor.recursiveVisitFiles(start, directory -> { visited.add(directory.toRealPath()); onDirectory.call(directory); }, onFile), barrier))) {
+            preparation.start();
+            var before = await(() -> preparation.resolve(null).projects().stream()
+                    .filter(p -> !p.observations().freshness().structureStale()).findFirst().orElse(null)).observations();
+            assertTrue(visited.contains(root.resolve("target/classes").toRealPath()), "build outputs stay watched");
+            assertTrue(visited.contains(root.resolve("results/run").toRealPath()));
+            assertFalse(visited.contains(wire.toRealPath()), "an ignored tree must not be walked");
+            assertTrue(visited.contains(root.resolve("src/main/java").toRealPath()));
+        }
+    }
+
     @Test void slowEventDeliveryLeavesTheWatcherUpAndEvidenceVerified() throws Exception {
         fixture();
         var scope = new SingleProjectScope(); scope.register(root);

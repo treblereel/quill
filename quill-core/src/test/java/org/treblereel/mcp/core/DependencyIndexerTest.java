@@ -56,6 +56,24 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void buildFingerprintIgnoresPackageTreesAndHiddenDirectoriesButNotModules() throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("frontend-app"));
+        Files.writeString(project.resolve("pom.xml"), pom("frontend-app", "jar", ""));
+        Path module = Files.createDirectories(project.resolve("module"));
+        Files.writeString(module.resolve("pom.xml"), "<project>one</project>");
+        String indexed = DependencyIndexer.buildFingerprint(project);
+
+        // A frontend's node_modules can hold hundreds of thousands of files; none are this build's inputs.
+        for (String tree : List.of("src/main/webui/node_modules/dep", "src/main/webui/bower_components/dep", ".cache/tool")) {
+            Files.writeString(Files.createDirectories(project.resolve(tree)).resolve("pom.xml"), "<project/>");
+        }
+        assertEquals(indexed, DependencyIndexer.buildFingerprint(project));
+
+        Files.writeString(module.resolve("pom.xml"), "<project>two</project>");
+        assertNotEquals(indexed, DependencyIndexer.buildFingerprint(project), "a real module's build file still counts");
+    }
+
+    @Test
     void mavenClasspathKeepsTheProjectsManagedTransitiveVersions() throws Exception {
         Path project = Files.createDirectories(tempDir.resolve("managed"));
         // Guava 31.1 asks for failureaccess 1.0.1; the project's dependencyManagement pins 1.0.2.

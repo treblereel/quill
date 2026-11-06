@@ -399,7 +399,8 @@ public final class DependencyIndexer {
                         @Override
                         public FileVisitResult preVisitDirectory(
                                 Path directory, BasicFileAttributes attributes) {
-                            if (!directory.equals(scanRoot) && isBuildOutputDirectory(directory)) {
+                            if (!directory.equals(scanRoot) && (isBuildOutputDirectory(directory)
+                                    || SourceFileHashes.excludedDirectory(directory))) {
                                 return FileVisitResult.SKIP_SUBTREE;
                             }
                             return FileVisitResult.CONTINUE;

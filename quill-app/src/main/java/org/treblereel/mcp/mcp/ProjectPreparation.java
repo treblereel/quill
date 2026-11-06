@@ -27,6 +27,8 @@ final class ProjectPreparation implements AutoCloseable {
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(
             Thread.ofPlatform().daemon().name("quill-project-observe-", 0).factory());
     private final Semaphore slots = new Semaphore(2, true);
+    /** How long a request waits for its read barrier; above the 5.2 s worst fseventsd latency measured under load. */
+    static final long READ_BARRIER_SECONDS = 10;
     private volatile ProjectScope.Snapshot projects;
     private volatile boolean closed;
     private long nextReconcile;
@@ -175,12 +177,15 @@ final class ProjectPreparation implements AutoCloseable {
             if (state.current() && state.events.active()) barriers.add(
                     CompletableFuture.supplyAsync(state.events::awaitDelivery, workers).thenCompose(barrier -> barrier));
         }
-        try { CompletableFuture.allOf(barriers.toArray(CompletableFuture[]::new)).get(500, TimeUnit.MILLISECONDS); }
+        try { CompletableFuture.allOf(barriers.toArray(CompletableFuture[]::new)).get(READ_BARRIER_SECONDS, TimeUnit.SECONDS); }
         catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException("Input observation interrupted", interrupted); }
-        catch (ExecutionException | TimeoutException unavailable) {
+        catch (TimeoutException late) {
+            // Late is not dead: the heartbeat decides that. This read just cannot prove it saw every edit.
+            selected.forEach(State::changed);
+        } catch (ExecutionException unavailable) {
             selected.forEach(state -> {
                 state.changed();
-                workers.execute(state.events::deliveryMissing);
+                workers.execute(() -> state.events.deliveryMissing(unavailable));
             });
         }
         for (State state : selected) {
@@ -453,8 +458,9 @@ final class ProjectPreparation implements AutoCloseable {
                 // Deliver edits that raced capture before publishing the observed revision.
                 if (events.active()) {
                     stage = "waiting_input_event_delivery";
-                    try { events.awaitDelivery().get(500, TimeUnit.MILLISECONDS); }
-                    catch (ExecutionException | TimeoutException unavailable) { events.deliveryMissing(); }
+                    // Nothing waits on this thread, and evidence is not published until the barrier arrives.
+                    try { events.awaitDelivery().get(KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS, TimeUnit.NANOSECONDS); }
+                    catch (ExecutionException | TimeoutException unavailable) { events.deliveryMissing(unavailable); }
                 }
                 if (scope instanceof WorkspaceProjectScope workspace) {
                     var catalog = WorkspaceCoordinateCatalog.discover(workspace.manifest());

@@ -31,7 +31,12 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
     private volatile long generation;
     private Set<Path> roots = Set.of();
     static final long HEALTH_INTERVAL_NANOS = TimeUnit.SECONDS.toNanos(5);
-    static final long HEALTH_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(2);
+    /**
+     * How long a heartbeat may stay undelivered before the stream counts as dead. A loaded fseventsd
+     * delivered events 1.8 s late at the median and 5.2 s at worst without losing any, and replacing
+     * the subscription only adds delay, so this sits well above real latency, not near the usual one.
+     */
+    static final long HEALTH_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
     static final long INITIAL_RETRY_NANOS = TimeUnit.SECONDS.toNanos(1);
     private static final long MAX_RETRY_NANOS = TimeUnit.SECONDS.toNanos(30);
     private volatile Path healthDirectory, healthFile, deliveryFile;
@@ -42,6 +47,7 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
     private long nextProbe, probeDeadline, retryAfter;
     private volatile long retryDelay = INITIAL_RETRY_NANOS;
     private final java.util.function.LongSupplier clock;
+    private final long healthTimeoutNanos;
     private volatile DirectoryWatcher subscription;
     private Runnable nativeBarrier = () -> {};
 
@@ -57,9 +63,19 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
         this(factory, changed, unavailable, System::nanoTime);
     }
 
+    KotlinDirectoryWatcher(Factory factory, Runnable changed, Runnable unavailable, java.time.Duration healthTimeout) {
+        this(factory, path -> changed.run(), unavailable, System::nanoTime, healthTimeout.toNanos());
+    }
+
     private KotlinDirectoryWatcher(Factory factory, java.util.function.Consumer<Path> changed, Runnable unavailable,
             java.util.function.LongSupplier clock) {
+        this(factory, changed, unavailable, clock, HEALTH_TIMEOUT_NANOS);
+    }
+
+    private KotlinDirectoryWatcher(Factory factory, java.util.function.Consumer<Path> changed, Runnable unavailable,
+            java.util.function.LongSupplier clock, long healthTimeoutNanos) {
         this.factory = factory; this.changed = changed; this.unavailable = unavailable; this.clock = clock;
+        this.healthTimeoutNanos = healthTimeoutNanos;
     }
 
     synchronized boolean configure(Set<Path> directories, Predicate<Path> filter) {
@@ -109,8 +125,9 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
             if (paths.stream().noneMatch(healthDirectory::startsWith)) paths.add(healthDirectory);
             subscription = factory.create(paths, listener, visitor(), barrier -> nativeBarrier = barrier);
             nextProbe = clock.getAsLong() + HEALTH_INTERVAL_NANOS;
-            subscription.watchAsync(executor).whenComplete((ignored, error) -> fail(owner));
-        } catch (Exception | LinkageError error) { fail(owner); }
+            subscription.watchAsync(executor).whenComplete((ignored, error) -> fail(owner, "subscription ended"
+                    + (error == null ? "" : ": " + rootCause(error))));
+        } catch (Exception | LinkageError error) { fail(owner, "subscription failed to start: " + error); }
         return !failed;
     }
 
@@ -131,9 +148,11 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
         return pending;
     }
 
-    private void fail(long owner) {
+    private void fail(long owner, String reason) {
         synchronized (this) {
             if (closed || failed || generation != owner) return;
+            System.err.println("[quill] Input watcher unavailable (" + reason + "); retrying in "
+                    + TimeUnit.NANOSECONDS.toMillis(retryDelay) + " ms");
             failed = true; healthPending = false; closeSubscription();
             var pending = delivery; delivery = null; clearDeliveryFile();
             if (pending != null) pending.completeExceptionally(new IOException("Input watcher unavailable"));
@@ -158,16 +177,22 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
             long now = clock.getAsLong(); owner = generation;
             if (!healthPending) {
                 if (now < nextProbe) return;
-                healthPending = true; probeDeadline = now + HEALTH_TIMEOUT_NANOS;
+                healthPending = true; probeDeadline = now + healthTimeoutNanos;
                 nextProbe = now + HEALTH_INTERVAL_NANOS;
                 try { Files.writeString(healthFile, Long.toString(now)); return; }
-                catch (IOException | SecurityException failure) { /* Mark input observation unavailable below. */ }
+                catch (IOException | SecurityException failure) { fail(owner, "heartbeat not written: " + failure); return; }
             } else if (now < probeDeadline) return;
         }
-        fail(owner);
+        fail(owner, "heartbeat not delivered within " + TimeUnit.NANOSECONDS.toMillis(healthTimeoutNanos) + " ms");
     }
 
-    void deliveryMissing() { fail(generation); }
+    void deliveryMissing(Throwable cause) { fail(generation, "read barrier not delivered: " + rootCause(cause)); }
+
+    private static Throwable rootCause(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null) current = current.getCause();
+        return current;
+    }
     long eventRevision() { return eventRevision; }
     Path healthFile() { return healthFile; }
     Path deliveryFile() { return deliveryFile; }

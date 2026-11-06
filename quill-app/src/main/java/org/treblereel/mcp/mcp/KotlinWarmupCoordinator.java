@@ -25,6 +25,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
     private final long debounceMillis;
     private final long idleNanos;
     private final java.util.function.LongSupplier clock;
+    private final Duration healthTimeout;
     /** When the last foreground query started; null before any. */
     private Long lastQuery;
     private final KotlinDirectoryWatcher.Factory eventFactory;
@@ -49,12 +50,23 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
     }
 
     KotlinWarmupCoordinator(Function<JsonNode, JsonNode> worker, Duration debounce, KotlinDirectoryWatcher.Factory factory,
+            Duration healthTimeout) {
+        this(worker, debounce, factory, IDLE, System::nanoTime, healthTimeout);
+    }
+
+    KotlinWarmupCoordinator(Function<JsonNode, JsonNode> worker, Duration debounce, KotlinDirectoryWatcher.Factory factory,
             Duration idle, java.util.function.LongSupplier clock) {
+        this(worker, debounce, factory, idle, clock, Duration.ofNanos(KotlinDirectoryWatcher.HEALTH_TIMEOUT_NANOS));
+    }
+
+    private KotlinWarmupCoordinator(Function<JsonNode, JsonNode> worker, Duration debounce, KotlinDirectoryWatcher.Factory factory,
+            Duration idle, java.util.function.LongSupplier clock, Duration healthTimeout) {
         this.worker = worker;
         this.debounceMillis = debounce.toMillis();
         this.eventFactory = factory;
         this.idleNanos = idle.toNanos();
         this.clock = clock;
+        this.healthTimeout = healthTimeout;
     }
 
     boolean prewarm(String key, Supplier<JsonNode> background) {
@@ -193,7 +205,7 @@ final class KotlinWarmupCoordinator implements AutoCloseable {
                 refresh = true; changed(ownerEpoch);
             }, () -> {
                 recoveryReady.release(); refresh = true; changed(ownerEpoch);
-            });
+            }, healthTimeout);
             listener = new Thread(this::listen, "quill-k2-input-watch"); listener.setDaemon(true); listener.start();
         }
         void configure(JsonNode request) {

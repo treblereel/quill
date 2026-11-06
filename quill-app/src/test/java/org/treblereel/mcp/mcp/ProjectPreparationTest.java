@@ -609,6 +609,39 @@ class ProjectPreparationTest {
         }
     }
 
+    @Test void slowEventDeliveryLeavesTheWatcherUpAndEvidenceVerified() throws Exception {
+        fixture();
+        var scope = new SingleProjectScope(); scope.register(root);
+        var subscriptions = new java.util.concurrent.atomic.AtomicInteger();
+        var slow = new AtomicBoolean();
+        try (var registry = new ProjectRegistry(scope);
+             var preparation = new ProjectPreparation(registry, scope, (roots, listener, visitor, barrier) -> {
+                 subscriptions.incrementAndGet();
+                 // A loaded fseventsd delivers read barriers late; the stream itself is alive.
+                 return KotlinDirectoryWatcher.DEFAULT.create(roots, new io.methvin.watcher.DirectoryChangeListener() {
+                     @Override public void onEvent(io.methvin.watcher.DirectoryChangeEvent event) throws java.io.IOException {
+                         if (slow.get() && event.path() != null && event.path().getFileName().toString().startsWith("read-")) {
+                             try { Thread.sleep(800); } catch (InterruptedException stop) { Thread.currentThread().interrupt(); return; }
+                         }
+                         listener.onEvent(event);
+                     }
+                     @Override public void onException(Exception error) { listener.onException(error); }
+                 }, visitor, barrier);
+             })) {
+            preparation.start();
+            await(() -> preparation.resolve(null).projects().stream()
+                    .filter(p -> !p.observations().freshness().structureStale()).findFirst().orElse(null));
+            slow.set(true);
+            for (int i = 0; i < 4; i++) {
+                var resolved = preparation.resolve(null);
+                assertTrue(resolved.issues().isEmpty(), resolved.issues().toString());
+                assertFalse(resolved.projects().getFirst().observations().freshness().structureStale(),
+                        resolved.projects().getFirst().observations().freshness().staleReasons().toString());
+            }
+            assertEquals(1, subscriptions.get(), "a late delivery must not tear the subscription down");
+        }
+    }
+
     @Test void aSlowNativeDeliveryBarrierCannotBlockRequestsOrLeaveEvidenceVerified() throws Exception {
         fixture();
         var scope = new SingleProjectScope(); scope.register(root);
@@ -630,7 +663,7 @@ class ProjectPreparationTest {
                     .filter(p -> !p.observations().freshness().structureStale()).findFirst().orElse(null));
             blocked.set(true);
             try {
-                var pending = assertTimeoutPreemptively(Duration.ofSeconds(2), () -> preparation.resolve(null));
+                var pending = assertTimeoutPreemptively(Duration.ofSeconds(ProjectPreparation.READ_BARRIER_SECONDS + 2), () -> preparation.resolve(null));
                 assertEquals(0, entered.getCount());
                 assertPrevious(pending, availableBefore, "refresh_pending");
                 assertTrue(pending.issues().stream().anyMatch(i -> i.code().equals("refresh_pending")));
@@ -856,7 +889,8 @@ class ProjectPreparationTest {
                 .findFirst().orElse(null));
     }
     private static <T> T await(java.util.function.Supplier<T> check) throws Exception {
-        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        // Generous on purpose: each preparation waits for real FSEvents delivery, seconds late on a loaded machine.
+        long deadline = System.nanoTime() + Duration.ofSeconds(90).toNanos();
         while (System.nanoTime() < deadline) {
             T result = check.get(); if (result != null) return result;
             Thread.sleep(20);

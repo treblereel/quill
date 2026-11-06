@@ -415,7 +415,7 @@ class KotlinWarmupCoordinatorTest {
         try (var coordinator = new KotlinWarmupCoordinator(r -> {
             if (r.path("offset").asInt() == -1) fresh.countDown();
             return result(r);
-        }, Duration.ZERO, factory)) {
+        }, Duration.ZERO, factory, Duration.ofSeconds(2))) {
             coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
             Files.writeString(source, "fun run() = true");
             assertFalse(fresh.await(3, TimeUnit.SECONDS), "No filesystem event: background polling must not run");
@@ -439,7 +439,7 @@ class KotlinWarmupCoordinatorTest {
                 if (r.path("offset").asInt() == -1 && Files.readString(source).contains("changed")) fresh.countDown();
             } catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
             return result(r);
-        }, Duration.ofMillis(10), factory)) {
+        }, Duration.ofMillis(10), factory, Duration.ofSeconds(2))) {
             coordinator.query("main", () -> request, () -> request.deepCopy().put("offset", -1));
             var modified = Files.getLastModifiedTime(source);
             Files.writeString(source, "fun run() = \"changed\""); Files.setLastModifiedTime(source, modified);

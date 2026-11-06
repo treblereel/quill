@@ -24,6 +24,8 @@ final class RouterTools {
 
     java.util.concurrent.CompletableFuture<Void> awaitPrepared(String selector) { return tools.awaitPrepared(selector); }
 
+    java.util.List<String> waitStatus() { return tools.waitStatus(); }
+
     boolean workspaceMode() {
         return tools.workspaceMode();
     }

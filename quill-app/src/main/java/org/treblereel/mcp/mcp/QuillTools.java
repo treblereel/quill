@@ -40,6 +40,8 @@ public final class QuillTools {
 
     java.util.concurrent.CompletableFuture<Void> awaitPrepared(String selector) { return registry.awaitPrepared(selector); }
 
+    List<String> waitStatus() { return registry.waitStatus(); }
+
     boolean workspaceMode() {
         return registry.workspaceScope() != null;
     }

@@ -56,6 +56,9 @@ class McpReadinessWaitTest {
                         .block(Duration.ofSeconds(2));
                 assertTrue(Boolean.TRUE.equals(result.isError()));
                 assertTrue(String.valueOf(result.structuredContent()).contains("INDEX_REFRESH_TIMEOUT"));
+                // A client that shows only text must still see why the call failed.
+                String text = ((McpSchema.TextContent) result.content().getFirst()).text();
+                assertTrue(text.startsWith("INDEX_REFRESH_TIMEOUT: "), text);
                 assertEquals(0, registry.waitingRequests());
                 assertFalse(preparation.isDone());
                 release.countDown();

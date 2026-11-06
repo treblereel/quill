@@ -557,6 +557,8 @@ public class ProjectRegistry implements AutoCloseable {
 
     int waitingRequests() { return preparation == null ? 0 : preparation.waitingRequests(); }
 
+    List<String> waitStatus() { return preparation == null ? List.of() : preparation.waitStatus(); }
+
     public void prewarm() {
         prewarmAsync().join();
     }

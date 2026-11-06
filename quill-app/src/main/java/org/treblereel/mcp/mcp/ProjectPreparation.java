@@ -53,6 +53,13 @@ final class ProjectPreparation implements AutoCloseable {
 
     int waitingRequests() { return waiters.size(); }
 
+    /** What each project not yet prepared is doing, for a request that gave up waiting for it. */
+    List<String> waitStatus() {
+        if (projects == null) return List.of("project discovery for "
+                + TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startupStarted) + " s");
+        return states.values().stream().map(State::waitStatus).filter(Objects::nonNull).toList();
+    }
+
     private void signalWaiters() {
         for (var waiter : waiters) {
             if (!pending(waiter.selector()) && waiters.remove(waiter)) waiter.completion().complete(null);
@@ -509,6 +516,14 @@ final class ProjectPreparation implements AutoCloseable {
                 try { wait(100); }
                 catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new IllegalStateException("Preparation interrupted", error); }
             }
+        }
+
+        synchronized String waitStatus() {
+            if (current()) return null;
+            String doing = preparing != null ? stage + " for " + TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - preparingStarted) + " s"
+                    : buildRunning ? "the running build" : "its turn to prepare";
+            return project.name() + ": " + doing + (leading ? "" : ", following another Quill server")
+                    + (leading && !events.active() ? ", input watcher recovering" : "");
         }
 
         synchronized boolean current() { return ready != null && !ready.projects().isEmpty() && preparedRevision == revision.get(); }

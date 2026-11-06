@@ -129,9 +129,7 @@ final class McpToolCatalog {
                         .onErrorResume(RejectedExecutionException.class,
                                 ignored -> Mono.just(result("Server busy; retry later", true,
                                         annotation.structured())))
-                        .onErrorResume(TimeoutException.class, ignored -> Mono.just(waiting.get() ? result(
-                                "{\"error_code\":\"INDEX_REFRESH_TIMEOUT\",\"message\":\"Index preparation did not finish within the request deadline; retry this request\",\"retryable\":true}",
-                                true, true) : result(
+                        .onErrorResume(TimeoutException.class, ignored -> Mono.just(waiting.get() ? refreshTimeout(tools) : result(
                                 "Tool timed out after " + requestTimeout.toSeconds()
                                         + " seconds; retry with a narrower query or increase "
                                         + "QUILL_MCP_REQUEST_TIMEOUT",
@@ -139,6 +137,7 @@ final class McpToolCatalog {
                         // The SDK stdio transport uses a unicast outbound sink whose concurrent
                         // tryEmitNext calls may fail. Serialize completion signals while keeping
                         // the actual tool work parallel.
+                        .map(McpToolCatalog::withErrorText)
                         .map(result -> {
                             UxTelemetry.record(method.getName(), routedTool(method, request.arguments()),
                                     (System.nanoTime() - started) / 1_000_000L, result,
@@ -148,6 +147,36 @@ final class McpToolCatalog {
                         .publishOn(responseScheduler);
                 })
                 .build();
+    }
+
+    /** A request gave up waiting: say which project is doing what, so the wait can be diagnosed. */
+    private static McpSchema.CallToolResult refreshTimeout(Object tools) {
+        var error = JSON.createObjectNode().put("error_code", "INDEX_REFRESH_TIMEOUT")
+                .put("message", "Index preparation did not finish within the request deadline; retry this request")
+                .put("retryable", true);
+        var waiting = error.putArray("waiting_for");
+        (tools instanceof QuillTools quill ? quill.waitStatus()
+                : tools instanceof RouterTools router ? router.waitStatus() : List.<String>of()).forEach(waiting::add);
+        return result(error.toString(), true, true);
+    }
+
+    /**
+     * Clients that read only text report a failure without any as "Unknown error", so an error's
+     * cause must not live in structured content alone. Successful results stay structured-only.
+     */
+    private static McpSchema.CallToolResult withErrorText(McpSchema.CallToolResult result) {
+        if (!Boolean.TRUE.equals(result.isError()) || result.content() != null && !result.content().isEmpty()) return result;
+        var error = JSON.valueToTree(result.structuredContent());
+        StringBuilder text = new StringBuilder();
+        if (error.hasNonNull("error_code")) text.append(error.path("error_code").asText()).append(": ");
+        text.append(error.hasNonNull("message") ? error.path("message").asText() : error.toString());
+        if (!error.path("waiting_for").isEmpty()) {
+            var waiting = new java.util.ArrayList<String>();
+            error.path("waiting_for").forEach(item -> waiting.add(item.asText()));
+            text.append(" (waiting for ").append(String.join("; ", waiting)).append(')');
+        }
+        return McpSchema.CallToolResult.builder().isError(true).structuredContent(result.structuredContent())
+                .content(List.of(McpSchema.TextContent.builder(text.toString()).build())).build();
     }
 
     private static Mono<McpSchema.CallToolResult> invokePrepared(Object tools, Method method,

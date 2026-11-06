@@ -731,7 +731,8 @@ class McpToolCatalogTest {
                 .block(Duration.ofSeconds(2));
 
         assertTrue(Boolean.TRUE.equals(result.isError()));
-        assertTrue(result.content().isEmpty());
+        assertTrue(((McpSchema.TextContent) result.content().getFirst()).text().contains("No projects configured"),
+                "clients that ignore structured content must still see the failure");
         assertTrue(((JsonNode) result.structuredContent()).path("message").asText()
                 .contains("No projects configured"));
     }

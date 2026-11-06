@@ -24,10 +24,10 @@ class ProjectConfigurationTest {
         String installed = Files.readString(claude);
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectClaudeMd(root));
-        assertTrue(installed.contains("query the relevant tool directly"));
-        assertTrue(installed.contains("not a prerequisite for other queries"));
-        assertTrue(installed.contains("do not enumerate or print the entire tool catalog"));
-        assertTrue(installed.contains("single-project or unknown mode"));
+        assertTrue(installed.contains("Query the relevant tool directly"));
+        assertTrue(installed.contains("`get_overview` is optional"));
+        assertTrue(installed.contains("exact name only for an unlisted tool"));
+        assertTrue(installed.contains("`--workspace`"));
         assertTrue(installed.contains("`retry_with`"));
         assertTrue(installed.contains("`structuredContent`"));
         assertTrue(installed.contains("call `change_session` before editing"));
@@ -36,18 +36,19 @@ class ProjectConfigurationTest {
         assertTrue(installed.contains("`review_checklist`"));
         assertTrue(installed.contains("receipt is verified"));
         assertTrue(installed.contains("`quick_compile`"));
-        assertTrue(installed.contains("never executes a build"));
+        assertTrue(installed.contains("never runs builds"));
+        assertTrue(installed.length() < 1400, "Instructions load into every session: " + installed.length());
         assertEquals(1, occurrences(installed, "<!-- quill:managed:start -->"));
 
         Files.writeString(claude, installed.replace(
-                "query the relevant tool directly", "obsolete instructions"));
+                "Query the relevant tool directly", "obsolete instructions"));
         assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
                 ProjectConfiguration.inspectClaudeMd(root));
         ProjectConfiguration.ensureClaudeMd(root);
 
         String refreshed = Files.readString(claude);
         assertTrue(refreshed.startsWith("# User instructions\n"));
-        assertTrue(refreshed.contains("query the relevant tool directly"));
+        assertTrue(refreshed.contains("Query the relevant tool directly"));
         assertFalse(refreshed.contains("obsolete instructions"));
         assertEquals(1, occurrences(refreshed, "<!-- quill:managed:start -->"));
     }

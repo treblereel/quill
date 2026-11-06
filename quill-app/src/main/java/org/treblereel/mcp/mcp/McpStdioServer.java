@@ -128,7 +128,7 @@ public final class McpStdioServer {
 
     static String serverInstructions(McpToolProfile profile, Boolean workspaceMode) {
         String instructions = "Quill supplies read-only code intelligence for indexed JVM projects. "
-                + "Known targets can be queried directly; discover exact tools on demand and print only selected schemas. ";
+                + "Known targets can be queried directly. ";
         instructions += workspaceMode == null
                 ? "For get_overview, use view=compact only if launch arguments confirm --workspace; otherwise omit arguments. "
                 : workspaceMode
@@ -138,15 +138,12 @@ public final class McpStdioServer {
         if (profile.router() || profile.includes("change_session")) {
             instructions += "For a code change, query change_session "
                 + "before editing or choosing a build, then follow directive.primary_action and "
-                + "phase_gate; refresh after edits and external compilation. ";
+                + "phase_gate. ";
         }
-        instructions += "Quill never runs builds "
-                + "or tests. Use source reads for known files and stale/unsupported evidence. "
-                + "Do not infer missing tools from empty resources: this server exposes tools, not resources.";
+        instructions += "Quill never runs builds or tests. This server exposes tools, not resources.";
         if (profile.router()) {
             if (!profile.tools().isEmpty()) {
-                return instructions + " Call available queries directly. For other operations, "
-                        + "obtain arguments through catalog discovery, then execute_tool.";
+                return instructions + " For other operations, use catalog discovery, then execute_tool.";
             }
             return instructions + " Obtain query schemas through catalog discovery, then execute_tool.";
         }

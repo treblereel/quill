@@ -98,6 +98,8 @@ class McpToolCatalogTest {
         assertTrue(single.contains("Read structuredContent even when text is empty"));
         assertTrue(McpStdioServer.serverInstructions(McpToolProfile.full())
                 .contains("otherwise omit arguments"));
+        assertTrue(McpStdioServer.serverInstructions(McpToolProfile.parse("router"), false).length() < 600,
+                "Instructions load into every session");
     }
 
     @Test
@@ -486,7 +488,7 @@ class McpToolCatalogTest {
         assertEquals("find_implementations", ((JsonNode) result.structuredContent())
                 .path("tools").get(0).path("name").asText());
         assertTrue(McpStdioServer.serverInstructions(McpToolProfile.parse("compact"))
-                .contains("Call available queries directly"));
+                .contains("For other operations, use catalog discovery"));
         assertThrows(IllegalArgumentException.class,
                 () -> McpToolProfile.parse("compact,git"));
     }

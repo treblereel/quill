@@ -144,6 +144,7 @@ public class ProjectRegistry implements AutoCloseable {
             new java.util.concurrent.locks.ReentrantReadWriteLock();
     private boolean closed;
     private volatile ProjectPreparation preparation;
+    private final KotlinDirectoryWatcher.Factory watcherFactory;
     private final ProjectScope scope;
     private final SingleProjectScope mutableScope;
     private record IndexHandle(Path projectRoot, IndexGeneration generation, AtomicLong lastSeen) {}
@@ -193,9 +194,14 @@ public class ProjectRegistry implements AutoCloseable {
     }
 
     ProjectRegistry(ProjectScope scope, BuildEventConsumer buildEvents) {
+        this(scope, buildEvents, KotlinDirectoryWatcher.DEFAULT);
+    }
+
+    ProjectRegistry(ProjectScope scope, BuildEventConsumer buildEvents, KotlinDirectoryWatcher.Factory watcherFactory) {
         this.buildEvents = Objects.requireNonNull(buildEvents, "buildEvents");
         this.scope = Objects.requireNonNull(scope, "scope");
         this.mutableScope = scope instanceof SingleProjectScope single ? single : null;
+        this.watcherFactory = Objects.requireNonNull(watcherFactory, "watcherFactory");
     }
 
     int configuredProjectCount() {
@@ -568,7 +574,7 @@ public class ProjectRegistry implements AutoCloseable {
         try {
             if (closed) throw new IllegalStateException("Project registry is closed");
             if (preparation == null) {
-                preparation = new ProjectPreparation(this, scope);
+                preparation = new ProjectPreparation(this, scope, watcherFactory);
                 preparation.startAsync();
             }
             return preparation.initialPreparation();

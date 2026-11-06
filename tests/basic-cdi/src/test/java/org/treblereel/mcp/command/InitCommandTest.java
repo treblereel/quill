@@ -90,6 +90,9 @@ class InitCommandTest {
             handle.execute("INSERT INTO metadata(key, value) VALUES ('index_id', 'outdated')");
             handle.execute("PRAGMA user_version = 7");
         });
+        // Fresher outdated generations may belong to an older server still running; this one is abandoned.
+        Files.setLastModifiedTime(outdated, java.nio.file.attribute.FileTime.from(
+                java.time.Instant.now().minus(java.time.Duration.ofDays(365))));
         Files.writeString(QUILL_DIR.resolve("refs.json"),
                 "{\"@worktree\":\"outdated\"}");
 

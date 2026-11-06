@@ -806,7 +806,11 @@ class ProjectPreparationTest {
         fixture();
         var scope = new SingleProjectScope(); scope.register(root);
         var jobs = new java.util.concurrent.LinkedBlockingQueue<Runnable>();
-        try (var registry = new ProjectRegistry(scope, new BuildEventConsumer(jobs::add))) {
+        // Generations are the subject here, and a real watcher ties the outcome to FSEvents latency under load.
+        KotlinDirectoryWatcher.Factory noWatcher = (roots, listener, visitor, barrier) -> {
+            throw new java.io.IOException("input watcher unavailable");
+        };
+        try (var registry = new ProjectRegistry(scope, new BuildEventConsumer(jobs::add), noWatcher)) {
             registry.prewarm();
             var previous = available(registry);
             var tools = new QuillTools(registry);
@@ -891,7 +895,12 @@ class ProjectPreparationTest {
                 assertEquals(2, previous.<Integer>read(c -> c.symbols.findAllClasses().size()));
                 var verified = JSON.readTree(current.<String>read(c -> new ChangeSessionQueries().snapshot(
                         c, root, List.of("Marker"), "Change marker", 100, "summary", "verification")));
-                assertTrue(verified.path("verification_receipt").path("verified").asBoolean(), verified.toString());
+                // The recovered generation holds the build's evidence; only the absent watcher keeps it unverified.
+                var evidence = verified.path("verification_receipt").path("observed_evidence");
+                assertEquals("success", evidence.path("build_status").asText(), verified.toString());
+                assertEquals("fresh", evidence.path("compiled_outputs").path("status").asText(), verified.toString());
+                assertEquals(List.of("input_watch_unavailable"), current.observations().freshness().staleReasons());
+                assertFalse(verified.path("verification_receipt").path("verified").asBoolean(), "Unwatched inputs must not verify");
             } finally { release.countDown(); System.setErr(output); }
         }
     }

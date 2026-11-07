@@ -177,7 +177,7 @@ final class EntryPointQueries {
         ArrayNode limitations = root.putArray("limitations");
         limitations.add("Only compiled signatures, indexed annotations, type hierarchy, and project-local META-INF/services descriptors are analyzed");
         limitations.add("XML, YAML, programmatic route registration, build extensions, reflection, and external deployment descriptors may define additional entry points");
-        limitations.add("Annotation evidence contains indexed values; resolved defaults, when available, are marked by $defaults");
+        limitations.add("Annotation evidence contains indexed values; resolved defaults, when available, are marked by $defaults, or by observer.defaults for observer settings");
         limitations.add("Composed method annotations are reported only when their concrete annotation type is one of the supported framework entry-point annotations");
 
         ArrayNode values = root.putArray("entry_points");
@@ -215,7 +215,7 @@ final class EntryPointQueries {
             else node.put("source_set", cls.sourceSet());
             if (summary && candidate.kind().equals("observer")) {
                 node.remove(List.of("symbol_kind", "detection_rule", "confidence", "annotations", "annotation_values", "origin", "module"));
-                if (node.get("observer") instanceof ObjectNode observer) observer.remove("qualifier_rule");
+                if (node.get("observer") instanceof ObjectNode observer) observer.remove(List.of("qualifier_rule", "defaults"));
             }
             if (summary && values.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 6000) {
                 values.remove(values.size() - 1);

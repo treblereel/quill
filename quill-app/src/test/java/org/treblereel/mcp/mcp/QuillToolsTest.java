@@ -496,6 +496,9 @@ class QuillToolsTest {
                 tool.path("impacted_tests").path("request").path("arguments").path("targets"));
         assertEquals(result.path("impacted_tests").path("total"), tool.path("impacted_tests").path("total"));
         assertEquals(result.path("impacted_tests").path("answer_complete"), tool.path("impacted_tests").path("answer_complete"));
+        JsonNode failed = JSON.readTree(ContextQueries.summarizeImpactedTests(
+                "{\"impacted_tests\":{\"error_code\":\"AMBIGUOUS_CLASS\"}}"));
+        assertFalse(failed.path("impacted_tests").has("request"), "No follow-up without resolved targets");
         assertEquals("MissingService",
                 result.path("unresolved_targets").get(0).path("target").asText());
         assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());

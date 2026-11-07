@@ -90,6 +90,7 @@ class EntryPointQueriesTest {
         assertEquals("AFTER_SUCCESS",observer.path("observer").path("during").asText(),observer.toString());
         assertTrue(observer.has("detection_rule"),"Full detail keeps the detection evidence");
         assertFalse(page.path("entry_points").get(1).has("annotation_values"));
+        assertFalse(page.path("entry_points").get(1).path("observer").has("defaults"));
     }
     @Test void oversizedSingleRowHasExplicitFullDetailRecovery() throws Exception {
         var db=fixture();

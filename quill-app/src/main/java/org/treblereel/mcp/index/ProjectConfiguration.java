@@ -14,7 +14,7 @@ public final class ProjectConfiguration {
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
     private static final String QUILL_CLAUDE_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v7 -->
+            <!-- quill:instructions:v8 -->
             ## Quill — Codebase Intelligence (MCP)
 
             Prefer Quill over broad search for project-wide questions: implementations, annotations,
@@ -38,10 +38,10 @@ public final class ProjectConfiguration {
             <!-- quill:instructions:v6 -->
             ## Quill MCP
 
-            Prefer Quill over broad search for project-wide questions: symbols, implementations,
-            usages, hierarchies, dependencies, endpoints, DI, affected tests, build problems, Git
-            history, change risk. Use `rg` and source reads for exact literals and known files, and
-            to verify evidence Quill reports as stale, partial, unknown, or unsupported.
+            Prefer Quill over broad search for symbols, usages, hierarchies, DI, endpoints, affected
+            tests, build problems, Git history and change risk. Use `rg` and source reads for exact
+            literals and known files, and to verify evidence Quill reports as stale, partial,
+            unknown, or unsupported.
 
             Query the relevant tool directly. Each turn resends the conversation, so make all
             independent queries in one script turn (several `tools.mcp__quill__*` calls awaited
@@ -54,8 +54,9 @@ public final class ProjectConfiguration {
             For a code change, call `mcp__quill__change_session(change, targets)` before editing or
             choosing a build, repeat it after edits, and follow `directive.primary_action`. Required
             `phase_gate` evidence and `review_checklist` items are blockers. When build evidence is
-            stale, run the `quick_compile` command; Quill never runs builds. Report completion only
-            when the phase is `complete` and the verification receipt is verified.
+            stale, run the `quick_compile` command; Quill never runs builds. Run `focused` or
+            `module_fallback` tests only when the task requires tests;
+            incomplete test evidence alone does not. Report completion only when the phase is `complete` and the receipt is verified.
             <!-- quill:managed:end -->
             """;
 

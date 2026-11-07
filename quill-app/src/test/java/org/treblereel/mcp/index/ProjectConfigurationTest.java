@@ -81,6 +81,8 @@ class ProjectConfigurationTest {
         assertTrue(installed.startsWith("# User instructions\n"));
         assertTrue(installed.contains("`mcp__quill__get_overview`"));
         assertTrue(installed.contains("never print the whole catalog"));
+        assertTrue(installed.contains("only when the task requires tests"));
+        assertTrue(installed.contains("incomplete test evidence alone does not"));
         assertTrue(installed.contains("`--workspace`"));
         assertTrue(installed.contains("`retry_with`"));
         assertTrue(installed.contains("`next_page_request`"));
@@ -147,7 +149,7 @@ class ProjectConfigurationTest {
                 ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(refreshed.startsWith("# User head\n"));
         assertTrue(refreshed.endsWith("# User tail\n"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v7 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v8 -->"));
         assertFalse(refreshed.contains("<!-- quill:instructions:v6 -->"));
     }
 

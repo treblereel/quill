@@ -150,8 +150,10 @@ final class ContextQueries {
             if (!(JSON.readTree(text) instanceof ObjectNode root)
                     || !(root.get("impacted_tests") instanceof ObjectNode impact)) return text;
             ObjectNode summary = compact(impact, List.of("answer_complete", "limitations", "total"));
-            summary.putObject("request").put("tool", "find_impacted_tests").putObject("arguments")
-                    .set("targets", impact.path("targets"));
+            if (impact.path("targets") instanceof com.fasterxml.jackson.databind.node.ArrayNode targets && !targets.isEmpty()) {
+                summary.putObject("request").put("tool", "find_impacted_tests").putObject("arguments")
+                        .set("targets", targets);
+            }
             root.set("impacted_tests", summary);
             return root.toString();
         } catch (com.fasterxml.jackson.core.JsonProcessingException notJson) {

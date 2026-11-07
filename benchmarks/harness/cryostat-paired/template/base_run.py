@@ -167,9 +167,13 @@ def main(mode):
     check();row={**entry,'status':'started','started_at':time.time()};state['sessions'].append(row);put(O/'manager.json',state)
     try:isolated(row,O/'sessions'/row['key']);row.update(status='completed',finished_at=time.time());state['consecutive_failures']=0
     except Exception as error:
-     row.update(status='failed',finished_at=time.time(),error=str(error)[:2000]);state['consecutive_failures']+=1
-     external=any(x in str(error).lower() for x in ['connection reset','connection aborted','service unavailable','502','503','overloaded'])
-     if not external or state['consecutive_failures']>=2:state['status']='stopped_error';raise
+     row.update(status='failed',finished_at=time.time(),error=str(error)[:2000])
+     # An agent editing a read-only task or hitting a denied command is a result of that session, not a broken run.
+     behavior=any(x in str(error) for x in ['Readonly task changed tracked source','Claude error/permission denial'])
+     if not behavior:
+      state['consecutive_failures']+=1
+      external=any(x in str(error).lower() for x in ['connection reset','connection aborted','service unavailable','502','503','overloaded'])
+      if not external or state['consecutive_failures']>=2:state['status']='stopped_error';raise
     finally:put(O/'manager.json',state)
     print(row['key'],row['status'],len(state['sessions']),flush=True)
   state.update(status='completed_schedule',finished_at=time.time())

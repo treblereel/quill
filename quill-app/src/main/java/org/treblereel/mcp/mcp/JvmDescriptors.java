@@ -21,23 +21,34 @@ final class JvmDescriptors {
             value = value.substring("<init>".length());
         }
         String parameters;
-        if (value.startsWith("(") && value.endsWith(")")) {
-            parameters = value.substring(1, value.length() - 1);
+        int close = value.lastIndexOf(')');
+        if (value.startsWith("(") && close > 0) {
+            String returned = value.substring(close + 1).strip();
+            if (!returned.isEmpty()) {
+                if (!returned.startsWith(":")) return false;
+                if (!typeMatches(returned.substring(1), Type.getReturnType(descriptor))) return false;
+            }
+            parameters = value.substring(1, close);
         } else {
             if (value.contains("(") || value.contains(")")) return false;
             parameters = value;
         }
+        parameters = eraseGenerics(parameters);
         String[] requested = parameters.isBlank() ? new String[0] : parameters.split(",", -1);
         Type[] actual = Type.getArgumentTypes(descriptor);
         if (requested.length != actual.length) return false;
         for (int i = 0; i < actual.length; i++) {
-            String wanted=requested[i].strip().replace("...","[]").replace('$','.');
-            String qualified=actual[i].getClassName().replace('$','.');
-            // Callers still reject multiple matching overloads; a short type never selects one arbitrarily.
-            if (!wanted.equals(qualified) && !(wanted.indexOf('.')<0
-                    && wanted.equals(qualified.substring(qualified.lastIndexOf('.')+1)))) return false;
+            if (!typeMatches(requested[i], actual[i])) return false;
         }
         return true;
+    }
+
+    /** Callers still reject multiple matching overloads; a short type never selects one arbitrarily. */
+    private static boolean typeMatches(String selector, Type actual) {
+        String wanted = eraseGenerics(selector).strip().replace("...", "[]").replace('$', '.');
+        String qualified = actual.getClassName().replace('$', '.');
+        return wanted.equals(qualified) || (wanted.indexOf('.') < 0
+                && wanted.equals(qualified.substring(qualified.lastIndexOf('.') + 1)));
     }
 
     static String methodDescriptor(ClassMemberRecord member) {

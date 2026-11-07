@@ -33,6 +33,48 @@ class JvmDescriptorsTest {
         assertTrue(JvmDescriptors.matchesSignature(legacy, "(I)V"));
     }
 
+    private ClassMemberRecord named(String name, String descriptor) {
+        return new ClassMemberRecord(1, "METHOD", name, name + ":indexed", descriptor,
+                "void", List.of(), "public", List.of());
+    }
+
+    @Test void selectorsWithReturnTypeMatchParametersAndErasedReturn() {
+        var member = named("reportFor", "(Lio/cryostat/recordings/ActiveRecording;)Lio/smallrye/mutiny/Uni;");
+        for (String selector : List.of(
+                "(io.cryostat.recordings.ActiveRecording):io.smallrye.mutiny.Uni",
+                "reportFor(io.cryostat.recordings.ActiveRecording):io.smallrye.mutiny.Uni",
+                "reportFor(ActiveRecording):Uni<java.util.Map<java.lang.String,java.lang.String>>",
+                "reportFor(ActiveRecording) : Uni")) {
+            assertTrue(JvmDescriptors.matchesSignature(member, selector), selector);
+        }
+        for (String selector : List.of("reportFor(ActiveRecording):java.lang.String",
+                "reportFor(ActiveRecording)Uni", "reportFor(ActiveRecording):", "(ActiveRecording):other.Uni")) {
+            assertFalse(JvmDescriptors.matchesSignature(member, selector), selector);
+        }
+    }
+
+    @Test void genericParametersAreErasedBeforeCountingArity() {
+        var member = named("put", "(Ljava/util/Map;)V");
+        assertTrue(JvmDescriptors.matchesSignature(member, "(java.util.Map<java.lang.String,java.lang.Integer>)"));
+        assertTrue(JvmDescriptors.matchesSignature(member, "put(Map<String,List<Integer>>):void"));
+        assertFalse(JvmDescriptors.matchesSignature(member, "(java.util.Map<String,Integer>,int)"));
+    }
+
+    @Test void varargsWithReturnTypeMatch() {
+        var member = named("log", "([Ljava/lang/String;)V");
+        assertTrue(JvmDescriptors.matchesSignature(member, "(java.lang.String...):void"));
+        assertTrue(JvmDescriptors.matchesSignature(member, "log(String[]):void"));
+    }
+
+    @Test void bridgeMethodsNeedReturnTypeToSelectOne() {
+        var bridge = named("value", "()Ljava/lang/Object;");
+        var real = named("value", "()Ljava/lang/String;");
+        assertTrue(JvmDescriptors.matchesSignature(bridge, "value()"));
+        assertTrue(JvmDescriptors.matchesSignature(real, "value()"));
+        assertTrue(JvmDescriptors.matchesSignature(bridge, "value():java.lang.Object"));
+        assertFalse(JvmDescriptors.matchesSignature(real, "value():java.lang.Object"));
+    }
+
     @Test void simpleNameCollisionsRemainMultipleCandidates() {
         var methods = List.of(method("(Ljava/util/Date;)V"), method("(Ljava/sql/Date;)V"));
         assertEquals(2, methods.stream().filter(m -> JvmDescriptors.matchesSignature(m, "(Date)")).count());

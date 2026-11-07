@@ -86,12 +86,14 @@ def prepare():
     plan = m.measurement.make_plan(ref, 3, @SEED@)
     if ARM or REPEAT:
         plan['schedule'] = [e for e in plan['schedule'] if (not ARM or e['arm'] == ARM) and (not REPEAT or e['repeat'] == REPEAT)]
+        plan['repeats'] = len({e['repeat'] for e in plan['schedule']})
         plan['sessions'] = len(plan['schedule'])
         plan['answers'] = sum(len(e['prompts']) for e in plan['schedule'])
     p={**ref, **{k:plan[k] for k in ('measurement_contract','schedule','sessions','answers','repeats','seed')},
        'native_binary':str(NATIVE),'native_sha256':sha(NATIVE),
        'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip(),
-       'scope':(f'Targeted run of {sorted(CASES)}; ' if CASES else '44 applicable scenarios of 50; ')+(f'diagnostic, arm {ARM or "both"}, repeat {REPEAT or "all"}, unpaired; ' if ARM or REPEAT else 'three paired repeats; ')+f'Codex and Claude; {plan["sessions"]} sessions and {plan["answers"]} answers.',
+       'scope':(f'Targeted run of {sorted(CASES)}; ' if CASES else '44 applicable scenarios of 50; ')+(f'diagnostic, arm {ARM}, repeat {REPEAT or "all"}, unpaired; ' if ARM else f'diagnostic, repeat {REPEAT} only, paired within it; ' if REPEAT else 'three paired repeats; ')+f'Codex and Claude; {plan["sessions"]} sessions and {plan["answers"]} answers.',
+       'run_filters':{'cases':CASES,'arm':ARM,'repeat':REPEAT,'acceptance_evidence':not (CASES or ARM or REPEAT)},
        'fixture_policy':'Reuse canonical disposable compiled Cryostat fixture; fresh current-native init/index; application sources unchanged.',
        'selection':'Preregistered seed @SEED@; randomized case/client pair order, AB/BA alternated across repeats.',
        'cache':'Provider cache uncontrolled; all captured requests including prewarm and failed attempts retained.',

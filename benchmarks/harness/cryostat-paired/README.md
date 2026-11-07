@@ -8,7 +8,8 @@ benchmarks/harness/cryostat-paired/new_run.py <run-name> <seed> [CQ-007,CQ-015,.
 ```
 
 A case list makes a targeted run under the same protocol. `--arm` and `--repeat` narrow it
-further for a cheap diagnostic; such a run has no fresh pairs, so it cannot show acceptance.
+further for a cheap diagnostic. One arm has no fresh pairs; one repeat has pairs but too few.
+`protocol.json` records `run_filters`, and only an unfiltered run is acceptance evidence.
 
 Then, from the new run directory, `python3.14 run.py prepare`, `preflight`,
 `preflight-client` and `plan` make no provider calls, and neither does

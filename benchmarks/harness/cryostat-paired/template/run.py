@@ -7,6 +7,7 @@ O = Path(__file__).resolve().parent
 BASE = O / 'base'
 REPO = O.parents[2]
 F = Path('/tmp/quill-@RUN@')
+CASES = @CASES@  # None runs every applicable case; a list makes a targeted run.
 spec = importlib.util.spec_from_file_location('full_runner', BASE / 'run.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 r = m.r
@@ -77,11 +78,14 @@ def prepare():
         if file.is_file() and not any(n in rel.parts for n in ['.git','.quill','node_modules','.yarn','.quinoa']):
             times[str(rel)]=[file.stat().st_atime_ns,file.stat().st_mtime_ns]
     put(O/'file-times.json',times)
+    if CASES:
+        ref = {**ref, 'schedule': [e for e in ref['schedule'] if e['case'] in CASES]}
+        assert {e['case'] for e in ref['schedule']} == set(CASES)
     plan = m.measurement.make_plan(ref, 3, @SEED@)
     p={**ref, **{k:plan[k] for k in ('measurement_contract','schedule','sessions','answers','repeats','seed')},
        'native_binary':str(NATIVE),'native_sha256':sha(NATIVE),
        'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip(),
-       'scope':'44 applicable scenarios of 50; three paired repeats; Codex and Claude, with and without Quill; 528 sessions and 588 answers.',
+       'scope':(f'Targeted run of {sorted(CASES)}; ' if CASES else '44 applicable scenarios of 50; ')+f'three paired repeats; Codex and Claude, with and without Quill; {plan["sessions"]} sessions and {plan["answers"]} answers.',
        'fixture_policy':'Reuse canonical disposable compiled Cryostat fixture; fresh current-native init/index; application sources unchanged.',
        'selection':'Preregistered seed @SEED@; randomized case/client pair order, AB/BA alternated across repeats.',
        'cache':'Provider cache uncontrolled; all captured requests including prewarm and failed attempts retained.',
@@ -90,7 +94,8 @@ def prepare():
        'native_build_proof':load(O/'native-build-proof.json'),
        'codex_binary':str(RUNTIME/'codex'),'claude_binary':str(RUNTIME/'claude'),
        'cli_versions_actual':{name:subprocess.check_output([str(RUNTIME/name),'--version'],text=True).strip() for name in ('codex','claude')}}
-    assert p['sessions']==528 and p['answers']==588
+    assert CASES or (p['sessions']==528 and p['answers']==588)
+    assert p['sessions']==len(p['schedule'])
     put(O/'protocol.json',p)
     put(O/'source-inputs.json',ref['source_files'])
     m.freeze()
@@ -98,7 +103,7 @@ def prepare():
     for path in [O/'source-manifest.json',O/'native-build-proof.json',REPO/'scripts/quill_manual_grades.py',BASE/'run.py',BASE/'runtime/session.py',BASE/'submission-recorder.py',BASE/'baseline-parameters.json',BASE/'protocol.json',O/'capture-environment.json',O/'capture-requirements.txt',O/'capture-preflight/results.json',*list((BASE/'runtime').glob('*.py')),*list((BASE/'frozen-scripts').glob('*.py'))]:
         frozen[str(path.resolve())]=sha(path)
     put(O/'frozen-inputs.json',frozen)
-    print('Prepared528sessions588answers;0provider calls',flush=True)
+    print(f"Prepared{p['sessions']}sessions{p['answers']}answers;0provider calls",flush=True)
 
 def main(mode):
     if mode in ('start','continue','plan'):

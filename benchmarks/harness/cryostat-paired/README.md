@@ -4,8 +4,10 @@ The source of the 528-session paired runs. Results stay out of git under
 `benchmarks/results/`, so the code lives here and each run gets its own frozen copy:
 
 ```bash
-benchmarks/harness/cryostat-paired/new_run.py <run-name> <seed>
+benchmarks/harness/cryostat-paired/new_run.py <run-name> <seed> [CQ-007,CQ-015,...]
 ```
+
+A case list makes a targeted run under the same protocol. Its preflight needs CQ-033 in the list.
 
 Then, from the new run directory, `python3.14 run.py prepare`, `preflight`,
 `preflight-client` and `plan` make no provider calls, and neither does

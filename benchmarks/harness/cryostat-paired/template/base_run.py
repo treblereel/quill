@@ -116,7 +116,7 @@ def check():
   if checked_stamps.get(name)!=stamp:
    assert sha(name)==digest,name
    checked_stamps[name]=stamp
- p=load(O/'protocol.json');assert len(p['schedule'])==528 and sum(len(r['prompts']) for r in p['schedule'])==588
+ p=load(O/'protocol.json');assert len(p['schedule'])==p['sessions'] and sum(len(r['prompts']) for r in p['schedule'])==p['answers']
  assert p['measurement_contract']==measurement.CONTRACT
  # Mutable fixture is restored and source-validated by setup_entry before each model session.
  return p
@@ -154,10 +154,10 @@ def main(mode):
  global_lock=Path('/tmp/quill-cryostat-full-suite.lock').open('a');fcntl.flock(global_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
  if mode=='prepare':prepare();return
  p=check()
- if mode=='plan':print(json.dumps({'sessions':528,'answers':588,'N/A':6,'provider_calls':0}));return
+ if mode=='plan':print(json.dumps({'sessions':p['sessions'],'answers':p['answers'],'N/A':6,'provider_calls':0}));return
  assert mode in ['start','continue'] and load(O/'preflight.json')['passed'] and load(O/'preflight-client.json')['passed']
  if mode=='start':
-  assert not (O/'manager.json').exists(),'Never replay an existing acquisition';state={'status':'running','planned_sessions':528,'planned_answers':588,'started_at':time.time(),'sessions':[],'consecutive_failures':0}
+  assert not (O/'manager.json').exists(),'Never replay an existing acquisition';state={'status':'running','planned_sessions':p['sessions'],'planned_answers':p['answers'],'started_at':time.time(),'sessions':[],'consecutive_failures':0}
  else:
   state=load(O/'manager.json');assert state['status'] in ['stopped_error','interrupted'];assert [r['key'] for r in state['sessions']]==[r['key'] for r in p['schedule'][:len(state['sessions'])]];assert all(r['status'] in ['completed','failed','interrupted'] for r in state['sessions']);state['status']='running'
  put(O/'manager.json',state)

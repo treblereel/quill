@@ -3,14 +3,16 @@ package org.treblereel.mcp.mcp;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
  * Removes response fields that clients pay for on every call and do not use. In the recorded V15
- * sessions no agent passed a symbol id back in 793 calls. A full-detail request keeps everything.
+ * sessions no agent passed a symbol id back in 793 calls. A full-detail request keeps every fact.
  */
 final class ResponseCompaction {
 
@@ -31,12 +33,17 @@ final class ResponseCompaction {
             "get_context", Map.of("risk", "signals"),
             "find_configuration_references", Map.of("field_reads", "basis"),
             "list_injection_points", Map.of("declarations", "artifact"));
+    private static final String COMMON = "_common";
+    private static final int MIN_ITEMS_WITH_COMMON_FIELDS = 3;
+    /** Quotes, a colon and a comma around a moved field, and the same plus braces around the new object. */
+    private static final int FIELD_OVERHEAD = 4;
+    private static final int COMMON_OVERHEAD = 6;
     private static final Set<String> DESCRIPTOR_DUPLICATES_SIGNATURE = Set.of("get_symbol_details", "get_context");
 
     private ResponseCompaction() {}
 
     static String apply(String text, String tool, Map<String, Object> arguments) {
-        if (UNCHANGED.contains(tool) || full(arguments)) return text;
+        if (UNCHANGED.contains(tool)) return text;
         JsonNode root;
         try {
             root = JSON.readTree(text);
@@ -44,12 +51,55 @@ final class ResponseCompaction {
             return text;
         }
         if (!(root instanceof ObjectNode object) || object.has("error_code") || object.has("error")) return text;
-        if (object.path("_meta") instanceof ObjectNode meta && meta.path("stale_warning").isBoolean()
-                && !meta.path("stale_warning").asBoolean()) {
-            meta.remove(FRESH_META);
+        if (!full(arguments)) {
+            if (object.path("_meta") instanceof ObjectNode meta && meta.path("stale_warning").isBoolean()
+                    && !meta.path("stale_warning").asBoolean()) {
+                meta.remove(FRESH_META);
+            }
+            compact(object, tool);
         }
-        compact(object, tool);
+        stateCommonFieldsOnce(object);
         return object.toString();
+    }
+
+    /** Moves a field with one value across a list's items to {@code <list>_common}: nothing is lost, so full detail gets it too. */
+    private static void stateCommonFieldsOnce(JsonNode node) {
+        if (node.isArray()) {
+            for (JsonNode child : node) stateCommonFieldsOnce(child);
+            return;
+        }
+        if (!(node instanceof ObjectNode object)) return;
+        List<String> fields = new ArrayList<>();
+        object.fieldNames().forEachRemaining(fields::add);
+        for (String field : fields) {
+            if (PRESERVED_SUBTREES.contains(field)) continue;
+            JsonNode value = object.get(field);
+            stateCommonFieldsOnce(value);
+            // GraphMetadata shares call edges by reference, which also covers partial repeats.
+            if (value instanceof ArrayNode list && !field.equals("calls") && !object.has(field + COMMON)) {
+                moveCommonFields(object, field, list);
+            }
+        }
+    }
+
+    private static void moveCommonFields(ObjectNode owner, String field, ArrayNode items) {
+        if (items.size() < MIN_ITEMS_WITH_COMMON_FIELDS) return;
+        for (JsonNode item : items) if (!(item instanceof ObjectNode)) return;
+        ObjectNode first = (ObjectNode) items.get(0);
+        ObjectNode common = JSON.createObjectNode();
+        int saved = -(field.length() + COMMON.length() + COMMON_OVERHEAD);
+        for (var entry : first.properties()) {
+            boolean shared = true;
+            for (JsonNode item : items) shared &= entry.getValue().equals(item.get(entry.getKey()));
+            if (!shared) continue;
+            common.set(entry.getKey(), entry.getValue());
+            saved += (items.size() - 1) * (entry.getKey().length() + entry.getValue().toString().length() + FIELD_OVERHEAD);
+        }
+        if (common.isEmpty() || saved <= 0 || common.size() == first.size()) return;
+        List<String> moved = new ArrayList<>();
+        common.fieldNames().forEachRemaining(moved::add);
+        for (JsonNode item : items) ((ObjectNode) item).remove(moved);
+        owner.set(field + COMMON, common);
     }
 
     private static boolean full(Map<String, Object> arguments) {

@@ -20,6 +20,65 @@ class ResponseCompactionTest {
         return JSON.readTree(ResponseCompaction.apply(json, tool, arguments));
     }
 
+    private static final String RULE = "a long detection rule explanation repeated for every item";
+
+    private static String entries(int count) {
+        var items = new java.util.ArrayList<String>();
+        for (int i = 0; i < count; i++) {
+            items.add("{\"class\":\"C" + i + "\",\"symbol_id\":\"s" + i + "\",\"detection_rule\":\"" + RULE + "\"}");
+        }
+        return "{\"entry_points\":[" + String.join(",", items) + "]}";
+    }
+
+    @Test
+    void repeatedItemFieldIsStatedOnceBesideTheList() throws Exception {
+        JsonNode root = compact("find_entry_points", entries(3), Map.of());
+        assertEquals(RULE, root.path("entry_points_common").path("detection_rule").asText());
+        assertFalse(root.path("entry_points").get(0).has("detection_rule"));
+        assertEquals("C2", root.path("entry_points").get(2).path("class").asText());
+    }
+
+    @Test
+    void fullDetailStatesRepeatedFieldsOnceAndKeepsEverythingElse() throws Exception {
+        JsonNode root = compact("find_entry_points", entries(3), Map.of("detail", "full"));
+        assertEquals(RULE, root.path("entry_points_common").path("detection_rule").asText());
+        assertEquals("s1", root.path("entry_points").get(1).path("symbol_id").asText());
+    }
+
+    @Test
+    void fieldsThatDifferOrCostNothingStayOnEachItem() throws Exception {
+        JsonNode two = compact("find_entry_points", entries(2), Map.of());
+        assertFalse(two.has("entry_points_common"));
+        assertTrue(two.path("entry_points").get(0).has("detection_rule"));
+        JsonNode cheap = compact("list_beans", "{\"beans\":[{\"c\":\"a\",\"k\":1},{\"c\":\"b\",\"k\":1},{\"c\":\"d\",\"k\":1}]}", Map.of());
+        assertFalse(cheap.has("beans_common"), cheap.toString());
+        assertEquals(1, cheap.path("beans").get(0).path("k").asInt());
+        String identical = "{\"a\":[{\"x\":\"" + RULE + "\"},{\"x\":\"" + RULE + "\"},{\"x\":\"" + RULE + "\"}]}";
+        assertEquals(JSON.readTree(identical), compact("list_beans", identical, Map.of()));
+    }
+
+    @Test
+    void callGraphsKeepTheirOwnMetadataSharing() throws Exception {
+        JsonNode root = compact("get_call_hierarchy", entries(3).replace("entry_points", "calls"), Map.of());
+        assertFalse(root.has("calls_common"));
+        assertTrue(root.path("calls").get(0).has("detection_rule"));
+    }
+
+    @Test
+    void followUpRequestsKeepTheirShape() throws Exception {
+        String repeated = entries(3);
+        JsonNode root = compact("list_beans", "{\"next_step\":" + repeated + ",\"candidates\":[{\"k\":\"" + RULE + "\",\"c\":1},{\"k\":\"" + RULE + "\",\"c\":2},{\"k\":\"" + RULE + "\",\"c\":3}]}", Map.of());
+        assertFalse(root.has("candidates_common"));
+        assertFalse(root.path("next_step").has("entry_points_common"));
+    }
+
+    @Test
+    void toolsReportingStateAndErrorsStayUntouched() throws Exception {
+        assertEquals(JSON.readTree(entries(3)), compact("change_session", entries(3), Map.of()));
+        String error = entries(3).replaceFirst("\\{", "{\"error_code\":\"X\",");
+        assertEquals(JSON.readTree(error), compact("list_beans", error, Map.of()));
+    }
+
     @Test
     void freshMetaKeepsTheVerdictAndIdentityOnly() throws Exception {
         JsonNode meta = compact("list_beans", "{" + FRESH + "}", Map.of()).path("_meta");

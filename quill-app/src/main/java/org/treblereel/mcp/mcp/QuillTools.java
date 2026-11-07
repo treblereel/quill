@@ -257,8 +257,8 @@ public final class QuillTools {
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         boolean requestedMembers = include_members.orElse(false);
         int requestedLimit = clamp(limit.orElse(view.orElse("full").equals("impact")?25:10), 1, 25);
-        return forGraphProjects(project.orElse(null), (p, context) -> queries.getContext(
-                context, targets, requestedMembers, requestedLimit, view.orElse("full")));
+        return forGraphProjects(project.orElse(null), (p, context) -> ContextQueries.summarizeImpactedTests(
+                queries.getContext(context, targets, requestedMembers, requestedLimit, view.orElse("full"))));
     }
 
     @Tool(readOnly = true, structured = true,
@@ -637,10 +637,10 @@ public final class QuillTools {
     }
 
     @Tool(readOnly = true, structured = true,
-            description = "Inspect dependency class members, annotations and defaults for library source/decompile evidence. detail=summary by default; source returns only locally available companion source evidence; full adds bounded bytecode calls, constants and source. Runtime activation is not proven.")
+            description = "Inspect dependency class members, annotations and defaults for library source/decompile evidence. detail=summary by default; source returns only locally available companion source evidence; full adds members and source; bytecode adds bounded bytecode calls and constants. Runtime activation is not proven.")
     public String get_external_symbol_details(
             @ToolArg(description = "External class short name or FQCN") String class_name,
-            @ToolArg(description = "summary (default), full (bytecode and source), source (source excerpt only)", allowed = {"summary", "full", "source"}) Optional<String> detail,
+            @ToolArg(description = "summary (default), full (members and source), source (source excerpt only), bytecode (full plus bytecode calls)", allowed = {"summary", "full", "source", "bytecode"}) Optional<String> detail,
             @ToolArg(description = "Members per page; default 20, max 200") Optional<Integer> limit,
             @ToolArg(description = "Member page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {

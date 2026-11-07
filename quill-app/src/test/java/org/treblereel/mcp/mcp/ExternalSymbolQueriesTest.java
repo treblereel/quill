@@ -203,9 +203,19 @@ class ExternalSymbolQueriesTest {
     }
 
     @Test
+    void fullDetailLeavesBytecodeCallsToTheirOwnRequest() throws Exception {
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "Fixture", 20, 0, "full")));
+
+        assertTrue(result.path("members").toString().contains("greet"));
+        assertFalse(result.has("bytecode_method_calls"));
+        assertEquals("bytecode", result.path("bytecode_request").path("detail").asText());
+    }
+
+    @Test
     void readsMembersOnlyForSelectedExternalClass() throws Exception {
         var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
-                .details(readScope, temp, "Fixture", 20, 0)));
+                .details(readScope, temp, "Fixture", 20, 0, "bytecode")));
 
         assertTrue(result.path("class_name").asText().endsWith("$Fixture"));
         assertTrue(result.path("members").toString().contains("greet"));

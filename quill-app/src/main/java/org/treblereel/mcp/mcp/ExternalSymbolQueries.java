@@ -103,7 +103,7 @@ final class ExternalSymbolQueries {
     }
 
     String details(ReadQueryContext reader, Path root, String className, int limit, int offset, String detail) {
-        if (!java.util.Set.of("summary", "full", "source").contains(detail)) return error("detail must be summary, full or source");
+        if (!java.util.Set.of("summary", "full", "source", "bytecode").contains(detail)) return error("detail must be summary, full, source or bytecode");
         Catalog catalog = catalog(reader, root);
         List<ClassRef> refs = catalog.classes().stream()
                 .filter(candidate -> candidate.className().equals(className)
@@ -164,11 +164,12 @@ final class ExternalSymbolQueries {
         result.put("detail", detail);
         appendSource(ref, result, !detail.equals("summary"));
         if (detail.equals("source")) return result.toString();
-        if (detail.equals("full")) {
+        // Recorded agents used about 2% of these calls, so full detail points to them instead.
+        if (detail.equals("bytecode")) {
             result.set("bytecode_method_calls", methodCalls(ref));
             result.put("bytecode_method_calls_scope", "At most 40 invocation instructions and 12 string constants per method, 200 invocations and 60 constants per class; omitted invokedynamic bodies, reflection and runtime dispatch are not inferred");
         } else {
-            result.putObject("bytecode_request").put("class_name", ref.className()).put("detail", "full");
+            result.putObject("bytecode_request").put("class_name", ref.className()).put("detail", "bytecode");
         }
         result.put("source", "resolved_dependency_bytecode");
         result.put("total_members", members.size());

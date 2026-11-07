@@ -140,6 +140,25 @@ final class ContextQueries {
         return root.toString();
     }
 
+    /**
+     * The tool's own response: plan and verification read the full test list internally, but the
+     * ranked list repeated method_context.test_impact and was rarely the only source of what agents
+     * used, so the tool answer leaves it one follow-up request away.
+     */
+    static String summarizeImpactedTests(String text) {
+        try {
+            if (!(JSON.readTree(text) instanceof ObjectNode root)
+                    || !(root.get("impacted_tests") instanceof ObjectNode impact)) return text;
+            ObjectNode summary = compact(impact, List.of("answer_complete", "limitations", "total"));
+            summary.putObject("request").put("tool", "find_impacted_tests").putObject("arguments")
+                    .set("targets", impact.path("targets"));
+            root.set("impacted_tests", summary);
+            return root.toString();
+        } catch (com.fasterxml.jackson.core.JsonProcessingException notJson) {
+            return text;
+        }
+    }
+
     private static ObjectNode compact(ObjectNode source, List<String> fields) {
         ObjectNode result = JSON.createObjectNode();
         fields.forEach(field -> copy(source, result, field));

@@ -489,6 +489,13 @@ class QuillToolsTest {
         assertTrue(context.path("risk").has("risk_score"));
         assertFalse(context.path("risk").has("_meta"));
         assertTrue(result.has("impacted_tests"));
+        JsonNode tool = JSON.readTree(ContextQueries.summarizeImpactedTests(result.toString()));
+        assertFalse(tool.path("impacted_tests").has("tests"), "find_impacted_tests lists them on request");
+        assertEquals("find_impacted_tests", tool.path("impacted_tests").path("request").path("tool").asText());
+        assertEquals(result.path("impacted_tests").path("targets"),
+                tool.path("impacted_tests").path("request").path("arguments").path("targets"));
+        assertEquals(result.path("impacted_tests").path("total"), tool.path("impacted_tests").path("total"));
+        assertEquals(result.path("impacted_tests").path("answer_complete"), tool.path("impacted_tests").path("answer_complete"));
         assertEquals("MissingService",
                 result.path("unresolved_targets").get(0).path("target").asText());
         assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());

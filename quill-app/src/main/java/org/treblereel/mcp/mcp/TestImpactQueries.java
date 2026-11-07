@@ -37,19 +37,16 @@ final class TestImpactQueries {
         if (lookup.error() != null) return classLookupError(reader, lookup, target);
         ClassRecord owner = lookup.cls();
         int parameters = method.indexOf('(');
-        if (signature == null && parameters > 0 && method.endsWith(")")) {
+        if (signature == null && parameters > 0 && method.lastIndexOf(')') > parameters) {
             String selector = method;
             String name = method.substring(0, parameters).strip();
-            String values = method.substring(parameters + 1, method.length() - 1).strip();
-            List<String> requested = values.isEmpty() ? List.of()
-                    : java.util.Arrays.stream(values.split(",", -1)).map(String::strip).toList();
+            String requested = method.substring(parameters);
             var declarations = IndexReader.findKotlinDeclarations(reader.jdbi(), owner.id());
             List<String> matches = IndexReader.findJvmClassMembers(reader.jdbi(), owner.id()).stream()
                     .filter(member -> "METHOD".equals(member.kind())
-                            && KotlinMemberNames.matches(name, member, declarations))
-                    .map(JvmDescriptors::methodDescriptor).filter(Objects::nonNull)
-                    .filter(descriptor -> java.util.Arrays.stream(org.objectweb.asm.Type.getArgumentTypes(descriptor))
-                            .map(org.objectweb.asm.Type::getClassName).toList().equals(requested)).toList();
+                            && KotlinMemberNames.matches(name, member, declarations)
+                            && JvmDescriptors.matchesSignature(member, requested))
+                    .map(JvmDescriptors::methodDescriptor).filter(Objects::nonNull).toList();
             method = name;
             // A missing match must remain an error; never fall back to another overload.
             signature = matches.size() == 1 ? matches.getFirst() : matches.isEmpty() ? selector : null;

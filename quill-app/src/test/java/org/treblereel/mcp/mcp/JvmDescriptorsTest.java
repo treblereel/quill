@@ -60,6 +60,18 @@ class JvmDescriptorsTest {
         assertFalse(JvmDescriptors.matchesSignature(member, "(java.util.Map<String,Integer>,int)"));
     }
 
+    @Test void unbalancedGenericsNeverSelectAnOverload() {
+        var single = named("put", "(Ljava/util/Map;)V");
+        var pair = named("put", "(Ljava/util/Map;I)V");
+        var none = named("put", "()V");
+        for (String selector : List.of("put(Map<String,Integer,int)", "put(Map>,int)", "(<T>", "put(Map):Map<String")) {
+            assertFalse(JvmDescriptors.matchesSignature(single, selector), selector);
+            assertFalse(JvmDescriptors.matchesSignature(pair, selector), selector);
+            assertFalse(JvmDescriptors.matchesSignature(none, selector), selector);
+        }
+        assertFalse(JvmDescriptors.matchesSignature(none, "(<T>)"));
+    }
+
     @Test void varargsWithReturnTypeMatch() {
         var member = named("log", "([Ljava/lang/String;)V");
         assertTrue(JvmDescriptors.matchesSignature(member, "(java.lang.String...):void"));
@@ -110,6 +122,24 @@ class JvmDescriptorsTest {
         var collisions = List.of(method("(Ljava/lang/Integer;)V"), method("(Lother/Integer;)V"));
         assertEquals(2, collisions.stream().filter(m -> JvmDescriptors.matchesSignature(m, "(Integer)")).count());
         assertEquals(1, collisions.stream().filter(m -> JvmDescriptors.matchesSignature(m, "(java.lang.Integer)")).count());
+    }
+
+    @Test void impactedTestsAcceptTheSelectorFormQuillPrints(@TempDir Path root) throws Exception {
+        var db = JavaEvidenceFixture.index(root, """
+                package p;
+                class Target {
+                    java.util.List<String> pick(int value) { return null; }
+                    java.util.List<String> pick(long value) { return null; }
+                }
+                """);
+        for (String selector : List.of("pick(int):java.util.List", "pick(int):java.util.List<java.lang.String>", "pick(int)")) {
+            var json = new ObjectMapper().readTree(TestReads.<String>read(db, reader -> new TestImpactQueries()
+                    .findImpactedTests(reader, List.of("p.Target#" + selector), false, 1, 10, 0)));
+            assertEquals("(I)Ljava/util/List;", json.path("descriptor").asText(), selector + " " + json);
+        }
+        var wrong = new ObjectMapper().readTree(TestReads.<String>read(db, reader -> new TestImpactQueries()
+                .findImpactedTests(reader, List.of("p.Target#pick(int):java.lang.String"), false, 1, 10, 0)));
+        assertTrue(wrong.has("error_code"), wrong.toString());
     }
 
     @Test void realQueriesSelectBoxedAndPrimitiveOverloadsSeparately(@TempDir Path root) throws Exception {

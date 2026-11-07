@@ -16,6 +16,7 @@ final class JvmDescriptors {
         String descriptor = methodDescriptor(member);
         if (value.equals(descriptor)) return true;
         if (descriptor == null) return false;
+        if (!balancedGenerics(value)) return false;
         if (value.startsWith(member.name() + "(")) value = value.substring(member.name().length());
         if ("CONSTRUCTOR".equals(member.kind()) && value.startsWith("<init>(")) {
             value = value.substring("<init>".length());
@@ -33,6 +34,7 @@ final class JvmDescriptors {
             if (value.contains("(") || value.contains(")")) return false;
             parameters = value;
         }
+        if (!parameters.isBlank() && eraseGenerics(parameters).isBlank()) return false;
         parameters = eraseGenerics(parameters);
         String[] requested = parameters.isBlank() ? new String[0] : parameters.split(",", -1);
         Type[] actual = Type.getArgumentTypes(descriptor);
@@ -41,6 +43,16 @@ final class JvmDescriptors {
             if (!typeMatches(requested[i], actual[i])) return false;
         }
         return true;
+    }
+
+    /** An unclosed bracket would erase the following parameters and select another overload. */
+    private static boolean balancedGenerics(String value) {
+        int depth = 0;
+        for (int i = 0; i < value.length(); i++) {
+            if (value.charAt(i) == '<') depth++;
+            else if (value.charAt(i) == '>' && --depth < 0) return false;
+        }
+        return depth == 0;
     }
 
     /** Callers still reject multiple matching overloads; a short type never selects one arbitrarily. */

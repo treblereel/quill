@@ -401,7 +401,10 @@ final class McpToolCatalog {
             String text = (String) method.invoke(tools, values);
             if (queryEvidence) text = ToolResponseSupport.queryEvidence(text, method.getName(), args,
                     evidenceDetail.equals("full"), evidenceOffset);
-            if (method.getAnnotation(Tool.class).structured()) text = ResponseBudget.apply(text, method.getName(), args);
+            if (method.getAnnotation(Tool.class).structured()) {
+                text = ResponseCompaction.apply(text, method.getName(), args);
+                text = ResponseBudget.apply(text, method.getName(), args);
+            }
             return new Invocation(text, isToolError(text));
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();

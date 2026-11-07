@@ -178,7 +178,9 @@ class NarrowEvidenceTest {
             var detail = McpToolCatalog.invokeMethod(tools, method("get_call_hierarchy"), args);
             assertFalse(detail.error(), detail::text);
             var full = JSON.readTree(detail.text());
-            assertEquals(summary.path("calls"), full.path("calls"));
+            assertEquals(summary.path("calls").size(), full.path("calls").size());
+            assertTrue(full.path("calls").toString().contains("symbol_id"), "Full detail keeps what the summary omits");
+            assertFalse(summary.path("calls").toString().contains("symbol_id"));
             assertTrue(full.path("coverage").path("indexed_scopes").isArray());
             assertEquals(full.path("answer_complete"), summary.path("answer_complete"));
             assertEquals(full.path("coverage").path("incomplete_reasons"), summary.path("coverage").path("incomplete_reasons"));

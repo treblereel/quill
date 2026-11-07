@@ -892,6 +892,10 @@ class McpToolCatalogTest {
         }
     }
 
+    private static JsonNode compacted(JsonNode expected, String tool) throws Exception {
+        return new com.fasterxml.jackson.databind.ObjectMapper().readTree(ResponseCompaction.apply(expected.toString(), tool, Map.of()));
+    }
+
     @Test
     void nativeGraphSerializationPoolsOnlyGraphResultsAndRoutedGraphs() throws Exception {
         var catalog = McpToolCatalog.create(new GraphTools(), GraphTools.class, workers, responses,
@@ -904,10 +908,10 @@ class McpToolCatalogTest {
                     new McpSchema.CallToolRequest(name, arguments, Map.of())).block(Duration.ofSeconds(3));
             JsonNode data = (JsonNode) result.structuredContent();
             assertFalse(Boolean.TRUE.equals(result.isError()));
-            if ("other_query".equals(name)) assertEquals(GraphMetadataTest.graph(), data);
+            if ("other_query".equals(name)) assertEquals(compacted(GraphMetadataTest.graph(), name), data);
             else {
                 assertTrue(data.has("shared_metadata"));
-                assertEquals("get_context".equals(name) ? new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().set("context",GraphMetadataTest.graph()) : GraphMetadataTest.graph(), GraphMetadataTest.expand(data.toString()));
+                assertEquals(compacted("get_context".equals(name) ? new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().set("context",GraphMetadataTest.graph()) : GraphMetadataTest.graph(), name), GraphMetadataTest.expand(data.toString()));
             }
         }
     }

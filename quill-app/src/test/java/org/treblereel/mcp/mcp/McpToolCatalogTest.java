@@ -895,7 +895,26 @@ class McpToolCatalogTest {
     }
 
     private static JsonNode compacted(JsonNode expected, String tool) throws Exception {
+        if ("execute_tool".equals(tool)) return expected;
         return new com.fasterxml.jackson.databind.ObjectMapper().readTree(ResponseCompaction.apply(expected.toString(), tool, Map.of()));
+    }
+
+    @Test
+    void routedResponseIsNotCompactedAgainUnderTheRouterName() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String rule = "a long rule repeated in every item";
+        String routed = "{\"symbols\":[{\"name\":\"a\",\"symbol_id\":\"s1\",\"rule\":\"" + rule + "\"},"
+                + "{\"name\":\"b\",\"symbol_id\":\"s2\",\"rule\":\"" + rule + "\"},{\"name\":\"c\",\"symbol_id\":\"s3\",\"rule\":\"" + rule + "\"}]}";
+        var invocation = McpToolCatalog.invokeMethod(new RoutedTools(routed),
+                RoutedTools.class.getMethod("execute_tool", String.class), Map.of("name", "change_session"));
+        assertEquals(mapper.readTree(routed), mapper.readTree(invocation.text()));
+    }
+
+    static final class RoutedTools {
+        private final String response;
+        RoutedTools(String response) { this.response = response; }
+        @Tool(description = "Router", structured = true)
+        public String execute_tool(@ToolArg(description = "Tool name") String name) { return response; }
     }
 
     @Test

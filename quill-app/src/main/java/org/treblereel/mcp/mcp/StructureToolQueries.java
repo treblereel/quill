@@ -874,7 +874,7 @@ final class StructureToolQueries {
                     if (resolved.memberName() != null) {
                         node.put("resolved_member", resolved.memberName());
                     }
-                    if (resolved.isDefault()) node.put("resolved_default_bean", true);
+                    if (resolved.isDefault()) node.put("resolved_fallback", "@DefaultBean: used unless an eligible non-default bean exists");
                     if (isProducer(resolved.kind()) && resolved.beanTypes() != null
                             && !resolved.beanTypes().isEmpty()) {
                         node.put("resolved_produced_type", resolved.beanTypes().getFirst());

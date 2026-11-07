@@ -195,7 +195,8 @@ class ClassPrefetchRelationsTest {
                 .getFirst().endsWith(" @DefaultBean"));
         String points = TestReads.read(db, reader -> new StructureToolQueries().getInjectionPoints(reader, "x.Consumer"));
         var point = new ObjectMapper().readTree(points).path("injection_points").get(0);
-        assertTrue(point.path("resolved_default_bean").asBoolean(), point.toString());
+        assertEquals("@DefaultBean: used unless an eligible non-default bean exists",
+                point.path("resolved_fallback").asText(), point.toString());
     }
 
     @Test
@@ -203,7 +204,7 @@ class ClassPrefetchRelationsTest {
         var json = new ObjectMapper();
         ObjectNode packet = json.createObjectNode();
         ObjectNode point = packet.putArray("facts").addObject().put("kind", "injection_point")
-                .putObject("injection_point").put("resolved_default_bean", true);
+                .putObject("injection_point").put("resolved_fallback", "@DefaultBean");
         var limitations = point.putArray("limitations");
         for (int i = 0; i < 400; i++) limitations.add("limitation number " + i + " with some padding text");
 
@@ -211,7 +212,7 @@ class ClassPrefetchRelationsTest {
 
         assertTrue(packet.path("context_truncated").asBoolean());
         assertTrue(packet.toString().length() <= PrefetchContext.CONTEXT_LIMIT_BYTES);
-        assertTrue(packet.path("facts").get(0).path("injection_point").path("resolved_default_bean").asBoolean());
+        assertEquals("@DefaultBean", packet.path("facts").get(0).path("injection_point").path("resolved_fallback").asText());
     }
 
     private static ObjectNode relations(Jdbi db, String name) throws Exception {

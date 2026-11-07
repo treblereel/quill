@@ -182,6 +182,16 @@ class ExternalSymbolQueriesTest {
     }
 
     @Test
+    void missingClassHasDedicatedErrorCode() throws Exception {
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "io.quarkus.Absent", 20, 0)));
+
+        assertEquals("EXTERNAL_CLASS_NOT_FOUND", result.path("error_code").asText());
+        assertTrue(result.path("reason").asText().contains("classpaths"));
+        assertEquals("search_external_symbols", result.path("next_step").path("tool").asText());
+    }
+
+    @Test
     void shortNameAmbiguityReturnsCandidatesInsteadOfChoosingArbitrarily() throws Exception {
         appendJar("2.0", Other.Fixture.class);
 

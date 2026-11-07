@@ -148,7 +148,10 @@ public final class PrefetchContext {
     private static final List<String> OPTIONAL_FIELDS=List.of("class_occurrences","meta_annotations","dependency_metrics",
             "external_dependencies","external_dependency_breakdown","test_classes","related_source_files",
             "symbol_id","descriptor","_meta","generated_classes","generated_creation_evidence","override_evidence",
-            "contract_callers","methods","field_read_source");
+            "methods","field_read_source");
+    /** What a fact is about and how far it reaches: the rest can go first, so the fact can still be followed up. */
+    private static final Set<String> FACT_IDENTITY=Set.of("kind","tool","arguments","target","class","method","signature",
+            "jvm_name","source","location","coverage","counts","limitations","status","injection_point");
     /** Portable hook budget: omit complete facts explicitly instead of letting clients cut JSON. */
     public static void boundContext(ObjectNode data){
         final int limit=CONTEXT_LIMIT_BYTES;
@@ -160,8 +163,8 @@ public final class PrefetchContext {
             data.withArray("context_omitted_fields").add(field);
             data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
         }
-        // Long lists are cut in half, each cut stated beside the list, before whole facts go.
-        while(size(data)>limit && trimLongestList(facts)) data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
+        // Lists lose half and other fields go whole, each cut stated, before whole facts go.
+        while(size(data)>limit && shrink(data,facts,limit)) data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
         while(size(data)>limit && !facts.isEmpty()){
             JsonNode omitted=facts.remove(facts.size()-1);
             data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
@@ -171,34 +174,60 @@ public final class PrefetchContext {
     }
     private static boolean removeField(JsonNode node,String field){
         boolean removed=false;
-        if(node instanceof ObjectNode object)removed=object.remove(field)!=null;
+        if(node instanceof ObjectNode object && object.remove(field)!=null){
+            removed=true;
+            object.remove(field+"_basis");object.remove(field+"_scope");
+        }
         for(JsonNode child:node)removed|=removeField(child,field);
         return removed;
     }
     private static int size(JsonNode data){return data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;}
-    /** Halves the largest list of at least two items and records shown/total next to it. */
-    private static boolean trimLongestList(JsonNode node){
-        ObjectNode[] owner={null};String[] field={null};int[] best={0};
-        findLongestList(node,owner,field,best);
-        if(owner[0]==null)return false;
-        ArrayNode list=(ArrayNode)owner[0].get(field[0]);
-        String marker=field[0]+"_truncated";
-        int total=owner[0].path(marker).path("total").asInt(list.size());
-        int keep=list.size()/2;
-        while(list.size()>keep)list.remove(list.size()-1);
-        owner[0].putObject(marker).put("shown",keep).put("total",total);
+    /** A cut that would free this many bytes: halving a list, or removing a field from a fact that keeps other content. */
+    private record Cut(ObjectNode owner,String field,int frees,boolean list){}
+    /** Applies the smallest cut that fits the budget, or else the largest, so a small overrun never costs a large field. */
+    private static boolean shrink(ObjectNode data,ArrayNode facts,int limit){
+        List<Cut> cuts=new ArrayList<>();
+        collectLists(facts,cuts);
+        for(JsonNode fact:facts)if(fact instanceof ObjectNode object)collectFields(object,cuts);
+        if(cuts.isEmpty())return false;
+        int over=size(data)-limit;
+        Cut cut=cuts.stream().filter(c->c.frees()>=over).min(Comparator.comparingInt(Cut::frees))
+                .orElseGet(()->cuts.stream().max(Comparator.comparingInt(Cut::frees)).orElseThrow());
+        if(cut.list())halve(cut.owner(),cut.field());
+        else{cut.owner().remove(cut.field());data.withArray("context_omitted_fields").add(cut.field());}
         return true;
     }
-    private static void findLongestList(JsonNode node,ObjectNode[] owner,String[] field,int[] best){
+    private static void collectFields(ObjectNode fact,List<Cut> cuts){
+        List<Cut> fields=new ArrayList<>();
+        fact.properties().forEach(entry->{
+            boolean longList=entry.getValue() instanceof ArrayNode list && list.size()>=2;
+            if(!FACT_IDENTITY.contains(entry.getKey()) && !longList && !mostlyList(entry.getValue()))fields.add(new Cut(fact,entry.getKey(),size(entry.getValue()),false));
+        });
+        boolean otherContent=fact.properties().stream().filter(entry->!FACT_IDENTITY.contains(entry.getKey())).count()>1;
+        if(otherContent)cuts.addAll(fields);
+    }
+    /** Halving such a value keeps most of what removing it would lose. */
+    private static boolean mostlyList(JsonNode value){
+        List<Cut> lists=new ArrayList<>();
+        collectLists(value,lists);
+        return lists.stream().anyMatch(list->list.frees()*4>=size(value));
+    }
+    private static void collectLists(JsonNode node,List<Cut> cuts){
         if(node instanceof ObjectNode object){
             object.properties().forEach(entry->{
-                if(!entry.getKey().equals("facts") && entry.getValue() instanceof ArrayNode list && list.size()>=2){
-                    int bytes=size(list);
-                    if(bytes>best[0]){best[0]=bytes;owner[0]=object;field[0]=entry.getKey();}
-                }
-                findLongestList(entry.getValue(),owner,field,best);
+                if(entry.getValue() instanceof ArrayNode list && list.size()>=2)cuts.add(new Cut(object,entry.getKey(),size(list)/2,true));
+                collectLists(entry.getValue(),cuts);
             });
-        }else if(node instanceof ArrayNode list)for(JsonNode child:list)findLongestList(child,owner,field,best);
+        }else if(node instanceof ArrayNode list)for(JsonNode child:list)collectLists(child,cuts);
+    }
+    /** Keeps half of a list and records shown/total next to it. */
+    private static void halve(ObjectNode owner,String field){
+        ArrayNode list=(ArrayNode)owner.get(field);
+        String marker=field+"_truncated";
+        int total=owner.path(marker).path("total").asInt(list.size());
+        int keep=list.size()/2;
+        while(list.size()>keep)list.remove(list.size()-1);
+        owner.putObject(marker).put("shown",keep).put("total",total);
     }
     private PrefetchContext(){}
 }

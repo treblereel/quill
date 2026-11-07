@@ -26,6 +26,59 @@ class PrefetchContextTest {
         assertEquals(0,TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"Fixture")).path("facts").size());
         
     }
+    @Test void oversizedFactLosesItsLargestFieldInsteadOfDisappearing() {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var packet=json.createObjectNode();
+        var fact=packet.putArray("facts").addObject().put("kind","direct_method_impact").put("tool","get_context")
+                .put("target","a.B#m").put("answer","keep");
+        fact.putArray("dispatches").addObject().put("text","x".repeat(6000));
+        PrefetchContext.boundContext(packet);
+        assertTrue(packet.toString().length()<=PrefetchContext.CONTEXT_LIMIT_BYTES,packet.toString());
+        assertEquals(1,packet.path("facts").size(),packet.toString());
+        assertEquals("keep",packet.path("facts").get(0).path("answer").asText());
+        assertEquals("a.B#m",packet.path("facts").get(0).path("target").asText());
+        assertEquals("dispatches",packet.path("context_omitted_fields").get(0).asText());
+        assertFalse(packet.has("unavailable"),packet.toString());
+    }
+    @Test void factWithOnlyIdentityOverTheLimitIsStillReportedAsUnavailable() {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var packet=json.createObjectNode();
+        packet.putArray("facts").addObject().put("kind","direct_method_impact").put("target","x".repeat(6000));
+        PrefetchContext.boundContext(packet);
+        assertEquals(0,packet.path("facts").size());
+        assertEquals("prefetch_context_limit",packet.path("unavailable").get(0).path("status").asText());
+    }
+    @Test void objectHoldingAListIsHalvedNotRemoved() {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var packet=json.createObjectNode();
+        var fact=packet.putArray("facts").addObject().put("kind","INTERFACE").put("answer","keep");
+        var keys=fact.putObject("config_mapping").put("prefix","rbac").putArray("keys");
+        for(int i=0;i<200;i++)keys.add("rbac.some.configuration.key.number."+i+".value");
+        PrefetchContext.boundContext(packet);
+        assertTrue(packet.path("facts").get(0).path("config_mapping").path("keys").size()>0,packet.toString());
+        assertTrue(packet.path("facts").get(0).path("config_mapping").has("keys_truncated"),packet.toString());
+    }
+    @Test void omittedFieldTakesItsExplanationWithIt() {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var packet=json.createObjectNode();
+        var fact=packet.putArray("facts").addObject().put("kind","CLASS").put("answer","keep");
+        fact.put("generated_classes_basis","why these classes were generated");
+        fact.putArray("generated_classes").add("g".repeat(3000)).add("g".repeat(3000));
+        PrefetchContext.boundContext(packet);
+        assertFalse(packet.path("facts").get(0).has("generated_classes"),packet.toString());
+        assertFalse(packet.path("facts").get(0).has("generated_classes_basis"),packet.toString());
+    }
+    @Test void contractCallersAreCutNotRemoved() {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var packet=json.createObjectNode();
+        var callers=packet.putArray("facts").addObject().put("kind","INTERFACE").putArray("contract_callers");
+        for(int i=0;i<200;i++)callers.add("io.example.Caller"+i+" calls key(String),keyExists(String,String)");
+        PrefetchContext.boundContext(packet);
+        var fact=packet.path("facts").get(0);
+        assertTrue(fact.path("contract_callers").size()>0,packet.toString());
+        assertEquals(200,fact.path("contract_callers_truncated").path("total").asInt());
+        assertFalse(packet.path("context_omitted_fields").toString().contains("contract_callers"));
+    }
     @Test void fieldTargetDeliversItsInjectionPointAndNamesFieldsThatAreNotInjected() throws Exception {
         var db=QuillDatabase.create(root.resolve("fields.db"));
         IndexWriter.writeIncremental(db,new IndexFixture()

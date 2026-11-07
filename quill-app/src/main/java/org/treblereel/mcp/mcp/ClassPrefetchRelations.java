@@ -100,7 +100,7 @@ final class ClassPrefetchRelations {
                     ORDER BY caller.class_name, caller.source_file""")
                     .bind("id", cls.id()).bind("type", "%\"" + cls.className() + "\"%")
                     .mapToMap().list());
-            lines(fact, "contract_callers", callers, row -> row.get("class_name") + " " + row.get("source_file") + " calls " + row.get("methods"));
+            lines(fact, "contract_callers", callers, row -> row.get("class_name") + " calls " + compactCalls(String.valueOf(row.get("methods"))));
             fact.put("contract_caller_classes", callers.size());
             var beans = db.jdbi().withHandle(h -> h.createQuery("""
                     SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers, b.profiles, b.priority
@@ -259,6 +259,22 @@ final class ClassPrefetchRelations {
                         + (isSet(row.get("resolved_default")) ? " @DefaultBean" : "");
         return row.get("kind") + " " + row.get("field_name") + ": " + source(row.get("target_type"))
                 + qualifiers(row) + " -> " + resolved + " [" + row.get("resolution_status") + "]";
+    }
+
+    /** Called methods as name(ShortTypes): descriptors cost about twice as much and overloads stay apart. */
+    static String compactCalls(String methods) {
+        java.util.Set<String> calls = new java.util.LinkedHashSet<>();
+        for (String call : methods.split(",")) {
+            int open = call.indexOf('(');
+            StringBuilder compact = new StringBuilder(call.substring(0, open + 1));
+            org.objectweb.asm.Type[] types = org.objectweb.asm.Type.getArgumentTypes(call.substring(open));
+            for (int i = 0; i < types.length; i++) {
+                String type = types[i].getClassName();
+                compact.append(i == 0 ? "" : ",").append(type.substring(Math.max(type.lastIndexOf('.'), type.lastIndexOf('$')) + 1));
+            }
+            calls.add(compact.append(')').toString());
+        }
+        return String.join(",", calls);
     }
 
     private static boolean isSet(Object flag) {

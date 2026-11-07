@@ -30,14 +30,14 @@ for client,arm in [('codex','without_quill'),('codex','with_quill'),('claude','w
    assert 'Operation not permitted' not in (d/'mcp/native-stderr.log').read_text()
    assert 'dependency index degraded' not in (d/'mcp/native-stderr.log').read_text()
    # Exercise the installed handler under the actual sandbox, with no provider/client turn.
-   question=next(e['prompts'][0] for e in p['schedule'] if e['case']=='CQ-033');session='offline-'+uuid.uuid4().hex
+   probe=next((e for e in p['schedule'] if e['case']=='CQ-033'),p['schedule'][0]);question=probe['prompts'][0];session='offline-'+uuid.uuid4().hex
    cfg=json.loads(m.parameter(arm)['managed_configs']['.codex/hooks.json'] if client=='codex' else m.parameter(arm)['managed_configs']['.claude/settings.json']);hook=cfg['hooks']['UserPromptSubmit'][0]['hooks'][0]
    payload={'hook_event_name':'UserPromptSubmit','session_id':session,'cwd':str(m.ROOT),'prompt':question};started=time.monotonic()
    code="import json,subprocess,sys,time;p=json.loads(sys.argv[1]);s=time.monotonic();r=subprocess.run(['/bin/sh','-c',p['command']],input=json.dumps(p['payload']),capture_output=True,text=True,timeout=p['timeout']);print(json.dumps({'stdout':r.stdout,'stderr':r.stderr,'returncode':r.returncode,'seconds':time.monotonic()-s}))"
    outer=subprocess.run(['/usr/bin/sandbox-exec','-f',str(sb),sys.executable,'-c',code,json.dumps({'command':hook['command'],'payload':payload,'timeout':hook['timeout']})],capture_output=True,text=True,timeout=180+hook['timeout'],cwd=m.ROOT);assert outer.returncode==0,outer.stderr
    result=__import__('types').SimpleNamespace(**json.loads(outer.stdout))
    (d/'hook.stdout').write_text(result.stdout);(d/'hook.stderr').write_text(result.stderr);context=json.loads(json.loads(result.stdout)['hookSpecificOutput']['additionalContext']);assert result.returncode==0 and context.get('producer')=='quill.prefetch' and context.get('facts')
-   m.put(d/'hook-health.json',{'passed':True,'case':'CQ-033','seconds':result.seconds,'including_sandbox_startup_seconds':time.monotonic()-started,'deadline':hook['timeout'],'facts':len(context['facts']),'model_calls':0})
+   m.put(d/'hook-health.json',{'passed':True,'case':probe['case'],'seconds':result.seconds,'including_sandbox_startup_seconds':time.monotonic()-started,'deadline':hook['timeout'],'facts':len(context['facts']),'model_calls':0})
    for suffix in ['.json','.lock']:(m.ROOT/'.quill/prefetch'/(hashlib.sha256(session.encode()).hexdigest()+suffix)).unlink(missing_ok=True)
    proof.append({'client':client,'arm':arm,'native_ready':True,'checks':checks,'metadata':meta,'provider_calls':0})
   else:proof.append({'client':client,'arm':arm,'no_mcp_or_index':True,'checks':checks,'provider_calls':0})

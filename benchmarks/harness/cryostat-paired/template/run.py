@@ -8,6 +8,8 @@ BASE = O / 'base'
 REPO = O.parents[2]
 F = Path('/tmp/quill-@RUN@')
 CASES = @CASES@  # None runs every applicable case; a list makes a targeted run.
+ARM = @ARM@  # A single arm or repeat gives up the pairing: diagnostics only, never acceptance.
+REPEAT = @REPEAT@
 spec = importlib.util.spec_from_file_location('full_runner', BASE / 'run.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 r = m.r
@@ -82,10 +84,14 @@ def prepare():
         ref = {**ref, 'schedule': [e for e in ref['schedule'] if e['case'] in CASES]}
         assert {e['case'] for e in ref['schedule']} == set(CASES)
     plan = m.measurement.make_plan(ref, 3, @SEED@)
+    if ARM or REPEAT:
+        plan['schedule'] = [e for e in plan['schedule'] if (not ARM or e['arm'] == ARM) and (not REPEAT or e['repeat'] == REPEAT)]
+        plan['sessions'] = len(plan['schedule'])
+        plan['answers'] = sum(len(e['prompts']) for e in plan['schedule'])
     p={**ref, **{k:plan[k] for k in ('measurement_contract','schedule','sessions','answers','repeats','seed')},
        'native_binary':str(NATIVE),'native_sha256':sha(NATIVE),
        'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip(),
-       'scope':(f'Targeted run of {sorted(CASES)}; ' if CASES else '44 applicable scenarios of 50; ')+f'three paired repeats; Codex and Claude, with and without Quill; {plan["sessions"]} sessions and {plan["answers"]} answers.',
+       'scope':(f'Targeted run of {sorted(CASES)}; ' if CASES else '44 applicable scenarios of 50; ')+(f'diagnostic, arm {ARM or "both"}, repeat {REPEAT or "all"}, unpaired; ' if ARM or REPEAT else 'three paired repeats; ')+f'Codex and Claude; {plan["sessions"]} sessions and {plan["answers"]} answers.',
        'fixture_policy':'Reuse canonical disposable compiled Cryostat fixture; fresh current-native init/index; application sources unchanged.',
        'selection':'Preregistered seed @SEED@; randomized case/client pair order, AB/BA alternated across repeats.',
        'cache':'Provider cache uncontrolled; all captured requests including prewarm and failed attempts retained.',
@@ -94,7 +100,7 @@ def prepare():
        'native_build_proof':load(O/'native-build-proof.json'),
        'codex_binary':str(RUNTIME/'codex'),'claude_binary':str(RUNTIME/'claude'),
        'cli_versions_actual':{name:subprocess.check_output([str(RUNTIME/name),'--version'],text=True).strip() for name in ('codex','claude')}}
-    assert CASES or (p['sessions']==528 and p['answers']==588)
+    assert CASES or ARM or REPEAT or (p['sessions']==528 and p['answers']==588)
     assert p['sessions']==len(p['schedule'])
     put(O/'protocol.json',p)
     put(O/'source-inputs.json',ref['source_files'])

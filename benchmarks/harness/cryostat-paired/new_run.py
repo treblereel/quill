@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Creates a frozen run directory under benchmarks/results from this template.
 
-usage: new_run.py <run-name> <seed> [CQ-001,CQ-002,...]
-A case list makes a targeted run: same protocol and pairing, only those cases. Then, from the run directory: run.py prepare, preflight, preflight-client, plan, start.
+usage: new_run.py <run-name> <seed> [CQ-001,CQ-002,...] [--arm with_quill] [--repeat 1]
+A case list makes a targeted run: same protocol and pairing, only those cases. --arm and
+--repeat narrow it further and give up the pairing, so such a run is a diagnostic. Then, from the run directory: run.py prepare, preflight, preflight-client, plan, start.
 The copy is what gets frozen and hashed, so later edits here never touch a started run.
 No model is called until `start`.
 """
+import argparse
 import hashlib
 import json
 import shutil
@@ -22,7 +24,7 @@ FROZEN_SCRIPTS = ['quill_cli_hooks', 'quill_codex_capture', 'quill_measurement_r
                   'quill_response_reuse_audit', 'quill_turn_budget']
 
 
-def main(name, seed, cases=None):
+def main(name, seed, cases=None, arm=None, repeat=None):
     if cases:
         known = json.loads((TEMPLATE / 'data/oracles.json').read_text())['cases']
         unknown = sorted(set(cases) - set(known))
@@ -55,7 +57,8 @@ def main(name, seed, cases=None):
     # The fixture restore at the start of `prepare` puts these v7 inputs back.
     for file in ['managed-configs.json', 'file-times.json']:
         shutil.copy2(TEMPLATE / 'data' / file, base)
-    (run / 'run.py').write_text((TEMPLATE / 'run.py').read_text().replace('@RUN@', name).replace('@SEED@', str(seed)).replace('@CASES@', repr(cases)))
+    (run / 'run.py').write_text((TEMPLATE / 'run.py').read_text().replace('@RUN@', name).replace('@SEED@', str(seed)).replace('@CASES@', repr(cases))
+                                .replace('@ARM@', repr(arm)).replace('@REPEAT@', repr(repeat)))
     shutil.copy2(TEMPLATE / 'data/capture-requirements.txt', run)
     for target in (run, base):
         shutil.copytree(TEMPLATE / 'data/fixtures', target / 'fixtures')
@@ -80,6 +83,11 @@ def main(name, seed, cases=None):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) not in (3, 4):
-        raise SystemExit(__doc__)
-    main(sys.argv[1], int(sys.argv[2]), sys.argv[3].split(',') if len(sys.argv) == 4 else None)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('name')
+    parser.add_argument('seed', type=int)
+    parser.add_argument('cases', nargs='?')
+    parser.add_argument('--arm', choices=['with_quill', 'without_quill'])
+    parser.add_argument('--repeat', type=int, choices=[1, 2, 3])
+    args = parser.parse_args()
+    main(args.name, args.seed, args.cases.split(',') if args.cases else None, args.arm, args.repeat)

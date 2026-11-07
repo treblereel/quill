@@ -68,6 +68,66 @@ class PrefetchContextTest {
         assertFalse(packet.path("facts").get(0).has("generated_classes"),packet.toString());
         assertFalse(packet.path("facts").get(0).has("generated_classes_basis"),packet.toString());
     }
+    private static com.fasterxml.jackson.databind.node.ObjectNode overrunBy(int bytes,java.util.function.Consumer<com.fasterxml.jackson.databind.node.ObjectNode> content){
+        var packet=new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        var fact=packet.putArray("facts").addObject().put("kind","CLASS");
+        content.accept(fact);
+        fact.put("answer","");
+        fact.put("answer","a".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES+bytes-packet.toString().length()));
+        assertEquals(PrefetchContext.CONTEXT_LIMIT_BYTES+bytes,packet.toString().length());
+        return packet;
+    }
+    @Test void tinyOverrunCutsAListInsteadOfALargeField() {
+        var packet=overrunBy(1,fact->{for(int i=0;i<8;i++)fact.putArray("l"+i).add("x".repeat(90)).add("y".repeat(90));});
+        PrefetchContext.boundContext(packet);
+        assertTrue(packet.toString().length()<=PrefetchContext.CONTEXT_LIMIT_BYTES,packet.toString());
+        assertTrue(packet.path("facts").get(0).path("answer").asText().length()>3000,packet.toString());
+        assertFalse(packet.has("context_omitted_fields"),packet.toString());
+    }
+    @Test void shortMeaningfulListsSurviveWhileALargerListCanPay() {
+        var packet=overrunBy(5,fact->{
+            fact.putArray("qualifiers").add("@Tenant(\"eu\")").add("@Default");
+            var callers=fact.putArray("callers");for(int i=0;i<10;i++)callers.add("io.example.Caller"+i+" calls key(String)");
+        });
+        PrefetchContext.boundContext(packet);
+        assertEquals(2,packet.path("facts").get(0).path("qualifiers").size(),packet.toString());
+    }
+    @Test void limitStatementsNeverGoSoATotalStaysTrue() {
+        var packet=overrunBy(20,fact->{
+            var callers=fact.putArray("contract_callers");for(int i=0;i<30;i++)callers.add("io.example.Caller"+i+" calls key(String)");
+            fact.putObject("contract_callers_truncated").put("shown",30).put("total",57);
+            fact.put("contract_callers_scope","Runtime dispatch and inherited implementors are not covered");
+            fact.put("has_more",true).put("total",57).put("complete",false);
+        });
+        PrefetchContext.boundContext(packet);
+        var fact=packet.path("facts").get(0);
+        assertEquals(57,fact.path("contract_callers_truncated").path("total").asInt(),packet.toString());
+        assertTrue(fact.has("contract_callers_scope"),packet.toString());
+        assertTrue(fact.path("has_more").asBoolean());
+        assertEquals(57,fact.path("total").asInt());
+        assertTrue(fact.has("complete"));
+    }
+    @Test void factLeftWithoutContentIsReportedAndKeepsNoStaleMarker() {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var packet=json.createObjectNode();
+        packet.putArray("facts").addObject().put("kind","direct_method_impact").put("target","a.B#m")
+                .putArray("dispatches").add("x".repeat(6000)).add("y".repeat(6000));
+        PrefetchContext.boundContext(packet);
+        assertEquals(0,packet.path("facts").size(),packet.toString());
+        assertEquals("a.B#m",packet.path("unavailable").get(0).path("target").asText(),packet.toString());
+    }
+    @Test void evictedFieldTakesItsMarkerAndExplanation() {
+        var packet=overrunBy(40,fact->{fact.put("decorators","d".repeat(1000)).put("decorators_basis","why decorators apply");fact.put("decorators_scope","which decorators");});
+        var fact=(com.fasterxml.jackson.databind.node.ObjectNode)packet.path("facts").get(0);
+        fact.put("answer","a".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES-1000));
+        fact.put("note","n".repeat(50));
+        PrefetchContext.boundContext(packet);
+        if(!fact.has("decorators")){
+            assertFalse(fact.has("decorators_basis"),packet.toString());
+            assertFalse(fact.has("decorators_scope"),packet.toString());
+        }
+        assertFalse(fact.has("decorators"),packet.toString());
+    }
     @Test void contractCallersAreCutNotRemoved() {
         var json=new com.fasterxml.jackson.databind.ObjectMapper();
         var packet=json.createObjectNode();

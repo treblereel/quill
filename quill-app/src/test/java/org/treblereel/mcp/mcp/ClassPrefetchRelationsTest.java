@@ -55,6 +55,13 @@ class ClassPrefetchRelationsTest {
     }
 
     @Test
+    void unreadableContractCallStaysAsWritten() {
+        assertEquals("null", ClassPrefetchRelations.compactCalls("null"));
+        assertEquals("a,b(int)", ClassPrefetchRelations.compactCalls("a,b(I)V"));
+        assertEquals("m(bad", ClassPrefetchRelations.compactCalls("m(bad"));
+    }
+
+    @Test
     void classFactListsWhatItInjectsWhereItIsInjectedAndItsTests() throws Exception {
         Jdbi db = QuillDatabase.create(root.resolve("index.db"));
         IndexWriter.writeIncremental(db, new IndexFixture()

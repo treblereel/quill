@@ -152,6 +152,16 @@ public final class PrefetchContext {
     /** What a fact is about and how far it reaches: the rest can go first, so the fact can still be followed up. */
     private static final Set<String> FACT_IDENTITY=Set.of("kind","tool","arguments","target","class","method","signature",
             "jvm_name","source","location","coverage","counts","limitations","status","injection_point");
+    /** How far a fact reaches: removing these would make what remains read as complete. */
+    private static final Set<String> REACH=Set.of("has_more","truncated","total","showing","limit","offset","complete",
+            "scope","runtime_execution_proven");
+    private static final List<String> REACH_SUFFIXES=List.of("_truncated","_scope","_basis","_complete");
+    /** A shorter field is a statement rather than a body of evidence, and removing it saves little. */
+    private static final int MIN_FIELD_CUT_BYTES=64;
+    private static final int PROPORTIONATE_FACTOR=4;
+    private static final int MIN_PROPORTIONATE_BYTES=512;
+    /** Quotes, colon and comma around a marker, and the shown/total object inside it. */
+    private static final int TRUNCATION_NOTE_BYTES=30;
     /** Portable hook budget: omit complete facts explicitly instead of letting clients cut JSON. */
     public static void boundContext(ObjectNode data){
         final int limit=CONTEXT_LIMIT_BYTES;
@@ -164,47 +174,67 @@ public final class PrefetchContext {
             data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
         }
         // Lists lose half and other fields go whole, each cut stated, before whole facts go.
-        while(size(data)>limit && shrink(data,facts,limit)) data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
+        if(size(data)>limit)data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
+        while(size(data)>limit && shrink(data,facts,limit)){}
         while(size(data)>limit && !facts.isEmpty()){
             JsonNode omitted=facts.remove(facts.size()-1);
             data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
             var missing=data.withArray("unavailable").addObject().put("status","prefetch_context_limit");
-            for(String key:List.of("kind","tool","arguments"))if(omitted.has(key))missing.set(key,omitted.get(key));
+            for(String key:List.of("kind","tool","target","arguments"))if(omitted.has(key))missing.set(key,omitted.get(key));
         }
     }
     private static boolean removeField(JsonNode node,String field){
         boolean removed=false;
         if(node instanceof ObjectNode object && object.remove(field)!=null){
             removed=true;
-            object.remove(field+"_basis");object.remove(field+"_scope");
+            removeCompanions(object,field);
         }
         for(JsonNode child:node)removed|=removeField(child,field);
         return removed;
     }
     private static int size(JsonNode data){return data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;}
-    /** A cut that would free this many bytes: halving a list, or removing a field from a fact that keeps other content. */
+    private static void removeCompanions(ObjectNode object,String field){
+        object.remove(List.of(field+"_truncated",field+"_basis",field+"_scope"));
+    }
+    private static boolean statesReach(String field){
+        return REACH.contains(field) || REACH_SUFFIXES.stream().anyMatch(field::endsWith);
+    }
+    /** A cut and the bytes it frees after paying for the note that states it. */
     private record Cut(ObjectNode owner,String field,int frees,boolean list){}
     /** Applies the smallest cut that fits the budget, or else the largest, so a small overrun never costs a large field. */
     private static boolean shrink(ObjectNode data,ArrayNode facts,int limit){
         List<Cut> cuts=new ArrayList<>();
         collectLists(facts,cuts);
         for(JsonNode fact:facts)if(fact instanceof ObjectNode object)collectFields(object,cuts);
+        cuts.removeIf(cut->cut.frees()<=0);
         if(cuts.isEmpty())return false;
         int over=size(data)-limit;
-        Cut cut=cuts.stream().filter(c->c.frees()>=over).min(Comparator.comparingInt(Cut::frees))
-                .orElseGet(()->cuts.stream().max(Comparator.comparingInt(Cut::frees)).orElseThrow());
+        // Several small cuts are better than one far larger than the overrun.
+        int proportionate=Math.max(over*PROPORTIONATE_FACTOR,MIN_PROPORTIONATE_BYTES);
+        List<Cut> small=cuts.stream().filter(cut->cut.frees()<=proportionate).toList();
+        List<Cut> pool=small.isEmpty()?cuts:small;
+        Cut cut=pool.stream().filter(c->c.frees()>=over).min(Comparator.comparingInt(Cut::frees))
+                .orElseGet(()->pool.stream().max(Comparator.comparingInt(Cut::frees)).orElseThrow());
         if(cut.list())halve(cut.owner(),cut.field());
-        else{cut.owner().remove(cut.field());data.withArray("context_omitted_fields").add(cut.field());}
+        else{
+            cut.owner().remove(cut.field());
+            removeCompanions(cut.owner(),cut.field());
+            data.withArray("context_omitted_fields").add(cut.field());
+        }
         return true;
     }
     private static void collectFields(ObjectNode fact,List<Cut> cuts){
-        List<Cut> fields=new ArrayList<>();
+        boolean otherContent=fact.properties().stream()
+                .filter(entry->!FACT_IDENTITY.contains(entry.getKey()) && !statesReach(entry.getKey())).count()>1;
+        if(!otherContent)return;
         fact.properties().forEach(entry->{
-            boolean longList=entry.getValue() instanceof ArrayNode list && list.size()>=2;
-            if(!FACT_IDENTITY.contains(entry.getKey()) && !longList && !mostlyList(entry.getValue()))fields.add(new Cut(fact,entry.getKey(),size(entry.getValue()),false));
+            String field=entry.getKey();JsonNode value=entry.getValue();
+            boolean longList=value instanceof ArrayNode list && list.size()>=2;
+            boolean verdict=value.isNumber() || value.isBoolean() || value.isNull();
+            int bytes=size(value);
+            if(FACT_IDENTITY.contains(field) || statesReach(field) || longList || verdict || bytes<MIN_FIELD_CUT_BYTES || mostlyList(value))return;
+            cuts.add(new Cut(fact,field,bytes+1,false));
         });
-        boolean otherContent=fact.properties().stream().filter(entry->!FACT_IDENTITY.contains(entry.getKey())).count()>1;
-        if(otherContent)cuts.addAll(fields);
     }
     /** Halving such a value keeps most of what removing it would lose. */
     private static boolean mostlyList(JsonNode value){
@@ -215,7 +245,13 @@ public final class PrefetchContext {
     private static void collectLists(JsonNode node,List<Cut> cuts){
         if(node instanceof ObjectNode object){
             object.properties().forEach(entry->{
-                if(entry.getValue() instanceof ArrayNode list && list.size()>=2)cuts.add(new Cut(object,entry.getKey(),size(list)/2,true));
+                if(entry.getValue() instanceof ArrayNode list && list.size()>=2){
+                    int removed=0;
+                    for(int i=list.size()/2;i<list.size();i++)removed+=size(list.get(i))+1;
+                    String marker=entry.getKey()+"_truncated";
+                    int note=object.has(marker)?0:marker.length()+TRUNCATION_NOTE_BYTES;
+                    cuts.add(new Cut(object,entry.getKey(),removed-note,true));
+                }
                 collectLists(entry.getValue(),cuts);
             });
         }else if(node instanceof ArrayNode list)for(JsonNode child:list)collectLists(child,cuts);

@@ -261,20 +261,27 @@ final class ClassPrefetchRelations {
                 + qualifiers(row) + " -> " + resolved + " [" + row.get("resolution_status") + "]";
     }
 
-    /** Called methods as name(ShortTypes): descriptors cost about twice as much and overloads stay apart. */
+    /** Called methods as name(ShortTypes), at about half the cost of descriptors; a selector matching two overloads is rejected. */
     static String compactCalls(String methods) {
         java.util.Set<String> calls = new java.util.LinkedHashSet<>();
-        for (String call : methods.split(",")) {
-            int open = call.indexOf('(');
+        for (String call : methods.split(",")) calls.add(compactCall(call));
+        return String.join(",", calls);
+    }
+
+    private static String compactCall(String call) {
+        int open = call.indexOf('(');
+        if (open < 0) return call;
+        try {
             StringBuilder compact = new StringBuilder(call.substring(0, open + 1));
             org.objectweb.asm.Type[] types = org.objectweb.asm.Type.getArgumentTypes(call.substring(open));
             for (int i = 0; i < types.length; i++) {
                 String type = types[i].getClassName();
                 compact.append(i == 0 ? "" : ",").append(type.substring(Math.max(type.lastIndexOf('.'), type.lastIndexOf('$')) + 1));
             }
-            calls.add(compact.append(')').toString());
+            return compact.append(')').toString();
+        } catch (RuntimeException unreadable) {
+            return call;
         }
-        return String.join(",", calls);
     }
 
     private static boolean isSet(Object flag) {

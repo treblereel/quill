@@ -25,11 +25,8 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(installed.contains("Query the relevant tool directly"));
-        assertTrue(installed.contains("`get_overview` is optional"));
         assertTrue(installed.contains("exact name only for an unlisted tool"));
-        assertTrue(installed.contains("`--workspace`"));
-        assertTrue(installed.contains("`retry_with`"));
-        assertTrue(installed.contains("`structuredContent`"));
+        assertTrue(installed.contains("`next_page_request`"));
         assertTrue(installed.contains("call `change_session(change, targets)` before editing"));
         assertTrue(installed.contains("`directive.primary_action`"));
         assertTrue(installed.contains("`phase_gate`"));
@@ -37,7 +34,8 @@ class ProjectConfigurationTest {
         assertTrue(installed.contains("receipt is verified"));
         assertTrue(installed.contains("`quick_compile`"));
         assertTrue(installed.contains("never runs builds"));
-        assertTrue(installed.length() < 1400, "Instructions load into every session: " + installed.length());
+        assertFalse(installed.contains("`structuredContent`"), "Server instructions already say this");
+        assertTrue(installed.length() < 1150, "Instructions load into every session: " + installed.length());
         assertEquals(1, occurrences(installed, "<!-- quill:managed:start -->"));
 
         Files.writeString(claude, installed.replace(
@@ -78,22 +76,23 @@ class ProjectConfigurationTest {
         ProjectConfiguration.ensureAgentsMd(root);
 
         String installed = Files.readString(agents);
-        assertTrue(installed.contains("before editing source or choosing"));
-        assertTrue(installed.contains("Tool discovery is not MCP resource discovery"));
+        assertTrue(installed.contains("`mcp__quill__change_session(change, targets)` before editing"));
+        assertTrue(installed.contains("Empty resources do not mean missing tools"));
         assertTrue(installed.startsWith("# User instructions\n"));
         assertTrue(installed.contains("`mcp__quill__get_overview`"));
-        assertTrue(installed.contains("query the relevant tool directly"));
-        assertTrue(installed.contains("do not enumerate or print the entire tool catalog"));
-        assertTrue(installed.contains("A repository described as a workspace does not imply"));
-        assertTrue(installed.contains("`WORKSPACE_MODE_REQUIRED`"));
+        assertTrue(installed.contains("never print the whole catalog"));
+        assertTrue(installed.contains("`--workspace`"));
+        assertTrue(installed.contains("`retry_with`"));
+        assertTrue(installed.contains("`next_page_request`"));
         assertTrue(installed.contains("`structuredContent`"));
-        assertTrue(installed.contains("`mcp__quill__plan_change`"));
-        assertTrue(installed.contains("`mcp__quill__change_session`"));
+        assertTrue(installed.contains("`tools.mcp__quill__*`"));
         assertTrue(installed.contains("`directive.primary_action`"));
-        assertTrue(installed.contains("`action_id`"));
+        assertTrue(installed.contains("`phase_gate`"));
+        assertTrue(installed.contains("`review_checklist`"));
         assertTrue(installed.contains("phase is `complete`"));
-        assertTrue(installed.contains("scope `quick_compile`"));
-        assertTrue(installed.contains("does not execute builds"));
+        assertTrue(installed.contains("`quick_compile`"));
+        assertTrue(installed.contains("never runs builds"));
+        assertTrue(installed.length() < 1500, "Instructions load into every session: " + installed.length());
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(ProjectConfiguration.removeAgentsMd(root));
@@ -121,7 +120,7 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(refreshed.contains("# User instructions"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v5 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v6 -->"));
         assertFalse(refreshed.contains("Old guidance."));
     }
 

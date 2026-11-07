@@ -23,9 +23,8 @@ public final class ProjectConfiguration {
             evidence Quill reports as stale, partial, unknown, or unsupported.
 
             Query the relevant tool directly, sending independent queries as parallel calls in one
-            message. `get_overview` is optional; omit its arguments unless the server runs with
-            `--workspace`. Read `structuredContent` even if text is empty. Follow `retry_with` and
-            `next_page_request`. Search the tool catalog by exact name only for an unlisted tool.
+            message. Follow `next_page_request`. Search the tool catalog by
+            exact name only for an unlisted tool.
 
             For a code change, call `change_session(change, targets)` before editing or choosing a
             build, repeat it after edits, and follow `directive.primary_action`. Required `phase_gate` evidence and
@@ -36,62 +35,27 @@ public final class ProjectConfiguration {
             """;
     private static final String QUILL_AGENTS_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v5 -->
+            <!-- quill:instructions:v6 -->
             ## Quill MCP
 
-            Quill is the primary code-intelligence tool for this repository. Call listed Quill
-            tools directly; search the catalog by exact tool name only for a tool that is not
-            listed, and do not enumerate or print the entire tool catalog.
-            For a known target, query the relevant tool directly. Use `mcp__quill__get_overview`
-            for orientation, inventory, or index/build status; it is not a prerequisite for other queries.
-            Use `view=compact` only when server startup instructions or launch arguments
-            confirm `--workspace` mode. A repository described as a workspace does not imply
-            that server mode. In single-project or unknown mode, omit all overview arguments.
-            If compact returns `WORKSPACE_MODE_REQUIRED`, follow its `retry_with` request for
-            a full overview; do not infer that the index is missing or reconfigure the server.
-            Follow `next_page_request` to cover a compact inventory; use `project=<name>` with
-            `view=full` for detailed evidence. Read tool data from `structuredContent` when
-            present, even if text content is empty; do not repeat a successful call for that reason.
+            Prefer Quill over broad search for project-wide questions: symbols, implementations,
+            usages, hierarchies, dependencies, endpoints, DI, affected tests, build problems, Git
+            history, change risk. Use `rg` and source reads for exact literals and known files, and
+            to verify evidence Quill reports as stale, partial, unknown, or unsupported.
 
-            Use Quill before broad filesystem searches for symbols, implementations, usages, call
-            and type hierarchies, dependencies, architecture, framework endpoints, dependency
-            injection, affected tests, build diagnostics, Git history, and change risk. Quill tools
-            may be deferred and absent from the initially displayed tool list; search the complete
-            tool catalog by exact name or task before concluding that Quill is unavailable.
-            Tool discovery is not MCP resource discovery: empty resources/templates do not mean
-            missing tools. Use the client's tool-search capability when available. If tools are
-            genuinely unavailable, report that limitation and the client/configuration context;
-            do not claim the server is unconfigured from resource-list results alone.
+            Query the relevant tool directly. Each turn resends the conversation, so make all
+            independent queries in one script turn (several `tools.mcp__quill__*` calls awaited
+            together). Tools may be deferred: search the catalog by exact name only for an unlisted
+            tool, and never print the whole catalog. Empty resources do not mean missing tools.
+            `mcp__quill__get_overview` is optional; omit its arguments unless the server runs with
+            `--workspace`. Read `structuredContent` even if text is empty. Follow `retry_with` and
+            `next_page_request`.
 
-            Each model turn resends the whole conversation, so make every independent Quill query
-            a question needs in one script turn (several `tools.mcp__quill__*` calls awaited
-            together) instead of one query per turn.
-
-            Use `rg` and direct source reads for exact literals, known files, and verification when
-            Quill reports stale, partial, unknown, or unsupported evidence.
-
-            For a code change, call `mcp__quill__change_session` before editing source or choosing
-            a build. This is the required first workflow step; do not wait for a user reminder.
-            The call returns one stateless snapshot of the
-            plan, verification evidence, and ordered next actions; repeat it with the same targets
-            and change description to refresh the snapshot, or omit targets after editing to infer
-            them from dirty JVM sources. Use `mcp__quill__plan_change` or `mcp__quill__verify_change`
-            for a focused view. Keep the default `view=auto` and summary detail so only the current
-            phase is returned; request another view or full detail only to inspect omitted evidence.
-            Follow `directive.primary_action` first. Treat `phase_gate` required evidence and required
-            `review_checklist` items as blockers; advisory checklist items request inspection and do
-            not attest human review. Use `action_id` to recognize unchanged guidance after refreshing
-            the same stateless session. Views preserve the directive. Inspect its `evidence_snapshot`
-            and run its `preparation_command` for stale test evidence or its `retry_command` after
-            repairing diagnostics, then refresh the session. Incomplete test evidence alone does not
-            require test execution. If build evidence is missing or stale,
-            prefer the `verification_plan` command with scope `quick_compile`: run its exact `argv`
-            from `working_directory` using the terminal, then verify again. It compiles production
-            and standard test sources without running tests. Commands with scope `focused` or
-            `module_fallback` are separate test recommendations; run them only when the task or user
-            requires tests. Quill recommends commands but does not execute builds or persist
-            change-session state. Report completion only when the phase is `complete`, its gate is
-            satisfied, and the verification receipt is verified.
+            For a code change, call `mcp__quill__change_session(change, targets)` before editing or
+            choosing a build, repeat it after edits, and follow `directive.primary_action`. Required
+            `phase_gate` evidence and `review_checklist` items are blockers. When build evidence is
+            stale, run the `quick_compile` command; Quill never runs builds. Report completion only
+            when the phase is `complete` and the verification receipt is verified.
             <!-- quill:managed:end -->
             """;
 

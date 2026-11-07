@@ -59,7 +59,7 @@ public final class PrefetchCommand implements Callable<Integer> {
                 }
                 data.set("facts",fresh);
                 if(!fresh.isEmpty() && "ready".equals(data.path("status").asText()))
-                    data.put("producer","quill.prefetch").put("instructions","These are completed Quill reads for the shown index and query scope. Reuse covered facts, including explicit limits and unknowns; do not rediscover tools or repeat reads just for confirmation. Query tools/read source for missing, stale, ambiguous or truncated evidence. Source declarations do not prove runtime values; another static Quill query cannot establish them.");
+                    data.put("producer","quill.prefetch").put("instructions","These are completed Quill reads for this index. Reuse these facts and their limits without repeating them. Query or read source only for missing, stale, ambiguous or truncated evidence. Source declarations do not prove runtime values; another static Quill query cannot establish them.");
                 PrefetchContext.boundContext(data);
                 for(JsonNode fact:fresh){
                     ObjectNode identity=((ObjectNode)fact).deepCopy();identity.remove("_meta");

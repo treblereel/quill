@@ -46,6 +46,8 @@ class PrefetchLifecycleTest {
             var data=mapper.readTree(mapper.readTree(hook("UserPromptSubmit","oversized")).path("hookSpecificOutput").path("additionalContext").asText());
             assertEquals("partial",data.path("status").asText(),data.toString());assertTrue(data.path("facts").isEmpty());
             assertEquals("prefetch_context_limit",data.path("unavailable").get(0).path("status").asText());
+            assertTrue(data.path("instructions").asText().contains("completed Quill reads"),data.toString());
+            assertTrue(data.path("instructions").asText().length()<300,"Every packet carries this text");
             assertTrue(data.toString().getBytes(StandardCharsets.UTF_8).length<=org.treblereel.mcp.mcp.PrefetchContext.CONTEXT_LIMIT_BYTES);
             try(var files=Files.list(root.resolve(".quill/prefetch"))){var state=mapper.readTree(files.filter(p->p.toString().endsWith(".json")).findFirst().orElseThrow().toFile());assertTrue(state.isEmpty(),state.toString());}
         }

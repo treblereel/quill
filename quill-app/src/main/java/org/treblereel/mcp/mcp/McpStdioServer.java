@@ -136,7 +136,7 @@ public final class McpStdioServer {
                         : "Server mode: single_project (no --workspace). If using get_overview, call without arguments, not view=compact. ";
         instructions += "Follow retry_with on mode errors. Read structuredContent even when text is empty. ";
         if (profile.router() || profile.includes("change_session")) {
-            instructions += "For a code change, query change_session "
+            instructions += "For a code change, query change_session(change, targets) "
                 + "before editing or choosing a build, then follow directive.primary_action and "
                 + "phase_gate. ";
         }

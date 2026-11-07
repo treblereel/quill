@@ -14,7 +14,7 @@ public final class ProjectConfiguration {
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
     private static final String QUILL_CLAUDE_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v6 -->
+            <!-- quill:instructions:v7 -->
             ## Quill — Codebase Intelligence (MCP)
 
             Prefer Quill over broad search for project-wide questions: implementations, annotations,
@@ -27,8 +27,8 @@ public final class ProjectConfiguration {
             `--workspace`. Read `structuredContent` even if text is empty. Follow `retry_with` and
             `next_page_request`. Search the tool catalog by exact name only for an unlisted tool.
 
-            For a code change, call `change_session` before editing or choosing a build, repeat it
-            after edits, and follow `directive.primary_action`. Required `phase_gate` evidence and
+            For a code change, call `change_session(change, targets)` before editing or choosing a
+            build, repeat it after edits, and follow `directive.primary_action`. Required `phase_gate` evidence and
             `review_checklist` items are blockers. When build evidence is stale, run the
             `quick_compile` command; Quill never runs builds. Report completion only when the phase
             is `complete` and the verification receipt is verified.

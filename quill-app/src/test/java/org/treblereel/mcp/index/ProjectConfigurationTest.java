@@ -30,7 +30,7 @@ class ProjectConfigurationTest {
         assertTrue(installed.contains("`--workspace`"));
         assertTrue(installed.contains("`retry_with`"));
         assertTrue(installed.contains("`structuredContent`"));
-        assertTrue(installed.contains("call `change_session` before editing"));
+        assertTrue(installed.contains("call `change_session(change, targets)` before editing"));
         assertTrue(installed.contains("`directive.primary_action`"));
         assertTrue(installed.contains("`phase_gate`"));
         assertTrue(installed.contains("`review_checklist`"));
@@ -123,6 +123,33 @@ class ProjectConfigurationTest {
         assertTrue(refreshed.contains("# User instructions"));
         assertTrue(refreshed.contains("<!-- quill:instructions:v5 -->"));
         assertFalse(refreshed.contains("Old guidance."));
+    }
+
+    @Test
+    void previousClaudeBlockIsReplacedWithoutTouchingUserText() throws Exception {
+        Path claude = root.resolve("CLAUDE.md");
+        Files.writeString(claude, """
+                # User head
+
+                <!-- quill:managed:start -->
+                <!-- quill:instructions:v6 -->
+                For a code change, call `change_session` before editing.
+                <!-- quill:managed:end -->
+
+                # User tail
+                """);
+        assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
+                ProjectConfiguration.inspectClaudeMd(root));
+
+        ProjectConfiguration.ensureClaudeMd(root);
+
+        String refreshed = Files.readString(claude);
+        assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
+                ProjectConfiguration.inspectClaudeMd(root));
+        assertTrue(refreshed.startsWith("# User head\n"));
+        assertTrue(refreshed.endsWith("# User tail\n"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v7 -->"));
+        assertFalse(refreshed.contains("<!-- quill:instructions:v6 -->"));
     }
 
     private static int occurrences(String value, String token) {

@@ -85,7 +85,10 @@ class EntryPointQueriesTest {
         assertEquals(page.path("showing").asInt(),page.path("next_page_request").path("offset").asInt());
         var full=new ObjectMapper().readTree(ReadQueryContext.<String>read(db, r -> new EntryPointQueries().findEntryPoints(r,"observer",null,false,false,200,0,"p.Fixture.Created","full")));
         assertEquals(84,full.path("showing").asInt());
-        assertTrue(full.path("entry_points").get(1).has("annotation_values"));
+        var observer=full.path("entry_points").get(1);
+        assertFalse(observer.path("annotation_values").has("jakarta.enterprise.event.Observes"),observer.toString());
+        assertEquals("AFTER_SUCCESS",observer.path("observer").path("during").asText(),observer.toString());
+        assertTrue(observer.has("detection_rule"),"Full detail keeps the detection evidence");
         assertFalse(page.path("entry_points").get(1).has("annotation_values"));
     }
     @Test void oversizedSingleRowHasExplicitFullDetailRecovery() throws Exception {

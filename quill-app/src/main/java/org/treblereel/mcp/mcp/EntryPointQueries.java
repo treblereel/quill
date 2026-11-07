@@ -389,6 +389,13 @@ final class EntryPointQueries {
                     observer.put("qualifier_rule", parameterAnnotations.isEmpty()
                             ? "No observed qualifiers: notified for every event of this type; no @Default is required"
                             : "Notified when the event carries every observed qualifier; non-qualifier annotations in this list are ignored");
+                    // during and notifyObserver are stated above; keep only which of them were defaulted.
+                    if (node.get("annotation_values") instanceof ObjectNode annotationValues) {
+                        JsonNode defaults = annotationValues.path(observes.annotationName()).path("$defaults");
+                        if (!defaults.isMissingNode()) observer.set("defaults", defaults);
+                        annotationValues.remove(OBSERVER_ANNOTATIONS);
+                        if (annotationValues.isEmpty()) node.remove("annotation_values");
+                    }
                 });
     }
 

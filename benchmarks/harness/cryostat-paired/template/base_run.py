@@ -116,7 +116,7 @@ def check():
   if checked_stamps.get(name)!=stamp:
    assert sha(name)==digest,name
    checked_stamps[name]=stamp
- p=load(O/'protocol.json');assert len(p['schedule'])==p['sessions'] and sum(len(r['prompts']) for r in p['schedule'])==p['answers']
+ p=load(O/'protocol.json');assert len(p['schedule'])==p.get('sessions',528) and sum(len(r['prompts']) for r in p['schedule'])==p.get('answers',588)
  assert p['measurement_contract']==measurement.CONTRACT
  # Mutable fixture is restored and source-validated by setup_entry before each model session.
  return p

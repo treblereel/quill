@@ -119,7 +119,9 @@ public final class ApplicationContextResolver {
         Integer selected = candidates.size() == 1 ? candidates.getFirst().id() : null;
         ResolutionStatus status = selected != null ? ResolutionStatus.RESOLVED
                 : candidates.size() > 1 ? ResolutionStatus.AMBIGUOUS : ResolutionStatus.UNKNOWN;
-        ResolutionReason reason = selected != null ? ResolutionReason.UNIQUE_CONTEXT_CANDIDATE
+        ResolutionReason selectedReason = selected != null && candidates.getFirst().isDefault()
+                ? ResolutionReason.DEFAULT_BEAN_FALLBACK_SELECTED : ResolutionReason.UNIQUE_CONTEXT_CANDIDATE;
+        ResolutionReason reason = selected != null ? selectedReason
                 : candidates.size() > 1 ? ResolutionReason.MULTIPLE_CONTEXT_CANDIDATES
                 : ResolutionReason.NO_CONTEXT_CANDIDATE;
         Set<Integer> eligible = candidates.stream().map(BeanRecord::id)
@@ -130,7 +132,7 @@ public final class ApplicationContextResolver {
                         java.util.Objects.equals(bean.id(), selected) ? CandidateDisposition.SELECTED
                                 : eligible.contains(bean.id()) ? CandidateDisposition.ELIGIBLE
                                 : CandidateDisposition.EXCLUDED,
-                        java.util.Objects.equals(bean.id(), selected) ? ResolutionReason.UNIQUE_CONTEXT_CANDIDATE
+                        java.util.Objects.equals(bean.id(), selected) ? selectedReason
                                 : eligible.contains(bean.id()) ? ResolutionReason.CONTEXT_CANDIDATE
                                 : !spring && !BeanResolver.injectionCandidate(bean) ? ResolutionReason.NOT_INJECTION_BEAN
                                 : defaultSuppressed.contains(bean.id())

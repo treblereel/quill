@@ -86,6 +86,43 @@ class ApplicationContextResolverTest {
     }
 
     @Test
+    void uniqueDefaultBeanKeepsDefaultBeanReason() {
+        List<ClassRecord> classes = List.of(
+                cls("example.Consumer", "app"), cls("example.FallbackService", "app"));
+        List<BeanRecord> beans = List.of(
+                bean(1, 1, "example.Consumer", false), defaultBean(2, 2, "example.Service"));
+        InjectionPointRecord point = InjectionPointRecord.staticAnalysis(1, 1, "FIELD",
+                "example.Service", List.of("@Default"), "service", null, true,
+                InjectionPointRecord.STATIC_CDI);
+
+        InjectionPointRecord refined = ApplicationContextResolver.refine(
+                List.of(point), beans, classes, List.of(), List.of(context("app", "app", 0))).getFirst();
+
+        assertEquals(2, refined.resolvedBeanId());
+        assertEquals(ResolutionReason.DEFAULT_BEAN_FALLBACK_SELECTED, refined.resolutionReason());
+        assertTrue(refined.resolutionTrace().candidates().stream()
+                .anyMatch(candidate -> candidate.beanId() == 2
+                        && candidate.reason() == ResolutionReason.DEFAULT_BEAN_FALLBACK_SELECTED));
+    }
+
+    @Test
+    void twoDefaultBeansRemainAmbiguous() {
+        List<ClassRecord> classes = List.of(cls("example.Consumer", "app"),
+                cls("example.FirstFallback", "app"), cls("example.SecondFallback", "app"));
+        List<BeanRecord> beans = List.of(bean(1, 1, "example.Consumer", false),
+                defaultBean(2, 2, "example.Service"), defaultBean(3, 3, "example.Service"));
+        InjectionPointRecord point = InjectionPointRecord.staticAnalysis(1, 1, "FIELD",
+                "example.Service", List.of("@Default"), "service", null, true,
+                InjectionPointRecord.STATIC_CDI);
+
+        InjectionPointRecord refined = ApplicationContextResolver.refine(
+                List.of(point), beans, classes, List.of(), List.of(context("app", "app", 0))).getFirst();
+
+        assertEquals(ResolutionStatus.AMBIGUOUS, refined.resolutionStatus());
+        assertEquals(null, refined.resolvedBeanId());
+    }
+
+    @Test
     void regularBeanSuppressesDefaultBeanInsideApplicationContext() {
         List<ClassRecord> classes = List.of(
                 cls("example.Consumer", "app"),
@@ -105,6 +142,7 @@ class ApplicationContextResolverTest {
 
         assertEquals(ResolutionStatus.RESOLVED, refined.resolutionStatus());
         assertEquals(3, refined.resolvedBeanId());
+        assertEquals(ResolutionReason.UNIQUE_CONTEXT_CANDIDATE, refined.resolutionReason());
         assertTrue(refined.resolutionTrace().candidates().stream()
                 .anyMatch(candidate -> candidate.beanId() == 2
                         && candidate.reason() == ResolutionReason.DEFAULT_BEAN_SUPPRESSED));

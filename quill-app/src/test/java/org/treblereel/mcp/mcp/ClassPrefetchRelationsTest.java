@@ -158,6 +158,48 @@ class ClassPrefetchRelationsTest {
         assertFalse(impl.has("decorators"));
     }
 
+    @Test
+    void producerCandidateShowsDefaultBean() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("index.db"));
+        IndexWriter.writeIncremental(db, new IndexFixture()
+                .classes(List.of(
+                        new ClassRecord(0, "x.Consumer", "CLASS", "java.lang.Object", List.of(), "Consumer.java", 1, true, 10),
+                        new ClassRecord(0, "x.Producers", "CLASS", "java.lang.Object", List.of(), "Producers.java", 1, true, 10),
+                        new ClassRecord(0, "x.FileSystem", "INTERFACE", null, List.of(), "FileSystem.java", 1, false, 10)))
+                .beans(List.of(
+                        new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default"), List.of(), false, false,
+                                null, null, null, null, List.of("x.Consumer")),
+                        new BeanRecord(0, 2, "PRODUCER_METHOD", "@ApplicationScoped", List.of("@Default"), List.of(), false, true,
+                                null, null, 2, "produce", List.of("x.FileSystem"))))
+                .injectionPoints(List.of(InjectionPointRecord.staticAnalysis(0, 1, "FIELD", "x.FileSystem",
+                        List.of("@Default"), "fs", 2, false, InjectionPointRecord.STATIC_CDI)))
+                .metadata(Map.of("index_id", "default-bean")).snapshot());
+
+        assertEquals(List.of("FIELD fs: x.FileSystem [\"@Default\"] -> x.Producers#produce (PRODUCER_METHOD) @DefaultBean [RESOLVED]"),
+                strings(relations(db, "x.Consumer"), "injects"));
+        assertTrue(TestReads.read(db, reader -> ClassPrefetchRelations.typeCandidates(reader, "x.FileSystem"))
+                .getFirst().endsWith(" @DefaultBean"));
+        String points = TestReads.read(db, reader -> new StructureToolQueries().getInjectionPoints(reader, "x.Consumer"));
+        var point = new ObjectMapper().readTree(points).path("injection_points").get(0);
+        assertTrue(point.path("resolved_default_bean").asBoolean(), point.toString());
+    }
+
+    @Test
+    void defaultBeanSurvivesPrefetchTruncation() throws Exception {
+        var json = new ObjectMapper();
+        ObjectNode packet = json.createObjectNode();
+        ObjectNode point = packet.putArray("facts").addObject().put("kind", "injection_point")
+                .putObject("injection_point").put("resolved_default_bean", true);
+        var limitations = point.putArray("limitations");
+        for (int i = 0; i < 400; i++) limitations.add("limitation number " + i + " with some padding text");
+
+        PrefetchContext.boundContext(packet);
+
+        assertTrue(packet.path("context_truncated").asBoolean());
+        assertTrue(packet.toString().length() <= PrefetchContext.CONTEXT_LIMIT_BYTES);
+        assertTrue(packet.path("facts").get(0).path("injection_point").path("resolved_default_bean").asBoolean());
+    }
+
     private static ObjectNode relations(Jdbi db, String name) throws Exception {
         return TestReads.read(db, reader -> {
             ClassRecord cls = reader.symbols.findClassesByName(name).getFirst();

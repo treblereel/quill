@@ -24,7 +24,8 @@ final class ClassPrefetchRelations {
     static void append(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
         lines(fact, "injects", db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status,
-                       rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.kind AS resolved_kind
+                       rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.kind AS resolved_kind,
+                       rb.is_default AS resolved_default
                 FROM injection_points ip
                 JOIN beans ob ON ob.id = ip.bean_id
                 LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
@@ -195,7 +196,7 @@ final class ClassPrefetchRelations {
     static List<String> typeCandidates(ReadQueryContext db, String type) {
         List<String> lines = new java.util.ArrayList<>();
         db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT b.class_id, c.class_name, b.kind, b.scope, b.member_name, b.qualifiers
+                SELECT b.class_id, c.class_name, b.kind, b.scope, b.member_name, b.qualifiers, b.is_default
                 FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
                 WHERE b.bean_types LIKE :type ORDER BY c.class_name, b.member_name""")
                 .bind("type", "%\"" + type + "\"%").mapToMap().list()).forEach(row -> {
@@ -208,7 +209,9 @@ final class ClassPrefetchRelations {
                             .toList();
                     lines.add(row.get("kind") + " " + row.get("class_name") + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))
                             + " " + row.get("scope") + " qualifiers " + row.get("qualifiers")
-                            + (conditions.isEmpty() ? "" : " " + String.join(" ", conditions)));
+                            + (conditions.isEmpty() ? "" : " " + String.join(" ", conditions))
+                            + (isSet(row.get("is_default")) && conditions.stream().noneMatch(c -> c.contains("DefaultBean"))
+                                    ? " @DefaultBean" : ""));
                 });
         return lines;
     }
@@ -252,9 +255,14 @@ final class ClassPrefetchRelations {
         String resolved = row.get("resolved_class") == null ? "not resolved by the application index"
                 + MethodPrefetchRelations.dependencyProviders(db, String.valueOf(row.get("target_type")), row.get("qualifiers"))
                 : row.get("resolved_class") + (row.get("resolved_member") == null ? ""
-                        : "#" + row.get("resolved_member")) + " (" + row.get("resolved_kind") + ")";
+                        : "#" + row.get("resolved_member")) + " (" + row.get("resolved_kind") + ")"
+                        + (isSet(row.get("resolved_default")) ? " @DefaultBean" : "");
         return row.get("kind") + " " + row.get("field_name") + ": " + source(row.get("target_type"))
                 + qualifiers(row) + " -> " + resolved + " [" + row.get("resolution_status") + "]";
+    }
+
+    private static boolean isSet(Object flag) {
+        return flag instanceof Number number && number.intValue() != 0;
     }
 
     private static String injectedInto(Map<String, Object> row) {

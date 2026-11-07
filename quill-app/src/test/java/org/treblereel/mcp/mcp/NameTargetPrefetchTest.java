@@ -120,11 +120,13 @@ class NameTargetPrefetchTest {
         var envelope = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
         envelope.putArray("facts").add(fact);
         int bytes = envelope.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
-        fact.put("other_evidence", "x".repeat(10100 - bytes));
+        int generated = fact.path("generated_creation_evidence").toString().length();
+        fact.put("other_evidence", "x".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES + generated + 200 - bytes));
         PrefetchContext.boundContext(envelope);
         assertEquals(true, envelope.path("context_truncated").asBoolean());
         assertEquals(1, envelope.path("facts").size());
-        assertEquals("x.rbac.Mapper#<init>()V", creation.asText());
+        assertEquals(false, fact.has("generated_creation_evidence"));
+        assertEquals(true, envelope.path("context_omitted_fields").toString().contains("generated_creation_evidence"));
         assertEquals(true, fact.path("navigation").size() < 20);
     }
 

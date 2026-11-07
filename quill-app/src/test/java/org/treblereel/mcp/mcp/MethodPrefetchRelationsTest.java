@@ -119,7 +119,7 @@ class MethodPrefetchRelationsTest {
         assertTrue(fact.path("event_delivery_semantics").asText().contains("synchronization"));
         var packet=JSON.createObjectNode();packet.putArray("facts").add(fact.deepCopy());
         PrefetchContext.boundContext(packet);
-        assertTrue(packet.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=10000);
+        assertTrue(packet.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=PrefetchContext.CONTEXT_LIMIT_BYTES);
         assertTrue(packet.toString().contains("event_dispatches"));
         ObjectNode async=JSON.createObjectNode().put("class","p.Publisher").put("name","createAsync").put("descriptor","()V");
         TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, async); return null; });

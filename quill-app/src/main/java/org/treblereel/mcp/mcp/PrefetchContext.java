@@ -142,15 +142,23 @@ public final class PrefetchContext {
         missing.addObject().put("target",owner+"#"+name).put("status","not_an_injection_point");
         return com.fasterxml.jackson.databind.node.NullNode.getInstance();
     }
+    /** Every session pays for this context once; replays of recorded packets chose the limit. */
+    static final int CONTEXT_LIMIT_BYTES=5000;
+    /** In removal order, at any depth; these hold little that an answer needs. Limits and coverage never go. */
+    private static final List<String> OPTIONAL_FIELDS=List.of("class_occurrences","meta_annotations","dependency_metrics",
+            "external_dependencies","external_dependency_breakdown","test_classes","related_source_files",
+            "symbol_id","descriptor","_meta","generated_classes","generated_creation_evidence","override_evidence",
+            "contract_callers","methods","field_read_source");
     /** Portable hook budget: omit complete facts explicitly instead of letting clients cut JSON. */
     public static void boundContext(ObjectNode data){
-        final int limit=10000;
+        final int limit=CONTEXT_LIMIT_BYTES;
         if(!(data.path("facts") instanceof ArrayNode facts))return;
         // Direct evidence takes precedence over navigation and index diagnostics.
-        for(String field:List.of("class_occurrences","meta_annotations","dependency_metrics",
-                "external_dependencies","external_dependency_breakdown","test_classes","related_source_files")) {
+        for(String field:OPTIONAL_FIELDS) {
             if(size(data)<=limit)break;
-            for(JsonNode fact:facts)if(fact instanceof ObjectNode object)object.remove(field);
+            if(!removeField(facts,field))continue;
+            data.withArray("context_omitted_fields").add(field);
+            data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
         }
         // Long lists are cut in half, each cut stated beside the list, before whole facts go.
         while(size(data)>limit && trimLongestList(facts)) data.put("context_limit_bytes",limit).put("context_truncated",true).put("status","partial");
@@ -160,6 +168,12 @@ public final class PrefetchContext {
             var missing=data.withArray("unavailable").addObject().put("status","prefetch_context_limit");
             for(String key:List.of("kind","tool","arguments"))if(omitted.has(key))missing.set(key,omitted.get(key));
         }
+    }
+    private static boolean removeField(JsonNode node,String field){
+        boolean removed=false;
+        if(node instanceof ObjectNode object)removed=object.remove(field)!=null;
+        for(JsonNode child:node)removed|=removeField(child,field);
+        return removed;
     }
     private static int size(JsonNode data){return data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;}
     /** Halves the largest list of at least two items and records shown/total next to it. */

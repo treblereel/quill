@@ -53,7 +53,7 @@ class ConfigurationMethodSourceTest {
         var large=facts.addObject().put("kind","configuration").put("tool","find_configuration_references");large.putObject("arguments").put("key","warehouse.large");large.putObject("evidence").put("source","λ".repeat(6000));
         var original=small.deepCopy();PrefetchContext.boundContext(data);
         assertEquals(1,facts.size());assertEquals(original,facts.get(0));assertEquals("warehouse.large",data.path("unavailable").get(0).path("arguments").path("key").asText());
-        assertEquals("partial",data.path("status").asText());assertTrue(data.path("context_truncated").asBoolean());assertTrue(data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=10000);
+        assertEquals("partial",data.path("status").asText());assertTrue(data.path("context_truncated").asBoolean());assertTrue(data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=PrefetchContext.CONTEXT_LIMIT_BYTES);
         var before=data.deepCopy();PrefetchContext.boundContext(data);assertEquals(before,data);
     }
     @Test void hookBudgetHalvesLongListsAndStatesTheCutBeforeOmittingFacts() throws Exception {
@@ -66,7 +66,21 @@ class ConfigurationMethodSourceTest {
         assertEquals(200,fact.path("callers_truncated").path("total").asInt());
         assertEquals(fact.path("callers").size(),fact.path("callers_truncated").path("shown").asInt());
         assertEquals("p.Caller0#call"+"x".repeat(60),fact.path("callers").get(0).path("caller").asText());
-        assertEquals("partial",data.path("status").asText());assertTrue(data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=10000);
+        assertEquals("partial",data.path("status").asText());assertTrue(data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=PrefetchContext.CONTEXT_LIMIT_BYTES);
+    }
+    @Test void hookBudgetDropsOptionalFieldsAtAnyDepthAndStatesThem() {
+        var data=json.createObjectNode().put("status","ready");var facts=data.putArray("facts");
+        var fact=facts.addObject().put("kind","configuration");fact.putArray("limitations").add("static only");
+        var evidence=fact.putObject("evidence");evidence.put("key","warehouse.enabled");evidence.putObject("field_read_source").put("source","x".repeat(6000));
+        PrefetchContext.boundContext(data);
+        assertEquals(1,facts.size());assertEquals("warehouse.enabled",fact.path("evidence").path("key").asText());
+        assertFalse(fact.path("evidence").has("field_read_source"));assertEquals("static only",fact.path("limitations").get(0).asText());
+        assertEquals("field_read_source",data.path("context_omitted_fields").get(0).asText());
+        assertEquals("partial",data.path("status").asText());assertTrue(data.path("context_truncated").asBoolean());
+    }
+    @Test void hookBudgetLeavesSmallPacketsUntouched() {
+        var data=json.createObjectNode().put("status","ready");data.putArray("facts").addObject().put("symbol_id","kept").putArray("methods").add("m");
+        var before=data.deepCopy();PrefetchContext.boundContext(data);assertEquals(before,data);
     }
     @Test void changedSourceCannotLeaveOldSnippetInFallback() throws Exception {
         var e=evidence();Files.writeString(root.resolve("src/main/java/p/Fixture.java"),"// CHANGED_SOURCE_SENTINEL");TestReads.read(db, readScope -> { ConfigurationMethodSource.append(readScope,e); return null; });

@@ -641,12 +641,13 @@ public final class QuillTools {
     public String get_external_symbol_details(
             @ToolArg(description = "External class short name or FQCN") String class_name,
             @ToolArg(description = "summary (default, with members), full (adds source), source (source excerpt only), bytecode (full plus bytecode calls)", allowed = {"summary", "full", "source", "bytecode"}) Optional<String> detail,
+            @ToolArg(description = "Method name: only its members and bytecode; class name for constructors") Optional<String> method,
             @ToolArg(description = "Members per page; default 20, max 200") Optional<Integer> limit,
             @ToolArg(description = "Member page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forAllProjects(project.orElse(null), (p, context) -> externalSymbols.details(
                 context, p.root(), class_name, clamp(limit.orElse(20), 1, 200),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE), detail.orElse("summary")));
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE), detail.orElse("summary"), method.orElse(null)));
     }
 
     @Tool(readOnly = true, structured = true, description = "Inspect package dependency coupling.")

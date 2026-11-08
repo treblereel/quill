@@ -114,8 +114,8 @@ class NameTargetPrefetchTest {
         assertEquals(1, fact.path("generated_creation_evidence").size());
         assertEquals(true, fact.path("generated_creation_evidence").toString().contains("x.rbac.Mapper#<init>"));
         var creation = fact.path("generated_creation_evidence").get(0).path("method_calls")
-                .path("doCreate()Lx/rbac/Mapper;");
-        assertEquals("x.rbac.Mapper#<init>()V", creation.asText());
+                .path("doCreate()");
+        assertEquals("x.rbac.Mapper#<init>()", creation.asText());
         for (int i = 0; i < 20; i++) fact.withArray("navigation").add("helper-" + i + "x".repeat(50));
         var envelope = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
         envelope.putArray("facts").add(fact);

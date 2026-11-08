@@ -103,7 +103,14 @@ final class ExternalSymbolQueries {
     }
 
     String details(ReadQueryContext reader, Path root, String className, int limit, int offset, String detail) {
+        return details(reader, root, className, limit, offset, detail, null);
+    }
+
+    /** {@code method} narrows members and bytecode to one method name; a constructor is named by its class. */
+    String details(ReadQueryContext reader, Path root, String className, int limit, int offset, String detail,
+            String selectedMethod) {
         if (!java.util.Set.of("summary", "full", "source", "bytecode").contains(detail)) return error("detail must be summary, full, source or bytecode");
+        String method = selectedMethod == null || selectedMethod.isBlank() ? null : selectedMethod;
         Catalog catalog = catalog(reader, root);
         List<ClassRef> refs = catalog.classes().stream()
                 .filter(candidate -> candidate.className().equals(className)
@@ -132,18 +139,34 @@ final class ExternalSymbolQueries {
                     field.type().toString(), java.lang.reflect.Modifier.toString(field.flags()),
                     field.annotations().stream().map(a -> a.toString(false)).sorted().toList()));
         }
-        for (MethodInfo method : info.methods()) {
-            if (method.name().equals("<clinit>")) continue;
-            members.add(new Member(method.name().equals("<init>") ? "constructor" : "method",
-                    method.name().equals("<init>") ? simpleName(ref.className()) : method.name(),
-                    method.toString(), method.returnType().toString(),
-                    java.lang.reflect.Modifier.toString(method.flags()),
-                    method.annotations().stream().filter(a -> a.target() != null
+        for (MethodInfo declared : info.methods()) {
+            if (declared.name().equals("<clinit>")) continue;
+            members.add(new Member(declared.name().equals("<init>") ? "constructor" : "method",
+                    declared.name().equals("<init>") ? simpleName(ref.className()) : declared.name(),
+                    declared.toString(), declared.returnType().toString(),
+                    java.lang.reflect.Modifier.toString(declared.flags()),
+                    declared.annotations().stream().filter(a -> a.target() != null
                             && a.target().kind() == org.jboss.jandex.AnnotationTarget.Kind.METHOD)
                             .map(a -> a.toString(false)).sorted().toList()));
         }
         members.sort(Comparator.comparing(Member::kind).thenComparing(Member::name)
                 .thenComparing(Member::signature));
+        String jvmMethod = null;
+        if (method != null) {
+            String selected = method.equals("<init>") ? simpleName(ref.className()) : method;
+            List<Member> matching = members.stream().filter(member -> !member.kind().equals("field")
+                    && member.name().equals(selected)).toList();
+            if (matching.isEmpty()) {
+                ObjectNode missing = JSON.createObjectNode().put("error_code", "EXTERNAL_MEMBER_NOT_FOUND")
+                        .put("error", "No method " + method + " in " + ref.className());
+                ArrayNode candidates = missing.putArray("candidates");
+                members.stream().filter(member -> !member.kind().equals("field")).map(Member::name)
+                        .distinct().limit(100).forEach(candidates::add);
+                return missing.toString();
+            }
+            members = matching;
+            jvmMethod = matching.get(0).kind().equals("constructor") ? "<init>" : selected;
+        }
         int from = Math.min(offset, members.size());
         int to = Math.min(from + limit, members.size());
         ObjectNode result = JSON.createObjectNode();
@@ -162,14 +185,16 @@ final class ExternalSymbolQueries {
                 .put("artifact", candidate.artifact()).put("jar", candidate.jar().toString()));
         result.put("version_count", refs.size());
         result.put("detail", detail);
+        if (method != null) result.put("method", method);
         appendSource(ref, result, !detail.equals("summary"));
         if (detail.equals("source")) return result.toString();
         // Recorded agents used about 2% of these calls, so full detail points to them instead.
         if (detail.equals("bytecode")) {
-            result.set("bytecode_method_calls", methodCalls(ref));
+            result.set("bytecode_method_calls", methodCalls(ref, jvmMethod));
             result.put("bytecode_method_calls_scope", "At most 40 invocation instructions and 12 string constants per method, 200 invocations and 60 constants per class; omitted invokedynamic bodies, reflection and runtime dispatch are not inferred");
         } else {
-            result.putObject("bytecode_request").put("class_name", ref.className()).put("detail", "bytecode");
+            ObjectNode request = result.putObject("bytecode_request").put("class_name", ref.className()).put("detail", "bytecode");
+            if (method != null) request.put("method", method);
         }
         result.put("source", "resolved_dependency_bytecode");
         result.put("total_members", members.size());
@@ -186,8 +211,8 @@ final class ExternalSymbolQueries {
             item.put("modifiers", member.modifiers());
             item.set("annotations", JSON.valueToTree(member.annotations()));
             if (info.isAnnotation()) info.methods().stream()
-                    .filter(method -> method.name().equals(member.name()) && method.defaultValue() != null)
-                    .findFirst().ifPresent(method -> item.put("annotation_default", method.defaultValue().toString()));
+                    .filter(declared -> declared.name().equals(member.name()) && declared.defaultValue() != null)
+                    .findFirst().ifPresent(declared -> item.put("annotation_default", declared.defaultValue().toString()));
         });
         result.putArray("limitations")
                 .add("Declaration annotations are bytecode evidence; method bodies, build-time registration and runtime activation are not established")
@@ -355,8 +380,21 @@ final class ExternalSymbolQueries {
         return evidence;
     }
 
-    private static ObjectNode methodCalls(ClassRef ref) {
-        return methodCalls(ref, null);
+    /** {@code name(Type, ...)} with simple parameter names; the return type rarely tells overloads apart. */
+    static String javaMethod(String name, String descriptor) {
+        StringBuilder text = new StringBuilder(name).append('(');
+        org.objectweb.asm.Type[] parameters = org.objectweb.asm.Type.getArgumentTypes(descriptor);
+        for (int i = 0; i < parameters.length; i++) {
+            if (i > 0) text.append(", ");
+            String type = parameters[i].getClassName();
+            text.append(type.substring(type.lastIndexOf('.') + 1));
+        }
+        return text.append(')').toString();
+    }
+
+    /** {@code owner#name(Type, ...)}: the owner stays qualified so the call can be followed up. */
+    static String javaCall(String owner, String member, String descriptor) {
+        return owner.replace('/', '.') + "#" + javaMethod(member, descriptor);
     }
 
     private static ObjectNode methodCalls(ClassRef ref, String selectedMember) {
@@ -366,8 +404,13 @@ final class ExternalSymbolQueries {
             new org.objectweb.asm.ClassReader(input).accept(new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
                 int total;
                 int totalConstants;
+                final Map<String, String> descriptors = new java.util.HashMap<>();
                 @Override public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                     if (selectedMember != null && !name.equals(selectedMember)) return null;
+                    // Bridge methods share Java parameters with their target; keep their descriptor apart.
+                    String javaKey = javaMethod(name, descriptor);
+                    String key = descriptors.getOrDefault(javaKey, descriptor).equals(descriptor) ? javaKey : name + descriptor;
+                    descriptors.putIfAbsent(javaKey, descriptor);
                     return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
                         int count;
                         int literalCount;
@@ -375,23 +418,23 @@ final class ExternalSymbolQueries {
                         @Override public void visitLdcInsn(Object value) {
                             if (!(value instanceof String text) || text.length() > 200) return;
                             if (totalConstants++ >= 60) { methods.put("constants_truncated", true); return; }
-                            ObjectNode evidence = methods.withObject(name + descriptor);
+                            ObjectNode evidence = methods.withObject(key);
                             if (literalCount++ < 12) evidence.withArray("string_constants").add(text);
                             else evidence.put("constants_truncated", true);
                         }
                         @Override public void visitMethodInsn(int opcode, String owner, String member, String desc, boolean itf) {
                             if (total++ >= 200) { methods.put("truncated", true); return; }
-                            ObjectNode evidence = methods.withObject(name + descriptor);
+                            ObjectNode evidence = methods.withObject(key);
                             String resultType = org.objectweb.asm.Type.getReturnType(descriptor).getDescriptor();
                             boolean constructsResult = member.equals("<init>") && resultType.equals("L" + owner + ";");
                             boolean returnsResult = !resultType.equals("V") && resultType.equals(org.objectweb.asm.Type.getReturnType(desc).getDescriptor());
                             if ((constructsResult || returnsResult) && resultCallCount++ < 4) {
-                                String call = owner.replace('/', '.') + "#" + member + desc;
+                                String call = javaCall(owner, member, desc);
                                 String previous = evidence.path("result_calls").asText();
                                 evidence.put("result_calls", previous.isEmpty() ? call : previous + "; " + call);
                             }
                             ArrayNode calls = evidence.withArray("calls");
-                            if (count++ < 40) calls.add(owner.replace('/', '.') + "#" + member + desc);
+                            if (count++ < 40) calls.add(javaCall(owner, member, desc));
                             else evidence.put("truncated", true);
                         }
                     };

@@ -224,11 +224,45 @@ class ExternalSymbolQueriesTest {
         assertTrue(result.path("annotations").toString().contains("Deprecated"));
         assertTrue(result.path("members").toString().contains("producer-evidence"));
         assertFalse(result.path("runtime_resolution_proven").asBoolean());
-        assertTrue(result.path("bytecode_method_calls").path("disabledValue()Ljava/lang/String;")
+        assertTrue(result.path("bytecode_method_calls").path("disabledValue()")
                 .path("string_constants").toString().contains("disabled"));
+        assertTrue(result.path("bytecode_method_calls").path("greet(String)").path("calls").toString()
+                .contains("\"java.lang.String#trim()\""));
+        assertFalse(result.path("bytecode_method_calls").toString().contains("Ljava/lang/"),
+                "JVM descriptors cost tokens and say nothing a Java signature does not");
         assertTrue(result.path("members").toString().contains("ExternalSymbolQueriesTest$Produces"));
         assertTrue(result.path("members").toString().contains("ExternalSymbolQueriesTest$Singleton"));
         assertFalse(result.path("members").toString().contains("parameter-only"));
+    }
+
+    @Test
+    void methodSelectsOneMethodsMembersAndBytecode() throws Exception {
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "Fixture", 20, 0, "bytecode", "greet")));
+
+        assertEquals(1, result.path("members").size());
+        assertEquals("greet", result.path("members").get(0).path("name").asText());
+        assertEquals(1, result.path("total_members").asInt());
+        var keys = new java.util.ArrayList<String>();
+        result.path("bytecode_method_calls").fieldNames().forEachRemaining(keys::add);
+        assertEquals(java.util.List.of("greet(String)"), keys);
+        assertEquals("greet", result.path("method").asText());
+    }
+
+    @Test
+    void unknownMethodListsTheClassMethodNames() throws Exception {
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "Fixture", 20, 0, "bytecode", "missing")));
+
+        assertEquals("EXTERNAL_MEMBER_NOT_FOUND", result.path("error_code").asText());
+        assertTrue(result.path("candidates").toString().contains("greet"));
+        assertTrue(result.path("candidates").toString().contains("disabledValue"));
+    }
+
+    @Test
+    void sameJavaParametersKeepTheirDescriptorsApart() {
+        assertEquals("run(String, int[])", ExternalSymbolQueries.javaMethod("run", "(Ljava/lang/String;[I)V"));
+        assertEquals("a.B#<init>(Map$Entry)", ExternalSymbolQueries.javaCall("a/B", "<init>", "(Ljava/util/Map$Entry;)V"));
     }
 
     @interface Produces {}

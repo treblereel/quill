@@ -14,7 +14,7 @@ public final class ProjectConfiguration {
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
     private static final String QUILL_CLAUDE_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v8 -->
+            <!-- quill:instructions:v9 -->
             ## Quill — Codebase Intelligence (MCP)
 
             Prefer Quill over broad search for project-wide questions: implementations, annotations,
@@ -22,20 +22,19 @@ public final class ProjectConfiguration {
             risk. Use `rg` and source reads for exact literals and known files, and to verify
             evidence Quill reports as stale, partial, unknown, or unsupported.
 
-            Query the relevant tool directly, sending independent queries as parallel calls in one
-            message. Follow `next_page_request`. Search the tool catalog by
-            exact name only for an unlisted tool.
+            Send independent queries as parallel calls in one message. Follow `next_page_request`.
+            Search the tool catalog by exact name only for an unlisted tool.
 
-            For a code change, call `change_session(change, targets)` before editing or choosing a
-            build, repeat it after edits, and follow `directive.primary_action`. Required `phase_gate` evidence and
-            `review_checklist` items are blockers. When build evidence is stale, run the
-            `quick_compile` command; Quill never runs builds. Report completion only when the phase
-            is `complete` and the verification receipt is verified.
+            Repeat `change_session` after edits. Required `phase_gate` evidence and
+            `review_checklist` items are blockers; for stale build evidence run the `quick_compile`
+            command. Report completion only when the phase is `complete` and the receipt is
+            verified; outside the indexed project, verify with the build and say Quill evidence
+            does not cover it.
             <!-- quill:managed:end -->
             """;
     private static final String QUILL_AGENTS_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v6 -->
+            <!-- quill:instructions:v7 -->
             ## Quill MCP
 
             Prefer Quill over broad search for symbols, usages, hierarchies, DI, endpoints, affected
@@ -43,11 +42,10 @@ public final class ProjectConfiguration {
             literals and known files, and to verify evidence Quill reports as stale, partial,
             unknown, or unsupported.
 
-            Query the relevant tool directly. Each turn resends the conversation, so make all
-            independent queries in one script turn (several `tools.mcp__quill__*` calls awaited
-            together). Tools may be deferred: search the catalog by exact name only for an unlisted
-            tool, and never print the whole catalog. Empty resources do not mean missing tools.
-            `mcp__quill__get_overview` is optional; omit its arguments unless the server runs with
+            Query the relevant tool directly. Make independent queries in one script turn
+            (several `tools.mcp__quill__*` calls awaited together). Search the catalog by exact
+            name only for an unlisted tool, and never print the whole catalog.
+            Empty resources do not mean missing tools. `mcp__quill__get_overview` is optional; omit its arguments unless the server runs with
             `--workspace`. Read `structuredContent` even if text is empty. Follow `retry_with` and
             `next_page_request`.
 
@@ -56,7 +54,9 @@ public final class ProjectConfiguration {
             `phase_gate` evidence and `review_checklist` items are blockers. When build evidence is
             stale, run the `quick_compile` command; Quill never runs builds. Run `focused` or
             `module_fallback` tests only when the task requires tests;
-            incomplete test evidence alone does not. Report completion only when the phase is `complete` and the receipt is verified.
+            incomplete test evidence alone does not. Report completion only when the phase is
+            `complete` and the receipt is verified; outside the indexed project, verify with the
+            build and say Quill evidence does not cover it.
             <!-- quill:managed:end -->
             """;
 

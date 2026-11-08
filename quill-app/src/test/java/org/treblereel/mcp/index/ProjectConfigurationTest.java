@@ -24,29 +24,31 @@ class ProjectConfigurationTest {
         String installed = Files.readString(claude);
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectClaudeMd(root));
-        assertTrue(installed.contains("Query the relevant tool directly"));
         assertTrue(installed.contains("exact name only for an unlisted tool"));
         assertTrue(installed.contains("`next_page_request`"));
-        assertTrue(installed.contains("call `change_session(change, targets)` before editing"));
-        assertTrue(installed.contains("`directive.primary_action`"));
+        assertTrue(installed.contains("Repeat `change_session` after edits"));
         assertTrue(installed.contains("`phase_gate`"));
         assertTrue(installed.contains("`review_checklist`"));
-        assertTrue(installed.contains("receipt is verified"));
+        String flat = installed.replaceAll("\\s+", " ");
+        assertTrue(flat.contains("receipt is verified; outside the indexed project, verify with the build"));
+        assertTrue(flat.contains("say Quill evidence does not cover it"));
         assertTrue(installed.contains("`quick_compile`"));
-        assertTrue(installed.contains("never runs builds"));
-        assertFalse(installed.contains("`structuredContent`"), "Server instructions already say this");
-        assertTrue(installed.length() < 1150, "Instructions load into every session: " + installed.length());
+        for (String duplicate : java.util.List.of("`structuredContent`", "before editing",
+                "`directive.primary_action`", "never runs builds", "Query the relevant tool directly")) {
+            assertFalse(installed.contains(duplicate), "Server instructions already say this: " + duplicate);
+        }
+        assertTrue(installed.length() < 1000, "Instructions load into every session: " + installed.length());
         assertEquals(1, occurrences(installed, "<!-- quill:managed:start -->"));
 
         Files.writeString(claude, installed.replace(
-                "Query the relevant tool directly", "obsolete instructions"));
+                "Send independent queries", "obsolete instructions"));
         assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
                 ProjectConfiguration.inspectClaudeMd(root));
         ProjectConfiguration.ensureClaudeMd(root);
 
         String refreshed = Files.readString(claude);
         assertTrue(refreshed.startsWith("# User instructions\n"));
-        assertTrue(refreshed.contains("Query the relevant tool directly"));
+        assertTrue(refreshed.contains("Send independent queries"));
         assertFalse(refreshed.contains("obsolete instructions"));
         assertEquals(1, occurrences(refreshed, "<!-- quill:managed:start -->"));
     }
@@ -91,7 +93,9 @@ class ProjectConfigurationTest {
         assertTrue(installed.contains("`directive.primary_action`"));
         assertTrue(installed.contains("`phase_gate`"));
         assertTrue(installed.contains("`review_checklist`"));
-        assertTrue(installed.contains("phase is `complete`"));
+        String flat = installed.replaceAll("\\s+", " ");
+        assertTrue(flat.contains("Report completion only when the phase is `complete`"));
+        assertTrue(flat.contains("outside the indexed project, verify with the build"));
         assertTrue(installed.contains("`quick_compile`"));
         assertTrue(installed.contains("never runs builds"));
         assertTrue(installed.length() < 1500, "Instructions load into every session: " + installed.length());
@@ -122,7 +126,7 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(refreshed.contains("# User instructions"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v6 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v7 -->"));
         assertFalse(refreshed.contains("Old guidance."));
     }
 
@@ -149,7 +153,7 @@ class ProjectConfigurationTest {
                 ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(refreshed.startsWith("# User head\n"));
         assertTrue(refreshed.endsWith("# User tail\n"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v8 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v9 -->"));
         assertFalse(refreshed.contains("<!-- quill:instructions:v6 -->"));
     }
 
@@ -180,7 +184,7 @@ class ProjectConfigurationTest {
         ProjectConfiguration.ensureClaudeMd(root);
         Path file = root.resolve("CLAUDE.md");
         String content = Files.readString(file);
-        Files.writeString(file, content.replace("directive.primary_action", "obsolete"));
+        Files.writeString(file, content.replace("review_checklist", "obsolete"));
         assertEquals(ProjectConfiguration.InstructionsState.OUTDATED,
                 ProjectConfiguration.inspectClaudeMd(root));
         Files.writeString(file, "<!-- quill:instructions:v2 -->\n"

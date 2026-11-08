@@ -124,10 +124,15 @@ def claude(p,entry,d,env,sandbox,preflight=False):
       turns.append({'number':number,'seconds':time.perf_counter()-t,'answer':event.get('result',''),'event':event});write(d/'turns.json',turns)
       if event.get('is_error') or event.get('permission_denials'):raise RuntimeError('Claude error/permission denial; no repair/retry')
       break
-   # A session may leave a background task that Claude must stop after the answer.
-   child.stdin.close();child.wait(timeout=180);thread.join(timeout=5)
-   assert child.returncode==0
-   write(d/'session.json',{'status':'completed','session_id':turns[-1]['event'].get('session_id'),'wall_seconds':time.perf_counter()-start,'turns':len(turns),'cumulative_model_usage':turns[-1]['event'].get('modelUsage'),'cumulative_cost_usd_estimate':turns[-1]['event'].get('total_cost_usd'),'usage_complete':not capture.errors})
+   # Print mode waits for background shell tasks before it exits, and a task such as
+   # quarkus:test never ends. The final result is already recorded, so stop the group.
+   child.stdin.close();teardown='exited'
+   try:child.wait(timeout=30)
+   except subprocess.TimeoutExpired:
+    os.killpg(child.pid,signal.SIGTERM);child.wait(timeout=30);teardown='terminated_after_result'
+   thread.join(timeout=5)
+   assert teardown!='exited' or child.returncode==0,child.returncode
+   write(d/'session.json',{'status':'completed','teardown':teardown,'exit_code':child.returncode,'session_id':turns[-1]['event'].get('session_id'),'wall_seconds':time.perf_counter()-start,'turns':len(turns),'cumulative_model_usage':turns[-1]['event'].get('modelUsage'),'cumulative_cost_usd_estimate':turns[-1]['event'].get('total_cost_usd'),'usage_complete':not capture.errors})
   finally:
    if child.poll() is None:os.killpg(child.pid,signal.SIGTERM);child.wait(timeout=10)
    stderr.close()

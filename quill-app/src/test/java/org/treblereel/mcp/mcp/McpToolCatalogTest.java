@@ -595,6 +595,30 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void namesAgentsGuessedInRecordedRunsLeadToTheToolThatAnswers() throws Exception {
+        RouterTools router = new RouterTools(new QuillTools(new ProjectRegistry()));
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        for (var guess : Map.of("list_observers", "find_entry_points", "event_flow", "find_entry_points",
+                "get_injection_points", "list_injection_points", "get_bean_dependencies", "list_injection_points",
+                "get_injection_graph", "list_injection_points", "analyze_lifecycle", "trace_state_lifecycle",
+                "get_bean_lifecycle", "trace_state_lifecycle", "get_transaction_boundaries", "get_context",
+                "get_configuration", "find_configuration_references").entrySet()) {
+            JsonNode result = json.readTree(router.search_tools(guess.getKey(), Optional.of(1)));
+            assertEquals(guess.getValue(), result.path("guidance").path("recommended_tool").asText(), result::toString);
+            assertEquals(guess.getValue(), result.path("tools").get(0).path("name").asText(), result::toString);
+        }
+        JsonNode observers = json.readTree(router.search_tools("list_observers", Optional.of(1)));
+        assertEquals("observer", observers.at("/guidance/suggested_arguments/kind").asText());
+        for (String reindex : List.of("reindex", "refresh_index", "index_project")) {
+            JsonNode result = json.readTree(router.search_tools(reindex, Optional.of(1)));
+            assertTrue(result.path("guidance").path("note").asText().contains("no reindex tool"), result::toString);
+            assertEquals(0, result.path("tools").size());
+        }
+        JsonNode unknown = json.readTree(router.execute_tool("list_observers", Map.of()));
+        assertEquals("find_entry_points", unknown.path("did_you_mean").asText(), unknown::toString);
+    }
+
+    @Test
     void routerWritesLocalDiscoveryTraceOnlyInDebugMode() throws Exception {
         DebugTrace.configure(true, tempDir);
         RouterTools router = new RouterTools(new QuillTools(new ProjectRegistry()));

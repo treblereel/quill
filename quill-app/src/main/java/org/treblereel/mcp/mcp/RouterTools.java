@@ -49,11 +49,15 @@ final class RouterTools {
                     String query,
             @ToolArg(description = "Maximum matches; default 5, max 30") Optional<Integer> limit) {
         try (DebugTrace.Trace trace = DebugTrace.start("router_search")) {
-            String normalizedQuery = switch (query.strip().toLowerCase()) {
-                case "resolve_injection" -> "list_injection_points";
-                case "find_references" -> "find_usages";
-                default -> query;
-            };
+            String guessed = query.strip().toLowerCase();
+            if (NOT_TOOLS.contains(guessed)) {
+                ObjectNode result = JSON.createObjectNode().put("query", query).put("total", 0).put("showing", 0);
+                result.putObject("guidance").put("note", "Quill has no reindex tool: it refreshes the index itself "
+                        + "after source changes and builds. Run the build, then query change_session again.");
+                result.putArray("tools");
+                return result.toString();
+            }
+            String normalizedQuery = ALIASES.getOrDefault(guessed, query);
             String intent = normalizedQuery.strip().toLowerCase().replace('_', ' ').replace('-', ' ');
             if (intent.contains("dependency") && intent.contains("source")) intent += " bytecode";
             String[] terms = Arrays.stream(intent.split("\\s+"))
@@ -83,6 +87,7 @@ final class RouterTools {
             // When to prefer source search or Quill is in the server instructions; repeating it in
             // every search answer was a third of each response.
             if (!matches.isEmpty()) guidance.put("recommended_tool", matches.getFirst().method().getName());
+            if (ALIAS_ARGUMENTS.containsKey(guessed)) guidance.set("suggested_arguments", JSON.valueToTree(ALIAS_ARGUMENTS.get(guessed)));
             ArrayNode listed = result.putArray("tools");
             matches.stream().limit(pageSize).forEach(candidate -> {
                 Method method = candidate.method();
@@ -111,7 +116,12 @@ final class RouterTools {
                     .findFirst().orElse(null);
             if (method == null) {
                 trace.event("tool_rejected", Map.of("tool", name, "reason", "unknown_tool"));
-                return error("Unknown tool: " + name);
+                String alias = ALIASES.get(name == null ? "" : name.strip().toLowerCase());
+                if (alias == null) return error("Unknown tool: " + name);
+                ObjectNode result = JSON.createObjectNode().put("error", "Unknown tool: " + name).put("did_you_mean", alias);
+                if (ALIAS_ARGUMENTS.containsKey(name.strip().toLowerCase()))
+                    result.set("suggested_arguments", JSON.valueToTree(ALIAS_ARGUMENTS.get(name.strip().toLowerCase())));
+                return result.toString();
             }
             trace.event("tool_selected", Map.of("tool", name, "argument_names",
                     arguments == null ? java.util.List.of()
@@ -133,6 +143,27 @@ final class RouterTools {
             return error(invocation.text());
         }
     }
+
+    /** Names agents guessed in recorded runs; each search costs a model turn, so map them to the tool that answers. */
+    private static final Map<String, String> ALIASES = Map.ofEntries(
+            Map.entry("resolve_injection", "list_injection_points"),
+            Map.entry("get_injection_points", "list_injection_points"),
+            Map.entry("get_bean_dependencies", "list_injection_points"),
+            Map.entry("get_injection_graph", "list_injection_points"),
+            Map.entry("find_references", "find_usages"),
+            Map.entry("list_observers", "find_entry_points"),
+            Map.entry("event_flow", "find_entry_points"),
+            Map.entry("analyze_lifecycle", "trace_state_lifecycle"),
+            Map.entry("get_lifecycle", "trace_state_lifecycle"),
+            Map.entry("get_bean_lifecycle", "trace_state_lifecycle"),
+            Map.entry("get_transaction_boundaries", "get_context"),
+            Map.entry("get_configuration", "find_configuration_references"));
+    private static final Map<String, Map<String, String>> ALIAS_ARGUMENTS = Map.of(
+            "list_observers", Map.of("kind", "observer"),
+            "event_flow", Map.of("kind", "observer"),
+            "get_transaction_boundaries", Map.of("targets", "[\"Class#method(ParamType)\"]: interceptors and calls of the method"));
+    private static final java.util.Set<String> NOT_TOOLS = java.util.Set.of(
+            "reindex", "refresh_index", "index_project", "rebuild_index", "update_index");
 
     private static int score(Method method, String[] terms) {
         String searchable = (method.getName() + " "

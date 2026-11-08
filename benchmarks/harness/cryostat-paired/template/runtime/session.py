@@ -124,7 +124,8 @@ def claude(p,entry,d,env,sandbox,preflight=False):
       turns.append({'number':number,'seconds':time.perf_counter()-t,'answer':event.get('result',''),'event':event});write(d/'turns.json',turns)
       if event.get('is_error') or event.get('permission_denials'):raise RuntimeError('Claude error/permission denial; no repair/retry')
       break
-   child.stdin.close();child.wait(timeout=30);thread.join(timeout=5)
+   # A session may leave a background task that Claude must stop after the answer.
+   child.stdin.close();child.wait(timeout=180);thread.join(timeout=5)
    assert child.returncode==0
    write(d/'session.json',{'status':'completed','session_id':turns[-1]['event'].get('session_id'),'wall_seconds':time.perf_counter()-start,'turns':len(turns),'cumulative_model_usage':turns[-1]['event'].get('modelUsage'),'cumulative_cost_usd_estimate':turns[-1]['event'].get('total_cost_usd'),'usage_complete':not capture.errors})
   finally:

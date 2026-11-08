@@ -40,6 +40,31 @@ class PrefetchContextTest {
         assertEquals("dispatches",packet.path("context_omitted_fields").get(0).asText());
         assertFalse(packet.has("unavailable"),packet.toString());
     }
+    /** In V20 the budget cut the body of Credentials#onStart before its call list, and agents opened the file. */
+    @Test void theSelectedMethodBodyGoesLastBecauseWithoutItAgentsReadTheWholeFile() {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var packet=json.createObjectNode();
+        var fact=packet.putArray("facts").addObject().put("kind","direct_method_impact").put("target","a.B#m");
+        fact.putObject("selected_method_source").put("source_file","a/B.java").put("source","b".repeat(1300));
+        var calls=fact.putArray("calls");
+        for(int i=0;i<12;i++)calls.addObject().put("target","c.D"+i+"#run").put("line",i);
+        // A small overrun: the body is then the smallest single field that covers it.
+        fact.putObject("dependency_interceptors").put("text","i".repeat(1500));
+        fact.put("padding","p".repeat(2000));
+        PrefetchContext.boundContext(packet);
+        assertTrue(packet.toString().length()<=PrefetchContext.CONTEXT_LIMIT_BYTES,packet.toString());
+        assertEquals(1300,packet.path("facts").get(0).path("selected_method_source").path("source").asText().length(),packet.toString());
+        assertTrue(packet.path("context_truncated").asBoolean());
+    }
+    @Test void theBodyStillYieldsBeforeTheWholeFactIsDropped() {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var packet=json.createObjectNode();
+        var fact=packet.putArray("facts").addObject().put("kind","direct_method_impact").put("target","a.B#m").put("answer","keep");
+        fact.putObject("selected_method_source").put("source","b".repeat(6000));
+        PrefetchContext.boundContext(packet);
+        assertEquals("keep",packet.path("facts").get(0).path("answer").asText(),packet.toString());
+        assertFalse(packet.path("facts").get(0).has("selected_method_source"));
+    }
     @Test void factWithOnlyIdentityOverTheLimitIsStillReportedAsUnavailable() {
         var json=new com.fasterxml.jackson.databind.ObjectMapper();
         var packet=json.createObjectNode();

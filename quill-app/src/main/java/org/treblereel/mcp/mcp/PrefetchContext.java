@@ -156,6 +156,8 @@ public final class PrefetchContext {
     private static final Set<String> REACH=Set.of("has_more","truncated","total","showing","limit","offset","complete",
             "scope","runtime_execution_proven");
     private static final List<String> REACH_SUFFIXES=List.of("_truncated","_scope","_basis","_complete");
+    /** Cut only when nothing else is left: without the selected body, recorded agents read the whole file. */
+    private static final Set<String> LAST_RESORT=Set.of("selected_method_source");
     /** A shorter field is a statement rather than a body of evidence, and removing it saves little. */
     private static final int MIN_FIELD_CUT_BYTES=64;
     private static final int PROPORTIONATE_FACTOR=4;
@@ -210,6 +212,8 @@ public final class PrefetchContext {
         for(JsonNode fact:facts)if(fact instanceof ObjectNode object)collectFields(object,cuts);
         cuts.removeIf(cut->cut.frees()<=0);
         if(cuts.isEmpty())return false;
+        List<Cut> others=cuts.stream().filter(cut->!LAST_RESORT.contains(cut.field())).toList();
+        if(!others.isEmpty())cuts=others;
         int over=size(data)-limit;
         // Several small cuts are better than one far larger than the overrun.
         int proportionate=Math.max(over*PROPORTIONATE_FACTOR,MIN_PROPORTIONATE_BYTES);

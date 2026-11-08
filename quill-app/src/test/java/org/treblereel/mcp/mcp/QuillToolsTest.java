@@ -905,6 +905,13 @@ class QuillToolsTest {
         assertEquals(full.path("verification_receipt").path("verified"), result.path("verification_receipt").path("verified"));
         assertEquals(full.path("verification_receipt").path("reason_codes"), result.path("verification_receipt").path("reason_codes"));
         assertFalse(full.has("full_evidence_request"));
+        for (JsonNode snapshot : List.of(result, full)) {
+            JsonNode attested = snapshot.at("/verification_receipt/observed_evidence/compiled_outputs");
+            assertEquals(snapshot.at("/verification/build/compiled_outputs/status"), attested.path("status"));
+            assertEquals(snapshot.at("/verification/build/compiled_outputs/count"), attested.path("count"));
+            assertFalse(attested.has("source_sets"), "verification.build already lists them");
+            assertFalse(attested.has("directories"), "verification.build already lists them");
+        }
     }
 
     @Test

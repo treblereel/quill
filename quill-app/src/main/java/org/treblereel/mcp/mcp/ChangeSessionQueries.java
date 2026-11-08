@@ -265,6 +265,10 @@ final class ChangeSessionQueries {
         copy(diagnostics, observed, "finished_at");
         copy(diagnostics, observed, "capture_scope");
         copy(build, observed, "compiled_outputs");
+        // The receipt attests the outcome; verification.build in the same snapshot lists every output.
+        if (observed.path("compiled_outputs") instanceof ObjectNode outputs) {
+            outputs.remove(List.of("source_sets", "directories", "directories_truncated"));
+        }
         copy(build, observed, "verification_scope");
         copy(build, observed, "repository_status");
         copy(build, observed, "repository_stale_modules");

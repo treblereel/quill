@@ -43,7 +43,6 @@ final class ResponseCompaction {
     private ResponseCompaction() {}
 
     static String apply(String text, String tool, Map<String, Object> arguments) {
-        if (UNCHANGED.contains(tool)) return text;
         JsonNode root;
         try {
             root = JSON.readTree(text);
@@ -51,15 +50,79 @@ final class ResponseCompaction {
             return text;
         }
         if (!(root instanceof ObjectNode object) || object.has("error_code") || object.has("error")) return text;
-        if (!full(arguments)) {
-            if (object.path("_meta") instanceof ObjectNode meta && meta.path("stale_warning").isBoolean()
-                    && !meta.path("stale_warning").asBoolean()) {
-                meta.remove(FRESH_META);
+        if (!UNCHANGED.contains(tool)) {
+            if (!full(arguments)) {
+                if (object.path("_meta") instanceof ObjectNode meta && meta.path("stale_warning").isBoolean()
+                        && !meta.path("stale_warning").asBoolean()) {
+                    meta.remove(FRESH_META);
+                }
+                compact(object, tool);
             }
-            compact(object, tool);
+            stateCommonFieldsOnce(object);
         }
-        stateCommonFieldsOnce(object);
+        // Nothing below loses a fact, so status tools and full detail get it too.
+        dropRepeatedMeta(object, object.get("_meta"));
+        dropRestatedPaging(object);
+        stateRepeatsOnce(object, "", new java.util.HashMap<>());
         return object.toString();
+    }
+
+    /** Sections built by other queries carry the same index metadata as the response itself. */
+    private static void dropRepeatedMeta(JsonNode node, JsonNode rootMeta) {
+        if (rootMeta == null) return;
+        for (JsonNode child : node) {
+            if (child instanceof ObjectNode object && rootMeta.equals(object.get("_meta"))) object.remove("_meta");
+            dropRepeatedMeta(child, rootMeta);
+        }
+    }
+
+    /** {@code <list>_count} equal to the list's size and {@code <list>_has_more: false} restate the list. */
+    private static void dropRestatedPaging(JsonNode node) {
+        if (node instanceof ObjectNode object) {
+            List<String> restated = new ArrayList<>();
+            for (var entry : object.properties()) {
+                if (!(entry.getValue() instanceof ArrayNode list)) continue;
+                JsonNode count = object.get(entry.getKey() + "_count");
+                if (count != null && count.isIntegralNumber() && count.asInt() == list.size()) restated.add(entry.getKey() + "_count");
+                JsonNode more = object.get(entry.getKey() + "_has_more");
+                if (more != null && more.isBoolean() && !more.asBoolean()) restated.add(entry.getKey() + "_has_more");
+            }
+            object.remove(restated);
+            for (var entry : object.properties()) if (!PRESERVED_SUBTREES.contains(entry.getKey())) dropRestatedPaging(entry.getValue());
+        } else if (node instanceof ArrayNode list) {
+            for (JsonNode item : list) dropRestatedPaging(item);
+        }
+    }
+
+    /** Below this a pointer saves too little to be worth reading. */
+    private static final int MIN_REPEAT_BYTES = 120;
+
+    /** Replaces a section identical to an earlier one with {@code {"same_as": "<JSON pointer>"}}. */
+    private static void stateRepeatsOnce(JsonNode node, String pointer, Map<String, String> seen) {
+        if (node instanceof ObjectNode object) {
+            for (var entry : object.properties()) {
+                if (PRESERVED_SUBTREES.contains(entry.getKey())) continue;
+                String child = pointer + "/" + entry.getKey().replace("~", "~0").replace("/", "~1");
+                JsonNode replacement = repeat(entry.getValue(), child, seen);
+                if (replacement != null) entry.setValue(replacement);
+            }
+        } else if (node instanceof ArrayNode list) {
+            for (int i = 0; i < list.size(); i++) {
+                JsonNode replacement = repeat(list.get(i), pointer + "/" + i, seen);
+                if (replacement != null) list.set(i, replacement);
+            }
+        }
+    }
+
+    private static JsonNode repeat(JsonNode value, String pointer, Map<String, String> seen) {
+        if (!value.isContainerNode()) return null;
+        String text = value.toString();
+        if (text.length() >= MIN_REPEAT_BYTES) {
+            String first = seen.putIfAbsent(text, pointer);
+            if (first != null) return JSON.createObjectNode().put("same_as", first);
+        }
+        stateRepeatsOnce(value, pointer, seen);
+        return null;
     }
 
     /** Moves a field with one value across a list's items to {@code <list>_common}: nothing is lost, so full detail gets it too. */

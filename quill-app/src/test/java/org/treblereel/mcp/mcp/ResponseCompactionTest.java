@@ -157,4 +157,57 @@ class ResponseCompactionTest {
         assertEquals("not json", ResponseCompaction.apply("not json", "list_beans", Map.of()));
         assertTrue(ResponseCompaction.apply("{}", "list_beans", Map.of()).contains("{"));
     }
+
+    private static final String COVERAGE = "{\"scope\":\"indexed_application_bytecode\",\"not_covered\":"
+            + "[\"reflection\",\"external_consumers\",\"runtime_dispatch_exhaustiveness\"],\"scan_complete\":true}";
+
+    @Test
+    void repeatedSubtreeIsStatedOnceAndLaterPointsToIt() throws Exception {
+        String json = "{\"contexts\":[{\"target\":\"A\",\"coverage\":" + COVERAGE + "},{\"target\":\"B\",\"coverage\":" + COVERAGE + "}]}";
+        for (String tool : java.util.List.of("get_context", "change_session")) {
+            for (Map<String, Object> arguments : java.util.List.<Map<String, Object>>of(Map.of(), Map.of("detail", "full"))) {
+                JsonNode root = compact(tool, json, arguments);
+                assertEquals(JSON.readTree(COVERAGE), root.at("/contexts/0/coverage"));
+                assertEquals("/contexts/0/coverage", root.at("/contexts/1/coverage/same_as").asText(), tool + arguments);
+            }
+        }
+    }
+
+    @Test
+    void followUpRequestsStayCallableWhenRepeated() throws Exception {
+        String request = "{\"tool\":\"get_context\",\"arguments\":{\"targets\":[\"a.very.long.package.name.ClassName\"],"
+                + "\"limit\":20,\"evidence_detail\":\"full\",\"evidence_offset\":0}}";
+        JsonNode root = compact("get_context", "{\"a\":{\"x\":1,\"details_request\":" + request + "},\"b\":{\"x\":2,\"details_request\":"
+                + request + "}}", Map.of());
+        assertEquals("get_context", root.at("/b/details_request/tool").asText());
+    }
+
+    @Test
+    void nestedMetaThatRepeatsTheRootIsDropped() throws Exception {
+        String other = FRESH.replace("\"i\"", "\"other\"");
+        JsonNode root = compact("get_context", "{\"a\":{" + FRESH + "},\"b\":{" + other + "}," + FRESH + "}",
+                Map.of("evidence_detail", "full"));
+        assertFalse(root.path("a").has("_meta"));
+        assertEquals("other", root.at("/b/_meta/index_id").asText());
+        assertEquals("i", root.at("/_meta/index_id").asText());
+    }
+
+    @Test
+    void pagingFieldsThatRestateTheListAreDropped() throws Exception {
+        JsonNode root = compact("change_session", """
+                {"v":{"x":[1,2],"x_count":2,"x_has_more":false,"y":[1],"y_count":5,"y_has_more":true}}""", Map.of());
+        assertFalse(root.path("v").has("x_count"));
+        assertFalse(root.path("v").has("x_has_more"));
+        assertEquals(5, root.at("/v/y_count").asInt());
+        assertTrue(root.at("/v/y_has_more").asBoolean());
+    }
+
+    @Test
+    void emptyListsStayBecauseTheyStateThatNothingIsMissing() throws Exception {
+        JsonNode root = compact("get_call_hierarchy", """
+                {"calls":[],"coverage":{"incomplete_reasons":[],"scan_complete":true}}""", Map.of());
+        assertTrue(root.at("/coverage/incomplete_reasons").isArray());
+        assertTrue(root.path("calls").isArray());
+    }
+
 }

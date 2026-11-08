@@ -210,4 +210,12 @@ class ResponseCompactionTest {
         assertTrue(root.path("calls").isArray());
     }
 
+    @Test
+    void prefetchPacketStatesRepeatedEvidenceOnce() throws Exception {
+        var packet = (com.fasterxml.jackson.databind.node.ObjectNode) JSON.readTree(
+                "{\"facts\":[{\"kind\":\"a\",\"coverage\":" + COVERAGE + "},{\"kind\":\"b\",\"coverage\":" + COVERAGE + "}]}");
+        PrefetchContext.stateRepeatsOnce(packet);
+        assertEquals("/facts/0/coverage", packet.at("/facts/1/coverage/same_as").asText());
+        assertEquals(JSON.readTree(COVERAGE), packet.at("/facts/0/coverage"));
+    }
 }

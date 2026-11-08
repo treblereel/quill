@@ -71,6 +71,7 @@ public final class PrefetchCommand implements Callable<Integer> {
                 Path temporary=Files.createTempFile(directory,"pending-",".json");
                 try {JSON.writeValue(temporary.toFile(),delivered);Files.move(temporary,state,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}finally{Files.deleteIfExists(temporary);}
                 if(fresh.isEmpty() && data.path("unavailable").isEmpty() && data.path("ambiguities").isEmpty() && "ready".equals(data.path("status").asText()))return 0;
+                PrefetchContext.stateRepeatsOnce(data);
                 ObjectNode output=JSON.createObjectNode();output.putObject("hookSpecificOutput").put("hookEventName",event).put("additionalContext",data.toString());
                 System.out.println(output);
             }

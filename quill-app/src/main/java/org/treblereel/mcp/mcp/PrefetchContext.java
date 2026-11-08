@@ -183,6 +183,8 @@ public final class PrefetchContext {
             for(String key:List.of("kind","tool","target","arguments"))if(omitted.has(key))missing.set(key,omitted.get(key));
         }
     }
+    /** After {@link #boundContext}: a pointer to a field the budget removed would dangle. */
+    public static void stateRepeatsOnce(ObjectNode data){ResponseCompaction.stateOnce(data);}
     private static boolean removeField(JsonNode node,String field){
         boolean removed=false;
         if(node instanceof ObjectNode object && object.remove(field)!=null){

@@ -67,6 +67,12 @@ final class ResponseCompaction {
         return object.toString();
     }
 
+    /** The lossless part of {@link #apply}, for packets that never pass through the tool catalog. */
+    static void stateOnce(ObjectNode object) {
+        dropRestatedPaging(object);
+        stateRepeatsOnce(object, "", new java.util.HashMap<>());
+    }
+
     /** Sections built by other queries carry the same index metadata as the response itself. */
     private static void dropRepeatedMeta(JsonNode node, JsonNode rootMeta) {
         if (rootMeta == null) return;

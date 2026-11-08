@@ -47,6 +47,31 @@ final class ChangePlanQueries {
             JsonNode symbol = item.path("symbol");
             JsonNode coupling = item.path("coupling");
             JsonNode risk = item.path("risk");
+            JsonNode method = item.path("method_context");
+            if (resolution.isMissingNode() && method.isObject()) {
+                // A Class#method target resolves to the method; its owner is the file to edit.
+                target.put("class", method.path("target").asText());
+                String file = method.path("source_file").asText();
+                if (file.isEmpty()) {
+                    var owner = ClassTargetResolver.resolve(reader, method.path("target").asText());
+                    if (owner.error() == null && owner.cls().sourceFile() != null) file = owner.cls().sourceFile();
+                }
+                target.put("file", file);
+                target.put("method", method.path("name").asText());
+                for (JsonNode usage : item.path("test_impact").path("selected_method_references").path("usages")) {
+                    JsonNode caller = usage.path("caller");
+                    String key = caller.path("class").asText() + "\u0000" + usage.path("usage_kind").asText();
+                    if (caller.path("class").asText().isEmpty() || !dependencyKeys.add(key)) continue;
+                    ObjectNode candidate = dependencies.addObject();
+                    copy(caller, candidate, "class");
+                    candidate.put("file", caller.path("source").asText());
+                    copy(caller, candidate, "module");
+                    copy(usage, candidate, "usage_kind");
+                    candidate.put("action", "review");
+                    candidate.put("reason", "Calls the requested method; static evidence does not prove an edit is required");
+                }
+                continue;
+            }
             target.put("class", resolution.path("class").asText());
             target.put("file", sourceFile(resolution.path("source").asText()));
             copy(resolution, target, "module");

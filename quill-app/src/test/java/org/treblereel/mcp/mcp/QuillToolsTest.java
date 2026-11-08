@@ -547,6 +547,23 @@ class QuillToolsTest {
     }
 
     @Test
+    void planChangeNamesTheOwnerOfAMethodTarget() throws Exception {
+        writeMinimalPom();
+        jdbi.useHandle(handle -> handle.execute("""
+                INSERT INTO class_members(class_id, kind, name, signature, descriptor,
+                  type_name, parameter_types, modifiers, annotations)
+                VALUES (1, 'METHOD', 'work', 'work():void', '()V', 'void', '[]', 'public', '[]')"""));
+
+        JsonNode result = JSON.readTree(new QuillTools().planChange(jdbi, tempDir,
+                List.of("OrderService#work()"), "Rename work", 10));
+
+        JsonNode primary = result.path("primary_changes").get(0);
+        assertEquals("org.acme.OrderService", primary.path("class").asText(), result.toString());
+        assertEquals("src/main/java/org/acme/OrderService.java", primary.path("file").asText());
+        assertEquals("work", primary.path("method").asText());
+    }
+
+    @Test
     void planChangeRequiresDescription() throws Exception {
         JsonNode result = JSON.readTree(new QuillTools().planChange(
                 jdbi, tempDir, List.of("OrderService"), "  ", 10));

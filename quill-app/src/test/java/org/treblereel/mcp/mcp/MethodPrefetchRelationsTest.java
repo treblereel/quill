@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -16,6 +17,7 @@ class MethodPrefetchRelationsTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     @TempDir Path root;
+    @org.junit.jupiter.api.AfterEach void stop() { JavaSemanticQueries.close(); }
 
     @Test
     void exposesMissingExternalOnlyLambdaEvidence() throws Exception {
@@ -24,6 +26,26 @@ class MethodPrefetchRelationsTest {
         TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, root, fact); return null; });
         assertTrue(fact.path("lambda_evidence_gap").asBoolean(), fact.toString());
         assertTrue(fact.has("selected_method_source") || fact.has("selected_method_source_status"));
+    }
+
+    @Test
+    void methodFactCarriesTheSelectedBodySoTheFileNeedNotBeOpened() throws Exception {
+        String longBody = "System.out.println(\"" + "x".repeat(3000) + "\");";
+        var db = JavaEvidenceFixture.index(root, "package p;\nclass Fixture {\n    void start() { helper(); }\n    void helper() {}\n    void large() { "
+                + longBody + " }\n}\n");
+        JavaEvidenceFixture.writeCompilerSettings(root);
+        ObjectNode fact = JSON.createObjectNode().put("class", "p.Fixture").put("name", "start").put("descriptor", "()V");
+        ObjectNode large = JSON.createObjectNode().put("class", "p.Fixture").put("name", "large").put("descriptor", "()V");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, root, fact); MethodPrefetchRelations.append(reader, root, large); return null; });
+
+        JsonNode body = fact.path("selected_method_source");
+        assertEquals("void start() { helper(); }", body.path("source").asText(), fact.toString());
+        assertEquals("src/main/java/p/Fixture.java", body.path("source_file").asText());
+        assertEquals(3, body.path("source_line").asInt());
+        assertEquals(3, body.path("source_end_line").asInt());
+        assertFalse(body.has("declaration"), "Compiler bookkeeping is not part of the body");
+        assertFalse(large.has("selected_method_source"));
+        assertEquals("source_budget", large.path("selected_method_source_status").asText(), large.toString());
     }
 
     @Test

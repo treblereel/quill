@@ -77,17 +77,30 @@ final class MethodPrefetchRelations {
         interceptors(db, fact, classId, name, descriptor);
         callees(db, root, fact, classId, name, descriptor);
         producer(db, fact, classId, name);
-        if (root != null && missingLambdaEvidence(db, classId, name, descriptor)) {
-            fact.put("lambda_evidence_gap", true);
-            var cls = db.symbols.findClassByName(owner).orElse(null);
-            if (cls != null) {
-                JsonNode source = new MethodContextQueries().get(db, cls, name + descriptor);
-                if (source.path("source_complete").asBoolean() && source.path("source").asText().length() <= 4000)
-                    fact.set("selected_method_source", source);
-                else fact.put("selected_method_source_status", source.path("status").asText("source_budget"));
-            }
+        if (root == null) return;
+        boolean lambdaGap = missingLambdaEvidence(db, classId, name, descriptor);
+        if (lambdaGap) fact.put("lambda_evidence_gap", true);
+        // Without the body, recorded agents opened the whole file to read this one method.
+        var cls = db.symbols.findClassByName(owner).orElse(null);
+        if (cls == null) return;
+        JsonNode source = new MethodContextQueries().get(db, cls, name + descriptor);
+        int budget = lambdaGap ? LAMBDA_SOURCE_BUDGET : SOURCE_BUDGET;
+        if (!source.path("source_complete").asBoolean()) {
+            fact.put("selected_method_source_status", source.path("status").asText("source_unavailable"));
+        } else if (source.path("source").asText().length() > budget) {
+            fact.put("selected_method_source_status", "source_budget");
+        } else {
+            fact.putObject("selected_method_source")
+                    .put("source_file", source.path("source_file").asText())
+                    .put("source_line", source.path("declaration").path("source_line").asInt())
+                    .put("source_end_line", source.path("declaration").path("source_end_line").asInt())
+                    .put("source", source.path("source").asText());
         }
     }
+
+    /** Chars of the selected body; the prefetch packet as a whole is bounded separately. */
+    private static final int SOURCE_BUDGET = 2500;
+    private static final int LAMBDA_SOURCE_BUDGET = 4000;
 
     private static boolean missingLambdaEvidence(ReadQueryContext db, int id, String name, String descriptor) {
         return db.jdbi().withHandle(h -> h.createQuery("""

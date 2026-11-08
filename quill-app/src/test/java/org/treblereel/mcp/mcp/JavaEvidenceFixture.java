@@ -16,6 +16,20 @@ final class JavaEvidenceFixture {
     static Jdbi index(Path root, String source) throws Exception {
         return index(root, Map.of("src/main/java/p/Fixture.java",source));
     }
+    /** The compiler settings the Maven integration records, so source declarations resolve. */
+    static void writeCompilerSettings(Path root) throws Exception {
+        var settings=new Properties();
+        settings.setProperty("compilerSettingsProtocol","1");settings.setProperty("evidence","successful_mojo");
+        settings.setProperty("sourceSet","main");settings.setProperty("release","17");
+        settings.setProperty("jdkHome",System.getProperty("java.home"));
+        var jdk=new Properties();try(var reader=Files.newBufferedReader(Path.of(System.getProperty("java.home"),"release"))){jdk.load(reader);}
+        settings.setProperty("jdkVersion",jdk.getProperty("JAVA_VERSION").replace("\"",""));
+        settings.setProperty("sourceRoot.count","1");settings.setProperty("sourceRoot.0",root.resolve("src/main/java").toString());
+        settings.setProperty("compileClasspath.count","0");settings.setProperty("argument.count","0");
+        settings.setProperty("buildInput.count","1");settings.setProperty("buildInput.path.0",root.resolve("pom.xml").toString());
+        settings.setProperty("buildInput.sha256.0",SourceFileHashes.hash(root.resolve("pom.xml")));
+        try(var writer=Files.newBufferedWriter(root.resolve("target/quill-java-main.properties"))){settings.store(writer,"fixture");}
+    }
     static Jdbi index(Path root, Map<String,String> sources) throws Exception {
         List<Path> sourceFiles=new ArrayList<>();
         for(var entry:sources.entrySet()){Path file=root.resolve(entry.getKey());Files.createDirectories(file.getParent());Files.writeString(file,entry.getValue());sourceFiles.add(file);}

@@ -8,7 +8,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.model.MetaEnvelope;
 
-/** Atomic upgrade of neighbouring read windows to compiler-resolved whole methods. */
+/** Atomic upgrade of neighbouring read windows to whole methods, ranged by javac or by the file's syntax. */
 final class ConfigurationMethodSource {
     private static final ObjectMapper JSON=new ObjectMapper();
     static void append(ReadQueryContext db,ObjectNode evidence) {
@@ -53,6 +53,9 @@ final class ConfigurationMethodSource {
             }
             for(var entry:byFile.entrySet())if(!entry.getValue().path("source_sha256").asText().equals(SourceFileHashes.hash(root.resolve(entry.getKey()))))throw new IllegalStateException("inputs_changed");
             if(org.treblereel.mcp.index.BuildStatusInspector.freshness(db,0,0).structureStale())throw new IllegalStateException("index_stale");
+            if(methods.values().stream().anyMatch(m->"java_syntax".equals(m.path("declaration").path("basis").asText())))
+                complete.put("scope","Whole methods; ranges from Java syntax placed by bytecode lines; dedented; runtime paths unproven")
+                        .put("range_kind","java_syntax_method_declaration");
             if(!methods.isEmpty()){
                 // Keep complete sources inside the hook budget; unused packing caps are not source facts.
                 complete.remove(List.of("line_limit","character_limit","window_limit","file_limit","unavailable"));

@@ -40,8 +40,12 @@ class ConfigurationMethodSourceTest {
         var e=evidence();TestReads.read(db, readScope -> { ConfigurationMethodSource.append(readScope,e); return null; });var s=e.path("field_read_source");assertTrue(s.path("method_complete").asBoolean(),e.toString());assertFalse(s.path("source_bytecode_identity_proven").asBoolean());assertFalse(s.has("character_limit"));assertFalse(s.path("truncated").asBoolean());
         var w=s.path("files").get(0).path("windows");assertEquals(2,w.size());assertTrue(w.get(0).path("source").asText().contains("return n>0;"));assertEquals(3,w.get(0).path("start_line").asInt());assertEquals(7,w.get(0).path("end_line").asInt());assertTrue(w.get(1).path("source").asText().startsWith("boolean read(String n)"));
     }
-    @Test void missingCompilerCaptureKeepsHonestBoundedFallback() throws Exception {
-        Files.delete(root.resolve("target/quill-java-main.properties"));var e=evidence();var before=e.deepCopy();TestReads.read(db, readScope -> { ConfigurationMethodSource.append(readScope,e); return null; });assertEquals(before,e);assertFalse(e.path("field_read_source").path("method_complete").asBoolean());
+    @Test void missingCompilerCaptureReadsWholeMethodsFromSyntaxAndSaysSo() throws Exception {
+        Files.delete(root.resolve("target/quill-java-main.properties"));var e=evidence();TestReads.read(db, readScope -> { ConfigurationMethodSource.append(readScope,e); return null; });
+        var s=e.path("field_read_source");assertTrue(s.path("method_complete").asBoolean(),e.toString());
+        assertEquals("java_syntax_method_declaration",s.path("range_kind").asText());
+        var w=s.path("files").get(0).path("windows");assertEquals(2,w.size());assertEquals(3,w.get(0).path("start_line").asInt());assertEquals(7,w.get(0).path("end_line").asInt());
+        assertTrue(w.get(0).path("source").asText().contains("String braces=\"} /* not a brace */\";"));
     }
     @Test void truncationOrWrongReadRangeNeverClaimsCompleteCoverage() throws Exception {
         var e37=evidence();((ObjectNode)e37.path("references").get(0).path("field_reads")).put("truncated",true);TestReads.read(db, readScope -> { ConfigurationMethodSource.append(readScope,e37); return null; });assertFalse(e37.path("field_read_source").path("method_complete").asBoolean());

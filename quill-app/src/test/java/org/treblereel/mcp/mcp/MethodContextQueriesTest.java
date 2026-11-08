@@ -45,6 +45,38 @@ class MethodContextQueriesTest {
             var missing=json.readTree(TestReads.<String>read(db, readScope -> queries.findMethodDeclaration(readScope,"p.Fixture","pick","(J)J")));assertEquals("SYMBOL_NOT_FOUND",missing.path("error_code").asText());
         }finally{}
     }
+    /** Most projects are built without Quill's compiler capture; recorded agents then opened the whole file. */
+    @Test void withoutCompilerSettingsTheSyntaxOfTheFileStillGivesTheMethod() throws Exception {
+        String pickInt="@Deprecated\n int pick(int n) {\n  String s = \"pick(1) { }\"; // pick(2) }\n  return helper(n) + s.length();\n }";
+        String nestedPick="int pick(int n) { return helper(n) * 2; }";
+        String source="package p;\nclass Fixture {\n /* pick(int n) { */\n "+pickInt+"\n"
+                + " String pick(String s) { return s + '}'; }\n"
+                + " int helper(int n) { pick(1); return n; }\n"
+                + " abstract static class Base { abstract int only(int a, java.util.Map<String, Integer> b); }\n"
+                + " static class Inner { "+nestedPick+" int helper(int n) { return n; } }\n}";
+        var db=JavaEvidenceFixture.index(root,source);
+        var outer=org.treblereel.mcp.db.IndexReader.findClassByName(db,"p.Fixture").orElseThrow();
+        var result=TestReads.read(db, scope -> new MethodContextQueries().get(scope,outer,"pick(int)"));
+        assertTrue(result.path("source_complete").asBoolean(),result.toString());
+        assertEquals(pickInt,result.path("source").asText());
+        assertEquals("java_syntax",result.path("declaration").path("basis").asText());
+        assertEquals(4,result.path("declaration").path("source_line").asInt());
+        assertEquals(8,result.path("declaration").path("source_end_line").asInt());
+        assertEquals("source_set_unknown",result.path("declaration").path("compiler_status").asText());
+        var inner=org.treblereel.mcp.db.IndexReader.findClassByName(db,"p.Fixture$Inner").orElseThrow();
+        assertEquals(nestedPick,TestReads.read(db, scope -> new MethodContextQueries().get(scope,inner,"pick(int)")).path("source").asText());
+        var base=org.treblereel.mcp.db.IndexReader.findClassByName(db,"p.Fixture$Base").orElseThrow();
+        assertEquals("abstract int only(int a, java.util.Map<String, Integer> b);",
+                TestReads.read(db, scope -> new MethodContextQueries().get(scope,base,"only")).path("source").asText());
+    }
+    @Test void aDeclarationThatTheBytecodeLinesDoNotPlaceStaysUnresolved() throws Exception {
+        // Two same-arity declarations named run, and neither has a call or field access to place it.
+        var db=JavaEvidenceFixture.index(root,"package p;\nclass Fixture {\n void run(int a) { }\n static class Other { void run(int b) { } }\n}");
+        var cls=org.treblereel.mcp.db.IndexReader.findClassByName(db,"p.Fixture").orElseThrow();
+        var result=TestReads.read(db, scope -> new MethodContextQueries().get(scope,cls,"run"));
+        assertFalse(result.path("source_complete").asBoolean(),result.toString());
+        assertEquals("source_range_ambiguous",result.path("status").asText());
+    }
     @Test void rawUtf16ColumnsAndCrLfAreNotVisualTabColumns() {
         String text="first\r\n\tλ😀 body\r\nlast";
         assertEquals(8,MethodContextQueries.offset(text,2,2));

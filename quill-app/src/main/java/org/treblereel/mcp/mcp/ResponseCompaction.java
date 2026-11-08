@@ -58,8 +58,8 @@ final class ResponseCompaction {
                 }
                 compact(object, tool);
             }
-            stateCommonFieldsOnce(object);
         }
+        stateCommonFieldsOnce(object);
         // Nothing below loses a fact, so status tools and full detail get it too.
         dropRepeatedMeta(object, object.get("_meta"));
         dropRestatedPaging(object);

@@ -73,8 +73,10 @@ class ResponseCompactionTest {
     }
 
     @Test
-    void toolsReportingStateAndErrorsStayUntouched() throws Exception {
-        assertEquals(JSON.readTree(entries(3)), compact("change_session", entries(3), Map.of()));
+    void toolsReportingStateLoseNothingAndErrorsStayUntouched() throws Exception {
+        JsonNode state = compact("change_session", entries(3), Map.of());
+        assertEquals("s2", state.at("/entry_points/2/symbol_id").asText(), "Identifiers are the answer of status tools");
+        assertEquals(RULE, state.at("/entry_points_common/detection_rule").asText());
         String error = entries(3).replaceFirst("\\{", "{\"error_code\":\"X\",");
         assertEquals(JSON.readTree(error), compact("list_beans", error, Map.of()));
     }

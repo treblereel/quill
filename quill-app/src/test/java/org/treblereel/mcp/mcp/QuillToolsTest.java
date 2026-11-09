@@ -748,6 +748,35 @@ class QuillToolsTest {
                 "No tests are ranked here, so the retry is the module's test run, not a recompile: " + result);
     }
 
+    /** V24 CQ-049: two verify_change answers were 28 and 21 KB, 10 KB of each the full rows of the same 20 tests. */
+    @Test
+    void verifyChangeStatesAffectedTestsByWhatRanksThem() throws Exception {
+        writeMinimalPom();
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes
+                      (class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.OrderServiceTest', 'CLASS', 'java.lang.Object', '[]',
+                            'src/test/java/org/acme/OrderServiceTest.java', 1, 0, 80,
+                            'source', 'current', '.', 'test')""");
+            handle.execute("""
+                    INSERT INTO dependencies (from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    SELECT t.id, s.id, 'CALLS', 1, '[7]' FROM classes t, classes s
+                    WHERE t.class_name = 'org.acme.OrderServiceTest' AND s.class_name = 'org.acme.OrderService'""");
+        });
+        JsonNode result = JSON.readTree(new QuillTools().verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+
+        JsonNode row = result.path("test_evidence").path("tests").path(0);
+        assertEquals("org.acme.OrderServiceTest", row.path("class").asText(), result.toString());
+        assertTrue(row.has("score"), row.toString());
+        for (String restated : List.of("reasons", "dependency_path", "evidence", "file", "dependency_kinds")) {
+            assertFalse(row.has(restated), restated + " restates the rank: " + row);
+        }
+        assertFalse(result.path("verification_plan").has("focused_tests"),
+                "The focused command already names them: " + result.path("verification_plan"));
+    }
+
     @Test
     void verifyChangeRequiresBuildEvidenceWhenNoBuildWasCaptured() throws Exception {
         writeMinimalPom();

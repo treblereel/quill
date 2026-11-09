@@ -30,8 +30,27 @@ final class ChangeVerificationQueries {
                 ? emptyContext(reader) : parse(contexts.getContext(
                         reader, effectiveTargets, false, limit));
         if (context.has("error_code")) return context.toString();
-        return compose(reader, projectRoot, effectiveTargets, limit, context, changes,
-                inferred, inferenceTruncated);
+        return compactAnswer(compose(reader, projectRoot, effectiveTargets, limit, context, changes,
+                inferred, inferenceTruncated));
+    }
+
+    /**
+     * Affected tests are stated by what ranks them, and the focused command names them once. In
+     * V24 CQ-049 two verify_change answers were 28 and 21 KB; 10 KB of each were the full rows of
+     * the same 20 tests and 1 KB more their names again in focused_tests.
+     */
+    static String compactAnswer(String answer) {
+        ObjectNode result = parse(answer);
+        if (result.has("error_code") || result.has("error")) return answer;
+        if (result.at("/test_evidence/tests") instanceof com.fasterxml.jackson.databind.node.ArrayNode tests) {
+            for (int i = 0; i < tests.size(); i++) tests.set(i, AffectedTestRows.row(tests.get(i)));
+        }
+        if (result.path("verification_plan") instanceof ObjectNode plan && plan.path("focused_tests").isArray()
+                && plan.path("commands").valueStream().anyMatch(command -> command.path("scope").asText().equals("focused"))) {
+            plan.put("focused_test_count", plan.path("focused_tests").size());
+            plan.remove("focused_tests");
+        }
+        return result.toString();
     }
 
     String verifyChangeWithContext(ReadQueryContext reader, Path projectRoot, List<String> targets,

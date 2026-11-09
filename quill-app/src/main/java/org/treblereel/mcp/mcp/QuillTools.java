@@ -280,11 +280,15 @@ public final class QuillTools {
             @ToolArg(description = "Changes, diagnostics, and tests per section; default 20, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
-        return forGraphProjects(project.orElse(null), (p, context) -> queries.verifyChange(
+        String answer = forGraphProjects(project.orElse(null), (p, context) -> queries.verifyChange(
                 context, p.root(), targets.orElse(List.of()), requestedLimit));
+        // In V24 CQ-049 Claude asked verify_change twice in a row; the second answer restated 21 KB.
+        return verifyChangeRepeats.elide(
+                "verify_change|" + ChangeSessionRepeats.key(project.orElse(""), requestedLimit), answer);
     }
 
     private final ChangeSessionRepeats changeSessionRepeats = new ChangeSessionRepeats();
+    private final ChangeSessionRepeats verifyChangeRepeats = new ChangeSessionRepeats();
 
     @Tool(readOnly = true, structured = true,
             description = "Plan a code change before editing, or check next steps after edits/builds. Returns a stateless snapshot: primary action, evidence gaps, phase gate, verification receipt; never runs builds.")

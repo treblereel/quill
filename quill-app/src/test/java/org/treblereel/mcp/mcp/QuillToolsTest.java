@@ -469,6 +469,36 @@ class QuillToolsTest {
         assertTrue(invalid.path("message").asText().startsWith("Invalid member_kind"));
     }
 
+    /** V24 CQ-045: Claude asked impact for SsarClientCache in all three sessions and got an error instead of its tests. */
+    @Test
+    void aClassImpactNamesItsDependentsAndTests() throws Exception {
+        jdbi.useHandle(handle -> {
+            handle.execute("""
+                    INSERT INTO classes
+                      (class_name, kind, superclass, interfaces, source_file, source_line,
+                       is_bean, source_tokens, origin, lifecycle, module, source_set)
+                    VALUES ('org.acme.OrderServiceTest', 'CLASS', 'java.lang.Object', '[]',
+                            'src/test/java/org/acme/OrderServiceTest.java', 1, 0, 80,
+                            'source', 'current', '.', 'test')""");
+            handle.execute("""
+                    INSERT INTO dependencies (from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
+                    SELECT t.id, s.id, 'CALLS', 1, '[7]' FROM classes t, classes s
+                    WHERE t.class_name = 'org.acme.OrderServiceTest' AND s.class_name = 'org.acme.OrderService'""");
+        });
+        String answer = ReadQueryContext.readWithGraph(jdbi, context -> new ContextQueries()
+                .getContext(context, List.of("OrderService"), false, 10, "impact"));
+        JsonNode result = JSON.readTree(answer);
+
+        assertEquals(0, result.path("unresolved_target_count").asInt(), result.toString());
+        JsonNode impact = result.path("contexts").path(0);
+        assertEquals("direct_class_impact", impact.path("kind").asText(), result.toString());
+        assertEquals("org.acme.OrderService", impact.path("class").asText());
+        assertEquals("org.acme.OrderServiceTest", impact.path("test_dependents").path(0).path("class").asText(), result.toString());
+        assertTrue(impact.path("production_dependents").valueStream()
+                .noneMatch(row -> row.path("class").asText().endsWith("Test")), result.toString());
+        assertTrue(impact.path("impacted_tests").path("tests").toString().contains("org.acme.OrderServiceTest"), result.toString());
+    }
+
     @Test
     void getContextComposesCompactEvidenceAndKeepsPartialResults() throws Exception {
         QuillTools tools = new QuillTools();

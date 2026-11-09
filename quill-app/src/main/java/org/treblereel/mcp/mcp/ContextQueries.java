@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 
@@ -30,6 +31,53 @@ final class ContextQueries {
     private final UsageToolQueries usages = new UsageToolQueries();
     private final TestImpactQueries tests = new TestImpactQueries();
     private final ChangeRiskQueries risks = new ChangeRiskQueries();
+
+    /**
+     * Direct dependents of a class split into production and test code, and the tests that reach
+     * it. In V24 CQ-045 Claude asked impact for SsarClientCache in all three sessions and got an
+     * error instead of SsarClientCacheTest.
+     */
+    private ObjectNode classImpact(ReadQueryContext reader, ClassRecord cls, int limit) {
+        ObjectNode impact = JSON.createObjectNode().put("kind", "direct_class_impact")
+                .put("scope", "direct class-level dependents and the tests that reach the class; use Class#method(signature) for one member")
+                .put("runtime_execution_proven", false);
+        impact.put("class", cls.className());
+        if (cls.sourceFile() != null) impact.put("declaration_file", cls.sourceFile());
+        ObjectNode usage = parse(usages.findUsages(reader, cls.className(), null, null, limit, 0, false));
+        Map<String, ClassRecord> byName = new java.util.HashMap<>();
+        for (ClassRecord candidate : reader.symbols.findAllClasses()) byName.putIfAbsent(candidate.className(), candidate);
+        Map<String, ObjectNode> grouped = new java.util.LinkedHashMap<>();
+        ArrayNode production = impact.putArray("production_dependents");
+        ArrayNode testDependents = impact.putArray("test_dependents");
+        for (JsonNode row : usage.path("usages")) {
+            String caller = row.path("class").asText();
+            ObjectNode dependent = grouped.get(caller);
+            if (dependent == null) {
+                ClassRecord record = byName.get(caller);
+                dependent = (record != null && TestImpactQueries.isTestClass(record) ? testDependents : production).addObject();
+                dependent.put("class", caller);
+                if (record != null && record.sourceFile() != null) dependent.put("file", record.sourceFile());
+                dependent.putArray("usage_kinds");
+                grouped.put(caller, dependent);
+            }
+            ((ArrayNode) dependent.get("usage_kinds")).add(row.path("usage_kind").asText());
+            for (JsonNode member : row.path("invoked_members")) {
+                ArrayNode members = dependent.has("members") ? (ArrayNode) dependent.get("members") : dependent.putArray("members");
+                String name = member.path("name").asText();
+                if (members.valueStream().noneMatch(value -> value.asText().equals(name))) members.add(name);
+            }
+        }
+        copy(usage, impact, "usage_group_count");
+        copy(usage, impact, "has_more");
+        ObjectNode tested = parse(tests.findImpactedTests(reader, List.of(cls.className()), true, 3, limit, 0));
+        ObjectNode impacted = compact(tested, List.of("test_index_coverage", "answer_complete", "showing", "total", "has_more"));
+        ArrayNode rows = impacted.putArray("tests");
+        for (JsonNode test : tested.path("tests")) rows.add(AffectedTestRows.row(test));
+        impact.set("impacted_tests", impacted);
+        impact.put("answer_complete", usage.path("answer_complete").asBoolean(!usage.path("has_more").asBoolean())
+                && !usage.path("has_more").asBoolean() && tested.path("answer_complete").asBoolean());
+        return impact;
+    }
 
     String getContext(ReadQueryContext reader, List<String> targets, boolean includeMembers, int limit) {
         return getContext(reader,targets,includeMembers,limit,"full");
@@ -90,7 +138,10 @@ final class ContextQueries {
                 if (!resolvedNames.contains(cls.className())) resolvedNames.add(cls.className());
                 continue;
             }
-            if(view.equals("impact")){unresolved.addObject().put("target",target).put("error","impact requires Class#method(signature)");continue;}
+            if(view.equals("impact")){
+                if(!resolvedNames.contains(cls.className())){resolvedNames.add(cls.className());contexts.add(classImpact(reader,cls,limit));}
+                continue;
+            }
             if (resolvedNames.contains(cls.className())) continue;
             resolvedNames.add(cls.className());
             naiveTokens += cls.sourceTokens();

@@ -14,7 +14,7 @@ public final class ProjectConfiguration {
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
     private static final String QUILL_CLAUDE_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v9 -->
+            <!-- quill:instructions:v10 -->
             ## Quill — Codebase Intelligence (MCP)
 
             Prefer Quill over broad search for project-wide questions: implementations, annotations,
@@ -25,38 +25,37 @@ public final class ProjectConfiguration {
             Send independent queries as parallel calls in one message. Follow `next_page_request`.
             Search the tool catalog by exact name only for an unlisted tool.
 
-            Repeat `change_session` after edits. Required `phase_gate` evidence and
-            `review_checklist` items are blockers; for stale build evidence run the `quick_compile`
-            command. Report completion only when the phase is `complete` and the receipt is
-            verified; outside the indexed project, verify with the build and say Quill evidence
-            does not cover it.
+            Repeat `change_session` after edits in this checkout. `phase_gate` evidence and required
+            `review_checklist` items are blockers; for stale builds run `quick_compile`.
+            Report completion only when the phase is `complete` and the receipt is verified. For
+            edits in another checkout, pass `checkout=<path>` once, verify with its build, and say
+            Quill evidence does not cover it.
             <!-- quill:managed:end -->
             """;
     private static final String QUILL_AGENTS_MD = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v7 -->
+            <!-- quill:instructions:v8 -->
             ## Quill MCP
 
             Prefer Quill over broad search for symbols, usages, hierarchies, DI, endpoints, affected
-            tests, build problems, Git history and change risk. Use `rg` and source reads for exact
-            literals and known files, and to verify evidence Quill reports as stale, partial,
-            unknown, or unsupported.
+            tests, build problems, history and change risk. Use `rg` and source reads for exact
+            literals and known files, and to verify evidence Quill reports as stale, partial or
+            unknown.
 
             Query the relevant tool directly. Make independent queries in one script turn
-            (several `tools.mcp__quill__*` calls awaited together). Search the catalog by exact
+            (`tools.mcp__quill__*` calls awaited together). Search the catalog by exact
             name only for an unlisted tool, and never print the whole catalog.
             Empty resources do not mean missing tools. `mcp__quill__get_overview` is optional; omit its arguments unless the server runs with
             `--workspace`. Read `structuredContent` even if text is empty. Follow `retry_with` and
             `next_page_request`.
 
             For a code change, call `mcp__quill__change_session(change, targets)` before editing or
-            choosing a build, repeat it after edits, and follow `directive.primary_action`. Required
-            `phase_gate` evidence and `review_checklist` items are blockers. When build evidence is
-            stale, run the `quick_compile` command; Quill never runs builds. Run `focused` or
-            `module_fallback` tests only when the task requires tests;
-            incomplete test evidence alone does not. Report completion only when the phase is
-            `complete` and the receipt is verified; outside the indexed project, verify with the
-            build and say Quill evidence does not cover it.
+            choosing a build, repeat it after edits in this checkout, and follow `directive.primary_action`. Required
+            `phase_gate` evidence and `review_checklist` items are blockers. For stale build evidence
+            run `quick_compile`; Quill never runs builds. Run `focused` or
+            `module_fallback` tests only when the task asks; incomplete test evidence alone does not. Report completion only when the phase is
+            `complete` and the receipt is verified. For edits in another checkout, pass
+            `checkout=<path>` once, verify with its build, and say Quill evidence does not cover it.
             <!-- quill:managed:end -->
             """;
 

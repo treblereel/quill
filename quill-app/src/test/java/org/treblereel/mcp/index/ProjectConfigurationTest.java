@@ -26,11 +26,11 @@ class ProjectConfigurationTest {
                 ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(installed.contains("exact name only for an unlisted tool"));
         assertTrue(installed.contains("`next_page_request`"));
-        assertTrue(installed.contains("Repeat `change_session` after edits"));
+        assertTrue(installed.contains("Repeat `change_session` after edits in this checkout"));
         assertTrue(installed.contains("`phase_gate`"));
         assertTrue(installed.contains("`review_checklist`"));
         String flat = installed.replaceAll("\\s+", " ");
-        assertTrue(flat.contains("receipt is verified; outside the indexed project, verify with the build"));
+        assertTrue(flat.contains("For edits in another checkout, pass `checkout=<path>` once, verify with its build"));
         assertTrue(flat.contains("say Quill evidence does not cover it"));
         assertTrue(installed.contains("`quick_compile`"));
         for (String duplicate : java.util.List.of("`structuredContent`", "before editing",
@@ -83,7 +83,7 @@ class ProjectConfigurationTest {
         assertTrue(installed.startsWith("# User instructions\n"));
         assertTrue(installed.contains("`mcp__quill__get_overview`"));
         assertTrue(installed.contains("never print the whole catalog"));
-        assertTrue(installed.contains("only when the task requires tests"));
+        assertTrue(installed.contains("only when the task asks"));
         assertTrue(installed.contains("incomplete test evidence alone does not"));
         assertTrue(installed.contains("`--workspace`"));
         assertTrue(installed.contains("`retry_with`"));
@@ -95,7 +95,8 @@ class ProjectConfigurationTest {
         assertTrue(installed.contains("`review_checklist`"));
         String flat = installed.replaceAll("\\s+", " ");
         assertTrue(flat.contains("Report completion only when the phase is `complete`"));
-        assertTrue(flat.contains("outside the indexed project, verify with the build"));
+        assertTrue(flat.contains("repeat it after edits in this checkout"));
+        assertTrue(flat.contains("pass `checkout=<path>` once, verify with its build"));
         assertTrue(installed.contains("`quick_compile`"));
         assertTrue(installed.contains("never runs builds"));
         assertTrue(installed.length() < 1500, "Instructions load into every session: " + installed.length());
@@ -126,7 +127,7 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(refreshed.contains("# User instructions"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v7 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v8 -->"));
         assertFalse(refreshed.contains("Old guidance."));
     }
 
@@ -153,7 +154,7 @@ class ProjectConfigurationTest {
                 ProjectConfiguration.inspectClaudeMd(root));
         assertTrue(refreshed.startsWith("# User head\n"));
         assertTrue(refreshed.endsWith("# User tail\n"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v9 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v10 -->"));
         assertFalse(refreshed.contains("<!-- quill:instructions:v6 -->"));
     }
 

@@ -46,6 +46,33 @@ class ChangeSessionRepeatsTest {
         assertTrue(second.toString().length() < 1000, "The note that no edits are visible is the rest: " + second);
     }
 
+    private static ObjectNode ranked(int firstScore, String... classes) {
+        ObjectNode root = snapshot("rename parse", "r1");
+        var tests = root.putObject("plan").putObject("test_plan").putArray("tests");
+        for (int i = 0; i < classes.length; i++) {
+            tests.addObject().put("class", "org.acme.tests." + classes[i]).put("score", i < 3 ? firstScore : 50)
+                    .put("confidence", "medium").put("file", "src/test/java/org/acme/tests/" + classes[i] + ".java");
+        }
+        return root;
+    }
+
+    /** V23 CQ-049: a second target re-scored 11 of the same 20 tests and all 20 rows were stated again. */
+    @Test
+    void aRepeatedTestListStatesOnlyTheRowsThatChanged() throws Exception {
+        var repeats = new ChangeSessionRepeats();
+        repeats.elide("k", ranked(100, "A", "B", "C", "D", "E", "F", "G", "Old").toString());
+
+        var again = JSON.readTree(repeats.elide("k", ranked(90, "A", "B", "C", "D", "E", "F", "G", "New").toString()));
+        var tests = again.at("/plan/test_plan/tests");
+        assertEquals(4, tests.path("unchanged_count").asInt(), again.toString());
+        assertEquals(3, tests.path("changed").size(), again.toString());
+        assertEquals(90, tests.path("changed").get(0).path("score").asInt());
+        assertEquals("org.acme.tests.A", tests.path("changed").get(0).path("class").asText());
+        assertFalse(tests.path("changed").get(0).has("file"), "Unchanged fields of a changed row are not restated");
+        assertEquals("org.acme.tests.New", tests.path("added").get(0).path("class").asText());
+        assertEquals("org.acme.tests.Old", tests.path("removed").get(0).asText());
+    }
+
     @Test
     void anotherProjectAndErrorsGetTheWholeAnswer() throws Exception {
         var repeats = new ChangeSessionRepeats();

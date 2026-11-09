@@ -900,6 +900,22 @@ class QuillToolsTest {
         }
     }
 
+    /** V23 CQ-049: a planned full answer carried 3 KB of test commands for edits not yet made. */
+    @Test
+    void aPlannedChangeSessionStatesOnlyTheCompileCommandEvenInFullDetail() throws Exception {
+        writeMinimalPom();
+        JsonNode planned = JSON.readTree(new QuillTools().changeSession(jdbi, tempDir,
+                List.of("OrderService"), "Rename a method", 10));
+
+        assertEquals("planned", planned.path("phase").asText());
+        assertFalse(planned.path("verification_plan").path("commands").isEmpty(), planned.toString());
+        for (JsonNode command : planned.path("verification_plan").path("commands")) {
+            assertEquals("quick_compile", command.path("scope").asText(), command.toString());
+        }
+        assertFalse(planned.path("verification_plan").has("focused_tests"));
+        assertTrue(planned.path("omitted_sections").toString().contains("verification_plan.non_quick_compile_commands"));
+    }
+
     @Test
     void aPlannedChangeSessionSaysHowToReportEditsInAnotherCheckout() throws Exception {
         writeMinimalPom();

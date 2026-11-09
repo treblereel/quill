@@ -106,6 +106,7 @@ final class ChangeSessionQueries {
         result.put("phase", currentPhase);
 
         boolean includePlan = effectiveView.equals("plan") || effectiveView.equals("all");
+        boolean planned = currentPhase.equals("planned");
         // The indexed checkout's verification says nothing about edits made elsewhere.
         boolean includeVerification = external == null && (effectiveView.equals("verification")
                 || effectiveView.equals("all"));
@@ -118,7 +119,8 @@ final class ChangeSessionQueries {
         if (includeVerification) {
             result.set("verification", normalizedDetail.equals("full")
                     ? fullVerification(verify) : summaryVerification(verify));
-            result.set("verification_plan", normalizedDetail.equals("full")
+            // Before any edit only the compile command is actionable; test commands follow the edit.
+            result.set("verification_plan", normalizedDetail.equals("full") && !planned
                     ? verify.path("verification_plan").deepCopy()
                     : summaryVerificationPlan(verify.path("verification_plan")));
             result.set("review_checklist", checklist);
@@ -154,8 +156,10 @@ final class ChangeSessionQueries {
         if (normalizedDetail.equals("summary") && includeVerification) {
             omitted.add("verification.worktree.changes")
                     .add("verification.diagnostics.problems_after_first_5")
-                    .add("verification.test_evidence.tests")
-                    .add("verification_plan.non_quick_compile_commands");
+                    .add("verification.test_evidence.tests");
+        }
+        if ((normalizedDetail.equals("summary") || planned) && includeVerification) {
+            omitted.add("verification_plan.non_quick_compile_commands");
         }
         if (normalizedDetail.equals("summary")) {
             ToolResponseSupport.summarizeInventories(result).forEach(omitted::add);

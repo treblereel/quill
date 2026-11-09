@@ -91,8 +91,53 @@ final class ChangeSessionRepeats {
                 }
             } else if (depth < 3 && was instanceof ObjectNode wasObject && now instanceof ObjectNode nowObject) {
                 elide(wasObject, nowObject, path + field + ".", unchanged, depth + 1);
+            } else if (was instanceof ArrayNode wasRows && now instanceof ArrayNode nowRows) {
+                ObjectNode rows = changedRows(wasRows, nowRows);
+                if (rows != null && rows.toString().length() + MIN_ELIDED_BYTES <= now.toString().length()) {
+                    current.set(field, rows);
+                }
             }
         }
+    }
+
+    /**
+     * Rows keyed by class are stated by what differs from the previous call: changed rows keep
+     * only their class and differing fields. In V23 CQ-049 a second target re-scored 11 of the
+     * same 20 affected tests and all 20 were stated again.
+     */
+    private static ObjectNode changedRows(ArrayNode before, ArrayNode current) {
+        Map<String, JsonNode> previous = new LinkedHashMap<>();
+        for (JsonNode row : before) {
+            if (!row.path("class").isTextual() || previous.put(row.get("class").asText(), row) != null) return null;
+        }
+        ObjectNode result = JSON.createObjectNode();
+        ArrayNode changed = JSON.createArrayNode(), added = JSON.createArrayNode();
+        Set<String> seen = new java.util.HashSet<>();
+        int same = 0;
+        for (JsonNode row : current) {
+            if (!(row instanceof ObjectNode object) || !row.path("class").isTextual()) return null;
+            String type = row.get("class").asText();
+            if (!seen.add(type)) return null;
+            JsonNode was = previous.get(type);
+            if (was == null) added.add(row);
+            else if (was.equals(row)) same++;
+            else {
+                ObjectNode difference = JSON.createObjectNode().put("class", type);
+                object.propertyStream().filter(entry -> !entry.getValue().equals(was.get(entry.getKey())))
+                        .forEach(entry -> difference.set(entry.getKey(), entry.getValue()));
+                was.propertyStream().map(Map.Entry::getKey).filter(key -> !object.has(key))
+                        .forEach(difference::putNull);
+                changed.add(difference);
+            }
+        }
+        result.put("basis", "previous_call");
+        result.put("unchanged_count", same);
+        if (!changed.isEmpty()) result.set("changed", changed);
+        if (!added.isEmpty()) result.set("added", added);
+        ArrayNode removed = JSON.createArrayNode();
+        previous.keySet().stream().filter(type -> !seen.contains(type)).forEach(removed::add);
+        if (!removed.isEmpty()) result.set("removed", removed);
+        return result;
     }
 
     /** The plan and the verification rank the same affected tests; a list equal to the other one is named, not repeated. */

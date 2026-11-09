@@ -108,6 +108,27 @@ class BuildProblemInspectorTest {
         assertEquals(8, errors.path("problems").get(0).path("line").asInt());
     }
 
+    /** V23 CQ-049: archunit failed test discovery; the problem carried the whole surefire stack and read as a compile error. */
+    @Test
+    void aFailedTestRunIsATestFailureWithoutItsStackFrames() throws Exception {
+        writeState(false, "maven", """
+                org.apache.maven.lifecycle.LifecycleExecutionException: Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.1:test (default-test) on project cryostat:\s
+                There was an error in the forked process
+                TestEngine with ID 'archunit' failed to discover tests
+                org.apache.maven.surefire.booter.SurefireBooterForkException: There was an error in the forked process
+                \tat org.apache.maven.plugin.surefire.booterclient.ForkStarter.fork(ForkStarter.java:708)
+                \tat org.apache.maven.plugin.surefire.booterclient.ForkStarter.run(ForkStarter.java:323)
+                \t... 12 more
+                """);
+
+        JsonNode problem = JSON.readTree(BuildProblemInspector.inspect(tempDir, "all", null, 50, 0))
+                .path("problems").get(0);
+
+        assertEquals("test_failure", problem.path("category").asText(), problem.toString());
+        assertTrue(problem.path("message").asText().contains("failed to discover tests"), problem.toString());
+        assertFalse(problem.toString().contains("ForkStarter") || problem.toString().contains("more"), problem.toString());
+    }
+
     private void writeState(boolean successful, String buildTool, String message)
             throws Exception {
         Path quill = Files.createDirectories(tempDir.resolve(".quill"));

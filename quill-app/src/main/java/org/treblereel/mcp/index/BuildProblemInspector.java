@@ -34,6 +34,9 @@ public final class BuildProblemInspector {
             "^([a-zA-Z_$][a-zA-Z0-9_$.]*(?:Exception|Error|Failure))(?::\\s*(.*))?$",
             Pattern.DOTALL);
     private static final Pattern ANSI = Pattern.compile("\\u001B\\[[0-9;]*m");
+    /** Stack frames restate where the build tool failed, not what to fix; V23 CQ-049 carried 2 KB of them per problem. */
+    private static final Pattern STACK_FRAME = Pattern.compile(
+            "(?m)^[ \\t]*(?:at [\\w$.<>/]+\\(.*\\)|\\.\\.\\. \\d+ more)[ \\t]*(?:\\R|$)");
 
     private BuildProblemInspector() {}
 
@@ -179,7 +182,7 @@ public final class BuildProblemInspector {
     }
 
     private static void parseMessage(Path root, String raw, Map<String, Problem> target) {
-        raw = ANSI.matcher(raw).replaceAll("");
+        raw = STACK_FRAME.matcher(ANSI.matcher(raw).replaceAll("")).replaceAll("");
         String exception = exceptionName(raw);
         boolean located = false;
         for (String line : raw.lines().toList()) {
@@ -236,6 +239,9 @@ public final class BuildProblemInspector {
 
     private static String category(String message, String code) {
         String value = ((code == null ? "" : code) + " " + message).toLowerCase(Locale.ROOT);
+        if (value.contains("maven-surefire-plugin") || value.contains("maven-failsafe-plugin")
+                || value.contains("there are test failures") || value.contains("failed to discover tests")
+                || value.contains("there were failing tests")) return "test_failure";
         if (value.contains("cannot find symbol") || value.contains("unresolved reference")
                 || value.contains("cant.resolve")) return "symbol_not_found";
         if (value.contains("incompatible type") || value.contains("type mismatch")) {

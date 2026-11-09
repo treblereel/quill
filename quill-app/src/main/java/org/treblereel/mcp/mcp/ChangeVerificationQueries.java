@@ -161,7 +161,19 @@ final class ChangeVerificationQueries {
             blockers.addObject().put("code", "PROFILE_SELECTION_UNRESOLVED").put("message", "Requested source sets have incompatible or unavailable profile evidence");
             action(actions, "inspect_build_profiles", "PROFILE_SELECTION_UNRESOLVED").put("evidence", "verification_plan.profiles_by_source_set");
         }
-        if (verdict.equals("blocked")) {
+        if (verdict.equals("blocked") && onlyTestFailures(diagnostics)) {
+            blockers.addObject().put("code", "TESTS_FAILED")
+                    .put("message", "The last captured build ran tests and they failed or could not be discovered");
+            action(actions, "fix_failing_tests", "TESTS_FAILED").put("evidence", "diagnostics.problems")
+                    .put("description", "The test phase ran, so the sources compiled; read the test reports the problem"
+                            + " names and fix the failing tests or test discovery, not compiler diagnostics");
+            String testScope = testCommandScope(verificationPlan);
+            if (runnerAvailable && testScope != null) {
+                externalCommand(actions, testScope, "TESTS_FAILED");
+            } else {
+                verificationCommand(actions, runnerAvailable, "TESTS_FAILED");
+            }
+        } else if (verdict.equals("blocked")) {
             blockers.addObject().put("code", "BUILD_FAILED")
                     .put("message", "The last captured build failed or reported diagnostics");
             action(actions, "fix_diagnostics", "BUILD_FAILED")
@@ -227,6 +239,21 @@ final class ChangeVerificationQueries {
                 && !verdict.equals("ready") && actions.isEmpty()) {
             action(actions, "inspect_partial_evidence", "PARTIAL_EVIDENCE");
         }
+    }
+
+    /** V23 CQ-049: archunit failed test discovery and the answer said to fix compiler diagnostics with test-compile. */
+    private static boolean onlyTestFailures(ObjectNode diagnostics) {
+        JsonNode problems = diagnostics.path("problems");
+        return !problems.isEmpty() && !diagnostics.path("has_more").asBoolean()
+                && problems.valueStream().allMatch(problem -> problem.path("category").asText().equals("test_failure"));
+    }
+
+    /** Recompiling cannot show that failed tests pass; the retry runs tests, the focused ones when ranked. */
+    private static String testCommandScope(ObjectNode verificationPlan) {
+        List<String> scopes = verificationPlan.path("commands").valueStream()
+                .filter(command -> command.path("executes_tests").asBoolean())
+                .map(command -> command.path("scope").asText()).toList();
+        return scopes.contains("focused") ? "focused" : scopes.stream().findFirst().orElse(null);
     }
 
     private static ObjectNode action(ArrayNode actions, String action, String reason) {

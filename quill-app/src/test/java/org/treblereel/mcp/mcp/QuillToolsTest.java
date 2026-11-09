@@ -696,6 +696,28 @@ class QuillToolsTest {
         assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());
     }
 
+    /** V23 CQ-049: archunit failed test discovery and Quill said to fix compiler diagnostics with test-compile. */
+    @Test
+    void verifyChangeNamesFailedTestsApartFromCompileErrors() throws Exception {
+        writeMinimalPom();
+        Path state = tempDir.resolve(".quill/build-state.json");
+        Files.createDirectories(state.getParent());
+        Files.writeString(state, """
+                {"buildTool":"maven","finishedAt":1791067200000,"successful":false,"diagnostics":[],
+                 "failureMessages":["Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.1:test (default-test) on project app: There are test failures."]}
+                """);
+
+        JsonNode result = JSON.readTree(new QuillTools().verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+
+        assertEquals("blocked", result.path("verdict").asText());
+        assertEquals("TESTS_FAILED", result.path("blockers").get(0).path("code").asText(), result.toString());
+        JsonNode first = result.path("next_actions").get(0);
+        assertEquals("fix_failing_tests", first.path("action").asText(), result.toString());
+        assertTrue(first.path("description").asText().contains("compiled"), first.toString());
+        assertEquals("module_fallback", result.path("next_actions").get(1).path("command_scope").asText(),
+                "No tests are ranked here, so the retry is the module's test run, not a recompile: " + result);
+    }
+
     @Test
     void verifyChangeRequiresBuildEvidenceWhenNoBuildWasCaptured() throws Exception {
         writeMinimalPom();

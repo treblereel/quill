@@ -70,6 +70,24 @@ class ChangeSessionRepeatsTest {
         assertFalse(repeats.elide("k", edited.toString()).contains("edits_observed"));
     }
 
+    /** V22 CQ-049: the plan view stated the affected tests as plan.test_plan.tests, the verification view again as test_evidence.tests. */
+    @Test
+    void theSameAffectedTestsAreStatedOnceAcrossViewsAndWithinAnAnswer() throws Exception {
+        var repeats = new ChangeSessionRepeats();
+        String tests = "[{\"class\":\"p.ATest\",\"score\":100},{\"class\":\"p.BTest\",\"score\":70}]";
+        ObjectNode plan = (ObjectNode) JSON.readTree("{\"phase\":\"planned\",\"plan\":{\"test_plan\":{\"tests\":" + tests + "}}}");
+        repeats.elide("k", plan.toString());
+        ObjectNode verification = (ObjectNode) JSON.readTree("{\"phase\":\"planned\",\"verification\":{\"test_evidence\":{\"total\":2,\"tests\":" + tests + "}}}");
+        var answer = JSON.readTree(repeats.elide("k", verification.toString()));
+        assertEquals("same as plan.test_plan.tests in the previous call", answer.at("/verification/test_evidence/tests").asText(), answer.toString());
+
+        ObjectNode all = (ObjectNode) JSON.readTree("{\"phase\":\"planned\",\"plan\":{\"test_plan\":{\"tests\":" + tests + "}},"
+                + "\"verification\":{\"test_evidence\":{\"tests\":" + tests + "}}}");
+        var once = JSON.readTree(new ChangeSessionRepeats().elide("k", all.toString()));
+        assertEquals(2, once.at("/plan/test_plan/tests").size(), once.toString());
+        assertEquals("same as plan.test_plan.tests", once.at("/verification/test_evidence/tests").asText(), once.toString());
+    }
+
     /** V22 CQ-049: Codex asked detail=full, then view=verification detail=full; both restated the same 10 KB. */
     @Test
     void aFullAnswerAfterAnotherViewStatesOnlyWhatIsNew() throws Exception {

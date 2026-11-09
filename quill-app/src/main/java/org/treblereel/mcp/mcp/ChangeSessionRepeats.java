@@ -28,6 +28,8 @@ final class ChangeSessionRepeats {
     /** An object holding one of these is kept and compared inside: the agent acts on them. */
     private static final Set<String> KEEP = Set.of("action", "action_id", "status", "verdict", "verified", "receipt_id");
     private static final String UNCHANGED = "unchanged_since_previous_call";
+    private static final String[][] TEST_LISTS = {{"/verification/test_evidence/tests", "/plan/test_plan/tests"},
+            {"/plan/test_plan/tests", "/verification/test_evidence/tests"}};
     /** In V22 CQ-049 the patch went to a disposable checkout and Codex asked 3-4 times, getting inspect_primary each time. */
     private static final String NO_EDITS = "none in this indexed checkout since the previous call. Edits made in another checkout are"
             + " outside this index: verify them with that checkout's build and say Quill evidence does not cover them."
@@ -55,6 +57,7 @@ final class ChangeSessionRepeats {
         known.setAll(current.deepCopy());
         previous.put(key, known);
         if (before == null) return restated ? current.toString() : response;
+        restated |= sameTests(current, before, " in the previous call");
         boolean noEdits = "planned".equals(before.path("phase").asText()) && "planned".equals(current.path("phase").asText())
                 && current.path("directive") instanceof ObjectNode;
         ArrayNode unchanged = JSON.createArrayNode();
@@ -87,9 +90,26 @@ final class ChangeSessionRepeats {
         }
     }
 
+    /** The plan and the verification rank the same affected tests; a list equal to the other one is named, not repeated. */
+    private static boolean sameTests(ObjectNode answer, JsonNode source, String where) {
+        boolean changed = false;
+        for (String[] pair : TEST_LISTS) {
+            JsonNode tests = answer.at(pair[0]), other = source.at(pair[1]);
+            if (tests.isArray() && !tests.isEmpty() && tests.equals(other) && answer.at(parent(pair[0])) instanceof ObjectNode owner) {
+                owner.put("tests", "same as " + pair[1].substring(1).replace('/', '.') + where);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private static String parent(String pointer) {
+        return pointer.substring(0, pointer.lastIndexOf('/'));
+    }
+
     /** plan.sequence restates next_actions, and a directive snapshot restates the primary change it is about. */
     private static boolean stateOnce(ObjectNode answer) {
-        boolean changed = false;
+        boolean changed = sameTests(answer, answer, "");
         if (answer.path("plan") instanceof ObjectNode plan && answer.path("next_actions").isArray() && plan.has("sequence")) {
             plan.remove("sequence");
             changed = true;

@@ -348,8 +348,8 @@ final class McpToolCatalog {
 
     static Invocation invokeMethod(
             Object tools, Method method, Map<String, Object> arguments) {
-        Map<String, Object> args = withAliases(method.getName(),
-                arguments == null ? Map.of() : arguments);
+        Map<String, Object> args = guessedArguments(method, withAliases(method.getName(),
+                arguments == null ? Map.of() : arguments));
         try {
             Object[] values = new Object[method.getParameterCount()];
             Parameter[] parameters = method.getParameters();
@@ -446,6 +446,39 @@ final class McpToolCatalog {
             "find_usages", Map.of("symbol", "target", "class_name", "target"),
             "list_injection_points", Map.of("class_name", "target"),
             "list_beans", Map.of("type", "class_name"));
+
+    private static final List<String> SELECTORS = List.of("target", "targets", "class_name");
+    private static final Set<String> GUESSED_SELECTORS = Set.of("target", "targets", "class_name", "symbol", "class");
+    private static final Map<String, String> DIRECTIONS = Map.of("callers", "inbound", "incoming", "inbound",
+            "callees", "outbound", "outgoing", "outbound");
+
+    /**
+     * Agents carry argument names across tools: V22 CQ-045 Codex sent class_name to tools that take
+     * target, target to one that takes class_name, method_name and direction=callers, and six calls
+     * failed. A guess reaches the parameter it means when that parameter is the only one it can
+     * mean and was not also given; anything ambiguous stays an unknown argument.
+     */
+    static Map<String, Object> guessedArguments(Method method, Map<String, Object> arguments) {
+        Map<String, Parameter> parameters = new LinkedHashMap<>();
+        for (Parameter parameter : method.getParameters()) parameters.put(parameter.getName(), parameter);
+        List<String> guesses = arguments.keySet().stream()
+                .filter(name -> GUESSED_SELECTORS.contains(name) && !parameters.containsKey(name)).toList();
+        List<String> selectors = SELECTORS.stream().filter(parameters::containsKey).toList();
+        Map<String, Object> normalized = new LinkedHashMap<>(arguments);
+        if (guesses.size() == 1 && selectors.size() == 1 && !arguments.containsKey(selectors.get(0))) {
+            Object value = normalized.remove(guesses.get(0));
+            normalized.put(selectors.get(0), selectors.get(0).equals("targets") && value instanceof String one ? List.of(one) : value);
+        }
+        if (parameters.containsKey("method") && !parameters.containsKey("method_name")
+                && normalized.containsKey("method_name") && !normalized.containsKey("method"))
+            normalized.put("method", normalized.remove("method_name"));
+        Parameter direction = parameters.get("direction");
+        ToolArg directionArg = direction == null ? null : direction.getAnnotation(ToolArg.class);
+        if (directionArg != null && List.of(directionArg.allowed()).contains("inbound")
+                && normalized.get("direction") instanceof String value && DIRECTIONS.containsKey(value.toLowerCase(java.util.Locale.ROOT)))
+            normalized.put("direction", DIRECTIONS.get(value.toLowerCase(java.util.Locale.ROOT)));
+        return normalized;
+    }
 
     private static Map<String, Object> withAliases(String tool, Map<String, Object> arguments) {
         Map<String, String> aliases = ARGUMENT_ALIASES.get(tool);

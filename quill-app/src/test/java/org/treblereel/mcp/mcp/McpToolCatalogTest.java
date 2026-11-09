@@ -875,6 +875,29 @@ class McpToolCatalogTest {
         }
     }
 
+    /** V22 CQ-045: Codex guessed class_name, target, method_name and direction=callers; six calls failed. */
+    @Test
+    void commonlyGuessedArgumentNamesReachTheParameterTheyMean() throws Exception {
+        var tools = new GuessedArgumentTools();
+        var trace = GuessedArgumentTools.class.getDeclaredMethod("trace_state_lifecycle", String.class);
+        var context = GuessedArgumentTools.class.getDeclaredMethod("get_context", List.class);
+        var external = GuessedArgumentTools.class.getDeclaredMethod("get_external_symbol_details", String.class);
+        var hierarchy = GuessedArgumentTools.class.getDeclaredMethod("get_call_hierarchy", String.class, Optional.class, Optional.class);
+
+        assertEquals("p.Cache", McpToolCatalog.invokeMethod(tools, trace, Map.of("class_name", "p.Cache")).text());
+        assertEquals("p.Factory", McpToolCatalog.invokeMethod(tools, context, Map.of("class_name", "p.Factory")).text());
+        assertEquals("p.Factory", McpToolCatalog.invokeMethod(tools, context, Map.of("target", "p.Factory")).text());
+        assertEquals("jakarta.enterprise.context.RequestScoped",
+                McpToolCatalog.invokeMethod(tools, external, Map.of("target", "jakarta.enterprise.context.RequestScoped")).text());
+        assertEquals("p.Authorizer#buildIdentity:inbound", McpToolCatalog.invokeMethod(tools, hierarchy,
+                Map.of("class_name", "p.Authorizer", "method_name", "buildIdentity", "direction", "callers")).text());
+        assertEquals("p.Authorizer#:outbound",
+                McpToolCatalog.invokeMethod(tools, hierarchy, Map.of("target", "p.Authorizer", "direction", "callees")).text());
+
+        var both = McpToolCatalog.invokeMethod(tools, trace, Map.of("class_name", "p.A", "target", "p.B"));
+        assertTrue(both.error(), "Two selectors stay ambiguous: " + both.text());
+    }
+
     @Test
     void beanAndInjectionAliasesPreserveClassSelector() throws Exception {
         var tools = new SelectorAliasTools();
@@ -901,6 +924,17 @@ class McpToolCatalogTest {
         @Tool(description = "Usage selector") public String find_usages(String target) { return target; }
         @Tool(description = "Bean selector") public String list_beans(String class_name) { return class_name; }
         @Tool(description = "Injection selector") public String list_injection_points(String target) { return target; }
+    }
+
+    static final class GuessedArgumentTools {
+        @Tool(description = "Single selector") public String trace_state_lifecycle(String target) { return target; }
+        @Tool(description = "Many selectors") public String get_context(List<String> targets) { return String.join(",", targets); }
+        @Tool(description = "External selector") public String get_external_symbol_details(String class_name) { return class_name; }
+        @Tool(description = "Hierarchy")
+        public String get_call_hierarchy(String target, Optional<String> method,
+                @ToolArg(description = "Direction", allowed = {"inbound", "outbound", "both"}) Optional<String> direction) {
+            return target + "#" + method.orElse("") + ":" + direction.orElse("");
+        }
     }
 
     static final class ValidationTools {

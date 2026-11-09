@@ -862,6 +862,54 @@ class QuillToolsTest {
     }
 
     @Test
+    void changeSessionForAnotherCheckoutSaysQuillDoesNotCoverItAndPointsItsCommandsThere() throws Exception {
+        writeMinimalPom();
+        Path clone = Files.createTempDirectory("quill-clone");
+        try {
+            QuillTools tools = new QuillTools();
+            JsonNode external = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                    List.of("OrderService"), "Rename a method", 10, clone.toString()));
+            JsonNode missing = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                    List.of("OrderService"), "Rename a method", 10, clone.resolve("absent").toString()));
+            JsonNode here = JSON.readTree(tools.changeSession(jdbi, tempDir,
+                    List.of("OrderService"), "Rename a method", 10, tempDir.toString()));
+
+            assertEquals("external_checkout", external.path("phase").asText());
+            assertEquals("not_applicable", external.path("phase_gate").path("status").asText());
+            assertTrue(external.path("phase_gate").path("can_proceed_without_resolution").asBoolean());
+            JsonNode primary = external.path("directive").path("primary_action");
+            assertEquals("verify_in_checkout", primary.path("action").asText());
+            String path = clone.toRealPath().toString();
+            assertEquals(path, primary.path("working_directory").asText());
+            assertEquals(path, external.path("external_checkout").path("path").asText());
+            assertFalse(external.path("external_checkout").path("covered_by_quill").asBoolean());
+            assertFalse(external.has("verification"));
+            assertFalse(external.path("verification_receipt").path("verified").asBoolean());
+            assertEquals("not_covered", external.path("verification_receipt").path("verdict").asText());
+            assertFalse(external.path("external_checkout").path("commands").isEmpty(), external.toString());
+            for (JsonNode command : external.path("external_checkout").path("commands")) {
+                assertFalse(command.toString().contains(tempDir.toString()), command.toString());
+            }
+            assertEquals("org.acme.OrderService",
+                    external.path("plan").path("primary_changes").get(0).path("class").asText());
+
+            assertTrue(missing.has("error_code") || missing.has("error"), missing.toString());
+            assertEquals("planned", here.path("phase").asText());
+        } finally {
+            Files.deleteIfExists(clone);
+        }
+    }
+
+    @Test
+    void aPlannedChangeSessionSaysHowToReportEditsInAnotherCheckout() throws Exception {
+        writeMinimalPom();
+        JsonNode planned = JSON.readTree(new QuillTools().changeSession(jdbi, tempDir,
+                List.of("OrderService"), "Rename a method", 10));
+
+        assertTrue(planned.path("directive").path("other_checkout").asText().contains("checkout"));
+    }
+
+    @Test
     void changeSessionReturnsStableStatelessWorkflowSnapshot() throws Exception {
         writeMinimalPom();
         QuillTools tools = new QuillTools();

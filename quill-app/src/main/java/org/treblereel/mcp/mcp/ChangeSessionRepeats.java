@@ -31,9 +31,9 @@ final class ChangeSessionRepeats {
     private static final String[][] TEST_LISTS = {{"/verification/test_evidence/tests", "/plan/test_plan/tests"},
             {"/plan/test_plan/tests", "/verification/test_evidence/tests"}};
     /** In V22 CQ-049 the patch went to a disposable checkout and Codex asked 3-4 times, getting inspect_primary each time. */
-    private static final String NO_EDITS = "none in this indexed checkout since the previous call. Edits made in another checkout are"
-            + " outside this index: verify them with that checkout's build and say Quill evidence does not cover them."
-            + " Asking again will not advance the phase.";
+    private static final String NO_EDITS = "none in this indexed checkout since the previous call. Asking again will not advance"
+            + " the phase. For edits in another checkout pass checkout=<its path> once, verify them with that checkout's build"
+            + " and say Quill evidence does not cover them.";
 
     private final Map<String, ObjectNode> previous = new LinkedHashMap<>(MAX_KEYS, 0.75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, ObjectNode> eldest) { return size() > MAX_KEYS; }

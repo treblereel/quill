@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -19,6 +21,10 @@ import org.treblereel.mcp.db.ReadQueryContext;
 final class ChangeSessionQueries {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    static final String EXTERNAL = "external_checkout";
+    /** In V23 CQ-049 Codex edited a disposable clone 3 of 3 times and asked again 2-4 times, each answer still planned. */
+    static final String OTHER_CHECKOUT = "Editing another checkout, such as a disposable clone? Quill cannot observe it;"
+            + " after editing pass checkout=<its path> once for the final answer.";
     private static final Set<String> REVIEW_REASONS = Set.of(
             "UNRESOLVED_TARGETS", "INCOMPLETE_TEST_COVERAGE",
             "TARGET_INFERENCE_TRUNCATED", "WORKTREE_TRUNCATED",
@@ -40,6 +46,11 @@ final class ChangeSessionQueries {
 
     String snapshot(ReadQueryContext reader, Path projectRoot, List<String> targets,
             String change, int limit, String detail, String view) {
+        return snapshot(reader, projectRoot, targets, change, limit, detail, view, null);
+    }
+
+    String snapshot(ReadQueryContext reader, Path projectRoot, List<String> targets,
+            String change, int limit, String detail, String view, String checkout) {
         String normalizedDetail = detail == null ? "summary" : detail.strip().toLowerCase();
         if (!normalizedDetail.equals("summary") && !normalizedDetail.equals("full")) {
             return errorResponse("Invalid detail: expected summary or full");
@@ -50,6 +61,12 @@ final class ChangeSessionQueries {
         }
         if (change == null || change.isBlank()) {
             return plans.planChange(reader, projectRoot, targets, change, limit);
+        }
+        Path external;
+        try {
+            external = externalCheckout(projectRoot, checkout);
+        } catch (IllegalArgumentException missing) {
+            return errorResponse(missing.getMessage());
         }
         // Inspect every change; the context/test response budget must not truncate verification scope.
         ObjectNode changes = parse(worktree.getFreshWorktreeStatus(
@@ -74,9 +91,9 @@ final class ChangeSessionQueries {
         String stableSessionId = sessionId(projectRoot, canonicalTargets, change);
         result.put("session_id", stableSessionId);
         result.put("state_model", "stateless_snapshot");
-        String currentPhase = phase(verify);
+        String currentPhase = external != null ? EXTERNAL : phase(verify);
         String effectiveView = normalizedView.equals("auto")
-                ? (currentPhase.equals("planned") ? "plan" : "verification")
+                ? (currentPhase.equals("planned") || external != null ? "plan" : "verification")
                 : normalizedView;
         result.put("detail", normalizedDetail);
         result.put("view_requested", normalizedView);
@@ -89,8 +106,9 @@ final class ChangeSessionQueries {
         result.put("phase", currentPhase);
 
         boolean includePlan = effectiveView.equals("plan") || effectiveView.equals("all");
-        boolean includeVerification = effectiveView.equals("verification")
-                || effectiveView.equals("all");
+        // The indexed checkout's verification says nothing about edits made elsewhere.
+        boolean includeVerification = external == null && (effectiveView.equals("verification")
+                || effectiveView.equals("all"));
         ObjectNode checklist = reviewChecklist(plan, verify);
         result.set("phase_gate", phaseGate(currentPhase, checklist));
         if (includePlan) {
@@ -107,16 +125,23 @@ final class ChangeSessionQueries {
             result.set("verification_receipt",
                     verificationReceipt(stableSessionId, currentPhase, verify, checklist));
         }
-        ArrayNode actions = identifiedActions(stableSessionId, currentPhase.equals("planned")
+        if (external != null) {
+            result.set("external_checkout", externalSection(projectRoot, external, verify));
+            result.set("verification_receipt", externalReceipt(stableSessionId, external));
+        }
+        ArrayNode actions = identifiedActions(stableSessionId, external != null
+                ? externalActions(external)
+                : currentPhase.equals("planned")
                 ? plan.path("sequence").deepCopy()
                 : phaseActions(currentPhase, verify.path("next_actions")));
         result.set("next_actions", actions);
-        result.set("directive", directive(currentPhase, actions, plan, verify));
+        result.set("directive", external != null ? externalDirective(actions, external)
+                : directive(currentPhase, actions, plan, verify));
         AffectedTestRows.compactIn(result);
         copy(verify, result, "_meta");
         var omitted = result.putArray("omitted_sections");
         if (!includePlan) omitted.add("plan");
-        if (!includeVerification) {
+        if (!includeVerification && external == null) {
             omitted.add("verification");
             omitted.add("verification_plan");
             omitted.add("review_checklist");
@@ -139,8 +164,98 @@ final class ChangeSessionQueries {
             var arguments = request.putObject("arguments");
             arguments.set("targets", JSON.valueToTree(effectiveTargets));
             arguments.put("change", change.strip()).put("limit", limit).put("detail", "full").put("view", "all");
+            if (external != null) arguments.put("checkout", external.toString());
         }
         return result.toString();
+    }
+
+    /** Null for the indexed checkout itself; a missing directory is an argument error. */
+    static Path externalCheckout(Path projectRoot, String checkout) {
+        if (checkout == null || checkout.isBlank()) return null;
+        Path candidate = projectRoot.resolve(checkout.strip()).normalize();
+        if (!Files.isDirectory(candidate)) {
+            throw new IllegalArgumentException("checkout not found: " + candidate
+                    + "; pass the directory that holds the edited sources");
+        }
+        try {
+            Path real = candidate.toRealPath();
+            return real.equals(projectRoot.toRealPath()) ? null : real;
+        } catch (IOException unreadable) {
+            throw new IllegalArgumentException("checkout cannot be read: " + candidate);
+        }
+    }
+
+    private static ObjectNode externalSection(Path projectRoot, Path external, ObjectNode verify) {
+        ObjectNode section = JSON.createObjectNode();
+        section.put("path", external.toString());
+        section.put("covered_by_quill", false);
+        section.put("reason", "Quill indexes and observes only " + projectRoot.toAbsolutePath().normalize()
+                + "; edits, builds and tests in another checkout are invisible to it");
+        var commands = section.putArray("commands");
+        Set<String> roots = new java.util.LinkedHashSet<>();
+        roots.add(projectRoot.toAbsolutePath().normalize().toString());
+        try {
+            roots.add(projectRoot.toRealPath().toString());
+        } catch (IOException ignored) {
+            // The normalized path is enough to rewrite the commands.
+        }
+        for (JsonNode source : verify.path("verification_plan").path("commands")) {
+            String scope = source.path("scope").asText();
+            if (!scope.equals("quick_compile") && !scope.equals("focused")) continue;
+            ObjectNode command = JSON.createObjectNode();
+            command.put("scope", scope);
+            var argv = command.putArray("argv");
+            for (JsonNode argument : source.path("argv")) argv.add(relocated(argument.asText(), roots, external));
+            command.put("working_directory", external.toString());
+            copy(source, command, "executes_tests");
+            commands.add(command);
+        }
+        return section;
+    }
+
+    private static String relocated(String argument, Set<String> roots, Path external) {
+        for (String root : roots) {
+            if (argument.equals(root) || argument.startsWith(root + "/")) {
+                return external + argument.substring(root.length());
+            }
+        }
+        return argument;
+    }
+
+    private static ObjectNode externalReceipt(String sessionId, Path external) {
+        ObjectNode receipt = JSON.createObjectNode();
+        receipt.put("schema_version", 1);
+        receipt.put("receipt_id", digest(sessionId + "\n" + external));
+        receipt.put("session_id", sessionId);
+        receipt.put("phase", EXTERNAL);
+        receipt.put("verdict", "not_covered");
+        receipt.put("verified", false);
+        receipt.putArray("reason_codes").add("EXTERNAL_CHECKOUT");
+        return receipt;
+    }
+
+    private static ArrayNode externalActions(Path external) {
+        ArrayNode actions = JSON.createArrayNode();
+        actions.addObject().put("order", 1).put("action", "verify_in_checkout")
+                .put("description", "Build and test in " + external
+                        + " with external_checkout.commands, then report that Quill evidence does not cover that checkout");
+        return actions;
+    }
+
+    private static ObjectNode externalDirective(ArrayNode actions, Path external) {
+        ObjectNode directive = JSON.createObjectNode();
+        directive.put("schema_version", 1);
+        directive.put("status", EXTERNAL);
+        directive.put("headline", "Quill evidence does not cover edits in " + external);
+        directive.put("action_count", actions.size());
+        ObjectNode primary = actions.get(0).deepCopy();
+        primary.put("evidence", "external_checkout.commands");
+        primary.put("working_directory", external.toString());
+        primary.put("executed_by_quill", false);
+        directive.set("primary_action", primary);
+        directive.put("final_answer", "This is the final change_session answer for that checkout;"
+                + " asking again returns the same answer.");
+        return directive;
     }
 
     private static ObjectNode fullPlan(ObjectNode plan) {
@@ -353,7 +468,7 @@ final class ChangeSessionQueries {
         gate.put("schema_version", 1);
         gate.put("phase", phase);
         gate.put("can_proceed_without_resolution",
-                phase.equals("planned") || phase.equals("complete"));
+                phase.equals("planned") || phase.equals("complete") || phase.equals(EXTERNAL));
         ArrayNode evidence = gate.putArray("required_evidence");
         switch (phase) {
             case "planned" -> {
@@ -385,6 +500,10 @@ final class ChangeSessionQueries {
             case "complete" -> {
                 gate.put("status", "satisfied");
                 gate.put("transition", "none");
+            }
+            case EXTERNAL -> {
+                gate.put("status", "not_applicable");
+                gate.put("transition", "verify_in_checkout");
             }
             default -> throw new IllegalArgumentException("Unknown change phase: " + phase);
         }
@@ -460,6 +579,7 @@ final class ChangeSessionQueries {
             }
             directive.set("primary_action", primary);
         }
+        if (phase.equals("planned")) directive.put("other_checkout", OTHER_CHECKOUT);
         return directive;
     }
 

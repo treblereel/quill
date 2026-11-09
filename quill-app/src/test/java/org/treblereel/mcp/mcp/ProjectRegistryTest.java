@@ -45,7 +45,7 @@ class ProjectRegistryTest {
         for (int request = 0; request < 3; request++) {
             String response = assertTimeoutPreemptively(java.time.Duration.ofSeconds(2),
                     () -> tools.change_session(targets, "Update persistence", java.util.Optional.empty(),
-                            java.util.Optional.empty(), limit, java.util.Optional.empty()));
+                            java.util.Optional.empty(), limit, java.util.Optional.empty(), java.util.Optional.empty()));
             var pending = json.readTree(response);
             assertEquals("refresh_pending", pending.path("status").asText());
             assertEquals("build_events_queued", pending.path("reason").asText());

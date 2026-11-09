@@ -107,8 +107,8 @@ public final class QuillToolQueries {
     }
 
     String changeSession(ReadQueryContext reader, Path projectRoot, List<String> targets,
-            String change, int limit, String detail, String view) {
-        return changeSession.snapshot(reader, projectRoot, targets, change, limit, detail, view);
+            String change, int limit, String detail, String view, String checkout) {
+        return changeSession.snapshot(reader, projectRoot, targets, change, limit, detail, view, checkout);
     }
 
     String getTypeHierarchy(ReadQueryContext reader, String target, String direction,

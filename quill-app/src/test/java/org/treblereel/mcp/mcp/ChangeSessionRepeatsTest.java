@@ -63,7 +63,7 @@ class ChangeSessionRepeatsTest {
 
         var again = JSON.readTree(repeats.elide("k", snapshot("renamed parse in /tmp/copy", "r1").toString()));
         String observed = again.path("directive").path("edits_observed").asText();
-        assertTrue(observed.contains("another checkout") && observed.contains("build") && observed.contains("will not advance"), again.toString());
+        assertTrue(observed.contains("another checkout") && observed.contains("checkout=") && observed.contains("build") && observed.contains("will not advance"), again.toString());
         assertEquals("a1", again.path("directive").path("primary_action").path("action_id").asText(), again.toString());
 
         ObjectNode edited = snapshot("renamed parse", "r1").put("phase", "verification_required");

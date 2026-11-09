@@ -76,7 +76,7 @@ class MavenModuleLifecycleTest {
         // Method targets resolve through method impact, which needs the indexed type graph.
         for (String response : List.of(
                 tools.change_session(Optional.of(targets), "Change size()", Optional.empty(),
-                        Optional.empty(), Optional.empty(), Optional.empty()),
+                        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
                 tools.plan_change(targets, "Change size()", Optional.empty(), Optional.empty()),
                 tools.verify_change(Optional.of(targets), Optional.empty(), Optional.empty()),
                 tools.find_impacted_tests(targets, Optional.of(true), Optional.of(3), Optional.of(20),

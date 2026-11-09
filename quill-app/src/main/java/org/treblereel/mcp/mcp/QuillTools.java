@@ -294,11 +294,12 @@ public final class QuillTools {
             @ToolArg(description = "Response detail: summary (default) or full") Optional<String> detail,
             @ToolArg(description = "View: auto (default), plan, verification, or all") Optional<String> view,
             @ToolArg(description = "Evidence per section; default 20, max 100") Optional<Integer> limit,
+            @ToolArg(description = "Path of another checkout holding the edits, e.g. a disposable clone; Quill cannot observe it") Optional<String> checkout,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
         String answer = forGraphProjects(project.orElse(null), (p, context) -> queries.changeSession(
                 context, p.root(), targets.orElse(List.of()), change, requestedLimit,
-                detail.orElse("summary"), view.orElse("auto")));
+                detail.orElse("summary"), view.orElse("auto"), checkout.orElse(null)));
         return changeSessionRepeats.elide(
                 ChangeSessionRepeats.key(project.orElse(""), requestedLimit), answer);
     }
@@ -1191,7 +1192,12 @@ public final class QuillTools {
 
     String changeSession(Jdbi jdbi, Path projectRoot, List<String> targets,
             String change, int limit) {
-        return ReadQueryContext.readWithGraph(jdbi, context -> queries.changeSession(context, projectRoot, targets, change, limit, "full", "all"));
+        return changeSession(jdbi, projectRoot, targets, change, limit, null);
+    }
+
+    String changeSession(Jdbi jdbi, Path projectRoot, List<String> targets,
+            String change, int limit, String checkout) {
+        return ReadQueryContext.readWithGraph(jdbi, context -> queries.changeSession(context, projectRoot, targets, change, limit, "full", "all", checkout));
     }
 
     String getExternalDeps(Jdbi jdbi, String target, String library, int limit) {

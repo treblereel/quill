@@ -43,7 +43,7 @@ class ChangeSessionRepeatsTest {
         String unchanged = second.path("unchanged_since_previous_call").toString();
         assertTrue(unchanged.contains("verification.evidence") && unchanged.contains("verification_receipt.observed")
                 && unchanged.contains("directive.primary_action.evidence_snapshot"), unchanged);
-        assertTrue(second.toString().length() < 700, second.toString());
+        assertTrue(second.toString().length() < 1000, "The note that no edits are visible is the rest: " + second);
     }
 
     @Test
@@ -52,6 +52,22 @@ class ChangeSessionRepeatsTest {
         repeats.elide("k", snapshot("a", "r1").toString());
         assertTrue(repeats.elide("other", snapshot("a", "r1").toString()).contains("v".repeat(2000)));
         assertTrue(repeats.elide("k", "{\"error_code\":\"X\"}").contains("error_code"));
+    }
+
+    /** V22 CQ-049: the patch went to a disposable checkout; Codex asked 3-4 times and got inspect_primary each time. */
+    @Test
+    void aRepeatThatSeesNoEditsSaysSoAndThatAskingAgainWillNotAdvance() throws Exception {
+        var repeats = new ChangeSessionRepeats();
+        String first = repeats.elide("k", snapshot("rename parse", "r1").toString());
+        assertFalse(first.contains("edits_observed"), "Before editing, planned is the expected phase");
+
+        var again = JSON.readTree(repeats.elide("k", snapshot("renamed parse in /tmp/copy", "r1").toString()));
+        String observed = again.path("directive").path("edits_observed").asText();
+        assertTrue(observed.contains("another checkout") && observed.contains("build") && observed.contains("will not advance"), again.toString());
+        assertEquals("a1", again.path("directive").path("primary_action").path("action_id").asText(), again.toString());
+
+        ObjectNode edited = snapshot("renamed parse", "r1").put("phase", "verification_required");
+        assertFalse(repeats.elide("k", edited.toString()).contains("edits_observed"));
     }
 
     /** V22 CQ-049: Codex asked detail=full, then view=verification detail=full; both restated the same 10 KB. */

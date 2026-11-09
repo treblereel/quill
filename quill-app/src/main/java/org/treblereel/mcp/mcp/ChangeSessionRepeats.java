@@ -28,6 +28,10 @@ final class ChangeSessionRepeats {
     /** An object holding one of these is kept and compared inside: the agent acts on them. */
     private static final Set<String> KEEP = Set.of("action", "action_id", "status", "verdict", "verified", "receipt_id");
     private static final String UNCHANGED = "unchanged_since_previous_call";
+    /** In V22 CQ-049 the patch went to a disposable checkout and Codex asked 3-4 times, getting inspect_primary each time. */
+    private static final String NO_EDITS = "none in this indexed checkout since the previous call. Edits made in another checkout are"
+            + " outside this index: verify them with that checkout's build and say Quill evidence does not cover them."
+            + " Asking again will not advance the phase.";
 
     private final Map<String, ObjectNode> previous = new LinkedHashMap<>(MAX_KEYS, 0.75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, ObjectNode> eldest) { return size() > MAX_KEYS; }
@@ -51,8 +55,15 @@ final class ChangeSessionRepeats {
         known.setAll(current.deepCopy());
         previous.put(key, known);
         if (before == null) return restated ? current.toString() : response;
+        boolean noEdits = "planned".equals(before.path("phase").asText()) && "planned".equals(current.path("phase").asText())
+                && current.path("directive") instanceof ObjectNode;
         ArrayNode unchanged = JSON.createArrayNode();
         elide(before, current, "", unchanged, 0);
+        if (noEdits) {
+            ObjectNode directive = current.with("directive");
+            directive.put("edits_observed", NO_EDITS);
+            restated = true;
+        }
         if (unchanged.isEmpty()) return restated ? current.toString() : response;
         current.set(UNCHANGED, unchanged);
         return current.toString();

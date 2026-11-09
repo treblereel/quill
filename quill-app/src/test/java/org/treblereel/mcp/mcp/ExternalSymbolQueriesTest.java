@@ -191,6 +191,65 @@ class ExternalSymbolQueriesTest {
         assertEquals("search_external_symbols", result.path("next_step").path("tool").asText());
     }
 
+    /** V21: Codex guessed io.quarkus.scheduler.runtime.util.SchedulerUtils; the class lives in another package. */
+    @Test
+    void aWrongPackageNamesTheClassesWithThatSimpleName() throws Exception {
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "org.wrong.ExternalSymbolQueriesTest$Fixture", 20, 0)));
+
+        assertEquals("EXTERNAL_CLASS_NOT_FOUND", result.path("error_code").asText());
+        assertEquals(Fixture.class.getName(), result.path("candidates").get(0).asText(), result.toString());
+        var absent = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "io.quarkus.quartz.runtime.QuartzScheduler", 20, 0)));
+        assertTrue(absent.path("error").asText().contains("no class named QuartzScheduler"), absent.toString());
+    }
+
+    /** V21: Codex read 285 KB of these answers; members restated their signature and single-version jars twice. */
+    @Test
+    void bytecodeAnswerStatesEachFactOnce() throws Exception {
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "Fixture", 20, 0, "bytecode")));
+
+        for (var member : result.path("members")) {
+            assertFalse(member.has("type"), member.toString());
+            assertFalse(member.path("annotations").isArray() && member.path("annotations").isEmpty(), member.toString());
+            assertFalse(member.path("signature").asText().contains(Fixture.class.getName() + "."), member.toString());
+        }
+        assertFalse(result.has("occurrences"), "One version: artifact and jar already say it");
+        assertFalse(result.has("superclass"));
+        assertFalse(result.has("interfaces"));
+        assertEquals(1, result.path("limitations").size());
+        assertTrue(result.toString().length() < 1500, result.toString().length() + " " + result);
+    }
+
+    /** V21: Codex opened framework classes one call at a time, up to 13 calls in one session. */
+    @Test
+    void severalClassesAreAnsweredInOneCall() throws Exception {
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "Fixture, io.quarkus.Absent", 20, 0, "bytecode")));
+
+        assertEquals(2, result.path("classes").size(), result.toString());
+        assertTrue(result.path("classes").get(0).path("bytecode_method_calls").has("greet(String)"), result.toString());
+        assertEquals("EXTERNAL_CLASS_NOT_FOUND", result.path("classes").get(1).path("error_code").asText());
+    }
+
+    @Test
+    void sourceExcerptSkipsTheLicenseHeader() throws Exception {
+        Path sourceJar = temp.resolve("repository/org/demo/fixture/1.0/fixture-1.0-sources.jar");
+        try (var output = new JarOutputStream(Files.newOutputStream(sourceJar))) {
+            output.putNextEntry(new JarEntry("org/treblereel/mcp/mcp/ExternalSymbolQueriesTest.java"));
+            output.write(("/*\n * Licensed under the Apache License\n" + " * text\n".repeat(30) + " */\n"
+                    + "package org.treblereel.mcp.mcp;\n/** The contract. */\nclass ExternalSymbolQueriesTest {}\n")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            output.closeEntry();
+        }
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, scope ->
+                new ExternalSymbolQueries().details(scope, temp, "Fixture", 20, 0, "source")));
+        String text = result.path("source_excerpt").path("text").asText();
+        assertTrue(text.startsWith("package org.treblereel.mcp.mcp;"), text);
+        assertTrue(text.contains("/** The contract. */"), text);
+    }
+
     @Test
     void shortNameAmbiguityReturnsCandidatesInsteadOfChoosingArbitrarily() throws Exception {
         appendJar("2.0", Other.Fixture.class);

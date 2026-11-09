@@ -98,6 +98,8 @@ final class ExternalSymbolQueries {
         return result.toString();
     }
 
+    private static final int MAX_CLASSES = 5;
+
     String details(ReadQueryContext reader, Path root, String className, int limit, int offset) {
         return details(reader, root, className, limit, offset, "full");
     }
@@ -110,6 +112,21 @@ final class ExternalSymbolQueries {
     String details(ReadQueryContext reader, Path root, String className, int limit, int offset, String detail,
             String selectedMethod) {
         if (!java.util.Set.of("summary", "full", "source", "bytecode").contains(detail)) return error("detail must be summary, full, source or bytecode");
+        if (className.contains(",")) {
+            List<String> names = java.util.Arrays.stream(className.split(",")).map(String::strip)
+                    .filter(name -> !name.isEmpty()).distinct().toList();
+            if (names.size() > MAX_CLASSES) return error("At most " + MAX_CLASSES + " comma-separated classes per call");
+            ObjectNode batch = JSON.createObjectNode();
+            ArrayNode classes = batch.putArray("classes");
+            for (String name : names) {
+                try {
+                    classes.add(JSON.readTree(details(reader, root, name, limit, offset, detail, selectedMethod)));
+                } catch (IOException unreadable) {
+                    classes.add(JSON.createObjectNode().put("class_name", name).put("error", "unreadable answer"));
+                }
+            }
+            return batch.toString();
+        }
         String method = selectedMethod == null || selectedMethod.isBlank() ? null : selectedMethod;
         Catalog catalog = catalog(reader, root);
         List<ClassRef> refs = catalog.classes().stream()
@@ -118,14 +135,20 @@ final class ExternalSymbolQueries {
                 .sorted(Comparator.comparing(ClassRef::className)
                         .thenComparing(ClassRef::artifact)).toList();
         if (refs.isEmpty()) {
-            return JSON.createObjectNode().put("error_code", "EXTERNAL_CLASS_NOT_FOUND")
-                    .put("error", "External class not found: " + className)
+            // A guessed package is the common miss: the same simple name settles it without a search.
+            String simple = simpleName(className);
+            List<String> sameName = catalog.classes().stream().map(ClassRef::className)
+                    .filter(candidate -> simpleName(candidate).equals(simple)).distinct().sorted().limit(10).toList();
+            ObjectNode missing = JSON.createObjectNode().put("error_code", "EXTERNAL_CLASS_NOT_FOUND")
+                    .put("error", "External class not found: " + className
+                            + (sameName.isEmpty() ? "; no class named " + simple + " on the indexed classpaths" : ""))
                     .put("reason", "Only JARs on the project's resolved main/test classpaths are indexed; "
                             + "build-time classes (for example Quarkus *-deployment processors) and "
-                            + "runtime-generated classes are absent")
-                    .set("next_step", JSON.createObjectNode().put("tool", "search_external_symbols")
-                            .set("arguments", JSON.createObjectNode().put("pattern", simpleName(className))))
-                    .toString();
+                            + "runtime-generated classes are absent");
+            if (!sameName.isEmpty()) sameName.forEach(missing.putArray("candidates")::add);
+            else missing.set("next_step", JSON.createObjectNode().put("tool", "search_external_symbols")
+                    .set("arguments", JSON.createObjectNode().put("pattern", simple)));
+            return missing.toString();
         }
         List<String> names = refs.stream().map(ClassRef::className).distinct().toList();
         if (names.size() > 1) return ambiguous(className, names);
@@ -172,18 +195,23 @@ final class ExternalSymbolQueries {
         ObjectNode result = JSON.createObjectNode();
         result.put("class_name", ref.className());
         result.put("kind", classKind(info));
-        result.set("annotations", JSON.valueToTree(info.declaredAnnotations().stream()
+        if (!info.declaredAnnotations().isEmpty()) result.set("annotations", JSON.valueToTree(info.declaredAnnotations().stream()
                 .map(a -> a.toString(false)).sorted().toList()));
         result.put("runtime_resolution_proven", false);
-        if (info.superName() != null) result.put("superclass", info.superName().toString());
-        ArrayNode interfaces = result.putArray("interfaces");
-        info.interfaceNames().forEach(name -> interfaces.add(name.toString()));
+        if (info.superName() != null && !info.superName().toString().equals("java.lang.Object"))
+            result.put("superclass", info.superName().toString());
+        if (!info.interfaceNames().isEmpty()) {
+            ArrayNode interfaces = result.putArray("interfaces");
+            info.interfaceNames().forEach(name -> interfaces.add(name.toString()));
+        }
         result.put("artifact", ref.artifact());
         result.put("jar", ref.jar().toString());
-        ArrayNode occurrences = result.putArray("occurrences");
-        refs.forEach(candidate -> occurrences.addObject()
-                .put("artifact", candidate.artifact()).put("jar", candidate.jar().toString()));
-        result.put("version_count", refs.size());
+        if (refs.size() > 1) {
+            ArrayNode occurrences = result.putArray("occurrences");
+            refs.forEach(candidate -> occurrences.addObject()
+                    .put("artifact", candidate.artifact()).put("jar", candidate.jar().toString()));
+            result.put("version_count", refs.size());
+        }
         result.put("detail", detail);
         if (method != null) result.put("method", method);
         appendSource(ref, result, !detail.equals("summary"));
@@ -191,7 +219,7 @@ final class ExternalSymbolQueries {
         // Recorded agents used about 2% of these calls, so full detail points to them instead.
         if (detail.equals("bytecode")) {
             result.set("bytecode_method_calls", methodCalls(ref, jvmMethod));
-            result.put("bytecode_method_calls_scope", "At most 40 invocation instructions and 12 string constants per method, 200 invocations and 60 constants per class; omitted invokedynamic bodies, reflection and runtime dispatch are not inferred");
+            result.put("bytecode_method_calls_scope", "Bounded: 40 calls and 12 strings per method; invokedynamic bodies, reflection and runtime dispatch not inferred");
         } else {
             ObjectNode request = result.putObject("bytecode_request").put("class_name", ref.className()).put("detail", "bytecode");
             if (method != null) request.put("method", method);
@@ -202,22 +230,21 @@ final class ExternalSymbolQueries {
         result.put("offset", offset);
         result.put("has_more", to < members.size());
         ArrayNode listed = result.putArray("members");
+        String owner = ref.className() + ".";
         members.subList(from, to).forEach(member -> {
             ObjectNode item = listed.addObject();
             item.put("kind", member.kind());
             item.put("name", member.name());
-            item.put("signature", member.signature());
-            item.put("type", member.type());
-            item.put("modifiers", member.modifiers());
-            item.set("annotations", JSON.valueToTree(member.annotations()));
+            // The signature already holds the type, and a field's repeats its owner.
+            item.put("signature", member.signature().replace(owner, ""));
+            if (!member.modifiers().isEmpty()) item.put("modifiers", member.modifiers());
+            if (!member.annotations().isEmpty()) item.set("annotations", JSON.valueToTree(member.annotations()));
             if (info.isAnnotation()) info.methods().stream()
                     .filter(declared -> declared.name().equals(member.name()) && declared.defaultValue() != null)
                     .findFirst().ifPresent(declared -> item.put("annotation_default", declared.defaultValue().toString()));
         });
         result.putArray("limitations")
-                .add("Declaration annotations are bytecode evidence; method bodies, build-time registration and runtime activation are not established")
-                .add("Companion source JARs are read only for this class when locally available; excerpts are bounded to 12000 bytes")
-                .add("Class-name catalog is cached; bytecode details are read only for the selected class");
+                .add("Bytecode declarations; build-time registration and runtime activation are not established");
         return result.toString();
     }
 
@@ -236,17 +263,27 @@ final class ExternalSymbolQueries {
                 return;
             }
             try (InputStream input = jar.getInputStream(entry)) {
-                byte[] bytes = input.readNBytes(12001);
+                String whole = withoutLicenseHeader(new String(input.readNBytes(1_000_000), java.nio.charset.StandardCharsets.UTF_8));
                 result.put("source_available", true);
                 ObjectNode source = result.putObject("source_excerpt");
                 source.put("artifact", sources + "!/" + entryName);
-                source.put("text", new String(bytes, 0, Math.min(bytes.length, 12000), java.nio.charset.StandardCharsets.UTF_8));
-                source.put("truncated", bytes.length > 12000);
+                source.put("text", whole.substring(0, Math.min(whole.length(), 12000)));
+                source.put("truncated", whole.length() > 12000);
                 source.put("scope", "Companion source artifact; not proof that source matches compiled bytecode");
             }
         } catch (IOException | RuntimeException unavailable) {
             result.put("source_status", "unreadable");
         }
+    }
+
+    /** A leading block comment before {@code package} is a license, not the class's contract. */
+    static String withoutLicenseHeader(String text) {
+        String trimmed = text.stripLeading();
+        if (!trimmed.startsWith("/*") || trimmed.startsWith("/**")) return text;
+        int end = trimmed.indexOf("*/");
+        if (end < 0) return text;
+        String rest = trimmed.substring(end + 2).stripLeading();
+        return rest.startsWith("package ") ? rest : text;
     }
 
     private static String searchMembers(Catalog catalog, List<ClassRef> candidates,

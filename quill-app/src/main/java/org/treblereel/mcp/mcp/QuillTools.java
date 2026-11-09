@@ -639,7 +639,7 @@ public final class QuillTools {
     @Tool(readOnly = true, structured = true,
             description = "Inspect dependency class members, annotations and defaults for library source/decompile evidence. detail=summary by default; source returns only locally available companion source evidence; full adds the source excerpt; bytecode adds bounded bytecode calls and constants. Runtime activation is not proven.")
     public String get_external_symbol_details(
-            @ToolArg(description = "External class short name or FQCN") String class_name,
+            @ToolArg(description = "External class short name or FQCN; up to 5 comma-separated") String class_name,
             @ToolArg(description = "summary (default, with members), full (adds source), source (source excerpt only), bytecode (full plus bytecode calls)", allowed = {"summary", "full", "source", "bytecode"}) Optional<String> detail,
             @ToolArg(description = "Method name: only its members and bytecode; class name for constructors") Optional<String> method,
             @ToolArg(description = "Members per page; default 20, max 200") Optional<Integer> limit,

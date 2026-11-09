@@ -80,6 +80,8 @@ final class ChangeSessionQueries {
                 reader, effectiveTargets, true, limit));
         if (context.has("error_code")) return context.toString();
         ObjectNode plan = plans.planFromContext(reader, projectRoot, context, change);
+        ArrayNode memberCallers = memberCallers(reader, canonicalTargets(context), change, limit);
+        if (!memberCallers.isEmpty()) plan.set("member_callers", memberCallers);
         ObjectNode verify = parse(verification.verifyChangeWithContext(
                 reader, projectRoot, effectiveTargets, limit, context, changes,
                 inferred, inferenceTruncated));
@@ -173,6 +175,52 @@ final class ChangeSessionQueries {
         return result.toString();
     }
 
+    private static final java.util.regex.Pattern IDENTIFIER = java.util.regex.Pattern.compile("[A-Za-z_$][\\w$]{2,}");
+    private static final int MAX_NAMED_METHODS = 3;
+
+    /**
+     * Methods of a target class that the change names, with the methods calling them. A plan
+     * lists dependent classes, but callers inside the class itself were never stated: in V24
+     * CQ-049 two of three answers named the three call sites of parse by line only and missed
+     * resolve.
+     */
+    static ArrayNode memberCallers(ReadQueryContext reader, List<String> classes, String change, int limit) {
+        ArrayNode result = JSON.createArrayNode();
+        Set<String> words = new java.util.HashSet<>();
+        IDENTIFIER.matcher(change).results().forEach(match -> words.add(match.group()));
+        SymbolUsageQueries usages = new SymbolUsageQueries();
+        for (String type : classes) {
+            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, type);
+            if (lookup.error() != null) continue;
+            java.util.Map<String, List<String>> named = new java.util.LinkedHashMap<>();
+            for (var member : reader.symbols.findClassMembers(lookup.cls().id())) {
+                String name = member.name();
+                if (member.descriptor() != null && member.descriptor().startsWith("(") && !name.startsWith("<")
+                        && words.contains(name)) named.computeIfAbsent(name, key -> new ArrayList<>()).add(member.descriptor());
+            }
+            for (var entry : named.entrySet()) for (String descriptor : entry.getValue()) {
+                if (result.size() == MAX_NAMED_METHODS) return result;
+                String name = entry.getKey();
+                boolean overloaded = entry.getValue().size() > 1;
+                JsonNode found = parse(usages.findSymbolUsages(reader, lookup.cls().className(), name, "METHOD",
+                        overloaded ? descriptor : null, null, limit, 0));
+                if (found.has("error") || found.has("error_code")) continue;
+                ObjectNode row = result.addObject().put("class", lookup.cls().className()).put("method", name);
+                if (overloaded) row.put("descriptor", descriptor);
+                ArrayNode callers = row.putArray("callers");
+                for (JsonNode usage : found.path("usages")) {
+                    JsonNode caller = usage.path("caller");
+                    ObjectNode site = callers.addObject().put("class", caller.path("class").asText())
+                            .put("method", caller.path("method").asText());
+                    if (usage.has("evidence_lines")) site.set("lines", usage.get("evidence_lines").deepCopy());
+                }
+                copy(found, row, "total");
+                copy(found, row, "has_more");
+            }
+        }
+        return result;
+    }
+
     /** Null for the indexed checkout itself; a missing directory is an argument error. */
     static Path externalCheckout(Path projectRoot, String checkout) {
         if (checkout == null || checkout.isBlank()) return null;
@@ -264,12 +312,12 @@ final class ChangeSessionQueries {
 
     private static ObjectNode fullPlan(ObjectNode plan) {
         return compact(plan, List.of("plan_status", "answer_complete", "primary_changes",
-                "dependency_review", "test_plan", "warnings", "sequence"));
+                "member_callers", "dependency_review", "test_plan", "warnings", "sequence"));
     }
 
     private static ObjectNode summaryPlan(ObjectNode plan) {
         ObjectNode result = compact(plan, List.of(
-                "plan_status", "answer_complete", "warnings", "sequence"));
+                "plan_status", "answer_complete", "member_callers", "warnings", "sequence"));
         var primary = result.putArray("primary_changes");
         for (JsonNode item : plan.path("primary_changes")) {
             primary.add(compact(item, List.of("class", "file", "module", "source_set",

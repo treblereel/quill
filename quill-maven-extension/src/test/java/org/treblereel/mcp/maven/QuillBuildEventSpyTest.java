@@ -110,6 +110,23 @@ class QuillBuildEventSpyTest {
         assertTrue(diagnostics.get(0).contains("Broken.java:[7,3]"));
     }
 
+    /** V22 CQ-049: a failed test run reported 102 "problems", each a JUnit stack frame. */
+    @Test
+    void stackFramesOfAFailedTestRunAreNotCompilerDiagnostics() {
+        var diagnostics = QuillBuildEventSpy.compilerDiagnostics(java.util.List.of("""
+                There are test failures.
+                org.junit.platform.commons.PreconditionViolationException: Could not load class with name: acme.MissingTest
+                \tat org.junit.platform.engine.discovery.ClassSelector.lambda$getJavaClass$0(ClassSelector.java:100)
+                \tat org.junit.platform.commons.function.Try$Failure.getOrThrow(Try.java:379)
+                at acme.Foo.bar(Foo.kt:12)
+                \t... 12 more
+                /workspace/src/test/java/acme/BrokenTest.java:[3,1] class, interface, enum, or record expected
+                """));
+
+        assertEquals(java.util.List.of("/workspace/src/test/java/acme/BrokenTest.java:[3,1] class, interface, enum, or record expected"),
+                diagnostics);
+    }
+
     @Test
     void recognizesInternalQuillMavenInvocation() {
         Properties properties = new Properties();

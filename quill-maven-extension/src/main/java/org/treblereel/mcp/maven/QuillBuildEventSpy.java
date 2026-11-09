@@ -220,6 +220,8 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
             if (message == null) continue;
             message.lines().map(String::strip)
                     .filter(line -> line.matches("(?i).+\\.(java|kt|groovy)(?::|:\\[).*"))
+                    // A stack frame names a source line too; a failed test run printed 102 of them in V22.
+                    .filter(line -> !line.matches("at [\\w$.<>/]+\\(.*\\)"))
                     .limit(200 - diagnostics.size()).forEach(diagnostics::add);
             if (diagnostics.size() >= 200) break;
         }

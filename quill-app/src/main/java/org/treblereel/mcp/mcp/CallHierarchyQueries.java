@@ -98,7 +98,16 @@ final class CallHierarchyQueries {
         String descriptor = null;
         String bytecodeMethod = normalizedMethod;
         KotlinDeclarationRecord kotlinDeclaration = null;
-        if (normalizedMethod != null) {
+        String lambdaDeclarer = null;
+        if (normalizedMethod != null && matchingMembers.isEmpty() && normalizedMethod.startsWith("lambda$")) {
+            // A synthetic lambda body is no declared member, but call evidence names it.
+            descriptor = lambdaDescriptor(reader, cls.id(), normalizedMethod, normalizedSignature);
+            if (descriptor != null) {
+                int end = normalizedMethod.indexOf('$', 7);
+                lambdaDeclarer = end > 7 ? normalizedMethod.substring(7, end) : null;
+            }
+        }
+        if (normalizedMethod != null && lambdaDeclarer == null) {
             if (matchingMembers.size() != 1) {
                 return symbolSelectionError(reader, cls, normalizedMethod,
                         normalizedSignature, matchingMembers.isEmpty() ? candidates : matchingMembers,
@@ -133,6 +142,10 @@ final class CallHierarchyQueries {
         root.put("target", cls.className());
         if (normalizedMethod == null) root.putNull("method");
         else root.put("method", normalizedMethod);
+        if (lambdaDeclarer != null) {
+            root.put("descriptor", descriptor);
+            root.put("lambda_declared_by", lambdaDeclarer);
+        }
         if (selected != null) {
             root.put("signature", selected.signature());
             root.put("descriptor", descriptor);
@@ -354,6 +367,17 @@ final class CallHierarchyQueries {
         node.put("origin", origin);
         if (module == null) node.putNull("module");
         else node.put("module", module);
+    }
+
+    /** The one bytecode descriptor of a synthetic lambda in call evidence, matching a given descriptor if any. */
+    private static String lambdaDescriptor(ReadQueryContext reader, int classId, String method, String signature) {
+        List<String> descriptors = reader.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT from_descriptor FROM method_calls WHERE from_class_id = :id AND from_method = :name
+                UNION SELECT to_descriptor FROM method_calls WHERE to_class_id = :id AND to_method = :name""")
+                .bind("id", classId).bind("name", method).mapTo(String.class).list());
+        List<String> matching = signature == null ? descriptors
+                : descriptors.stream().filter(signature::equals).toList();
+        return matching.size() == 1 ? matching.getFirst() : null;
     }
 
     private static String symbolSelectionError(ReadQueryContext reader, ClassRecord cls,

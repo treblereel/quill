@@ -92,6 +92,26 @@ class EntryPointQueriesTest {
         assertFalse(page.path("entry_points").get(1).has("annotation_values"));
         assertFalse(page.path("entry_points").get(1).path("observer").has("defaults"));
     }
+    /** V21: 51 StartupEvent observers each restated the filter type, the qualifier rule and the defaults (23 KB). */
+    @Test void fullObserverRowsStateOnlyWhatDiffersFromTheRule() throws Exception {
+        var full=new ObjectMapper().readTree(ReadQueryContext.<String>read(fixture(), r -> new EntryPointQueries()
+                .findEntryPoints(r,"observer",null,false,false,20,0,"p.Fixture.Created","full")));
+        JsonNode exact=null,parent=null;
+        for(var row:full.path("entry_points")){
+            if(row.path("method").asText().equals("exact"))exact=row;
+            if(row.path("method").asText().equals("parent"))parent=row;
+        }
+        var plain=parent.path("observer");
+        assertFalse(plain.has("qualifier_rule") || plain.has("observed_parameter_annotations") || plain.has("defaults"),plain.toString());
+        assertFalse(plain.has("during") || plain.has("notify_observer") || plain.has("asynchronous"),plain.toString());
+        assertEquals("p.Base<java.lang.String>",plain.path("event_type").asText(),"A supertype observer names what it observes");
+        var qualified=exact.path("observer");
+        assertFalse(qualified.has("event_type"),"The filter already names it");
+        assertEquals("AFTER_SUCCESS",qualified.path("during").asText());
+        assertTrue(qualified.path("qualifier_rule").asText().contains("every observed qualifier"),qualified.toString());
+        assertTrue(full.path("observer_semantics").asText().contains("IN_PROGRESS"),full.toString());
+        assertEquals(1,full.path("limitations").size());
+    }
     @Test void oversizedSingleRowHasExplicitFullDetailRecovery() throws Exception {
         var db=fixture();
         db.useHandle(h -> {

@@ -174,15 +174,12 @@ final class EntryPointQueries {
             if (count > 0) counts.put(supportedKind, count);
         }
         root.set("counts_by_kind", JSON.valueToTree(counts));
-        ArrayNode limitations = root.putArray("limitations");
-        limitations.add("Only compiled signatures, indexed annotations, type hierarchy, and project-local META-INF/services descriptors are analyzed");
-        limitations.add("XML, YAML, programmatic route registration, build extensions, reflection, and external deployment descriptors may define additional entry points");
-        limitations.add("Annotation evidence contains indexed values; resolved defaults, when available, are marked by $defaults, or by observer.defaults for observer settings");
-        limitations.add("Composed method annotations are reported only when their concrete annotation type is one of the supported framework entry-point annotations");
+        root.putArray("limitations").add("Compiled signatures, indexed annotations, type hierarchy and project META-INF/services only; "
+                + "XML, YAML, programmatic registration, build extensions and reflection may add entry points");
 
         ArrayNode values = root.putArray("entry_points");
         if (normalizedKind == null || normalizedKind.equals("observer")) {
-            root.put("observer_semantics", "No observed qualifiers means any qualifiers are accepted; otherwise every observed qualifier must match. Non-qualifier parameter annotations are ignored. @Observes is synchronous; @ObservesAsync is asynchronous. Transaction phase does not prove actual delivery.");
+            root.put("observer_semantics", "No observed qualifiers means any qualifiers are accepted; otherwise every observed qualifier must match. Non-qualifier parameter annotations are ignored. @Observes is synchronous; @ObservesAsync is asynchronous. Transaction phase does not prove actual delivery. A row states during, notify_observer, asynchronous and qualifier_rule only when they differ from IN_PROGRESS, ALWAYS, synchronous and no qualifiers, and event_type only when it is not the requested type.");
             if (summary) root.put("full_detail_available", true);
         }
         Set<Integer> countedClasses = new HashSet<>();
@@ -205,6 +202,7 @@ final class EntryPointQueries {
             node.set("annotations", JSON.valueToTree(candidate.annotations()));
             if (candidate.detail() != null) node.set("service", candidate.detail());
             if (candidate.member() != null) appendAnnotationEvidence(node, candidate);
+            if (node.get("observer") instanceof ObjectNode observer) statedByRule(observer, eventType);
             if (eventFilter != null) node.put("type_match", eventFilter.match(observedType(candidate)).name().toLowerCase(Locale.ROOT));
             if (cls.sourceFile() == null) node.putNull("source");
             else node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
@@ -239,6 +237,19 @@ final class EntryPointQueries {
         }
         appendMeta(root, reader, naiveTokens);
         return root.toString();
+    }
+
+    /** What observer_semantics already states for every row is left out of the row. */
+    private static void statedByRule(ObjectNode observer, String requestedType) {
+        if (observer.path("observed_parameter_annotations").isEmpty()) {
+            observer.remove(List.of("observed_parameter_annotations", "qualifier_rule"));
+        }
+        if (!observer.path("asynchronous").asBoolean()) observer.remove("asynchronous");
+        if ("IN_PROGRESS".equals(observer.path("during").asText())) observer.remove("during");
+        if ("ALWAYS".equals(observer.path("notify_observer").asText())) observer.remove("notify_observer");
+        observer.remove("defaults");
+        if (requestedType != null && requestedType.replace('$', '.').equals(observer.path("event_type").asText().replace('$', '.')))
+            observer.remove("event_type");
     }
 
     private static void addClassAnnotationEntry(Map<EntryKey, Candidate> entries,

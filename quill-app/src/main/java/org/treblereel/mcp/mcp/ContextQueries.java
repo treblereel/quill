@@ -85,6 +85,7 @@ final class ContextQueries {
                     method.put("answer_complete",method.path("source_complete").asBoolean() && !calls.has("error_code")
                             && !calls.has("error") && !calls.path("has_more").asBoolean() && !calls.path("traversal_truncated").asBoolean()
                             && method.path("test_impact").path("answer_complete").asBoolean());
+                    embeddedRestatements(method);
                 }
                 if (!resolvedNames.contains(cls.className())) resolvedNames.add(cls.className());
                 continue;
@@ -121,6 +122,7 @@ final class ContextQueries {
             ObjectNode risk = parse(risks.getRisk(reader, cls.className()));
             context.set("risk", compact(risk, List.of(
                     "risk_score", "risk_level", "signals", "recommendation")));
+            classRestatements(context);
         }
 
         if(view.equals("full"))root.set("direct_callee_comparison",DirectCalleeComparison.compare(contexts));
@@ -187,5 +189,52 @@ final class ContextQueries {
     private static void putNullable(ObjectNode node, String field, String value) {
         if (value == null) node.putNull(field);
         else node.put(field, value);
+    }
+
+    /** What an embedded tool answer restates about the method context it sits in, or about its own defaults. */
+    private static final java.util.Set<String> RESTATED=java.util.Set.of("target","name","method","descriptor","signature",
+            "jvm_name","jvm_descriptor","source_name","language","member_kind","location","evidence_defaults","limitations",
+            "usage_scope","declaration_lookup","test_ranking_scope");
+    private static final java.util.Map<String,String> SECTION_DEFAULTS=java.util.Map.of("direct_only","true","transitive","false",
+            "max_depth","1","scope","all","suppressed_call_count","0","traversal_truncated","false","declared_method_match_count","1",
+            "declared_method_found","true","module",".","source_set","main");
+
+    /** V21 method contexts repeated the method's identity and each tool's bookkeeping in every section. */
+    private static void embeddedRestatements(ObjectNode method){
+        for(String section:List.of("outgoing_calls","injection_points","test_impact")){
+            if(!(method.get(section) instanceof ObjectNode node) || node.has("error_code") || node.has("error"))continue;
+            node.remove(RESTATED);node.remove("traversal_edge_cap");
+            SECTION_DEFAULTS.forEach((field,value)->{if(node.has(field) && node.get(field).asText().equals(value))node.remove(field);});
+            if(node.get("selected_method_references") instanceof ObjectNode references)references.remove(RESTATED);
+            for(JsonNode point:node.path("injection_points"))
+                if(point instanceof ObjectNode object)object.remove(List.of("resolution_trace","limitations"));
+        }
+    }
+
+    private static final java.util.Map<String,String> LOCATION_DEFAULTS=java.util.Map.of("origin","source","lifecycle","current",
+            "module",".","source_set","main");
+    private static final java.util.Set<String> COVERAGE_ANSWER=java.util.Set.of("scan_complete","page_complete","incomplete_reasons");
+
+    /** V21 class contexts restated their resolution in the symbol, each usage's file and kind twice, and index bookkeeping. */
+    static void classRestatements(ObjectNode context){
+        if(context.get("resolution") instanceof ObjectNode resolution)
+            LOCATION_DEFAULTS.forEach((field,value)->{if(value.equals(resolution.path(field).asText(null)))resolution.remove(field);});
+        if(context.get("symbol") instanceof ObjectNode symbol){
+            symbol.remove(List.of("language","source_name","origin","lifecycle","module","source_set","meta_annotations"));
+            if(symbol.path("jvm_name").equals(symbol.path("class")))symbol.remove("jvm_name");
+            if(symbol.path("interfaces").isEmpty())symbol.remove("interfaces");
+            if(symbol.path("direct_implementations").isEmpty())
+                symbol.remove(List.of("direct_implementations","direct_implementation_count","direct_implementations_truncated"));
+        }
+        if(context.get("usages") instanceof ObjectNode usages){
+            for(JsonNode usage:usages.path("usages"))if(usage instanceof ObjectNode row){
+                row.remove("indexed_kind");
+                if(row.path("evidence_file").equals(row.path("source")))row.remove("evidence_file");
+            }
+            if(usages.get("coverage") instanceof ObjectNode coverage){
+                coverage.retain(COVERAGE_ANSWER);
+                if(coverage.path("incomplete_reasons").isEmpty())coverage.remove("incomplete_reasons");
+            }
+        }
     }
 }

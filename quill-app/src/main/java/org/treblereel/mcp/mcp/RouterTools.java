@@ -50,6 +50,12 @@ final class RouterTools {
             @ToolArg(description = "Maximum matches; default 5, max 30") Optional<Integer> limit) {
         try (DebugTrace.Trace trace = DebugTrace.start("router_search")) {
             String guessed = query.strip().toLowerCase();
+            if (COMMAND_SCOPES.contains(guessed)) {
+                ObjectNode result = JSON.createObjectNode().put("query", query).put("total", 0).put("showing", 0);
+                result.putObject("guidance").put("note", commandScopeNote(guessed));
+                result.putArray("tools");
+                return result.toString();
+            }
             if (NOT_TOOLS.contains(guessed)) {
                 ObjectNode result = JSON.createObjectNode().put("query", query).put("total", 0).put("showing", 0);
                 result.putObject("guidance").put("note", "Quill has no reindex tool: it refreshes the index itself "
@@ -117,6 +123,10 @@ final class RouterTools {
             if (method == null) {
                 trace.event("tool_rejected", Map.of("tool", name, "reason", "unknown_tool"));
                 String alias = ALIASES.get(name == null ? "" : name.strip().toLowerCase());
+                if (alias == null && name != null && COMMAND_SCOPES.contains(name.strip().toLowerCase())) {
+                    return JSON.createObjectNode().put("error", "Unknown tool: " + name)
+                            .put("note", commandScopeNote(name.strip().toLowerCase())).toString();
+                }
                 if (alias == null) return error("Unknown tool: " + name);
                 ObjectNode result = JSON.createObjectNode().put("error", "Unknown tool: " + name).put("did_you_mean", alias);
                 if (ALIAS_ARGUMENTS.containsKey(name.strip().toLowerCase()))
@@ -142,6 +152,14 @@ final class RouterTools {
             }
             return error(invocation.text());
         }
+    }
+
+    /** Scopes of recommended build commands; V23 CQ-049 Claude called execute_tool("quick_compile"). */
+    private static final java.util.Set<String> COMMAND_SCOPES = java.util.Set.of("quick_compile", "focused", "module_fallback");
+
+    private static String commandScopeNote(String scope) {
+        return scope + " is the scope of a command in change_session's verification_plan.commands, not a tool:"
+                + " run that command's argv from verification_plan.working_directory in your shell. Quill never runs builds.";
     }
 
     /** Names agents guessed in recorded runs; each search costs a model turn, so map them to the tool that answers. */

@@ -616,6 +616,14 @@ class McpToolCatalogTest {
         }
         JsonNode unknown = json.readTree(router.execute_tool("list_observers", Map.of()));
         assertEquals("find_entry_points", unknown.path("did_you_mean").asText(), unknown::toString);
+        // V23 CQ-049: Claude called execute_tool("quick_compile"), the scope of a recommended command.
+        for (String scope : List.of("quick_compile", "focused", "module_fallback")) {
+            JsonNode called = json.readTree(router.execute_tool(scope, Map.of()));
+            String note = called.path("note").asText();
+            assertTrue(note.contains("verification_plan") && note.contains("argv") && note.contains("shell"), called::toString);
+            JsonNode searched = json.readTree(router.search_tools(scope, Optional.of(1)));
+            assertTrue(searched.path("guidance").path("note").asText().contains("argv"), searched::toString);
+        }
     }
 
     @Test

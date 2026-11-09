@@ -300,7 +300,7 @@ public final class QuillTools {
                 context, p.root(), targets.orElse(List.of()), change, requestedLimit,
                 detail.orElse("summary"), view.orElse("auto")));
         return changeSessionRepeats.elide(
-                ChangeSessionRepeats.key(project.orElse(""), targets.orElse(List.of()), requestedLimit), answer);
+                ChangeSessionRepeats.key(project.orElse(""), requestedLimit), answer);
     }
 
     @Tool(readOnly = true, structured = true, description = "Rank tests; exact method refs.")

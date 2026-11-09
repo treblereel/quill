@@ -39,8 +39,13 @@ final class ChangeSessionRepeats {
         @Override protected boolean removeEldestEntry(Map.Entry<String, ObjectNode> eldest) { return size() > MAX_KEYS; }
     };
 
-    static String key(String project, List<String> targets, int limit) {
-        return project + "|" + targets.stream().sorted().toList() + "|" + limit;
+    /**
+     * Targets are not part of the key: only values equal to the previous answer are elided, so a
+     * changed target list is stated and the rest still is not. In V23 CQ-049 Codex added its new
+     * test file to the targets and got the whole 22 KB answer again.
+     */
+    static String key(String project, int limit) {
+        return project + "|" + limit;
     }
 
     synchronized String elide(String key, String response) {

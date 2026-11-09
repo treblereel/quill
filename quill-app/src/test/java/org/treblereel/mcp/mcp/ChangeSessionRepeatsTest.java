@@ -47,10 +47,10 @@ class ChangeSessionRepeatsTest {
     }
 
     @Test
-    void otherTargetsAndErrorsGetTheWholeAnswer() throws Exception {
+    void anotherProjectAndErrorsGetTheWholeAnswer() throws Exception {
         var repeats = new ChangeSessionRepeats();
-        repeats.elide("k", snapshot("a", "r1").toString());
-        assertTrue(repeats.elide("other", snapshot("a", "r1").toString()).contains("v".repeat(2000)));
+        repeats.elide(ChangeSessionRepeats.key("a", 20), snapshot("a", "r1").toString());
+        assertTrue(repeats.elide(ChangeSessionRepeats.key("b", 20), snapshot("a", "r1").toString()).contains("v".repeat(2000)));
         assertTrue(repeats.elide("k", "{\"error_code\":\"X\"}").contains("error_code"));
     }
 
@@ -95,14 +95,28 @@ class ChangeSessionRepeatsTest {
         ObjectNode plan = snapshot("a", "r1");
         plan.remove(List.of("verification", "verification_receipt"));
         plan.putObject("plan").put("tests", "t".repeat(3000));
-        repeats.elide(ChangeSessionRepeats.key("", List.of("p.A"), 20), plan.toString());
+        repeats.elide(ChangeSessionRepeats.key("", 20), plan.toString());
 
         ObjectNode verification = snapshot("a", "r1");
         verification.putObject("plan").put("tests", "t".repeat(3000));
-        var answer = JSON.readTree(repeats.elide(ChangeSessionRepeats.key("", List.of("p.A"), 20), verification.toString()));
+        var answer = JSON.readTree(repeats.elide(ChangeSessionRepeats.key("", 20), verification.toString()));
         assertTrue(answer.path("verification").path("evidence").asText().length() == 2000, "Sections the first view lacked are whole");
         assertFalse(answer.has("plan"), answer.toString());
         assertTrue(answer.path("unchanged_since_previous_call").toString().contains("plan"), answer.toString());
+    }
+
+    /** V23 CQ-049: Codex added the new test file to its targets on the second call and got all 22 KB again. */
+    @Test
+    void aRepeatWithOneMoreTargetStatesOnlyWhatChanged() throws Exception {
+        var repeats = new ChangeSessionRepeats();
+        ObjectNode first = snapshot("rename parse", "r1");
+        first.putArray("targets").add("p.Mapper");
+        repeats.elide(ChangeSessionRepeats.key("", 20), first.toString());
+        ObjectNode second = snapshot("renamed parse; test added", "r1");
+        second.putArray("targets").add("p.Mapper").add("src/test/java/p/MapperValueTest.java");
+        var answer = JSON.readTree(repeats.elide(ChangeSessionRepeats.key("", 20), second.toString()));
+        assertEquals(2, answer.path("targets").size(), "What changed is stated: " + answer);
+        assertFalse(answer.path("verification").has("evidence"), answer.toString());
     }
 
     /** V21: the plan restated next_actions as plan.sequence and each primary change inside the directive. */

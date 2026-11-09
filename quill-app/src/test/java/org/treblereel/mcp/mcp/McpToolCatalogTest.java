@@ -918,6 +918,11 @@ class McpToolCatalogTest {
         }
     }
 
+    private static JsonNode stated(StatedLimitations stated, JsonNode expected, String tool) throws Exception {
+        if ("execute_tool".equals(tool)) return expected;
+        return new com.fasterxml.jackson.databind.ObjectMapper().readTree(stated.stateOnce(expected.toString()));
+    }
+
     private static JsonNode compacted(JsonNode expected, String tool) throws Exception {
         if ("execute_tool".equals(tool)) return expected;
         return new com.fasterxml.jackson.databind.ObjectMapper().readTree(ResponseCompaction.apply(expected.toString(), tool, Map.of()));
@@ -945,6 +950,8 @@ class McpToolCatalogTest {
     void nativeGraphSerializationPoolsOnlyGraphResultsAndRoutedGraphs() throws Exception {
         var catalog = McpToolCatalog.create(new GraphTools(), GraphTools.class, workers, responses,
                 Duration.ofSeconds(2));
+        // The server states each caveat once, so expectations pass through the same record in call order.
+        var stated = new StatedLimitations();
         for (var specification : catalog) {
             String name = specification.tool().name();
             var arguments = "execute_tool".equals(name)
@@ -953,10 +960,10 @@ class McpToolCatalogTest {
                     new McpSchema.CallToolRequest(name, arguments, Map.of())).block(Duration.ofSeconds(3));
             JsonNode data = (JsonNode) result.structuredContent();
             assertFalse(Boolean.TRUE.equals(result.isError()));
-            if ("other_query".equals(name)) assertEquals(compacted(GraphMetadataTest.graph(), name), data);
+            if ("other_query".equals(name)) assertEquals(stated(stated, compacted(GraphMetadataTest.graph(), name), name), data);
             else {
                 assertTrue(data.has("shared_metadata"));
-                assertEquals(compacted("get_context".equals(name) ? new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().set("context",GraphMetadataTest.graph()) : GraphMetadataTest.graph(), name), GraphMetadataTest.expand(data.toString()));
+                assertEquals(stated(stated, compacted("get_context".equals(name) ? new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().set("context",GraphMetadataTest.graph()) : GraphMetadataTest.graph(), name), name), GraphMetadataTest.expand(data.toString()));
             }
         }
     }

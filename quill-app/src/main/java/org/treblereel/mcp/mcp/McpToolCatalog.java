@@ -403,7 +403,11 @@ final class McpToolCatalog {
                     evidenceDetail.equals("full"), evidenceOffset);
             if (method.getAnnotation(Tool.class).structured()) {
                 // A routed call was compacted under its own tool name by the nested invocation.
-                if (!"execute_tool".equals(method.getName())) text = ResponseCompaction.apply(text, method.getName(), args);
+                if (!"execute_tool".equals(method.getName())) {
+                    text = ResponseCompaction.apply(text, method.getName(), args);
+                    if (!"full".equals(args.get("detail")) && !"full".equals(args.get("evidence_detail")))
+                        text = StatedLimitations.of(tools).stateOnce(text);
+                }
                 text = ResponseBudget.apply(text, method.getName(), args);
             }
             return new Invocation(text, isToolError(text));

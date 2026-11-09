@@ -178,6 +178,51 @@ class MethodPrefetchRelationsTest {
                 List.of(binding));
     }
 
+    /** V21: Codex made 86 dependency-jar lookups to learn how Quarkus runs a scheduled or transactional method. */
+    @Test
+    void frameworkAnnotationsCarryTheirDocumentedContractAndTheApplicationsSettings() throws Exception {
+        String runtime = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) ";
+        var db = JavaEvidenceFixture.index(root, java.util.Map.of(
+                "src/main/java/io/quarkus/scheduler/Scheduled.java",
+                "package io.quarkus.scheduler; " + runtime + "public @interface Scheduled { String every() default \"\"; }",
+                "src/main/java/jakarta/transaction/Transactional.java",
+                "package jakarta.transaction; " + runtime + "public @interface Transactional {}",
+                "src/main/java/jakarta/enterprise/event/Observes.java",
+                "package jakarta.enterprise.event; " + runtime + "public @interface Observes {}",
+                "src/main/java/io/quarkus/runtime/StartupEvent.java", "package io.quarkus.runtime; public class StartupEvent {}",
+                "src/main/resources/application.properties", "quarkus.scheduler.start-mode=forced\n%prod.app.ping=30s\n",
+                "src/main/java/p/Fixture.java", """
+                        package p;
+                        class Fixture {
+                            @io.quarkus.scheduler.Scheduled(every = "${app.ping:20s}")
+                            void ping() {}
+                            @jakarta.transaction.Transactional
+                            void onStart(@jakarta.enterprise.event.Observes io.quarkus.runtime.StartupEvent event) {}
+                            void plain() {}
+                        }
+                        """));
+        ObjectNode ping = JSON.createObjectNode().put("class", "p.Fixture").put("name", "ping").put("descriptor", "()V");
+        ObjectNode start = JSON.createObjectNode().put("class", "p.Fixture").put("name", "onStart")
+                .put("descriptor", "(Lio/quarkus/runtime/StartupEvent;)V");
+        ObjectNode plain = JSON.createObjectNode().put("class", "p.Fixture").put("name", "plain").put("descriptor", "()V");
+        TestReads.read(db, reader -> {
+            MethodPrefetchRelations.append(reader, ping); MethodPrefetchRelations.append(reader, start);
+            MethodPrefetchRelations.append(reader, plain); return null;
+        });
+
+        String scheduled = ping.path("framework_contract").toString();
+        assertTrue(scheduled.contains("off or disabled"), scheduled);
+        assertTrue(scheduled.contains("quarkus.scheduler.enabled: not declared; framework default true"), scheduled);
+        assertTrue(scheduled.contains("quarkus.scheduler.start-mode=forced src/main/resources/application.properties:1"), scheduled);
+        assertTrue(scheduled.contains("%prod.app.ping=30s src/main/resources/application.properties:2"), scheduled);
+        assertTrue(scheduled.contains("app.ping: no unprofiled declaration; expression default 20s"), scheduled);
+        String observer = start.path("framework_contract").toString();
+        assertTrue(observer.contains("StartupEvent"), observer);
+        assertTrue(observer.contains("checked exception commits"), observer);
+        assertTrue(observer.contains("lambdas included"), observer);
+        assertFalse(plain.has("framework_contract"), plain.toString());
+    }
+
     @Test
     void impactCallersBecomeOneLinePerClassAndCoverageKeepsItsVerdict() {
         ObjectNode fact = JSON.createObjectNode();

@@ -74,6 +74,7 @@ final class MethodPrefetchRelations {
                 .bind("name", owner).mapTo(Integer.class).findOne().orElse(null));
         if (classId == null) return;
         annotations(db, fact, classId, name, descriptor);
+        FrameworkContracts.append(db, fact, classId, name, descriptor);
         interceptors(db, fact, classId, name, descriptor);
         callees(db, root, fact, classId, name, descriptor);
         producer(db, fact, classId, name);

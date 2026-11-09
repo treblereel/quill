@@ -28,8 +28,8 @@ class PrefetchLifecycleTest {
         assertEquals("quill.prefetch",context.path("producer").asText());
         assertEquals("ready",context.path("status").asText());
         assertTrue(context.path("instructions").asText().contains("missing, stale, ambiguous or truncated"));
-        assertTrue(context.path("instructions").asText().contains("do not prove runtime values"));
-        assertTrue(context.path("instructions").asText().contains("static Quill query cannot establish"));
+        assertTrue(context.path("instructions").asText().contains("do not prove deployed values"));
+        assertTrue(context.path("instructions").asText().contains("dependency jars do not add to"));
         assertEquals("",hook("UserPromptSubmit","one"));
         assertTrue(hook("UserPromptSubmit","two").contains("additionalContext"));
         assertEquals("",hook("SessionStart","one"));

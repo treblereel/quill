@@ -75,6 +75,8 @@ final class ContextQueries {
                 var context=contexts.addObject().put("requested_target",target);
                 context.set("method_context",method);
                 if(method.hasNonNull("descriptor") && method.hasNonNull("name")) {
+                    try {FrameworkContracts.append(reader,method,cls.id(),method.path("name").asText(),method.path("descriptor").asText());}
+                    catch(Exception failure){throw new IllegalStateException("Cannot read framework contract",failure);}
                     method.set("outgoing_calls",parse(new CallHierarchyQueries().getCallHierarchy(reader,cls.className(),
                             method.path("name").asText(),method.path("descriptor").asText(),"outbound",false,1,limit,0)));
                     method.set("injection_points",parse(new StructureToolQueries().getInjectionPoints(reader,cls.className())));

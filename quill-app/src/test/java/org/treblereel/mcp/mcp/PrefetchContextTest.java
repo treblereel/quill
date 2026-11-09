@@ -56,6 +56,18 @@ class PrefetchContextTest {
         assertEquals(1300,packet.path("facts").get(0).path("selected_method_source").path("source").asText().length(),packet.toString());
         assertTrue(packet.path("context_truncated").asBoolean());
     }
+    /** Replay of V21 CQ-027: the transaction contract was cut while index navigation stayed. */
+    @Test void theFrameworkContractGoesLastLikeTheBody() {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var packet=json.createObjectNode();
+        var fact=packet.putArray("facts").addObject().put("kind","direct_method_impact").put("target","a.B#m");
+        fact.putObject("framework_contract").put("rules","r".repeat(1000));
+        fact.putObject("dependency_interceptors").put("text","i".repeat(1500));
+        fact.put("padding","p".repeat(2700));
+        PrefetchContext.boundContext(packet);
+        assertTrue(packet.toString().length()<=PrefetchContext.CONTEXT_LIMIT_BYTES,packet.toString());
+        assertEquals(1000,packet.path("facts").get(0).path("framework_contract").path("rules").asText().length(),packet.toString());
+    }
     @Test void theBodyStillYieldsBeforeTheWholeFactIsDropped() {
         var json=new com.fasterxml.jackson.databind.ObjectMapper();
         var packet=json.createObjectNode();

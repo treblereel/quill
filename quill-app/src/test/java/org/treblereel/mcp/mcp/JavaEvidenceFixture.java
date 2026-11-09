@@ -32,7 +32,7 @@ final class JavaEvidenceFixture {
     }
     static Jdbi index(Path root, Map<String,String> sources) throws Exception {
         List<Path> sourceFiles=new ArrayList<>();
-        for(var entry:sources.entrySet()){Path file=root.resolve(entry.getKey());Files.createDirectories(file.getParent());Files.writeString(file,entry.getValue());sourceFiles.add(file);}
+        for(var entry:sources.entrySet()){Path file=root.resolve(entry.getKey());Files.createDirectories(file.getParent());Files.writeString(file,entry.getValue());if(file.toString().endsWith(".java"))sourceFiles.add(file);}
         var roots=List.of(root.resolve("src/main/java"),root.resolve("src/test/java")).stream().filter(Files::isDirectory).toList();
         Files.writeString(root.resolve("pom.xml"),"<project><modelVersion>4.0.0</modelVersion><groupId>fixture</groupId><artifactId>fixture</artifactId><version>1</version></project>");
         Files.writeString(root.resolve(".gitignore"),"target/\nindex.db*\n");

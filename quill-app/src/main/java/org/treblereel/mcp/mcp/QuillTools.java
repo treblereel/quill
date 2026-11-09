@@ -284,6 +284,8 @@ public final class QuillTools {
                 context, p.root(), targets.orElse(List.of()), requestedLimit));
     }
 
+    private final ChangeSessionRepeats changeSessionRepeats = new ChangeSessionRepeats();
+
     @Tool(readOnly = true, structured = true,
             description = "Plan a code change before editing, or check next steps after edits/builds. Returns a stateless snapshot: primary action, evidence gaps, phase gate, verification receipt; never runs builds.")
     public String change_session(
@@ -294,9 +296,12 @@ public final class QuillTools {
             @ToolArg(description = "Evidence per section; default 20, max 100") Optional<Integer> limit,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         int requestedLimit = clamp(limit.orElse(20), 1, 100);
-        return forGraphProjects(project.orElse(null), (p, context) -> queries.changeSession(
+        String answer = forGraphProjects(project.orElse(null), (p, context) -> queries.changeSession(
                 context, p.root(), targets.orElse(List.of()), change, requestedLimit,
                 detail.orElse("summary"), view.orElse("auto")));
+        String key = project.orElse("") + "|" + targets.orElse(List.of()).stream().sorted().toList() + "|"
+                + view.orElse("auto") + "|" + requestedLimit;
+        return changeSessionRepeats.elide(key, answer, "full".equals(detail.orElse("summary")));
     }
 
     @Tool(readOnly = true, structured = true, description = "Rank tests; exact method refs.")

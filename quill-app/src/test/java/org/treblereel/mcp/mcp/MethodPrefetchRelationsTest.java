@@ -178,6 +178,31 @@ class MethodPrefetchRelationsTest {
                 List.of(binding));
     }
 
+    /** V21 CQ-033: with pingClients' body in hand, agents still opened the file for sessions, PING_MSG and onOpen. */
+    @Test
+    void methodFactNamesTheFieldsItsBodyUsesAndWhoElseTouchesThem() throws Exception {
+        var db = JavaEvidenceFixture.index(root, """
+                package p;
+                class Fixture {
+                    private static final String PING = "ping";
+                    private final java.util.Set<String> sessions = new java.util.HashSet<>();
+                    private int unrelated;
+                    void ping() { sessions.forEach(session -> System.out.println(session + PING)); }
+                    void open(String s) { sessions.add(s); }
+                    void close(String s) { sessions.remove(s); }
+                    void other() { unrelated++; }
+                }
+                """);
+        ObjectNode fact = JSON.createObjectNode().put("class", "p.Fixture").put("name", "ping").put("descriptor", "()V");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, fact); return null; });
+
+        List<String> members = fact.path("referenced_members").valueStream().map(JsonNode::asText).toList();
+        String sessions = members.stream().filter(line -> line.startsWith("sessions:")).findFirst().orElse("");
+        assertTrue(sessions.contains("java.util.Set<java.lang.String>") && sessions.contains("private final"), members.toString());
+        assertTrue(sessions.contains("also used by <init>, close, open"), members.toString());
+        assertTrue(members.stream().noneMatch(line -> line.startsWith("unrelated")), members.toString());
+    }
+
     /** V21: Codex made 86 dependency-jar lookups to learn how Quarkus runs a scheduled or transactional method. */
     @Test
     void frameworkAnnotationsCarryTheirDocumentedContractAndTheApplicationsSettings() throws Exception {

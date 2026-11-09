@@ -60,7 +60,7 @@ public final class PrefetchContext {
                 if(!hash.equals(SourceFileHashes.hash(file))){missing.addObject().put("status","inputs_changed");continue;}
                 impact.remove("_meta");MethodPrefetchRelations.compactImpact(impact);MethodPrefetchRelations.append(db,root,impact);impact.put("source_sha256",hash);selected.add(impact);
             }while(method.find());
-            return result.put("status","ready");
+            return restated(result).put("status","ready");
         }
         Map<String,List<ClassRecord>> names=new HashMap<>();
         for(var cls:db.symbols.findAllClasses()) if("current".equals(cls.lifecycle()) && !"orphan_output".equals(cls.origin())) {
@@ -115,7 +115,11 @@ public final class PrefetchContext {
         if(facts.isEmpty() && ambiguous.isEmpty() && unavailable.isEmpty() && previousEndpoint!=null)
             return EndpointPrefetch.collect(db,root,previousEndpoint,deliveredCurrentIndex);
         result.put("index_id",metadata.getOrDefault("index_id","unknown"));
-        return result.put("status","ready");
+        return restated(result).put("status","ready");
+    }
+    private static ObjectNode restated(ObjectNode result){
+        for(JsonNode fact:result.path("facts"))if(fact instanceof ObjectNode object)PrefetchRestatements.strip(object);
+        return result;
     }
     /** The injection point a field target names, with its owner's bean, or why there is none. */
     private static JsonNode injectionPointFact(ReadQueryContext db,String owner,String name,ArrayNode missing) throws Exception {

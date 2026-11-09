@@ -75,6 +75,7 @@ final class MethodPrefetchRelations {
         if (classId == null) return;
         annotations(db, fact, classId, name, descriptor);
         FrameworkContracts.append(db, fact, classId, name, descriptor);
+        referencedMembers(db, fact, classId, name, descriptor);
         interceptors(db, fact, classId, name, descriptor);
         callees(db, root, fact, classId, name, descriptor);
         producer(db, fact, classId, name);
@@ -97,6 +98,51 @@ final class MethodPrefetchRelations {
                     .put("source_end_line", source.path("declaration").path("source_end_line").asInt())
                     .put("source", source.path("source").asText());
         }
+    }
+
+    private static final int MEMBER_LIMIT = 8;
+    private static final int USER_LIMIT = 6;
+
+    /**
+     * Fields of the method's own class that its body or its lambdas use, with their declared type and
+     * the class's other methods that touch them. With the body alone, recorded agents still opened the
+     * file for exactly these declarations.
+     */
+    private static void referencedMembers(ReadQueryContext db, ObjectNode fact, int classId, String name, String descriptor) {
+        var rows = db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT from_method, from_descriptor, field_name FROM field_accesses
+                WHERE from_class_id = :id AND to_class_id = :id""").bind("id", classId).mapToMap().list());
+        Set<String> used = new LinkedHashSet<>();
+        Map<String, java.util.TreeSet<String>> users = new java.util.LinkedHashMap<>();
+        for (var row : rows) {
+            String method = String.valueOf(row.get("from_method")), field = String.valueOf(row.get("field_name"));
+            String declarer = method.startsWith("lambda$") && method.indexOf('$', 7) > 7 ? method.substring(7, method.indexOf('$', 7)) : method;
+            boolean selected = declarer.equals(name) && (method.startsWith("lambda$") || descriptor.equals(row.get("from_descriptor")));
+            if (selected) used.add(field);
+            else users.computeIfAbsent(field, key -> new java.util.TreeSet<>()).add(declarer);
+        }
+        if (used.isEmpty()) return;
+        ArrayNode lines = JSON.createArrayNode();
+        for (String field : used.stream().limit(MEMBER_LIMIT).toList()) {
+            var member = db.jdbi().withHandle(handle -> handle.createQuery("""
+                    SELECT type_name, modifiers, annotations FROM class_members
+                    WHERE class_id = :id AND kind = 'FIELD' AND name = :name""")
+                    .bind("id", classId).bind("name", field).mapToMap().findOne().orElse(null));
+            if (member == null) continue;
+            StringBuilder line = new StringBuilder(field).append(": ").append(member.get("type_name"));
+            String modifiers = String.valueOf(member.get("modifiers"));
+            if (!modifiers.isBlank()) line.append(' ').append(modifiers);
+            try {
+                for (JsonNode annotation : JSON.readTree(String.valueOf(member.get("annotations")))) line.append(" @").append(annotation.asText());
+            } catch (Exception unreadable) {
+                // Annotations are a convenience here; the type and users still stand.
+            }
+            var others = users.getOrDefault(field, new java.util.TreeSet<>());
+            if (!others.isEmpty()) line.append("; also used by ").append(String.join(", ", others.stream().limit(USER_LIMIT).toList()))
+                    .append(others.size() > USER_LIMIT ? " and " + (others.size() - USER_LIMIT) + " more" : "");
+            lines.add(line.toString());
+        }
+        if (!lines.isEmpty()) fact.set("referenced_members", lines);
     }
 
     /** Chars of the selected body; the prefetch packet as a whole is bounded separately. */

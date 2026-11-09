@@ -112,6 +112,7 @@ final class ChangeSessionQueries {
                 : phaseActions(currentPhase, verify.path("next_actions")));
         result.set("next_actions", actions);
         result.set("directive", directive(currentPhase, actions, plan, verify));
+        AffectedTestRows.compactIn(result);
         copy(verify, result, "_meta");
         var omitted = result.putArray("omitted_sections");
         if (!includePlan) omitted.add("plan");

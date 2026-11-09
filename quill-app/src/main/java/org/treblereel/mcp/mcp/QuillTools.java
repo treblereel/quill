@@ -299,9 +299,8 @@ public final class QuillTools {
         String answer = forGraphProjects(project.orElse(null), (p, context) -> queries.changeSession(
                 context, p.root(), targets.orElse(List.of()), change, requestedLimit,
                 detail.orElse("summary"), view.orElse("auto")));
-        String key = project.orElse("") + "|" + targets.orElse(List.of()).stream().sorted().toList() + "|"
-                + view.orElse("auto") + "|" + requestedLimit;
-        return changeSessionRepeats.elide(key, answer, "full".equals(detail.orElse("summary")));
+        return changeSessionRepeats.elide(
+                ChangeSessionRepeats.key(project.orElse(""), targets.orElse(List.of()), requestedLimit), answer);
     }
 
     @Tool(readOnly = true, structured = true, description = "Rank tests; exact method refs.")

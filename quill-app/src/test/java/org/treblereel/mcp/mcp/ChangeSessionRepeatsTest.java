@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class ChangeSessionRepeatsTest {
@@ -28,10 +29,10 @@ class ChangeSessionRepeatsTest {
     @Test
     void aRepeatStatesOnlyWhatChanged() throws Exception {
         var repeats = new ChangeSessionRepeats();
-        String first = repeats.elide("k", snapshot("rename parse", "r1").toString(), false);
+        String first = repeats.elide("k", snapshot("rename parse", "r1").toString());
         assertTrue(first.contains("v".repeat(2000)), "The first answer is whole");
 
-        var second = JSON.readTree(repeats.elide("k", snapshot("renamed parse; tests added", "r2").toString(), false));
+        var second = JSON.readTree(repeats.elide("k", snapshot("renamed parse; tests added", "r2").toString()));
         assertEquals("needs_build", second.path("verification").path("verdict").asText(), second.toString());
         assertFalse(second.path("verification").has("evidence"), second.toString());
         assertEquals("r2", second.path("verification_receipt").path("receipt_id").asText(), second.toString());
@@ -46,12 +47,28 @@ class ChangeSessionRepeatsTest {
     }
 
     @Test
-    void fullDetailAndOtherTargetsGetTheWholeAnswer() throws Exception {
+    void otherTargetsAndErrorsGetTheWholeAnswer() throws Exception {
         var repeats = new ChangeSessionRepeats();
-        repeats.elide("k", snapshot("a", "r1").toString(), false);
-        assertTrue(repeats.elide("k", snapshot("a", "r1").toString(), true).contains("v".repeat(2000)));
-        assertTrue(repeats.elide("other", snapshot("a", "r1").toString(), false).contains("v".repeat(2000)));
-        assertTrue(repeats.elide("k", "{\"error_code\":\"X\"}", false).contains("error_code"));
+        repeats.elide("k", snapshot("a", "r1").toString());
+        assertTrue(repeats.elide("other", snapshot("a", "r1").toString()).contains("v".repeat(2000)));
+        assertTrue(repeats.elide("k", "{\"error_code\":\"X\"}").contains("error_code"));
+    }
+
+    /** V22 CQ-049: Codex asked detail=full, then view=verification detail=full; both restated the same 10 KB. */
+    @Test
+    void aFullAnswerAfterAnotherViewStatesOnlyWhatIsNew() throws Exception {
+        var repeats = new ChangeSessionRepeats();
+        ObjectNode plan = snapshot("a", "r1");
+        plan.remove(List.of("verification", "verification_receipt"));
+        plan.putObject("plan").put("tests", "t".repeat(3000));
+        repeats.elide(ChangeSessionRepeats.key("", List.of("p.A"), 20), plan.toString());
+
+        ObjectNode verification = snapshot("a", "r1");
+        verification.putObject("plan").put("tests", "t".repeat(3000));
+        var answer = JSON.readTree(repeats.elide(ChangeSessionRepeats.key("", List.of("p.A"), 20), verification.toString()));
+        assertTrue(answer.path("verification").path("evidence").asText().length() == 2000, "Sections the first view lacked are whole");
+        assertFalse(answer.has("plan"), answer.toString());
+        assertTrue(answer.path("unchanged_since_previous_call").toString().contains("plan"), answer.toString());
     }
 
     /** V21: the plan restated next_actions as plan.sequence and each primary change inside the directive. */
@@ -65,7 +82,7 @@ class ChangeSessionRepeatsTest {
         root.putObject("directive").putObject("primary_action").put("action_id", "a1").putArray("evidence_snapshot")
                 .addObject().put("class", "p.A").put("file", "A.java").put("risk_level", "MEDIUM").put("coupling", "fan_in 6");
 
-        var answer = JSON.readTree(new ChangeSessionRepeats().elide("k", root.toString(), false));
+        var answer = JSON.readTree(new ChangeSessionRepeats().elide("k", root.toString()));
         assertFalse(answer.path("plan").has("sequence"), answer.toString());
         var snapshot = answer.path("directive").path("primary_action").path("evidence_snapshot").get(0);
         assertEquals("p.A", snapshot.path("class").asText());

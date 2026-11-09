@@ -10,9 +10,11 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * A repeated change_session for the same targets and view states only what changed since this
- * server process last answered it. In V21 CQ-049 Codex asked 12 times and each answer restated
- * 5-7 KB the agent already held. Full detail always gets the whole answer.
+ * A repeated change_session for the same targets states only what changed since this server
+ * process last answered it, whatever the view or detail. In V21 CQ-049 Codex asked 12 times and
+ * each answer restated 5-7 KB the agent already held; in V22 it asked detail=full for the plan
+ * view and then for the verification view, and both restated the same affected tests.
+ * Sections a previous answer lacked are stated whole.
  */
 final class ChangeSessionRepeats {
 
@@ -31,7 +33,11 @@ final class ChangeSessionRepeats {
         @Override protected boolean removeEldestEntry(Map.Entry<String, ObjectNode> eldest) { return size() > MAX_KEYS; }
     };
 
-    synchronized String elide(String key, String response, boolean full) {
+    static String key(String project, List<String> targets, int limit) {
+        return project + "|" + targets.stream().sorted().toList() + "|" + limit;
+    }
+
+    synchronized String elide(String key, String response) {
         JsonNode parsed;
         try {
             parsed = JSON.readTree(response);
@@ -39,9 +45,12 @@ final class ChangeSessionRepeats {
             return response;
         }
         if (!(parsed instanceof ObjectNode current) || current.has("error_code") || current.has("error")) return response;
-        boolean restated = !full && stateOnce(current);
-        ObjectNode before = previous.put(key, current.deepCopy());
-        if (full || before == null) return restated ? current.toString() : response;
+        boolean restated = stateOnce(current);
+        ObjectNode before = previous.get(key);
+        ObjectNode known = before == null ? JSON.createObjectNode() : before.deepCopy();
+        known.setAll(current.deepCopy());
+        previous.put(key, known);
+        if (before == null) return restated ? current.toString() : response;
         ArrayNode unchanged = JSON.createArrayNode();
         elide(before, current, "", unchanged, 0);
         if (unchanged.isEmpty()) return restated ? current.toString() : response;

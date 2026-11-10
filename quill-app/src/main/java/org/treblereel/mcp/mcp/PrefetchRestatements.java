@@ -1,6 +1,7 @@
 package org.treblereel.mcp.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Map;
@@ -12,7 +13,7 @@ import java.util.Set;
  * 43% of a packet. Gaps, non-zero counts, empty caller lists (no callers is an answer) and the
  * completeness verdict stay. Runs before delivered-fact identities are taken.
  */
-final class PrefetchRestatements {
+public final class PrefetchRestatements {
 
     /** Index bookkeeping and constant caveats; the packet instructions state their substance once. */
     private static final Set<String> ALWAYS = Set.of("symbol_id", "source_sha256", "_meta", "limitations", "language",
@@ -32,7 +33,10 @@ final class PrefetchRestatements {
         if (fact.path("jvm_name").equals(fact.path("class"))) fact.remove("jvm_name");
         for (String flag : List.of("has_more", "truncated")) if (fact.path(flag).isBoolean() && !fact.path(flag).asBoolean()) fact.remove(flag);
         if (fact.path("total").isIntegralNumber() && fact.path("total").equals(fact.path("showing"))) fact.remove(List.of("total", "showing"));
-        if (!"direct_method_impact".equals(fact.path("kind").asText())) return;
+        if (!"direct_method_impact".equals(fact.path("kind").asText())) {
+            stripClass(fact);
+            return;
+        }
 
         if (fact.path("coverage") instanceof ObjectNode coverage) {
             coverage.remove("not_covered");
@@ -57,9 +61,75 @@ final class PrefetchRestatements {
                 location.put("line", body.path("source_line").asInt());
             else location.remove("line");
         }
+        stripMethodTallies(fact);
         String file = fact.path("declaration_file").asText(null);
         if (file != null && (file.equals(fact.path("location").path("path").asText()) || file.equals(body.path("source_file").asText())))
             fact.remove("declaration_file");
+    }
+
+    /**
+     * What every class fact would otherwise say: Object as supertype and bean type, the JDK's
+     * annotation plumbing, one source occurrence, tallies of a listed dependency set, an unknown line.
+     */
+    private static void stripClass(ObjectNode fact) {
+        if ("java.lang.Object".equals(fact.path("superclass").asText(null))) fact.remove("superclass");
+        removeEmpty(fact, "interfaces", "direct_implementations");
+        if (fact.path("direct_implementation_count").asInt(-1) == 0 && !fact.has("direct_implementations"))
+            fact.remove(List.of("direct_implementation_count", "direct_implementations_truncated"));
+        if (fact.path("meta_annotations") instanceof ArrayNode meta) {
+            meta.removeIf(name -> name.asText().startsWith("java.lang.annotation."));
+            if (meta.isEmpty()) fact.remove("meta_annotations");
+        }
+        if (fact.path("class_occurrences") instanceof ArrayNode occurrences && occurrences.size() == 1
+                && "source".equals(occurrences.get(0).path("origin").asText())) fact.remove("class_occurrences");
+        if (fact.path("external_dependencies").isArray() && !fact.path("external_dependencies_truncated").asBoolean())
+            fact.remove(List.of("external_dependency_breakdown", "external_dependency_reference_count",
+                    "external_dependency_type_count", "external_dependencies_truncated"));
+        if (fact.path("location") instanceof ObjectNode location && location.path("line").isNull()
+                && location.path("path").equals(fact.path("source"))) fact.remove("location");
+        if (fact.path("bean") instanceof ObjectNode bean) {
+            if (bean.path("bean_types") instanceof ArrayNode types) types.removeIf(type -> type.asText().equals("java.lang.Object"));
+            removeEmpty(bean, "stereotypes", "profiles");
+            if (bean.path("alternative").isBoolean() && !bean.path("alternative").asBoolean()) bean.remove("alternative");
+        }
+        JsonNode basis = fact.path("generated_classes_basis");
+        for (JsonNode evidence : fact.path("generated_creation_evidence"))
+            if (evidence instanceof ObjectNode object) for (String field : List.of("jar_modified", "jar_older_than_compiled_classes"))
+                if (basis.has(field) && basis.get(field).equals(object.get(field))) object.remove(field);
+    }
+
+    /** A complete answer's lists already say what its counts tally; JDK callees say nothing about the change. */
+    private static void stripMethodTallies(ObjectNode fact) {
+        if (fact.hasNonNull("signature")) fact.remove("descriptor");
+        boolean complete = fact.path("answer_complete").asBoolean() && !fact.path("has_more").asBoolean();
+        if (complete) fact.remove("counts");
+        if (fact.path("indirect_scope") instanceof ObjectNode scope) {
+            for (String flag : List.of("has_more", "traversal_truncated"))
+                if (scope.path(flag).isBoolean() && !scope.path(flag).asBoolean()) scope.remove(flag);
+            if (!scope.has("has_more") && !scope.has("traversal_truncated")) fact.remove("indirect_counts");
+        }
+        if (fact.path("calls") instanceof ArrayNode calls) {
+            calls.removeIf(call -> call.asText().endsWith("[external]") || call.asText().endsWith("[special]"));
+            if (calls.isEmpty()) fact.remove(List.of("calls", "calls_basis"));
+        }
+        if (fact.path("name_in_source") instanceof ObjectNode names && names.path("other").isEmpty()) names.remove("basis");
+    }
+
+    private static void removeEmpty(ObjectNode node, String... fields) {
+        for (String field : fields) if (node.path(field).isArray() && node.path(field).isEmpty()) node.remove(field);
+    }
+
+    /** The packet's reading rules; caveats appear only when a fact they qualify is in the packet. */
+    public static String instructions(JsonNode facts) {
+        boolean framework = false, configuration = false;
+        for (JsonNode fact : facts) {
+            framework |= fact.has("framework_contract");
+            configuration |= "configuration".equals(fact.path("kind").asText());
+        }
+        String text = "These are completed Quill reads for this index; reuse them without repeating. Query or read source only for missing, stale, ambiguous or truncated evidence.";
+        if (framework) text += " framework_contract is documented framework behaviour that dependency jars do not add to.";
+        if (framework || configuration) text += " Source declarations do not prove deployed values.";
+        return text;
     }
 
     private static boolean allZero(JsonNode node, String ignored) {

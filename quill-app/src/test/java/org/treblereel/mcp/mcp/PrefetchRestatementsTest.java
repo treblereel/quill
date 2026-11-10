@@ -81,4 +81,82 @@ class PrefetchRestatementsTest {
         assertEquals("{\"class\":\"p.A\",\"kind\":\"CLASS\",\"source\":\"src/A.java\",\"bean\":{\"scope\":\"@ApplicationScoped\"}}",
                 fact.toString());
     }
+
+    private static ObjectNode recorded(String name) throws Exception {
+        try (var in = PrefetchRestatementsTest.class.getResourceAsStream("/prefetch/" + name)) {
+            return (ObjectNode) JSON.readTree(in);
+        }
+    }
+
+    /** V29 CQ-049: the packet rides in every turn; counts, descriptor and JDK callees restate the lists. */
+    @Test
+    void aCompleteMethodFactDropsWhatItsListsAlreadySay() throws Exception {
+        ObjectNode fact = recorded("v29-cq049-method-fact.json");
+        int before = fact.toString().length();
+
+        PrefetchRestatements.strip(fact);
+
+        for (String gone : java.util.List.of("descriptor", "counts", "indirect_counts", "calls", "calls_basis"))
+            assertFalse(fact.has(gone), gone + " in " + fact);
+        assertFalse(fact.path("indirect_scope").has("has_more"), fact.path("indirect_scope").toString());
+        assertFalse(fact.path("indirect_scope").has("traversal_truncated"));
+        assertFalse(fact.path("name_in_source").has("basis"), "No comment or string match to explain");
+        assertEquals("parse(java.lang.String):io.cryostat.security.rbac.PermissionMapper$K8sResourceVerb",
+                fact.path("signature").asText());
+        assertTrue(fact.path("production_callers").get(0).asText().contains("lines [80,83]"));
+        assertEquals(3, fact.path("declaring_class_tests").size());
+        assertTrue(fact.path("selected_method_source").path("source").asText().startsWith("private K8sResourceVerb parse"));
+        assertTrue(fact.path("answer_complete").asBoolean());
+        assertTrue(fact.toString().length() < before * 3 / 4, before + " -> " + fact.toString().length());
+    }
+
+    @Test
+    void applicationCalleesAndIncompleteCountsStay() throws Exception {
+        ObjectNode fact = (ObjectNode) JSON.readTree("""
+                {"kind":"direct_method_impact","answer_complete":false,"counts":{"production":{"methods":2}},
+                 "calls":["1 p.B#run():void","1 java.lang.String#trim():java.lang.String [external]"],"calls_basis":"depth, callee",
+                 "name_in_source":{"file":"src/A.java","code_lines":[3],"other":["1 comment"],"basis":"word matches"}}
+                """);
+        PrefetchRestatements.strip(fact);
+        assertEquals(2, fact.path("counts").path("production").path("methods").asInt(), fact.toString());
+        assertEquals("[\"1 p.B#run():void\"]", fact.path("calls").toString());
+        assertTrue(fact.has("calls_basis"));
+        assertEquals("word matches", fact.path("name_in_source").path("basis").asText());
+    }
+
+    /** V29 CQ-045: annotation plumbing, a lone source occurrence and dependency tallies were a third of the fact. */
+    @Test
+    void aClassFactDropsWhatEveryClassSays() throws Exception {
+        ObjectNode fact = recorded("v29-cq045-class-fact.json");
+        int before = fact.toString().length();
+
+        PrefetchRestatements.strip(fact);
+
+        for (String gone : java.util.List.of("superclass", "interfaces", "class_occurrences", "location",
+                "external_dependency_breakdown", "external_dependency_reference_count", "external_dependency_type_count",
+                "external_dependencies_truncated", "direct_implementation_count", "direct_implementations",
+                "direct_implementations_truncated"))
+            assertFalse(fact.has(gone), gone + " in " + fact);
+        assertEquals("[\"jakarta.enterprise.context.NormalScope\"]", fact.path("meta_annotations").toString());
+        assertEquals("[\"io.cryostat.security.rbac.SsarClientCache\"]", fact.path("bean").path("bean_types").toString());
+        for (String gone : java.util.List.of("stereotypes", "profiles", "alternative"))
+            assertFalse(fact.path("bean").has(gone), gone + " in " + fact.path("bean"));
+        assertFalse(fact.path("generated_creation_evidence").get(0).has("jar_modified"));
+        assertEquals("@ApplicationScoped", fact.path("bean").path("scope").asText());
+        assertEquals(4, fact.path("test_classes").size());
+        assertEquals(1, fact.path("injected_into").size());
+        assertEquals(5, fact.path("external_dependencies").size());
+        assertTrue(fact.toString().length() < before * 4 / 5, before + " -> " + fact.toString().length());
+    }
+
+    @Test
+    void packetInstructionsNameFrameworkContractsOnlyWhenAFactCarriesOne() throws Exception {
+        var plain = JSON.readTree("[{\"kind\":\"CLASS\"}]");
+        var framework = JSON.readTree("[{\"kind\":\"direct_method_impact\",\"framework_contract\":{\"x\":1}}]");
+        assertFalse(PrefetchRestatements.instructions(plain).contains("framework_contract"));
+        assertTrue(PrefetchRestatements.instructions(framework).contains("framework_contract"));
+        assertTrue(PrefetchRestatements.instructions(plain).contains("reuse them without repeating"));
+        assertFalse(PrefetchRestatements.instructions(plain).contains("deployed values"));
+        assertTrue(PrefetchRestatements.instructions(JSON.readTree("[{\"kind\":\"configuration\"}]")).contains("deployed values"));
+    }
 }

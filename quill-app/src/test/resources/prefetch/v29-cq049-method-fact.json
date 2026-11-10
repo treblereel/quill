@@ -1,0 +1,91 @@
+{
+ "kind": "direct_method_impact",
+ "target": "io.cryostat.security.rbac.PermissionMapper",
+ "name": "parse",
+ "descriptor": "(Ljava/lang/String;)Lio/cryostat/security/rbac/PermissionMapper$K8sResourceVerb;",
+ "signature": "parse(java.lang.String):io.cryostat.security.rbac.PermissionMapper$K8sResourceVerb",
+ "location": {
+  "path": "src/main/java/io/cryostat/security/rbac/PermissionMapper.java",
+  "line": 88
+ },
+ "production_callers": [
+  "io.cryostat.security.rbac.PermissionMapper src/main/java/io/cryostat/security/rbac/PermissionMapper.java via resolve lines [80,83], resolve lines [85]"
+ ],
+ "test_callers": [],
+ "unclassified_callers": [],
+ "counts": {
+  "production": {
+   "methods": 1,
+   "call_sites": 1,
+   "files": 1
+  },
+  "tests": {
+   "methods": 0,
+   "call_sites": 0,
+   "files": 0
+  },
+  "unclassified": {
+   "methods": 0,
+   "call_sites": 0,
+   "files": 0
+  },
+  "total": {
+   "caller_methods": 1,
+   "call_sites": 1,
+   "consumer_files": 1,
+   "files_including_declaration": 1
+  },
+  "call_site_definition": "indexed invocation instructions, not caller methods or runtime executions"
+ },
+ "declaring_class_tests": [
+  "io.cryostat.security.rbac.PermissionMapperNoDefaultTest",
+  "io.cryostat.security.rbac.PermissionMapperTest",
+  "io.cryostat.security.rbac.PermissionMapperVerbDefaultTest"
+ ],
+ "indirect_production": [
+  "io.cryostat.security.rbac.SsarAuthorizer src/main/java/io/cryostat/security/rbac/SsarAuthorizer.java via checkSsarPermission@2 lines [138], lambda$buildIdentity$0@3 lines [96,111], lambda$buildIdentity$1@3 lines [104], buildIdentity@4 lines [91], lambda$buildIdentity$0@4 lines [101]"
+ ],
+ "indirect_counts": {
+  "methods": 4,
+  "call_sites": 4,
+  "files": 1,
+  "reference_groups": 5,
+  "reference_instruction_sites": 6,
+  "callback_reference_sites": 2
+ },
+ "indirect_scope": {
+  "max_depth": 4,
+  "transitive_closure_proven": false,
+  "basis": "indexed upstream paths; callback creation is not proof of runtime invocation",
+  "has_more": false,
+  "traversal_truncated": false
+ },
+ "answer_complete": true,
+ "calls": [
+  "1 io.cryostat.security.rbac.PermissionMapper$K8sResourceVerb#<init> [special]",
+  "1 java.lang.String#lastIndexOf(int):int [external]",
+  "1 java.lang.IllegalArgumentException#<init>(java.lang.String):void [external]",
+  "1 java.lang.String#substring(int, int):java.lang.String [external]",
+  "1 java.lang.String#substring(int):java.lang.String [external]",
+  "1 java.lang.String#indexOf(int):int [external]"
+ ],
+ "calls_basis": "depth, callee, invocation; depth 2 = called by a depth-1 callee",
+ "name_in_source": {
+  "file": "src/main/java/io/cryostat/security/rbac/PermissionMapper.java",
+  "code_lines": [
+   80,
+   83,
+   85,
+   88
+  ],
+  "other": [],
+  "basis": "word matches in the declaring file; comments and strings are not in the bytecode index"
+ },
+ "selected_method_source": {
+  "source_file": "src/main/java/io/cryostat/security/rbac/PermissionMapper.java",
+  "source_line": 88,
+  "source_end_line": 110,
+  "source": "private K8sResourceVerb parse(String value) {\n        int colonIdx = value.lastIndexOf(':');\n        if (colonIdx < 0) {\n            throw new IllegalArgumentException(\n                    \"RBAC permission mapping value must follow [resource(/subresource)]:verb\"\n                            + \" format, got: \"\n                            + value);\n        }\n        String resourcePart = value.substring(0, colonIdx);\n        String verb = value.substring(colonIdx + 1);\n\n        int slashIdx = resourcePart.indexOf('/');\n        String resource;\n        String subresource;\n        if (slashIdx >= 0) {\n            resource = resourcePart.substring(0, slashIdx);\n            subresource = resourcePart.substring(slashIdx + 1);\n        } else {\n            resource = resourcePart;\n            subresource = \"\";\n        }\n        return new K8sResourceVerb(resource, subresource, verb);\n    }"
+ },
+ "scope": "direct static consumers in indexed bytecode; runtime dispatch, reflection and transitive reach not proven"
+}

@@ -45,6 +45,31 @@ final class ChangeVerificationQueries {
         if (result.at("/test_evidence/tests") instanceof com.fasterxml.jackson.databind.node.ArrayNode tests) {
             for (int i = 0; i < tests.size(); i++) tests.set(i, AffectedTestRows.row(tests.get(i)));
         }
+        // Settled facts are counted, not listed: in V26 CQ-049 a supported build protocol, matching
+        // source sets and untracked harness config files took 3 KB of each answer.
+        if (result.at("/worktree/changes") instanceof com.fasterxml.jackson.databind.node.ArrayNode changes
+                && result.path("worktree") instanceof ObjectNode tree) {
+            var structural = JSON.createArrayNode();
+            int other = 0;
+            for (JsonNode change : changes) {
+                if (change.path("structural").asBoolean(true)) structural.add(change);
+                else other++;
+            }
+            if (other > 0) {
+                tree.set("changes", structural);
+                tree.put("non_structural_changes", other);
+            }
+        }
+        if (result.at("/build/integration") instanceof ObjectNode integration
+                && integration.path("protocol").path("status").asText().equals("supported")) {
+            integration.remove("protocol");
+        }
+        if (result.at("/build/compiled_outputs") instanceof ObjectNode outputs
+                && outputs.path("source_sets").isArray() && !outputs.path("source_sets").isEmpty()
+                && outputs.path("source_sets").valueStream().allMatch(set -> set.path("status").asText().equals("matching"))) {
+            outputs.put("source_sets_matching", outputs.path("source_sets").size());
+            outputs.remove("source_sets");
+        }
         if (result.path("verification_plan") instanceof ObjectNode plan && plan.path("focused_tests").isArray()
                 && plan.path("commands").valueStream().anyMatch(command -> command.path("scope").asText().equals("focused"))) {
             plan.put("focused_test_count", plan.path("focused_tests").size());

@@ -40,7 +40,10 @@ final class ProjectAvailabilityResponses {
         ArrayNode unavailable = root.putArray(field);
         issues.forEach(issue -> unavailable.add(details(issue)));
         if (field.equals("project_warnings")) annotateScopedBuildWarnings(root);
-        if (root.path("detail").asText().equals("summary")) {
+        // An answer that states its own plan and diagnostics is not repeated by its warnings:
+        // in V26 CQ-049 a verify_change warning restated both, 1.6 KB.
+        boolean stated = root.has("verification_plan") && root.has("diagnostics");
+        if (root.path("detail").asText().equals("summary") || stated) {
             for (int i = 0; i < unavailable.size(); i++) unavailable.set(i, summary(unavailable.get(i)));
         }
     }

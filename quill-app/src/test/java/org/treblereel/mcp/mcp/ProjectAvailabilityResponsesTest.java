@@ -176,6 +176,29 @@ class ProjectAvailabilityResponsesTest {
         assertEquals(result.path("reason"), workspace.path("unavailable_projects").get(0).path("reason"));
     }
 
+    /** V26 CQ-049: a verify_change warning restated the answer's own verification plan and diagnostics, 1.6 KB. */
+    @Test void aWarningDoesNotRestateThePlanAndDiagnosticsTheAnswerStates() throws Exception {
+        var plan = JSON.createObjectNode().put("build_system", "maven");
+        plan.putArray("commands").addObject().put("scope", "quick_compile");
+        var diagnostics = JSON.createObjectNode().put("build_status", "failed").put("total", 3);
+        var issue = new ProjectRegistry.ProjectIssue("app", root, "build_required", "maven", "Build failed",
+                "Fix the build", false, "build_failed", List.of(), ProjectRegistry.ReadinessReason.BUILD_FAILED,
+                null, null, null, true, plan, diagnostics);
+        var answer = JSON.createObjectNode();
+        answer.set("verification_plan", plan.deepCopy());
+        answer.set("diagnostics", diagnostics.deepCopy());
+        ProjectAvailabilityResponses.append(answer, "project_warnings", List.of(issue));
+
+        var warning = answer.path("project_warnings").get(0);
+        assertFalse(warning.has("verification_plan"), warning.toString());
+        assertFalse(warning.has("diagnostics"), warning.toString());
+        assertEquals("failed", warning.path("diagnostics_summary").path("build_status").asText(), warning.toString());
+
+        var bare = JSON.createObjectNode();
+        ProjectAvailabilityResponses.append(bare, "project_warnings", List.of(issue));
+        assertTrue(bare.path("project_warnings").get(0).has("verification_plan"), "Nothing else states it here");
+    }
+
     private void mavenModules() throws Exception {
         Files.writeString(root.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion><groupId>test</groupId><artifactId>parent</artifactId>

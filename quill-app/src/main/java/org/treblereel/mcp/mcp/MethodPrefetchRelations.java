@@ -85,6 +85,7 @@ final class MethodPrefetchRelations {
         // Without the body, recorded agents opened the whole file to read this one method.
         var cls = db.symbols.findClassByName(owner).orElse(null);
         if (cls == null) return;
+        nameInSource(root, cls.sourceFile(), name, fact);
         JsonNode source = new MethodContextQueries().get(db, cls, name + descriptor);
         int budget = lambdaGap ? LAMBDA_SOURCE_BUDGET : SOURCE_BUDGET;
         if (!source.path("source_complete").asBoolean()) {
@@ -98,6 +99,70 @@ final class MethodPrefetchRelations {
                     .put("source_end_line", source.path("declaration").path("source_end_line").asInt())
                     .put("source", source.path("source").asText());
         }
+    }
+
+    private static final int MENTION_LIMIT = 20;
+
+    /**
+     * Lines of the declaring file where the method name appears, split into code and the comments
+     * and strings a bytecode index cannot see. In V24-V27 CQ-049 Claude grepped for parse 8 times
+     * after Quill had listed every call, looking for javadoc and string mentions before renaming.
+     */
+    static void nameInSource(java.nio.file.Path root, String sourceFile, String name, ObjectNode fact) {
+        if (sourceFile == null) return;
+        List<String> lines;
+        try {
+            lines = java.nio.file.Files.readAllLines(root.resolve(sourceFile));
+        } catch (java.io.IOException | RuntimeException unreadable) {
+            return;
+        }
+        java.util.regex.Pattern word = java.util.regex.Pattern.compile("(?<![\\w$])" + java.util.regex.Pattern.quote(name) + "(?![\\w$])");
+        ArrayNode code = JSON.createArrayNode();
+        Set<String> other = new LinkedHashSet<>();
+        boolean block = false;
+        for (int index = 0; index < lines.size(); index++) {
+            String line = lines.get(index);
+            char[] kinds = new char[line.length()];
+            boolean string = false, character = false;
+            for (int i = 0; i < line.length(); i++) {
+                char c = line.charAt(i), next = i + 1 < line.length() ? line.charAt(i + 1) : 0;
+                if (block) {
+                    kinds[i] = 'm';
+                    if (c == '*' && next == '/') { kinds[++i] = 'm'; block = false; }
+                } else if (string || character) {
+                    kinds[i] = 's';
+                    if (c == '\\' && i + 1 < line.length()) kinds[++i] = 's';
+                    else if (string && c == '"') string = false;
+                    else if (character && c == '\'') character = false;
+                } else if (c == '/' && next == '/') {
+                    for (int j = i; j < line.length(); j++) kinds[j] = 'm';
+                    break;
+                } else if (c == '/' && next == '*') {
+                    kinds[i] = 'm'; kinds[++i] = 'm'; block = true;
+                } else {
+                    kinds[i] = 'c';
+                    if (c == '"') { string = true; kinds[i] = 's'; }
+                    else if (c == '\'') { character = true; kinds[i] = 's'; }
+                }
+            }
+            var match = word.matcher(line);
+            boolean codeLine = false;
+            while (match.find()) {
+                char kind = kinds[match.start()];
+                if (kind == 'c') codeLine = true;
+                else other.add((index + 1) + (kind == 'm' ? " comment" : " string"));
+            }
+            if (codeLine) code.add(index + 1);
+        }
+        if (code.isEmpty() && other.isEmpty()) return;
+        ObjectNode mentions = fact.putObject("name_in_source");
+        java.nio.file.Path file = root.resolve(sourceFile).normalize();
+        mentions.put("file", file.startsWith(root) ? root.relativize(file).toString().replace('\\', '/') : sourceFile);
+        mentions.set("code_lines", code);
+        ArrayNode rest = mentions.putArray("other");
+        other.stream().limit(MENTION_LIMIT).forEach(rest::add);
+        if (other.size() > MENTION_LIMIT) mentions.put("other_truncated", true);
+        mentions.put("basis", "word matches in the declaring file; comments and strings are not in the bytecode index");
     }
 
     private static final int MEMBER_LIMIT = 8;

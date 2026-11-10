@@ -28,6 +28,29 @@ class MethodPrefetchRelationsTest {
         assertTrue(fact.has("selected_method_source") || fact.has("selected_method_source_status"));
     }
 
+    /** V24-V27 CQ-049: after Quill listed every call of parse, Claude grepped \\bparse\\b 8 times for comments and strings. */
+    @Test
+    void aMethodFactListsWhereItsNameAppearsOutsideCodeInItsFile() throws Exception {
+        var db = JavaEvidenceFixture.index(root, """
+                package p;
+                class Mapper {
+                    /** Delegates to {@link #parse(String)}. */
+                    Object resolve(String v) { return parse(v); }
+                    // parse keeps the subresource
+                    private Object parse(String v) { return "parse failed".isEmpty() ? null : v; }
+                    Object parser() { return null; }
+                }
+                """);
+        ObjectNode fact = JSON.createObjectNode().put("class", "p.Mapper").put("name", "parse").put("descriptor", "(Ljava/lang/String;)Ljava/lang/Object;");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, root, fact); return null; });
+
+        JsonNode mentions = fact.path("name_in_source");
+        assertEquals(fact.path("selected_method_source").path("source_file").asText(), mentions.path("file").asText(), fact.toString());
+        assertEquals(2, mentions.path("code_lines").size(), fact.toString());
+        assertEquals(List.of("3 comment", "5 comment", "6 string"),
+                mentions.path("other").valueStream().map(JsonNode::asText).toList(), fact.toString());
+    }
+
     @Test
     void methodFactCarriesTheSelectedBodySoTheFileNeedNotBeOpened() throws Exception {
         String longBody = "System.out.println(\"" + "x".repeat(3000) + "\");";

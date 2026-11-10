@@ -906,6 +906,16 @@ class McpToolCatalogTest {
         assertTrue(both.error(), "Two selectors stay ambiguous: " + both.text());
     }
 
+    /** V24 and V25 CQ-049: Claude passed change_session's session_id to verify_change in three of six sessions. */
+    @Test
+    void verifyChangeTakesTheSessionIdOfAChangeSessionAsNothingToNarrow() throws Exception {
+        var tools = new GuessedArgumentTools();
+        var verify = GuessedArgumentTools.class.getDeclaredMethod("verify_change", Optional.class);
+        var invocation = McpToolCatalog.invokeMethod(tools, verify, Map.of("session_id", "9a8dba88b668bd84b164de56"));
+        assertFalse(invocation.error(), invocation.text());
+        assertEquals("inferred", invocation.text());
+    }
+
     @Test
     void beanAndInjectionAliasesPreserveClassSelector() throws Exception {
         var tools = new SelectorAliasTools();
@@ -936,6 +946,7 @@ class McpToolCatalogTest {
 
     static final class GuessedArgumentTools {
         @Tool(description = "Single selector") public String trace_state_lifecycle(String target) { return target; }
+        @Tool(description = "Verify") public String verify_change(Optional<List<String>> targets) { return targets.map(String::valueOf).orElse("inferred"); }
         @Tool(description = "Many selectors") public String get_context(List<String> targets) { return String.join(",", targets); }
         @Tool(description = "External selector") public String get_external_symbol_details(String class_name) { return class_name; }
         @Tool(description = "Hierarchy")

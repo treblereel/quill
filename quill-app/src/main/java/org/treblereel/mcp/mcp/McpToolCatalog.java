@@ -469,6 +469,10 @@ final class McpToolCatalog {
             Object value = normalized.remove(guesses.get(0));
             normalized.put(selectors.get(0), selectors.get(0).equals("targets") && value instanceof String one ? List.of(one) : value);
         }
+        // A change_session snapshot id names nothing verify_change could narrow: it recomputes from the worktree.
+        // In V24 and V25 CQ-049 Claude passed it in three of six sessions and lost a turn to the error.
+        if (method.getName().equals("verify_change") && !parameters.containsKey("session_id"))
+            normalized.remove("session_id");
         if (parameters.containsKey("method") && !parameters.containsKey("method_name")
                 && normalized.containsKey("method_name") && !normalized.containsKey("method"))
             normalized.put("method", normalized.remove("method_name"));

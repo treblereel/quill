@@ -1695,7 +1695,7 @@
       "client": "codex",
       "arm": "without_quill",
       "prompts": [
-        "Context: Enumerations are bounded to application-owned production/test source unless dependencies or generated mechanisms are explicitly requested. Packaged framework evidence supplements those questions. No ambient env/secret values are assumed.\nProfile: prod.\nRead-only except CQ-049, whose patch must be applied only in a disposable checkout. No permission to start external services or read process secrets.\nПереименуй io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String) в parseMappingValue, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку."
+        "Context: Enumerations are bounded to application-owned production/test source unless dependencies or generated mechanisms are explicitly requested. Packaged framework evidence supplements those questions. No ambient env/secret values are assumed.\nProfile: prod.\nRead-only except CQ-049, whose patch must be applied only in a disposable checkout. No permission to start external services or read process secrets.\nПереименуй io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String) в parseMappingValue, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку.\nТесты этого проекта поднимают Quarkus с Postgres через Docker, а Docker в этой среде недоступен: тесты не запускай, проверь изменение компиляцией основных и тестовых исходников."
       ],
       "track": "patch"
     },
@@ -1705,7 +1705,7 @@
       "client": "codex",
       "arm": "with_quill",
       "prompts": [
-        "Context: Enumerations are bounded to application-owned production/test source unless dependencies or generated mechanisms are explicitly requested. Packaged framework evidence supplements those questions. No ambient env/secret values are assumed.\nProfile: prod.\nRead-only except CQ-049, whose patch must be applied only in a disposable checkout. No permission to start external services or read process secrets.\nПереименуй io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String) в parseMappingValue, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку."
+        "Context: Enumerations are bounded to application-owned production/test source unless dependencies or generated mechanisms are explicitly requested. Packaged framework evidence supplements those questions. No ambient env/secret values are assumed.\nProfile: prod.\nRead-only except CQ-049, whose patch must be applied only in a disposable checkout. No permission to start external services or read process secrets.\nПереименуй io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String) в parseMappingValue, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку.\nТесты этого проекта поднимают Quarkus с Postgres через Docker, а Docker в этой среде недоступен: тесты не запускай, проверь изменение компиляцией основных и тестовых исходников."
       ],
       "track": "patch"
     },
@@ -1715,7 +1715,7 @@
       "client": "claude",
       "arm": "with_quill",
       "prompts": [
-        "Context: Enumerations are bounded to application-owned production/test source unless dependencies or generated mechanisms are explicitly requested. Packaged framework evidence supplements those questions. No ambient env/secret values are assumed.\nProfile: prod.\nRead-only except CQ-049, whose patch must be applied only in a disposable checkout. No permission to start external services or read process secrets.\nПереименуй io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String) в parseMappingValue, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку."
+        "Context: Enumerations are bounded to application-owned production/test source unless dependencies or generated mechanisms are explicitly requested. Packaged framework evidence supplements those questions. No ambient env/secret values are assumed.\nProfile: prod.\nRead-only except CQ-049, whose patch must be applied only in a disposable checkout. No permission to start external services or read process secrets.\nПереименуй io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String) в parseMappingValue, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку.\nТесты этого проекта поднимают Quarkus с Postgres через Docker, а Docker в этой среде недоступен: тесты не запускай, проверь изменение компиляцией основных и тестовых исходников."
       ],
       "track": "patch"
     },
@@ -1725,7 +1725,7 @@
       "client": "claude",
       "arm": "without_quill",
       "prompts": [
-        "Context: Enumerations are bounded to application-owned production/test source unless dependencies or generated mechanisms are explicitly requested. Packaged framework evidence supplements those questions. No ambient env/secret values are assumed.\nProfile: prod.\nRead-only except CQ-049, whose patch must be applied only in a disposable checkout. No permission to start external services or read process secrets.\nПереименуй io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String) в parseMappingValue, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку."
+        "Context: Enumerations are bounded to application-owned production/test source unless dependencies or generated mechanisms are explicitly requested. Packaged framework evidence supplements those questions. No ambient env/secret values are assumed.\nProfile: prod.\nRead-only except CQ-049, whose patch must be applied only in a disposable checkout. No permission to start external services or read process secrets.\nПереименуй io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String) в parseMappingValue, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку.\nТесты этого проекта поднимают Quarkus с Postgres через Docker, а Docker в этой среде недоступен: тесты не запускай, проверь изменение компиляцией основных и тестовых исходников."
       ],
       "track": "patch"
     },

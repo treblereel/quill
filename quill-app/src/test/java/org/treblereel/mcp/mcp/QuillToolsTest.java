@@ -726,6 +726,26 @@ class QuillToolsTest {
         assertEquals("abc1234", result.path("_meta").path("indexed_commit").asText());
     }
 
+    /** V23 CQ-049: an offline dependency resolution failure came back as BUILD_FAILED with fix_diagnostics. */
+    @Test
+    void verifyChangeNamesAnEnvironmentFailureApartFromCodeErrors() throws Exception {
+        writeMinimalPom();
+        Path state = tempDir.resolve(".quill/build-state.json");
+        Files.createDirectories(state.getParent());
+        Files.writeString(state, """
+                {"buildTool":"maven","finishedAt":1791067200000,"successful":false,"diagnostics":[],
+                 "failureMessages":["Failed to execute goal on project app: Could not resolve dependencies for project io.acme:app:jar:1\\ndependency: io.acme:core:jar:1 (compile)\\n\\tCannot access central in offline mode and the artifact io.acme:core:jar:1 has not been downloaded from it before."]}
+                """);
+
+        JsonNode result = JSON.readTree(new QuillTools().verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+
+        assertEquals("blocked", result.path("verdict").asText());
+        assertEquals("BUILD_ENVIRONMENT", result.path("blockers").get(0).path("code").asText(), result.toString());
+        JsonNode first = result.path("next_actions").get(0);
+        assertEquals("fix_build_environment", first.path("action").asText(), result.toString());
+        assertTrue(first.path("description").asText().contains("not the sources"), first.toString());
+    }
+
     /** V23 CQ-049: archunit failed test discovery and Quill said to fix compiler diagnostics with test-compile. */
     @Test
     void verifyChangeNamesFailedTestsApartFromCompileErrors() throws Exception {

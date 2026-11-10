@@ -217,6 +217,13 @@ final class ChangeVerificationQueries {
             } else {
                 verificationCommand(actions, runnerAvailable, "TESTS_FAILED");
             }
+        } else if (verdict.equals("blocked") && onlyCategory(diagnostics, "environment")) {
+            blockers.addObject().put("code", "BUILD_ENVIRONMENT")
+                    .put("message", "The last captured build failed on dependencies, network or file access before compiling");
+            action(actions, "fix_build_environment", "BUILD_ENVIRONMENT").put("evidence", "diagnostics.problems")
+                    .put("description", "The build environment failed, not the sources: make the named dependencies,"
+                            + " network or files available, or say the build could not run here, then retry");
+            verificationCommand(actions, runnerAvailable, "BUILD_ENVIRONMENT");
         } else if (verdict.equals("blocked")) {
             blockers.addObject().put("code", "BUILD_FAILED")
                     .put("message", "The last captured build failed or reported diagnostics");
@@ -287,9 +294,13 @@ final class ChangeVerificationQueries {
 
     /** V23 CQ-049: archunit failed test discovery and the answer said to fix compiler diagnostics with test-compile. */
     private static boolean onlyTestFailures(ObjectNode diagnostics) {
+        return onlyCategory(diagnostics, "test_failure");
+    }
+
+    private static boolean onlyCategory(ObjectNode diagnostics, String category) {
         JsonNode problems = diagnostics.path("problems");
         return !problems.isEmpty() && !diagnostics.path("has_more").asBoolean()
-                && problems.valueStream().allMatch(problem -> problem.path("category").asText().equals("test_failure"));
+                && problems.valueStream().allMatch(problem -> problem.path("category").asText().equals(category));
     }
 
     /** Recompiling cannot show that failed tests pass; the retry runs tests, the focused ones when ranked. */

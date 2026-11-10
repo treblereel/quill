@@ -276,6 +276,12 @@ public final class BuildProblemInspector {
                 || value.contains("there are test failures") || value.contains("failed to discover tests")
                 || value.contains("there were failing tests") || value.contains("surefire-reports")
                 || value.contains("during test discovery")) return "test_failure";
+        // The build stopped before the sources mattered: in V23 CQ-049 an offline dependency
+        // resolution failure was reported as a code problem to fix.
+        if (value.contains("could not resolve dependencies") || value.contains("offline mode")
+                || value.contains("could not transfer artifact") || value.contains("unknownhostexception")
+                || value.contains("could not open file channel") || value.contains("operation not permitted")
+                || value.contains("permission denied")) return "environment";
         if (value.contains("cannot find symbol") || value.contains("unresolved reference")
                 || value.contains("cant.resolve")) return "symbol_not_found";
         if (value.contains("incompatible type") || value.contains("type mismatch")) {

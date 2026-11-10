@@ -124,7 +124,7 @@ public final class BuildProblemInspector {
                 if (problem.exception() != null) node.put("exception", problem.exception());
                 if (problem.code() != null) node.put("code", problem.code());
                 node.put("category", problem.category());
-                node.put("raw", problem.raw());
+                if (problem.raw() != null) node.put("raw", problem.raw());
             }
             page(result, to - from, problems.size(), limit, offset);
             result.put("located_problem_count", problems.stream()
@@ -168,7 +168,36 @@ public final class BuildProblemInspector {
                     "build_failure", "Build failed without diagnostic messages");
             unique.put(fallback.key(), fallback);
         }
-        return new ArrayList<>(unique.values());
+        return withoutRestatedCauses(new ArrayList<>(unique.values()));
+    }
+
+    /** Below this a shared start may be coincidence rather than the same cause. */
+    private static final int CAUSE_PROBE = 60;
+
+    /**
+     * Maven reports each exception of a chain with its causes appended, so every cause was stated
+     * again by each outer problem. In V26 CQ-049 three problems of one surefire failure were
+     * 21.6 KB. An outer message now ends where a later problem's cause begins; its category was
+     * read from the whole text and stays.
+     */
+    private static List<Problem> withoutRestatedCauses(List<Problem> problems) {
+        List<Problem> result = new ArrayList<>(problems);
+        for (int i = 0; i < result.size(); i++) {
+            Problem outer = result.get(i);
+            if (outer.source() != null) continue;
+            int cut = -1;
+            for (int j = 0; j < result.size(); j++) {
+                Problem cause = result.get(j);
+                if (j == i || cause.source() != null || cause.message().length() < CAUSE_PROBE) continue;
+                int at = outer.message().indexOf(cause.message().substring(0, CAUSE_PROBE));
+                if (at > 0 && (cut < 0 || at < cut)) cut = at;
+            }
+            if (cut > 0) {
+                result.set(i, new Problem(outer.severity(), outer.message().substring(0, cut).strip(), null, null, null,
+                        null, null, outer.module(), outer.exception(), outer.code(), outer.category(), null));
+            }
+        }
+        return result;
     }
 
     private static void parseValues(
@@ -204,8 +233,12 @@ public final class BuildProblemInspector {
         String message = prefix.matches() && prefix.group(2) != null
                 ? prefix.group(2).strip() : raw.strip();
         if (message.length() > 4_000) message = message.substring(0, 4_000);
+        // raw is the exception name and the message again; it is stated only when it says more.
+        String whole = truncated(raw.strip());
+        String rest = prefix.matches() && prefix.group(2) != null ? prefix.group(2).strip() : whole;
+        boolean restated = rest.startsWith(message) || message.startsWith(rest);
         Problem problem = new Problem("error", message, null, null, null, null, null,
-                null, exception, null, category(message, null), truncated(raw.strip()));
+                null, exception, null, category(message, null), restated ? null : whole);
         target.putIfAbsent(problem.key(), problem);
     }
 
@@ -241,7 +274,8 @@ public final class BuildProblemInspector {
         String value = ((code == null ? "" : code) + " " + message).toLowerCase(Locale.ROOT);
         if (value.contains("maven-surefire-plugin") || value.contains("maven-failsafe-plugin")
                 || value.contains("there are test failures") || value.contains("failed to discover tests")
-                || value.contains("there were failing tests")) return "test_failure";
+                || value.contains("there were failing tests") || value.contains("surefire-reports")
+                || value.contains("during test discovery")) return "test_failure";
         if (value.contains("cannot find symbol") || value.contains("unresolved reference")
                 || value.contains("cant.resolve")) return "symbol_not_found";
         if (value.contains("incompatible type") || value.contains("type mismatch")) {

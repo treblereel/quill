@@ -129,6 +129,38 @@ class BuildProblemInspectorTest {
         assertFalse(problem.toString().contains("ForkStarter") || problem.toString().contains("more"), problem.toString());
     }
 
+    /** V26 CQ-049: three problems of one surefire exception chain were 21.6 KB, each message also restated as raw. */
+    @Test
+    void anExceptionChainStatesEachCauseOnceAndNoRawCopyOfTheMessage() throws Exception {
+        String discovery = "There was an error in the forked process\nTestEngine with ID 'junit-jupiter' encountered 3 critical issues"
+                + " during test discovery:\n(1) [ERROR] ClassSelector [className = 'p.MapperTest'] resolution failed\n" + "detail ".repeat(300);
+        String reports = "See /project/target/surefire-reports for the individual test results.\n" + discovery;
+        String goal = "Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.1:test (default-test) on project app: \n\n" + reports;
+        Path quill = Files.createDirectories(tempDir.resolve(".quill"));
+        var state = JSON.createObjectNode().put("version", 2).put("buildTool", "maven").put("successful", false)
+                .put("finishedAt", System.currentTimeMillis()).put("captureScope", "exception_chain");
+        state.putArray("diagnostics");
+        state.putArray("failureMessages")
+                .add("org.apache.maven.lifecycle.LifecycleExecutionException: " + goal)
+                .add("org.apache.maven.plugin.MojoFailureException: " + reports)
+                .add("org.apache.maven.surefire.booter.SurefireBooterForkException: " + discovery);
+        JSON.writeValue(quill.resolve("build-state.json").toFile(), state);
+
+        JsonNode result = JSON.readTree(BuildProblemInspector.inspect(tempDir, "all", null, 50, 0));
+        JsonNode problems = result.path("problems");
+
+        assertEquals(3, problems.size(), result.toString());
+        assertTrue(problems.get(0).path("message").asText().startsWith("Failed to execute goal"), result.toString());
+        assertFalse(problems.get(0).path("message").asText().contains("surefire-reports"), "The cause is its own problem: " + problems.get(0));
+        assertFalse(problems.get(1).path("message").asText().contains("TestEngine"), problems.get(1).toString());
+        assertTrue(problems.get(2).path("message").asText().contains("ClassSelector"), problems.get(2).toString());
+        for (JsonNode problem : problems) {
+            assertEquals("test_failure", problem.path("category").asText(), problem.toString());
+            assertFalse(problem.has("raw"), "raw restates the message: " + problem);
+        }
+        assertTrue(result.path("problems").toString().length() < 4_500, "Chain restated: " + result.path("problems").toString().length());
+    }
+
     private void writeState(boolean successful, String buildTool, String message)
             throws Exception {
         Path quill = Files.createDirectories(tempDir.resolve(".quill"));

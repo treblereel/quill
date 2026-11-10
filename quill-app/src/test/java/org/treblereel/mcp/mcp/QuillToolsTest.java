@@ -923,7 +923,7 @@ class QuillToolsTest {
             assertTrue(changed.path("verification").path("worktree")
                     .path("structural_dirty").asBoolean());
             assertEquals("INCOMPLETE_TEST_COVERAGE",
-                    changed.path("next_actions").get(0).path("reason").asText());
+                    changed.path("directive").path("primary_action").path("reason").asText());
 
             Path state = tempDir.resolve(".quill/build-state.json");
             Files.createDirectories(state.getParent());
@@ -1043,9 +1043,9 @@ class QuillToolsTest {
         assertEquals("not_captured", first.path("verification_receipt")
                 .path("recommendation").path("command_attestation").asText());
         assertFalse(first.path("verification_receipt").path("verified").asBoolean());
-        assertTrue(first.path("next_actions").get(0).path("action").isTextual());
-        assertEquals(first.path("next_actions").get(0).path("action_id").asText(),
-                first.path("directive").path("primary_action").path("action_id").asText());
+        assertTrue(first.path("directive").path("primary_action").path("action").isTextual());
+        assertEquals("/directive/primary_action", first.path("next_actions").get(0).path("same_as").asText(),
+                "The first action is stated once, in the directive Codex prints");
         assertEquals("planned", first.path("directive").path("status").asText());
         assertEquals(first.path("next_actions").size(), first.path("next_actions").valueStream()
                 .map(action -> action.path("action_id").asText()).distinct().count());
@@ -1101,8 +1101,8 @@ class QuillToolsTest {
         assertTrue(result.path("omitted_sections").valueStream()
                 .anyMatch(item -> item.asText().equals("verification_receipt")));
         assertEquals("inspect_primary",
-                result.path("next_actions").get(0).path("action").asText());
-        assertFalse(result.path("next_actions").get(0).path("action_id").asText().isBlank());
+                result.path("directive").path("primary_action").path("action").asText());
+        assertFalse(result.path("directive").path("primary_action").path("action_id").asText().isBlank());
         assertEquals("inspect_primary", result.path("directive")
                 .path("primary_action").path("action").asText());
     }

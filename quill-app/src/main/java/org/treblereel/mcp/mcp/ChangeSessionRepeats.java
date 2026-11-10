@@ -83,7 +83,9 @@ final class ChangeSessionRepeats {
             if (depth == 0 && ALWAYS.contains(field) || field.equals(UNCHANGED)) continue;
             JsonNode was = before.get(field), now = current.get(field);
             if (was == null) continue;
-            boolean keyed = now instanceof ObjectNode object && KEEP.stream().anyMatch(object::has);
+            // The directive is what Codex prints of an answer; it is compared inside, never dropped whole.
+            boolean keyed = now instanceof ObjectNode object
+                    && (KEEP.stream().anyMatch(object::has) || depth == 0 && field.equals("directive"));
             if (was.equals(now) && !keyed) {
                 if (now.toString().length() >= MIN_ELIDED_BYTES) {
                     current.remove(field);

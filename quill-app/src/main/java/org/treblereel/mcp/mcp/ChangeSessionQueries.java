@@ -140,8 +140,10 @@ final class ChangeSessionQueries {
                 ? plan.path("sequence").deepCopy()
                 : phaseActions(currentPhase, verify.path("next_actions")));
         result.set("next_actions", actions);
-        result.set("directive", external != null ? externalDirective(actions, external)
-                : directive(currentPhase, actions, plan, verify));
+        ObjectNode directive = external != null ? externalDirective(actions, external)
+                : directive(currentPhase, actions, plan, verify);
+        result.set("directive", directive);
+        pointFirstActionAtDirective(actions, directive);
         AffectedTestRows.compactIn(result);
         copy(verify, result, "_meta");
         var omitted = result.putArray("omitted_sections");
@@ -220,6 +222,17 @@ final class ChangeSessionQueries {
             }
         }
         return result;
+    }
+
+    /**
+     * The first action is stated once, in the directive: Codex prints only the directive, so a
+     * pointer there (as the catalog's compaction made it) left it without its action.
+     */
+    static void pointFirstActionAtDirective(ArrayNode actions, ObjectNode directive) {
+        if (actions.isEmpty() || !(directive.path("primary_action") instanceof ObjectNode primary)) return;
+        JsonNode first = actions.get(0);
+        boolean restated = first.propertyStream().allMatch(entry -> entry.getValue().equals(primary.get(entry.getKey())));
+        if (restated) actions.set(0, JSON.createObjectNode().put("same_as", "/directive/primary_action"));
     }
 
     /** Null for the indexed checkout itself; a missing directory is an argument error. */

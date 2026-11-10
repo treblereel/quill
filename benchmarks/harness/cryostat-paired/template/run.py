@@ -10,6 +10,7 @@ F = Path('/tmp/quill-@RUN@')
 CASES = @CASES@  # None runs every applicable case; a list makes a targeted run.
 ARM = @ARM@  # A single arm or repeat gives up the pairing: diagnostics only, never acceptance.
 REPEAT = @REPEAT@
+REPEATS = @REPEATS@  # Paired repeats per case and client; more narrow the noise of a targeted run.
 CLIENT = @CLIENT@  # One client keeps the arm pairing within it; still a diagnostic, never acceptance.
 spec = importlib.util.spec_from_file_location('full_runner', BASE / 'run.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -84,7 +85,7 @@ def prepare():
     if CASES:
         ref = {**ref, 'schedule': [e for e in ref['schedule'] if e['case'] in CASES]}
         assert {e['case'] for e in ref['schedule']} == set(CASES)
-    plan = m.measurement.make_plan(ref, 3, @SEED@)
+    plan = m.measurement.make_plan(ref, REPEATS, @SEED@)
     if ARM or REPEAT or CLIENT:
         plan['schedule'] = [e for e in plan['schedule'] if (not ARM or e['arm'] == ARM) and (not REPEAT or e['repeat'] == REPEAT)
                             and (not CLIENT or e['client'] == CLIENT)]
@@ -94,7 +95,7 @@ def prepare():
     p={**ref, **{k:plan[k] for k in ('measurement_contract','schedule','sessions','answers','repeats','seed')},
        'native_binary':str(NATIVE),'native_sha256':sha(NATIVE),
        'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip(),
-       'scope':(f'Targeted run of {sorted(CASES)}; ' if CASES else '44 applicable scenarios of 50; ')+(f'diagnostic, arm {ARM}, repeat {REPEAT or "all"}, unpaired; ' if ARM else f'diagnostic, repeat {REPEAT} only, paired within it; ' if REPEAT else 'three paired repeats; ')+(f'{CLIENT} only; ' if CLIENT else 'Codex and Claude; ')+f'{plan["sessions"]} sessions and {plan["answers"]} answers.',
+       'scope':(f'Targeted run of {sorted(CASES)}; ' if CASES else '44 applicable scenarios of 50; ')+(f'diagnostic, arm {ARM}, repeat {REPEAT or "all"}, unpaired; ' if ARM else f'diagnostic, repeat {REPEAT} only, paired within it; ' if REPEAT else f'{REPEATS} paired repeats; ')+(f'{CLIENT} only; ' if CLIENT else 'Codex and Claude; ')+f'{plan["sessions"]} sessions and {plan["answers"]} answers.',
        'run_filters':{'cases':CASES,'arm':ARM,'repeat':REPEAT,'client':CLIENT,'acceptance_evidence':not (CASES or ARM or REPEAT or CLIENT)},
        'fixture_policy':'Reuse canonical disposable compiled Cryostat fixture; fresh current-native init/index; application sources unchanged.',
        'selection':'Preregistered seed @SEED@; randomized case/client pair order, AB/BA alternated across repeats.',
@@ -104,7 +105,7 @@ def prepare():
        'native_build_proof':load(O/'native-build-proof.json'),
        'codex_binary':str(RUNTIME/'codex'),'claude_binary':str(RUNTIME/'claude'),
        'cli_versions_actual':{name:subprocess.check_output([str(RUNTIME/name),'--version'],text=True).strip() for name in ('codex','claude')}}
-    assert CASES or ARM or REPEAT or CLIENT or (p['sessions']==528 and p['answers']==588)
+    assert CASES or ARM or REPEAT or CLIENT or REPEATS != 3 or (p['sessions']==528 and p['answers']==588)
     assert p['sessions']==len(p['schedule'])
     put(O/'protocol.json',p)
     put(O/'source-inputs.json',ref['source_files'])

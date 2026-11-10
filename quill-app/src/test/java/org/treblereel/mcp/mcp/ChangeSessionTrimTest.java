@@ -15,13 +15,15 @@ class ChangeSessionTrimTest {
 
     /** Agents ran -Dtest only for tests ranked 1-3 of the 20 a snapshot carried (V24-V28, 39 runs). */
     @Test void aSnapshotStatesTheTopRankedTestsAndHowManyMore() throws Exception {
-        ObjectNode primary = (ObjectNode) JSON.readTree("{\"action\":\"inspect_test_evidence\",\"evidence_snapshot\":{\"answer_complete\":false,\"tests\":["
+        ObjectNode primary = (ObjectNode) JSON.readTree("{\"action\":\"inspect_test_evidence\",\"evidence_snapshot\":{\"answer_complete\":false,\"showing\":7,\"total\":9,\"tests\":["
                 + "{\"class\":\"T1\"},{\"class\":\"T2\"},{\"class\":\"T3\"},{\"class\":\"T4\"},{\"class\":\"T5\"},{\"class\":\"T6\"},{\"class\":\"T7\"}]}}");
         ChangeSessionQueries.trimSnapshotTests(primary);
         JsonNode snapshot = primary.path("evidence_snapshot");
         assertEquals(5, snapshot.path("tests").size(), snapshot.toString());
         assertEquals("T1", snapshot.at("/tests/0/class").asText());
         assertEquals(7, snapshot.path("tests_total").asInt(), snapshot.toString());
+        assertEquals(5, snapshot.path("showing").asInt(), "showing counts the rows stated: " + snapshot);
+        assertEquals(9, snapshot.path("total").asInt());
         assertEquals("find_impacted_tests", snapshot.path("more_tests_from").asText(), snapshot.toString());
         assertFalse(snapshot.path("answer_complete").asBoolean());
     }

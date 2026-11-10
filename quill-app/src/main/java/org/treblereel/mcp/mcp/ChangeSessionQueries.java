@@ -284,6 +284,9 @@ final class ChangeSessionQueries {
         while (tests.size() > SNAPSHOT_TESTS) tests.remove(tests.size() - 1);
         snapshot.put("tests_total", total);
         snapshot.put("more_tests_from", "find_impacted_tests");
+        // showing counts the rows stated, so it never claims the trimmed ones.
+        if (snapshot.has("showing")) snapshot.put("showing", SNAPSHOT_TESTS);
+        if (snapshot.has("has_more")) snapshot.put("has_more", true);
     }
 
     /**

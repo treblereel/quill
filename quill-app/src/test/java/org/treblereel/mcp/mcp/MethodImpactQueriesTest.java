@@ -39,6 +39,22 @@ class MethodImpactQueriesTest {
             assertFalse(projection.has("impacted_tests"));
         } finally {}
     }
+    /** V24-V27 CQ-049: parse was private, test_callers empty, and Claude globbed for PermissionMapper tests 24 times in 14 sessions. */
+    @Test void aMethodImpactNamesTheTestsOfItsDeclaringClass() throws Exception {
+        var db=JavaEvidenceFixture.index(root,"""
+            package p;
+            class Mapper { Object resolve(String v){return parse(v);} private Object parse(String v){return v;} }
+            class MapperTest { Object check(){return new Mapper().resolve("a");} }
+            class Unrelated { int x(){return 1;} }
+            """);
+        try {
+            db.useHandle(h->h.execute("UPDATE classes SET source_set='test', source_file='src/test/java/p/MapperTest.java' WHERE class_name='p.MapperTest'"));
+            var data=TestReads.read(db, readScope -> new MethodImpactQueries().get(readScope,"p.Mapper","parse(java.lang.String)",200));
+            assertEquals(0,data.path("test_callers").size(),data.toString());
+            assertEquals("p.MapperTest",data.path("declaring_class_tests").path(0).asText(),data.toString());
+            assertEquals(1,data.path("declaring_class_tests").size(),data.toString());
+        } finally {}
+    }
     @Test void literalSelectorsNotQuestionPhrasesDrivePrefetchAndSourceChangesBlockIt() throws Exception {
         var db=JavaEvidenceFixture.index(root,SOURCE);
         try {

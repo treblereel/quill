@@ -89,6 +89,7 @@ final class MethodImpactQueries {
                 .put("consumer_files",counts.path("consumer_files").asInt()).put("files_including_declaration",files.size());
         categories.put("call_site_definition","indexed invocation instructions, not caller methods or runtime executions");
         result.set("production_callers",group(production));result.set("test_callers",group(tests));
+        result.set("declaring_class_tests",declaringClassTests(db,lookup.cls().id(),limit));
         result.set("unclassified_callers",group(unknown));
         ObjectNode upstream=(ObjectNode)JSON.readTree(new CallHierarchyQueries().getCallHierarchy(
                 db,lookup.cls().className(),refs.path("name").asText(),refs.path("descriptor").asText(),"inbound",true,4,limit,0));
@@ -120,6 +121,21 @@ final class MethodImpactQueries {
         result.put("answer_complete",complete).put("evidence_detail","summary; full per-reference source/dispatch evidence available via find_symbol_usages")
                 .put("test_scope","direct static references; not measured runtime test coverage or transitive test ranking");
         return result;
+    }
+    /**
+     * Tests that reference the declaring class, whatever member they use. A private method has no
+     * test callers, so in V24-V27 CQ-049 Claude globbed for PermissionMapper tests 24 times in 14
+     * sessions to find where a new test belongs.
+     */
+    private static ArrayNode declaringClassTests(ReadQueryContext db,int classId,int limit){
+        var names=db.jdbi().withHandle(h->h.createQuery("""
+                SELECT DISTINCT tc.class_name FROM classes tc
+                WHERE tc.id IN (SELECT from_class_id FROM dependencies WHERE to_class_id = :id
+                                UNION SELECT from_class_id FROM method_calls WHERE to_class_id = :id)
+                  AND tc.id <> :id AND tc.lifecycle = 'current'
+                  AND (tc.source_set = 'test' OR tc.source_file LIKE '%src/test/%')
+                ORDER BY tc.class_name LIMIT :limit""").bind("id",classId).bind("limit",limit).mapTo(String.class).list());
+        var result=JSON.createArrayNode();names.forEach(result::add);return result;
     }
     private static ObjectNode categoryCounts(ArrayNode rows){
         Set<String> methods=new HashSet<>(),files=new HashSet<>();int calls=0;

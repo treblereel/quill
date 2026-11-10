@@ -29,7 +29,7 @@ class ChangeSessionMemberCallersTest {
                 List.of("p.Mapper"), "Rename Mapper#parse(String) to parseMappingValue and update callers", 20, "summary", "plan"));
         JsonNode session = new ObjectMapper().readTree(answer);
 
-        JsonNode callers = session.path("plan").path("member_callers");
+        JsonNode callers = session.path("member_callers");
         assertEquals(1, callers.size(), answer);
         assertEquals("parse", callers.path(0).path("method").asText(), answer);
         assertEquals("p.Mapper", callers.path(0).path("class").asText());
@@ -38,7 +38,7 @@ class ChangeSessionMemberCallersTest {
 
         String plain = TestReads.<String>read(db, scope -> new ChangeSessionQueries().snapshot(scope, root,
                 List.of("p.Mapper"), "Add logging", 20, "summary", "plan"));
-        assertTrue(new ObjectMapper().readTree(plain).path("plan").path("member_callers").isMissingNode(), plain);
+        assertTrue(new ObjectMapper().readTree(plain).path("member_callers").isMissingNode(), plain);
     }
 
     @Test void eachOverloadOfANamedMethodGetsItsOwnCallers() throws Exception {
@@ -53,8 +53,18 @@ class ChangeSessionMemberCallersTest {
             """);
         String answer = TestReads.<String>read(db, scope -> new ChangeSessionQueries().snapshot(scope, root,
                 List.of("p.Mapper"), "Rename parse", 20, "summary", "plan"));
-        JsonNode callers = new ObjectMapper().readTree(answer).path("plan").path("member_callers");
+        JsonNode callers = new ObjectMapper().readTree(answer).path("member_callers");
         assertEquals(2, callers.size(), answer);
         assertTrue(callers.toString().contains("resolve") && callers.toString().contains("count"), answer);
+    }
+
+    /** V25 CQ-049: Claude asked after editing, the auto view was verification, and callers inside plan never showed. */
+    @Test void theCallersShowInTheVerificationViewToo() throws Exception {
+        var db = JavaEvidenceFixture.index(root, SOURCE);
+        String answer = TestReads.<String>read(db, scope -> new ChangeSessionQueries().snapshot(scope, root,
+                List.of("p.Mapper"), "Renamed parse to parseMappingValue", 20, "summary", "verification"));
+        JsonNode session = new ObjectMapper().readTree(answer);
+        assertFalse(session.has("plan"), answer);
+        assertEquals("resolve", session.path("member_callers").path(0).path("callers").path(0).path("method").asText(), answer);
     }
 }

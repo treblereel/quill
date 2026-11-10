@@ -81,7 +81,6 @@ final class ChangeSessionQueries {
         if (context.has("error_code")) return context.toString();
         ObjectNode plan = plans.planFromContext(reader, projectRoot, context, change);
         ArrayNode memberCallers = memberCallers(reader, canonicalTargets(context), change, limit);
-        if (!memberCallers.isEmpty()) plan.set("member_callers", memberCallers);
         ObjectNode verify = parse(verification.verifyChangeWithContext(
                 reader, projectRoot, effectiveTargets, limit, context, changes,
                 inferred, inferenceTruncated));
@@ -106,6 +105,8 @@ final class ChangeSessionQueries {
         result.set("requested_targets", JSON.valueToTree(effectiveTargets));
         result.set("targets", JSON.valueToTree(canonicalTargets));
         result.put("phase", currentPhase);
+        // Stated in every view: in V25 CQ-049 Claude asked after editing and the plan view never showed.
+        if (!memberCallers.isEmpty()) result.set("member_callers", memberCallers);
 
         boolean includePlan = effectiveView.equals("plan") || effectiveView.equals("all");
         boolean planned = currentPhase.equals("planned");
@@ -312,12 +313,12 @@ final class ChangeSessionQueries {
 
     private static ObjectNode fullPlan(ObjectNode plan) {
         return compact(plan, List.of("plan_status", "answer_complete", "primary_changes",
-                "member_callers", "dependency_review", "test_plan", "warnings", "sequence"));
+                "dependency_review", "test_plan", "warnings", "sequence"));
     }
 
     private static ObjectNode summaryPlan(ObjectNode plan) {
         ObjectNode result = compact(plan, List.of(
-                "plan_status", "answer_complete", "member_callers", "warnings", "sequence"));
+                "plan_status", "answer_complete", "warnings", "sequence"));
         var primary = result.putArray("primary_changes");
         for (JsonNode item : plan.path("primary_changes")) {
             primary.add(compact(item, List.of("class", "file", "module", "source_set",

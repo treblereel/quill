@@ -46,6 +46,22 @@ final class ProjectAvailabilityResponses {
         if (root.path("detail").asText().equals("summary") || stated) {
             for (int i = 0; i < unavailable.size(); i++) unavailable.set(i, summary(unavailable.get(i)));
         }
+        // A warning the answer's own build section states is a pointer: in V28 CQ-049 change_session
+        // restated status, reason and action of verification.build in 800-1000 bytes.
+        String pointer = root.has("build") ? "/build" : root.path("verification").has("build") ? "/verification/build" : null;
+        if (field.equals("project_warnings") && pointer != null) {
+            JsonNode build = root.at(pointer);
+            for (int i = 0; i < unavailable.size(); i++) {
+                JsonNode warning = unavailable.get(i);
+                boolean same = List.of("status", "reason", "action").stream()
+                        .allMatch(key -> warning.path(key).asText().equals(build.path(key).asText()));
+                if (!same) continue;
+                ObjectNode compact = JSON.createObjectNode();
+                for (String key : List.of("project", "status", "reason")) compact.set(key, warning.path(key).deepCopy());
+                compact.put("same_as", pointer);
+                unavailable.set(i, compact);
+            }
+        }
     }
 
     static void annotateScopedBuildWarnings(ObjectNode root) {

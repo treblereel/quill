@@ -199,6 +199,25 @@ class ProjectAvailabilityResponsesTest {
         assertTrue(bare.path("project_warnings").get(0).has("verification_plan"), "Nothing else states it here");
     }
 
+    /** V28 CQ-049: a change_session warning restated status, reason and action its verification.build states. */
+    @Test void aWarningTheVerifiedBuildAlreadyStatesBecomesAPointer() throws Exception {
+        var issue = new ProjectRegistry.ProjectIssue("app", root, "build_required", "maven",
+                "Compiled main classes are older than project build inputs", "Run quick_compile", false, "classes_stale", List.of("."));
+        var answer = JSON.createObjectNode().put("detail", "summary");
+        var build = answer.putObject("verification").putObject("build");
+        build.put("status", "build_required").put("reason", "classes_stale").put("action", "build");
+        ProjectAvailabilityResponses.append(answer, "project_warnings", List.of(issue));
+        var warning = answer.path("project_warnings").get(0);
+        assertEquals("/verification/build", warning.path("same_as").asText(), warning.toString());
+        assertEquals("classes_stale", warning.path("reason").asText());
+        assertFalse(warning.has("message"), warning.toString());
+
+        var other = JSON.createObjectNode().put("detail", "summary");
+        other.putObject("verification").putObject("build").put("status", "ready").put("reason", "ready").put("action", "none");
+        ProjectAvailabilityResponses.append(other, "project_warnings", List.of(issue));
+        assertTrue(other.path("project_warnings").get(0).has("message"), "A different reason is stated whole");
+    }
+
     private void mavenModules() throws Exception {
         Files.writeString(root.resolve("pom.xml"), """
                 <project><modelVersion>4.0.0</modelVersion><groupId>test</groupId><artifactId>parent</artifactId>

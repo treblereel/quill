@@ -67,4 +67,27 @@ class ChangeSessionMemberCallersTest {
         assertFalse(session.has("plan"), answer);
         assertEquals("resolve", session.path("member_callers").path(0).path("callers").path(0).path("method").asText(), answer);
     }
+
+    /** V28 CQ-049: the change said "call sites in resolve()", and the 15 test methods calling resolve took 1.5 KB. */
+    @Test void aNamedMethodThatCallsAnotherNamedMethodIsContextNotATarget() throws Exception {
+        var db = JavaEvidenceFixture.index(root, """
+            package p;
+            class Mapper {
+              Object resolve(String v){ return v.isEmpty() ? parse("x") : parse(v); }
+              private Object parse(String v){ return v; }
+            }
+            class Client { Object a(){ return new Mapper().resolve("a"); } Object b(){ return new Mapper().resolve("b"); } }
+            """);
+        String answer = TestReads.<String>read(db, scope -> new ChangeSessionQueries().snapshot(scope, root,
+                List.of("p.Mapper"), "Rename parse and update its call sites in resolve()", 20, "summary", "plan"));
+        JsonNode callers = new ObjectMapper().readTree(answer).path("member_callers");
+        assertEquals("parse", callers.path(0).path("method").asText(), answer);
+        assertEquals(1, callers.path(0).path("callers").size(), "One row per calling method: " + answer);
+        assertEquals("resolve", callers.path(0).path("callers").path(0).path("method").asText(), answer);
+        JsonNode context = callers.path(1);
+        assertEquals("resolve", context.path("method").asText(), answer);
+        assertFalse(context.has("callers"), "Its own callers are not the change: " + answer);
+        assertEquals(2, context.path("callers_total").asInt(), answer);
+        assertTrue(context.path("role").asText().contains("parse"), answer);
+    }
 }

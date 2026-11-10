@@ -126,7 +126,7 @@ final class ChangeSessionQueries {
             result.set("verification_plan", normalizedDetail.equals("full") && !planned
                     ? verify.path("verification_plan").deepCopy()
                     : summaryVerificationPlan(verify.path("verification_plan")));
-            result.set("review_checklist", checklist);
+            result.set("review_checklist", compactChecklist(checklist));
             result.set("verification_receipt",
                     verificationReceipt(stableSessionId, currentPhase, verify, checklist));
         }
@@ -144,8 +144,12 @@ final class ChangeSessionQueries {
                 : directive(currentPhase, actions, plan, verify);
         result.set("directive", directive);
         pointFirstActionAtDirective(actions, directive);
+        if (directive.path("primary_action") instanceof ObjectNode primary) {
+            trimSnapshotTests(primary);
+            if (result.path("verification_receipt") instanceof ObjectNode receipt) dropRestatedRecommendation(receipt, primary);
+        }
         AffectedTestRows.compactIn(result);
-        copy(verify, result, "_meta");
+        if (verify.has("_meta")) result.set("_meta", compactMeta(verify.get("_meta"), includeVerification));
         var omitted = result.putArray("omitted_sections");
         if (!includePlan) omitted.add("plan");
         if (!includeVerification && external == null) {
@@ -221,6 +225,112 @@ final class ChangeSessionQueries {
                 copy(found, row, "has_more");
             }
         }
+        return withContextMethodsFolded(result);
+    }
+
+    /**
+     * A named method that calls another named method is where the change happens, not what changes:
+     * in V28 CQ-049 the change said "call sites in resolve()" and the 15 test methods calling resolve
+     * took 1.5 KB. Its callers become a count, and each calling method is stated once with all its lines.
+     */
+    private static ArrayNode withContextMethodsFolded(ArrayNode rows) {
+        java.util.Map<String, java.util.List<String>> callerOf = new java.util.LinkedHashMap<>();
+        for (JsonNode row : rows) {
+            for (JsonNode caller : row.path("callers")) {
+                callerOf.computeIfAbsent(caller.path("class").asText() + "#" + caller.path("method").asText(),
+                        key -> new ArrayList<>()).add(row.path("method").asText());
+            }
+        }
+        ArrayNode result = JSON.createArrayNode();
+        for (JsonNode source : rows) {
+            ObjectNode row = source.deepCopy();
+            var targets = callerOf.get(row.path("class").asText() + "#" + row.path("method").asText());
+            if (targets != null && !targets.contains(row.path("method").asText())) {
+                ObjectNode context = JSON.createObjectNode().put("class", row.path("class").asText())
+                        .put("method", row.path("method").asText())
+                        .put("role", "calls " + String.join(", ", new java.util.LinkedHashSet<>(targets)) + "; its own callers are not part of the change")
+                        .put("callers_total", row.path("callers").size());
+                result.add(context);
+                continue;
+            }
+            java.util.Map<String, ObjectNode> merged = new java.util.LinkedHashMap<>();
+            for (JsonNode caller : row.path("callers")) {
+                String key = caller.path("class").asText() + "#" + caller.path("method").asText();
+                ObjectNode site = merged.get(key);
+                if (site == null) {
+                    merged.put(key, ((ObjectNode) caller).deepCopy());
+                    continue;
+                }
+                java.util.TreeSet<Integer> lines = new java.util.TreeSet<>();
+                site.path("lines").forEach(line -> lines.add(line.asInt()));
+                caller.path("lines").forEach(line -> lines.add(line.asInt()));
+                ArrayNode union = site.putArray("lines");
+                lines.forEach(union::add);
+            }
+            ArrayNode callers = row.putArray("callers");
+            merged.values().forEach(callers::add);
+            result.add(row);
+        }
+        return result;
+    }
+
+    static final int SNAPSHOT_TESTS = 5;
+
+    /** Agents ran -Dtest only for tests ranked 1-3 of the 20 a V24-V28 snapshot carried (39 runs). */
+    static void trimSnapshotTests(ObjectNode primary) {
+        if (!(primary.path("evidence_snapshot") instanceof ObjectNode snapshot)
+                || !(snapshot.path("tests") instanceof ArrayNode tests) || tests.size() <= SNAPSHOT_TESTS) return;
+        int total = tests.size();
+        while (tests.size() > SNAPSHOT_TESTS) tests.remove(tests.size() - 1);
+        snapshot.put("tests_total", total);
+        snapshot.put("more_tests_from", "find_impacted_tests");
+    }
+
+    /**
+     * Codex prints the checklist (V21-V23): required items keep their label, advisory items their
+     * evidence, and clear items, which ask nothing, become a count. The phase gate reads the whole one.
+     */
+    static ObjectNode compactChecklist(ObjectNode checklist) {
+        ObjectNode result = checklist.deepCopy();
+        ArrayNode items = result.putArray("items");
+        int clear = 0;
+        for (JsonNode item : checklist.path("items")) {
+            String status = item.path("status").asText();
+            if (status.equals("clear")) { clear++; continue; }
+            items.add(compact(item, status.equals("required")
+                    ? List.of("id", "label", "status", "evidence", "evidence_count", "reason_code")
+                    : List.of("id", "status", "evidence", "evidence_count")));
+        }
+        result.put("clear_count", clear);
+        return result;
+    }
+
+    /** The receipt's recommendation restates the directive's own command when it carries one. */
+    static void dropRestatedRecommendation(ObjectNode receipt, ObjectNode primary) {
+        JsonNode argv = receipt.path("recommendation").path("argv");
+        if (receipt.path("verified").asBoolean() || !argv.isArray() || argv.isEmpty()) return;
+        for (String field : List.of("command", "preparation_command", "retry_command")) {
+            if (primary.path(field).path("argv").equals(argv)) {
+                receipt.remove("recommendation");
+                return;
+            }
+        }
+    }
+
+    private static final Set<String> META_KEPT = Set.of("index_id", "structure_stale", "stale_warning", "stale_scope",
+            "answer_confidence", "recommended_action", "stale_reasons", "commit_stale", "worktree_dirty",
+            "limitations_stated_earlier", "partial", "warnings");
+
+    /**
+     * What judges the answer stays; commits, times and file counts go, and stale reasons go when
+     * verification.build.freshness states them. V28 CQ-049 answers carried 700 bytes of _meta.
+     */
+    static ObjectNode compactMeta(JsonNode meta, boolean verificationStated) {
+        ObjectNode result = JSON.createObjectNode();
+        meta.propertyStream().filter(entry -> META_KEPT.contains(entry.getKey()))
+                .filter(entry -> !(verificationStated && entry.getKey().equals("stale_reasons")))
+                .filter(entry -> !entry.getKey().equals("commit_stale") || entry.getValue().asBoolean())
+                .forEach(entry -> result.set(entry.getKey(), entry.getValue()));
         return result;
     }
 

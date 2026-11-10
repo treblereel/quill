@@ -129,7 +129,7 @@ public final class McpStdioServer {
     static String serverInstructions(McpToolProfile profile, Boolean workspaceMode) {
         String instructions = "Quill supplies read-only code intelligence for indexed JVM projects. "
                 + "Known targets can be queried directly. ";
-        instructions += workspaceMode == null
+        if (profile.listsOverview()) instructions += workspaceMode == null
                 ? "For get_overview, use view=compact only if launch arguments confirm --workspace; otherwise omit arguments. "
                 : workspaceMode
                         ? "Server mode: workspace (--workspace). For inventory, use get_overview view=compact, then select a project for full details. "

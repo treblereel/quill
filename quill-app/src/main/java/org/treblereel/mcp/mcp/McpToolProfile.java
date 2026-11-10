@@ -48,16 +48,27 @@ public final class McpToolProfile {
     private static final Set<String> CODEX = union(COMPACT, Set.of(
             "change_session", "get_external_symbol_details", "get_project_dependencies",
             "trace_state_lifecycle", "find_usages", "find_entry_points", "get_annotated_classes"));
+    // Claude loads every listed schema into each request. In 186 cryostat sessions it called
+    // get_overview in 2, get_dependencies in 6 and list_beans in 10; execute_tool still reaches them.
+    private static final Set<String> CLAUDE = Set.of(
+            "get_symbol_details", "search_classes", "list_injection_points", "get_context",
+            "get_call_hierarchy", "find_configuration_references");
     private static final Set<String> NAMES = Set.of("full", "router", "compact", "codex", "claude", "core", "code", "di", "git");
 
     private final boolean full;
     private final boolean router;
     private final Set<String> tools;
+    private final boolean overview;
 
     private McpToolProfile(boolean full, boolean router, Set<String> tools) {
+        this(full, router, tools, true);
+    }
+
+    private McpToolProfile(boolean full, boolean router, Set<String> tools, boolean overview) {
         this.full = full;
         this.router = router;
         this.tools = Set.copyOf(tools);
+        this.overview = overview;
     }
 
     public static McpToolProfile full() {
@@ -72,8 +83,7 @@ public final class McpToolProfile {
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         if (names.equals(Set.of("compact"))) return new McpToolProfile(false, true, COMPACT);
         if (names.equals(Set.of("codex"))) return new McpToolProfile(false, true, CODEX);
-        // Claude loads every listed schema into each request, so it keeps the compact catalog.
-        if (names.equals(Set.of("claude"))) return new McpToolProfile(false, true, COMPACT);
+        if (names.equals(Set.of("claude"))) return new McpToolProfile(false, true, CLAUDE, false);
         for (String routed : List.of("compact", "codex", "claude")) {
             if (names.contains(routed)) {
                 throw new IllegalArgumentException("MCP tool profile '" + routed + "' must be used alone");
@@ -106,6 +116,11 @@ public final class McpToolProfile {
 
     boolean includes(String toolName) {
         return full || tools.contains(toolName);
+    }
+
+    /** Whether get_overview is listed directly; otherwise it is reached through execute_tool. */
+    boolean listsOverview() {
+        return full || overview;
     }
 
     boolean router() {

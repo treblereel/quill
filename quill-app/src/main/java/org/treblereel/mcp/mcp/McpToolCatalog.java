@@ -72,13 +72,14 @@ final class McpToolCatalog {
             List<AsyncToolSpecification> catalog = new ArrayList<>(create(
                     router, RouterTools.class, toolScheduler, responseScheduler,
                     requestTimeout, McpToolProfile.full()));
-            if (!profile.tools().isEmpty()) {
+            if (!profile.tools().isEmpty() || !profile.listsOverview()) {
                 catalog.removeIf(spec -> spec.tool().name().equals("get_overview"));
             }
             java.util.Arrays.stream(QuillTools.class.getDeclaredMethods())
                     .filter(method -> method.isAnnotationPresent(Tool.class))
                     .filter(method -> profile.includes(method.getName())
-                            || (!profile.tools().isEmpty() && method.getName().equals("get_overview")))
+                            || (!profile.tools().isEmpty() && profile.listsOverview()
+                                    && method.getName().equals("get_overview")))
                     .map(method -> specification(quillTools, method, toolScheduler,
                             responseScheduler, requestTimeout, profile, quillTools.singleProjectCatalog()))
                     .forEach(catalog::add);

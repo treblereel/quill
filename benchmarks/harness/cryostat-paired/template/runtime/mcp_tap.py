@@ -45,7 +45,7 @@ try:
         now=time.monotonic()
         if deadline and not ready:
             if now>=deadline:raise TimeoutError('MCP readiness exceeded600s')
-            if due is not None and now>=due:due=None;probe('get_overview',{})
+            if due is not None and now>=due:due=None;probe('execute_tool',{'name':'get_overview','arguments':{}})
         for key,_ in selector.select(.2):
             side=key.data;data=os.read(key.fd,65536)
             if not data:
@@ -60,7 +60,7 @@ try:
                     assert not str(message.get('id','')).startswith('__quill_benchmark_probe_'),'Probe ID collision'
                     logs['client-to-native.jsonl'].write(raw);logs['client-to-native.jsonl'].flush();upstream(raw)
                     if message.get('method')=='notifications/initialized':
-                        assert not initialized,'Repeated client initialized';initialized=True;deadline=time.monotonic()+600;probe('get_overview',{})
+                        assert not initialized,'Repeated client initialized';initialized=True;deadline=time.monotonic()+600;probe('execute_tool',{'name':'get_overview','arguments':{}})
                     elif message.get('method')=='tools/list':client_list_ids.add(message['id'])
                 else:
                     own=pending is not None and message.get('id')==pending['id'];record('from_native',raw,own)

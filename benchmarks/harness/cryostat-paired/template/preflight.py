@@ -26,7 +26,7 @@ for client,arm in [('codex','without_quill'),('codex','with_quill'),('claude','w
    argv=[sys.executable,str(O/'runtime/mcp_tap.py'),str(m.NATIVE),str(m.ROOT),str(d/'mcp')]
    code='import os;os.execv('+repr(sys.executable)+','+repr(argv)+')'
    with WorkflowClient(['/usr/bin/sandbox-exec','-f',str(sb),sys.executable,'-c',code],m.ROOT,240) as q:
-    q.request('tools/list',{});data=m.load(d/'mcp/readiness.json');assert data['ready'];meta=data['overview']['_meta'];assert not meta.get('stale_warning') and meta['answer_confidence']=='high';overview=q.request('tools/call',{'name':'get_overview','arguments':{}});assert not overview.get('isError');assert not overview['structuredContent']['_meta'].get('stale_warning')
+    q.request('tools/list',{});data=m.load(d/'mcp/readiness.json');assert data['ready'];meta=data['overview']['_meta'];assert not meta.get('stale_warning') and meta['answer_confidence']=='high';overview=q.request('tools/call',{'name':'execute_tool','arguments':{'name':'get_overview','arguments':{}}});assert not overview.get('isError');assert not overview['structuredContent']['_meta'].get('stale_warning')
    assert 'Operation not permitted' not in (d/'mcp/native-stderr.log').read_text()
    assert 'dependency index degraded' not in (d/'mcp/native-stderr.log').read_text()
    # Exercise the installed handler under the actual sandbox, with no provider/client turn.

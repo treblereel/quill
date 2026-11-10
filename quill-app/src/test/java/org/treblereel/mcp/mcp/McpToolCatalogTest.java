@@ -511,6 +511,28 @@ class McpToolCatalogTest {
     }
 
     @Test
+    void claudeProfileListsOnlyToolsClaudeCallsAndRoutesTheRest() {
+        QuillTools quill = new QuillTools(new ProjectRegistry());
+        var claude = McpToolCatalog.create(quill, workers, responses,
+                Duration.ofSeconds(1), McpToolProfile.parse("claude"));
+        var names = claude.stream().map(spec -> spec.tool().name()).sorted().toList();
+        assertEquals(List.of("execute_tool", "find_configuration_references", "get_call_hierarchy",
+                "get_context", "get_symbol_details", "list_injection_points", "search_classes",
+                "search_tools"), names);
+        var execute = claude.stream().filter(spec -> spec.tool().name().equals("execute_tool"))
+                .findFirst().orElseThrow();
+        var routed = execute.callHandler().apply(null, new McpSchema.CallToolRequest(
+                "execute_tool", Map.of("name", "get_overview", "arguments", Map.of()), Map.of()))
+                .block(Duration.ofSeconds(2));
+        assertFalse(((JsonNode) routed.structuredContent()).path("error").asText()
+                .contains("Unknown tool"));
+        String instructions = McpStdioServer.serverInstructions(McpToolProfile.parse("claude"), false);
+        assertFalse(instructions.contains("get_overview"));
+        assertTrue(instructions.length() < McpStdioServer.serverInstructions(
+                McpToolProfile.parse("compact"), false).length());
+    }
+
+    @Test
     void routerProfileExposesThreeToolsAndDiscoversHiddenSchemas() {
         QuillTools quill = new QuillTools(new ProjectRegistry());
         var router = McpToolCatalog.create(

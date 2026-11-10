@@ -86,18 +86,22 @@ class ClassPrefetchRelationsTest {
             handle.execute("UPDATE classes SET source_set = CASE WHEN class_name = 'x.ServiceTest' THEN 'test' ELSE 'main' END");
             handle.execute("INSERT INTO method_calls(from_class_id, from_method, from_descriptor, to_class_id, to_method, to_descriptor, "
                     + "invocation_kind) VALUES (4, 'tick', '()V', 1, 'key', '()Ljava/lang/String;', 'static')");
+            // V24-V27 CQ-045: Claude read the consumer's source for its scope and the methods using the bean.
+            handle.execute("INSERT INTO method_calls(from_class_id, from_method, from_descriptor, to_class_id, to_method, to_descriptor, "
+                    + "invocation_kind) VALUES (3, 'lambda$handle$0', '()V', 1, 'run', '()V', 'interface'), "
+                    + "(3, 'audit', '()V', 1, 'run', '()V', 'interface')");
         });
 
         ObjectNode service = relations(db, "x.Service");
         ObjectNode impl = relations(db, "x.Impl");
 
-        assertEquals(List.of("x.Consumer#service (FIELD x.Service) [\"@Default\"] [RESOLVED]",
-                        "x.Consumer#services (FIELD jakarta.enterprise.inject.Instance<x.Service>) [UNKNOWN]"),
+        assertEquals(List.of("x.Consumer#service (FIELD x.Service) [\"@Default\"] [RESOLVED] owner @Singleton, uses it in audit, handle",
+                        "x.Consumer#services (FIELD jakarta.enterprise.inject.Instance<x.Service>) [UNKNOWN] owner @Singleton, uses it in audit, handle"),
                 strings(service, "injected_into"));
         assertEquals(List.of("src/test/java/x/ServiceTest.java"), strings(service, "test_classes"));
         assertEquals(List.of("Clock.java", "Consumer.java", "Impl.java"), strings(service, "related_source_files"));
         assertEquals(List.of("FIELD clock: x.Clock [\"@Default\"] -> x.Clock (CLASS) [RESOLVED]"), strings(impl, "injects"));
-        assertEquals(List.of("x.Consumer#service (FIELD x.Service) [\"@Default\"] [RESOLVED]"), strings(impl, "injected_into"));
+        assertEquals(List.of("x.Consumer#service (FIELD x.Service) [\"@Default\"] [RESOLVED] owner @Singleton"), strings(impl, "injected_into"));
         assertFalse(service.has("injects"));
     }
 

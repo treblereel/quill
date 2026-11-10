@@ -484,6 +484,10 @@ class QuillToolsTest {
                     INSERT INTO dependencies (from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
                     SELECT t.id, s.id, 'CALLS', 1, '[7]' FROM classes t, classes s
                     WHERE t.class_name = 'org.acme.OrderServiceTest' AND s.class_name = 'org.acme.OrderService'""");
+            handle.execute("""
+                    INSERT INTO method_calls (from_class_id, from_method, from_descriptor, to_class_id, to_method, to_descriptor, invocation_kind)
+                    SELECT t.id, 'lambda$placesOrder$0', '()V', s.id, 'place', '()V', 'virtual' FROM classes t, classes s
+                    WHERE t.class_name = 'org.acme.OrderServiceTest' AND s.class_name = 'org.acme.OrderService'""");
         });
         String answer = ReadQueryContext.readWithGraph(jdbi, context -> new ContextQueries()
                 .getContext(context, List.of("OrderService"), false, 10, "impact"));
@@ -494,6 +498,7 @@ class QuillToolsTest {
         assertEquals("direct_class_impact", impact.path("kind").asText(), result.toString());
         assertEquals("org.acme.OrderService", impact.path("class").asText());
         assertEquals("org.acme.OrderServiceTest", impact.path("test_dependents").path(0).path("class").asText(), result.toString());
+        assertEquals("placesOrder", impact.path("test_dependents").path(0).path("used_in").path(0).asText(), result.toString());
         assertTrue(impact.path("production_dependents").valueStream()
                 .noneMatch(row -> row.path("class").asText().endsWith("Test")), result.toString());
         assertTrue(impact.path("impacted_tests").path("tests").toString().contains("org.acme.OrderServiceTest"), result.toString());

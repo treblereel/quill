@@ -29,6 +29,7 @@ final class ContextQueries {
 
     private final SymbolToolQueries symbols = new SymbolToolQueries();
     private final UsageToolQueries usages = new UsageToolQueries();
+    private static final java.util.regex.Pattern LAMBDA_METHOD = java.util.regex.Pattern.compile("lambda\\$(.+?)\\$\\d+");
     private final TestImpactQueries tests = new TestImpactQueries();
     private final ChangeRiskQueries risks = new ChangeRiskQueries();
 
@@ -65,6 +66,26 @@ final class ContextQueries {
                 ArrayNode members = dependent.has("members") ? (ArrayNode) dependent.get("members") : dependent.putArray("members");
                 String name = member.path("name").asText();
                 if (members.valueStream().noneMatch(value -> value.asText().equals(name))) members.add(name);
+            }
+        }
+        // The dependent's scope and the methods calling in answer how it uses the class without reading it.
+        for (var entry : grouped.entrySet()) {
+            ClassRecord record = byName.get(entry.getKey());
+            if (record == null) continue;
+            ObjectNode dependent = entry.getValue();
+            var facts = reader.jdbi().withHandle(h -> h.createQuery("""
+                    SELECT (SELECT scope FROM beans WHERE class_id = :from AND member_name IS NULL LIMIT 1) AS scope,
+                           (SELECT GROUP_CONCAT(from_method, ',') FROM method_calls WHERE from_class_id = :from AND to_class_id = :to) AS used_in""")
+                    .bind("from", record.id()).bind("to", cls.id()).mapToMap().one());
+            if (facts.get("scope") != null) dependent.put("bean_scope", String.valueOf(facts.get("scope")));
+            if (facts.get("used_in") != null) {
+                java.util.TreeSet<String> methods = new java.util.TreeSet<>();
+                for (String method : String.valueOf(facts.get("used_in")).split(",")) {
+                    var lambda = LAMBDA_METHOD.matcher(method);
+                    methods.add(lambda.matches() ? lambda.group(1) : method);
+                }
+                ArrayNode used = dependent.putArray("used_in");
+                methods.forEach(used::add);
             }
         }
         copy(usage, impact, "usage_group_count");

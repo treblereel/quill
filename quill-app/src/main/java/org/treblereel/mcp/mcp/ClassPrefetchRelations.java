@@ -34,7 +34,9 @@ final class ClassPrefetchRelations {
                 ORDER BY ip.id""").bind("id", cls.id()).mapToMap().list()), row -> injects(db, row));
         lines(fact, "injected_into", db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT DISTINCT oc.class_name AS owner, ob.member_name AS owner_member, ob.kind AS owner_kind, ip.kind,
-                       ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status
+                       ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, ob.scope AS owner_scope,
+                       (SELECT GROUP_CONCAT(mc.from_method, ',') FROM method_calls mc
+                        WHERE mc.from_class_id = oc.id AND mc.to_class_id = :id) AS used_in
                 FROM injection_points ip
                 JOIN beans ob ON ob.id = ip.bean_id
                 JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
@@ -288,12 +290,31 @@ final class ClassPrefetchRelations {
         return flag instanceof Number number && number.intValue() != 0;
     }
 
+    /**
+     * The owner's scope and the owner methods that call into this class: in V24-V27 CQ-045 Claude
+     * read SsarAuthorizer about once per session to learn both before answering what a narrower
+     * scope would change.
+     */
     private static String injectedInto(Map<String, Object> row) {
         String owner = row.get("owner") + (row.get("owner_member") == null ? "" : "#" + row.get("owner_member"));
+        boolean decorator = "DECORATOR".equals(row.get("owner_kind"));
+        Object scope = row.get("owner_scope");
+        java.util.TreeSet<String> methods = new java.util.TreeSet<>();
+        if (row.get("used_in") != null) {
+            for (String method : String.valueOf(row.get("used_in")).split(",")) {
+                // A lambda body belongs to the method that declares it.
+                java.util.regex.Matcher lambda = LAMBDA.matcher(method);
+                methods.add(lambda.matches() ? lambda.group(1) : method);
+            }
+        }
         return owner + "#" + row.get("field_name") + " (" + row.get("kind") + " " + source(row.get("target_type"))
                 + ")" + qualifiers(row) + " [" + row.get("resolution_status") + "]"
-                + ("DECORATOR".equals(row.get("owner_kind")) ? " in a decorator: a delegate point resolves to the decorated bean" : "");
+                + (!decorator && scope != null ? " owner " + scope : "")
+                + (methods.isEmpty() ? "" : ", uses it in " + String.join(", ", methods))
+                + (decorator ? " in a decorator: a delegate point resolves to the decorated bean" : "");
     }
+
+    private static final java.util.regex.Pattern LAMBDA = java.util.regex.Pattern.compile("lambda\\$(.+?)\\$\\d+");
 
     private static String qualifiers(Map<String, Object> row) {
         Object value = row.get("qualifiers");

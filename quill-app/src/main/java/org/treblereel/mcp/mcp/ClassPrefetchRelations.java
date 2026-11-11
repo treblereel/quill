@@ -88,6 +88,7 @@ final class ClassPrefetchRelations {
                 .bind("declared", "%\"declaring_class\":\"" + cls.className() + "\"%")
                 .bind("declaredNested", "%\"declaring_class\":\"" + cls.className() + "$%")
                 .mapToMap().list()), ClassPrefetchRelations::configuration);
+        hierarchy(db, fact, cls);
         if ("INTERFACE".equals(cls.kind())) {
             var callers = db.jdbi().withHandle(handle -> handle.createQuery("""
                     SELECT caller.class_name, caller.source_file, group_concat(DISTINCT mc.to_method || mc.to_descriptor) AS methods
@@ -319,6 +320,87 @@ final class ClassPrefetchRelations {
     private static String qualifiers(Map<String, Object> row) {
         Object value = row.get("qualifiers");
         return value == null || "[]".equals(value) ? "" : " " + value;
+    }
+
+    /**
+     * What a class takes from its indexed superclass chain: each own method that redeclares an
+     * inherited one (and where it was declared, abstract or not), and each inherited instance method
+     * it keeps unchanged, from the nearest superclass declaring it; stated only when it overrides
+     * something. Matched by name and erased
+     * descriptor; interfaces and unindexed superclasses are not walked.
+     */
+    private static void hierarchy(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
+        record Method(String name, String descriptor, String signature, boolean isAbstract) {
+            String key() { return name + descriptor; }
+        }
+        List<String> chain = new java.util.ArrayList<>();
+        Map<String, List<Method>> declared = new java.util.LinkedHashMap<>();
+        java.util.function.Function<String, List<Method>> methods = name -> db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT cm.name, cm.descriptor, cm.signature, cm.modifiers FROM class_members cm JOIN classes c ON c.id = cm.class_id
+                WHERE c.class_name = :name AND c.lifecycle = 'current' AND cm.kind = 'METHOD'
+                  AND COALESCE(cm.modifiers, '') NOT LIKE '%private%' AND COALESCE(cm.modifiers, '') NOT LIKE '%static%'
+                  AND COALESCE(cm.modifiers, '') NOT LIKE '%synthetic%' AND COALESCE(cm.modifiers, '') NOT LIKE '%bridge%'
+                ORDER BY cm.name, cm.descriptor""").bind("name", name).mapToMap().list()).stream()
+                .map(row -> new Method(String.valueOf(row.get("name")), String.valueOf(row.get("descriptor")),
+                        String.valueOf(row.get("signature")), String.valueOf(row.get("modifiers")).contains("abstract"))).toList();
+        String parent = cls.superclass();
+        java.util.Set<String> seen = new java.util.HashSet<>(List.of(cls.className()));
+        while (parent != null && !"java.lang.Object".equals(parent) && seen.add(parent)) {
+            String name = parent;
+            var parentClass = db.jdbi().withHandle(handle -> handle.createQuery(
+                    "SELECT superclass FROM classes WHERE class_name = :name AND lifecycle = 'current'")
+                    .bind("name", name).mapToMap().findFirst());
+            if (parentClass.isEmpty()) break;
+            chain.add(name);
+            declared.put(name, methods.apply(name));
+            parent = (String) parentClass.get().get("superclass");
+        }
+        if (chain.isEmpty()) return;
+        List<Method> own = methods.apply(cls.className());
+        java.util.Set<String> ownKeys = new java.util.HashSet<>();
+        own.forEach(method -> ownKeys.add(method.key()));
+        List<String> overrides = new java.util.ArrayList<>();
+        for (Method method : own) {
+            List<String> sources = new java.util.ArrayList<>();
+            for (String ancestor : chain)
+                declared.get(ancestor).stream().filter(other -> other.key().equals(method.key())).findFirst()
+                        .ifPresent(other -> sources.add(simpleName(ancestor) + (other.isAbstract() ? " abstract" : "")));
+            if (!sources.isEmpty()) overrides.add(shortSignature(method.signature()) + " overrides " + String.join(", ", sources));
+        }
+        ObjectNode inherited = JSON.createObjectNode();
+        java.util.Set<String> taken = new java.util.HashSet<>(ownKeys);
+        for (String ancestor : chain) {
+            List<String> kept = new java.util.ArrayList<>();
+            for (Method method : declared.get(ancestor))
+                if (taken.add(method.key()) && !method.isAbstract()) kept.add(shortSignature(method.signature()));
+            if (!kept.isEmpty()) inherited.put(simpleName(ancestor), String.join(", ", kept));
+        }
+        // A class that redeclares nothing has no override story; its inherited API is one detail call away.
+        if (overrides.isEmpty()) return;
+        var names = fact.putArray("superclass_chain");
+        chain.forEach(name -> names.add(source(name)));
+        strings(fact, "overrides", overrides);
+        if (!inherited.isEmpty()) fact.set("inherited_methods", inherited);
+        fact.put("overrides_basis", "Same name and erased descriptor in the indexed superclass chain, nearest first; interfaces not walked");
+    }
+
+    static String simpleName(String className) {
+        String name = source(className);
+        return name.substring(name.lastIndexOf('.') + 1);
+    }
+
+    /** buildPayload(io.x.Event<E, S>):java.lang.Object -> buildPayload(Event<E, S>) */
+    static String shortSignature(String signature) {
+        int close = signature.lastIndexOf(')');
+        String head = close < 0 ? signature : signature.substring(0, close + 1);
+        return head.replaceAll("(?:[\\p{L}_$][\\p{L}\\p{N}_$]*\\.)+([\\p{L}_$][\\p{L}\\p{N}_$]*)", "$1");
+    }
+
+    private static void strings(ObjectNode fact, String field, List<String> values) {
+        if (values.isEmpty()) return;
+        ArrayNode array = fact.putArray(field);
+        values.stream().limit(LIMIT).forEach(array::add);
+        if (values.size() > LIMIT) fact.putObject(field + "_truncated").put("shown", LIMIT).put("total", values.size());
     }
 
     private static void lines(ObjectNode fact, String field, List<Map<String, Object>> rows,

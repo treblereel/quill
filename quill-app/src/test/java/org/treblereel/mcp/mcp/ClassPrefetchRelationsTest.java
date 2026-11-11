@@ -228,6 +228,56 @@ class ClassPrefetchRelationsTest {
         });
     }
 
+    /** V32 CQ-009: asked what a subclass inherits and overrides, agents walked the hierarchy with three detail calls. */
+    @Test
+    void classFactStatesWhatItOverridesAndInheritsFromIndexedSuperclasses() throws Exception {
+        var db = JavaEvidenceFixture.index(root, """
+                package x;
+                abstract class Base {
+                    protected abstract Object created(Object e);
+                    protected abstract Object deleted(Object e);
+                    protected Object updated(Object e) { return null; }
+                    protected void publish() {}
+                    private void hidden() {}
+                    static void util() {}
+                }
+                abstract class Simple extends Base {
+                    protected Object created(Object e) { return payload(e); }
+                    protected Object deleted(Object e) { return payload(e); }
+                    protected abstract Object payload(Object e);
+                }
+                class Observer extends Simple {
+                    protected Object payload(Object e) { return e; }
+                    protected Object deleted(Object e) { return null; }
+                    void own() {}
+                }
+                class Plain { void run() {} }
+                class Keeper extends Base {
+                    protected Object created(Object e) { return e; }
+                    protected Object deleted(Object e) { return e; }
+                }
+                class Heir extends Keeper { void extra() {} }
+                """);
+        ObjectNode fact = relations(db, "x.Observer");
+
+        assertEquals(List.of("deleted(Object) overrides Simple, Base abstract", "payload(Object) overrides Simple abstract"),
+                strings(fact, "overrides"), fact.toString());
+        assertEquals("created(Object)", fact.path("inherited_methods").path("Simple").asText(), fact.toString());
+        assertEquals("publish(), updated(Object)", fact.path("inherited_methods").path("Base").asText(), fact.toString());
+        assertEquals(List.of("x.Simple", "x.Base"), strings(fact, "superclass_chain"));
+        assertTrue(fact.path("overrides_basis").asText().contains("superclass"));
+        assertEquals("handle(Event<E, S>)", ClassPrefetchRelations.shortSignature("handle(io.x.Event<E, S>):void"));
+        assertEquals("send(String,Object)", ClassPrefetchRelations.shortSignature("send(java.lang.String,java.lang.Object):void"));
+
+        ObjectNode plain = relations(db, "x.Plain");
+        assertFalse(plain.has("overrides"), plain.toString());
+        assertFalse(plain.has("inherited_methods"), plain.toString());
+        assertFalse(plain.has("overrides_basis"), plain.toString());
+        assertFalse(plain.has("superclass_chain"), plain.toString());
+        ObjectNode heir = relations(db, "x.Heir");
+        assertFalse(heir.has("inherited_methods"), "a class overriding nothing gets no hierarchy section: " + heir);
+    }
+
     private static List<String> strings(ObjectNode fact, String field) {
         return fact.path(field).valueStream().map(node -> node.asText()).toList();
     }

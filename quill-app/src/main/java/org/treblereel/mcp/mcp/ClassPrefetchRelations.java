@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -78,16 +79,18 @@ final class ClassPrefetchRelations {
                 ORDER BY 1""").bind("name", cls.className()).bind("generic", "%<" + cls.className() + ">%")
                 .bind("interface", "%\"" + cls.className() + "\"%").bind("id", cls.id()).mapToMap().list()),
                 row -> String.valueOf(row.values().iterator().next()));
+        ConfigurationSourceEvidence values = new ConfigurationSourceEvidence(db);
         lines(fact, "configuration", db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT key, kind, member, annotation, NULL AS file, NULL AS line FROM configuration_usages
+                SELECT key, kind, member, annotation, NULL AS file, NULL AS line, NULL AS evidence FROM configuration_usages
                 WHERE class_name = :name OR class_name LIKE :nested
                 UNION ALL
-                SELECT key, kind, NULL, json_extract(evidence, '$.declaring_class'), file, line FROM configuration_definitions
+                SELECT key, kind, NULL, json_extract(evidence, '$.declaring_class'), file, line, evidence FROM configuration_definitions
                 WHERE evidence LIKE :declared OR evidence LIKE :declaredNested
                 ORDER BY 1""").bind("name", cls.className()).bind("nested", cls.className() + "$%")
                 .bind("declared", "%\"declaring_class\":\"" + cls.className() + "\"%")
                 .bind("declaredNested", "%\"declaring_class\":\"" + cls.className() + "$%")
-                .mapToMap().list()), ClassPrefetchRelations::configuration);
+                .mapToMap().list()), row -> configuration(db, values, row));
+        testInjections(db, fact, cls);
         hierarchy(db, fact, cls);
         producerHosts(db, fact, cls);
         if ("INTERFACE".equals(cls.kind())) {
@@ -246,13 +249,64 @@ final class ClassPrefetchRelations {
         return type == null ? "null" : String.valueOf(type).replaceAll("\\$(?=[A-Za-z_])", ".");
     }
 
-    private static String configuration(Map<String, Object> row) {
-        if (row.get("file") != null)
-            return row.get("key") + " [" + row.get("kind") + " declared"
-                    + (row.get("annotation") == null ? "" : " by " + source(row.get("annotation"))) + "] "
-                    + row.get("file") + ":" + row.get("line");
+    private static String configuration(ReadQueryContext db, ConfigurationSourceEvidence values, Map<String, Object> row) {
+        if (row.get("file") != null) {
+            String key = String.valueOf(row.get("key"));
+            boolean profile = "quarkus_test_profile".equals(row.get("kind"));
+            String value = profile ? declaredValue(values, key, String.valueOf(row.get("file")), ((Number) row.get("line")).intValue(),
+                    "quarkus_test_profile", String.valueOf(row.get("evidence"))) : null;
+            StringBuilder line = new StringBuilder(key).append(value == null ? "" : "=" + value)
+                    .append(" [").append(row.get("kind")).append(" declared")
+                    .append(row.get("annotation") == null ? "" : " by " + source(row.get("annotation"))).append("] ")
+                    .append(row.get("file")).append(':').append(row.get("line"));
+            // V32/V33 CQ-047: what a test profile overrides is half the answer; the production declaration is the other.
+            if (profile) for (var main : db.jdbi().withHandle(handle -> handle.createQuery("""
+                    SELECT file, line, kind, evidence FROM configuration_definitions
+                    WHERE key = :key AND kind IN ('property', 'yaml_property') AND COALESCE(source_set, 'main') = 'main'
+                    ORDER BY file, line LIMIT 2""").bind("key", key).mapToMap().list())) {
+                String declared = declaredValue(values, key, String.valueOf(main.get("file")), ((Number) main.get("line")).intValue(),
+                        String.valueOf(main.get("kind")), String.valueOf(main.get("evidence")));
+                line.append("; main ").append(main.get("file")).append(':').append(main.get("line")).append(declared == null ? "" : "=" + declared);
+            }
+            return line.toString();
+        }
         return row.get("key") + " [" + row.get("kind") + " read" + (row.get("member") == null ? "" : " by " + row.get("member"))
                 + " via @" + row.get("annotation") + "]";
+    }
+
+    /** A safe declared scalar from hash-checked source or compiled profile, or null when it cannot be shown. */
+    private static String declaredValue(ConfigurationSourceEvidence values, String key, String file, int line, String kind, String evidence) {
+        ObjectNode reference = JSON.createObjectNode();
+        values.append(reference, key, file, line, kind, evidence == null || "null".equals(evidence) ? "{}" : evidence);
+        JsonNode declared = reference.path("declared_source");
+        return "declared_scalar".equals(declared.path("status").asText()) ? declared.path("declared_value").asText() : null;
+    }
+
+    private static final java.util.Set<String> TEST_INJECTIONS = java.util.Set.of("jakarta.inject.Inject", "javax.inject.Inject",
+            "io.quarkus.test.InjectMock", "io.quarkus.test.junit.mockito.InjectMock", "io.quarkus.test.InjectSpy",
+            "io.quarkus.test.junit.mockito.InjectSpy", "org.mockito.Mock", "org.mockito.Spy");
+
+    /**
+     * For a test class, the fields the test container fills or replaces: injected beans, mocks and
+     * spies, its own first, then those of its indexed superclasses with the declaring class.
+     */
+    private static void testInjections(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
+        if (!"test".equals(cls.sourceSet())) return;
+        List<String> fields = new java.util.ArrayList<>();
+        ClassRecord current = cls;
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        while (current != null && seen.add(current.className())) {
+            String owner = current == cls ? "" : " (" + simpleName(current.className()) + ")";
+            for (var member : db.symbols.findClassMembers(current.id())) {
+                if (!"FIELD".equals(member.kind())) continue;
+                var marks = member.annotations().stream().filter(TEST_INJECTIONS::contains).map(a -> "@" + simpleName(a)).toList();
+                if (!marks.isEmpty()) fields.add(String.join(" ", marks) + " " + simpleName(member.typeName()) + " " + member.name() + owner);
+            }
+            String parent = current.superclass();
+            current = parent == null || "java.lang.Object".equals(parent) ? null
+                    : db.symbols.findClassesByName(parent).stream().findFirst().orElse(null);
+        }
+        strings(fact, "test_injections", fields);
     }
 
     private static String injects(ReadQueryContext db, Map<String, Object> row) {

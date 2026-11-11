@@ -80,6 +80,7 @@ public final class PrefetchContext {
             ConfigurationMethodSource.append(db,evidence);
             ConfigurationPrefetchAnnotations.compact(evidence);
             ConfigurationDeclarationLocations.compact(evidence);
+            ConfigurationEvidenceCompaction.compact(evidence);
             evidence.remove("_meta");var fact=facts.addObject().put("kind","configuration").put("tool","find_configuration_references");
             fact.putObject("arguments").put("key",key).put("view","declared").put("limit",12);
             // Scope is carried by indexed_references_complete, resource coverage and runtime/activation flags.

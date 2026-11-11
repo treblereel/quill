@@ -89,12 +89,12 @@ class ConfigurationSourceEvidenceTest {
         assertEquals("find_configuration_references",first.get(0).path("tool").asText());
         assertEquals("warehouse.cache-enabled",first.get(0).path("arguments").path("key").asText());
         var queried=(ObjectNode)JSON.readTree(new ConfigurationReferenceQueries().find(db,"warehouse.cache-enabled",null,"all",null,12,0,"declared"));
-        queried.remove(java.util.List.of("_meta","configuration_resources"));var core=((ObjectNode)evidence).deepCopy();core.remove(java.util.List.of("field_annotations","related_configuration_declarations","configuration_resources"));assertEquals(core,queried);
-        assertEquals(2,evidence.path("definition_count").asInt());assertEquals(1,evidence.path("usage_count").asInt());
+        queried.remove(java.util.List.of("_meta","configuration_resources"));ConfigurationEvidenceCompaction.compact(queried);var core=((ObjectNode)evidence).deepCopy();core.remove(java.util.List.of("field_annotations","related_configuration_declarations","configuration_resources"));assertEquals(core,queried);
+        assertTrue(evidence.path("indexed_references_complete").asBoolean());assertEquals(3,evidence.path("references").size(),evidence.toString());
         assertFalse(evidence.path("effective_runtime_values_proven").asBoolean());assertTrue(evidence.toString().contains("declared_value"));
         assertTrue(TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"warehouse.cache warehouse.cache-enabled.extra")).path("facts").isEmpty());
         assertFalse(TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"warehouse.password")).toString().contains("12345"));
-        assertTrue(TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"%prod.warehouse.cache-enabled")).path("facts").get(0).path("evidence").path("total").asInt()>0);
+        assertTrue(TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"%prod.warehouse.cache-enabled")).path("facts").get(0).path("evidence").path("references").size()>0);
         Files.writeString(root.resolve("src/main/resources/application.properties"),"# moved\nwarehouse.cache-enabled=true\n");
         var changed=TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"warehouse.cache-enabled"));
         assertFalse(changed.toString().contains("declared_value"));

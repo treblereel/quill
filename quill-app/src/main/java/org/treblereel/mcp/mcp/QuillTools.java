@@ -860,9 +860,9 @@ public final class QuillTools {
             @ToolArg(description = "index(default) or declared") Optional<String> view,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
         return forGraphProjects(project.orElse(null), (p, context) -> ConfigurationRowDefaults.compact(
-                queries.findConfigurationReferences(context, key.orElse(null), class_name.orElse(null),
+                ConfigurationEvidenceCompaction.compact(queries.findConfigurationReferences(context, key.orElse(null), class_name.orElse(null),
                         kind.orElse("all"), module.orElse(null), clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200),
-                        clamp(offset.orElse(0), 0, Integer.MAX_VALUE), view.orElse("index"))));
+                        clamp(offset.orElse(0), 0, Integer.MAX_VALUE), view.orElse("index")))));
     }
 
     @Tool(readOnly = true, structured = true, description = "Find classpath resources and programmatic consumers without reading resource contents.")

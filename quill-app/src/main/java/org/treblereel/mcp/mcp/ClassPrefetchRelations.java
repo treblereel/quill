@@ -89,6 +89,7 @@ final class ClassPrefetchRelations {
                 .bind("declaredNested", "%\"declaring_class\":\"" + cls.className() + "$%")
                 .mapToMap().list()), ClassPrefetchRelations::configuration);
         hierarchy(db, fact, cls);
+        producerHosts(db, fact, cls);
         if ("INTERFACE".equals(cls.kind())) {
             var callers = db.jdbi().withHandle(handle -> handle.createQuery("""
                     SELECT caller.class_name, caller.source_file, group_concat(DISTINCT mc.to_method || mc.to_descriptor) AS methods
@@ -432,6 +433,27 @@ final class ClassPrefetchRelations {
         }
         result.add(parameters.substring(start).trim());
         return result;
+    }
+
+    /**
+     * For a class bean, the application classes that already declare producers, with how many:
+     * where a producer for this bean would follow the project's convention. Production source
+     * only, most producers first.
+     */
+    private static void producerHosts(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
+        boolean classBean = db.jdbi().withHandle(handle -> handle.createQuery(
+                "SELECT COUNT(*) FROM beans WHERE class_id = :id AND kind = 'CLASS' AND declaring_class_id IS NULL")
+                .bind("id", cls.id()).mapTo(Integer.class).one()) > 0;
+        if (!classBean) return;
+        var rows = db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT c.class_name, COUNT(DISTINCT b.member_name) AS total
+                FROM beans b JOIN classes c ON c.id = b.declaring_class_id
+                WHERE b.kind LIKE 'PRODUCER_%' AND b.member_name IS NOT NULL AND c.lifecycle = 'current'
+                  AND COALESCE(c.source_set, 'main') = 'main' AND COALESCE(c.origin, 'source') = 'source'
+                GROUP BY c.class_name ORDER BY total DESC, c.class_name LIMIT 3""").mapToMap().list());
+        List<String> hosts = new java.util.ArrayList<>();
+        for (var row : rows) hosts.add(source(String.valueOf(row.get("class_name"))) + " (" + row.get("total") + ")");
+        strings(fact, "application_producer_hosts", hosts);
     }
 
     static String simpleName(String className) {

@@ -71,11 +71,14 @@ class ClassPrefetchRelationsTest {
                         new ClassRecord(0, "x.Consumer", "CLASS", "java.lang.Object", List.of(), "Consumer.java", 1, true, 10),
                         new ClassRecord(0, "x.Clock", "CLASS", "java.lang.Object", List.of(), "Clock.java", 1, true, 10),
                         new ClassRecord(0, "x.ServiceTest", "CLASS", "java.lang.Object", List.of(),
-                                "src/test/java/x/ServiceTest.java", 1, false, 10)))
+                                "src/test/java/x/ServiceTest.java", 1, false, 10),
+                        new ClassRecord(0, "x.Producers", "CLASS", "java.lang.Object", List.of(), "Producers.java", 1, true, 10)))
                 .beans(List.of(
                         new BeanRecord(0, 2, "CLASS", "@ApplicationScoped", List.of("@Default"), List.of(), false, null, null, null, null, List.of("x.Impl", "x.Service")),
                         new BeanRecord(0, 3, "CLASS", "@Singleton", List.of("@Default"), List.of(), false, null, null, null, null, List.of("x.Consumer")),
-                        new BeanRecord(0, 4, "CLASS", "@Dependent", List.of("@Default"), List.of(), false, null, null, null, null, List.of("x.Clock"))))
+                        new BeanRecord(0, 4, "CLASS", "@Dependent", List.of("@Default"), List.of(), false, null, null, null, null, List.of("x.Clock")),
+                        new BeanRecord(0, 6, "PRODUCER_METHOD", "@ApplicationScoped", List.of("@Default"), List.of(), false, false, null, List.of(), 6, "client", List.of("x.Client")),
+                        new BeanRecord(0, 6, "PRODUCER_FIELD", "@Dependent", List.of("@Default"), List.of(), false, false, null, List.of(), 6, "zone", List.of("x.Zone"))))
                 .injectionPoints(List.of(
                         InjectionPointRecord.staticAnalysis(0, 1, "FIELD", "x.Clock", List.of("@Default"), "clock", 3, false, InjectionPointRecord.STATIC_CDI),
                         InjectionPointRecord.staticAnalysis(0, 2, "FIELD", "x.Service", List.of("@Default"), "service", 1, false, InjectionPointRecord.STATIC_CDI),
@@ -103,6 +106,9 @@ class ClassPrefetchRelationsTest {
         assertEquals(List.of("FIELD clock: x.Clock [\"@Default\"] -> x.Clock (CLASS) [RESOLVED]"), strings(impl, "injects"));
         assertEquals(List.of("x.Consumer#service (FIELD x.Service) [\"@Default\"] [RESOLVED] owner @Singleton"), strings(impl, "injected_into"));
         assertFalse(service.has("injects"));
+        // V32/V33 CQ-044: asked to turn a class bean into a producer, no Quill session found the application's producer host.
+        assertEquals(List.of("x.Producers (2)"), strings(impl, "application_producer_hosts"), impl.toString());
+        assertFalse(service.has("application_producer_hosts"), "only a class bean gets them: " + service);
     }
 
     @Test

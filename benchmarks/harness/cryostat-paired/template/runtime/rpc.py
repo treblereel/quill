@@ -14,7 +14,7 @@ class RPC:
  def send(self,v):
   with (self.d/'client.jsonl').open('a') as f:f.write(json.dumps(v)+'\n')
   self.p.stdin.write(json.dumps(v)+'\n');self.p.stdin.flush()
- def event(self,timeout=300):
+ def event(self,timeout=660):
   e=self.q.get(timeout=timeout)
   if e is None:raise RuntimeError('app-server EOF')
   self.events.append(e)

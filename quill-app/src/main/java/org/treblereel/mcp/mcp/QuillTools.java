@@ -380,9 +380,9 @@ public final class QuillTools {
         int requestedLimit = clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         return forGraphProjects(project.orElse(null), (p, context) -> routeClassQuery(p, context, target, "get_call_hierarchy",
-                jdbi -> queries.getCallHierarchy(jdbi, target, requestedMethod,
+                jdbi -> CallHierarchyCompaction.compact(queries.getCallHierarchy(jdbi, target, requestedMethod,
                         requestedSignature, requestedDirection, requestedTransitive,
-                        requestedDepth, scope.orElse("all"), requestedLimit, requestedOffset)));
+                        requestedDepth, scope.orElse("all"), requestedLimit, requestedOffset))));
     }
 
     @Tool(readOnly = true, structured = true,

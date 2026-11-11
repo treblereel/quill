@@ -25,6 +25,25 @@ NATIVE = F / 'native/quill'
 INDEX = F / 'ready-index'
 RUNTIME = F / 'runtime'
 put, load, sha = m.put, m.load, m.sha
+# /tmp is swept of files with old timestamps; on 2026-11-11 that took the shared CLIs mid-series.
+# Paths stay as the protocol records them; a vault outside /tmp restores them, hash-checked.
+SHARED = Path('/tmp/quill-cryostat-full-paired-v7')
+VAULT = Path.home() / '.cache/quill-cryostat-paired-v7'
+VAULTED = ['runtime/claude', 'runtime/codex', 'runtime/codex-code-mode-host',
+           'build-settings/settings.xml', 'build-settings/toolchains.xml']
+
+def heal(*roots):
+    """Restores each vaulted file missing or changed under roots, then refreshes its timestamps."""
+    manifest = load(VAULT / 'manifest.json')
+    for root in roots:
+        for rel in VAULTED:
+            target = root / rel
+            if not target.is_file() or sha(target) != manifest[rel]:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(VAULT / rel, target)
+                assert sha(target) == manifest[rel], f'Vault copy of {rel} does not match its manifest'
+                print(f'Restored {target} from {VAULT}', flush=True)
+            os.utime(target)
 
 def configure():
     m.O, m.F, m.NATIVE, m.INDEX, m.RUNTIME = O, F, NATIVE, INDEX, RUNTIME
@@ -61,10 +80,12 @@ def prepare():
     # Restore only the stopped suite's disposable fixture, preserving its archived evidence.
     m.setup({'case':'preparation','client':'codex','arm':'without_quill'}, O/'restore', original_parameter('without_quill'))
     assert MITM.is_file() and os.access(MITM,os.X_OK), 'Capture prerequisite unavailable'
+    heal(SHARED)
     F.mkdir(); (F/'native').mkdir()
     shutil.copy2(REPO/'quill-app/target/quill', NATIVE)
-    shutil.copytree(Path('/tmp/quill-cryostat-full-paired-v7/runtime'), RUNTIME)
-    shutil.copytree(Path('/tmp/quill-cryostat-full-paired-v7/build-settings'), F/'build-settings')
+    # Fresh timestamps: copy2 would keep the sources' old ones and invite the /tmp sweep mid-run.
+    shutil.copytree(SHARED/'runtime', RUNTIME, copy_function=shutil.copy)
+    shutil.copytree(SHARED/'build-settings', F/'build-settings', copy_function=shutil.copy)
     configure()
     env = dict(os.environ, JAVA_HOME='/Users/treblereel/.sdkman/candidates/java/25.0.1-graalce')
     env['MAVEN_ARGS']='--settings /tmp/quill-cryostat-full-paired-v7/build-settings/settings.xml --toolchains /tmp/quill-cryostat-full-paired-v7/build-settings/toolchains.xml'
@@ -117,6 +138,7 @@ def prepare():
     print(f"Prepared{p['sessions']}sessions{p['answers']}answers;0provider calls",flush=True)
 
 def main(mode):
+    if mode != 'prepare':heal(SHARED, F)
     if mode in ('start','continue','plan'):
         configure();m.main(mode);return
     lock=Path('/tmp/quill-cryostat-full-suite.lock').open('a')

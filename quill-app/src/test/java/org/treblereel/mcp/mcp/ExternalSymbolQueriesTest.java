@@ -328,6 +328,61 @@ class ExternalSymbolQueriesTest {
     @interface Singleton {}
     @interface Named { String value(); }
 
+    /** V33: Codex asked for Quarkus *-deployment processors 10 times and got only a not-found error. */
+    @Test
+    void aBuildTimeClassIsReadFromTheExtensionsDeploymentArtifactInTheLocalRepository() throws Exception {
+        Path runtime = temp.resolve("repository/org/demo/ext/1.0/ext-1.0.jar");
+        Files.createDirectories(runtime.getParent());
+        try (var output = new JarOutputStream(Files.newOutputStream(runtime))) {
+            output.putNextEntry(new JarEntry("META-INF/quarkus-extension.properties"));
+            output.write("deployment-artifact=org.demo\\:ext-deployment\\:1.0\n".getBytes());
+            output.closeEntry();
+        }
+        jar("repository/org/demo/ext-deployment/1.0/ext-deployment-1.0.jar", BuildStep.class);
+        Files.writeString(temp.resolve("repository/org/demo/ext-deployment/1.0/ext-deployment-1.0.pom"), """
+                <project><dependencies>
+                  <dependency><groupId>org.demo.arc</groupId><artifactId>processor</artifactId></dependency>
+                  <dependency><groupId>org.demo</groupId><artifactId>helper</artifactId><scope>test</scope></dependency>
+                </dependencies></project>""");
+        jar("repository/org/demo/arc/processor/1.0/processor-1.0.jar", Processor.class);
+        Files.writeString(temp.resolve("target/quill-classpath.txt"), java.io.File.pathSeparator + runtime,
+                java.nio.file.StandardOpenOption.APPEND);
+
+        var step = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, BuildStep.class.getName(), 20, 0)));
+        assertEquals(BuildStep.class.getName(), step.path("class_name").asText(), step.toString());
+        assertEquals("org.demo:ext-deployment:1.0", step.path("artifact").asText());
+        assertTrue(step.path("classpath_scope").asText().contains("build time"), step.toString());
+        var processor = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, Processor.class.getName(), 20, 0)));
+        assertEquals(Processor.class.getName(), processor.path("class_name").asText(), processor.toString());
+    }
+
+    /** V33: the test classpath was never captured, yet the error said test classpaths were indexed. */
+    @Test
+    void aMissingClassSaysWhichTestClasspathsWereNotCaptured() throws Exception {
+        jdbi.useHandle(handle -> handle.execute("INSERT INTO metadata(key, value) VALUES ('missing_test_classpath_modules', '[\".\"]')"));
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "io.quarkus.test.junit.QuarkusTestProfile", 20, 0)));
+        assertTrue(result.path("reason").asText().contains("test classpath not captured for modules [.]"), result.toString());
+    }
+
+    static final class BuildStep { void build() {} }
+
+    static final class Processor { void process() {} }
+
+    private void jar(String relative, Class<?> type) throws Exception {
+        Path jar = temp.resolve(relative);
+        Files.createDirectories(jar.getParent());
+        String entryName = type.getName().replace('.', '/') + ".class";
+        try (InputStream bytecode = type.getClassLoader().getResourceAsStream(entryName);
+                JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
+            output.putNextEntry(new JarEntry(entryName));
+            bytecode.transferTo(output);
+            output.closeEntry();
+        }
+    }
+
     @Deprecated
     static final class Fixture {
         @Deprecated(since = "producer-evidence")

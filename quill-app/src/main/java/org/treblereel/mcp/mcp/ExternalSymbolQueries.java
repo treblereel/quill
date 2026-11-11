@@ -129,11 +129,12 @@ final class ExternalSymbolQueries {
         }
         String method = selectedMethod == null || selectedMethod.isBlank() ? null : selectedMethod;
         Catalog catalog = catalog(reader, root);
-        List<ClassRef> refs = catalog.classes().stream()
-                .filter(candidate -> candidate.className().equals(className)
-                        || simpleName(candidate.className()).equals(className))
-                .sorted(Comparator.comparing(ClassRef::className)
-                        .thenComparing(ClassRef::artifact)).toList();
+        List<ClassRef> refs = matching(catalog.classes(), className);
+        boolean buildTime = false;
+        if (refs.isEmpty()) {
+            refs = matching(buildTimeClasses(reader, root, catalog), className);
+            buildTime = !refs.isEmpty();
+        }
         if (refs.isEmpty()) {
             // A guessed package is the common miss: the same simple name settles it without a search.
             String simple = simpleName(className);
@@ -142,9 +143,9 @@ final class ExternalSymbolQueries {
             ObjectNode missing = JSON.createObjectNode().put("error_code", "EXTERNAL_CLASS_NOT_FOUND")
                     .put("error", "External class not found: " + className
                             + (sameName.isEmpty() ? "; no class named " + simple + " on the indexed classpaths" : ""))
-                    .put("reason", "Only JARs on the project's resolved main/test classpaths are indexed; "
-                            + "build-time classes (for example Quarkus *-deployment processors) and "
-                            + "runtime-generated classes are absent");
+                    .put("reason", "Only JARs on the project's captured classpaths and the local-repository "
+                            + "deployment artifacts of its Quarkus extensions are indexed; runtime-generated classes are absent"
+                            + missingTestClasspaths(reader));
             if (!sameName.isEmpty()) sameName.forEach(missing.putArray("candidates")::add);
             else missing.set("next_step", JSON.createObjectNode().put("tool", "search_external_symbols")
                     .set("arguments", JSON.createObjectNode().put("pattern", simple)));
@@ -224,7 +225,9 @@ final class ExternalSymbolQueries {
             ObjectNode request = result.putObject("bytecode_request").put("class_name", ref.className()).put("detail", "bytecode");
             if (method != null) request.put("method", method);
         }
-        result.put("source", "resolved_dependency_bytecode");
+        result.put("source", buildTime ? "quarkus_deployment_bytecode" : "resolved_dependency_bytecode");
+        if (buildTime) result.put("classpath_scope", "Quarkus deployment artifact from the local Maven repository: "
+                + "runs at build time, not on the application classpath");
         result.put("total_members", members.size());
         result.put("showing", to - from);
         result.put("offset", offset);
@@ -363,6 +366,37 @@ final class ExternalSymbolQueries {
         candidates.forEach(values::add);
         result.put("hint", "Retry with an exact fully-qualified class name");
         return result.toString();
+    }
+
+    private static List<ClassRef> matching(List<ClassRef> classes, String className) {
+        return classes.stream().filter(candidate -> candidate.className().equals(className)
+                        || simpleName(candidate.className()).equals(className))
+                .sorted(Comparator.comparing(ClassRef::className).thenComparing(ClassRef::artifact)).toList();
+    }
+
+    private static final Map<String, List<ClassRef>> BUILD_TIME = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Classes of the deployment artifacts of the classpath's Quarkus extensions, looked up only after a miss. */
+    private static List<ClassRef> buildTimeClasses(ReadQueryContext reader, Path root, Catalog catalog) {
+        return BUILD_TIME.computeIfAbsent(catalog.fingerprint(), fingerprint -> {
+            if (BUILD_TIME.size() > MAX_PROJECT_CACHES) BUILD_TIME.clear();
+            List<ClassRef> classes = new ArrayList<>();
+            for (var jar : QuarkusDeploymentArtifacts.jars(fingerprint,
+                    ProjectDependencyQueries.resolvedJars(reader, root.toAbsolutePath().normalize()))) {
+                List<ClassRef> found = new ArrayList<>();
+                scanClassNames(jar.path(), found);
+                found.forEach(ref -> classes.add(new ClassRef(ref.className(), ref.jar(), ref.entry(), jar.coordinates())));
+            }
+            return List.copyOf(classes);
+        });
+    }
+
+    /** States which modules' test classpaths were never captured, so test-only classes there are unknown, not absent. */
+    private static String missingTestClasspaths(ReadQueryContext reader) {
+        String missing = reader.index.getMetadata().get("missing_test_classpath_modules");
+        if (missing == null || missing.isBlank() || missing.equals("[]")) return "";
+        return "; test classpath not captured for modules " + missing.replace("\"", "")
+                + ", so test-only classes there are unknown, not absent";
     }
 
     private static Catalog catalog(ReadQueryContext reader, Path root) {

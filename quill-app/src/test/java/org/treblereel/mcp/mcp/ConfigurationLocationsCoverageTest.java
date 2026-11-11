@@ -29,9 +29,19 @@ class ConfigurationLocationsCoverageTest {
         var wrong=json.createObjectNode();locations.append(wrong,"p.Fixture","flag","I");assertFalse(wrong.has("line"));
         wrong=json.createObjectNode().put("source","another-module/Fixture.java");locations.append(wrong,"p.Fixture","flag","Z");assertFalse(wrong.has("line"));assertEquals("ambiguous_source_owner",wrong.path("location_status").asText());
     }
-    @Test void noCompilerCaptureOrChangedSourceNeverInventsCoordinates() throws Exception {
-        Files.delete(root.resolve("target/quill-java-main.properties"));var node=json.createObjectNode();new ConfigurationDeclarationLocations(reader).append(node,"p.Fixture","flag","Z");assertFalse(node.has("line"));
-        Files.writeString(root.resolve("src/main/java/p/Fixture.java"),"// changed");node=json.createObjectNode();new ConfigurationDeclarationLocations(reader).append(node,"p.Fixture","flag","Z");assertFalse(node.has("line"));assertEquals("source_hash_unavailable_or_changed",node.path("location_status").asText());
+    @Test void changedSourceNeverInventsCoordinates() throws Exception {
+        Files.delete(root.resolve("target/quill-java-main.properties"));
+        Files.writeString(root.resolve("src/main/java/p/Fixture.java"),"// changed");var node=json.createObjectNode();new ConfigurationDeclarationLocations(reader).append(node,"p.Fixture","flag","Z");assertFalse(node.has("line"));assertEquals("source_hash_unavailable_or_changed",node.path("location_status").asText());
+    }
+    /** V34 CQ-040: without captured compiler settings a rename answer lacked every edit line, so each session reread the files. */
+    @Test void withoutCompilerCaptureAUniqueHashCheckedFieldDeclarationGivesItsLines() throws Exception {
+        Files.delete(root.resolve("target/quill-java-main.properties"));var locations=new ConfigurationDeclarationLocations(reader);
+        var field=json.createObjectNode();locations.append(field,"p.Fixture","flag","Z");
+        assertEquals("source_declaration",field.path("location_status").asText(),field.toString());assertEquals(2,field.path("line").asInt());assertEquals(3,field.path("end_line").asInt());
+        assertTrue(locations.text(field).contains("@Deprecated"));assertFalse(locations.text(field).contains("read()"));
+        var constant=json.createObjectNode();locations.append(constant,"p.Fixture","KEY","Ljava/lang/String;");assertEquals(4,constant.path("line").asInt(),constant.toString());
+        var wrong=json.createObjectNode();locations.append(wrong,"p.Fixture","flag","I");assertFalse(wrong.has("line"),"a different type is not this field");
+        var local=json.createObjectNode();locations.append(local,"p.Fixture","missing","Z");assertFalse(local.has("line"));
     }
     @Test void capturesBaseProfilesEscapesContinuationDuplicatesAndCheckedAbsenceWithoutValues() throws Exception {
         Files.writeString(root.resolve("src/main/resources/application.properties"),"warehouse.flag=SECRET_SENTINEL\n%prod.warehouse.flag=false\nwarehouse\\.flag=tr\\\n ue\n%default.warehouse.flag=false\n");

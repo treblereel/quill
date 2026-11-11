@@ -41,9 +41,15 @@ class ConfigurationReadEvidenceTest {
     }
     @Test void constantsAreExactStaticFinalAliasesNotClaimedSourceBindings() throws Exception {
         var data=query("declared");var constants=data.path("key_constants");assertEquals(Set.of("KEY","ALIAS"),new HashSet<>(constants.path("items").valueStream().map(x->x.path("field").asText()).toList()),data.toString());
-        assertTrue(constants.path("items").valueStream().allMatch(x->x.path("line").isNull()));assertTrue(constants.path("basis").asText().contains("not proven"));
+        assertTrue(constants.path("items").valueStream().allMatch(x->x.path("line").asInt()==4),constants.toString());assertTrue(constants.path("basis").asText().contains("not proven"));
         var packet=TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"Расскажи warehouse.enabled."));assertTrue(packet.toString().contains("key_constants"));assertTrue(packet.toString().contains("field_reads"));
         assertFalse(query("index").toString().contains("key_constants"));
+    }
+    /** V34 CQ-040: whether a consumer names the key by literal or by constant decides whether a rename edits it. */
+    @Test void aConsumerStatesWhetherItNamesTheKeyByConstantOrLiteral() throws Exception {
+        var data=query("declared");
+        var field=data.path("references").valueStream().filter(x->x.path("className").asText().equals("p.Fixture") && x.path("entry_type").asText().equals("usage")).findFirst().orElseThrow();
+        assertEquals("KEY",field.path("key_via").asText(),data.toString());assertEquals(6,field.path("line").asInt());
     }
     @Test void ambiguousOrMissingBytecodeDoesNotInventConstantEvidence() throws Exception {
         db.useHandle(h->h.execute("UPDATE jvm_api SET evidence='{\"status\":\"ambiguous_bytecode_owner\"}'"));

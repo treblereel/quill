@@ -65,6 +65,23 @@ final class ConfigurationReadEvidence {
             item.putNull("line");item.put("location_status","declaration_line_not_indexed");
             locations.append(item,(String)row.get("class_name"),(String)row.get("field"),"Ljava/lang/String;");
         }
+        keyVia(result,locations);
         ConfigurationReadSnippets.append(db,result,sourceLines);
+    }
+
+    /** States how a located consumer names its key: a listed constant or the literal. A rename edits only literal sites. */
+    private static void keyVia(ObjectNode result,ConfigurationDeclarationLocations locations){
+        for(var node:result.path("references")){
+            String text=locations.text(node);
+            if(text.isEmpty() || !node.path("entry_type").asText().equals("usage"))continue;
+            String key=node.path("key").asText();
+            if(!key.isBlank() && text.contains("\""+key+"\"")){((ObjectNode)node).put("key_via","literal");continue;}
+            for(var item:result.path("key_constants").path("items")){
+                String field=item.path("field").asText(),owner=item.path("class").asText();
+                if(field.isEmpty() || !key.equals(item.path("key").asText(key)) || !java.util.regex.Pattern.compile("\\b"+java.util.regex.Pattern.quote(field)+"\\b").matcher(text).find())continue;
+                ((ObjectNode)node).put("key_via",owner.equals(node.path("className").asText())?field:owner.substring(owner.lastIndexOf('.')+1)+"."+field);
+                break;
+            }
+        }
     }
 }

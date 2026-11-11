@@ -381,7 +381,57 @@ final class ClassPrefetchRelations {
         chain.forEach(name -> names.add(source(name)));
         strings(fact, "overrides", overrides);
         if (!inherited.isEmpty()) fact.set("inherited_methods", inherited);
+        java.util.Set<String> overridden = new java.util.HashSet<>();
+        for (Method method : own)
+            if (chain.stream().anyMatch(ancestor -> declared.get(ancestor).stream().anyMatch(other -> other.key().equals(method.key()))))
+                overridden.add(method.key());
+        strings(fact, "declared_methods", declaredMethods(db, cls, overridden));
         fact.put("overrides_basis", "Same name and erased descriptor in the indexed superclass chain, nearest first; interfaces not walked");
+    }
+
+    /**
+     * The class's own methods that override nothing: with the overrides and inherited methods they
+     * complete what the class declares, so no member listing is needed. Annotations, including
+     * parameter annotations such as @Observes, and private/static stay; synthetic methods do not.
+     */
+    private static List<String> declaredMethods(ReadQueryContext db, ClassRecord cls, java.util.Set<String> overridden) {
+        List<String> result = new java.util.ArrayList<>();
+        for (var member : db.symbols.findClassMembers(cls.id())) {
+            String modifiers = member.modifiers() == null ? "" : member.modifiers();
+            if (!"METHOD".equals(member.kind()) || overridden.contains(member.name() + member.descriptor()) || member.name().startsWith("lambda$")
+                    || member.name().startsWith("access$") || modifiers.contains("synthetic") || modifiers.contains("bridge")) continue;
+            String signature = shortSignature(member.signature());
+            int open = signature.indexOf('(');
+            List<String> parameters = splitParameters(signature.substring(open + 1, signature.length() - 1));
+            for (var annotation : member.annotationDetails())
+                if (annotation.parameterIndex() != null && annotation.parameterIndex() < parameters.size())
+                    parameters.set(annotation.parameterIndex(), "@" + simpleName(annotation.annotationName()) + " " + parameters.get(annotation.parameterIndex()));
+            StringBuilder line = new StringBuilder();
+            java.util.Set<String> onParameters = new java.util.HashSet<>();
+            member.annotationDetails().stream().filter(annotation -> annotation.parameterIndex() != null).forEach(annotation -> onParameters.add(annotation.annotationName()));
+            // The index also lists parameter annotations among the method's; state each once, where it is.
+            member.annotations().stream().filter(annotation -> !onParameters.contains(annotation))
+                    .forEach(annotation -> line.append('@').append(simpleName(annotation)).append(' '));
+            line.append(signature, 0, open + 1).append(String.join(",", parameters)).append(')');
+            for (String modifier : List.of("private", "static", "abstract")) if (modifiers.contains(modifier)) line.append(' ').append(modifier);
+            result.add(line.toString());
+        }
+        result.sort(java.util.Comparator.comparing(line -> line.replaceFirst("^(@\\S+ )+", "")));
+        return result;
+    }
+
+    private static List<String> splitParameters(String parameters) {
+        List<String> result = new java.util.ArrayList<>();
+        if (parameters.isBlank()) return result;
+        int depth = 0, start = 0;
+        for (int i = 0; i < parameters.length(); i++) {
+            char c = parameters.charAt(i);
+            if (c == '<') depth++;
+            else if (c == '>') depth--;
+            else if (c == ',' && depth == 0) { result.add(parameters.substring(start, i).trim()); start = i + 1; }
+        }
+        result.add(parameters.substring(start).trim());
+        return result;
     }
 
     static String simpleName(String className) {

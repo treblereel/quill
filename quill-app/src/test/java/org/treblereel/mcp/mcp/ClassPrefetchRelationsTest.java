@@ -246,10 +246,13 @@ class ClassPrefetchRelationsTest {
                     protected Object deleted(Object e) { return payload(e); }
                     protected abstract Object payload(Object e);
                 }
+                @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) @interface Obs {}
                 class Observer extends Simple {
                     protected Object payload(Object e) { return e; }
                     protected Object deleted(Object e) { return null; }
                     void own() {}
+                    void onEvent(@Obs String event, int count) { helper(event); }
+                    private static Object helper(String raw) { return raw; }
                 }
                 class Plain { void run() {} }
                 class Keeper extends Base {
@@ -266,6 +269,8 @@ class ClassPrefetchRelationsTest {
         assertEquals("publish(), updated(Object)", fact.path("inherited_methods").path("Base").asText(), fact.toString());
         assertEquals(List.of("x.Simple", "x.Base"), strings(fact, "superclass_chain"));
         assertTrue(fact.path("overrides_basis").asText().contains("superclass"));
+        // V34 CQ-009: with only the overrides stated, every session fetched the class's members to find its own methods.
+        assertEquals(List.of("helper(String) private static", "onEvent(@Obs String,int)", "own()"), strings(fact, "declared_methods"), fact.toString());
         assertEquals("handle(Event<E, S>)", ClassPrefetchRelations.shortSignature("handle(io.x.Event<E, S>):void"));
         assertEquals("send(String,Object)", ClassPrefetchRelations.shortSignature("send(java.lang.String,java.lang.Object):void"));
 
@@ -276,6 +281,7 @@ class ClassPrefetchRelationsTest {
         assertFalse(plain.has("superclass_chain"), plain.toString());
         ObjectNode heir = relations(db, "x.Heir");
         assertFalse(heir.has("inherited_methods"), "a class overriding nothing gets no hierarchy section: " + heir);
+        assertFalse(heir.has("declared_methods"), heir.toString());
     }
 
     private static List<String> strings(ObjectNode fact, String field) {

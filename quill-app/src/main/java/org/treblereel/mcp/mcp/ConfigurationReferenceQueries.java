@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -115,6 +116,7 @@ final class ConfigurationReferenceQueries {
             if (source != null) {
                 source.finish(result); ConfigurationReadEvidence.append(reader,result);
                 if(key!=null && !key.isBlank())result.set("configuration_resources",ConfigurationResourceInventory.collect(reader,key));
+                frameworkKeyPhases(reader, key, result);
             }
             int unknownProfiles=jdbi.withHandle(h->h.createQuery("SELECT count(*) FROM configuration_definitions WHERE kind='quarkus_test_profile_unknown'"+(module==null || module.isBlank()?"":" AND module=:profile_module"))
                     .bindMap(module==null || module.isBlank()?Map.of():Map.of("profile_module",module)).mapTo(Integer.class).one());
@@ -134,6 +136,26 @@ final class ConfigurationReferenceQueries {
         } catch (Exception error) {
             return errorResponse("Could not query indexed configuration references");
         }
+    }
+
+    private static final java.util.regex.Pattern FRAMEWORK_KEY = java.util.regex.Pattern.compile("quarkus\\.[a-z0-9][a-z0-9.\\-]*[a-z0-9]");
+
+    /**
+     * V41 CQ-039: whether a framework key named here is fixed at build time, from the classpath's
+     * extension config models; application keys read by @ConfigProperty injection are read when the bean is created.
+     */
+    static void frameworkKeyPhases(org.treblereel.mcp.db.ReadQueryContext reader, String key, ObjectNode result) {
+        String root = reader.index.getMetadata().get("project_root");
+        if (root == null) return;
+        java.util.Set<String> keys = new java.util.TreeSet<>();
+        if (key != null && !key.contains("*")) keys.add(key);
+        var matcher = FRAMEWORK_KEY.matcher(result.toString());
+        while (matcher.find()) keys.add(matcher.group());
+        List<String> phases = QuarkusConfigPhases.lookup(reader, Path.of(root), keys);
+        if (phases.isEmpty()) return;
+        result.set("framework_key_phases", JSON.valueToTree(phases));
+        result.put("framework_key_phases_basis", "phase and default from each extension's quarkus-config-model.json on the "
+                + "project classpath: RUN_TIME changes without a rebuild, BUILD_TIME and BUILD_AND_RUN_TIME_FIXED need one");
     }
 
     private static List<Map<String, Object>> page(

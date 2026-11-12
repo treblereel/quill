@@ -77,6 +77,8 @@ public final class PrefetchContext {
             if(!configurationKeys.contains(key) || !emittedKeys.add(key))continue;
             ObjectNode evidence=(ObjectNode)JSON.readTree(new ConfigurationReferenceQueries().find(db,key,null,"all",null,12,0,"declared"));
             ConfigurationPrefetchAnnotations.append(db,evidence);
+            // Related declarations name framework keys the lookup itself did not.
+            ConfigurationReferenceQueries.frameworkKeyPhases(db,key,evidence);
             ConfigurationMethodSource.append(db,evidence);
             ConfigurationPrefetchAnnotations.compact(evidence);
             ConfigurationDeclarationLocations.compact(evidence);

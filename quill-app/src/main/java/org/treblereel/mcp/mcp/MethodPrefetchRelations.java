@@ -477,7 +477,7 @@ final class MethodPrefetchRelations {
                 JsonNode details = JSON.readTree(external.details(db, root, current, 1000, 0));
                 if (details.has("error")) break;
                 for (JsonNode member : details.path("members"))
-                    if (member.path("kind").asText().equals("method") && member.path("name").asText().equals(name))
+                    if (member.path("signature").asText().contains(" " + name + "("))
                         return "declared by " + current + " (" + details.path("artifact").asText() + ")";
                 type = details.path("superclass").asText(null);
             } catch (Exception unreadable) {

@@ -223,6 +223,9 @@ class ExternalSymbolQueriesTest {
 
         for (var member : result.path("members")) {
             assertFalse(member.has("type"), member.toString());
+            // V41: Codex read 723 KB of these; name and kind restate the signature.
+            assertFalse(member.has("name"), member.toString());
+            assertFalse(member.has("kind"), member.toString());
             assertFalse(member.path("annotations").isArray() && member.path("annotations").isEmpty(), member.toString());
             assertFalse(member.path("signature").asText().contains(Fixture.class.getName() + "."), member.toString());
         }
@@ -230,6 +233,7 @@ class ExternalSymbolQueriesTest {
         assertFalse(result.has("superclass"));
         assertFalse(result.has("interfaces"));
         assertEquals(1, result.path("limitations").size());
+        assertTrue(result.path("member_format").asText().contains("<init>"), result.toString());
         assertTrue(result.toString().length() < 1500, result.toString().length() + " " + result);
     }
 
@@ -311,7 +315,7 @@ class ExternalSymbolQueriesTest {
                 .details(readScope, temp, "Fixture", 20, 0, "bytecode", "greet")));
 
         assertEquals(1, result.path("members").size());
-        assertEquals("greet", result.path("members").get(0).path("name").asText());
+        assertTrue(result.path("members").get(0).path("signature").asText().contains(" greet("), result.toString());
         assertEquals(1, result.path("total_members").asInt());
         var keys = new java.util.ArrayList<String>();
         result.path("bytecode_method_calls").fieldNames().forEachRemaining(keys::add);

@@ -260,12 +260,12 @@ final class ExternalSymbolQueries {
         result.put("offset", offset);
         result.put("has_more", to < members.size());
         ArrayNode listed = result.putArray("members");
+        if (to > from) result.put("member_format", "Each signature names its member: <init> is a constructor, "
+                + "one without a parameter list is a field, the rest are methods");
         String owner = ref.className() + ".";
         members.subList(from, to).forEach(member -> {
             ObjectNode item = listed.addObject();
-            item.put("kind", member.kind());
-            item.put("name", member.name());
-            // The signature already holds the type, and a field's repeats its owner.
+            // The signature already holds the name, kind and type, and a field's repeats its owner.
             item.put("signature", member.signature().replace(owner, ""));
             if (!member.modifiers().isEmpty()) item.put("modifiers", member.modifiers());
             if (!member.annotations().isEmpty()) item.set("annotations", JSON.valueToTree(member.annotations()));

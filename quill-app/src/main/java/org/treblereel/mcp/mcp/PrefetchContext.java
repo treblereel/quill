@@ -136,6 +136,7 @@ public final class PrefetchContext {
                     .put("target",points.path("target").asText()+"#"+name)
                     .put("owner_scope",points.path("scope").asText()).put("owner_bean_kind",points.path("bean_kind").asText());
             fact.set("injection_point",point);
+            fact.set("qualifier_origin",JSON.valueToTree(QualifierOrigin.lines(db,points.path("target").asText(),point)));
             if(points.has("resolution_context"))fact.set("resolution_context",points.get("resolution_context"));
             String required=point.path("required_type").asText();
             var candidates=ClassPrefetchRelations.instanceCandidates(db,required);

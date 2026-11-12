@@ -1,5 +1,7 @@
 package org.treblereel.mcp.mcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import org.treblereel.mcp.db.ReadQueryContext;
 import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.*;
@@ -184,9 +186,13 @@ class PrefetchContextTest {
                         new ClassRecord(0,"x.Message","CLASS","java.lang.Object",List.of(),"Message.java",1,true,10)))
                 .beans(List.of(
                         new BeanRecord(0,1,"CLASS","@Singleton",List.of("@Default"),List.of(),false,null,null,null,null,List.of("x.Consumer")),
-                        new BeanRecord(0,2,"CLASS","@Dependent",List.of("@Default"),List.of(),false,null,null,null,null,List.of("x.Message"))))
-                .injectionPoints(List.of(InjectionPointRecord.staticAnalysis(0,1,"FIELD","x.Message",List.of("@Default"),"message",null,false,InjectionPointRecord.STATIC_CDI)))
+                        new BeanRecord(0,2,"CLASS","@Dependent",List.of("@Named(value=msg)","@Default","@Any"),List.of(),false,null,null,null,null,List.of("x.Message"))))
+                .injectionPoints(List.of(InjectionPointRecord.staticAnalysis(0,1,"FIELD","x.Message",List.of("@Default"),"message",2,false,InjectionPointRecord.STATIC_CDI)))
                 .dependencies(List.of()).metadata(Map.of("index_id","fields")).snapshot());
+        db.useHandle(handle->{
+            handle.execute("INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations) VALUES (1,'FIELD','message','message','Lx/Message;','x.Message','[]','','[\"jakarta.inject.Inject\"]')");
+            handle.execute("INSERT INTO class_annotations(class_id,annotation_name,direct,annotation_values) VALUES (2,'jakarta.inject.Named',1,'{\"value\":\"msg\"}'),(2,'x.Tag',1,NULL),(2,'java.lang.annotation.Documented',0,NULL)");
+        });
         var pack=TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"Что внедрено в x.Consumer#message и x.Consumer#missing?"));
         assertEquals("ready",pack.path("status").asText(),pack.toString());
         var fact=pack.path("facts").get(0);
@@ -194,6 +200,10 @@ class PrefetchContextTest {
         assertEquals("x.Consumer#message",fact.path("target").asText());
         assertEquals("x.Message",fact.path("injection_point").path("required_type").asText());
         assertEquals("@Singleton",fact.path("owner_scope").asText());
+        // V41 CQ-013: asked which qualifiers are explicit or implicit, Claude read both sources to find out.
+        assertEquals(List.of("x.Consumer#message: declared none; implied @Default",
+                        "x.Message: declared @Named(value=msg); implied @Default, @Any; annotations @jakarta.inject.Named, @x.Tag"),
+                fact.path("qualifier_origin").valueStream().map(JsonNode::asText).toList(),fact.toString());
         assertEquals("not_an_injection_point",pack.path("unavailable").get(0).path("status").asText());
     }
 }

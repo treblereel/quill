@@ -13,6 +13,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ProjectConfigurationTest {
 
+    static {
+        ProjectConfiguration.useAgentsToolGuide(org.treblereel.mcp.mcp.CodexToolGuide::text);
+    }
+
+
     @TempDir Path root;
 
     @Test
@@ -99,7 +104,9 @@ class ProjectConfigurationTest {
         assertTrue(flat.contains("pass `checkout=<path>` once, verify with its build"));
         assertTrue(installed.contains("`quick_compile`"));
         assertTrue(installed.contains("never runs builds"));
-        assertTrue(installed.length() < 1500, "Instructions load into every session: " + installed.length());
+        // Instructions load into every session. The tool arguments (about 2.4 KB) are the only place Codex
+        // reads them: it defers MCP schemas and spent 206 of 547 V41 script cells filtering ALL_TOOLS.
+        assertTrue(installed.length() < 4000, "Instructions load into every session: " + installed.length());
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(ProjectConfiguration.removeAgentsMd(root));
@@ -127,7 +134,8 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(refreshed.contains("# User instructions"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v8 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v9 -->"));
+        assertTrue(refreshed.contains("`list_beans({class_name?"), refreshed);
         assertFalse(refreshed.contains("Old guidance."));
     }
 

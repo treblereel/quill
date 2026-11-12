@@ -32,6 +32,10 @@ import picocli.CommandLine.Option;
                 DoctorCommand.class, CleanCommand.class, WorkspaceCommand.class, ClientCommand.class, PrefetchCommand.class})
 public class QuillTopCommand implements Callable<Integer> {
 
+    static {
+        org.treblereel.mcp.index.ProjectConfiguration.useAgentsToolGuide(org.treblereel.mcp.mcp.CodexToolGuide::text);
+    }
+
     @Option(names = "--kotlin-semantic-worker", hidden = true)
     boolean kotlinSemanticWorker;
 

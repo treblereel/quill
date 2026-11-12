@@ -32,9 +32,9 @@ public final class ProjectConfiguration {
             Quill evidence does not cover it.
             <!-- quill:managed:end -->
             """;
-    private static final String QUILL_AGENTS_MD = """
+    private static final String QUILL_AGENTS_MD_TEMPLATE = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v8 -->
+            <!-- quill:instructions:v9 -->
             ## Quill MCP
 
             Prefer Quill over broad search for symbols, usages, hierarchies, DI, endpoints, affected
@@ -56,8 +56,20 @@ public final class ProjectConfiguration {
             `module_fallback` tests only when the task asks; incomplete test evidence alone does not. Report completion only when the phase is
             `complete` and the receipt is verified. For edits in another checkout, pass
             `checkout=<path>` once, verify with its build, and say Quill evidence does not cover it.
-            <!-- quill:managed:end -->
+
+            %s<!-- quill:managed:end -->
             """;
+
+    /** The Codex tool argument guide; the CLI supplies it, since this package does not see the tool catalog. */
+    private static volatile java.util.function.Supplier<String> agentsToolGuide = () -> "";
+
+    public static void useAgentsToolGuide(java.util.function.Supplier<String> guide) {
+        agentsToolGuide = guide;
+    }
+
+    private static String agentsBlock() {
+        return QUILL_AGENTS_MD_TEMPLATE.formatted(agentsToolGuide.get());
+    }
 
     private ProjectConfiguration() {}
 
@@ -109,7 +121,7 @@ public final class ProjectConfiguration {
     }
 
     public static void ensureAgentsMd(Path root) {
-        ensureInstructions(root.resolve("AGENTS.md"), QUILL_AGENTS_MD,
+        ensureInstructions(root.resolve("AGENTS.md"), agentsBlock(),
                 "AGENTS.md with Quill tool instructions");
     }
 
@@ -178,7 +190,7 @@ public final class ProjectConfiguration {
     }
 
     public static InstructionsState inspectAgentsMd(Path root) {
-        return inspectInstructions(root.resolve("AGENTS.md"), QUILL_AGENTS_MD);
+        return inspectInstructions(root.resolve("AGENTS.md"), agentsBlock());
     }
 
     private static InstructionsState inspectInstructions(Path file, String expected) {

@@ -278,8 +278,8 @@ final class StructureToolQueries {
             node.put("scope", bean.scope());
             node.put("origin", "application");
             if (bean.isDefault()) node.put("default_bean", true);
-            node.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
-            node.set("bean_types", JSON.valueToTree(bean.beanTypes()));
+            if (!DEFAULT_QUALIFIERS.equals(bean.qualifiers())) node.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+            appendOwnBeanTypes(node, bean, beanClass);
             // No profile list means the bean is active in every profile.
             if (bean.profiles() != null && !bean.profiles().isEmpty())
                 node.set("profiles", JSON.valueToTree(bean.profiles()));
@@ -288,6 +288,7 @@ final class StructureToolQueries {
                 node.put("source", beanClass.sourceLine() > 0
                         ? beanClass.sourceFile() + ":" + beanClass.sourceLine() : beanClass.sourceFile());
                 appendContext(node, beanClass);
+                if ("main".equals(beanClass.sourceSet())) node.remove("source_set");
                 appendOccurrences(node, occurrencesByClass.get(beanClass.id()));
                 naiveTokens += beanClass.sourceTokens();
             }
@@ -298,6 +299,10 @@ final class StructureToolQueries {
                     pageAnnotations.getOrDefault(bean.classId(), List.of()));
         }
         BeanEvidence.appendRetentionNotes(root);
+        if (limited.stream().anyMatch(view -> view.application() != null))
+            root.putObject("bean_defaults").put("bean_types", "Application beans list types besides the bean class "
+                            + "(a producer's produced_type) and java.lang.Object, which they all have; class_is_bean_type false marks @Typed exceptions")
+                    .put("source_set", "main").set("qualifiers", JSON.valueToTree(DEFAULT_QUALIFIERS));
         ObjectNode originBreakdown = root.putObject("origin_breakdown");
         originBreakdown.put("application", beans.size());
         originBreakdown.put("dependency", externalBeans.size());
@@ -312,6 +317,22 @@ final class StructureToolQueries {
         appendPage(root, limited.size(), total, limit, offset);
         appendMeta(root, reader, naiveTokens);
         return root.toString();
+    }
+
+    private static final List<String> DEFAULT_QUALIFIERS = List.of("@Default", "@Any");
+
+    /** Bean types other than the class (or produced type) and java.lang.Object, which every bean lists. */
+    private static void appendOwnBeanTypes(ObjectNode node, BeanRecord bean, ClassRecord beanClass) {
+        List<String> types = bean.beanTypes() == null ? List.of() : bean.beanTypes();
+        String own = isProducer(bean.kind()) ? (types.isEmpty() ? null : types.getFirst())
+                : "CLASS".equals(bean.kind()) && beanClass != null ? beanClass.className() : null;
+        if (own == null) {
+            node.set("bean_types", JSON.valueToTree(types));
+            return;
+        }
+        if (!types.contains(own)) node.put("class_is_bean_type", false);
+        List<String> rest = types.stream().filter(type -> !type.equals(own) && !type.equals("java.lang.Object")).toList();
+        if (!rest.isEmpty()) node.set("bean_types", JSON.valueToTree(rest));
     }
 
     private static void appendDependencyBeanSummary(

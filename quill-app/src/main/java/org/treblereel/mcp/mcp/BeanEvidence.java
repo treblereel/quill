@@ -101,17 +101,15 @@ final class BeanEvidence {
             signals.add("named");
         annotations.stream().map(ClassAnnotationRecord::annotationName).filter(ROOT_ANNOTATIONS::contains)
                 .distinct().forEach(name -> signals.add("root:" + name));
-        ObjectNode retention = node.putObject("arc_retention");
-        retention.set("signals", JSON.valueToTree(signals));
-        retention.put("removal_ruled_out", !signals.isEmpty());
+        node.set("arc_retention", JSON.valueToTree(signals));
     }
 
     /** What removal_ruled_out means, written once per response instead of on every bean. */
     static void appendRetentionNotes(ObjectNode root) {
         if (root.path("beans").valueStream().noneMatch(bean -> bean.has("arc_retention"))) return;
         root.putObject("arc_retention_notes")
-                .put("removal_ruled_out", "At least one indexed reason keeps the bean")
-                .put("not_ruled_out", "No indexed retention signal. ArC also keeps beans with observer or "
+                .put("listed", "Indexed reasons ArC keeps the bean; any one rules out removal of an unused bean")
+                .put("empty", "No indexed retention signal; removal not ruled out. ArC also keeps beans with observer or "
                         + "producer members, beans used through Instance/@All, and extension-registered "
                         + "roots; a normal scope or client proxy alone does not keep a bean");
     }

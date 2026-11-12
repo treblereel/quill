@@ -25,6 +25,7 @@ class ConfigMappingKeysTest {
                 "package io.smallrye.config; " + retention + "public @interface WithName { String value(); }",
                 "src/main/java/io/smallrye/config/WithDefault.java",
                 "package io.smallrye.config; " + retention + "public @interface WithDefault { String value(); }",
+                "src/main/resources/application.properties", "app.cache.max-entries=500\n",
                 "src/main/java/p/Settings.java", """
                         package p;
                         import io.smallrye.config.*;
@@ -50,8 +51,10 @@ class ConfigMappingKeysTest {
         assertEquals(List.of(
                 "app.cache.expire-after-write: java.time.Duration default=10s",
                 "app.cache.region: java.util.Optional<java.lang.String> optional",
-                "app.cache.max-entries: long",
+                // V41 CQ-037: asked for defaults, Claude read application.properties for the values the mapping leaves to it.
+                "app.cache.max-entries: long; line 1=500",
                 "app.cache.tier.enabled: boolean"), keys);
+        assertEquals("src/main/resources/application.properties", mapping.path("main_declarations_in").asText());
         assertTrue(mapping.path("groups").get(0).asText().equals("app.cache.tier -> p.Settings.Tier"), mapping.toString());
     }
 

@@ -22,6 +22,7 @@ final class ConfigMappingKeys {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int LIMIT = 60;
     private static final int DEPTH = 4;
+    private static final String MAIN = "; main ";
 
     private ConfigMappingKeys() {
     }
@@ -35,16 +36,26 @@ final class ConfigMappingKeys {
         ArrayNode keys = JSON.createArrayNode();
         ArrayNode groups = JSON.createArrayNode();
         ArrayNode unsupported = JSON.createArrayNode();
-        expand(db, cls.className(), prefix, 1, keys, groups, unsupported, new java.util.HashSet<>());
+        expand(db, new ConfigurationSourceEvidence(db), cls.className(), prefix, 1, keys, groups, unsupported, new java.util.HashSet<>());
         ObjectNode mapping = fact.putObject("config_mapping");
         mapping.put("prefix", prefix);
         mapping.put("naming", "@io.smallrye.config.WithName value, else kebab-case of the method name");
         if (!groups.isEmpty()) mapping.set("groups", groups);
+        // One properties file usually declares them all; naming it once keeps the keys short.
+        java.util.Set<String> files = new java.util.TreeSet<>();
+        keys.forEach(key -> { int at = key.asText().indexOf(MAIN); if (at >= 0) files.add(key.asText().substring(at + MAIN.length(), key.asText().lastIndexOf(':'))); });
+        if (files.size() == 1) {
+            String file = files.iterator().next();
+            mapping.put("main_declarations_in", file);
+            ArrayNode shortened = JSON.createArrayNode();
+            keys.forEach(key -> shortened.add(key.asText().replace(MAIN + file + ":", "; line ")));
+            keys = shortened;
+        }
         mapping.set("keys", keys);
         if (!unsupported.isEmpty()) mapping.set("not_expanded", unsupported);
     }
 
-    private static void expand(ReadQueryContext db, String type, String prefix, int depth, ArrayNode keys,
+    private static void expand(ReadQueryContext db, ConfigurationSourceEvidence values, String type, String prefix, int depth, ArrayNode keys,
             ArrayNode groups, ArrayNode unsupported, Set<String> seen) {
         if (!seen.add(type) || keys.size() >= LIMIT) return;
         List<Map<String, Object>> members = db.jdbi().withHandle(handle -> handle.createQuery("""
@@ -67,15 +78,27 @@ final class ConfigMappingKeys {
             boolean group = depth < DEPTH && isInterface(db, returnType);
             if (group) {
                 groups.add(key + " -> " + returnType.replace('$', '.'));
-                expand(db, returnType, key, depth + 1, keys, groups, unsupported, seen);
+                expand(db, values, returnType, key, depth + 1, keys, groups, unsupported, seen);
                 continue;
             }
             String line = key + ": " + returnType.replace('$', '.');
             if (annotations.containsKey("io.smallrye.config.WithDefault"))
                 line += " default=" + annotations.get("io.smallrye.config.WithDefault");
             else if (returnType.startsWith("java.util.Optional")) line += " optional";
-            if (keys.size() < LIMIT) keys.add(line);
+            if (keys.size() < LIMIT) keys.add(line + mainDeclaration(db, values, key));
         }
+    }
+
+    /** V41 CQ-037: a mapping without @WithDefault leaves its default to the application's own properties. */
+    private static String mainDeclaration(ReadQueryContext db, ConfigurationSourceEvidence values, String key) {
+        return db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT file, line, kind, evidence FROM configuration_definitions
+                WHERE key = :key AND kind IN ('property', 'yaml_property') AND COALESCE(source_set, 'main') = 'main'
+                ORDER BY file, line LIMIT 1""").bind("key", key).mapToMap().findOne()).map(main -> {
+            String declared = ClassPrefetchRelations.declaredValue(values, key, String.valueOf(main.get("file")),
+                    ((Number) main.get("line")).intValue(), String.valueOf(main.get("kind")), String.valueOf(main.get("evidence")));
+            return MAIN + main.get("file") + ":" + main.get("line") + (declared == null ? "" : "=" + declared);
+        }).orElse("");
     }
 
     private static boolean isInterface(ReadQueryContext db, String type) {

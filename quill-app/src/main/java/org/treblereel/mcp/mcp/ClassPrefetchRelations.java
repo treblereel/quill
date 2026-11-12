@@ -275,7 +275,7 @@ final class ClassPrefetchRelations {
     }
 
     /** A safe declared scalar from hash-checked source or compiled profile, or null when it cannot be shown. */
-    private static String declaredValue(ConfigurationSourceEvidence values, String key, String file, int line, String kind, String evidence) {
+    static String declaredValue(ConfigurationSourceEvidence values, String key, String file, int line, String kind, String evidence) {
         ObjectNode reference = JSON.createObjectNode();
         values.append(reference, key, file, line, kind, evidence == null || "null".equals(evidence) ? "{}" : evidence);
         JsonNode declared = reference.path("declared_source");

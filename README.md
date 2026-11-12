@@ -314,9 +314,9 @@ authoritative. Later `init` runs add newly available read-only tools. Ownership 
 it. `quill clean` / `workspace clear` remove only permissions Quill added, preserving pre-existing
 rules. Claude's workspace trust and MCP connection approval are separate client checks;
 this option does not bypass them. Codex registrations created by Quill use
-`default_tools_approval_mode = "writes"`, allowing tools marked read-only without repeated
-approval while retaining prompts for other tools. Existing explicit server approval modes
-are preserved; user-owned project registrations are not overwritten. No global approval,
+`default_tools_approval_mode = "approve"`: every Quill tool only reads, so Codex runs them
+without asking. A Quill-written registration still on the earlier `"writes"` default is moved
+to `"approve"`; other explicit server approval modes are preserved; user-owned project registrations are not overwritten. No global approval,
 shell permission, or sandbox setting is changed.
 
 Manage that choice later without re-indexing, rebuilding, or removing the MCP server:
@@ -840,7 +840,7 @@ Alternatively, add a project-scoped entry to `.codex/config.toml`:
 ```toml
 [mcp_servers.quill]
 enabled = true
-default_tools_approval_mode = "writes"
+default_tools_approval_mode = "approve"
 command = "/absolute/path/to/quill"
 args = ["--mcp", "--tools", "codex"]
 cwd = "/absolute/path/to/project"

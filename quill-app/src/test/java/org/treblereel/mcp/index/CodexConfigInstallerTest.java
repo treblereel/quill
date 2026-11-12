@@ -35,7 +35,7 @@ class CodexConfigInstallerTest {
         String content = Files.readString(config);
         assertTrue(content.contains("[mcp_servers.quill]"));
         assertTrue(content.contains("enabled = true"));
-        assertTrue(content.contains("default_tools_approval_mode = \"writes\""));
+        assertTrue(content.contains("default_tools_approval_mode = \"approve\""));
         assertTrue(content.contains(CodexConfigInstaller.PROJECT_ARGS));
         assertTrue(content.contains(
                 "cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
@@ -48,12 +48,36 @@ class CodexConfigInstallerTest {
         String upgraded=Files.readString(config);
         assertTrue(upgraded.startsWith("approval_policy = \"on-request\""));
         assertTrue(upgraded.contains(CodexConfigInstaller.PROJECT_ARGS));
-        assertTrue(upgraded.contains("default_tools_approval_mode = \"writes\""));
+        assertTrue(upgraded.contains("default_tools_approval_mode = \"approve\""));
         assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,CodexConfigInstaller.installIfPresent(tempDir,null));
-        Files.writeString(config,upgraded.replace("\"writes\"","\"prompt\""));
+        Files.writeString(config,upgraded.replace("\"approve\"","\"prompt\""));
         String restricted=Files.readString(config);
         assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,CodexConfigInstaller.installIfPresent(tempDir,null));
         assertEquals(restricted,Files.readString(config));
+    }
+
+    // Every Quill tool only reads, so Quill's own registration approves them all instead of the earlier "writes" default.
+    @Test
+    void anOwnedRegistrationOnTheEarlierWritesDefaultIsUpgradedToApprove() throws Exception {
+        Path config=createConfig("# Added by Quill.\n[mcp_servers.quill]\ncommand = \"quill\"\nargs = [\"--mcp\"]\ndefault_tools_approval_mode = \"writes\"\n");
+        assertEquals(CodexConfigInstaller.Result.REPLACED,CodexConfigInstaller.installIfPresent(tempDir,null));
+        String upgraded=Files.readString(config);
+        assertTrue(upgraded.contains("default_tools_approval_mode = \"approve\""),upgraded);
+        assertFalse(upgraded.contains("\"writes\""),upgraded);
+    }
+
+    @Test
+    void anOwnedWorkspaceRegistrationOnWritesIsRewrittenWithApprove() throws Exception {
+        Path config=createConfig("# Added by Quill.\n[mcp_servers.quill]\ncommand = \"quill\"\ndefault_tools_approval_mode = \"writes\"\n");
+        CodexConfigInstaller.installWorkspaceIfPresent(tempDir,tempDir.resolve("workspace"),"/opt/quill");
+        assertTrue(Files.readString(config).contains("default_tools_approval_mode = \"approve\""),Files.readString(config));
+    }
+
+    @Test
+    void aUserRegistrationKeepsItsWritesMode() throws Exception {
+        Path config=createConfig("[mcp_servers.quill]\ncommand = \"quill\"\ndefault_tools_approval_mode = \"writes\"\n");
+        CodexConfigInstaller.installWorkspaceIfPresent(tempDir,tempDir.resolve("workspace"),"/opt/quill");
+        assertTrue(Files.readString(config).contains("default_tools_approval_mode = \"writes\""));
     }
 
     @Test

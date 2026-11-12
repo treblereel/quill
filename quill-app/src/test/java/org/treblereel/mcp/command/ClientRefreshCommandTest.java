@@ -39,7 +39,7 @@ class ClientRefreshCommandTest {
         assertTrue(ClaudeSettingsInstaller.isEnabled(root));
         assertTrue(Files.exists(root.resolve(".codex/config.toml")));
         assertTrue(Files.readString(root.resolve(".codex/config.toml"))
-                .contains("default_tools_approval_mode = \"writes\""));
+                .contains("default_tools_approval_mode = \"approve\""));
         for (String name : List.of(".quill", ".mvn", ".gitignore", ".claude/quill-permissions.json")) {
             assertFalse(Files.exists(root.resolve(name)), name);
         }

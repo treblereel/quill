@@ -31,7 +31,7 @@ public final class CodexConfigInstaller {
         if (Files.exists(config)) return installIfPresent(projectRoot, binary);
 
         try {
-            String updated = appendBlock("", projectRoot, binary, "writes");
+            String updated = appendBlock("", projectRoot, binary, APPROVAL_MODE);
             writeAtomically(config, updated);
             System.err.println("[quill] Created " + config + " with the Quill MCP server.");
             return Result.ADDED;
@@ -61,7 +61,7 @@ public final class CodexConfigInstaller {
                     return Result.ALREADY_CONFIGURED;
                 }
                 String updated = appendBlock(removeQuillServer(content), projectRoot, binary,
-                        quillStringValue(content, "default_tools_approval_mode").orElse("writes"));
+                        approvalMode(content));
                 writeAtomically(config, updated);
                 System.err.println("[quill] Repaired the Quill launcher in " + config + ".");
                 return Result.REPLACED;
@@ -71,7 +71,7 @@ public final class CodexConfigInstaller {
                 return Result.UNSUPPORTED;
             }
 
-            String updated = appendBlock(content, projectRoot, binary, "writes");
+            String updated = appendBlock(content, projectRoot, binary, APPROVAL_MODE);
             writeAtomically(config, updated);
             System.err.println("[quill] Added the Quill MCP server to " + config + ".");
             return Result.ADDED;
@@ -98,7 +98,7 @@ public final class CodexConfigInstaller {
             boolean replaced = definesQuillServer(content);
             String cleaned = removeQuillServer(content);
             String updated = appendWorkspaceBlock(cleaned, projectRoot, workspaceRoot, binary,
-                    quillStringValue(content, "default_tools_approval_mode").orElse("writes"));
+                    approvalMode(content));
             writeAtomically(config, updated);
             return replaced ? Result.REPLACED : Result.ADDED;
         } catch (IOException e) {
@@ -113,7 +113,7 @@ public final class CodexConfigInstaller {
             return installWorkspaceIfPresent(projectRoot, workspaceRoot, binary);
         }
         try {
-            writeAtomically(config, appendWorkspaceBlock("", projectRoot, workspaceRoot, binary, "writes"));
+            writeAtomically(config, appendWorkspaceBlock("", projectRoot, workspaceRoot, binary, APPROVAL_MODE));
             System.err.println("[quill] Created " + config
                     + " with the workspace-aware Quill MCP server.");
             return Result.ADDED;
@@ -381,6 +381,17 @@ public final class CodexConfigInstaller {
         return content;
     }
 
+    /** Every Quill tool only reads, so Codex runs them all without asking. */
+    static final String APPROVAL_MODE = "approve";
+
+    /** The mode a rewritten registration keeps: the user's own, or approve over Quill's earlier "writes" default. */
+    private static String approvalMode(String content) {
+        boolean owned = content.lines().map(String::trim).anyMatch(line -> line.equals("# Added by Quill.")
+                || line.startsWith("# Added by Quill for workspace "));
+        return quillStringValue(content, "default_tools_approval_mode")
+                .filter(mode -> !(owned && mode.equals("writes"))).orElse(APPROVAL_MODE);
+    }
+
     private static String readOnlyDefaults(String content) {
         if (content.lines().map(String::trim).noneMatch(line -> line.equals("# Added by Quill.")
                 || line.startsWith("# Added by Quill for workspace "))) return content;
@@ -397,11 +408,16 @@ public final class CodexConfigInstaller {
                 String key = assignmentKey(line);
                 if (("mcp_servers.quill".equals(table) && "default_tools_approval_mode".equals(key))
                         || ("".equals(table) && "mcp_servers.quill.default_tools_approval_mode".equals(key))
-                        || ("mcp_servers".equals(table) && "quill.default_tools_approval_mode".equals(key))) return content;
+                        || ("mcp_servers".equals(table) && "quill.default_tools_approval_mode".equals(key))) {
+                    // "writes" was Quill's own earlier default; any other value is the user's choice.
+                    if (!line.substring(line.indexOf('=') + 1).trim().equals("\"writes\"")) return content;
+                    lines.set(i, lines.get(i).replace("\"writes\"", tomlString(APPROVAL_MODE)));
+                    return String.join(newline, lines);
+                }
             }
         }
         if (start < 0) return content;
-        lines.add(start + 1, "default_tools_approval_mode = \"writes\"");
+        lines.add(start + 1, "default_tools_approval_mode = " + tomlString(APPROVAL_MODE));
         return String.join(newline, lines);
     }
 

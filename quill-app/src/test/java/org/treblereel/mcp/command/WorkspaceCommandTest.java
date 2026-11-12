@@ -45,7 +45,7 @@ class WorkspaceCommandTest {
         assertFalse(settings.contains("Bash"));
         assertFalse(settings.contains("mcp__quill__*"));
         assertTrue(Files.readString(project.resolve(".codex/config.toml"))
-                .contains("default_tools_approval_mode = \"writes\""));
+                .contains("default_tools_approval_mode = \"approve\""));
         assertTrue(result.stdout().contains("/hooks"));
         createCompiledRepository("index-only");
         Path indexOnly=workspace.resolve("index-only");

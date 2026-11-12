@@ -50,6 +50,9 @@ final class ClassTargetResolver {
             return Lookup.error(error.errorCode(), error.getMessage(),
                     List.of(), List.of());
         }
+        // Class#member names a member; a class tool answers for its owner, members included.
+        int hash = target.indexOf('#');
+        if (hash > 0 && !target.contains("/")) return resolve(reader, target.substring(0, hash));
         var exactNames = reader.symbols.findClassesByName(target);
         if (exactNames.size() == 1) return Lookup.found(exactNames.getFirst());
         if (exactNames.size() > 1) {

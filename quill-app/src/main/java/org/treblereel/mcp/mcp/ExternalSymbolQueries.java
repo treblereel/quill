@@ -25,6 +25,8 @@ import org.treblereel.mcp.db.ReadQueryContext;
 
 /** Lazy, bounded lookup of declarations in resolved dependency JARs. */
 final class ExternalSymbolQueries {
+    private static final int MEMBER_CANDIDATES = 10;
+
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int MAX_PROJECT_CACHES = 8;
@@ -184,8 +186,11 @@ final class ExternalSymbolQueries {
                 ObjectNode missing = JSON.createObjectNode().put("error_code", "EXTERNAL_MEMBER_NOT_FOUND")
                         .put("error", "No method " + method + " in " + ref.className());
                 ArrayNode candidates = missing.putArray("candidates");
-                members.stream().filter(member -> !member.kind().equals("field")).map(Member::name)
-                        .distinct().limit(100).forEach(candidates::add);
+                List<String> methodNames = members.stream().filter(member -> !member.kind().equals("field"))
+                        .map(Member::name).distinct().toList();
+                NameSimilarity.closest(method, methodNames, MEMBER_CANDIDATES).forEach(candidates::add);
+                if (methodNames.size() > MEMBER_CANDIDATES) missing.put("candidates_basis", "the " + MEMBER_CANDIDATES
+                        + " closest of " + methodNames.size() + " method names");
                 return missing.toString();
             }
             members = matching;

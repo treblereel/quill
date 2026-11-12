@@ -49,6 +49,10 @@ class ClassTargetResolverTest {
         assertEquals("io.acme.Credential$Listener", listener.cls().className());
         assertEquals("io.acme.Outer$Middle$Inner", inner.cls().className());
         assertEquals("CLASS_NOT_FOUND", missing.errorCode());
+        // V41 CQ-027: Codex asked get_symbol_details for Credential.Listener#postPersist.
+        var member = ReadQueryContext.readWithGraph(jdbi,
+                readScope -> ClassTargetResolver.resolve(readScope, "io.acme.Credential.Listener#postPersist"));
+        assertEquals("io.acme.Credential$Listener", member.cls() == null ? member.errorCode() : member.cls().className());
     }
 
     @Test

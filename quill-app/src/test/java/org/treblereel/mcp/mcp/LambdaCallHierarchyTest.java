@@ -30,4 +30,23 @@ class LambdaCallHierarchyTest {
         assertEquals("start", answer.path("lambda_declared_by").asText(), text);
         assertTrue(answer.path("calls").toString().contains("persist"), text);
     }
+
+    /** V41 CQ-014: Codex asked for getTemplate, the class declares getTemplates, and the error listed no candidates. */
+    @Test
+    void anUnknownMethodNamesTheClosestDeclaredMethods() throws Exception {
+        var db = JavaEvidenceFixture.index(root, """
+                package p;
+                class Fixture {
+                    java.util.List<String> getTemplates() { return null; }
+                    void addTemplate(String t) {}
+                    void close() {}
+                }
+                """);
+        String text = TestReads.<String>read(db, reader -> new CallHierarchyQueries()
+                .getCallHierarchy(reader, "p.Fixture", "getTemplate", null, "outbound", false, 1, 20, 0));
+        var answer = new ObjectMapper().readTree(text);
+
+        assertEquals("METHOD_NOT_FOUND", answer.path("error_code").asText(), text);
+        assertEquals("getTemplates", answer.path("similar_methods").get(0).asText(), text);
+    }
 }

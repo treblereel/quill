@@ -316,6 +316,10 @@ class ExternalSymbolQueriesTest {
         assertEquals("EXTERNAL_MEMBER_NOT_FOUND", result.path("error_code").asText());
         assertTrue(result.path("candidates").toString().contains("greet"));
         assertTrue(result.path("candidates").toString().contains("disabledValue"));
+        // V41: Codex guessed method names; the closest declared one comes first, not the alphabetically first.
+        var close = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "Fixture", 20, 0, "bytecode", "greeting")));
+        assertEquals("greet", close.path("candidates").get(0).asText(), close.toString());
     }
 
     @Test

@@ -392,6 +392,12 @@ final class CallHierarchyQueries {
         if (signature != null) error.put("signature", signature);
         ArrayNode values = error.putArray("candidates");
         candidates.forEach(candidate -> appendCandidate(values, cls, candidate));
+        if (candidates.isEmpty()) {
+            List<String> names = reader.symbols.findClassMembers(cls.id()).stream()
+                    .filter(member -> member.kind().equals("METHOD")).map(ClassMemberRecord::name)
+                    .filter(name -> !name.startsWith("lambda$")).distinct().toList();
+            if (!names.isEmpty()) error.set("similar_methods", JSON.valueToTree(NameSimilarity.closest(method, names, 5)));
+        }
         if (ambiguous) {
             appendRetryWith(error, "signature",
                     "Use one candidate's exact signature, descriptor, or symbol_id");

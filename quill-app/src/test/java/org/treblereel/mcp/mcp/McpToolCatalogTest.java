@@ -924,6 +924,13 @@ class McpToolCatalogTest {
         assertEquals("p.Authorizer#:outbound",
                 McpToolCatalog.invokeMethod(tools, hierarchy, Map.of("target", "p.Authorizer", "direction", "callees")).text());
 
+        // V41: Codex sent depth and property, Claude an HTML-escaped <init>.
+        var depth = GuessedArgumentTools.class.getDeclaredMethod("find_impacted_tests", String.class, Optional.class, Optional.class);
+        assertEquals("p.A:4:<init>", McpToolCatalog.invokeMethod(tools, depth,
+                Map.of("target", "p.A", "depth", 4, "method", "&lt;init&gt;")).text());
+        var key = GuessedArgumentTools.class.getDeclaredMethod("find_configuration_references", Optional.class);
+        assertEquals("a.b", McpToolCatalog.invokeMethod(tools, key, Map.of("property", "a.b")).text());
+
         var both = McpToolCatalog.invokeMethod(tools, trace, Map.of("class_name", "p.A", "target", "p.B"));
         assertTrue(both.error(), "Two selectors stay ambiguous: " + both.text());
     }
@@ -971,6 +978,10 @@ class McpToolCatalogTest {
         @Tool(description = "Verify") public String verify_change(Optional<List<String>> targets) { return targets.map(String::valueOf).orElse("inferred"); }
         @Tool(description = "Many selectors") public String get_context(List<String> targets) { return String.join(",", targets); }
         @Tool(description = "External selector") public String get_external_symbol_details(String class_name) { return class_name; }
+        @Tool(description = "Depth") public String find_impacted_tests(String target, Optional<Integer> max_depth, Optional<String> method) {
+            return target + ":" + max_depth.map(String::valueOf).orElse("") + ":" + method.orElse("");
+        }
+        @Tool(description = "Key") public String find_configuration_references(Optional<String> key) { return key.orElse(""); }
         @Tool(description = "Hierarchy")
         public String get_call_hierarchy(String target, Optional<String> method,
                 @ToolArg(description = "Direction", allowed = {"inbound", "outbound", "both"}) Optional<String> direction) {

@@ -445,7 +445,7 @@ final class McpToolCatalog {
             "execute_tool", Map.of("tool_name", "name", "tool", "name",
                     "args", "arguments", "parameters", "arguments", "input", "arguments"),
             "find_usages", Map.of("symbol", "target", "class_name", "target"),
-            "list_injection_points", Map.of("class_name", "target"),
+            "list_injection_points", Map.of("class_name", "target", "type", "target"),
             "list_beans", Map.of("type", "class_name"));
 
     private static final List<String> SELECTORS = List.of("target", "targets", "class_name");
@@ -477,6 +477,15 @@ final class McpToolCatalog {
         if (parameters.containsKey("method") && !parameters.containsKey("method_name")
                 && normalized.containsKey("method_name") && !normalized.containsKey("method"))
             normalized.put("method", normalized.remove("method_name"));
+        // V41: Codex sent depth for max_depth and property for key.
+        for (var guess : Map.of("depth", "max_depth", "property", "key").entrySet())
+            if (parameters.containsKey(guess.getValue()) && !parameters.containsKey(guess.getKey())
+                    && normalized.containsKey(guess.getKey()) && !normalized.containsKey(guess.getValue()))
+                normalized.put(guess.getValue(), normalized.remove(guess.getKey()));
+        // V41 CQ-020: a client HTML-escaped <init>.
+        for (String name : List.of("method", "signature"))
+            if (normalized.get(name) instanceof String value && value.contains("&"))
+                normalized.put(name, value.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"));
         Parameter direction = parameters.get("direction");
         ToolArg directionArg = direction == null ? null : direction.getAnnotation(ToolArg.class);
         if (directionArg != null && List.of(directionArg.allowed()).contains("inbound")

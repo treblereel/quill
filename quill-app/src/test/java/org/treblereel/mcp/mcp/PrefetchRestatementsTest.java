@@ -124,6 +124,22 @@ class PrefetchRestatementsTest {
         assertEquals("word matches", fact.path("name_in_source").path("basis").asText());
     }
 
+    /** V41 CQ-027: every with-Quill answer missed ObjectMapper#readValue, the library call the transaction runs per file. */
+    @Test
+    void libraryCalleesStayWhileJdkCalleesGo() throws Exception {
+        ObjectNode fact = (ObjectNode) JSON.readTree("""
+                {"kind":"direct_method_impact","calls":["1 p.B#run():void",
+                 "1 com.fasterxml.jackson.databind.ObjectMapper#readValue(java.io.InputStream, java.lang.Class) [external]",
+                 "1 java.nio.file.Files#newInputStream(java.nio.file.Path, java.nio.file.OpenOption[]) [external]",
+                 "1 jdk.internal.misc.Unsafe#park(boolean, long) [external]",
+                 "1 org.jboss.logging.Logger#tracev(java.lang.String, java.lang.Object):void [external]",
+                 "2 org.slf4j.Logger#info(java.lang.String):void [external]"],"calls_basis":"depth, callee"}
+                """);
+        PrefetchRestatements.strip(fact);
+        assertEquals("[\"1 p.B#run():void\",\"1 com.fasterxml.jackson.databind.ObjectMapper#readValue(java.io.InputStream, java.lang.Class) [external]\"]",
+                fact.path("calls").toString());
+    }
+
     /** V29 CQ-045: annotation plumbing, a lone source occurrence and dependency tallies were a third of the fact. */
     @Test
     void aClassFactDropsWhatEveryClassSays() throws Exception {

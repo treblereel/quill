@@ -109,10 +109,20 @@ public final class PrefetchRestatements {
             if (!scope.has("has_more") && !scope.has("traversal_truncated")) fact.remove("indirect_counts");
         }
         if (fact.path("calls") instanceof ArrayNode calls) {
-            calls.removeIf(call -> call.asText().endsWith("[external]") || call.asText().endsWith("[special]"));
+            calls.removeIf(call -> call.asText().endsWith("[special]") || call.asText().endsWith("[external]") && silent(call.asText()));
             if (calls.isEmpty()) fact.remove(List.of("calls", "calls_basis"));
         }
         if (fact.path("name_in_source") instanceof ObjectNode names && names.path("other").isEmpty()) names.remove("basis");
+    }
+
+    /** JDK and logging-facade owners; other library callees, such as a JSON mapper, say what the path runs. */
+    private static final List<String> SILENT_OWNERS = List.of("java.", "jdk.", "sun.", "com.sun.", "org.jboss.logging.",
+            "org.slf4j.", "org.apache.logging.log4j.", "org.apache.commons.logging.");
+
+    /** A call line is "depth owner#method...". */
+    private static boolean silent(String call) {
+        String owner = call.substring(call.indexOf(' ') + 1);
+        return SILENT_OWNERS.stream().anyMatch(owner::startsWith);
     }
 
     private static void removeEmpty(ObjectNode node, String... fields) {

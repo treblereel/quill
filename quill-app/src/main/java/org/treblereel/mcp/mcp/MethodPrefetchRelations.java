@@ -361,7 +361,9 @@ final class MethodPrefetchRelations {
         }
         if (!dispatch.isEmpty()) firedEventObservers(db, fact, classId, visited, dispatch);
         ArrayNode values = fact.putArray("calls");
-        lines.stream().limit(LIMIT).forEach(values::add);
+        // A lambda body is walked after its declarer's deeper callees; depth order keeps nearer calls first when cut.
+        lines.stream().sorted(java.util.Comparator.comparingInt(line -> Integer.parseInt(line.substring(0, line.indexOf(' ')))))
+                .limit(LIMIT).forEach(values::add);
         fact.put("calls_basis", "depth, callee, invocation; depth 2 = called by a depth-1 callee");
         if (lines.size() > LIMIT) fact.putObject("calls_truncated").put("shown", LIMIT).put("total", lines.size());
     }

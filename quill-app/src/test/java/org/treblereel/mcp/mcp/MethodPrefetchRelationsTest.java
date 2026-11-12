@@ -99,6 +99,9 @@ class MethodPrefetchRelationsTest {
         assertTrue(calls.contains("2 p.Fixture#inherited [virtual, inherited: declared by p.Base]"), calls.toString());
         assertTrue(calls.contains("1 p.Base#<init> [special]"), calls.toString());
         assertTrue(calls.stream().noneMatch(call -> call.contains("lambda$")), calls.toString());
+        // V41 CQ-027: a lambda's depth-1 callees came after the depth-2 ones, so a halved list lost them.
+        assertEquals(calls.stream().sorted(java.util.Comparator.comparing(call -> call.substring(0, call.indexOf(' ')))).toList(),
+                calls, "depth order");
         assertEquals("(java.nio.file.Path, java.nio.file.LinkOption[]):boolean",
                 MethodPrefetchRelations.javaSignature("(Ljava/nio/file/Path;[Ljava/nio/file/LinkOption;)Z"));
         assertEquals("", MethodPrefetchRelations.javaSignature("(Lbroken"));

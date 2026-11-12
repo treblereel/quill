@@ -45,6 +45,24 @@ class NameTargetPrefetchTest {
         assertNull(TestReads.read(db, reader -> NameTargetPrefetch.typeProviders(reader, "x.Nobody")));
     }
 
+    // V48 CQ-004: the fact named quarkus-vertx, and Codex grepped pom.xml for where it is declared.
+    @Test
+    void dependencyProvidersStateWhereTheirArtifactIsDeclared() throws Exception {
+        Jdbi db = index();
+        java.nio.file.Files.writeString(root.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>app</artifactId><version>1</version>
+                  <dependencies><dependency><groupId>dep</groupId>
+                    <artifactId>clock</artifactId><version>1</version>
+                  </dependency></dependencies>
+                </project>
+                """);
+        db.useHandle(handle -> handle.execute("INSERT INTO metadata(key, value) VALUES ('project_root', ?)", root.toString()));
+        var fact = TestReads.read(db, reader -> NameTargetPrefetch.typeProviders(reader, "x.Clock"));
+        assertEquals(List.of("dep:clock direct, declared at pom.xml:4; version 1 at pom.xml:4"),
+                fact.path("artifact_declarations").valueStream().map(node -> node.asText()).toList(), fact.toString());
+    }
+
     @Test
     void defaultProvidersPrecedeNamedProvidersInBoundedEvidence() throws Exception {
         Jdbi db = index();

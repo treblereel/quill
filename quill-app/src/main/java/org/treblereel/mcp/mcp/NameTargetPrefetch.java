@@ -81,6 +81,7 @@ public final class NameTargetPrefetch {
                     + " qualifiers " + row.get("qualifiers") + " from " + row.get("artifact")
                     + " (" + row.get("framework") + ")"
                     + ("[]".equals(String.valueOf(row.get("profiles"))) ? "" : " profiles " + row.get("profiles"))));
+            appendArtifactDeclarations(db, fact, external.stream().limit(LIMIT).toList());
         }
         try {
             var registered = registeredDependencyBeans(db);
@@ -100,6 +101,40 @@ public final class NameTargetPrefetch {
             if (external.size() > 4) fact.put("dependency_provider_evidence_truncated", true);
         } catch (Exception unavailable) { fact.put("registration_evidence", "unavailable"); }
         return fact;
+    }
+
+    /** Whether each provider's artifact is a direct dependency, and where the project's POMs declare and version it. */
+    private static void appendArtifactDeclarations(ReadQueryContext db, ObjectNode fact, List<Map<String, Object>> providers) {
+        String projectRoot = db.index.getMetadata().get("project_root");
+        if (projectRoot == null) return;
+        java.nio.file.Path root = java.nio.file.Path.of(projectRoot);
+        if (!java.nio.file.Files.isRegularFile(root.resolve("pom.xml"))) return;
+        java.util.Set<String> artifacts = new java.util.LinkedHashSet<>();
+        String repositoryHint = null;
+        for (var row : providers) {
+            String artifact = String.valueOf(row.get("artifact"));
+            String[] parts = artifact.split(":");
+            if (parts.length < 2) continue;
+            artifacts.add(parts[0] + ":" + parts[1]);
+            String jar = String.valueOf(row.get("jar_path"));
+            int at = jar.indexOf("/" + parts[0].replace('.', '/') + "/" + parts[1] + "/");
+            if (repositoryHint == null && at > 0) repositoryHint = jar.substring(0, at);
+        }
+        if (artifacts.isEmpty()) return;
+        java.nio.file.Path repository = repositoryHint != null ? java.nio.file.Path.of(repositoryHint)
+                : java.nio.file.Path.of(System.getProperty("user.home"), ".m2", "repository");
+        List<String> modules = db.jdbi().withHandle(handle -> handle.createQuery(
+                "SELECT DISTINCT module FROM classes WHERE module IS NOT NULL ORDER BY module").mapTo(String.class).list());
+        Map<String, org.treblereel.mcp.core.DependencyDeclarations.Declaration> declared = new java.util.LinkedHashMap<>();
+        for (String module : modules.isEmpty() ? List.of(".") : modules)
+            org.treblereel.mcp.core.DependencyDeclarations.locate(root, module, repository).forEach(declared::putIfAbsent);
+        ArrayNode lines = fact.putArray("artifact_declarations");
+        for (String ga : artifacts) {
+            var declaration = declared.get(ga);
+            lines.add(declaration == null ? ga + " not declared in the project's POMs (transitive)"
+                    : ga + " direct, declared at " + String.join(", ", declaration.declaredAt())
+                            + (declaration.versionSource() == null ? "" : "; " + declaration.versionSource()));
+        }
     }
 
     /**

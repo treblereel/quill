@@ -90,7 +90,7 @@ final class ConfigMappingKeys {
     }
 
     /** V41 CQ-037: a mapping without @WithDefault leaves its default to the application's own properties. */
-    private static String mainDeclaration(ReadQueryContext db, ConfigurationSourceEvidence values, String key) {
+    static String mainDeclaration(ReadQueryContext db, ConfigurationSourceEvidence values, String key) {
         return db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT file, line, kind, evidence FROM configuration_definitions
                 WHERE key = :key AND kind IN ('property', 'yaml_property') AND COALESCE(source_set, 'main') = 'main'

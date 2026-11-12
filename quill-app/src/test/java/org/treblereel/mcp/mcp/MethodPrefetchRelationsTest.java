@@ -246,6 +246,44 @@ class MethodPrefetchRelationsTest {
         assertTrue(members.stream().noneMatch(line -> line.startsWith("unrelated")), members.toString());
     }
 
+    /** V41 CQ-035: asked for a startup observer's order and beans, Claude grepped other observers, @Priority and config keys. */
+    @Test
+    void anObserverNamesTheOtherObserversOfItsEventAndItsConfigKeys() throws Exception {
+        String runtime = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) ";
+        var db = JavaEvidenceFixture.index(root, java.util.Map.of(
+                "src/main/java/jakarta/enterprise/event/Observes.java", "package jakarta.enterprise.event; " + runtime + "public @interface Observes {}",
+                "src/main/java/jakarta/annotation/Priority.java", "package jakarta.annotation; " + runtime + "public @interface Priority { int value(); }",
+                "src/main/java/org/eclipse/microprofile/config/inject/ConfigProperty.java",
+                "package org.eclipse.microprofile.config.inject; " + runtime + "public @interface ConfigProperty { String name(); }",
+                "src/main/java/io/quarkus/runtime/StartupEvent.java", "package io.quarkus.runtime; public class StartupEvent {}",
+                "src/main/resources/application.properties", "app.mode=true\n",
+                "src/main/java/p/A.java", """
+                        package p;
+                        import jakarta.enterprise.event.Observes; import io.quarkus.runtime.StartupEvent;
+                        import org.eclipse.microprofile.config.inject.ConfigProperty;
+                        class A { @ConfigProperty(name = "app.mode") String mode; void onStart(@Observes StartupEvent e) { System.out.println(mode); } }
+                        """,
+                "src/main/java/p/B.java", """
+                        package p;
+                        import jakarta.enterprise.event.Observes; import jakarta.annotation.Priority; import io.quarkus.runtime.StartupEvent;
+                        class B { void onStart(@Observes @Priority(10) StartupEvent e) {} }
+                        """,
+                "src/main/java/p/C.java", """
+                        package p;
+                        import jakarta.enterprise.event.Observes; import io.quarkus.runtime.StartupEvent;
+                        class C { void begin(@Observes StartupEvent e) {} }
+                        """));
+        ObjectNode fact = JSON.createObjectNode().put("class", "p.A").put("name", "onStart").put("descriptor", "(Lio/quarkus/runtime/StartupEvent;)V");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, fact); return null; });
+
+        var observers = fact.path("same_event_observers");
+        assertEquals(List.of("p.B#onStart @Priority(10)"), observers.path("listed").valueStream().map(JsonNode::asText).toList(), fact.toString());
+        assertEquals(2, observers.path("others").asInt());
+        assertEquals("1 share default @Priority 2500 with this one: order unspecified", observers.path("order").asText());
+        String mode = fact.path("referenced_members").get(0).asText();
+        assertTrue(mode.contains("key app.mode; main src/main/resources/application.properties:1=true"), mode);
+    }
+
     /** V21: Codex made 86 dependency-jar lookups to learn how Quarkus runs a scheduled or transactional method. */
     @Test
     void frameworkAnnotationsCarryTheirDocumentedContractAndTheApplicationsSettings() throws Exception {

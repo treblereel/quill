@@ -78,6 +78,7 @@ final class MethodPrefetchRelations {
         referencedMembers(db, fact, classId, name, descriptor);
         interceptors(db, fact, classId, name, descriptor);
         callees(db, root, fact, classId, name, descriptor);
+        sameEventObservers(db, fact, classId, name, descriptor);
         producer(db, fact, classId, name);
         if (root == null) return;
         boolean lambdaGap = missingLambdaEvidence(db, classId, name, descriptor);
@@ -165,6 +166,85 @@ final class MethodPrefetchRelations {
         mentions.put("basis", "word matches in the declaring file; comments and strings are not in the bytecode index");
     }
 
+    private static final int OBSERVER_LIMIT = 12;
+    private static final int DEFAULT_OBSERVER_PRIORITY = 2500;
+
+    /**
+     * For an observer method, the application's other observers of the same event type in
+     * @Priority order: what the start or stop order between them is, and where it is unspecified.
+     */
+    private static void sameEventObservers(ReadQueryContext db, ObjectNode fact, int classId, String name, String descriptor) {
+        String details = db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT annotation_details FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
+                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(String.class).findOne().orElse("[]"));
+        String event = null;
+        try {
+            for (JsonNode annotation : JSON.readTree(details))
+                if (List.of("jakarta.enterprise.event.Observes", "javax.enterprise.event.Observes").contains(annotation.path("annotationName").asText()))
+                    event = annotation.path("parameterType").asText(null);
+        } catch (Exception unreadable) {
+            return;
+        }
+        if (event == null || event.isBlank()) return;
+        String type = event;
+        record Observer(String name, int priority, boolean explicit) {}
+        List<Observer> observers = new java.util.ArrayList<>();
+        for (var row : db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT c.id AS class_id, c.class_name, m.name, m.descriptor, m.annotation_details FROM class_members m
+                JOIN classes c ON c.id = m.class_id
+                WHERE c.lifecycle = 'current' AND m.annotation_details LIKE '%.event.Observes"%' AND m.annotation_details LIKE :type""")
+                .bind("type", "%\"parameterType\":\"" + type + "\"%").mapToMap().list())) {
+            if (((Number) row.get("class_id")).intValue() == classId && name.equals(row.get("name")) && descriptor.equals(row.get("descriptor"))) continue;
+            Integer priority = null;
+            try {
+                for (JsonNode annotation : JSON.readTree(String.valueOf(row.get("annotation_details"))))
+                    if (annotation.path("annotationName").asText().endsWith(".annotation.Priority")
+                            && annotation.path("targetKind").asText().equals("METHOD_PARAMETER"))
+                        priority = annotation.path("values").path("value").asInt(DEFAULT_OBSERVER_PRIORITY);
+            } catch (Exception unreadable) {
+                // An unreadable row keeps the default priority.
+            }
+            observers.add(new Observer(row.get("class_name") + "#" + row.get("name"),
+                    priority == null ? DEFAULT_OBSERVER_PRIORITY : priority, priority != null));
+        }
+        if (observers.isEmpty()) return;
+        Set<String> related = relatedClasses(db, fact, classId);
+        observers.sort(java.util.Comparator.comparingInt(Observer::priority).thenComparing(Observer::name));
+        // Listed: those with a stated @Priority and those of classes this method uses.
+        List<Observer> named = observers.stream().filter(o -> o.explicit() || related.contains(o.name().substring(0, o.name().indexOf('#'))))
+                .limit(OBSERVER_LIMIT).toList();
+        boolean selfDefault = !db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT annotation_details FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
+                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(String.class).findOne().orElse(""))
+                .contains(".annotation.Priority\"");
+        long unordered = observers.stream().filter(o -> !o.explicit()).count();
+        // One field, so the context budget can drop it whole before it cuts the method's own evidence.
+        ObjectNode summary = fact.putObject("same_event_observers");
+        summary.put("event", type).put("others", observers.size());
+        if (!named.isEmpty()) {
+            ArrayNode lines = summary.putArray("listed");
+            named.forEach(o -> lines.add(o.name() + (o.explicit() ? " @Priority(" + o.priority() + ")" : "")));
+        }
+        if (selfDefault && unordered > 0)
+            summary.put("order", unordered + " share default @Priority " + DEFAULT_OBSERVER_PRIORITY + " with this one: order unspecified");
+    }
+
+    /** Classes of the method's callees and of the fields it reads. */
+    private static Set<String> relatedClasses(ReadQueryContext db, ObjectNode fact, int classId) {
+        Set<String> related = new java.util.HashSet<>();
+        for (JsonNode call : fact.path("calls")) {
+            String text = call.asText();
+            int space = text.indexOf(' '), hash = text.indexOf('#');
+            if (space > 0 && hash > space) related.add(text.substring(space + 1, hash));
+        }
+        for (JsonNode member : fact.path("referenced_members")) {
+            String text = member.asText();
+            int colon = text.indexOf(": ");
+            if (colon > 0) related.add(text.substring(colon + 2).split("[ <;]")[0]);
+        }
+        return related;
+    }
+
     private static final int MEMBER_LIMIT = 8;
     private static final int USER_LIMIT = 6;
 
@@ -202,6 +282,11 @@ final class MethodPrefetchRelations {
             } catch (Exception unreadable) {
                 // Annotations are a convenience here; the type and users still stand.
             }
+            // V41 CQ-035: a config-injected field's key and main value, which agents otherwise grep for.
+            db.jdbi().withHandle(handle -> handle.createQuery("""
+                    SELECT key FROM configuration_usages WHERE class_id = :id AND member = :name AND kind = 'config_key' LIMIT 1""")
+                    .bind("id", classId).bind("name", field).mapTo(String.class).findOne())
+                    .ifPresent(key -> line.append(" key ").append(key).append(ConfigMappingKeys.mainDeclaration(db, new ConfigurationSourceEvidence(db), key)));
             var others = users.getOrDefault(field, new java.util.TreeSet<>());
             if (!others.isEmpty()) line.append("; also used by ").append(String.join(", ", others.stream().limit(USER_LIMIT).toList()))
                     .append(others.size() > USER_LIMIT ? " and " + (others.size() - USER_LIMIT) + " more" : "");

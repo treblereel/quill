@@ -154,7 +154,7 @@ public final class PrefetchContext {
     private static final List<String> OPTIONAL_FIELDS=List.of("class_occurrences","meta_annotations","dependency_metrics",
             "external_dependencies","external_dependency_breakdown","test_classes","related_source_files",
             "symbol_id","descriptor","_meta","generated_classes","generated_creation_evidence","override_evidence",
-            "methods","field_read_source");
+            "methods","field_read_source","same_event_observers");
     /** What a fact is about and how far it reaches: the rest can go first, so the fact can still be followed up. */
     private static final Set<String> FACT_IDENTITY=Set.of("kind","tool","arguments","target","class","method","signature",
             "jvm_name","source","location","coverage","counts","limitations","status","injection_point");

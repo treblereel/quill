@@ -204,6 +204,8 @@ final class StructureToolQueries {
         }
         if (beans.isEmpty() && externalBeans.isEmpty() && lookup != null
                 && lookup.error() != null) {
+            String dependency = DependencyTypeAnswers.referencedType(reader, lookup, className);
+            if (dependency != null) return DependencyTypeAnswers.beans(reader, dependency);
             return classLookupError(reader, lookup, className);
         }
 
@@ -448,8 +450,9 @@ final class StructureToolQueries {
     String findImplementations(ReadQueryContext reader, String target, boolean transitive,
             String module, String sourceSet, int limit, int offset) {
         var lookup = ClassTargetResolver.resolve(reader, target);
-        if (lookup.error() != null) return classLookupError(reader, lookup, target);
-        ClassRecord base = lookup.cls();
+        String dependency = lookup.error() == null ? null : DependencyTypeAnswers.referencedType(reader, lookup, target);
+        if (lookup.error() != null && dependency == null) return classLookupError(reader, lookup, target);
+        ClassRecord base = dependency != null ? DependencyTypeAnswers.standIn(dependency) : lookup.cls();
         List<ClassRecord> allClasses = reader.symbols.findAllClasses();
         Map<String, Integer> distances = implementationDistances(
                 allClasses, base.className(), transitive);
@@ -811,7 +814,10 @@ final class StructureToolQueries {
 
     String getInjectionPoints(ReadQueryContext reader, String target) {
         var lookup = ClassTargetResolver.resolve(reader, target);
-        if (lookup.error() != null) return classLookupError(reader, lookup, target);
+        if (lookup.error() != null) {
+            String dependency = DependencyTypeAnswers.referencedType(reader, lookup, target);
+            return dependency != null ? DependencyTypeAnswers.beans(reader, dependency) : classLookupError(reader, lookup, target);
+        }
         ClassRecord cls = lookup.cls();
         var bean = reader.beans.findBeanByClassId(cls.id());
         if (bean.isEmpty()) return notABean(reader, cls, target);

@@ -214,7 +214,10 @@ final class ToolResponseSupport {
                 + "build-time (deployment) or runtime-generated class");
         root.putObject("next_step").put("tool", "get_external_symbol_details")
                 .putObject("arguments").put("class_name", target);
-        appendApplicationReferences(root, reader, target);
+        appendApplicationReferences(root, reader, target, null);
+        if (root.has("application_references"))
+            root.put("reason", "Dependency class, not in the application index; application_references lists the application "
+                    + "classes and members using it");
     }
 
     private static final int REFERENCE_LIMIT = 20;
@@ -223,15 +226,17 @@ final class ToolResponseSupport {
      * What a usage, bean or hierarchy question about a dependency class can still be answered with:
      * the application classes referencing it and the members it annotates.
      */
-    private static void appendApplicationReferences(ObjectNode root, ReadQueryContext reader, String target) {
+    static void appendApplicationReferences(ObjectNode root, ReadQueryContext reader, String target,
+            java.util.Set<String> kinds) {
         java.util.Map<String, java.util.Set<String>> references = new java.util.TreeMap<>();
         reader.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT c.class_name, d.usage_kind FROM class_external_deps d JOIN classes c ON c.id = d.class_id
                 WHERE d.external_type = :type AND c.lifecycle = 'current' ORDER BY c.class_name, d.usage_kind""")
-                .bind("type", target).mapToMap().list()).forEach(row -> references
+                .bind("type", target).mapToMap().list()).stream()
+                .filter(row -> kinds == null || kinds.contains(String.valueOf(row.get("usage_kind")))).forEach(row -> references
                         .computeIfAbsent(String.valueOf(row.get("class_name")), ignored -> new java.util.TreeSet<>())
                         .add(String.valueOf(row.get("usage_kind"))));
-        reader.jdbi().withHandle(handle -> handle.createQuery("""
+        if (kinds == null || kinds.contains("ANNOTATION")) reader.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT c.class_name, m.name FROM class_members m JOIN classes c ON c.id = m.class_id
                 WHERE m.annotations LIKE :quoted AND c.lifecycle = 'current' ORDER BY c.class_name, m.name""")
                 .bind("quoted", "%\"" + target + "\"%").mapToMap().list()).forEach(row -> references
@@ -243,8 +248,6 @@ final class ToolResponseSupport {
                 .forEach(entry -> lines.add(entry.getKey() + " " + entry.getValue()));
         if (references.size() > REFERENCE_LIMIT)
             root.putObject("application_references_truncated").put("shown", REFERENCE_LIMIT).put("total", references.size());
-        root.put("reason", "Dependency class, not in the application index; application_references lists the application "
-                + "classes and members using it");
     }
 
     static String queryEvidence(String json, String tool, java.util.Map<String, Object> arguments,

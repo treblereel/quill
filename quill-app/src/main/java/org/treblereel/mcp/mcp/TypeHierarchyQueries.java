@@ -32,8 +32,9 @@ final class TypeHierarchyQueries {
                     "Invalid direction: expected ancestors, descendants, or both");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
-        if (lookup.error() != null) return classLookupError(reader, lookup, target);
-        ClassRecord rootClass = lookup.cls();
+        String dependency = lookup.error() == null ? null : DependencyTypeAnswers.referencedType(reader, lookup, target);
+        if (lookup.error() != null && dependency == null) return classLookupError(reader, lookup, target);
+        ClassRecord rootClass = dependency != null ? DependencyTypeAnswers.standIn(dependency) : lookup.cls();
 
         List<ClassRecord> classes = reader.symbols.findAllClasses();
         Map<String, ClassRecord> byName = new HashMap<>();

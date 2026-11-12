@@ -35,7 +35,10 @@ final class SymbolToolQueries {
                     "Invalid member_kind: expected field, constructor, or method");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
-        if (lookup.error() != null) return classLookupError(reader, lookup, target);
+        if (lookup.error() != null) {
+            String dependency = DependencyTypeAnswers.referencedType(reader, lookup, target);
+            return dependency != null ? DependencyTypeAnswers.symbol(reader, dependency) : classLookupError(reader, lookup, target);
+        }
         ClassRecord cls = lookup.cls();
         List<KotlinDeclarationRecord> kotlinDeclarations =
                 reader.symbols.findKotlinDeclarations(cls.id());

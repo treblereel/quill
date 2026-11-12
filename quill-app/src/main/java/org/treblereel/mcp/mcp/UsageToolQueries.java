@@ -47,7 +47,7 @@ final class UsageToolQueries {
         if (lookup.error() != null) {
             // The workspace caller (includeLiveMeta false) resolves a miss through its own external type index.
             String dependency = includeLiveMeta ? DependencyTypeAnswers.referencedType(reader, lookup, target) : null;
-            if (dependency != null) return DependencyTypeAnswers.usages(reader, dependency, normalizedKind);
+            if (dependency != null) return DependencyTypeAnswers.usages(reader, dependency, normalizedKind, limit);
             return includeLiveMeta ? classLookupError(reader, lookup, target)
                     : ClassTargetResolver.errorResponse(JSON, lookup, target).toString();
         }

@@ -228,6 +228,11 @@ final class ToolResponseSupport {
      */
     static void appendApplicationReferences(ObjectNode root, ReadQueryContext reader, String target,
             java.util.Set<String> kinds) {
+        appendApplicationReferences(root, reader, target, kinds, REFERENCE_LIMIT);
+    }
+
+    static void appendApplicationReferences(ObjectNode root, ReadQueryContext reader, String target,
+            java.util.Set<String> kinds, int limit) {
         java.util.Map<String, java.util.Set<String>> references = new java.util.TreeMap<>();
         reader.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT c.class_name, d.usage_kind FROM class_external_deps d JOIN classes c ON c.id = d.class_id
@@ -244,10 +249,10 @@ final class ToolResponseSupport {
                         .add("ANNOTATION"));
         if (references.isEmpty()) return;
         var lines = root.putArray("application_references");
-        references.entrySet().stream().limit(REFERENCE_LIMIT)
+        references.entrySet().stream().limit(limit)
                 .forEach(entry -> lines.add(entry.getKey() + " " + entry.getValue()));
-        if (references.size() > REFERENCE_LIMIT)
-            root.putObject("application_references_truncated").put("shown", REFERENCE_LIMIT).put("total", references.size());
+        if (references.size() > limit)
+            root.putObject("application_references_truncated").put("shown", limit).put("total", references.size());
     }
 
     static String queryEvidence(String json, String tool, java.util.Map<String, Object> arguments,

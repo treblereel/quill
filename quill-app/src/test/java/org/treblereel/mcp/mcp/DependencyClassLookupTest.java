@@ -115,6 +115,17 @@ class DependencyClassLookupTest {
         assertEquals(List.of("org.lib.BusProducer#bus (PRODUCER_METHOD @Singleton, org.lib:lib:1)"), texts(bus.path("dependency_beans")), bus.toString());
     }
 
+    // V41 CQ-012/CQ-032: get_symbol_details(Identifier) and find_usages(PermissionsAllowed, annotation) failed; both annotate members.
+    @Test void aDependencyAnnotationOnMembersIsAnsweredBySymbolAndUsageTools() throws Exception {
+        JsonNode usages = answer(reader -> new UsageToolQueries().findUsages(reader, "org.lib.Secured", "annotation", null, 50, 0));
+        assertFalse(usages.has("error_code"), usages.toString());
+        assertEquals(List.of("p.Codec#secured [ANNOTATION]"), texts(usages.path("application_references")), usages.toString());
+        JsonNode symbol = answer(reader -> new SymbolToolQueries().getSymbolDetails(reader, "org.lib.Secured", true, null, 50, 0));
+        assertFalse(symbol.has("error_code"), symbol.toString());
+        assertEquals("dependency", symbol.path("origin").asText());
+        assertEquals(List.of("p.Codec#secured [ANNOTATION]"), texts(symbol.path("application_references")), symbol.toString());
+    }
+
     @Test void anUnreferencedDependencyClassStaysAPlainMiss() throws Exception {
         assertFalse(lookup("org.lib.Unused").has("application_references"));
     }

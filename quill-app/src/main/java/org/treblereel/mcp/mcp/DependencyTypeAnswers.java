@@ -35,8 +35,10 @@ final class DependencyTypeAnswers {
         if (!reader.symbols.searchClasses(target.substring(0, target.lastIndexOf('.')) + ".%", 1).isEmpty()) return null;
         boolean referenced = reader.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT EXISTS(SELECT 1 FROM class_external_deps WHERE external_type = :type)
-                    OR EXISTS(SELECT 1 FROM injection_points WHERE target_type = :type OR target_type LIKE :generic)""")
-                .bind("type", target).bind("generic", target + "<%").mapTo(Boolean.class).one());
+                    OR EXISTS(SELECT 1 FROM injection_points WHERE target_type = :type OR target_type LIKE :generic)
+                    OR EXISTS(SELECT 1 FROM class_members WHERE annotations LIKE :quoted)""")
+                .bind("type", target).bind("generic", target + "<%").bind("quoted", "%\"" + target + "\"%")
+                .mapTo(Boolean.class).one());
         return referenced ? target : null;
     }
 
@@ -46,7 +48,7 @@ final class DependencyTypeAnswers {
                 "dependency", "current", null, null);
     }
 
-    static String usages(ReadQueryContext reader, String type, String usageKind) {
+    static String usages(ReadQueryContext reader, String type, String usageKind, int limit) {
         ObjectNode root = header(type);
         root.put("granularity", "class");
         if (usageKind == null) root.putNull("usage_kind");
@@ -56,13 +58,35 @@ final class DependencyTypeAnswers {
             appendDependencyBeans(root, reader, type);
         }
         if (usageKind == null || !usageKind.equals("injection")) {
-            ToolResponseSupport.appendApplicationReferences(root, reader, type, usageKind == null ? null : REFERENCE_KINDS.get(usageKind));
+            ToolResponseSupport.appendApplicationReferences(root, reader, type, usageKind == null ? null : REFERENCE_KINDS.get(usageKind), limit);
             if (usageKind != null && !REFERENCE_KINDS.containsKey(usageKind))
                 root.put("references_note", "Calls and field accesses into dependency classes are not indexed per member; "
                         + "these are all application classes referencing it");
         }
         root.put("basis", "Dependency class: application classes referencing it and its injection points from the "
                 + "application index; its own bytecode is in get_external_symbol_details");
+        ToolResponseSupport.appendMeta(root, reader, 0);
+        return root.toString();
+    }
+
+    /** get_symbol_details: the dependency's own summary from its jar and where the application uses it. */
+    static String symbol(ReadQueryContext reader, String type) {
+        ObjectNode root = header(type);
+        String projectRoot = reader.index.getMetadata().get("project_root");
+        if (projectRoot != null) {
+            try {
+                var details = JSON.readTree(new ExternalSymbolQueries().details(reader, java.nio.file.Path.of(projectRoot), type, 10, 0, "summary"));
+                if (details instanceof ObjectNode external && !external.has("error_code")) {
+                    external.remove(List.of("bytecode_request", "_meta", "class_name"));
+                    root.set("external", external);
+                }
+            } catch (Exception unavailable) {
+                // Without the jar the application references still answer.
+            }
+        }
+        ToolResponseSupport.appendApplicationReferences(root, reader, type, null);
+        root.put("basis", "Dependency class: summary from its jar (get_external_symbol_details has members and bytecode) "
+                + "and the application classes and members referencing it");
         ToolResponseSupport.appendMeta(root, reader, 0);
         return root.toString();
     }

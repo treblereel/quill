@@ -166,11 +166,11 @@ public final class QuillTools {
         int requestedLimit = clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200);
         int requestedOffset = clamp(offset.orElse(0), 0, Integer.MAX_VALUE);
         String requestedCursor = cursor.orElse(null);
-        return forAllProjects(project.orElse(null), (p, context) -> workspace.enrichClassDependencies(
+        return forAllProjects(project.orElse(null), (p, context) -> GraphCompaction.dependencies(workspace.enrichClassDependencies(
                 queries.getDependencies(context, target, requestedDirection, requestedDepth,
                         requestedNodes, requestedLimit, requestedOffset, requestedCursor),
                 p.name(), target, requestedDirection, requestedDepth, requestedNodes,
-                requestedLimit, requestedOffset, requestedCursor));
+                requestedLimit, requestedOffset, requestedCursor)));
     }
 
     @Tool(readOnly = true, structured = true, description = "Find indexed implementations and their origins.")
@@ -702,11 +702,11 @@ public final class QuillTools {
             @ToolArg(description = "Page size; default 20") Optional<Integer> limit,
             @ToolArg(description = "Page offset") Optional<Integer> offset,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        return forAllProjects(project.orElse(null), (p, context) -> queries.findCycles(
+        return forAllProjects(project.orElse(null), (p, context) -> GraphCompaction.cycles(queries.findCycles(
                 context, scope.orElse("class"), module.orElse(null),
                 include_generated.orElse(false), include_tests.orElse(false),
                 clamp(limit.orElse(20), 1, 100),
-                clamp(offset.orElse(0), 0, Integer.MAX_VALUE)));
+                clamp(offset.orElse(0), 0, Integer.MAX_VALUE))));
     }
 
     @Tool(readOnly = true, structured = true, description = "Compare retained indexes: structural changes, JVM API compatibility and consumer impact.")

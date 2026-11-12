@@ -71,6 +71,23 @@ class MethodPrefetchRelationsTest {
         assertEquals("source_budget", large.path("selected_method_source_status").asText(), large.toString());
     }
 
+    /** V41 CQ-016: asked not to mix the produced scope with the declaring class's, no Quill answer named the latter. */
+    @Test
+    void producerFactStatesTheDeclaringClassBeanScope() throws Exception {
+        var db = JavaEvidenceFixture.index(root, "package p; class Gen {} class Producers { static Gen gen() { return new Gen(); } }");
+        db.useHandle(handle -> {
+            int producers = handle.createQuery("SELECT id FROM classes WHERE class_name = 'p.Producers'").mapTo(Integer.class).one();
+            handle.execute("INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types) VALUES (?, 'CLASS', '@Dependent', '[\"@Default\",\"@Any\"]', '[\"p.Producers\"]')", producers);
+            handle.execute("INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, declaring_class_id, member_name) "
+                    + "VALUES (?, 'PRODUCER_METHOD', '@RequestScoped', '[\"@Default\",\"@Any\"]', '[\"p.Gen\"]', ?, 'gen')", producers, producers);
+        });
+        ObjectNode fact = JSON.createObjectNode().put("class", "p.Producers").put("name", "gen").put("descriptor", "()Lp/Gen;");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, root, fact); return null; });
+
+        assertTrue(fact.path("produces").get(0).asText().startsWith("PRODUCER_METHOD @RequestScoped"), fact.toString());
+        assertEquals("CLASS @Dependent", fact.path("declaring_class_bean").asText(), fact.toString());
+    }
+
     @Test
     void methodFactListsAnnotationValuesAndCallsTwoLevelsDownThroughLambdas() throws Exception {
         var db = JavaEvidenceFixture.index(root, """

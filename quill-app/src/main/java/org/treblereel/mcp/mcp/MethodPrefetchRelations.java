@@ -508,6 +508,10 @@ final class MethodPrefetchRelations {
                     .forEach(row -> injectedInto.add(row.get("owner") + "#" + row.get("field_name") + " "
                             + row.get("qualifiers") + " [" + row.get("resolution_status") + "] " + row.get("source_file")));
         }
+        // The declaring class is a bean of its own, whose scope is not the produced bean's.
+        db.jdbi().withHandle(handle -> handle.createQuery("SELECT scope FROM beans WHERE class_id = :id AND kind = 'CLASS' LIMIT 1")
+                .bind("id", classId).mapTo(String.class).findOne())
+                .ifPresent(scope -> fact.put("declaring_class_bean", "CLASS " + scope));
         if (!parameters.isEmpty()) fact.set("producer_parameters", parameters);
         if (!injectedInto.isEmpty()) fact.set("produced_bean_injected_into", injectedInto);
     }

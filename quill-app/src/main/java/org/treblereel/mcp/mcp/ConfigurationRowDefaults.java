@@ -47,12 +47,49 @@ final class ConfigurationRowDefaults {
                 }
                 if (!kindDefaults.isEmpty()) defaults.set(kind, kindDefaults);
             });
-            if (defaults.isEmpty()) return json;
-            result.set("row_defaults_by_kind", defaults);
+            boolean grouped = groupTestProfileOverrides(result);
+            if (defaults.isEmpty() && !grouped) return json;
+            if (!defaults.isEmpty()) result.set("row_defaults_by_kind", defaults);
             return result.toString();
         } catch (JsonProcessingException invalid) {
             return json;
         }
+    }
+
+    private static final String TEST_PROFILE = "quarkus_test_profile";
+    private static final List<String> PROFILE_FIELDS = List.of("declaring_class", "file", "method");
+
+    /**
+     * One test profile overrides several keys from the same getConfigOverrides() map; its class,
+     * file and method are written once per profile instead of once per key.
+     */
+    private static boolean groupTestProfileOverrides(ObjectNode result) {
+        if (!(result.get("references") instanceof com.fasterxml.jackson.databind.node.ArrayNode references)) return false;
+        Map<String, ObjectNode> groups = new LinkedHashMap<>();
+        var remaining = JSON.createArrayNode();
+        for (JsonNode row : references) {
+            if (!(row instanceof ObjectNode override) || !TEST_PROFILE.equals(row.path("kind").asText())
+                    || !PROFILE_FIELDS.stream().allMatch(field -> row.path(field).isTextual())) {
+                remaining.add(row);
+                continue;
+            }
+            String profile = PROFILE_FIELDS.stream().map(field -> row.path(field).asText()).reduce("", (a, b) -> a + "\u0000" + b);
+            ObjectNode group = groups.computeIfAbsent(profile, ignored -> {
+                ObjectNode created = JSON.createObjectNode();
+                PROFILE_FIELDS.forEach(field -> created.set(field, row.get(field)));
+                created.put("kind", TEST_PROFILE);
+                created.putArray("overrides");
+                return created;
+            });
+            override.remove(PROFILE_FIELDS);
+            override.remove("kind");
+            group.withArray("overrides").add(override);
+        }
+        if (groups.isEmpty()) return false;
+        result.set("references", remaining);
+        var grouped = result.putArray("test_profile_overrides");
+        groups.values().forEach(grouped::add);
+        return true;
     }
 
     private static ObjectNode hoist(List<ObjectNode> rows, List<String> fields) {

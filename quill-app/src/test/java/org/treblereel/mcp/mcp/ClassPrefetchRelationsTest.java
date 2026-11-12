@@ -209,6 +209,32 @@ class ClassPrefetchRelationsTest {
                 point.path("resolved_fallback").asText(), point.toString());
     }
 
+    // V41 CQ-024: asked for a config mapping's synthetic bean dependencies, Claude listed its consumers.
+    @Test
+    void aSyntheticConfigMappingBeanStatesItsInjectionPointDependency() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("index.db"));
+        IndexWriter.writeIncremental(db, new IndexFixture()
+                .classes(List.of(new ClassRecord(0, "x.AppConfig", "INTERFACE", null, List.of(), "AppConfig.java", 1, false, 10)))
+                .beans(List.of(new BeanRecord(0, 1, "SYNTHETIC", "@Dependent", List.of("@Default", "@Any"), List.of(), false, false,
+                        null, null, null, "synthetic:ConfigMappingCreator", List.of("x.AppConfig"))))
+                .injectionPoints(List.of(InjectionPointRecord.staticAnalysis(0, 1, "SYNTHETIC", "jakarta.enterprise.inject.spi.InjectionPoint",
+                        List.of("@Default"), "ConfigMappingCreator", null, false, InjectionPointRecord.STATIC_CDI).asCdiBuiltin()))
+                .metadata(Map.of("index_id", "synthetic")).snapshot());
+
+        assertEquals(List.of("SYNTHETIC ConfigMappingCreator: jakarta.enterprise.inject.spi.InjectionPoint [\"@Default\"] -> built-in bean [RESOLVED]"),
+                strings(relations(db, "x.AppConfig"), "injects"));
+        // Within the class fact's bean, where the prefetch budget never drops it.
+        ObjectNode fact = TestReads.read(db, reader -> {
+            ObjectNode node = new ObjectMapper().createObjectNode();
+            node.putObject("bean").put("kind", "SYNTHETIC");
+            ClassPrefetchRelations.append(reader, node, reader.symbols.findClassesByName("x.AppConfig").getFirst());
+            return node;
+        });
+        assertEquals(List.of("SYNTHETIC ConfigMappingCreator: jakarta.enterprise.inject.spi.InjectionPoint [\"@Default\"] -> built-in bean [RESOLVED]"),
+                strings((ObjectNode) fact.path("bean"), "injects"), fact.toString());
+        assertFalse(fact.has("injects"), fact.toString());
+    }
+
     @Test
     void defaultBeanSurvivesPrefetchTruncation() throws Exception {
         var json = new ObjectMapper();

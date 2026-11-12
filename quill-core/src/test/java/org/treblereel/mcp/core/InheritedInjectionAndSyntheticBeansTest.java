@@ -168,6 +168,16 @@ class InheritedInjectionAndSyntheticBeansTest {
         assertEquals(ResolutionStatus.RESOLVED, events.resolutionStatus());
         assertEquals(ResolutionReason.BUILTIN_BEAN, events.resolutionReason());
         assertNull(events.resolvedBeanId());
+
+        // V41 CQ-024: Quarkus ConfigBuildStep adds an InjectionPoint dependency to each config-mapping
+        // synthetic bean (its creator reads the requested prefix from it); Claude listed consumers instead.
+        InjectionPointRecord creator = result.injectionPoints().stream()
+                .filter(point -> point.beanId() == appConfig.id()).findFirst().orElseThrow();
+        assertEquals("ConfigMappingCreator", creator.fieldName());
+        assertEquals("SYNTHETIC", creator.kind());
+        assertEquals("jakarta.enterprise.inject.spi.InjectionPoint", creator.targetType());
+        assertEquals(ResolutionReason.BUILTIN_BEAN, creator.resolutionReason());
+        assertEquals(appConfig.id(), creator.beanId());
     }
 
     @Test

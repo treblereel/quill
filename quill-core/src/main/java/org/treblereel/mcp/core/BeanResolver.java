@@ -119,6 +119,7 @@ public final class BeanResolver {
                             profiles(c, annotations), classId, m.name(), beanTypes(m.returnType(), annotations, lookup)));
                 }
         }
+        List<Integer> quarkusConfigMappings = new ArrayList<>();
         for (ClassInfo c : classes) {
             // SmallRye Config registers each @ConfigMapping interface as a synthetic bean (Quarkus
             // ConfigBuildStep, or the SmallRye ConfigExtension elsewhere). No scope is configured,
@@ -127,6 +128,7 @@ public final class BeanResolver {
             if (lookup.getClassByName(n("io.quarkus.arc.runtime.ConfigMappingCreator")) == null
                     && lookup.getClassByName(n("io.smallrye.config.inject.ConfigExtension")) == null) continue;
             int classId = classIds.computeIfAbsent(c.name().toString(), x -> classIds.size() + 1);
+            if (lookup.getClassByName(n("io.quarkus.arc.runtime.ConfigMappingCreator")) != null) quarkusConfigMappings.add(nextBean);
             beans.add(new BeanRecord(nextBean++, classId, "SYNTHETIC", "@Dependent",
                     qualifiers(List.of(), lookup, true), List.of(), false, false, null,
                     profiles(c), null, CONFIG_MAPPING_CREATOR,
@@ -146,6 +148,11 @@ public final class BeanResolver {
                     beanTypes(Type.create(c.name(), Type.Kind.CLASS), List.of(), lookup)));
         }
         int nextIp = 1;
+        // Quarkus ConfigBuildStep#registerConfigMappingsBean adds an InjectionPoint injection point to
+        // each config-mapping synthetic bean; ConfigMappingCreator reads the requested prefix from it.
+        for (int syntheticId : quarkusConfigMappings)
+            ips.add(ip(nextIp++, syntheticId, "SYNTHETIC", Type.create(n("jakarta.enterprise.inject.spi.InjectionPoint"), Type.Kind.CLASS),
+                    qualifiers(List.of(), lookup, false), "ConfigMappingCreator"));
         for (ClassInfo c : classes) {
             Integer ownerId = classBeanIds.get(c.name());
             if (ownerId == null) continue;

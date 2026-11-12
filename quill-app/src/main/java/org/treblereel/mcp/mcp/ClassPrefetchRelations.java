@@ -24,15 +24,18 @@ final class ClassPrefetchRelations {
 
     static void append(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
         lines(fact, "injects", db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status,
+                SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, ip.resolution_reason,
                        rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.kind AS resolved_kind,
                        rb.is_default AS resolved_default
                 FROM injection_points ip
                 JOIN beans ob ON ob.id = ip.bean_id
                 LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
                 LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
-                WHERE ob.class_id = :id AND ob.member_name IS NULL
+                WHERE ob.class_id = :id AND (ob.member_name IS NULL OR ob.kind = 'SYNTHETIC')
                 ORDER BY ip.id""").bind("id", cls.id()).mapToMap().list()), row -> injects(db, row));
+        // A synthetic bean's own dependencies describe the bean; keep them in it, where the budget never drops them.
+        if (fact.path("bean") instanceof ObjectNode bean && "SYNTHETIC".equals(bean.path("kind").asText())
+                && fact.remove("injects") instanceof com.fasterxml.jackson.databind.node.ArrayNode injects) bean.set("injects", injects);
         lines(fact, "injected_into", db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT DISTINCT oc.class_name AS owner, ob.member_name AS owner_member, ob.kind AS owner_kind, ip.kind,
                        ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, ob.scope AS owner_scope,
@@ -310,7 +313,8 @@ final class ClassPrefetchRelations {
     }
 
     private static String injects(ReadQueryContext db, Map<String, Object> row) {
-        String resolved = row.get("resolved_class") == null ? "not resolved by the application index"
+        String resolved = "BUILTIN_BEAN".equals(row.get("resolution_reason")) ? "built-in bean"
+                : row.get("resolved_class") == null ? "not resolved by the application index"
                 + MethodPrefetchRelations.dependencyProviders(db, String.valueOf(row.get("target_type")), row.get("qualifiers"))
                 : row.get("resolved_class") + (row.get("resolved_member") == null ? ""
                         : "#" + row.get("resolved_member")) + " (" + row.get("resolved_kind") + ")"

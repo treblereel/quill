@@ -102,6 +102,22 @@ final class ExternalSymbolQueries {
 
     private static final int MAX_CLASSES = 5;
 
+    /** A class this version does not ship: the closest names in the package it was guessed in. */
+    private static void appendSimilarClasses(ObjectNode missing, List<String> classes, String className, String simple) {
+        int dot = className.lastIndexOf('.');
+        if (dot <= 0) return;
+        String pkg = className.substring(0, dot);
+        Map<String, String> bySimple = new java.util.TreeMap<>();
+        classes.stream()
+                .filter(candidate -> candidate.startsWith(pkg + ".") && candidate.indexOf('.', pkg.length() + 1) < 0)
+                .forEach(candidate -> bySimple.putIfAbsent(simpleName(candidate), candidate));
+        if (bySimple.isEmpty()) return;
+        var similar = missing.putArray("similar_classes");
+        NameSimilarity.closest(simple, bySimple.keySet(), 5).forEach(name -> similar.add(bySimple.get(name)));
+        missing.put("similar_classes_basis", "the " + similar.size() + " closest of " + bySimple.size()
+                + " indexed classes in package " + pkg);
+    }
+
     String details(ReadQueryContext reader, Path root, String className, int limit, int offset) {
         return details(reader, root, className, limit, offset, "full");
     }
@@ -137,6 +153,8 @@ final class ExternalSymbolQueries {
             refs = matching(buildTimeClasses(reader, root, catalog), className);
             buildTime = !refs.isEmpty();
         }
+        if (refs.isEmpty() && ArcGeneratedClasses.describe(reader, className) instanceof ObjectNode generated)
+            return generated.toString();
         if (refs.isEmpty()) {
             // A guessed package is the common miss: the same simple name settles it without a search.
             String simple = simpleName(className);
@@ -149,8 +167,12 @@ final class ExternalSymbolQueries {
                             + "deployment artifacts of its Quarkus extensions are indexed; runtime-generated classes are absent"
                             + missingTestClasspaths(reader));
             if (!sameName.isEmpty()) sameName.forEach(missing.putArray("candidates")::add);
-            else missing.set("next_step", JSON.createObjectNode().put("tool", "search_external_symbols")
-                    .set("arguments", JSON.createObjectNode().put("pattern", simple)));
+            else {
+                missing.set("next_step", JSON.createObjectNode().put("tool", "search_external_symbols")
+                        .set("arguments", JSON.createObjectNode().put("pattern", simple)));
+                appendSimilarClasses(missing, java.util.stream.Stream.concat(catalog.classes().stream(),
+                        buildTimeClasses(reader, root, catalog).stream()).map(ClassRef::className).toList(), className, simple);
+            }
             return missing.toString();
         }
         List<String> names = refs.stream().map(ClassRef::className).distinct().toList();

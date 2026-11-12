@@ -36,6 +36,11 @@ final class SymbolToolQueries {
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
         if (lookup.error() != null) {
+            var generated = ArcGeneratedClasses.describe(reader, target);
+            if (generated != null) {
+                ToolResponseSupport.appendMeta(generated, reader, 0);
+                return generated.toString();
+            }
             String dependency = DependencyTypeAnswers.referencedType(reader, lookup, target);
             return dependency != null ? DependencyTypeAnswers.symbol(reader, dependency) : classLookupError(reader, lookup, target);
         }

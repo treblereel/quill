@@ -204,6 +204,17 @@ class ExternalSymbolQueriesTest {
         assertTrue(absent.path("error").asText().contains("no class named QuartzScheduler"), absent.toString());
     }
 
+    /** V41 CQ-039/CQ-047/CQ-050: Codex guessed config classes this Quarkus version does not have; the package's own names answer. */
+    @Test
+    void aClassMissingFromItsPackageNamesTheClosestClassesThere() throws Exception {
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "org.treblereel.mcp.mcp.ExternalSymbolQueriesTest$Fixtures", 20, 0)));
+
+        assertEquals("EXTERNAL_CLASS_NOT_FOUND", result.path("error_code").asText());
+        assertEquals(Fixture.class.getName(), result.path("similar_classes").get(0).asText(), result.toString());
+        assertTrue(result.path("similar_classes_basis").asText().contains("org.treblereel.mcp.mcp"), result.toString());
+    }
+
     /** V21: Codex read 285 KB of these answers; members restated their signature and single-version jars twice. */
     @Test
     void bytecodeAnswerStatesEachFactOnce() throws Exception {

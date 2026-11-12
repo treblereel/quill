@@ -19,7 +19,7 @@ final class ConfigurationRowDefaults {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final List<String> ROW_FIELDS = List.of("entry_type", "module", "sourceSet",
             "configuration_scope", "activation", "status", "profile_count", "resolution_strategy",
-            "confidence", "resolved");
+            "confidence", "resolved", "annotation", "definition_files", "location_status", "resolution_status");
     private static final List<String> DECLARED_FIELDS = List.of("basis", "effective_value_proven",
             "source_complete", "status");
 

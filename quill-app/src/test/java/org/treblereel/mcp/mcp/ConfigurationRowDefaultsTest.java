@@ -40,4 +40,16 @@ class ConfigurationRowDefaultsTest {
         assertEquals("unknown", result.path("row_defaults_by_kind").path("quarkus_test_profile").path("activation").asText(), result.toString());
         assertFalse(first.path("overrides").get(0).has("declaring_class"));
     }
+
+    // V52 CQ-035: 13 config_key rows of storage.metadata* each repeated the same annotation, definition files and statuses.
+    @Test void valuesEveryConsumerRowSharesAreWrittenOnce() throws Exception {
+        String consumer = "{\"key\":\"%s\",\"kind\":\"config_key\",\"className\":\"p.%s\",\"annotation\":\"org.eclipse.microprofile.config.inject.ConfigProperty\","
+                + "\"definition_files\":[\"src/main/resources/application.properties\"],\"location_status\":\"source_declaration\",\"resolution_status\":\"resolved\"}";
+        String json = "{\"references\":[" + consumer.formatted("a.one", "One") + "," + consumer.formatted("a.two", "Two") + "]}";
+        JsonNode result = JSON.readTree(ConfigurationRowDefaults.compact(json));
+        assertEquals("{\"annotation\":\"org.eclipse.microprofile.config.inject.ConfigProperty\",\"definition_files\":[\"src/main/resources/application.properties\"],"
+                + "\"location_status\":\"source_declaration\",\"resolution_status\":\"resolved\"}",
+                result.path("row_defaults_by_kind").path("config_key").toString(), result.toString());
+        assertEquals("{\"key\":\"a.one\",\"kind\":\"config_key\",\"className\":\"p.One\"}", result.path("references").get(0).toString());
+    }
 }

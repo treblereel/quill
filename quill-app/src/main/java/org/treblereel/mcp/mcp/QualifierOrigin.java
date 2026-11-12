@@ -37,7 +37,50 @@ final class QualifierOrigin {
                 WHERE c.class_name = :owner AND ip.field_name = :member AND ip.resolved_bean_id IS NOT NULL""")
                 .bind("owner", owner).bind("member", member).mapTo(Integer.class).list()).forEach(beans::add);
         beans.stream().limit(MAX_CANDIDATES).forEach(id -> candidate(db, id, lines));
+        Set<String> withValues = new LinkedHashSet<>();
+        for (JsonNode qualifier : point.path("qualifiers"))
+            if (qualifier.asText().contains("(")) withValues.add(qualifier.asText().replaceFirst("^@", "").replaceFirst("\\(.*", ""));
+        for (String type : withValues) {
+            String members = memberBinding(db, type);
+            if (members != null) lines.add("@" + type + " members: " + members);
+        }
         return lines;
+    }
+
+    private static final String NONBINDING = "jakarta.enterprise.util.Nonbinding";
+
+    /**
+     * Which members of a qualifier type the container compares: all but those marked @Nonbinding.
+     * Read from the index for application annotations and from the jar for dependency ones.
+     */
+    static String memberBinding(ReadQueryContext db, String type) {
+        List<String[]> members = new ArrayList<>();
+        db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT m.name, m.annotations FROM class_members m JOIN classes c ON c.id = m.class_id
+                WHERE c.class_name = :type AND m.kind = 'METHOD' ORDER BY m.rowid""").bind("type", type).mapToMap().list())
+                .forEach(row -> members.add(new String[] {String.valueOf(row.get("name")),
+                        String.valueOf(row.get("annotations")).contains(NONBINDING) ? "nonbinding" : "binding"}));
+        if (members.isEmpty()) {
+            String projectRoot = db.index.getMetadata().get("project_root");
+            if (projectRoot == null) return null;
+            try {
+                JsonNode details = JSON.readTree(new ExternalSymbolQueries().details(db, java.nio.file.Path.of(projectRoot), type, 50, 0, "summary"));
+                if (details.has("error_code")) return null;
+                for (JsonNode member : details.path("members")) {
+                    String signature = member.path("signature").asText();
+                    if (!signature.contains("(") || signature.contains("<init>")) continue;
+                    String name = signature.substring(0, signature.indexOf('(')).replaceFirst(".*\\s", "");
+                    members.add(new String[] {name, member.path("annotations").toString().contains("Nonbinding") ? "nonbinding" : "binding"});
+                }
+            } catch (Exception unreadable) {
+                return null;
+            }
+        }
+        if (members.isEmpty()) return null;
+        List<String> compared = members.stream().filter(m -> m[1].equals("binding")).map(m -> m[0]).toList();
+        List<String> ignored = members.stream().filter(m -> m[1].equals("nonbinding")).map(m -> m[0]).toList();
+        return (compared.isEmpty() ? "none compared" : String.join(", ", compared) + " compared")
+                + (ignored.isEmpty() ? " (no @Nonbinding member)" : "; " + String.join(", ", ignored) + " ignored (@Nonbinding)");
     }
 
     private static void candidate(ReadQueryContext db, int id, List<String> lines) {

@@ -132,6 +132,9 @@ class ProjectDependencyQueriesTest {
         assertEquals(1, result.path("total").asInt());
         assertEquals("com.acme:widget:1",
                 result.path("dependencies").get(0).path("id").asText());
+        // V48 CQ-004: Codex grepped pom.xml to cite where a direct dependency is declared and versioned.
+        assertEquals("[\"pom.xml:4\"]", result.path("dependencies").get(0).path("declared_at").toString(), result.toString());
+        assertEquals("version 1 at pom.xml:4", result.path("dependencies").get(0).path("version_source").asText());
     }
 
     @Test

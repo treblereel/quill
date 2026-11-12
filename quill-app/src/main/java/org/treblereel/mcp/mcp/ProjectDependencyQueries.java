@@ -141,6 +141,7 @@ final class ProjectDependencyQueries {
             ArrayNode dependencies = result.putArray("dependencies");
             ordered.subList(from, to).forEach(view -> appendDependency(dependencies, view));
             omitStandardJarPaths(result, dependencies);
+            appendDeclarations(root, result, dependencies);
             ObjectNode discovery = result.putObject("discovery");
             discovery.put("classpath_files", classpaths.size());
             discovery.put("build_invoked", false);
@@ -217,6 +218,32 @@ final class ProjectDependencyQueries {
         String classifier = item.path("classifier").isTextual() ? "-" + item.path("classifier").asText() : "";
         return item.path("group").asText().replace('.', '/') + "/" + artifact + "/" + version + "/"
                 + artifact + "-" + version + classifier + ".jar";
+    }
+
+    /**
+     * Where each direct Maven dependency on the page is declared and where its version comes from;
+     * answers otherwise read pom.xml to cite both.
+     */
+    private static void appendDeclarations(Path root, ObjectNode result, ArrayNode dependencies) {
+        if (!Files.isRegularFile(root.resolve("pom.xml"))) return;
+        Path repository = result.hasNonNull("maven_repository_root") ? Path.of(result.path("maven_repository_root").asText())
+                : Path.of(System.getProperty("user.home"), ".m2", "repository");
+        Map<String, Map<String, org.treblereel.mcp.core.DependencyDeclarations.Declaration>> byModule = new java.util.HashMap<>();
+        for (var node : dependencies) {
+            if (!(node instanceof ObjectNode item) || !item.path("direct").asBoolean()) continue;
+            String ga = item.path("group").asText() + ":" + item.path("artifact").asText();
+            List<String> places = new ArrayList<>();
+            String version = null;
+            for (var module : item.path("direct_in_modules")) {
+                var declaration = byModule.computeIfAbsent(module.asText(),
+                        name -> org.treblereel.mcp.core.DependencyDeclarations.locate(root, name, repository)).get(ga);
+                if (declaration == null) continue;
+                declaration.declaredAt().stream().filter(place -> !places.contains(place)).forEach(places::add);
+                if (version == null) version = declaration.versionSource();
+            }
+            if (!places.isEmpty()) item.set("declared_at", JSON.valueToTree(places));
+            if (version != null) item.put("version_source", version);
+        }
     }
 
     private static void appendDependency(ArrayNode dependencies, ArtifactView view) {

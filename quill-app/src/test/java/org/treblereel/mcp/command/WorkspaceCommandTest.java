@@ -43,7 +43,9 @@ class WorkspaceCommandTest {
                 org.treblereel.mcp.mcp.ReadOnlyToolNames.all()));
         String settings=Files.readString(project.resolve(".claude/settings.local.json"));
         assertFalse(settings.contains("Bash"));
-        assertFalse(settings.contains("mcp__quill__*"));
+        // One server rule allows every Quill tool, as the Codex registration approves them all.
+        assertEquals(java.util.List.of("mcp__quill"), java.util.List.copyOf(JSON.readValue(
+                JSON.readTree(settings).path("permissions").path("allow").traverse(), java.util.List.class)));
         assertTrue(Files.readString(project.resolve(".codex/config.toml"))
                 .contains("default_tools_approval_mode = \"approve\""));
         assertTrue(result.stdout().contains("/hooks"));

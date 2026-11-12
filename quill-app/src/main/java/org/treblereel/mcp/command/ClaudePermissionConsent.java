@@ -12,7 +12,7 @@ final class ClaudePermissionConsent {
 
     static void configure(Boolean requested, Collection<Path> targets) {
         if (Boolean.FALSE.equals(requested)) return;
-        var rules = ReadOnlyToolNames.all();
+        var rules = java.util.List.of(ReadOnlyToolNames.SERVER_RULE);
         var pending = targets.stream().distinct()
                 .filter(target -> !ClaudeSettingsInstaller.areToolsAllowed(target, rules)).toList();
         if (pending.isEmpty()) return;
@@ -22,7 +22,7 @@ final class ClaudePermissionConsent {
             else System.err.println("[quill] Warning: could not grant Quill tool permissions in "
                     + target + "; existing settings were preserved.");
         }
-        System.out.println("[quill] Quill read-only tool permissions configured in " + installed
+        System.out.println("[quill] Quill tool permissions (all read-only) configured in " + installed
                 + "/" + pending.size() + " local project(s). Claude workspace trust and "
                 + "explicit ask/deny policies still apply.");
     }

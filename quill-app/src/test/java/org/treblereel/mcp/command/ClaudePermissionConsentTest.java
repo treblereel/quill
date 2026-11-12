@@ -42,4 +42,21 @@ class ClaudePermissionConsentTest {
         ClaudePermissionConsent.configure(true, List.of(root));
         assertTrue(ClaudeSettingsInstaller.areToolsAllowed(root, rules));
     }
+
+    // Every Quill tool only reads; the grant is the server rule, so tools added later need no new grant.
+    @Test
+    void initializationGrantsTheServerRuleAndReplacesTheConcreteNamesItGrantedBefore() throws Exception {
+        Files.createDirectories(root.resolve(".claude"));
+        Files.writeString(root.resolve(".claude/settings.local.json"),
+                "{\"permissions\":{\"allow\":[\"Read\",\"mcp__quill__get_overview\",\"mcp__quill__find_usages\"]}}");
+        Files.writeString(root.resolve(".claude/quill-permissions.json"),
+                "{\"schema_version\":1,\"rules\":[\"mcp__quill__find_usages\"]}");
+        ClaudePermissionConsent.configure(null, List.of(root));
+        var settings = new com.fasterxml.jackson.databind.ObjectMapper().readTree(root.resolve(".claude/settings.local.json").toFile());
+        assertEquals("[\"Read\",\"mcp__quill__get_overview\",\"mcp__quill\"]", settings.path("permissions").path("allow").toString());
+        assertEquals(List.of("mcp__quill"), ClaudeSettingsInstaller.ownedRules(root));
+        assertTrue(ClaudeSettingsInstaller.removeOwnedPermissions(root));
+        assertEquals("[\"Read\",\"mcp__quill__get_overview\"]", new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(root.resolve(".claude/settings.local.json").toFile()).path("permissions").path("allow").toString());
+    }
 }

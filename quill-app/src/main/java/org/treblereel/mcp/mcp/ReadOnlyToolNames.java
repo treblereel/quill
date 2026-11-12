@@ -8,6 +8,9 @@ import java.util.stream.Stream;
 public final class ReadOnlyToolNames {
     private ReadOnlyToolNames() {}
 
+    /** Claude's rule for every tool of the quill server; every Quill tool only reads, so init grants this one. */
+    public static final String SERVER_RULE = "mcp__quill";
+
     public static List<String> all() {
         return Stream.of(QuillTools.class, RouterTools.class)
                 .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))

@@ -58,7 +58,7 @@ public final class ClientPermissionsCommand implements Callable<Integer> {
             for (int i = 0; i < targets.size(); i++) {
                 Path target = targets.get(i);
                 if (operation.equals("grant") && !before.get(i).missing_tools().isEmpty()
-                        && !ClaudeSettingsInstaller.allowTools(target, ReadOnlyToolNames.all())) {
+                        && !ClaudeSettingsInstaller.allowTools(target, List.of(ReadOnlyToolNames.SERVER_RULE))) {
                     throw new java.io.IOException("Could not grant permissions in " + target);
                 }
                 if (operation.equals("revoke") && Files.exists(target.resolve(".claude/quill-permissions.json"))

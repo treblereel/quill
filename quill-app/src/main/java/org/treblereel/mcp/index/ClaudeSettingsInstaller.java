@@ -92,7 +92,7 @@ public final class ClaudeSettingsInstaller {
         Path file = projectRoot.resolve(".claude/settings.local.json");
         Path receiptFile = projectRoot.resolve(".claude/quill-permissions.json");
         try {
-            if (!rules.stream().allMatch(ClaudeSettingsInstaller::concreteQuillRule)) return false;
+            if (!rules.stream().allMatch(ClaudeSettingsInstaller::quillRule)) return false;
             ObjectNode root = readPermissionSettings(file);
             ObjectNode receipt = readRoot(receiptFile);
             if (root == null || receipt == null || !validReceipt(receipt)) return false;
@@ -109,6 +109,18 @@ public final class ClaudeSettingsInstaller {
             Set<String> owned = new LinkedHashSet<>();
             receipt.path("rules").forEach(rule -> owned.add(rule.asText()));
             boolean changed = false;
+            if (rules.contains(SERVER_RULE)) {
+                // The server rule covers every concrete tool name Quill granted before; drop those.
+                for (int i = allowed.size() - 1; i >= 0; i--) {
+                    String rule = allowed.get(i).asText();
+                    if (concreteQuillRule(rule) && owned.remove(rule)) {
+                        allowed.remove(i);
+                        existing.remove(rule);
+                        changed = true;
+                    }
+                }
+                changed |= owned.removeIf(ClaudeSettingsInstaller::concreteQuillRule);
+            }
             for (String rule : rules) {
                 if (existing.add(rule)) {
                     allowed.add(rule);
@@ -172,7 +184,7 @@ public final class ClaudeSettingsInstaller {
             return false;
         }
         for (JsonNode rule : receipt.path("rules")) {
-            if (!concreteQuillRule(rule.asText())) return false;
+            if (!quillRule(rule.asText())) return false;
         }
         return true;
     }
@@ -181,6 +193,12 @@ public final class ClaudeSettingsInstaller {
         if (node == null || !node.isArray()) return false;
         for (JsonNode item : node) if (!item.isTextual()) return false;
         return true;
+    }
+
+    private static final String SERVER_RULE = "mcp__quill";
+
+    private static boolean quillRule(String rule) {
+        return SERVER_RULE.equals(rule) || concreteQuillRule(rule);
     }
 
     private static boolean concreteQuillRule(String rule) {

@@ -175,7 +175,12 @@ final class RouterTools {
             Map.entry("get_lifecycle", "trace_state_lifecycle"),
             Map.entry("get_bean_lifecycle", "trace_state_lifecycle"),
             Map.entry("get_transaction_boundaries", "get_context"),
-            Map.entry("get_configuration", "find_configuration_references"));
+            Map.entry("get_configuration", "find_configuration_references"),
+            // V41 Codex guesses.
+            Map.entry("get_di_graph", "get_dependencies"),
+            Map.entry("find_cdi_cycles", "find_cycles"),
+            Map.entry("resolve_configuration", "find_configuration_references"),
+            Map.entry("get_bean_removal_analysis", "list_beans"));
     private static final Map<String, Map<String, String>> ALIAS_ARGUMENTS = Map.of(
             "list_observers", Map.of("kind", "observer"),
             "event_flow", Map.of("kind", "observer"),

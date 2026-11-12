@@ -44,10 +44,12 @@ public final class McpToolProfile {
             "get_call_hierarchy", "find_configuration_references");
     // Codex reaches hidden tools through search_tools, and every search is a full model turn: in
     // the cryostat v4 run 75 searches led to only 31 routed calls. These are the tools it routed to
-    // in several sessions; listing them costs less than the turns spent finding them.
+    // in several sessions; listing them costs less than the turns spent finding them. In V41 it
+    // still searched 21 times for get_type_hierarchy, find_cycles and search_external_symbols.
     private static final Set<String> CODEX = union(COMPACT, Set.of(
             "change_session", "get_external_symbol_details", "get_project_dependencies",
-            "trace_state_lifecycle", "find_usages", "find_entry_points", "get_annotated_classes"));
+            "trace_state_lifecycle", "find_usages", "find_entry_points", "get_annotated_classes",
+            "get_type_hierarchy", "find_cycles", "search_external_symbols"));
     // Claude loads every listed schema into each request. In 186 cryostat sessions it called
     // get_overview in 2, get_dependencies in 6 and list_beans in 10; execute_tool still reaches them.
     private static final Set<String> CLAUDE = Set.of(

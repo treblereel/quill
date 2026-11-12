@@ -506,6 +506,8 @@ class McpToolCatalogTest {
                 "get_symbol_details", "change_session", "get_external_symbol_details",
                 "get_project_dependencies", "trace_state_lifecycle", "find_usages",
                 "find_entry_points", "get_annotated_classes")));
+        // V41: Codex searched for these 21 times before routing to them.
+        assertTrue(names.containsAll(Set.of("get_type_hierarchy", "find_cycles", "search_external_symbols")), names::toString);
         assertFalse(names.contains("find_git_hotspots"));
         assertThrows(IllegalArgumentException.class, () -> McpToolProfile.parse("codex,git"));
     }
@@ -625,6 +627,11 @@ class McpToolCatalogTest {
                 "get_injection_graph", "list_injection_points", "analyze_lifecycle", "trace_state_lifecycle",
                 "get_bean_lifecycle", "trace_state_lifecycle", "get_transaction_boundaries", "get_context",
                 "get_configuration", "find_configuration_references").entrySet()) {
+            assertGuessLeadsTo(router, json, guess.getKey(), guess.getValue());
+        }
+        // V41 Codex: 26 searches for these names.
+        for (var guess : Map.of("get_di_graph", "get_dependencies", "find_cdi_cycles", "find_cycles",
+                "resolve_configuration", "find_configuration_references", "get_bean_removal_analysis", "list_beans").entrySet()) {
             JsonNode result = json.readTree(router.search_tools(guess.getKey(), Optional.of(1)));
             assertEquals(guess.getValue(), result.path("guidance").path("recommended_tool").asText(), result::toString);
             assertEquals(guess.getValue(), result.path("tools").get(0).path("name").asText(), result::toString);
@@ -1072,5 +1079,11 @@ class McpToolCatalogTest {
         public String structured(@ToolArg(description = "Required target") String target) {
             return "{\"target\":\"" + target + "\"}";
         }
+    }
+
+    private static void assertGuessLeadsTo(RouterTools router, com.fasterxml.jackson.databind.ObjectMapper json, String guess, String tool) throws Exception {
+        JsonNode result = json.readTree(router.search_tools(guess, Optional.of(1)));
+        assertEquals(tool, result.path("guidance").path("recommended_tool").asText(), result::toString);
+        assertEquals(tool, result.path("tools").get(0).path("name").asText(), result::toString);
     }
 }

@@ -402,6 +402,19 @@ class ExternalSymbolQueriesTest {
         }
     }
 
+    /** V41 CQ-024/CQ-005: Codex asked for registerConfigMappings and initHttpSecurity; the only close names were registerConfigMappingsBean and initializeHttpSecurity. */
+    @Test
+    void aGuessThatAbbreviatesExactlyOneMethodIsAnsweredWithIt() throws Exception {
+        for (String guess : java.util.List.of("disabled", "disValue")) {
+            var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                    .details(readScope, temp, "Fixture", 20, 0, "bytecode", guess)));
+            assertFalse(result.has("error_code"), result.toString());
+            assertEquals(guess, result.path("method_resolved").path("requested").asText(), result.toString());
+            assertEquals("disabledValue", result.path("method_resolved").path("answered").asText());
+            assertTrue(result.path("members").get(0).path("signature").asText().contains(" disabledValue("));
+        }
+    }
+
     @Deprecated
     static final class Fixture {
         @Deprecated(since = "producer-evidence")

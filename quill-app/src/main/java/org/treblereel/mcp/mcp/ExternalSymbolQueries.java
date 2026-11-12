@@ -102,6 +102,19 @@ final class ExternalSymbolQueries {
 
     private static final int MAX_CLASSES = 5;
 
+    /**
+     * A guess abbreviates a name when it is a prefix of it or each of its camel-case words begins
+     * the name's word at the same place: initHttpSecurity for initializeHttpSecurity.
+     */
+    static boolean abbreviates(String guess, String name) {
+        if (guess.length() < 3) return false;
+        if (name.startsWith(guess)) return true;
+        String[] guessed = guess.split("(?=[A-Z])"), words = name.split("(?=[A-Z])");
+        if (guessed.length != words.length || guessed.length < 2) return false;
+        for (int i = 0; i < words.length; i++) if (!words[i].startsWith(guessed[i])) return false;
+        return true;
+    }
+
     /** A class this version does not ship: the closest names in the package it was guessed in. */
     private static void appendSimilarClasses(ObjectNode missing, List<String> classes, String className, String simple) {
         int dot = className.lastIndexOf('.');
@@ -200,8 +213,15 @@ final class ExternalSymbolQueries {
         members.sort(Comparator.comparing(Member::kind).thenComparing(Member::name)
                 .thenComparing(Member::signature));
         String jvmMethod = null;
+        String resolvedFrom = null;
         if (method != null) {
-            String selected = method.equals("<init>") ? simpleName(ref.className()) : method;
+            String requested = method.equals("<init>") ? simpleName(ref.className()) : method;
+            List<String> declaredMethods = members.stream().filter(member -> !member.kind().equals("field"))
+                    .map(Member::name).distinct().toList();
+            List<String> abbreviated = declaredMethods.contains(requested) ? List.of()
+                    : declaredMethods.stream().filter(name -> abbreviates(requested, name)).toList();
+            if (abbreviated.size() == 1) resolvedFrom = method;
+            String selected = abbreviated.size() == 1 ? abbreviated.getFirst() : requested;
             List<Member> matching = members.stream().filter(member -> !member.kind().equals("field")
                     && member.name().equals(selected)).toList();
             if (matching.isEmpty()) {
@@ -255,6 +275,9 @@ final class ExternalSymbolQueries {
         result.put("source", buildTime ? "quarkus_deployment_bytecode" : "resolved_dependency_bytecode");
         if (buildTime) result.put("classpath_scope", "Quarkus deployment artifact from the local Maven repository: "
                 + "runs at build time, not on the application classpath");
+        if (resolvedFrom != null && !members.isEmpty()) result.putObject("method_resolved").put("requested", resolvedFrom)
+                .put("answered", members.getFirst().name())
+                .put("basis", "No method " + resolvedFrom + "; the only declared method name it abbreviates");
         result.put("total_members", members.size());
         result.put("showing", to - from);
         result.put("offset", offset);

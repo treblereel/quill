@@ -37,6 +37,7 @@ final class CallHierarchyCompaction {
     }
 
     static void compact(ObjectNode root) {
+        referenceRoutes(root);
         Set<String> fixed = dispatch(root);
         boolean defaulted = false;
         for (JsonNode node : root.path("calls")) {
@@ -57,6 +58,35 @@ final class CallHierarchyCompaction {
             ObjectNode defaults = root.putObject("endpoint_defaults");
             ENDPOINT_DEFAULTS.forEach(defaults::put);
         }
+    }
+
+    /**
+     * A route deeper than one step is the route of the edge reaching its previous node plus this
+     * edge's reached endpoint; when that edge is on the page, it is named by index instead.
+     */
+    private static void referenceRoutes(ObjectNode root) {
+        Map<String, Integer> byRoute = new java.util.HashMap<>();
+        var calls = root.path("calls");
+        for (int i = 0; i < calls.size(); i++)
+            if (calls.get(i).path("path").isArray()) byRoute.putIfAbsent(calls.get(i).path("path").toString(), i);
+        boolean referenced = false;
+        for (int i = 0; i < calls.size(); i++) {
+            if (!(calls.get(i) instanceof ObjectNode edge) || edge.path("path").size() < 3) continue;
+            var route = (com.fasterxml.jackson.databind.node.ArrayNode) edge.path("path");
+            String reached = "outbound".equals(edge.path("traversal_direction").asText()) ? "callee" : "caller";
+            JsonNode end = edge.path(reached);
+            if (!route.get(route.size() - 1).asText().equals(end.path("class").asText() + "#" + end.path("method").asText()
+                    + end.path("descriptor").asText())) continue;
+            var parent = route.deepCopy();
+            parent.remove(parent.size() - 1);
+            Integer via = byRoute.get(parent.toString());
+            if (via == null || via == i) continue;
+            edge.remove("path");
+            edge.put("via", via);
+            referenced = true;
+        }
+        if (referenced) root.put("route_basis", "via is the index in calls of the edge this one continues; "
+                + "its route is that edge's route plus this edge's caller (inbound) or callee (outbound)");
     }
 
     /** Compacts dispatch_targets in place and returns the refs of entries removed as fixed to the callee. */

@@ -88,4 +88,25 @@ class CallHierarchyCompactionTest {
         assertEquals("{\"error_code\":\"CLASS_NOT_FOUND\"}", CallHierarchyCompaction.compact("{\"error_code\":\"CLASS_NOT_FOUND\"}"));
         assertEquals("plain", CallHierarchyCompaction.compact("plain"));
     }
+
+    /** V41 CQ-045: a 40 KB transitive inbound answer spent 20 KB on routes that restate earlier edges. */
+    @Test
+    void aDeeperEdgeReachedThroughAnEdgeOnThePagePointsAtItInsteadOfRestatingTheRoute() throws Exception {
+        String edge = "{\"caller\":{\"class\":\"p.%s\",\"method\":\"%s\",\"descriptor\":\"()V\"},\"callee\":{\"class\":\"p.%s\",\"method\":\"%s\",\"descriptor\":\"()V\"},"
+                + "\"depth\":%d,\"traversal_direction\":\"inbound\",\"path\":%s}";
+        String json = "{\"target\":\"p.T\",\"calls\":["
+                + edge.formatted("X", "x", "T", "t", 1, "[\"p.T#t()V\",\"p.X#x()V\"]") + ","
+                + edge.formatted("Y", "y", "X", "x", 2, "[\"p.T#t()V\",\"p.X#x()V\",\"p.Y#y()V\"]") + ","
+                + edge.formatted("Z", "z", "Y", "y", 3, "[\"p.T#t()V\",\"p.X#x()V\",\"p.Y#y()V\",\"p.Z#z()V\"]") + ","
+                + edge.formatted("W", "w", "Q", "q", 3, "[\"p.T#t()V\",\"p.R#r()V\",\"p.Q#q()V\",\"p.W#w()V\"]") + "]}";
+        JsonNode out = JSON.readTree(CallHierarchyCompaction.compact(json));
+        JsonNode calls = out.path("calls");
+        assertEquals(0, calls.get(1).path("via").asInt(-1), calls.toString());
+        assertFalse(calls.get(1).has("path"));
+        assertEquals(1, calls.get(2).path("via").asInt(-1), calls.toString());
+        // Its route passes through edges not on this page, so it stays written out.
+        assertEquals(4, calls.get(3).path("path").size(), calls.toString());
+        assertFalse(calls.get(3).has("via"));
+        assertTrue(out.path("route_basis").asText().contains("via"), out.toString());
+    }
 }

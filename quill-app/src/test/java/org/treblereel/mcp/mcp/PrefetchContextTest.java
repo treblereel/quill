@@ -206,4 +206,20 @@ class PrefetchContextTest {
                 fact.path("qualifier_origin").valueStream().map(JsonNode::asText).toList(),fact.toString());
         assertEquals("not_an_injection_point",pack.path("unavailable").get(0).path("status").asText());
     }
+    // V55 CQ-010: told the field resolves to a built-in bean, Codex still ran rg 'implements Event|@Typed' to prove no application class does.
+    @Test void anInjectionPointWithNoApplicationCandidateStatesTheScopeItWasCheckedAgainst() throws Exception {
+        var db=QuillDatabase.create(root.resolve("builtin.db"));
+        IndexWriter.writeIncremental(db,new IndexFixture()
+                .classes(List.of(
+                        new ClassRecord(0,"x.Consumer","CLASS","java.lang.Object",List.of(),"Consumer.java",1,true,10),
+                        new ClassRecord(0,"x.Message","CLASS","java.lang.Object",List.of(),"Message.java",1,false,10)))
+                .beans(List.of(new BeanRecord(0,1,"CLASS","@Singleton",List.of("@Default"),List.of(),false,null,null,null,null,List.of("x.Consumer"))))
+                .injectionPoints(List.of(InjectionPointRecord.staticAnalysis(0,1,"FIELD","jakarta.enterprise.event.Event<x.Message>",List.of("@Default"),"events",null,false,InjectionPointRecord.STATIC_CDI).asCdiBuiltin()))
+                .dependencies(List.of()).metadata(Map.of("index_id","builtin")).snapshot());
+        db.useHandle(handle->handle.execute("INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations) VALUES (1,'FIELD','events','events','Ljakarta/enterprise/event/Event;','jakarta.enterprise.event.Event','[]','','[\"jakarta.inject.Inject\"]')"));
+        var pack=TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"Что внедрено в x.Consumer#events?"));
+        var fact=pack.path("facts").get(0);
+        assertEquals("no application class extends or implements jakarta.enterprise.event.Event (of 2 indexed); no application bean has it among its bean types, @Typed included (of 1)",
+                fact.path("application_candidates_checked").asText(),pack.toString());
+    }
 }

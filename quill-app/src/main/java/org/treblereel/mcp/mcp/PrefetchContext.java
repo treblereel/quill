@@ -145,11 +145,44 @@ public final class PrefetchContext {
             if(!candidates.isEmpty())fact.set("instance_candidates",JSON.valueToTree(candidates));
             var observers=ClassPrefetchRelations.eventObservers(db,required);
             if(!observers.isEmpty())fact.set("observers",JSON.valueToTree(observers));
+            if(point.path("resolved_to").isNull() || point.path("resolved_to").isMissingNode()){
+                String checked=applicationCandidatesChecked(db,required);
+                if(checked!=null)fact.put("application_candidates_checked",checked);
+            }
             return fact;
         }
         missing.addObject().put("target",owner+"#"+name).put("status","not_an_injection_point");
         return com.fasterxml.jackson.databind.node.NullNode.getInstance();
     }
+    /**
+     * The scope a "no application bean" rests on: application classes extending or implementing the
+     * raw required type (transitively through indexed classes) and beans listing it, @Typed included.
+     * V55 CQ-010: without it Codex re-proved the absence with rg.
+     */
+    static String applicationCandidatesChecked(ReadQueryContext db,String required){
+        String raw=required.contains("<")?required.substring(0,required.indexOf('<')):required;
+        if(raw.isBlank())return null;
+        var classes=db.symbols.findAllClasses();
+        java.util.Set<String> reached=new java.util.HashSet<>(java.util.List.of(raw));
+        boolean changed=true;
+        while(changed){
+            changed=false;
+            for(var cls:classes){
+                if(reached.contains(cls.className()))continue;
+                if(reached.contains(cls.superclass()) || cls.interfaces().stream().anyMatch(reached::contains)){reached.add(cls.className());changed=true;}
+            }
+        }
+        int subtypes=reached.size()-1;
+        long beans=db.jdbi().withHandle(h->h.createQuery("SELECT COUNT(*) FROM beans WHERE bean_types LIKE :plain OR bean_types LIKE :generic")
+                .bind("plain","%\""+raw+"\"%").bind("generic","%\""+raw+"<%").mapTo(Long.class).one());
+        long totalBeans=db.jdbi().withHandle(h->h.createQuery("SELECT COUNT(*) FROM beans").mapTo(Long.class).one());
+        if(subtypes>0 && beans>0)return null;
+        return (subtypes==0?"no application class extends or implements "+raw:subtypes+" application classes extend or implement "+raw)
+                +" (of "+classes.size()+" indexed); "
+                +(beans==0?"no application bean has it among its bean types, @Typed included":beans+" application beans have it among their bean types")
+                +" (of "+totalBeans+")";
+    }
+
     /** Every session pays for this context once; replays of recorded packets chose the limit. */
     static final int CONTEXT_LIMIT_BYTES=5000;
     /** In removal order, at any depth; these hold little that an answer needs. Limits and coverage never go. */

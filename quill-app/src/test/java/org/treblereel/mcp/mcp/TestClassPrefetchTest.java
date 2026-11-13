@@ -74,8 +74,21 @@ class TestClassPrefetchTest {
 
     @Test void aTestClassStatesWhatItInjectsAndMocksIncludingInheritedFields() throws Exception {
         ObjectNode fact = relations("p.WarehouseTest");
-        assertEquals(List.of("@Inject Store real", "@InjectMock Store store", "@Inject Bus bus (BaseTest)"),
+        assertEquals(List.of("@Inject Store real", "@InjectMock Store store replaces no indexed default bean", "@Inject Bus bus (BaseTest)"),
                 fact.path("test_injections").valueStream().map(n -> n.asText()).toList(), fact.toString());
         assertFalse(relations("p.Store").has("test_injections"), "production classes keep their injects section");
+    }
+
+    /** V41/V62 CQ-047: every Codex session asked list_beans for each mocked type to learn which bean the mock replaces. */
+    @Test void aMockNamesTheBeanItReplacesAndAPseudoScope() throws Exception {
+        db.useHandle(handle -> handle.execute("INSERT INTO external_beans(class_name, kind, scope, qualifiers, stereotypes, profiles, member_name, "
+                + "bean_types, framework, artifact, injection_points) VALUES ('io.quarkus.kubernetes.client.runtime.KubernetesClientProducer', "
+                + "'PRODUCER_METHOD', '@Singleton', '[\"@Default\"]', '[]', '[]', 'kubernetesClient', '[\"p.Store\",\"java.lang.Object\"]', "
+                + "'quarkus', 'io.quarkus:quarkus-kubernetes-client:3.40.1.1', '[]')"));
+        ObjectNode fact = relations("p.WarehouseTest");
+        assertEquals("@InjectMock Store store replaces PRODUCER_METHOD io.quarkus.kubernetes.client.runtime.KubernetesClientProducer#kubernetesClient "
+                + "@Singleton from io.quarkus:quarkus-kubernetes-client:3.40.1.1; @Singleton is a pseudo-scope: @InjectMock needs @MockitoConfig(convertScopes = true)",
+                fact.path("test_injections").get(1).asText(), fact.toString());
+        assertEquals("@Inject Store real", fact.path("test_injections").get(0).asText());
     }
 }

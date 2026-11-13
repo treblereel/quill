@@ -303,13 +303,45 @@ final class ClassPrefetchRelations {
             for (var member : db.symbols.findClassMembers(current.id())) {
                 if (!"FIELD".equals(member.kind())) continue;
                 var marks = member.annotations().stream().filter(TEST_INJECTIONS::contains).map(a -> "@" + simpleName(a)).toList();
-                if (!marks.isEmpty()) fields.add(String.join(" ", marks) + " " + simpleName(member.typeName()) + " " + member.name() + owner);
+                if (marks.isEmpty()) continue;
+                boolean replaces = member.annotations().stream().anyMatch(a -> a.startsWith("io.quarkus.test.")
+                        && (a.endsWith(".InjectMock") || a.endsWith(".InjectSpy")));
+                fields.add(String.join(" ", marks) + " " + simpleName(member.typeName()) + " " + member.name() + owner
+                        + (replaces ? replacedBean(db, member.typeName(), marks.getFirst()) : ""));
             }
             String parent = current.superclass();
             current = parent == null || "java.lang.Object".equals(parent) ? null
                     : db.symbols.findClassesByName(parent).stream().findFirst().orElse(null);
         }
         strings(fact, "test_injections", fields);
+    }
+
+    private static final java.util.Set<String> PSEUDO_SCOPES = java.util.Set.of("@Singleton", "@Dependent");
+
+    /**
+     * The default-qualified bean of that type a Quarkus mock or spy replaces, application beans first,
+     * and the documented rule that a pseudo-scoped bean needs convertScopes (V41/V62 CQ-047: Codex
+     * called list_beans for each mocked type in every session).
+     */
+    private static String replacedBean(ReadQueryContext db, String type, String mark) {
+        String quoted = "%\"" + type + "\"%";
+        List<Map<String, Object>> rows = db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT b.kind, c.class_name, b.member_name, b.scope, NULL AS artifact FROM beans b
+                JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE b.bean_types LIKE :type AND EXISTS (SELECT 1 FROM json_each(b.qualifiers) WHERE value = '@Default')
+                UNION ALL
+                SELECT kind, class_name, member_name, scope, artifact FROM external_beans
+                WHERE bean_types LIKE :type AND EXISTS (SELECT 1 FROM json_each(qualifiers) WHERE value = '@Default')""")
+                .bind("type", quoted).mapToMap().list());
+        if (rows.isEmpty()) return " replaces no indexed default bean";
+        Map<String, Object> row = rows.getFirst();
+        String scope = row.get("scope") == null ? "@Dependent" : String.valueOf(row.get("scope"));
+        return " replaces " + row.get("kind") + " " + row.get("class_name")
+                + (row.get("member_name") == null ? "" : "#" + row.get("member_name")) + " " + scope
+                + (row.get("artifact") == null ? "" : " from " + row.get("artifact"))
+                + (rows.size() > 1 ? " (+" + (rows.size() - 1) + " other default providers)" : "")
+                + (PSEUDO_SCOPES.contains(scope) && mark.equals("@InjectMock")
+                        ? "; " + scope + " is a pseudo-scope: @InjectMock needs @MockitoConfig(convertScopes = true)" : "");
     }
 
     private static String injects(ReadQueryContext db, Map<String, Object> row) {

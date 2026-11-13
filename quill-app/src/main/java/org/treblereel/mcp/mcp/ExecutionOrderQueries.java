@@ -53,6 +53,15 @@ final class ExecutionOrderQueries {
         } catch (SymbolContract.ParseException error) {
             return errorResponse(error.errorCode(), error.getMessage());
         }
+        // Class#method or Class#method(Types), the form get_context takes, names the method in the target.
+        int hash = target == null ? -1 : target.indexOf('#');
+        if ((method == null || method.isBlank()) && hash > 0 && !target.contains("/")) {
+            String member = target.substring(hash + 1);
+            target = target.substring(0, hash);
+            int paren = member.indexOf('(');
+            method = paren < 0 ? member : member.substring(0, paren);
+            if (paren >= 0 && (signature == null || signature.isBlank())) signature = member.substring(paren);
+        }
         if (method == null || method.isBlank()) {
             return errorResponse("MISSING_METHOD", "Method name or symbol_id must be provided");
         }

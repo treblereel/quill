@@ -176,9 +176,10 @@ final class TypeHierarchyQueries {
     private static String normalizeDirection(String direction) {
         if (direction == null || direction.isBlank()) return "both";
         return switch (direction.trim().toLowerCase(Locale.ROOT)) {
-            case "ancestor", "ancestors", "up" -> "ancestors";
-            case "descendant", "descendants", "down" -> "descendants";
-            case "both" -> "both";
+            case "ancestor", "ancestors", "up", "supertype", "supertypes", "super", "parents", "superclasses" -> "ancestors";
+            case "descendant", "descendants", "down", "subtype", "subtypes", "sub", "children", "subclasses",
+                    "implementations" -> "descendants";
+            case "both", "all" -> "both";
             default -> null;
         };
     }

@@ -200,7 +200,10 @@ final class SymbolToolQueries {
 
     private static String normalizeMemberKind(String kind) {
         if (kind == null || kind.isBlank() || "all".equalsIgnoreCase(kind)) return null;
-        return kind.trim().toUpperCase(Locale.ROOT);
+        String value = kind.trim().toUpperCase(Locale.ROOT);
+        // Agents ask for "methods" as often as "method".
+        return value.endsWith("S") && MEMBER_KINDS.contains(value.substring(0, value.length() - 1))
+                ? value.substring(0, value.length() - 1) : value;
     }
 
     private static void appendContext(ObjectNode node, ClassRecord cls) {

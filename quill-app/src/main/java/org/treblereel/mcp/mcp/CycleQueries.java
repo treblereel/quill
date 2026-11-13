@@ -36,16 +36,23 @@ final class CycleQueries {
             boolean includeGenerated, boolean includeTests, int limit, int offset) {
         String normalizedScope = scope == null
                 ? "class" : scope.strip().toLowerCase(Locale.ROOT);
+        ClassRecord through = null;
         if (!SCOPES.contains(normalizedScope)) {
-            return errorResponse("Invalid scope: expected class or module");
+            // Agents name the class they ask about as the scope: answer the class cycles through it.
+            ClassTargetResolver.Lookup lookup = scope.contains(".") || scope.contains("#")
+                    ? ClassTargetResolver.resolve(reader, scope.strip()) : null;
+            if (lookup == null || lookup.error() != null) {
+                return errorResponse("Invalid scope: expected class or module");
+            }
+            through = lookup.cls();
         }
         return "module".equals(normalizedScope)
                 ? findModuleCycles(reader, limit, offset)
-                : findClassCycles(reader, module, includeGenerated, includeTests, limit, offset);
+                : findClassCycles(reader, module, includeGenerated, includeTests, limit, offset, through);
     }
 
     private String findClassCycles(ReadQueryContext reader, String module,
-            boolean includeGenerated, boolean includeTests, int limit, int offset) {
+            boolean includeGenerated, boolean includeTests, int limit, int offset, ClassRecord through) {
         List<DependencyRecord> edges = reader.usages.findCurrentDependencyGraph(module, includeGenerated, includeTests);
         Set<Integer> ids = new LinkedHashSet<>();
         edges.forEach(edge -> {
@@ -57,9 +64,17 @@ final class CycleQueries {
         Map<Integer, List<Integer>> graph = adjacency(classEdges.stream()
                 .map(edge -> new Pair<>(edge.from(), edge.to())).toList());
         List<List<Integer>> components = new ArrayList<>(cyclicComponents(graph));
+        if (through != null) {
+            int owner = topLevelId(through, classes);
+            components.removeIf(component -> !component.contains(owner));
+        }
         components.sort(componentComparator(classes));
 
         ObjectNode root = base("class", components.size(), limit, offset);
+        if (through != null) {
+            root.put("class_filter", through.className());
+            root.put("class_in_cycle", !components.isEmpty());
+        }
         if (module == null || module.isBlank()) root.putNull("module");
         else root.put("module", module);
         root.put("include_generated", includeGenerated);
@@ -201,6 +216,15 @@ final class CycleQueries {
                 .map(entry -> new ClassEdge(entry.getKey().from(), entry.getKey().to(),
                         List.copyOf(entry.getValue())))
                 .toList();
+    }
+
+    /** The id cycles list a class under: its top-level owner's when that owner is indexed. */
+    private static int topLevelId(ClassRecord cls, Map<Integer, ClassRecord> classes) {
+        int separator = cls.className().indexOf('$');
+        if (separator < 0) return cls.id();
+        String owner = cls.className().substring(0, separator);
+        return classes.values().stream().filter(candidate -> candidate.className().equals(owner))
+                .mapToInt(ClassRecord::id).findFirst().orElse(cls.id());
     }
 
     private static <T> Map<T, List<T>> adjacency(Collection<Pair<T>> edges) {

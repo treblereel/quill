@@ -12,7 +12,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.treblereel.mcp.db.ReadQueryContext;
@@ -28,7 +27,7 @@ final class ModuleGraphQueries {
     String getModuleGraph(ReadQueryContext reader, String module, String direction,
             int depth, int limit, int offset) {
         String normalizedDirection = direction == null
-                ? "both" : direction.strip().toLowerCase(Locale.ROOT);
+                ? "both" : ArgumentAliases.graphDirection(direction);
         if (!DIRECTIONS.contains(normalizedDirection)) {
             return errorResponse("Invalid direction: expected inbound, outbound, or both");
         }

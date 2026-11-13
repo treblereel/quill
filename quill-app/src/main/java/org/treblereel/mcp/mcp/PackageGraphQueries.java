@@ -12,7 +12,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -31,7 +30,7 @@ final class PackageGraphQueries {
             String module, boolean includeGenerated, boolean includeTests,
             int limit, int offset) {
         String normalizedDirection = direction == null
-                ? "both" : direction.strip().toLowerCase(Locale.ROOT);
+                ? "both" : ArgumentAliases.graphDirection(direction);
         if (!DIRECTIONS.contains(normalizedDirection)) {
             return errorResponse("Invalid direction: expected inbound, outbound, or both");
         }

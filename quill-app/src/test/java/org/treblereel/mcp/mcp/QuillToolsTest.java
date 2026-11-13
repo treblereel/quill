@@ -1930,6 +1930,12 @@ class QuillToolsTest {
         JsonNode noArguments = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new QuillToolQueries()
                 .analyzeExecutionOrder(readScope, "OrderService", "run", "()")));
         assertEquals(result.path("bytecode_sequence"), noArguments.path("bytecode_sequence"));
+        JsonNode hashTarget = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new QuillToolQueries()
+                .analyzeExecutionOrder(readScope, "OrderService#run()", null, null)));
+        assertEquals(result.path("bytecode_sequence"), hashTarget.path("bytecode_sequence"), hashTarget.toString());
+        JsonNode hashName = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new QuillToolQueries()
+                .analyzeExecutionOrder(readScope, "OrderService#run", null, null)));
+        assertEquals(result.path("bytecode_sequence"), hashName.path("bytecode_sequence"), hashName.toString());
         assertEquals(4, result.path("bytecode_sequence").get(0)
                 .path("instruction_ordinal").asInt());
         assertEquals("proven", result.path("persist_before_dispatch")
@@ -2854,6 +2860,14 @@ class QuillToolsTest {
                         .get(cycle.path("representative_path").size() - 1).asText());
         assertTrue(cycle.path("edges").valueStream()
                 .anyMatch(edge -> edge.path("kinds").toString().contains("CDI_INJECT")));
+        JsonNode through = JSON.readTree(new QuillTools().findCycles(
+                jdbi, "org.acme.AuditService", null, false, false, 20, 0));
+        assertEquals("org.acme.AuditService", through.path("class_filter").asText(), through.toString());
+        assertEquals(result.path("cycles"), through.path("cycles"));
+        JsonNode outside = JSON.readTree(new QuillTools().findCycles(
+                jdbi, "org.acme.Container", null, false, false, 20, 0));
+        assertEquals(0, outside.path("total").asInt(), outside.toString());
+        assertFalse(outside.path("class_in_cycle").asBoolean());
     }
 
     @Test
@@ -2904,6 +2918,43 @@ class QuillToolsTest {
                 .path("representative_path").size());
         assertFalse(result.path("cycles").get(0).path("members").toString()
                 .contains("common"));
+    }
+
+    /** V62: Codex sent these spellings and repeated the identical call after each INVALID_ARGUMENT. */
+    @Test
+    void graphToolsAcceptTheDirectionSpellingsAgentsSend() throws Exception {
+        QuillTools tools = new QuillTools();
+        assertEquals(JSON.readTree(tools.getDependencies(jdbi, "OrderService", "outbound", 1)).path("dependencies"),
+                JSON.readTree(tools.getDependencies(jdbi, "OrderService", "outgoing", 1)).path("dependencies"));
+        assertEquals(JSON.readTree(tools.getDependencies(jdbi, "AuditService", "inbound", 1)).path("dependents"),
+                JSON.readTree(tools.getDependencies(jdbi, "AuditService", "incoming", 1)).path("dependents"));
+        assertFalse(JSON.readTree(tools.getDependencies(jdbi, "OrderService", "outgoing", 1)).has("error_code"));
+        assertFalse(JSON.readTree(tools.getDependencies(jdbi, "AuditService", "incoming", 1)).has("error_code"));
+        assertEquals("descendants", JSON.readTree(tools.getTypeHierarchy(
+                jdbi, "PaymentService", "subtypes", 5, 10, 0)).path("direction").asText());
+        assertEquals("ancestors", JSON.readTree(tools.getTypeHierarchy(
+                jdbi, "PaymentService", "supertypes", 5, 10, 0)).path("direction").asText());
+    }
+
+    @Test
+    void memberKindAcceptsItsPlural() throws Exception {
+        QuillTools tools = new QuillTools();
+        JsonNode plural = JSON.readTree(tools.getSymbolDetails(jdbi, "PaymentService", true, "methods", 10, 0));
+        JsonNode singular = JSON.readTree(tools.getSymbolDetails(jdbi, "PaymentService", true, "method", 10, 0));
+
+        assertFalse(plural.has("error_code"), plural.toString());
+        assertEquals(singular.path("members"), plural.path("members"));
+    }
+
+    @Test
+    void beanOriginAcceptsSourceForApplication() throws Exception {
+        JsonNode source = JSON.readTree(ReadQueryContext.<String>read(jdbi, reader -> new QuillToolQueries()
+                .getBeans(reader, null, null, null, null, null, null, null, "SOURCE", 50, 0)));
+        JsonNode application = JSON.readTree(ReadQueryContext.<String>read(jdbi, reader -> new QuillToolQueries()
+                .getBeans(reader, null, null, null, null, null, null, null, "application", 50, 0)));
+
+        assertFalse(source.has("error_code"), source.toString());
+        assertEquals(application.path("beans"), source.path("beans"));
     }
 
     @Test

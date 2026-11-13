@@ -163,7 +163,7 @@ final class StructureToolQueries {
     String getBeans(ReadQueryContext reader, String className, String scope, String kind,
             String profile, String qualifier, String module, String sourceSet,
             String origin, int limit, int offset) {
-        String requestedOrigin = origin == null ? "all" : origin.toLowerCase();
+        String requestedOrigin = origin == null ? "all" : ArgumentAliases.origin(origin);
         if (!Set.of("all", "application", "dependency").contains(requestedOrigin)) {
             return errorResponse("Invalid origin: expected all, application, or dependency");
         }
@@ -399,6 +399,7 @@ final class StructureToolQueries {
 
     String getDependencies(ReadQueryContext reader, String target, String direction, int depth,
             boolean includeNodes, int limit, int offset, String cursor) {
+        direction = ArgumentAliases.graphDirection(direction);
         if (!Set.of("inbound", "outbound", "both").contains(direction)) {
             return errorResponse("Invalid direction: expected inbound, outbound, or both");
         }

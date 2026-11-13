@@ -58,7 +58,7 @@ final class CallHierarchyQueries {
             return errorResponse(error.errorCode(), error.getMessage());
         }
         String normalizedDirection = direction == null
-                ? "both" : direction.trim().toLowerCase(Locale.ROOT);
+                ? "both" : ArgumentAliases.graphDirection(direction);
         if (!DIRECTIONS.contains(normalizedDirection)) {
             return errorResponse("INVALID_ARGUMENT",
                     "Invalid direction: expected inbound, outbound, or both");

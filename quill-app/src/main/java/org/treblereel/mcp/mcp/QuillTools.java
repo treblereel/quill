@@ -160,7 +160,7 @@ public final class QuillTools {
             @ToolArg(description = "Offset for depth 1") Optional<Integer> offset,
             @ToolArg(description = "Cursor for depth >1") Optional<String> cursor,
             @ToolArg(description = "Project; omit for all") Optional<String> project) {
-        String requestedDirection = direction.orElse("both");
+        String requestedDirection = ArgumentAliases.graphDirection(direction.orElse("both"));
         int requestedDepth = clamp(depth.orElse(1), 1, 5);
         boolean requestedNodes = include_nodes.orElse(true);
         int requestedLimit = clamp(limit.orElse(DEFAULT_PAGE_SIZE), 1, 200);

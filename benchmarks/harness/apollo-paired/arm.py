@@ -88,6 +88,21 @@ def setup(entry, d, p):
         write(d / 'native-profile.json', {'profile': entry['client'], 'basis': 'Native-generated client configuration'})
 
 
+def worktree(index, tree=None):
+    """Writes the work tree (tracked and non-ignored untracked files) through a private index.
+
+    Called once right after setup, so the arm's own files (quill-init AGENTS.md/.gitignore, client
+    configs) are part of the baseline; called again with the baseline tree to get the session's
+    changes, including files the model created. The fixture's real index is never touched."""
+    env = {**os.environ, 'GIT_INDEX_FILE': str(index)}
+    if tree is None:
+        subprocess.run(['git', 'read-tree', 'HEAD'], cwd=ROOT, env=env, check=True)
+    subprocess.run(['git', 'add', '-A'], cwd=ROOT, env=env, check=True)
+    if tree is None:
+        return subprocess.check_output(['git', 'write-tree'], cwd=ROOT, env=env, text=True).strip()
+    return subprocess.check_output(['git', 'diff', '--cached', '--binary', tree], cwd=ROOT, env=env)
+
+
 def sandbox_text(entry, allowed, writable):
     paths = [*allowed, F / 'build-settings']
     if entry['arm'] == 'with_quill':
@@ -114,6 +129,11 @@ def sandbox_text(entry, allowed, writable):
 
 def isolated(entry, d, p, preflight):
     setup(entry, d, p)
+    index = F / 'baseline.index'  # outside the sandbox's writable set; never in the session dir
+    index.unlink(missing_ok=True)
+    baseline = worktree(index)
+    write(d / 'baseline.json', {'tree': baseline, 'revision': p['fixture']['revision'],
+                                'basis': 'work tree right after arm setup; patch.diff is relative to it'})
     old_env = dict(os.environ)
     with tempfile.TemporaryDirectory(prefix='quill-apollo-home-') as tmp:
         temp = Path(tmp)
@@ -146,7 +166,8 @@ def isolated(entry, d, p, preflight):
             (session.codex if entry['client'] == 'codex' else session.claude)(p, entry, d, env, sb, preflight)
         finally:
             os.environ.clear(); os.environ.update(old_env)
-            (d / 'patch.diff').write_bytes(subprocess.check_output(['git', 'diff', '--binary'], cwd=ROOT))
+            (d / 'patch.diff').write_bytes(worktree(index, baseline))
+            index.unlink(missing_ok=True)
             if entry['arm'] == 'with_quill' and (d / 'mcp/client-to-native.jsonl').exists():
                 requests = [json.loads(l) for l in (d / 'mcp/client-to-native.jsonl').read_text().splitlines()]
                 assert sum(r.get('method') == 'initialize' for r in requests) == 1, 'MCP initialized more than once'

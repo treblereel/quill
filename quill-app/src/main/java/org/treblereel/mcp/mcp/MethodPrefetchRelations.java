@@ -78,6 +78,8 @@ final class MethodPrefetchRelations {
         referencedMembers(db, fact, classId, name, descriptor);
         interceptors(db, fact, classId, name, descriptor);
         callees(db, root, fact, classId, name, descriptor);
+        var hops = ThreadHops.of(db, classId, name, descriptor);
+        if (hops != null) fact.set("thread_hops", hops);
         sameEventObservers(db, fact, classId, name, descriptor);
         producer(db, fact, classId, name);
         if (root == null) return;

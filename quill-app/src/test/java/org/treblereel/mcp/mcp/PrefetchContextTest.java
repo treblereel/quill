@@ -239,4 +239,15 @@ class PrefetchContextTest {
         assertEquals(List.of("run line 3: void run(Message m) { events.fire(m); }"),
                 pack.path("facts").get(0).path("used_in").valueStream().map(JsonNode::asText).toList(),pack.toString());
     }
+    // V55 CQ-025: the budget dropped the thread hop fact, the one Codex otherwise rebuilt by reading each class.
+    @Test void theBudgetCutsOtherEvidenceBeforeAThreadHop() throws Exception {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var data=json.createObjectNode();
+        var fact=data.putArray("facts").addObject().put("kind","direct_method_impact").put("target","x.A");
+        fact.putObject("thread_hops").put("switches","line 10 io.smallrye.mutiny.Uni#runSubscriptionOn "+"x".repeat(650));
+        fact.put("notes","y".repeat(900));
+        fact.put("other","z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES-1500));
+        PrefetchContext.boundContext(data);
+        org.junit.jupiter.api.Assertions.assertTrue(data.path("facts").get(0).has("thread_hops"),data.path("context_omitted_fields").toString());
+    }
 }

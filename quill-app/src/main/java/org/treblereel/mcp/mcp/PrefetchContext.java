@@ -250,7 +250,7 @@ public final class PrefetchContext {
             "scope","runtime_execution_proven");
     private static final List<String> REACH_SUFFIXES=List.of("_truncated","_scope","_basis","_complete");
     /** Cut only when nothing else is left: without the selected body, recorded agents read the whole file. */
-    private static final Set<String> LAST_RESORT=Set.of("selected_method_source","framework_contract");
+    private static final Set<String> LAST_RESORT=Set.of("selected_method_source","framework_contract","thread_hops","beans_reached_after");
     /** A shorter field is a statement rather than a body of evidence, and removing it saves little. */
     private static final int MIN_FIELD_CUT_BYTES=64;
     private static final int PROPORTIONATE_FACTOR=4;

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -53,5 +54,37 @@ class ThreadHopsTest {
                 hops.path("beans_reached_after").toString(), hops.toString());
         assertEquals("[\"x.Req\"]", hops.path("request_scoped_after").toString());
         assertNull(TestReads.read(db, reader -> ThreadHops.of(reader, 1, "perform", "()Z")), "no switch, no fact");
+    }
+
+    /** V58/V59 CQ-025: answers missed the values the deferred supplier carries to the worker thread (rawToken, permissionName). */
+    @Test void aHandedOffLambdaNamesTheValuesItCaptures() {
+        List<String> source = List.of(
+                "    private Uni<Boolean> checkSsarPermission(String rawToken, String permissionName) {",
+                "        var k8s = mapping.get();",
+                "        return Uni.createFrom()",
+                "                .<Boolean>item(() -> performSsarCheck(rawToken, permissionName, k8s))",
+                "                .runSubscriptionOn(Infrastructure.getDefaultExecutor())",
+                "                .onFailure()",
+                "                .recoverWithItem(",
+                "                        e -> {",
+                "                            log.warnf(e, \"failed for '%s' (%s)\", permissionName, k8s.resource());",
+                "                            return false;",
+                "                        });");
+        assertEquals("line 4: rawToken String, permissionName String, k8s PermissionMapper$K8sResourceVerb",
+                ThreadHops.captured(source, 4, "(Ljava/lang/String;Ljava/lang/String;Lio/cryostat/PermissionMapper$K8sResourceVerb;)Ljava/lang/Boolean;", Set.of("log")));
+        assertEquals("line 7: permissionName String, k8s PermissionMapper$K8sResourceVerb",
+                ThreadHops.captured(source, 7, "(Ljava/lang/String;Lio/cryostat/PermissionMapper$K8sResourceVerb;Ljava/lang/Throwable;)Ljava/lang/Boolean;", Set.of("log")));
+    }
+
+    @Test void theFactStatesWhetherContextPropagationIsOnTheClasspath() {
+        assertEquals("on the classpath: io.quarkus:quarkus-smallrye-context-propagation:3.40.1.1, io.smallrye.reactive:mutiny-smallrye-context-propagation:3.3.0;"
+                        + " with them Quarkus carries the CDI request context active when the pipeline is built to the executor thread",
+                ThreadHops.propagation(List.of(
+                        Path.of("/m2/io/quarkus/quarkus-arc/3.40.1.1/quarkus-arc-3.40.1.1.jar"),
+                        Path.of("/m2/io/quarkus/quarkus-smallrye-context-propagation/3.40.1.1/quarkus-smallrye-context-propagation-3.40.1.1.jar"),
+                        Path.of("/m2/io/smallrye/reactive/mutiny-smallrye-context-propagation/3.3.0/mutiny-smallrye-context-propagation-3.3.0.jar"))));
+        assertEquals("no context-propagation artifact on the classpath (of 1 jars): request/session context is not carried to the other thread",
+                ThreadHops.propagation(List.of(Path.of("/m2/io/quarkus/quarkus-arc/3.40.1.1/quarkus-arc-3.40.1.1.jar"))));
+        assertNull(ThreadHops.propagation(List.of()), "no captured classpath, no claim");
     }
 }

@@ -251,10 +251,11 @@ public final class PrefetchContext {
     private static final List<String> REACH_SUFFIXES=List.of("_truncated","_scope","_basis","_complete");
     /**
      * Cut only when nothing else is left: without the selected body, recorded agents read the whole file;
-     * without the bound interceptors (V62 CQ-026) they searched for them over three more turns.
+     * without the bound interceptors (V62 CQ-026) they searched for them over three more turns; an endpoint's
+     * methods, once halved to its handler, hold the handler body (other facts' methods go with OPTIONAL_FIELDS).
      */
     private static final Set<String> LAST_RESORT=Set.of("selected_method_source","framework_contract","thread_hops",
-            "beans_reached_after","dependency_interceptors");
+            "beans_reached_after","dependency_interceptors","methods");
     /** A shorter field is a statement rather than a body of evidence, and removing it saves little. */
     private static final int MIN_FIELD_CUT_BYTES=64;
     private static final int PROPORTIONATE_FACTOR=4;
@@ -286,6 +287,8 @@ public final class PrefetchContext {
     public static void stateRepeatsOnce(ObjectNode data){ResponseCompaction.stateOnce(data);}
     private static boolean removeField(JsonNode node,String field){
         boolean removed=false;
+        // An endpoint's methods hold the handler body (V41-V62 CQ-032: its @PermissionsAllowed); the list is halved instead.
+        if("methods".equals(field) && "operation_methods".equals(node.path("kind").asText()))return false;
         if(node instanceof ObjectNode object && object.remove(field)!=null){
             removed=true;
             removeCompanions(object,field);

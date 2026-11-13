@@ -93,20 +93,19 @@ final class EndpointPrefetch {
         }
         for(String key:List.of("source_line","source_end_line"))if(source.path("declaration").has(key))source.set(key,source.path("declaration").get(key));
         source.remove("declaration");
+        // The method node names these already; the budget is better spent on the handler body.
+        source.remove(List.of("target","name","descriptor","symbol_id","source_sha256"));
         if(source.path("source").asText().length()>4000){source.remove("source");source.put("source_complete",false).put("status","prefetch_source_limit");}
         node.set("source_evidence",source);
         Set<String> fields=db.jdbi().withHandle(h->new HashSet<>(h.createQuery("SELECT DISTINCT field_name FROM field_accesses WHERE from_class_id=:id AND to_class_id=:id AND from_method=:method AND from_descriptor=:descriptor")
                 .bind("id",cls.id()).bind("method",name).bind("descriptor",descriptor).mapTo(String.class).list()));
         JsonNode injection=JSON.readTree(new StructureToolQueries().getInjectionPoints(db,owner));
         var selected=node.putObject("injection");
-        for(String key:List.of("target","scope","bean_kind","error","error_code","resolution_context"))
+        // resolution_context states the same rules for every bean; get_injection_points still has it.
+        for(String key:List.of("target","scope","bean_kind","error","error_code"))
             if(injection.has(key))selected.set(key,injection.get(key));
         var points=selected.putArray("injection_points");
-        for(var point:injection.path("injection_points"))if(fields.contains(point.path("field").asText())){
-            ObjectNode compact=((ObjectNode)point).deepCopy();
-            if("resolved".equals(point.path("resolution").asText()))compact.remove("resolution_trace");
-            points.add(compact);
-        }
+        for(var point:injection.path("injection_points"))if(fields.contains(point.path("field").asText()))points.add(injectionLine(point));
         var reads=db.jdbi().withHandle(h->h.createQuery("""
                 SELECT c.class_name, fa.field_name, fa.access_kind, fa.evidence_lines FROM field_accesses fa JOIN classes c ON c.id=fa.to_class_id
                 WHERE fa.from_class_id=:id AND fa.to_class_id<>:id AND fa.from_method=:method AND fa.from_descriptor=:descriptor
@@ -131,6 +130,17 @@ final class EndpointPrefetch {
         }
         references.put("candidate_count",config.path("total").asInt()).put("showing",entries.size())
                 .put("method_scope_complete",uniqueMethod && !config.path("has_more").asBoolean());
+    }
+    /** {@code field Type [qualifiers] -> Bean scope}, with resolution and reason when it is not a unique bean. */
+    static String injectionLine(JsonNode point){
+        StringBuilder line=new StringBuilder(point.path("field").asText()).append(' ').append(point.path("required_type").asText());
+        List<String> qualifiers=new ArrayList<>();point.path("qualifiers").forEach(q->{if(!q.asText().equals("@Default"))qualifiers.add(q.asText());});
+        if(!qualifiers.isEmpty())line.append(' ').append(qualifiers);
+        if(point.hasNonNull("resolved_to"))line.append(" -> ").append(point.path("resolved_to").asText())
+                .append(point.hasNonNull("resolved_scope")?" "+point.path("resolved_scope").asText():"");
+        if(!"resolved".equals(point.path("resolution").asText()))
+            line.append(" (").append(point.path("resolution").asText()).append(point.hasNonNull("reason")?", "+point.path("reason").asText():"").append(')');
+        return line.toString();
     }
     private EndpointPrefetch(){}
 }

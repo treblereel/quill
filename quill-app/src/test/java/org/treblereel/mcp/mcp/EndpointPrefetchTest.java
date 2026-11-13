@@ -47,6 +47,28 @@ class EndpointPrefetchTest {
         var handler=packet.path("facts").get(1).path("methods").get(0);
         assertEquals("p.Service#count read_instance bytecode lines [1]",handler.path("other_class_field_accesses").get(0).asText(),packet.toString());
     }
+    /** V41-V62 CQ-032: over budget, the whole methods list went first and with it the handler's @PermissionsAllowed. */
+    @Test void theBudgetKeepsTheHandlerBodyAndDropsCalleesFirst() throws Exception {
+        var db=JavaEvidenceFixture.index(root,"package p; class Fixture { Service service; int fetch(){ return service.read(); }} class Service {int read(){return 7;}}");
+        routes(db,"GET");
+        var packet=(com.fasterxml.jackson.databind.node.ObjectNode)TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"GET /warehouse/items/{key}"));
+        var handler=packet.path("facts").get(1).path("methods").get(0);
+        assertFalse(handler.path("injection").has("resolution_context"),packet.toString());
+        assertFalse(handler.path("source_evidence").has("symbol_id"),packet.toString());
+        int size=packet.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        ((com.fasterxml.jackson.databind.node.ObjectNode)packet.path("facts").get(0)).put("notes","n".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES-size+300));
+        PrefetchContext.boundContext(packet);
+        var methods=packet.path("facts").get(1).path("methods");
+        assertEquals("fetch",methods.path(0).path("method").asText(),packet.toString());
+        assertTrue(methods.path(0).path("source_evidence").path("source").asText().contains("service.read()"),packet.toString());
+    }
+    @Test void anInjectionPointIsOneLine() throws Exception {
+        var json=new ObjectMapper();
+        assertEquals("reportAggregator io.cryostat.reports.AnalysisReportAggregator -> io.cryostat.reports.AnalysisReportAggregator @Singleton",
+                EndpointPrefetch.injectionLine(json.readTree("{\"field\":\"reportAggregator\",\"required_type\":\"io.cryostat.reports.AnalysisReportAggregator\",\"qualifiers\":[\"@Default\"],\"resolution\":\"resolved\",\"reason\":\"UNIQUE_CONTEXT_CANDIDATE\",\"resolved_scope\":\"@Singleton\",\"resolved_to\":\"io.cryostat.reports.AnalysisReportAggregator\"}")));
+        assertEquals("store x.Store [@Named(\"s3\")] (unsatisfied, NO_CANDIDATE)",
+                EndpointPrefetch.injectionLine(json.readTree("{\"field\":\"store\",\"required_type\":\"x.Store\",\"qualifiers\":[\"@Named(\\\"s3\\\")\"],\"resolution\":\"unsatisfied\",\"reason\":\"NO_CANDIDATE\"}")));
+    }
     @Test void duplicateMappingsAreAmbiguousAndChangedSourcesNeverBecomeFreshFacts() throws Exception {
         var db=JavaEvidenceFixture.index(root,"package p; class Fixture {int fetch(){return 1;}}");
         try {

@@ -69,6 +69,16 @@ python3.14 benchmarks/harness/apollo-paired/arm.py ask codex with_quill --case A
 `--case` sends the shared context block plus the case prompts as one session, like the
 Cryostat schedule. There is no scheduler or scorer here yet.
 
+## Surviving a reboot
+
+macOS clears `/tmp` on restart. `python3 vault.py save` APFS-clones the prepared fixture into
+`~/.cache/quill-apollo-paired-v1` (no extra disk space) with a hash manifest of the Quill binary,
+client CLIs, index, build output and file times; `arm.py` runs `vault.py restore` whenever
+`/tmp/quill-apollo-paired-v1/fixture.json` is missing, and `vault.py check` compares the live fixture
+with the vault. Re-running `prepare_fixture.py` instead would rebuild with whatever Quill and CLIs
+are installed then, which no longer compares with the recorded baseline
+(`benchmarks/analysis/apollo-baseline-v1/`).
+
 Two fixture details the Quill readiness gate depends on:
 
 - `mvnw` runs `maven-wrapper.jar`, which ignores `MAVEN_ARGS`. `--settings`/`--toolchains`

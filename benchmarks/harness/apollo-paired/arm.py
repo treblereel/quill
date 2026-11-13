@@ -192,6 +192,8 @@ def main(argv):
     label = f'{stamp}-{case.lower()}-{client}-{arm}' if case != 'adhoc' else f'{stamp}-{client}-{arm}'
     d = RESULTS / label if mode == 'ask' else RESULTS / f'{stamp}-{client}-{arm}-preflight'
     entry = {'case': case, 'client': client, 'arm': arm, 'prompts': prompts or ['preflight']}
+    if not (F / 'fixture.json').exists():  # /tmp was cleared (reboot): bring back the pinned fixture
+        subprocess.run([sys.executable, str(HERE / 'vault.py'), 'restore'], check=True)
     isolated(entry, d, parameters(), mode == 'preflight')
     print(f'{mode} {client}/{arm}: OK -> {d}')
 

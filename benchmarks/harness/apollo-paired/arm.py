@@ -3,6 +3,7 @@
 
   python3.14 arm.py preflight <client> <arm>          # client/MCP startup only, no model turn
   python3.14 arm.py ask <client> <arm> PROMPT [...]   # one session, one turn per prompt (paid)
+  python3.14 arm.py ask <client> <arm> --case AQ-031  # a benchmark case from data/questions.json (paid)
 
 Each session restores the disposable fixture from prepare_fixture.py, applies the arm
 (Quill index + managed configs, or none), and runs the native CLI under the same Seatbelt
@@ -59,9 +60,13 @@ def setup(entry, d, p):
         subprocess.run(['/bin/cp', '-cRp', str(TARGETS / rel), str(ROOT / rel)], check=True)
     for rel in fx['build_extras']:
         subprocess.run(['/bin/cp', '-cp', str(F / 'ready-extra' / rel), str(ROOT / rel)], check=True)
-    for name, expected in load(F / 'source-files.json').items():
+    sources = load(F / 'source-files.json')
+    for name, expected in sources.items():
         assert digest(ROOT / name) == expected, name
-    for name in CONFIG:
+    # Apollo tracks its own AGENTS.md: the clean arm keeps the project's version, the Quill arm
+    # gets the quill-init version (project text plus the managed section).
+    generated = [n for n in CONFIG if n not in sources]
+    for name in generated:
         (ROOT / name).unlink(missing_ok=True)
     shutil.rmtree(ROOT / '.quill', ignore_errors=True)
     if entry['arm'] == 'with_quill':
@@ -73,7 +78,7 @@ def setup(entry, d, p):
         for rel in fx['module_targets']:
             for path in (ROOT / rel).glob('quill-*'):
                 path.unlink() if path.is_file() else shutil.rmtree(path)
-        assert not any((ROOT / n).exists() for n in CONFIG)
+        assert not any((ROOT / n).exists() for n in generated)
     for name, times in load(F / 'file-times.json').items():
         f = ROOT / name
         if f.exists():
@@ -132,7 +137,7 @@ def isolated(entry, d, p, preflight):
         sb = d / 'isolation.sb'
         sb.write_text(sandbox_text(entry, allowed, [ROOT, d, home, claude_home, scratch, build_tmp]))
         # The original checkout and this harness (future oracles) must stay unreadable.
-        blocked = [Path(p['fixture']['original']) / 'pom.xml', HERE / 'arm.py']
+        blocked = [Path(p['fixture']['original']) / 'pom.xml', HERE / 'arm.py', HERE / 'data/oracles.json']
         readable = [ROOT / 'pom.xml', ROOT / 'apollo-portal/target/classes/com/ctrip/framework/apollo/portal/PortalApplication.class']
         write(d / 'isolation-probe.json', probe(sb, readable, blocked, scratch))
         write(d / 'entry.json', entry)
@@ -152,9 +157,20 @@ def main(argv):
             or (argv[0] == 'ask') != (len(argv) > 3):
         sys.exit(__doc__)
     mode, client, arm, prompts = argv[0], argv[1], argv[2], argv[3:]
+    case = 'adhoc'
+    if prompts[:1] == ['--case']:
+        if len(prompts) != 2:
+            sys.exit(__doc__)
+        case, questions = prompts[1], load(HERE / 'data/questions.json')
+        if case not in questions['cases']:
+            sys.exit(f'unknown case {case}')
+        # Same shape as the Cryostat schedule: the context block prefixes the first turn only.
+        first, *rest = questions['cases'][case]['prompts']
+        prompts = [questions['context'] + '\n' + first, *rest]
     stamp = time.strftime('%Y%m%d-%H%M%S')
-    d = RESULTS / f'{stamp}-{client}-{arm}' if mode == 'ask' else RESULTS / f'{stamp}-{client}-{arm}-preflight'
-    entry = {'case': 'adhoc', 'client': client, 'arm': arm, 'prompts': prompts or ['preflight']}
+    label = f'{stamp}-{case.lower()}-{client}-{arm}' if case != 'adhoc' else f'{stamp}-{client}-{arm}'
+    d = RESULTS / label if mode == 'ask' else RESULTS / f'{stamp}-{client}-{arm}-preflight'
+    entry = {'case': case, 'client': client, 'arm': arm, 'prompts': prompts or ['preflight']}
     isolated(entry, d, parameters(), mode == 'preflight')
     print(f'{mode} {client}/{arm}: OK -> {d}')
 

@@ -40,7 +40,34 @@ the `quill-*` build receipts and is denied the Quill binary and Maven extension.
 isolation is the Cryostat one: only the fixture, the session dir, private homes, `~/.m2`
 and JDKs are readable; the original checkout and this harness are probed as unreadable.
 
-Questions and oracles (the CQ→Apollo mapping) are not here yet.
+## Questions and oracles
+
+`questions.py` holds the prompts (public) and `oracles.py` / `not_applicable.py` the expected
+facts (private: the session sandbox cannot read this directory, and the isolation probe checks
+`data/oracles.json`). `python3 build_data.py` writes `data/questions.json`, `data/oracles.json`
+and `data/not-applicable.json`; it reads evidence with `git show REV:path` from the fixture,
+records line numbers and sha256 for every evidence regex, and fails if a regex or a class
+named in a prompt does not exist at the pinned revision.
+
+Each `AQ-NNN` mirrors Cryostat `CQ-NNN` with a Spring counterpart: 44 applicable cases (42
+independent, `AQ-049` patch, `AQ-050` six linked turns) and 6 frozen N/A cases. The anchors are
+the portal permission validators (`UnifiedPermissionValidator` delegating by a ThreadLocal auth
+type), the `AuthConfiguration` profile/missing-bean beans, the OpenAPI release route
+`POST /openapi/v1/envs/{env}/apps/{appId}/clusters/{clusterName}/namespaces/{namespaceName}/releases`
+(generated `ReleaseManagementApi`, `@PreAuthorize` SpEL by bean name), `ConfigPublishListener`
+(event plus executor hand-off), the DB-backed `RefreshableConfig` settings
+(`emergencyPublish.supported.envs`), adminservice aspects and transactions, the manual
+`DatabaseDiscoveryClient` decorator chain and the `@Lazy`-broken cycles in biz services. The
+`AQ-049` reference rename and the `AQ-046` narrow tests were run on a disposable clone (12/12
+`UnifiedPermissionValidatorTest`, 53/53 `ReleaseBranchInstanceControllerTest`).
+
+```bash
+python3 benchmarks/harness/apollo-paired/build_data.py
+python3.14 benchmarks/harness/apollo-paired/arm.py ask codex with_quill --case AQ-031
+```
+
+`--case` sends the shared context block plus the case prompts as one session, like the
+Cryostat schedule. There is no scheduler or scorer here yet.
 
 Two fixture details the Quill readiness gate depends on:
 

@@ -1,0 +1,275 @@
+{
+ "context": "Context: Enumerations are bounded to application-owned production/test source of the tracked Apollo modules unless dependencies or generated mechanisms are explicitly requested. Packaged framework evidence supplements those questions. No ambient env/secret values are assumed.\nProfile: apollo-portal runs with spring.profiles.active=github,auth (github also activates the mysql profile group); apollo-adminservice and apollo-configservice run with github.\nRead-only except AQ-049, whose patch must be applied only in a disposable checkout. No permission to start external services or read process secrets.",
+ "revision": "e31c48097be6b679fc91ea3a2c67640afc512d31",
+ "cases": {
+  "AQ-001": {
+   "track": "independent",
+   "prompts": [
+    "Какие модули образуют Apollo, где точка сборки и какие зависимости подключают Spring Boot и Spring Cloud?"
+   ]
+  },
+  "AQ-002": {
+   "track": "independent",
+   "prompts": [
+    "Какие beans объявлены в production-пакете com.ctrip.framework.apollo.portal.component, только непосредственно в этом пакете, без subpackages? Раздели component-классы, @Bean-методы и beans, которые производит FactoryBean, укажи их имена и scope."
+   ]
+  },
+  "AQ-003": {
+   "track": "independent",
+   "prompts": [
+    "Почему com.ctrip.framework.apollo.portal.component.UnifiedPermissionValidator попадает в Spring-контекст apollo-portal: какие аннотации, stereotypes или правила component scanning это обеспечивают?"
+   ]
+  },
+  "AQ-004": {
+   "track": "independent",
+   "prompts": [
+    "Откуда берётся зависимость типа org.springframework.context.ApplicationEventPublisher, которую получает com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController: какой dependency или механизм Spring её предоставляет и есть ли для неё bean definition?"
+   ]
+  },
+  "AQ-005": {
+   "track": "independent",
+   "prompts": [
+    "Может ли Spring не зарегистрировать bean com.ctrip.framework.apollo.portal.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration#springSecurityUserInfoHolder(org.springframework.beans.factory.ObjectProvider) при github,auth? Покажи основания регистрации или пропуска и ограничения такого вывода."
+   ]
+  },
+  "AQ-006": {
+   "track": "independent",
+   "prompts": [
+    "Что будет внедрено в параметр userInfoHolder конструктора com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController при github,auth? Покажи кандидатов и почему выбран именно этот bean."
+   ]
+  },
+  "AQ-007": {
+   "track": "independent",
+   "prompts": [
+    "Как Spring создаёт com.ctrip.framework.apollo.portal.component.UserTokenPermissionValidator#<init>(com.ctrip.framework.apollo.portal.component.UserPermissionValidator,com.ctrip.framework.apollo.portal.service.UserTokenService,com.ctrip.framework.apollo.portal.util.UserTokenAuthUtil,com.ctrip.framework.apollo.portal.service.RolePermissionService,com.ctrip.framework.apollo.portal.spi.UserInfoHolder) и какие beans удовлетворяют каждому параметру конструктора?"
+   ]
+  },
+  "AQ-009": {
+   "track": "independent",
+   "prompts": [
+    "Какие зависимости com.ctrip.framework.apollo.portal.component.emailbuilder.NormalPublishEmailBuilder получает от своего superclass, а какие объявлены непосредственно? Учти переопределения."
+   ]
+  },
+  "AQ-010": {
+   "track": "independent",
+   "prompts": [
+    "Какие реализации реально подходят для com.ctrip.framework.apollo.portal.component.PermissionValidator#hasReleaseNamespacePermission(java.lang.String,java.lang.String,java.lang.String,java.lang.String)? Отдели Java-наследование от bean types Spring-контекста apollo-portal."
+   ]
+  },
+  "AQ-011": {
+   "track": "independent",
+   "prompts": [
+    "Где внедряется org.springframework.security.crypto.password.PasswordEncoder, создаваемый com.ctrip.framework.apollo.portal.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration#passwordEncoder(), и через какие qualifiers? Отдельно покажи прямые injection sites и динамические обращения."
+   ]
+  },
+  "AQ-012": {
+   "track": "independent",
+   "prompts": [
+    "Почему qualifier у параметра fileTextResolver конструктора com.ctrip.framework.apollo.portal.service.ItemService совпадает или не совпадает с qualifiers кандидатов типа ConfigTextResolver? Учти имена beans и значение @Qualifier."
+   ]
+  },
+  "AQ-013": {
+   "track": "independent",
+   "prompts": [
+    "Какие явные и неявные qualifiers действуют у параметра userInfoHolder конструктора com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController и его кандидатов? Объясни влияние имени bean, имени параметра, @Primary и @Qualifier."
+   ]
+  },
+  "AQ-014": {
+   "track": "independent",
+   "prompts": [
+    "Какие beans может вернуть com.ctrip.framework.apollo.portal.spi.springsecurity.SpringSecurityUserInfoHolder через свой ObjectProvider<UserService>? Проследи lookup и условия, из-за которых результат зависит от runtime."
+   ]
+  },
+  "AQ-015": {
+   "track": "independent",
+   "prompts": [
+    "Как выбирается реализация для com.ctrip.framework.apollo.portal.listener.ConfigPublishListener#emailService при github,auth: @Primary, условия или fallback/default bean?"
+   ]
+  },
+  "AQ-016": {
+   "track": "independent",
+   "prompts": [
+    "Что создаёт com.ctrip.framework.apollo.portal.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration#jdbcUserDetailsManager(javax.sql.DataSource,jakarta.persistence.EntityManagerFactory), какие у результата type, имя, qualifiers и scope? Не смешивай их со свойствами declaring class."
+   ]
+  },
+  "AQ-018": {
+   "track": "independent",
+   "prompts": [
+    "Какие зависимости нужны com.ctrip.framework.apollo.portal.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration#springSecurityUserService(org.springframework.security.crypto.password.PasswordEncoder,com.ctrip.framework.apollo.portal.repository.UserRepository,com.ctrip.framework.apollo.portal.repository.AuthorityRepository), чтобы создать результат? Покажи параметры @Bean-метода, явные depends-on и зависимости его declaring class."
+   ]
+  },
+  "AQ-020": {
+   "track": "independent",
+   "prompts": [
+    "Когда создаётся и уничтожается com.ctrip.framework.apollo.portal.listener.ConfigPublishListener, какие lifecycle callbacks объявлены или наследуются? Где статического анализа недостаточно?"
+   ]
+  },
+  "AQ-023": {
+   "track": "independent",
+   "prompts": [
+    "Как runtime-конфигурация влияет на то, какой UserService вернёт com.ctrip.framework.apollo.portal.spi.springsecurity.SpringSecurityUserInfoHolder#getUser()? Что известно заранее, а что определяется только при запуске?"
+   ]
+  },
+  "AQ-024": {
+   "track": "independent",
+   "prompts": [
+    "Кто регистрирует bean com.ctrip.framework.apollo.biz.registry.configuration.support.ApolloServiceDiscoveryProperties, какие у него имя, типы и зависимости, и при каких условиях он появляется?"
+   ]
+  },
+  "AQ-025": {
+   "track": "independent",
+   "prompts": [
+    "Может ли com.ctrip.framework.apollo.portal.listener.ConfigPublishListener#onConfigPublish(com.ctrip.framework.apollo.portal.listener.ConfigPublishEvent) в своём асинхронном пути опираться на контекст текущего запроса (тип аутентификации, текущего пользователя)? Покажи границы контекста и что требует runtime-проверки."
+   ]
+  },
+  "AQ-026": {
+   "track": "independent",
+   "prompts": [
+    "Какие aspects применимы к com.ctrip.framework.apollo.adminservice.controller.ItemController#create(java.lang.String,java.lang.String,java.lang.String,com.ctrip.framework.apollo.common.dto.ItemDTO), в каком порядке и за счёт каких pointcuts или annotations?"
+   ]
+  },
+  "AQ-027": {
+   "track": "independent",
+   "prompts": [
+    "Где начинается и заканчивается транзакция на пути через com.ctrip.framework.apollo.adminservice.controller.ReleaseController#publish(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,boolean), и какие вызовы могут изменить propagation?"
+   ]
+  },
+  "AQ-028": {
+   "track": "independent",
+   "prompts": [
+    "Какие listeners могут получить событие, опубликованное в com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController#createRelease? Учти тип события, sync/async и транзакционную фазу."
+   ]
+  },
+  "AQ-029": {
+   "track": "independent",
+   "prompts": [
+    "Какие decorators применяются к com.ctrip.framework.apollo.biz.registry.DatabaseDiscoveryClient, как выбран delegate и что определяет порядок?"
+   ]
+  },
+  "AQ-030": {
+   "track": "independent",
+   "prompts": [
+    "Есть ли циклы в зависимостях от com.ctrip.framework.apollo.biz.service.NamespaceService? Отдели цикл графа зависимостей от реально недопустимого создания объектов."
+   ]
+  },
+  "AQ-031": {
+   "track": "independent",
+   "prompts": [
+    "Как запрос POST /openapi/v1/envs/{env}/apps/{appId}/clusters/{clusterName}/namespaces/{namespaceName}/releases в apollo-portal доходит до бизнес-метода и его Spring-зависимости? Покажи один прямой путь, не добавляя все транзитивные зависимости."
+   ]
+  },
+  "AQ-032": {
+   "track": "independent",
+   "prompts": [
+    "Какие проверки доступа действуют для POST /openapi/v1/envs/{env}/apps/{appId}/clusters/{clusterName}/namespaces/{namespaceName}/releases в apollo-portal при github,auth, откуда берутся роли или permissions и где меняется поведение по конфигурации?"
+   ]
+  },
+  "AQ-033": {
+   "track": "independent",
+   "prompts": [
+    "Что запускает сканирование в com.ctrip.framework.apollo.biz.message.ReleaseMessageScanner, какие Spring-зависимости используются и какие настройки управляют расписанием?"
+   ]
+  },
+  "AQ-035": {
+   "track": "independent",
+   "prompts": [
+    "Что делает com.ctrip.framework.apollo.biz.registry.configuration.support.ApolloServiceRegistryHeartbeatApplicationRunner#run(org.springframework.boot.ApplicationArguments) при старте или остановке и какие beans затрагивает? Укажи доказанный порядок и неизвестные отношения."
+   ]
+  },
+  "AQ-036": {
+   "track": "independent",
+   "prompts": [
+    "Где задаётся и читается настройка apollo-portal emergencyPublish.supported.envs? Покажи default, источники значения при github,auth и места использования."
+   ]
+  },
+  "AQ-037": {
+   "track": "independent",
+   "prompts": [
+    "Какие ключи описывает com.ctrip.framework.apollo.biz.registry.configuration.support.ApolloServiceRegistryProperties, включая вложенные значения, коллекции и значения по умолчанию?"
+   ]
+  },
+  "AQ-038": {
+   "track": "independent",
+   "prompts": [
+    "AQ-038 uses only explicit sources: classpath application.properties of apollo-portal sets emergencyPublish.supported.envs=dev, and the portal database table ServerConfig holds emergencyPublish.supported.envs=pro.\nКакое значение emergencyPublish.supported.envs увидит PortalConfig при github,auth, без ambient env/system properties и аргументов командной строки? Покажи приоритет источников и как он устанавливается."
+   ]
+  },
+  "AQ-039": {
+   "track": "independent",
+   "prompts": [
+    "Можно ли изменить emergencyPublish.supported.envs у работающего apollo-portal без пересборки и перезапуска? Покажи доказательства поведения для этой версии."
+   ]
+  },
+  "AQ-040": {
+   "track": "independent",
+   "prompts": [
+    "Что надо изменить при переименовании настройки emergencyPublish.supported.envs в emergencyPublish.allowed.envs? Отдели код, конфигурацию и SQL-скрипты, документацию и тесты."
+   ]
+  },
+  "AQ-041": {
+   "track": "independent",
+   "prompts": [
+    "Каков прямой радиус изменения сигнатуры com.ctrip.framework.apollo.portal.component.UnifiedPermissionValidator#hasReleaseNamespacePermission(java.lang.String,java.lang.String,java.lang.String,java.lang.String)? Отдели Java callers, ссылки вне Java-кода, overrides и интерфейсы, тесты и косвенные зависимости."
+   ]
+  },
+  "AQ-042": {
+   "track": "independent",
+   "prompts": [
+    "Если переименовать bean com.ctrip.framework.apollo.portal.component.txtresolver.FileTextResolver из \"fileTextResolver\" в \"fileTextResolverV2\", какие injection sites и объявления придётся проверить или изменить?"
+   ]
+  },
+  "AQ-043": {
+   "track": "independent",
+   "prompts": [
+    "Что затронет изменение контракта com.ctrip.framework.apollo.portal.spi.UserInfoHolder: реализации, bean-объявления, injection sites и прямые пользователи методов?"
+   ]
+  },
+  "AQ-044": {
+   "track": "independent",
+   "prompts": [
+    "Как заменить component-класс com.ctrip.framework.apollo.portal.component.UnifiedPermissionValidator @Bean-методом, не потеряв имя bean, scope, lifecycle и совместимость потребителей?"
+   ]
+  },
+  "AQ-045": {
+   "track": "independent",
+   "prompts": [
+    "Что изменится, если перевести com.ctrip.framework.apollo.portal.component.UserPermissionValidator в request scope? Проверь состояние, proxy, потребителей-singletons и контекст вызова вне HTTP-запроса."
+   ]
+  },
+  "AQ-046": {
+   "track": "independent",
+   "prompts": [
+    "Какие тесты следует запустить после изменения com.ctrip.framework.apollo.portal.component.UnifiedPermissionValidator#hasReleaseNamespacePermission(java.lang.String,java.lang.String,java.lang.String,java.lang.String) и почему? Отдели прямое покрытие от эвристически релевантных тестов."
+   ]
+  },
+  "AQ-047": {
+   "track": "independent",
+   "prompts": [
+    "Как com.ctrip.framework.apollo.portal.controller.ItemControllerAuthIntegrationTest подменяет Spring-зависимости и конфигурацию? Что отличается от production и что такой тест не проверяет?"
+   ]
+  },
+  "AQ-048": {
+   "track": "independent",
+   "prompts": [
+    "Откуда появился com.ctrip.framework.apollo.openapi.api.ReleaseManagementApi, какой handwritten input или plugin им управляет и что надо менять вместо generated-файла?"
+   ]
+  },
+  "AQ-049": {
+   "track": "patch",
+   "prompts": [
+    "Переименуй com.ctrip.framework.apollo.portal.component.UnifiedPermissionValidator#getDelegate() в resolveDelegate, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку.\nТесты apollo-portal работают на H2 без внешних сервисов; запускай только узкие тесты, а не весь reactor."
+   ]
+  },
+  "AQ-050": {
+   "track": "linked",
+   "prompts": [
+    "Разбери одну пользовательскую операцию POST /openapi/v1/envs/{env}/apps/{appId}/clusters/{clusterName}/namespaces/{namespaceName}/releases в apollo-portal: точку входа, DI-выбор, настройки, радиус изменения и подходящие тесты. Работай по шагам в одной сессии.\nНайди точку входа операции POST /openapi/v1/envs/{env}/apps/{appId}/clusters/{clusterName}/namespaces/{namespaceName}/releases и её непосредственный обработчик.",
+    "Проследи выбор Spring-зависимостей в этой операции при github,auth.",
+    "Найди связанные настройки и их определения для этого профиля.",
+    "Раздели прямые вызовы, DI-связи и условные runtime-переходы на этом пути.",
+    "Составь минимальный план изменения сигнатуры com.ctrip.framework.apollo.portal.service.ReleaseService#publish(com.ctrip.framework.apollo.portal.entity.model.NamespaceReleaseModel) и прямой радиус проверки для этой операции. Только план, без изменения кода.",
+    "Выбери узкие тесты для плана; отметь пробелы доказательств и не повторяй весь предыдущий разбор."
+   ]
+  }
+ }
+}

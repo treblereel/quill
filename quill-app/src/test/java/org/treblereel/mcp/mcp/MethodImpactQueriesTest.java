@@ -55,6 +55,45 @@ class MethodImpactQueriesTest {
             assertEquals(1,data.path("declaring_class_tests").size(),data.toString());
         } finally {}
     }
+    /** V62 CQ-041: Claude listed callers of resolve but never said they consume its Optional; the controls read it from source. */
+    @Test void aProductionCallerShowsHowItUsesTheReturnedValue() throws Exception {
+        var db=JavaEvidenceFixture.index(root,"""
+            package p;
+            import java.util.Optional;
+            class Mapper { record Verb(String resource, String verb) {} Optional<Verb> resolve(String v) { return Optional.empty(); } }
+            class Caller {
+                Mapper mapper = new Mapper();
+                boolean check(String name) {
+                    var mapping = mapper.resolve(name);
+                    if (mapping.isEmpty()) {
+                        return false;
+                    }
+                    var k8s = mapping.get();
+                    return k8s.resource().equals(k8s.verb());
+                }
+                void ignore() { mapper.resolve("x"); }
+            }
+            """);
+        try {
+            var data=TestReads.read(db, readScope -> new MethodImpactQueries().get(readScope,"p.Mapper","resolve(java.lang.String)",200));
+            var methods=data.path("production_callers").path(0).path("methods");
+            var check=methods.valueStream().filter(m->m.path("method").asText().equals("check")).findFirst().orElseThrow();
+            String use=check.path("result_use").asText();
+            assertTrue(use.startsWith("line 7: var mapping = mapper.resolve(name);"),data.toString());
+            assertTrue(use.contains("mapping.isEmpty() (line 8)"),use);
+            assertTrue(use.contains("mapping.get() (line 11) as k8s"),use);
+            assertTrue(use.contains("k8s.resource() (line 12)"),use);
+            assertTrue(use.contains("k8s.verb() (line 12)"),use);
+            var ignore=methods.valueStream().filter(m->m.path("method").asText().equals("ignore")).findFirst().orElseThrow();
+            assertEquals("line 14: void ignore() { mapper.resolve(\"x\"); }",ignore.path("result_use").asText(),data.toString());
+            MethodPrefetchRelations.compactImpact(data);
+            assertTrue(data.path("production_callers").path(0).asText().contains("check lines [7] uses result: var mapping = mapper.resolve(name); then mapping.isEmpty() (line 8)"),data.toString());
+        } finally {}
+    }
+    @Test void aCallRepeatedOnTheResultListsItsLinesOnce() {
+        var lines=java.util.List.of("var m = mapper.resolve(n);","log(m.get());","{ log(m.get()); }","}","m.size();");
+        assertEquals("line 1: var m = mapper.resolve(n); then m.get() (lines 2, 3)",CallerResultUse.describe(lines,1,"resolve"));
+    }
     @Test void literalSelectorsNotQuestionPhrasesDrivePrefetchAndSourceChangesBlockIt() throws Exception {
         var db=JavaEvidenceFixture.index(root,SOURCE);
         try {

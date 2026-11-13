@@ -8,6 +8,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 /** Direct selected-member references, without embedding the same graph in several test views. */
 final class MethodImpactQueries {
     private static final ObjectMapper JSON=new ObjectMapper();
+    private static final int RESULT_USE_LIMIT=8;
     ObjectNode get(ReadQueryContext db,String target,String selector,int limit) throws Exception {
         int parameters=selector.indexOf('(');
         String name=parameters<0?selector:selector.substring(0,parameters);
@@ -28,6 +29,9 @@ final class MethodImpactQueries {
         var unknown=result.putArray("unclassified_callers");
         var classes=db.symbols.findAllClasses();
         Set<String> files=new HashSet<>(),methods=new HashSet<>();int occurrences=0,invocations=0;
+        String projectRoot=db.index.getMetadata().get("project_root");
+        boolean returnsValue=!refs.path("descriptor").asText().endsWith(")V");
+        Map<String,List<String>> sources=new HashMap<>();int resultUses=0;
         for(var usage:refs.path("usages")){
             var caller=usage.path("caller");String source=caller.path("source").asText();
             var matches=classes.stream().filter(c->c.className().equals(caller.path("class").asText()))
@@ -36,6 +40,15 @@ final class MethodImpactQueries {
             ArrayNode group=matches.size()!=1?unknown:TestImpactQueries.isTestClass(matches.getFirst())?tests:production;
             ObjectNode row=group.addObject();row.set("caller",caller.deepCopy());
             copy((ObjectNode)usage,row,"usage_kind","execution_semantics","invocation_kind","occurrence_count","evidence_lines");
+            // V62 CQ-041: the callers' use of the returned value is what a return-type change breaks.
+            if(group==production && returnsValue && projectRoot!=null && !source.isEmpty() && resultUses<RESULT_USE_LIMIT
+                    && usage.path("evidence_lines").path(0).canConvertToInt()){
+                var text=sources.computeIfAbsent(source,s->{
+                    try{return java.nio.file.Files.readAllLines(java.nio.file.Path.of(projectRoot).resolve(s));}
+                    catch(Exception unreadable){return List.of();}});
+                String use=CallerResultUse.describe(text,usage.path("evidence_lines").path(0).asInt(),refs.path("name").asText());
+                if(use!=null){row.put("result_use",use);resultUses++;}
+            }
             int count=usage.path("occurrence_count").asInt();occurrences+=count;
             if("invocation_instruction".equals(usage.path("execution_semantics").asText()))invocations+=count;
             if(!source.isEmpty())files.add(source);

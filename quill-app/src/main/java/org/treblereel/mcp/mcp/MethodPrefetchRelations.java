@@ -41,7 +41,10 @@ final class MethodPrefetchRelations {
                         + (method.has("depth") ? "@" + method.path("depth").asInt() : "")
                         + (method.hasNonNull("evidence_lines") ? " lines "
                             + (method.get("evidence_lines").isTextual() ? method.get("evidence_lines").asText()
-                                : method.get("evidence_lines").toString()) : "")));
+                                : method.get("evidence_lines").toString()) : "")
+                        // The line is already named; the statement and what follows it are the evidence.
+                        + (method.hasNonNull("result_use") ? " uses result: "
+                            + method.get("result_use").asText().replaceFirst("^line \\d+: ", "") : "")));
                 lines.add(caller.path("class").asText() + " " + caller.path("source").asText()
                         + (methods.isEmpty() ? "" : " via " + String.join(", ", methods)));
             }

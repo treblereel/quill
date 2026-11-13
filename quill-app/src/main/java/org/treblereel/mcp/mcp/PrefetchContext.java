@@ -249,8 +249,12 @@ public final class PrefetchContext {
     private static final Set<String> REACH=Set.of("has_more","truncated","total","showing","limit","offset","complete",
             "scope","runtime_execution_proven");
     private static final List<String> REACH_SUFFIXES=List.of("_truncated","_scope","_basis","_complete");
-    /** Cut only when nothing else is left: without the selected body, recorded agents read the whole file. */
-    private static final Set<String> LAST_RESORT=Set.of("selected_method_source","framework_contract","thread_hops","beans_reached_after");
+    /**
+     * Cut only when nothing else is left: without the selected body, recorded agents read the whole file;
+     * without the bound interceptors (V62 CQ-026) they searched for them over three more turns.
+     */
+    private static final Set<String> LAST_RESORT=Set.of("selected_method_source","framework_contract","thread_hops",
+            "beans_reached_after","dependency_interceptors");
     /** A shorter field is a statement rather than a body of evidence, and removing it saves little. */
     private static final int MIN_FIELD_CUT_BYTES=64;
     private static final int PROPORTIONATE_FACTOR=4;

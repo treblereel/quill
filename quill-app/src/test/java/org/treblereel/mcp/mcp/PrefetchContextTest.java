@@ -250,4 +250,16 @@ class PrefetchContextTest {
         PrefetchContext.boundContext(data);
         org.junit.jupiter.api.Assertions.assertTrue(data.path("facts").get(0).has("thread_hops"),data.path("context_omitted_fields").toString());
     }
+    // V62 CQ-026: the budget dropped dependency_interceptors, the interceptor answer; V41 answered from prefetch alone.
+    @Test void theBudgetCutsOtherEvidenceBeforeTheInterceptorsBoundToAMethod() throws Exception {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var data=json.createObjectNode();
+        var fact=data.putArray("facts").addObject().put("kind","direct_method_impact").put("target","x.A");
+        fact.putArray("dependency_interceptors").add("io.quarkus.narayana.jta.runtime.interceptor.TransactionalInterceptorRequired @Priority(200) "+"x".repeat(300));
+        fact.put("dependency_interceptors_basis","interceptors in dependency jars bound by an annotation on this method or its class");
+        fact.put("notes","y".repeat(900));
+        fact.put("other","z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES-1250));
+        PrefetchContext.boundContext(data);
+        org.junit.jupiter.api.Assertions.assertTrue(data.path("facts").get(0).has("dependency_interceptors"),data.path("context_omitted_fields").toString());
+    }
 }

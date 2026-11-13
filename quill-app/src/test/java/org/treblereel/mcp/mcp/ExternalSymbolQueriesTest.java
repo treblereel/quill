@@ -277,13 +277,55 @@ class ExternalSymbolQueriesTest {
     }
 
     @Test
-    void fullDetailLeavesBytecodeCallsToTheirOwnRequest() throws Exception {
+    void fullDetailWithoutSourceAnswersWithBytecodeInItsPlace() throws Exception {
         var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
                 .details(readScope, temp, "Fixture", 20, 0, "full")));
 
+        assertFalse(result.path("source_available").asBoolean());
         assertTrue(result.path("members").toString().contains("greet"));
+        assertTrue(result.path("bytecode_method_calls").toString().contains("java.lang.String#trim"), result.toString());
+        assertEquals("bytecode", result.path("detail").asText());
+        assertTrue(result.path("detail_basis").asText().contains("no companion source"), result.toString());
+        assertFalse(result.has("bytecode_request"));
+    }
+
+    @Test
+    void fullDetailWithoutSourceAnswersAMethodWithItsBytecode() throws Exception {
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "Fixture", 20, 0, "full", "greet")));
+
+        assertTrue(result.path("bytecode_method_calls").path("greet(String)").path("calls").toString()
+                .contains("java.lang.String#trim()"), result.toString());
+        assertEquals("bytecode", result.path("detail").asText());
+    }
+
+    @Test
+    void fullDetailWithSourceLeavesBytecodeCallsToTheirOwnRequest() throws Exception {
+        Path sourceJar = temp.resolve("repository/org/demo/fixture/1.0/fixture-1.0-sources.jar");
+        try (var output = new JarOutputStream(Files.newOutputStream(sourceJar))) {
+            output.putNextEntry(new JarEntry("org/treblereel/mcp/mcp/ExternalSymbolQueriesTest.java"));
+            output.write("class ExternalSymbolQueriesTest {}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            output.closeEntry();
+        }
+        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .details(readScope, temp, "Fixture", 20, 0, "full")));
+
+        assertTrue(result.has("source_excerpt"));
         assertFalse(result.has("bytecode_method_calls"));
+        assertEquals("full", result.path("detail").asText());
         assertEquals("bytecode", result.path("bytecode_request").path("detail").asText());
+    }
+
+    @Test
+    void wholeClassBytecodeStandsInForFullOnlyWithinItsCallBudget() {
+        var small = JSON.createObjectNode();
+        small.withObject("a()").withArray("calls").add("x#y()");
+        var large = JSON.createObjectNode();
+        var calls = large.withObject("a()").withArray("calls");
+        for (int i = 0; i <= ExternalSymbolQueries.FULL_BYTECODE_CALLS; i++) calls.add("x#y" + i + "()");
+
+        assertTrue(ExternalSymbolQueries.withinCallBudget(small));
+        assertFalse(ExternalSymbolQueries.withinCallBudget(large));
     }
 
     @Test

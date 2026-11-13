@@ -265,8 +265,18 @@ final class ExternalSymbolQueries {
         appendSource(ref, result, !detail.equals("summary"));
         if (detail.equals("source")) return result.toString();
         // Recorded agents used about 2% of these calls, so full detail points to them instead.
+        // Without companion source, full holds no more than summary and agents asked again for bytecode.
+        if (detail.equals("full") && !result.path("source_available").asBoolean()) {
+            ObjectNode calls = methodCalls(ref, jvmMethod);
+            if (jvmMethod != null || withinCallBudget(calls)) {
+                result.put("detail", "bytecode");
+                result.put("detail_basis", "Requested full; no companion source, so its bytecode calls instead");
+                result.set("bytecode_method_calls", calls);
+                detail = "bytecode";
+            }
+        }
         if (detail.equals("bytecode")) {
-            result.set("bytecode_method_calls", methodCalls(ref, jvmMethod));
+            if (!result.has("bytecode_method_calls")) result.set("bytecode_method_calls", methodCalls(ref, jvmMethod));
             result.put("bytecode_method_calls_scope", "Bounded: 40 calls and 12 strings per method; invokedynamic bodies, reflection and runtime dispatch not inferred");
         } else {
             ObjectNode request = result.putObject("bytecode_request").put("class_name", ref.className()).put("detail", "bytecode");
@@ -516,6 +526,16 @@ final class ExternalSymbolQueries {
     /** {@code owner#name(Type, ...)}: the owner stays qualified so the call can be followed up. */
     static String javaCall(String owner, String member, String descriptor) {
         return owner.replace('/', '.') + "#" + javaMethod(member, descriptor);
+    }
+
+    /** Calls a whole class's bytecode may carry when it answers detail=full for a class with no companion source. */
+    static final int FULL_BYTECODE_CALLS = 60;
+
+    static boolean withinCallBudget(ObjectNode methodCalls) {
+        if (methodCalls.has("truncated") || methodCalls.has("status")) return false;
+        int calls = 0;
+        for (var method : methodCalls.properties()) calls += method.getValue().path("calls").size();
+        return calls <= FULL_BYTECODE_CALLS;
     }
 
     private static ObjectNode methodCalls(ClassRef ref, String selectedMember) {

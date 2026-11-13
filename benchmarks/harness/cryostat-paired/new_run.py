@@ -38,6 +38,12 @@ def main(name, seed, cases=None, arm=None, repeat=None, client=None, repeats=3):
         raise SystemExit('Quill sources have uncommitted changes; the run could not name its source')
     native = REPO / 'quill-app/target/quill'
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip()
+    # V64 ran V63's binary under a newer commit: the proof names HEAD, so the binary must postdate its last source change.
+    changed = int(subprocess.check_output(['git', 'log', '-1', '--format=%ct', '--', 'quill-app/src/main', 'quill-core/src/main'],
+                                          cwd=REPO, text=True).strip() or 0)
+    if not native.exists() or native.stat().st_mtime < changed:
+        raise SystemExit(f'{native} is older than the last Quill source commit; rebuild it with '
+                         './mvnw -pl quill-app -am clean package -DskipTests -Pnative -Dquarkus.native.reuse-existing=false')
     (run / 'runtime').mkdir(parents=True)
     base = run / 'base'
     (base / 'runtime').mkdir(parents=True)

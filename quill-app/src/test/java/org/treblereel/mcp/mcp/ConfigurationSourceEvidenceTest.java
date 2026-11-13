@@ -36,6 +36,12 @@ class ConfigurationSourceEvidenceTest {
         assertTrue(rule.contains("application.properties on the classpath 250"),rule);
         assertFalse(query("limits.timeout",null,"index").has("source_precedence"));
     }
+    /** V64 CQ-038: the tool answer carried the rule but the prefetch fact did not, and Codex still read SmallRye bytecode. */
+    @Test void thePrefetchOfADeclaredKeyKeepsHowSourcesTakePrecedence() throws Exception {
+        file("application.properties","limits.timeout=5s\n");definition("limits.timeout","property","application.properties",1);usage("limits.timeout","active");
+        var facts=TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"Which source wins for limits.timeout?")).path("facts");
+        assertTrue(facts.path(0).path("evidence").path("source_precedence").asText().contains("config_ordinal"),facts.toString());
+    }
     @Test void metadataContractAndProfiledDefinitionsRemainSeparateFromEffectiveValues() throws Exception {
         file("application.properties","limits.timeout=5s\n%prod.limits.timeout=10s\n");
         definition("limits.timeout","property","application.properties",1);definition("%prod.limits.timeout","property","application.properties",2);usage("limits.timeout","active");

@@ -87,7 +87,8 @@ class MethodImpactQueriesTest {
             var ignore=methods.valueStream().filter(m->m.path("method").asText().equals("ignore")).findFirst().orElseThrow();
             assertEquals("line 14: void ignore() { mapper.resolve(\"x\"); }",ignore.path("result_use").asText(),data.toString());
             MethodPrefetchRelations.compactImpact(data);
-            assertTrue(data.path("production_callers").path(0).asText().contains("check lines [7] uses result: var mapping = mapper.resolve(name); then mapping.isEmpty() (line 8)"),data.toString());
+            assertFalse(data.path("production_callers").path(0).asText().contains("uses result"),data.toString());
+            assertTrue(data.path("caller_result_use").path(0).asText().startsWith("p.Caller#check line 7: var mapping = mapper.resolve(name); then mapping.isEmpty() (line 8)"),data.toString());
         } finally {}
     }
     @Test void aCallRepeatedOnTheResultListsItsLinesOnce() {

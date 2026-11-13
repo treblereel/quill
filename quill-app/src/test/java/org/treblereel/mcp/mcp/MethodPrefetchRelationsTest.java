@@ -339,10 +339,15 @@ class MethodPrefetchRelationsTest {
         fact.putObject("coverage").put("scan_complete", true).put("snapshot_freshness", "current")
                 .putArray("incomplete_reasons").add("compiled_output_coverage_unverified");
         fact.putObject("reference_page_counts").put("tests", 1);
+        tests.addObject().put("class", "p.Other").put("source", "it/java/p/Other.java");
+        fact.putArray("declaring_class_tests").add("p.FixtureTest").add("p.OnlyTypeTest");
 
         MethodPrefetchRelations.compactImpact(fact);
 
-        assertEquals("p.FixtureTest src/test/java/p/FixtureTest.java via a lines [1], b", fact.path("test_callers").get(0).asText());
+        // The class names its conventional file; V63 CQ-046 spent about 60 bytes a line on it.
+        assertEquals("p.FixtureTest via a lines [1], b", fact.path("test_callers").get(0).asText());
+        assertEquals("p.Other it/java/p/Other.java", fact.path("test_callers").get(1).asText());
+        assertEquals(List.of("p.OnlyTypeTest"), fact.path("declaring_class_tests").valueStream().map(JsonNode::asText).toList());
         assertTrue(fact.path("coverage").path("scan_complete").asBoolean());
         assertEquals(1, fact.path("coverage").path("incomplete_reasons").size());
         assertFalse(fact.path("coverage").has("snapshot_freshness"));

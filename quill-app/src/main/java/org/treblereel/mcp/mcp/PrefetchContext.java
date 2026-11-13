@@ -238,7 +238,7 @@ public final class PrefetchContext {
     /** Every session pays for this context once; replays of recorded packets chose the limit. */
     static final int CONTEXT_LIMIT_BYTES=5000;
     /** In removal order, at any depth; these hold little that an answer needs. Limits and coverage never go. */
-    private static final List<String> OPTIONAL_FIELDS=List.of("class_occurrences","meta_annotations","dependency_metrics",
+    private static final List<String> OPTIONAL_FIELDS=List.of("caller_result_use","class_occurrences","meta_annotations","dependency_metrics",
             "external_dependencies","external_dependency_breakdown","test_classes","related_source_files",
             "symbol_id","descriptor","_meta","generated_classes","generated_creation_evidence","override_evidence",
             "methods","field_read_source","same_event_observers");

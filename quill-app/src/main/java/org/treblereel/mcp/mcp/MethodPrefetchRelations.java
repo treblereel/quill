@@ -30,7 +30,19 @@ final class MethodPrefetchRelations {
      * Callers become one line per class (class, file, calling methods) and coverage keeps its
      * verdict, gaps and compact caller line references.
      */
+    /** src/main|test/java/{package path}/{top-level class}.java, which the class name already gives. */
+    static boolean conventionalSource(String className, String source) {
+        String path = className.split("\\$", 2)[0].replace('.', '/') + ".java";
+        return source.equals("src/main/java/" + path) || source.equals("src/test/java/" + path);
+    }
+
     static void compactImpact(ObjectNode fact) {
+        // Its own field, so the budget drops it before halving callers (V63 CQ-046: test_callers were the answer).
+        ArrayNode resultUse = JSON.createArrayNode();
+        for (JsonNode caller : fact.path("production_callers"))
+            for (JsonNode method : caller.path("methods"))
+                if (method.hasNonNull("result_use")) resultUse.add(caller.path("class").asText() + "#"
+                        + method.path("method").asText() + " " + method.get("result_use").asText());
         for (String field : List.of("production_callers", "test_callers", "unclassified_callers",
                 "indirect_production")) {
             if (!(fact.get(field) instanceof ArrayNode callers)) continue;
@@ -41,14 +53,20 @@ final class MethodPrefetchRelations {
                         + (method.has("depth") ? "@" + method.path("depth").asInt() : "")
                         + (method.hasNonNull("evidence_lines") ? " lines "
                             + (method.get("evidence_lines").isTextual() ? method.get("evidence_lines").asText()
-                                : method.get("evidence_lines").toString()) : "")
-                        // The line is already named; the statement and what follows it are the evidence.
-                        + (method.hasNonNull("result_use") ? " uses result: "
-                            + method.get("result_use").asText().replaceFirst("^line \\d+: ", "") : "")));
-                lines.add(caller.path("class").asText() + " " + caller.path("source").asText()
+                                : method.get("evidence_lines").toString()) : "")));
+                String source = conventionalSource(caller.path("class").asText(), caller.path("source").asText())
+                        ? "" : " " + caller.path("source").asText();
+                lines.add(caller.path("class").asText() + source
                         + (methods.isEmpty() ? "" : " via " + String.join(", ", methods)));
             }
             fact.set(field, lines);
+        }
+        if (!resultUse.isEmpty()) fact.set("caller_result_use", resultUse);
+        // A declaring-class test that also calls the method is already a test caller.
+        if (fact.get("declaring_class_tests") instanceof ArrayNode declaring) {
+            Set<String> callers = new java.util.HashSet<>();
+            fact.path("test_callers").forEach(line -> callers.add(line.asText().split(" ", 2)[0]));
+            for (int i = declaring.size() - 1; i >= 0; i--) if (callers.contains(declaring.get(i).asText())) declaring.remove(i);
         }
         if (fact.get("coverage") instanceof ObjectNode coverage) {
             ObjectNode compact = JSON.createObjectNode();

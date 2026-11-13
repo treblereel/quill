@@ -262,4 +262,16 @@ class PrefetchContextTest {
         PrefetchContext.boundContext(data);
         org.junit.jupiter.api.Assertions.assertTrue(data.path("facts").get(0).has("dependency_interceptors"),data.path("context_omitted_fields").toString());
     }
+    // V63 CQ-046: callers' result use pushed the impact over budget and halved test_callers, the answer to a which-tests question.
+    @Test void theBudgetDropsCallerResultUseBeforeHalvingTestCallers() throws Exception {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var data=json.createObjectNode();
+        var fact=data.putArray("facts").addObject().put("kind","direct_method_impact").put("target","x.A");
+        fact.putArray("test_callers").add("x.ATest "+"t".repeat(600)).add("x.BTest "+"t".repeat(600));
+        fact.putArray("caller_result_use").add("x.B#run line 3: var r = a.resolve(n); then r.get() (line 4) "+"r".repeat(300));
+        fact.put("other","z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES-1450));
+        PrefetchContext.boundContext(data);
+        org.junit.jupiter.api.Assertions.assertEquals(2,data.path("facts").get(0).path("test_callers").size(),data.path("context_omitted_fields").toString());
+        org.junit.jupiter.api.Assertions.assertFalse(data.path("facts").get(0).has("caller_result_use"));
+    }
 }

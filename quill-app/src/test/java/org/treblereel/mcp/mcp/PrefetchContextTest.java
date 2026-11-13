@@ -222,4 +222,21 @@ class PrefetchContextTest {
         assertEquals("no application class extends or implements jakarta.enterprise.event.Event (of 2 indexed); no application bean has it among its bean types, @Typed included (of 1)",
                 fact.path("application_candidates_checked").asText(),pack.toString());
     }
+    // V41 CQ-023: given the Instance injection point and its @LookupIfProperty candidate, agents read the source for how the field is used.
+    @Test void anInjectionPointNamesWhereItsFieldIsReadWithTheSourceLine() throws Exception {
+        java.nio.file.Files.writeString(root.resolve("Consumer.java"), "class Consumer {\n  Event<Message> events;\n  void run(Message m) { events.fire(m); }\n}\n");
+        var db=QuillDatabase.create(root.resolve("usage.db"));
+        IndexWriter.writeIncremental(db,new IndexFixture()
+                .classes(List.of(new ClassRecord(0,"x.Consumer","CLASS","java.lang.Object",List.of(),"Consumer.java",1,true,10)))
+                .beans(List.of(new BeanRecord(0,1,"CLASS","@Singleton",List.of("@Default"),List.of(),false,null,null,null,null,List.of("x.Consumer"))))
+                .injectionPoints(List.of(InjectionPointRecord.staticAnalysis(0,1,"FIELD","jakarta.enterprise.event.Event<x.Message>",List.of("@Default"),"events",null,false,InjectionPointRecord.STATIC_CDI).asCdiBuiltin()))
+                .dependencies(List.of()).metadata(Map.of("index_id","usage","project_root",root.toString())).snapshot());
+        db.useHandle(handle->{
+            handle.execute("INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations) VALUES (1,'FIELD','events','events','Ljakarta/enterprise/event/Event;','jakarta.enterprise.event.Event','[]','','[\"jakarta.inject.Inject\"]')");
+            handle.execute("INSERT INTO field_accesses(from_class_id,from_method,from_descriptor,to_class_id,field_name,field_descriptor,access_kind,evidence_lines) VALUES (1,'run','(Lx/Message;)V',1,'events','Ljakarta/enterprise/event/Event;','read_instance','[3]')");
+        });
+        var pack=TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"Что внедрено в x.Consumer#events?"));
+        assertEquals(List.of("run line 3: void run(Message m) { events.fire(m); }"),
+                pack.path("facts").get(0).path("used_in").valueStream().map(JsonNode::asText).toList(),pack.toString());
+    }
 }

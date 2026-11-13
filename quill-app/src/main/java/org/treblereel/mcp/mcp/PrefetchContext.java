@@ -145,6 +145,10 @@ public final class PrefetchContext {
             if(!candidates.isEmpty())fact.set("instance_candidates",JSON.valueToTree(candidates));
             var observers=ClassPrefetchRelations.eventObservers(db,required);
             if(!observers.isEmpty())fact.set("observers",JSON.valueToTree(observers));
+            if("FIELD".equals(point.path("kind").asText())){
+                var used=fieldReads(db,points.path("target").asText(),name);
+                if(!used.isEmpty())fact.set("used_in",JSON.valueToTree(used));
+            }
             if(point.path("resolved_to").isNull() || point.path("resolved_to").isMissingNode()){
                 String checked=applicationCandidatesChecked(db,required);
                 if(checked!=null)fact.put("application_candidates_checked",checked);
@@ -154,6 +158,54 @@ public final class PrefetchContext {
         missing.addObject().put("target",owner+"#"+name).put("status","not_an_injection_point");
         return com.fasterxml.jackson.databind.node.NullNode.getInstance();
     }
+    private static final int FIELD_READ_LIMIT=6;
+
+    /**
+     * Where an injected field is read, as "method line N: source line". V41 CQ-023: given the
+     * injection point and its candidates, agents still opened the source to see how it is used.
+     */
+    static List<String> fieldReads(ReadQueryContext db,String owner,String field) throws Exception {
+        var rows=db.jdbi().withHandle(h->h.createQuery("""
+                SELECT fc.class_name AS reader, fc.source_file, a.from_method, a.evidence_lines
+                FROM field_accesses a JOIN classes tc ON tc.id=a.to_class_id JOIN classes fc ON fc.id=a.from_class_id
+                WHERE tc.class_name=:owner AND a.field_name=:field AND a.access_kind LIKE 'read%'
+                ORDER BY fc.class_name, a.from_method""").bind("owner",owner).bind("field",field).mapToMap().list());
+        String projectRoot=db.index.getMetadata().get("project_root");
+        List<String> lines=new ArrayList<>();
+        Map<String,List<String>> sources=new HashMap<>();
+        for(var row:rows){
+            String method=String.valueOf(row.get("from_method")).replaceFirst("^lambda\\$(.+)\\$\\d+$","$1 (lambda)");
+            String reader=String.valueOf(row.get("reader"));
+            String label=reader.equals(owner)?method:reader+"#"+method;
+            List<String> file=List.of();
+            if(projectRoot!=null && row.get("source_file")!=null){
+                file=sources.computeIfAbsent(String.valueOf(row.get("source_file")),path->{
+                    try{return java.nio.file.Files.readAllLines(java.nio.file.Path.of(projectRoot).resolve(path));}
+                    catch(Exception unreadable){return List.of();}
+                });
+            }
+            for(JsonNode number:JSON.readTree(String.valueOf(row.get("evidence_lines")))){
+                int n=number.asInt();
+                // A multi-line statement starts at the evidence line; show the line naming the field, through its end.
+                int at=n;
+                for(int i=n;i>0 && i<=file.size() && i<n+5;i++)if(file.get(i-1).contains(field)){at=i;break;}
+                StringBuilder statement=new StringBuilder();
+                for(int i=at;i>0 && i<=file.size() && i<at+3;i++){
+                    statement.append(statement.isEmpty()?"":" ").append(file.get(i-1).strip());
+                    String part=file.get(i-1).strip();
+                    if(part.endsWith(";") || part.endsWith("{") || part.endsWith("}"))break;
+                }
+                n=at;
+                String code=statement.toString();
+                if(code.length()>140)code=code.substring(0,140)+"...";
+                String line=label+" line "+n+(code.isEmpty()?"":": "+code);
+                if(!lines.contains(line))lines.add(line);
+                if(lines.size()>=FIELD_READ_LIMIT)return lines;
+            }
+        }
+        return lines;
+    }
+
     /**
      * The scope a "no application bean" rests on: application classes extending or implementing the
      * raw required type (transitively through indexed classes) and beans listing it, @Typed included.

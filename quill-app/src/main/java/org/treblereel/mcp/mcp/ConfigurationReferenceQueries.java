@@ -19,6 +19,11 @@ import org.jdbi.v3.core.Jdbi;
 
 /** Searches normalized configuration definitions and their consumers. */
 final class ConfigurationReferenceQueries {
+    /** Documented MicroProfile Config and Quarkus behaviour, not read from the project. */
+    static final String SOURCE_PRECEDENCE = "MicroProfile Config: of the sources defining a key, the one with the higher config_ordinal wins "
+            + "(documented, not read from dependency bytecode). Quarkus defaults: system properties 400, environment variables 300, "
+            + ".env in the working directory 295, config/application.properties in the working directory 260, "
+            + "application.properties on the classpath 250, META-INF/microprofile-config.properties 100; a source may set its own config_ordinal";
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String BASE_KEY = "(CASE WHEN d.kind <> 'persistence_unit' AND substr(d.key,1,1)='%' AND instr(d.key,'.')>1 THEN substr(d.key,instr(d.key,'.')+1) ELSE d.key END)";
@@ -68,6 +73,8 @@ final class ConfigurationReferenceQueries {
             result.put("kind", normalizedKind);
             putNullable(result, "module", module);
             result.put("view", view).put("resolution_scope", "indexed declarations, not effective runtime values");
+            // V41/V62 CQ-038: without the rule Codex read SmallRye's comparator bytecode to confirm it.
+            if (view.equals("declared") && key != null && !key.isBlank()) result.put("source_precedence", SOURCE_PRECEDENCE);
             ConfigurationSourceEvidence source = view.equals("declared") ? new ConfigurationSourceEvidence(reader) : null;
             ArrayNode values = result.putArray("references");
             for (Map<String, Object> reference : references) {

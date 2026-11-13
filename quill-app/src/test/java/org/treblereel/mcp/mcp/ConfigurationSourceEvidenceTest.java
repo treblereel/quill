@@ -28,6 +28,14 @@ class ConfigurationSourceEvidenceTest {
         db.useHandle(h->h.execute("INSERT INTO configuration_usages(key,kind,class_id,class_name,member,annotation,source,module,source_set) VALUES (?,'config_key',1,'p.Fixture',?,'org.eclipse.microprofile.config.inject.ConfigProperty','src/main/java/p/Fixture.java','.','main')",key,member));
     }
     JsonNode query(String key,String cls,String view) throws Exception {return JSON.readTree(new ConfigurationReferenceQueries().find(db,key,cls,"all",null,100,0,view));}
+    /** V41/V62 CQ-038: Codex read SmallRye's ConfigSourceComparator bytecode, up to 14 KB a call, to confirm the higher ordinal wins. */
+    @Test void aDeclaredKeyStatesHowSourcesTakePrecedence() throws Exception {
+        file("application.properties","limits.timeout=5s\n");definition("limits.timeout","property","application.properties",1);
+        String rule=query("limits.timeout",null,"declared").path("source_precedence").asText();
+        assertTrue(rule.startsWith("MicroProfile Config: of the sources defining a key, the one with the higher config_ordinal wins"),rule);
+        assertTrue(rule.contains("application.properties on the classpath 250"),rule);
+        assertFalse(query("limits.timeout",null,"index").has("source_precedence"));
+    }
     @Test void metadataContractAndProfiledDefinitionsRemainSeparateFromEffectiveValues() throws Exception {
         file("application.properties","limits.timeout=5s\n%prod.limits.timeout=10s\n");
         definition("limits.timeout","property","application.properties",1);definition("%prod.limits.timeout","property","application.properties",2);usage("limits.timeout","active");

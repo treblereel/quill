@@ -108,6 +108,25 @@ class CompiledOutputInspectorTest {
     }
 
     @Test
+    void scriptsAndResourcesWithCopiedOutputDoNotRequireMainBytecode() throws Exception {
+        // apollo-buildtools: src/main/scripts + src/main/resources, target/classes holds only copied resources.
+        write(root.resolve("pom.xml"), "<project><packaging>pom</packaging><modules><module>code</module><module>tools</module></modules></project>");
+        Path code = root.resolve("code"), tools = root.resolve("tools");
+        write(code.resolve("pom.xml"), "<project/>");
+        write(code.resolve("src/main/java/App.java"), "class App {}");
+        write(code.resolve("target/classes/App.class"), "main bytecode");
+        resources(tools);
+        write(tools.resolve("src/main/scripts/deploy.sh"), "#!/bin/sh");
+        write(tools.resolve("target/classes/plan.yaml"), "steps: []");
+        long now = System.currentTimeMillis();
+        for (Path p : java.util.List.of(root.resolve("pom.xml"), code.resolve("pom.xml"), code.resolve("src/main/java/App.java"),
+                tools.resolve("pom.xml"), tools.resolve("src/main/resources/plan.yaml"), tools.resolve("src/main/scripts/deploy.sh")))
+            Files.setLastModifiedTime(p, FileTime.fromMillis(now - 2000));
+        assertEquals(CompiledOutputInspector.State.FRESH, CompiledOutputInspector.inspect(root).state());
+        assertEquals(CompiledOutputInspector.State.NOT_APPLICABLE, CompiledOutputInspector.inspect(root, java.util.List.of("tools")).state());
+    }
+
+    @Test
     void externalCustomSourceRootIsNotInferredToBeResourceOnly() throws Exception {
         resources(root);
         write(root.resolve("pom.xml"), "<project><build><sourceDirectory>../external-code</sourceDirectory></build></project>");

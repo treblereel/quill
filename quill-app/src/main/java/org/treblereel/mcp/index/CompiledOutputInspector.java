@@ -129,9 +129,10 @@ public final class CompiledOutputInspector {
         for (Path module : discovery.moduleDirectories()) {
             var compiled = outputs.getOrDefault(module, List.of());
             var evidence = compilation(module, "main", compiled.stream().map(ProjectLayout.CompiledOutput::directory).toList(), observed);
+            long output = compiled.stream().mapToLong(directory -> newestModified(directory.directory(), false)).max().orElse(0);
+            // An output directory holding only copied resources is not bytecode evidence.
             modules.put(moduleName(root, module), new Module(newestMainContent(module), newestModuleBuildInput(module),
-                    compiled.stream().mapToLong(output -> newestModified(output.directory(), false)).max().orElse(0),
-                    !compiled.isEmpty(), evidence, !compiled.isEmpty() || evidence != null || !resourceOnlyMain(module)));
+                    output, !compiled.isEmpty(), evidence, output > 0 || evidence != null || !resourceOnlyMain(module)));
         }
         var sourceSets = new java.util.ArrayList<com.fasterxml.jackson.databind.JsonNode>();
         for (Path module : discovery.moduleDirectories()) {
@@ -207,8 +208,12 @@ public final class CompiledOutputInspector {
         return ProjectCodeExpectation.inspect(root,BuildSystem.detect(root))==ProjectCodeExpectation.State.METADATA_ONLY;
     }
 
+    /** Maven standard-layout directories under src/main that are copied or packaged, never compiled. */
+    private static final List<String> NON_COMPILED_MAIN = List.of("resources", "scripts", "filters", "config", "assembly");
+
     private static boolean resourceOnlyMain(Path module) {
-        if (!Files.isRegularFile(module.resolve("pom.xml")) || !Files.isDirectory(module.resolve("src/main/resources"))) return false;
+        var nonCompiled = NON_COMPILED_MAIN.stream().map(name -> module.resolve("src/main").resolve(name)).toList();
+        if (!Files.isRegularFile(module.resolve("pom.xml")) || nonCompiled.stream().noneMatch(Files::isDirectory)) return false;
         try {
             String pom = Files.readString(module.resolve("pom.xml"));
             // Without compiler evidence, custom/external source roots remain class-producing.
@@ -219,7 +224,7 @@ public final class CompiledOutputInspector {
                 return paths.noneMatch(path -> Files.isSymbolicLink(path)
                         || (path.toString().endsWith(".java") || path.toString().endsWith(".kt")
                             || Files.isRegularFile(path) && path.startsWith(module.resolve("src/main"))
-                                && !path.startsWith(module.resolve("src/main/resources")))
+                                && nonCompiled.stream().noneMatch(path::startsWith))
                         && tests.stream().noneMatch(path::startsWith));
             }
         } catch (IOException | java.io.UncheckedIOException failure) {

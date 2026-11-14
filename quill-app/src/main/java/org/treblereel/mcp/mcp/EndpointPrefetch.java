@@ -45,6 +45,8 @@ final class EndpointPrefetch {
         if(!sourcesCurrent(db,root,owners))return result.put("status","source_hash_unavailable_or_changed");
         result.put("endpoint_anchor",verb+" "+path);
         if(alreadyDelivered)return result.put("already_delivered",true);
+        String security=EndpointSecurity.describe(db,endpoint.path("declaring_class").asText(),endpoint.path("method").asText(),endpoint.path("descriptor").asText());
+        if(security!=null && endpoint instanceof ObjectNode node)node.put("security",security);
         facts.addObject().put("kind","endpoint").set("endpoint",endpoint);
         var methods=JSON.createArrayNode();Set<String> seen=new HashSet<>();
         addMethod(db,methods,seen,endpoint.path("declaring_class").asText(),endpoint.path("method").asText(),endpoint.path("descriptor").asText(),true);
@@ -59,10 +61,10 @@ final class EndpointPrefetch {
                 .add((methods.path(0).path("source_evidence").path("source_complete").asBoolean()
                         ? "Only the HTTP handler body is preloaded; callee bodies remain available on demand."
                         : "No method body is preloaded (" + methods.path(0).path("source_evidence").path("status").asText("source unavailable")
-                                + "); read the handler and callees on demand.")
-                        + " Compiler-generated helpers are not independent declaration targets.")
-                .add("Injection fields are restricted to declared fields accessed by each method. Configuration candidates cover directly indexed owned-field/programmatic reads only; indirect framework settings and overload-ambiguous programmatic reads are not inferred.")
-                .add("DI uses the indexed default application context, not an inferred runtime profile. Previously emitted facts are suppressed per session; follow-up questions reuse the selected operation until another explicit target or route is given.");
+                                + "); read the handler and callees on demand."))
+                // V65 CQ-032: shorter statements leave the budget for the handler body and its security providers.
+                .add("Injection and configuration rows cover each method's own fields and direct reads; framework settings are not inferred.")
+                .add("DI uses the default indexed context, not a runtime profile. Facts already sent this session are not repeated.");
         return result;
     }
     private static String routePath(String value){

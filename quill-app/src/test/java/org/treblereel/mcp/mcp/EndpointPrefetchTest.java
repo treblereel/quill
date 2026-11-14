@@ -62,6 +62,24 @@ class EndpointPrefetchTest {
         assertEquals("fetch",methods.path(0).path("method").asText(),packet.toString());
         assertTrue(methods.path(0).path("source_evidence").path("source").asText().contains("service.read()"),packet.toString());
     }
+    /** V65 CQ-032: Claude ran up to 8 search_classes (PermissionChecker, SecurityIdentity, RbacHttp...) to find what grants @PermissionsAllowed. */
+    @Test void aSecuredHandlerNamesTheApplicationSecurityProviders() throws Exception {
+        var db=JavaEvidenceFixture.index(root,"package p; class Fixture { int fetch(){ return 1; }} class Auth {} class Other {}");
+        try {
+            routes(db,"GET");
+            db.useHandle(h->h.execute("UPDATE class_members SET annotations='[\"io.quarkus.security.PermissionsAllowed\",\"jakarta.ws.rs.GET\"]' WHERE name='fetch'"));
+            db.useHandle(h->h.execute("UPDATE classes SET interfaces='[\"io.quarkus.vertx.http.runtime.security.HttpAuthenticationMechanism\"]' WHERE class_name='p.Auth'"));
+            var security=TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"GET /warehouse/items/{key}")).path("facts").get(0).path("endpoint").path("security").asText();
+            assertTrue(security.startsWith("@PermissionsAllowed is checked by Quarkus against the request's SecurityIdentity"),security);
+            assertTrue(security.contains("p.Auth (HttpAuthenticationMechanism)"),security);
+            assertFalse(security.contains("p.Other"),security);
+            db.useHandle(h->h.execute("UPDATE classes SET interfaces='[]' WHERE class_name='p.Auth'"));
+            var none=TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"GET /warehouse/items/{key} again")).path("facts").get(0).path("endpoint").path("security").asText();
+            assertTrue(none.contains("no application HttpAuthenticationMechanism"),none);
+            db.useHandle(h->h.execute("UPDATE class_members SET annotations='[\"jakarta.ws.rs.GET\"]' WHERE name='fetch'"));
+            assertFalse(TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"GET /warehouse/items/{key}")).path("facts").get(0).path("endpoint").has("security"));
+        } finally {}
+    }
     @Test void anInjectionPointIsOneLine() throws Exception {
         var json=new ObjectMapper();
         assertEquals("reportAggregator io.cryostat.reports.AnalysisReportAggregator -> io.cryostat.reports.AnalysisReportAggregator @Singleton",

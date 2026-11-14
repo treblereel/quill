@@ -166,7 +166,13 @@ final class SymbolUsageQueries {
                     cls.className(), bytecodeName, selected.descriptor(), "call", root.path("symbol_id").asText(), usage.evidenceLines()));
             if (countedClasses.add(usage.fromClassId())) naiveTokens += usage.fromSourceTokens();
         }
-        limitations(root).add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
+        ArrayNode notes = limitations(root);
+        notes.add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
+        ObjectNode expressions = "METHOD".equals(selected.kind()) ? ExpressionReferences.find(reader, cls, selected.name()) : null;
+        if (expressions != null) {
+            root.set("expression_references", expressions);
+            notes.add("Calls written in annotation expressions (SpEL) are listed in expression_references, not in usages");
+        }
         root.put("normalization_truncated", normalized.truncated());
         root.put("answer_complete", !normalized.truncated());
         if (!kotlin) QueryMetrics.measure("dispatch_callers", () -> dispatch.appendPossibleCallers(root, cls, selected, limit, offset));

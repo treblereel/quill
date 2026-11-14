@@ -20,7 +20,7 @@ final class MethodImpactQueries {
                 .put("scope","direct selected-member consumers; bounded indirect paths reported separately")
                 .put("runtime_execution_proven",false);
         copy(refs,result,"target","name","descriptor","signature","symbol_id","location","coverage",
-                "total","showing","limit","offset","has_more","truncated","limitations","_meta");
+                "total","showing","limit","offset","has_more","truncated","limitations","expression_references","_meta");
         var lookup=ClassTargetResolver.resolve(db,target);
         if(lookup.error()!=null)return ClassTargetResolver.errorResponse(JSON,lookup,target);
         result.put("class",lookup.cls().className());
@@ -101,6 +101,8 @@ final class MethodImpactQueries {
         categories.putObject("total").put("caller_methods",methods.size()).put("call_sites",invocations)
                 .put("consumer_files",counts.path("consumer_files").asInt()).put("files_including_declaration",files.size());
         categories.put("call_site_definition","indexed invocation instructions, not caller methods or runtime executions");
+        if(refs.has("expression_references"))
+            categories.put("expression_references",refs.path("expression_references").path("total").asInt());
         result.set("production_callers",group(production));result.set("test_callers",group(tests));
         result.set("declaring_class_tests",declaringClassTests(db,lookup.cls().id(),limit));
         result.set("unclassified_callers",group(unknown));

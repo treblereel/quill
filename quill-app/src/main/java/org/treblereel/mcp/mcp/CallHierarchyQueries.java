@@ -194,6 +194,12 @@ final class CallHierarchyQueries {
                 : "Only direct calls present in indexed application bytecode are reported");
         limitations.add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
         limitations.add("Reflection, generated-at-runtime calls, and framework callbacks are not inferred");
+        ObjectNode expressions = selected != null && "METHOD".equals(selected.kind()) && !normalizedDirection.equals("outbound")
+                ? ExpressionReferences.find(reader, cls, selected.name()) : null;
+        if (expressions != null) {
+            root.set("expression_references", expressions);
+            limitations.add("Calls written in annotation expressions (SpEL) are listed in expression_references, not in calls");
+        }
 
         root.putObject("edge_defaults").put("edge_kind", "call")
                 .put("execution_semantics", "invocation_instruction");

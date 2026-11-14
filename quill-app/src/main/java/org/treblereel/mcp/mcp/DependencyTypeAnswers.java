@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.db.BeanRepository.TypeInjectionPoint;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 
@@ -33,12 +34,7 @@ final class DependencyTypeAnswers {
                 || target.contains("/") || target.lastIndexOf('.') <= 0) return null;
         if (!ClassTargetResolver.errorResponse(JSON, lookup, target).path("candidates").isEmpty()) return null;
         if (!reader.symbols.searchClasses(target.substring(0, target.lastIndexOf('.')) + ".%", 1).isEmpty()) return null;
-        boolean referenced = reader.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT EXISTS(SELECT 1 FROM class_external_deps WHERE external_type = :type)
-                    OR EXISTS(SELECT 1 FROM injection_points WHERE target_type = :type OR target_type LIKE :generic)
-                    OR EXISTS(SELECT 1 FROM class_members WHERE annotations LIKE :quoted)""")
-                .bind("type", target).bind("generic", target + "<%").bind("quoted", "%\"" + target + "\"%")
-                .mapTo(Boolean.class).one());
+        boolean referenced = reader.usages.isExternalTypeReferenced(target);
         return referenced ? target : null;
     }
 
@@ -95,15 +91,11 @@ final class DependencyTypeAnswers {
     static String beans(ReadQueryContext reader, String type) {
         ObjectNode root = header(type);
         ArrayNode beans = root.putArray("beans");
-        reader.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT b.kind, b.scope, b.member_name, b.framework, c.class_name, d.class_name AS declaring_class
-                FROM beans b JOIN classes c ON c.id = b.class_id LEFT JOIN classes d ON d.id = b.declaring_class_id
-                WHERE b.bean_types LIKE :quoted AND c.lifecycle = 'current' ORDER BY c.class_name, b.member_name""")
-                .bind("quoted", "%\"" + type + "\"%").mapToMap().list()).forEach(row -> beans.add(
-                        (row.get("member_name") != null ? (row.get("declaring_class") != null ? row.get("declaring_class") : row.get("class_name"))
-                                + "#" + row.get("member_name") : String.valueOf(row.get("class_name")))
-                                + " (" + BeanTerms.kind(row.get("framework"), row.get("kind"))
-                                + (row.get("scope") != null ? " " + BeanTerms.scope(row.get("framework"), row.get("scope")) : "") + ")"));
+        reader.beans.findCurrentTypeBeans(type).forEach(row -> beans.add(
+                        (row.memberName() != null ? (row.declaringClass() != null ? row.declaringClass() : row.className())
+                                + "#" + row.memberName() : String.valueOf(row.className()))
+                                + " (" + BeanTerms.kind((Object) row.framework(), row.kind())
+                                + (row.scope() != null ? " " + BeanTerms.scope((Object) row.framework(), row.scope()) : "") + ")"));
         ArrayNode points = injectionPoints(reader, type);
         root.set("injection_points", points);
         appendDependencyBeans(root, reader, type);
@@ -121,19 +113,10 @@ final class DependencyTypeAnswers {
 
     static ArrayNode injectionPoints(ReadQueryContext reader, String type) {
         ArrayNode lines = JSON.createArrayNode();
-        reader.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT c.class_name AS owner, ip.field_name, ip.kind, ip.target_type, ip.resolution_status, ip.resolution_reason,
-                       rb.kind AS bean_kind, rb.scope AS bean_scope, rb.member_name AS bean_member, rb.framework AS bean_framework,
-                       rc.class_name AS bean_class, dc.class_name AS bean_declaring_class
-                FROM injection_points ip JOIN beans b ON b.id = ip.bean_id JOIN classes c ON c.id = b.class_id
-                LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id LEFT JOIN classes rc ON rc.id = rb.class_id
-                LEFT JOIN classes dc ON dc.id = rb.declaring_class_id
-                WHERE (ip.target_type = :type OR ip.target_type LIKE :generic) AND c.lifecycle = 'current'
-                ORDER BY c.class_name, ip.field_name, ip.target_type""")
-                .bind("type", type).bind("generic", type + "<%").mapToMap().list()).forEach(row -> {
-                    String point = row.get("owner") + "." + (row.get("field_name") != null ? row.get("field_name")
-                            : String.valueOf(row.get("kind")).toLowerCase());
-                    if (!type.equals(row.get("target_type"))) point += " (" + row.get("target_type") + ")";
+        reader.beans.findTypeInjectionPoints(type).forEach(row -> {
+                    String point = row.owner() + "." + (row.fieldName() != null ? row.fieldName()
+                            : String.valueOf(row.kind()).toLowerCase());
+                    if (!type.equals(row.targetType())) point += " (" + row.targetType() + ")";
                     lines.add(point + " -> " + resolution(row));
                 });
         return lines;
@@ -142,27 +125,23 @@ final class DependencyTypeAnswers {
     /** Beans the dependencies' own bean archives declare with the type, such as VertxProducer#mutinyEventBus. */
     private static void appendDependencyBeans(ObjectNode root, ReadQueryContext reader, String type) {
         ArrayNode lines = JSON.createArrayNode();
-        reader.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT class_name, kind, member_name, scope, artifact, framework FROM external_beans
-                WHERE bean_types LIKE :quoted ORDER BY class_name, member_name""")
-                .bind("quoted", "%\"" + type + "\"%").mapToMap().list()).forEach(row -> lines.add(
-                        row.get("class_name") + (row.get("member_name") != null ? "#" + row.get("member_name") : "")
-                                + " (" + BeanTerms.kind(row.get("framework"), row.get("kind"))
-                                + (row.get("scope") != null ? " " + BeanTerms.scope(row.get("framework"), row.get("scope")) : "")
-                                + (row.get("artifact") != null ? ", " + row.get("artifact") : "") + ")"));
+        reader.beans.findExternalTypeBeans(type).forEach(row -> lines.add(
+                        row.className() + (row.memberName() != null ? "#" + row.memberName() : "")
+                                + " (" + BeanTerms.kind((Object) row.framework(), row.kind())
+                                + (row.scope() != null ? " " + BeanTerms.scope((Object) row.framework(), row.scope()) : "")
+                                + (row.artifact() != null ? ", " + row.artifact() : "") + ")"));
         if (!lines.isEmpty()) root.set("dependency_beans", lines);
     }
 
-    private static String resolution(Map<String, Object> row) {
-        if (row.get("bean_kind") != null) {
-            String owner = row.get("bean_declaring_class") != null ? String.valueOf(row.get("bean_declaring_class"))
-                    : String.valueOf(row.get("bean_class"));
-            String bean = row.get("bean_member") != null ? owner + "#" + row.get("bean_member") : String.valueOf(row.get("bean_class"));
-            return bean + " (" + BeanTerms.kind(row.get("bean_framework"), row.get("bean_kind"))
-                    + (row.get("bean_scope") != null ? " " + BeanTerms.scope(row.get("bean_framework"), row.get("bean_scope")) : "") + ")";
+    private static String resolution(TypeInjectionPoint row) {
+        if (row.beanKind() != null) {
+            String owner = row.beanDeclaringClass() != null ? row.beanDeclaringClass() : String.valueOf(row.beanClass());
+            String bean = row.beanMember() != null ? owner + "#" + row.beanMember() : String.valueOf(row.beanClass());
+            return bean + " (" + BeanTerms.kind((Object) row.beanFramework(), row.beanKind())
+                    + (row.beanScope() != null ? " " + BeanTerms.scope((Object) row.beanFramework(), row.beanScope()) : "") + ")";
         }
-        if ("BUILTIN_BEAN".equals(row.get("resolution_reason"))) return "built-in bean";
-        if ("NO_CONTEXT_CANDIDATE".equals(row.get("resolution_reason"))) return "no application bean";
-        return row.get("resolution_status") + " " + row.get("resolution_reason");
+        if ("BUILTIN_BEAN".equals(row.resolutionReason())) return "built-in bean";
+        if ("NO_CONTEXT_CANDIDATE".equals(row.resolutionReason())) return "no application bean";
+        return row.resolutionStatus() + " " + row.resolutionReason();
     }
 }

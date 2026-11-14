@@ -786,4 +786,14 @@ public final class UsageRepository {
                 .map((rs, ctx) -> new FieldRead(rs.getString("reader"), rs.getString("source_file"), rs.getString("from_method"),
                         rs.getString("evidence_lines"))).list();
     }
+
+    /** Whether the application uses {@code type}: as an external dependency, an injection point type or an annotation. */
+    public boolean isExternalTypeReferenced(String type) {
+        return handle.createQuery("""
+                SELECT EXISTS(SELECT 1 FROM class_external_deps WHERE external_type = :type)
+                    OR EXISTS(SELECT 1 FROM injection_points WHERE target_type = :type OR target_type LIKE :generic)
+                    OR EXISTS(SELECT 1 FROM class_members WHERE annotations LIKE :quoted)""")
+                .bind("type", type).bind("generic", type + "<%").bind("quoted", "%\"" + type + "\"%")
+                .mapTo(Boolean.class).one();
+    }
 }

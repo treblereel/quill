@@ -703,4 +703,52 @@ public final class BeanRepository {
     public long countAllBeanRows() {
         return handle.createQuery("SELECT COUNT(*) FROM beans").mapTo(Long.class).one();
     }
+
+    /** A current application bean offering a type, with its bean class and producer's declaring class. */
+    public record CurrentTypeBean(String kind, String scope, String memberName, String framework, String className, String declaringClass) {}
+    /** An injection point of a current class requiring a type, with the bean it resolved to. */
+    public record TypeInjectionPoint(String owner, String fieldName, String kind, String targetType, String resolutionStatus,
+            String resolutionReason, String beanKind, String beanScope, String beanMember, String beanFramework,
+            String beanClass, String beanDeclaringClass) {}
+    /** A dependency bean offering a type. */
+    public record ExternalTypeBean(String className, String kind, String memberName, String scope, String artifact, String framework) {}
+
+    /** Beans of current classes whose bean types include {@code type}. */
+    public List<CurrentTypeBean> findCurrentTypeBeans(String type) {
+        return handle.createQuery("""
+                SELECT b.kind, b.scope, b.member_name, b.framework, c.class_name, d.class_name AS declaring_class
+                FROM beans b JOIN classes c ON c.id = b.class_id LEFT JOIN classes d ON d.id = b.declaring_class_id
+                WHERE b.bean_types LIKE :quoted AND c.lifecycle = 'current' ORDER BY c.class_name, b.member_name""")
+                .bind("quoted", "%\"" + type + "\"%")
+                .map((rs, ctx) -> new CurrentTypeBean(rs.getString("kind"), rs.getString("scope"), rs.getString("member_name"),
+                        rs.getString("framework"), rs.getString("class_name"), rs.getString("declaring_class"))).list();
+    }
+
+    /** Injection points of current classes requiring {@code type} itself or parameterized. */
+    public List<TypeInjectionPoint> findTypeInjectionPoints(String type) {
+        return handle.createQuery("""
+                SELECT c.class_name AS owner, ip.field_name, ip.kind, ip.target_type, ip.resolution_status, ip.resolution_reason,
+                       rb.kind AS bean_kind, rb.scope AS bean_scope, rb.member_name AS bean_member, rb.framework AS bean_framework,
+                       rc.class_name AS bean_class, dc.class_name AS bean_declaring_class
+                FROM injection_points ip JOIN beans b ON b.id = ip.bean_id JOIN classes c ON c.id = b.class_id
+                LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id LEFT JOIN classes rc ON rc.id = rb.class_id
+                LEFT JOIN classes dc ON dc.id = rb.declaring_class_id
+                WHERE (ip.target_type = :type OR ip.target_type LIKE :generic) AND c.lifecycle = 'current'
+                ORDER BY c.class_name, ip.field_name, ip.target_type""")
+                .bind("type", type).bind("generic", type + "<%")
+                .map((rs, ctx) -> new TypeInjectionPoint(rs.getString("owner"), rs.getString("field_name"), rs.getString("kind"),
+                        rs.getString("target_type"), rs.getString("resolution_status"), rs.getString("resolution_reason"),
+                        rs.getString("bean_kind"), rs.getString("bean_scope"), rs.getString("bean_member"),
+                        rs.getString("bean_framework"), rs.getString("bean_class"), rs.getString("bean_declaring_class"))).list();
+    }
+
+    /** Dependency beans whose bean types include {@code type}, by class and member. */
+    public List<ExternalTypeBean> findExternalTypeBeans(String type) {
+        return handle.createQuery("""
+                SELECT class_name, kind, member_name, scope, artifact, framework FROM external_beans
+                WHERE bean_types LIKE :quoted ORDER BY class_name, member_name""")
+                .bind("quoted", "%\"" + type + "\"%")
+                .map((rs, ctx) -> new ExternalTypeBean(rs.getString("class_name"), rs.getString("kind"), rs.getString("member_name"),
+                        rs.getString("scope"), rs.getString("artifact"), rs.getString("framework"))).list();
+    }
 }

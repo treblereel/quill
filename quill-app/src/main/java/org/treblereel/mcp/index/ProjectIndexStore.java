@@ -43,6 +43,7 @@ public final class ProjectIndexStore {
     static final long DEFAULT_INDEX_CACHE_BYTES = 1L << 30;
     static final java.time.Duration OUTDATED_GENERATION_GRACE = java.time.Duration.ofDays(1);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ConcurrentMap<Path, Object> VALIDATION_LOCKS = new ConcurrentHashMap<>();
     private static final ConcurrentMap<Path, ValidatedDatabase> VALID_DATABASES =
             new ConcurrentHashMap<>();
 
@@ -315,6 +316,7 @@ public final class ProjectIndexStore {
 
     public static void deleteDatabaseArtifacts(Path dbPath) {
         VALID_DATABASES.remove(dbPath.toAbsolutePath().normalize());
+        VALIDATION_LOCKS.remove(dbPath.toAbsolutePath().normalize());
         for (Path path : List.of(dbPath, Path.of(dbPath + "-wal"), Path.of(dbPath + "-shm"),
                 Path.of(dbPath + "-journal"))) {
             try {
@@ -516,22 +518,44 @@ public final class ProjectIndexStore {
 
     private static Optional<ValidatedDatabase> validatedDatabase(Path database) {
         Path normalized = database.toAbsolutePath().normalize();
-        return Optional.ofNullable(VALID_DATABASES.compute(normalized, (path, cached) -> {
-            try {
-                FileIdentity identity = FileIdentity.read(path);
-                if (cached != null && cached.identity().equals(identity)) return cached;
-                Jdbi jdbi = QuillDatabase.open(path);
-                boolean healthy = jdbi.withHandle(handle -> handle.createQuery("PRAGMA quick_check")
-                        .mapTo(String.class).list().stream().allMatch("ok"::equalsIgnoreCase));
-                if (!healthy) return null;
-                Map<String, String> metadata = jdbi.withHandle(handle -> new IndexRepository(handle).getMetadata());
-                String indexId = metadata.get("index_id");
-                if (indexId == null || indexId.isBlank() || !identity.equals(FileIdentity.read(path))) return null;
-                return new ValidatedDatabase(identity, indexId, metadata.getOrDefault("last_commit", "unknown"));
-            } catch (RuntimeException | IOException unavailable) {
-                return null;
-            }
-        }));
+        FileIdentity identity;
+        try { identity = FileIdentity.read(normalized); }
+        catch (RuntimeException | IOException unavailable) { VALID_DATABASES.remove(normalized); return Optional.empty(); }
+        ValidatedDatabase cached = VALID_DATABASES.get(normalized);
+        if (cached != null && cached.identity().equals(identity)) return Optional.of(cached);
+        // quick_check reads the whole file, seconds for a large index: never under the map's bin lock, which
+        // would stall unrelated paths, and once per path at a time.
+        synchronized (VALIDATION_LOCKS.computeIfAbsent(normalized, ignored -> new Object())) {
+            cached = VALID_DATABASES.get(normalized);
+            if (cached != null && cached.identity().equals(identity)) return Optional.of(cached);
+            ValidatedDatabase validated = validate(normalized, identity);
+            if (validated == null) VALID_DATABASES.remove(normalized);
+            else VALID_DATABASES.put(normalized, validated);
+            forgetMissingDatabases();
+            return Optional.ofNullable(validated);
+        }
+    }
+
+    private static ValidatedDatabase validate(Path path, FileIdentity identity) {
+        try {
+            Jdbi jdbi = QuillDatabase.open(path);
+            boolean healthy = jdbi.withHandle(handle -> handle.createQuery("PRAGMA quick_check")
+                    .mapTo(String.class).list().stream().allMatch("ok"::equalsIgnoreCase));
+            if (!healthy) return null;
+            Map<String, String> metadata = jdbi.withHandle(handle -> new IndexRepository(handle).getMetadata());
+            String indexId = metadata.get("index_id");
+            if (indexId == null || indexId.isBlank() || !identity.equals(FileIdentity.read(path))) return null;
+            return new ValidatedDatabase(identity, indexId, metadata.getOrDefault("last_commit", "unknown"));
+        } catch (RuntimeException | IOException unavailable) {
+            return null;
+        }
+    }
+
+    /** Databases removed outside {@link #deleteDatabaseArtifacts} would otherwise stay remembered for good. */
+    private static void forgetMissingDatabases() {
+        if (VALID_DATABASES.size() + VALIDATION_LOCKS.size() <= 128) return;
+        VALID_DATABASES.keySet().removeIf(path -> !Files.exists(path));
+        VALIDATION_LOCKS.keySet().removeIf(path -> !VALID_DATABASES.containsKey(path) && !Files.exists(path));
     }
 
     public static Optional<RecoveryStatus> readRecovery(Path root) {

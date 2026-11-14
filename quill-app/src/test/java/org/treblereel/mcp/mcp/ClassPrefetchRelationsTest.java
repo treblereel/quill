@@ -118,7 +118,7 @@ class ClassPrefetchRelationsTest {
                 strings(service, "injected_into"));
         assertEquals(List.of("src/test/java/x/ServiceTest.java"), strings(service, "test_classes"));
         assertEquals(List.of("Clock.java", "Consumer.java", "Impl.java"), strings(service, "related_source_files"));
-        assertEquals(List.of("FIELD clock: x.Clock [\"@Default\"] -> x.Clock (CLASS) [RESOLVED]"), strings(impl, "injects"));
+        assertEquals(List.of("FIELD clock: x.Clock [\"@Default\"] -> x.Clock (CLASS @Dependent) [RESOLVED]"), strings(impl, "injects"));
         assertEquals(List.of("x.Consumer#service (FIELD x.Service) [\"@Default\"] [RESOLVED] owner @Singleton"), strings(impl, "injected_into"));
         assertFalse(service.has("injects"));
         // V32/V33 CQ-044: asked to turn a class bean into a producer, no Quill session found the application's producer host.
@@ -205,6 +205,29 @@ class ClassPrefetchRelationsTest {
         assertTrue(discovery.contains("no quarkus.arc.exclude-types"), discovery);
     }
 
+    /** V62 CQ-045: asked about a scope change, Claude read the class for its state and @PreDestroy and opened each dependency for its scope. */
+    @Test
+    void aClassStatesItsInstanceStateAndLifecycleCallbacks() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("state.db"));
+        IndexWriter.writeIncremental(db, new IndexFixture()
+                .classes(List.of(new ClassRecord(0, "x.Cache", "CLASS", "java.lang.Object", List.of(), "Cache.java", 1, true, 10)))
+                .beans(List.of(new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default"), List.of(), false, null, null, null, null, List.of("x.Cache"))))
+                .dependencies(List.of()).metadata(Map.of("index_id", "state")).snapshot());
+        db.useHandle(handle -> {
+            String insert = "INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations,annotation_details) VALUES (1,?,?,?,?,?,'[]',?,?,'[]')";
+            handle.execute(insert, "FIELD", "entries", "entries", "Ljava/util/Map;", "java.util.Map<java.lang.String, x.Client>", "private final", "[]");
+            handle.execute(insert, "FIELD", "hits", "hits", "J", "long", "private", "[]");
+            handle.execute(insert, "FIELD", "LIMIT", "LIMIT", "I", "int", "private static final", "[]");
+            handle.execute(insert, "METHOD", "shutdown", "shutdown():void", "()V", "void", "public", "[\"jakarta.annotation.PreDestroy\"]");
+            handle.execute(insert, "METHOD", "read", "read():void", "()V", "void", "public", "[]");
+        });
+
+        ObjectNode cache = relations(db, "x.Cache");
+
+        assertEquals(List.of("entries java.util.Map<java.lang.String, x.Client> final", "hits long"), strings(cache, "instance_state"), cache.toString());
+        assertEquals(List.of("shutdown() @PreDestroy"), strings(cache, "lifecycle_callbacks"), cache.toString());
+    }
+
     @Test
     void decoratorsAreNamedWithPriorityAndUnresolvedPointsListQualifiedDependencyProviders() throws Exception {
         Jdbi db = QuillDatabase.create(root.resolve("decorators.db"));
@@ -257,7 +280,7 @@ class ClassPrefetchRelationsTest {
                         List.of("@Default"), "fs", 2, false, InjectionPointRecord.STATIC_CDI)))
                 .metadata(Map.of("index_id", "default-bean")).snapshot());
 
-        assertEquals(List.of("FIELD fs: x.FileSystem [\"@Default\"] -> x.Producers#produce (PRODUCER_METHOD) @DefaultBean [RESOLVED]"),
+        assertEquals(List.of("FIELD fs: x.FileSystem [\"@Default\"] -> x.Producers#produce (PRODUCER_METHOD @ApplicationScoped) @DefaultBean [RESOLVED]"),
                 strings(relations(db, "x.Consumer"), "injects"));
         assertTrue(TestReads.read(db, reader -> ClassPrefetchRelations.typeCandidates(reader, "x.FileSystem"))
                 .getFirst().endsWith(" @DefaultBean"));

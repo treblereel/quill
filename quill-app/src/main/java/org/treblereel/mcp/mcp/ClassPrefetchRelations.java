@@ -44,11 +44,39 @@ final class ClassPrefetchRelations {
         return "declared here: " + (declared.isEmpty() ? "none" : String.join(", ", declared)) + "; inherited: " + String.join(", ", owners);
     }
 
+    private static final List<String> LIFECYCLE = List.of("jakarta.annotation.PostConstruct", "jakarta.annotation.PreDestroy",
+            "javax.annotation.PostConstruct", "javax.annotation.PreDestroy");
+
+    /**
+     * Instance fields and @PostConstruct/@PreDestroy methods: what a scope change keeps per instance and when it is
+     * released. V62 CQ-045: Claude read SsarClientCache for its Cache field and @PreDestroy shutdown().
+     */
+    static void appendStateAndLifecycle(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
+        List<Map<String, Object>> members = db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT kind, name, type_name, modifiers, annotations FROM class_members
+                WHERE class_id = :id AND kind IN ('FIELD', 'METHOD') ORDER BY rowid""").bind("id", cls.id()).mapToMap().list());
+        ArrayNode state = JSON.createArrayNode();
+        ArrayNode lifecycle = JSON.createArrayNode();
+        for (var member : members) {
+            String modifiers = " " + member.get("modifiers") + " ";
+            if ("FIELD".equals(member.get("kind")) && !modifiers.contains(" static ") && !String.valueOf(member.get("name")).startsWith("$")) {
+                if (state.size() < 8) state.add(member.get("name") + " " + source(member.get("type_name")) + (modifiers.contains(" final ") ? " final" : ""));
+            } else if ("METHOD".equals(member.get("kind"))) {
+                String annotations = String.valueOf(member.get("annotations"));
+                for (String annotation : LIFECYCLE)
+                    if (annotations.contains("\"" + annotation + "\""))
+                        lifecycle.add(member.get("name") + "() @" + annotation.substring(annotation.lastIndexOf('.') + 1));
+            }
+        }
+        if (!state.isEmpty()) fact.set("instance_state", state);
+        if (!lifecycle.isEmpty()) fact.set("lifecycle_callbacks", lifecycle);
+    }
+
     static void append(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
         List<Map<String, Object>> injectionRows = db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, ip.resolution_reason,
                        rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.kind AS resolved_kind,
-                       rb.is_default AS resolved_default
+                       rb.is_default AS resolved_default, rb.scope AS resolved_scope
                 FROM injection_points ip
                 JOIN beans ob ON ob.id = ip.bean_id
                 LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
@@ -56,6 +84,7 @@ final class ClassPrefetchRelations {
                 WHERE ob.class_id = :id AND (ob.member_name IS NULL OR ob.kind = 'SYNTHETIC')
                 ORDER BY ip.id""").bind("id", cls.id()).mapToMap().list());
         lines(fact, "injects", injectionRows, row -> injects(db, row));
+        appendStateAndLifecycle(db, fact, cls);
         String origin = injectionOrigin(injectionRows);
         if (origin != null && fact.has("injects")) fact.put("injects_origin", origin);
         // A synthetic bean's own dependencies describe the bean; keep them in it, where the budget never drops them.
@@ -381,7 +410,8 @@ final class ClassPrefetchRelations {
                 : row.get("resolved_class") == null ? "not resolved by the application index"
                 + MethodPrefetchRelations.dependencyProviders(db, String.valueOf(row.get("target_type")), row.get("qualifiers"))
                 : row.get("resolved_class") + (row.get("resolved_member") == null ? ""
-                        : "#" + row.get("resolved_member")) + " (" + row.get("resolved_kind") + ")"
+                        : "#" + row.get("resolved_member")) + " (" + row.get("resolved_kind")
+                        + (row.get("resolved_scope") == null ? "" : " " + row.get("resolved_scope")) + ")"
                         + (isSet(row.get("resolved_default")) ? " @DefaultBean" : "");
         return row.get("kind") + " " + row.get("field_name") + ": " + source(row.get("target_type"))
                 + qualifiers(row) + " -> " + resolved + " [" + row.get("resolution_status") + "]";

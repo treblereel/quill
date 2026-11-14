@@ -194,6 +194,12 @@ final class CallHierarchyQueries {
                 : "Only direct calls present in indexed application bytecode are reported");
         limitations.add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
         limitations.add("Reflection, generated-at-runtime calls, and framework callbacks are not inferred");
+        ObjectNode events = selected != null && !normalizedDirection.equals("inbound")
+                ? SpringEventDeliveries.find(reader, cls, bytecodeMethod, descriptor) : null;
+        if (events != null) {
+            root.set("event_deliveries", events);
+            limitations.add("Spring events published on the way are resolved to listeners in event_deliveries; calls stop at publishEvent");
+        }
         ObjectNode expressions = selected != null && "METHOD".equals(selected.kind()) && !normalizedDirection.equals("outbound")
                 ? ExpressionReferences.find(reader, cls, selected.name()) : null;
         if (expressions != null) {

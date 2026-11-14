@@ -12,6 +12,7 @@ import java.util.Map;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.treblereel.mcp.db.BeanRepository.ClassInjection;
 import org.treblereel.mcp.db.IndexFixture;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
@@ -23,19 +24,23 @@ import org.treblereel.mcp.model.InjectionPointRecord;
 
 class ClassPrefetchRelationsTest {
 
+    private static ClassInjection point(String kind, String fieldName) {
+        return new ClassInjection(kind, fieldName, null, null, null, null, null, null, null, false, null, null, null);
+    }
+
     /** V62 CQ-009: Claude read both superclasses in all three sessions to tell inherited dependencies from declared ones. */
     @Test
     void injectionOriginSeparatesDeclaredFromInheritedPoints() {
         assertEquals("declared here: none; inherited: EntityNotificationObserver (bus, logger)",
                 ClassPrefetchRelations.injectionOrigin(List.of(
-                        Map.of("kind", "FIELD", "field_name", "EntityNotificationObserver.bus"),
-                        Map.of("kind", "FIELD", "field_name", "EntityNotificationObserver.logger"))));
+                        point("FIELD", "EntityNotificationObserver.bus"),
+                        point("FIELD", "EntityNotificationObserver.logger"))));
         assertEquals("declared here: mapper, <init>; inherited: Base (bus)",
                 ClassPrefetchRelations.injectionOrigin(List.of(
-                        Map.of("kind", "FIELD", "field_name", "mapper"),
-                        Map.of("kind", "CONSTRUCTOR_PARAM", "field_name", "<init>"),
-                        Map.of("kind", "FIELD", "field_name", "Base.bus"))));
-        assertEquals(null, ClassPrefetchRelations.injectionOrigin(List.of(Map.of("kind", "FIELD", "field_name", "mapper"))));
+                        point("FIELD", "mapper"),
+                        point("CONSTRUCTOR_PARAM", "<init>"),
+                        point("FIELD", "Base.bus"))));
+        assertEquals(null, ClassPrefetchRelations.injectionOrigin(List.of(point("FIELD", "mapper"))));
     }
 
     @TempDir Path root;

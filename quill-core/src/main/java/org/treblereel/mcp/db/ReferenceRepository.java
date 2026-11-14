@@ -307,4 +307,45 @@ public final class ReferenceRepository {
         return handle.createQuery("SELECT key FROM configuration_usages WHERE class_id = :id AND member = :name AND kind = 'config_key' LIMIT 1")
                 .bind("id", classId).bind("name", member).mapTo(String.class).findOne();
     }
+
+    /**
+     * A configuration key a class reads ({@code member}, {@code annotation}) or declares in a test profile
+     * ({@code annotation} is the declaring class, with {@code file}, {@code line}, {@code evidence}).
+     */
+    public record ClassConfiguration(String key, String kind, String member, String annotation, String file,
+            Integer line, String evidence) {}
+    private static Integer nullableInt(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        int value = rs.getInt(column);
+        return rs.wasNull() ? null : value;
+    }
+
+    /** A main-source property declaration. */
+    public record PropertyDeclaration(String file, Integer line, String kind, String evidence) {}
+
+    /** Keys the class or its nested classes read, and test-profile keys they declare, by key. */
+    public List<ClassConfiguration> findClassConfiguration(String className) {
+        return handle.createQuery("""
+                SELECT key, kind, member, annotation, NULL AS file, NULL AS line, NULL AS evidence FROM configuration_usages
+                WHERE class_name = :name OR class_name LIKE :nested
+                UNION ALL
+                SELECT key, kind, NULL, json_extract(evidence, '$.declaring_class'), file, line, evidence FROM configuration_definitions
+                WHERE evidence LIKE :declared OR evidence LIKE :declaredNested
+                ORDER BY 1""")
+                .bind("name", className).bind("nested", className + "$%")
+                .bind("declared", "%\"declaring_class\":\"" + className + "\"%")
+                .bind("declaredNested", "%\"declaring_class\":\"" + className + "$%")
+                .map((rs, ctx) -> new ClassConfiguration(rs.getString("key"), rs.getString("kind"), rs.getString("member"),
+                        rs.getString("annotation"), rs.getString("file"), nullableInt(rs, "line"), rs.getString("evidence"))).list();
+    }
+
+    /** The first two main-source property or YAML declarations of {@code key}, by file and line. */
+    public List<PropertyDeclaration> findMainPropertyDeclarations(String key) {
+        return handle.createQuery("""
+                SELECT file, line, kind, evidence FROM configuration_definitions
+                WHERE key = :key AND kind IN ('property', 'yaml_property') AND COALESCE(source_set, 'main') = 'main'
+                ORDER BY file, line LIMIT 2""")
+                .bind("key", key)
+                .map((rs, ctx) -> new PropertyDeclaration(rs.getString("file"), nullableInt(rs, "line"),
+                        rs.getString("kind"), rs.getString("evidence"))).list();
+    }
 }

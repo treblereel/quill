@@ -682,4 +682,60 @@ public final class UsageRepository {
                 WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor""")
                 .bind("id", classId).bind("name", method).bind("descriptor", descriptor).mapTo(String.class).findOne();
     }
+
+    /** A production class calling an interface, with the distinct {@code name+descriptor} methods it calls. */
+    public record ContractCaller(String className, String sourceFile, String methods) {}
+
+    /** Source files of test classes that depend on the class. */
+    public List<String> findTestSourceFilesDependingOn(int classId) {
+        return handle.createQuery("""
+                SELECT DISTINCT tc.source_file
+                FROM dependencies d JOIN classes tc ON tc.id = d.from_class_id
+                WHERE d.to_class_id = :id AND tc.source_set = 'test' AND tc.source_file IS NOT NULL
+                ORDER BY tc.source_file""")
+                .bind("id", classId).mapTo(String.class).list();
+    }
+
+    /** Production files that inject, extend or implement, or call the class. */
+    public List<String> findRelatedSourceFiles(int classId, String className) {
+        return handle.createQuery("""
+                SELECT DISTINCT oc.source_file
+                FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id
+                JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
+                WHERE (ip.target_type = :name OR ip.target_type LIKE :generic
+                   OR ip.resolved_bean_id IN (SELECT id FROM beans WHERE class_id = :id AND member_name IS NULL))
+                  AND oc.source_file IS NOT NULL
+                UNION
+                SELECT source_file FROM classes
+                WHERE lifecycle = 'current' AND source_file IS NOT NULL
+                  AND (superclass = :name OR interfaces LIKE :interface)
+                UNION
+                SELECT c.source_file FROM method_calls mc JOIN classes c ON c.id = mc.from_class_id
+                WHERE mc.to_class_id = :id AND mc.from_class_id <> :id AND c.lifecycle = 'current'
+                  AND c.source_file IS NOT NULL AND c.source_set = 'main'
+                ORDER BY 1""")
+                .bind("name", className).bind("generic", "%<" + className + ">%")
+                .bind("interface", "%\"" + className + "\"%").bind("id", classId).mapTo(String.class).list();
+    }
+
+    /**
+     * Current production classes calling an interface, or calling a direct implementor's instance method the
+     * interface declares.
+     */
+    public List<ContractCaller> findContractCallers(int interfaceId, String interfaceName) {
+        return handle.createQuery("""
+                SELECT caller.class_name, caller.source_file, group_concat(DISTINCT mc.to_method || mc.to_descriptor) AS methods
+                FROM method_calls mc JOIN classes caller ON caller.id = mc.from_class_id
+                JOIN classes callee ON callee.id = mc.to_class_id
+                WHERE caller.lifecycle = 'current' AND caller.source_set = 'main'
+                  AND (callee.id = :id OR (callee.lifecycle = 'current' AND callee.interfaces LIKE :type
+                    AND EXISTS (SELECT 1 FROM class_members cm WHERE cm.class_id = :id
+                      AND cm.name = mc.to_method AND cm.descriptor = mc.to_descriptor
+                      AND COALESCE(cm.modifiers, '') NOT LIKE '%static%')))
+                GROUP BY caller.class_name, caller.source_file
+                ORDER BY caller.class_name, caller.source_file""")
+                .bind("id", interfaceId).bind("type", "%\"" + interfaceName + "\"%")
+                .map((rs, ctx) -> new ContractCaller(rs.getString("class_name"), rs.getString("source_file"), rs.getString("methods"))).list();
+    }
 }

@@ -867,4 +867,58 @@ public final class SymbolRepository {
                   AND (:descriptor = '' OR descriptor = :descriptor)""")
                 .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(String.class).list();
     }
+
+    /** A field or method in declaration order: kind, name, type, modifiers and annotation names (JSON). */
+    public record MemberOutline(String kind, String name, String typeName, String modifiers, String annotations) {}
+    /** An overridable method: neither private, static, synthetic nor bridge. */
+    public record InheritableMethod(String name, String descriptor, String signature, String modifiers) {}
+
+    /** A class's fields and methods in declaration order. */
+    public List<MemberOutline> findFieldsAndMethods(int classId) {
+        return handle.createQuery("""
+                SELECT kind, name, type_name, modifiers, annotations FROM class_members
+                WHERE class_id = :id AND kind IN ('FIELD', 'METHOD') ORDER BY rowid""")
+                .bind("id", classId)
+                .map((rs, ctx) -> new MemberOutline(rs.getString("kind"), rs.getString("name"), rs.getString("type_name"),
+                        rs.getString("modifiers"), rs.getString("annotations"))).list();
+    }
+
+    /** Members observing {@code event} (binary or source spelling) through {@code @Observes} or {@code @ObservesAsync}. */
+    public List<ObserverMember> findEventObserverMembers(String event) {
+        return handle.createQuery("""
+                SELECT c.id AS class_id, c.class_name, cm.name, cm.descriptor, cm.annotation_details FROM class_members cm
+                JOIN classes c ON c.id = cm.class_id
+                WHERE c.lifecycle = 'current' AND cm.annotation_details LIKE '%.event.Observes%'
+                  AND (cm.annotation_details LIKE :binary OR cm.annotation_details LIKE :spelled)""")
+                .bind("binary", "%\"parameterType\":\"" + event + "\"%")
+                .bind("spelled", "%\"parameterType\":\"" + event.replace('.', '$') + "\"%")
+                .map((rs, ctx) -> new ObserverMember(rs.getInt("class_id"), rs.getString("class_name"), rs.getString("name"),
+                        rs.getString("descriptor"), rs.getString("annotation_details"))).list();
+    }
+
+    /** Direct annotations of a class ordered by name; a null id has none. */
+    public List<DirectClassAnnotation> findDirectClassAnnotationsByName(Integer classId) {
+        return handle.createQuery("SELECT annotation_name, annotation_values FROM class_annotations WHERE class_id = :id AND direct = 1 ORDER BY annotation_name")
+                .bind("id", classId)
+                .map((rs, ctx) -> new DirectClassAnnotation(rs.getString("annotation_name"), rs.getString("annotation_values"))).list();
+    }
+
+    /** Overridable methods of the current class named {@code className}, by name and descriptor. */
+    public List<InheritableMethod> findInheritableMethods(String className) {
+        return handle.createQuery("""
+                SELECT cm.name, cm.descriptor, cm.signature, cm.modifiers FROM class_members cm JOIN classes c ON c.id = cm.class_id
+                WHERE c.class_name = :name AND c.lifecycle = 'current' AND cm.kind = 'METHOD'
+                  AND COALESCE(cm.modifiers, '') NOT LIKE '%private%' AND COALESCE(cm.modifiers, '') NOT LIKE '%static%'
+                  AND COALESCE(cm.modifiers, '') NOT LIKE '%synthetic%' AND COALESCE(cm.modifiers, '') NOT LIKE '%bridge%'
+                ORDER BY cm.name, cm.descriptor""")
+                .bind("name", className)
+                .map((rs, ctx) -> new InheritableMethod(rs.getString("name"), rs.getString("descriptor"),
+                        rs.getString("signature"), rs.getString("modifiers"))).list();
+    }
+
+    /** The superclass of each current class named {@code className}; an entry is null for a class without one. */
+    public List<String> findCurrentSuperclasses(String className) {
+        return handle.createQuery("SELECT superclass FROM classes WHERE class_name = :name AND lifecycle = 'current'")
+                .bind("name", className).mapTo(String.class).list();
+    }
 }

@@ -449,4 +449,141 @@ public final class BeanRepository {
         return handle.createQuery("SELECT scope FROM beans WHERE class_id = :id AND kind = 'CLASS' LIMIT 1")
                 .bind("id", classId).mapTo(String.class).findOne();
     }
+
+    /** An injection point of a class's own beans with what it resolved to. */
+    public record ClassInjection(String kind, String fieldName, String targetType, String qualifiers,
+            String resolutionStatus, String resolutionReason, String resolvedClass, String resolvedMember,
+            String resolvedKind, boolean resolvedDefault, String resolvedScope, String resolvedFramework,
+            String ownerFramework) {}
+    /** An injection point that requires or resolves to a class, with its owner and the owner methods calling the class. */
+    public record InjectingPoint(String owner, String ownerMember, String ownerKind, String kind, String fieldName,
+            String targetType, String qualifiers, String resolutionStatus, String ownerScope, String ownerFramework,
+            String usedIn) {}
+    public record Decorator(String className, Integer priority) {}
+    /** An application bean offering a type, located by its declaring (or bean) class. */
+    public record TypedBean(String className, String kind, String memberName, String scope, String qualifiers,
+            String profiles, Integer priority, String framework) {}
+    /** An application bean offering a type, with its bean class for lookup conditions. */
+    public record TypeCandidate(Integer classId, String className, String kind, String scope, String memberName,
+            String qualifiers, boolean isDefault, String framework) {}
+    /** A {@code @Default} provider of a type: an application bean (no artifact) or a dependency bean. */
+    public record DefaultProvider(String kind, String className, String memberName, String scope, String artifact, String framework) {}
+    /** An application class declaring producers, with how many distinct producer members. */
+    public record ProducerHost(String className, int total) {}
+
+    /** Injection points of a class's own (not producer) beans and of its synthetic beans, in index order. */
+    public List<ClassInjection> findClassInjections(int classId) {
+        return handle.createQuery("""
+                SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, ip.resolution_reason,
+                       rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.kind AS resolved_kind,
+                       rb.is_default AS resolved_default, rb.scope AS resolved_scope,
+                       rb.framework AS resolved_framework, ob.framework AS owner_framework
+                FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id
+                LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
+                LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
+                WHERE ob.class_id = :id AND (ob.member_name IS NULL OR ob.kind = 'SYNTHETIC')
+                ORDER BY ip.id""")
+                .bind("id", classId)
+                .map((rs, ctx) -> new ClassInjection(rs.getString("kind"), rs.getString("field_name"),
+                        rs.getString("target_type"), rs.getString("qualifiers"), rs.getString("resolution_status"),
+                        rs.getString("resolution_reason"), rs.getString("resolved_class"), rs.getString("resolved_member"),
+                        rs.getString("resolved_kind"), rs.getInt("resolved_default") != 0, rs.getString("resolved_scope"),
+                        rs.getString("resolved_framework"), rs.getString("owner_framework"))).list();
+    }
+
+    /** Injection points requiring the class (as itself or a type argument) or resolved to its class bean. */
+    public List<InjectingPoint> findInjectionPointsOf(int classId, String className) {
+        return handle.createQuery("""
+                SELECT DISTINCT oc.class_name AS owner, ob.member_name AS owner_member, ob.kind AS owner_kind, ip.kind,
+                       ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, ob.scope AS owner_scope,
+                       ob.framework AS owner_framework,
+                       (SELECT GROUP_CONCAT(mc.from_method, ',') FROM method_calls mc
+                        WHERE mc.from_class_id = oc.id AND mc.to_class_id = :id) AS used_in
+                FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id
+                JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
+                WHERE ip.target_type = :name OR ip.target_type LIKE :generic
+                   OR ip.resolved_bean_id IN (SELECT id FROM beans WHERE class_id = :id AND member_name IS NULL)
+                ORDER BY oc.class_name, ip.field_name""")
+                .bind("name", className).bind("generic", "%<" + className + ">%").bind("id", classId)
+                .map((rs, ctx) -> new InjectingPoint(rs.getString("owner"), rs.getString("owner_member"),
+                        rs.getString("owner_kind"), rs.getString("kind"), rs.getString("field_name"),
+                        rs.getString("target_type"), rs.getString("qualifiers"), rs.getString("resolution_status"),
+                        rs.getString("owner_scope"), rs.getString("owner_framework"), rs.getString("used_in"))).list();
+    }
+
+    /** Other classes' {@code @Decorator} beans with the class among their bean types, lowest priority first. */
+    public List<Decorator> findDecoratorsOf(int classId, String className) {
+        return handle.createQuery("""
+                SELECT c.class_name, b.priority FROM beans b JOIN classes c ON c.id = b.class_id
+                WHERE b.kind = 'DECORATOR' AND b.bean_types LIKE :type AND c.id <> :id
+                ORDER BY b.priority IS NULL, b.priority, c.class_name""")
+                .bind("type", "%\"" + className + "\"%").bind("id", classId)
+                .map((rs, ctx) -> new Decorator(rs.getString("class_name"), nullableInt(rs, "priority"))).list();
+    }
+
+    /** Current application beans offering {@code type}. */
+    public List<TypedBean> findCurrentBeansOfType(String type) {
+        return handle.createQuery("""
+                SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers, b.profiles, b.priority, b.framework
+                FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE c.lifecycle = 'current' AND b.bean_types LIKE :type
+                ORDER BY c.class_name, b.member_name""")
+                .bind("type", "%\"" + type + "\"%")
+                .map((rs, ctx) -> new TypedBean(rs.getString("class_name"), rs.getString("kind"), rs.getString("member_name"),
+                        rs.getString("scope"), rs.getString("qualifiers"), rs.getString("profiles"),
+                        nullableInt(rs, "priority"), rs.getString("framework"))).list();
+    }
+
+    /** Required types of the injection points of a class's own (not producer) beans, in index order. */
+    public List<String> findClassBeanInjectionTypes(int classId) {
+        return handle.createQuery("""
+                SELECT ip.target_type FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
+                WHERE ob.class_id = :id AND ob.member_name IS NULL ORDER BY ip.id""")
+                .bind("id", classId).mapTo(String.class).list();
+    }
+
+    /** Application beans offering {@code type}, any lifecycle. */
+    public List<TypeCandidate> findTypeCandidates(String type) {
+        return handle.createQuery("""
+                SELECT b.class_id, c.class_name, b.kind, b.scope, b.member_name, b.qualifiers, b.is_default, b.framework
+                FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE b.bean_types LIKE :type ORDER BY c.class_name, b.member_name""")
+                .bind("type", "%\"" + type + "\"%")
+                .map((rs, ctx) -> new TypeCandidate(nullableInt(rs, "class_id"), rs.getString("class_name"), rs.getString("kind"),
+                        rs.getString("scope"), rs.getString("member_name"), rs.getString("qualifiers"),
+                        rs.getInt("is_default") != 0, rs.getString("framework"))).list();
+    }
+
+    /** {@code @Default} providers of {@code type}: application beans first, then dependency beans. */
+    public List<DefaultProvider> findDefaultProviders(String type) {
+        return handle.createQuery("""
+                SELECT b.kind, c.class_name, b.member_name, b.scope, NULL AS artifact, b.framework FROM beans b
+                JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE b.bean_types LIKE :type AND EXISTS (SELECT 1 FROM json_each(b.qualifiers) WHERE value = '@Default')
+                UNION ALL
+                SELECT kind, class_name, member_name, scope, artifact, framework FROM external_beans
+                WHERE bean_types LIKE :type AND EXISTS (SELECT 1 FROM json_each(qualifiers) WHERE value = '@Default')""")
+                .bind("type", "%\"" + type + "\"%")
+                .map((rs, ctx) -> new DefaultProvider(rs.getString("kind"), rs.getString("class_name"), rs.getString("member_name"),
+                        rs.getString("scope"), rs.getString("artifact"), rs.getString("framework"))).list();
+    }
+
+    /** Whether the class has a class bean of its own (not a producer-declared one). */
+    public boolean hasOwnClassBean(int classId) {
+        return handle.createQuery("SELECT COUNT(*) FROM beans WHERE class_id = :id AND kind = 'CLASS' AND declaring_class_id IS NULL")
+                .bind("id", classId).mapTo(Integer.class).one() > 0;
+    }
+
+    /** The three current production source classes declaring the most producer members. */
+    public List<ProducerHost> findTopProducerHosts() {
+        return handle.createQuery("""
+                SELECT c.class_name, COUNT(DISTINCT b.member_name) AS total
+                FROM beans b JOIN classes c ON c.id = b.declaring_class_id
+                WHERE b.kind LIKE 'PRODUCER_%' AND b.member_name IS NOT NULL AND c.lifecycle = 'current'
+                  AND COALESCE(c.source_set, 'main') = 'main' AND COALESCE(c.origin, 'source') = 'source'
+                GROUP BY c.class_name ORDER BY total DESC, c.class_name LIMIT 3""")
+                .map((rs, ctx) -> new ProducerHost(rs.getString("class_name"), rs.getInt("total"))).list();
+    }
 }

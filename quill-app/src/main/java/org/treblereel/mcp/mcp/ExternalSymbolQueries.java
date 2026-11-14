@@ -277,7 +277,7 @@ final class ExternalSymbolQueries {
         }
         if (detail.equals("bytecode")) {
             if (!result.has("bytecode_method_calls")) result.set("bytecode_method_calls", methodCalls(ref, jvmMethod));
-            result.put("bytecode_method_calls_scope", "Bounded: 40 calls and 12 strings per method; invokedynamic bodies, reflection and runtime dispatch not inferred");
+            result.put("bytecode_method_calls_scope", "Bounded: 40 calls, 12 strings and 12 class literals per method; invokedynamic bodies, reflection and runtime dispatch not inferred");
         } else {
             ObjectNode request = result.putObject("bytecode_request").put("class_name", ref.className()).put("detail", "bytecode");
             if (method != null) request.put("method", method);
@@ -555,8 +555,17 @@ final class ExternalSymbolQueries {
                     return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
                         int count;
                         int literalCount;
+                        int classCount;
                         int resultCallCount;
                         @Override public void visitLdcInsn(Object value) {
+                            // V62 CQ-005: X.class arguments (e.g. to UnremovableBeanBuildItem.beanTypes) sent Codex to javap.
+                            if (value instanceof org.objectweb.asm.Type type && type.getSort() >= org.objectweb.asm.Type.ARRAY) {
+                                if (totalConstants++ >= 60) { methods.put("constants_truncated", true); return; }
+                                ObjectNode evidence = methods.withObject(key);
+                                if (classCount++ < 12) evidence.withArray("class_constants").add(type.getClassName());
+                                else evidence.put("constants_truncated", true);
+                                return;
+                            }
                             if (!(value instanceof String text) || text.length() > 200) return;
                             if (totalConstants++ >= 60) { methods.put("constants_truncated", true); return; }
                             ObjectNode evidence = methods.withObject(key);

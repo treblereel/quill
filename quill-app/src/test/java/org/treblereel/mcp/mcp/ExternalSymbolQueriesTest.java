@@ -344,6 +344,9 @@ class ExternalSymbolQueriesTest {
                 .path("string_constants").toString().contains("disabled"));
         assertTrue(result.path("bytecode_method_calls").path("greet(String)").path("calls").toString()
                 .contains("\"java.lang.String#trim()\""));
+        // V62 CQ-005: Codex ran javap three times to see which X.class a build step passes to beanTypes(Class[]).
+        assertEquals("[\"java.lang.Runnable\"]", result.path("bytecode_method_calls").path("greet(String)")
+                .path("class_constants").toString(), result.toString());
         assertFalse(result.path("bytecode_method_calls").toString().contains("Ljava/lang/"),
                 "JVM descriptors cost tokens and say nothing a Java signature does not");
         assertTrue(result.path("members").toString().contains("ExternalSymbolQueriesTest$Produces"));
@@ -465,6 +468,7 @@ class ExternalSymbolQueriesTest {
         String disabledValue() { return "disabled"; }
 
         String greet(@Named("parameter-only") String name) {
+            Class<?> marker = Runnable.class;
             return "hello " + name.trim();
         }
 

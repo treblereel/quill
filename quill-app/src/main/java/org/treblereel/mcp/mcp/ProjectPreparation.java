@@ -262,6 +262,8 @@ final class ProjectPreparation implements AutoCloseable {
         volatile Map<Path, Object> controls;
         volatile boolean stopped;
         private CompletableFuture<Void> preparing;
+        /** The worker running {@link #preparing}: cancelling the future alone would not interrupt it. */
+        private Future<?> preparingTask;
         private ProjectRegistry.Resolution ready;
         private ProjectRegistry.ProjectEntry lastPrepared, fallback;
         private String fallbackCode;
@@ -345,7 +347,10 @@ final class ProjectPreparation implements AutoCloseable {
                     || relative.equals(".quill/build-state.json") || relative.startsWith(".quill/build-events");
             for (String segment : List.of(".git", ".gradle", "node_modules"))
                 if (relative.equals(segment) || relative.startsWith(segment + "/") || relative.contains("/" + segment + "/")) return false;
-            boolean buildPath = relative.startsWith("target/") || relative.contains("/target/") || relative.equals("target")
+            boolean underOutput = underBuildDirectory(path);
+            // Watching a path the ignore file lists is harmless, missing a build output is not: by name here.
+            boolean buildPath = underOutput
+                    || relative.startsWith("target/") || relative.contains("/target/") || relative.equals("target")
                     || relative.startsWith("build/") || relative.contains("/build/") || relative.equals("build")
                     || modules.stream().anyMatch(module -> module.startsWith(path))
                     || buildOutputs.stream().anyMatch(output -> output.startsWith(path) || path.startsWith(output));
@@ -354,10 +359,20 @@ final class ProjectPreparation implements AutoCloseable {
             String name = path.getFileName().toString();
             // Quill's own record of the last resolved classpath, written while indexing; not a build input.
             if (name.equals("quill-classpath.sha256")) return false;
-            boolean output = relative.startsWith("target/") || relative.contains("/target/")
-                    || relative.startsWith("build/") || relative.contains("/build/");
-            return !output || name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".class")
+            return !underOutput || name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".class")
                     || name.startsWith("quill-");
+        }
+
+        /**
+         * A build's output tree: a discovered output directory, or {@code target}/{@code build} directly under
+         * a module or content root. A source package that happens to be named {@code build} is not one.
+         */
+        private boolean underBuildDirectory(Path path) {
+            for (Path output : buildOutputs) if (path.startsWith(output)) return true;
+            for (var bases : List.of(modules, contentRoots))
+                for (Path base : bases)
+                    if (path.startsWith(base.resolve("target")) || path.startsWith(base.resolve("build"))) return true;
+            return false;
         }
 
         void observed(Path path) {
@@ -445,7 +460,7 @@ final class ProjectPreparation implements AutoCloseable {
             preparing = completion;
             preparingStarted = System.nanoTime();
             preparingRevision = version;
-            workers.execute(() -> {
+            preparingTask = workers.submit(() -> {
                 try { prepare(version, worktreeVersion, inputsChanged); completion.complete(null); }
                 catch (Throwable failure) {
                     synchronized (this) {
@@ -680,7 +695,13 @@ final class ProjectPreparation implements AutoCloseable {
         }
 
         @Override public void close() {
-            synchronized (this) { stopped = true; if (preparing != null) preparing.cancel(true); notifyAll(); }
+            synchronized (this) {
+                stopped = true;
+                if (preparing != null) preparing.cancel(true);
+                // A removed project's preparation stops at its next interruption point instead of running to the end.
+                if (preparingTask != null) preparingTask.cancel(true);
+                notifyAll();
+            }
             events.close();
             leadership.close();
         }

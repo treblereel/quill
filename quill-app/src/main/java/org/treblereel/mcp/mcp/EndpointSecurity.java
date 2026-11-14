@@ -33,35 +33,20 @@ final class EndpointSecurity {
 
     /** One line, or null when neither the handler nor its class carries a security annotation. */
     static String describe(ReadQueryContext db, String owner, String method, String descriptor) {
-        List<String> annotations = db.jdbi().withHandle(h -> {
-            List<String> found = new ArrayList<>(h.createQuery("""
-                    SELECT m.annotations FROM class_members m JOIN classes c ON c.id=m.class_id
-                    WHERE c.class_name=:owner AND m.kind='METHOD' AND m.name=:method AND (:descriptor='' OR m.descriptor=:descriptor)""")
-                    .bind("owner", owner).bind("method", method).bind("descriptor", descriptor == null ? "" : descriptor)
-                    .mapTo(String.class).list());
-            found.addAll(h.createQuery("""
-                    SELECT a.annotation_name FROM class_annotations a JOIN classes c ON c.id=a.class_id
-                    WHERE c.class_name=:owner AND a.direct=1""").bind("owner", owner).mapTo(String.class).list());
-            return found;
-        });
+        List<String> annotations = new ArrayList<>(db.symbols.findMethodAnnotationNames(owner, method, descriptor == null ? "" : descriptor));
+        // Order does not matter here: both lists are only searched.
+        annotations.addAll(db.symbols.findDirectAnnotationNames(owner));
         String joined = String.join(" ", annotations);
         List<String> present = ANNOTATIONS.entrySet().stream()
                 .filter(e -> joined.contains("\"" + e.getKey() + "\"") || annotations.contains(e.getKey()))
                 .map(Map.Entry::getValue).distinct().toList();
         if (present.isEmpty()) return null;
-        List<String> providers = db.jdbi().withHandle(h -> {
-            List<String> rows = new ArrayList<>();
-            h.createQuery("SELECT class_name, interfaces FROM classes WHERE origin='source' AND source_set='main' AND interfaces IS NOT NULL ORDER BY class_name")
-                    .mapToMap().forEach(row -> PROVIDERS.forEach((type, label) -> {
-                        if (String.valueOf(row.get("interfaces")).contains("\"" + type + "\""))
-                            rows.add(row.get("class_name") + " (" + label + ")");
-                    }));
-            h.createQuery("""
-                    SELECT c.class_name || '#' || m.name FROM class_members m JOIN classes c ON c.id=m.class_id
-                    WHERE c.origin='source' AND m.annotations LIKE '%"io.quarkus.security.PermissionChecker"%' ORDER BY 1""")
-                    .mapTo(String.class).forEach(checker -> rows.add(checker + " (@PermissionChecker)"));
-            return rows;
-        });
+        List<String> providers = new ArrayList<>();
+        db.symbols.findMainSourceClassInterfaces().forEach(row -> PROVIDERS.forEach((type, label) -> {
+            if (String.valueOf(row.interfaces()).contains("\"" + type + "\""))
+                providers.add(row.className() + " (" + label + ")");
+        }));
+        db.symbols.findPermissionCheckers().forEach(checker -> providers.add(checker + " (@PermissionChecker)"));
         String text = String.join(", ", present) + " is checked by Quarkus against the request's SecurityIdentity; ";
         if (providers.isEmpty())
             return text + "no application HttpAuthenticationMechanism, SecurityIdentityAugmentor, HttpSecurityPolicy, "

@@ -1022,4 +1022,29 @@ public final class SymbolRepository {
                 .map((rs, ctx) -> new ListenerMethod(rs.getInt("id"), rs.getString("class_name"), rs.getString("interfaces"),
                         rs.getString("name"))).list();
     }
+
+    /** A class with its raw interfaces JSON. */
+    public record ClassInterfaces(String className, String interfaces) {}
+
+    /** Annotation names (JSON) of each method overload of any class named {@code className}; an empty descriptor matches all. */
+    public List<String> findMethodAnnotationNames(String className, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT m.annotations FROM class_members m JOIN classes c ON c.id=m.class_id
+                WHERE c.class_name=:owner AND m.kind='METHOD' AND m.name=:method AND (:descriptor='' OR m.descriptor=:descriptor)""")
+                .bind("owner", className).bind("method", method).bind("descriptor", descriptor).mapTo(String.class).list();
+    }
+
+    /** Main source classes implementing any interface, by name. */
+    public List<ClassInterfaces> findMainSourceClassInterfaces() {
+        return handle.createQuery("SELECT class_name, interfaces FROM classes WHERE origin='source' AND source_set='main' AND interfaces IS NOT NULL ORDER BY class_name")
+                .map((rs, ctx) -> new ClassInterfaces(rs.getString("class_name"), rs.getString("interfaces"))).list();
+    }
+
+    /** {@code Class#member} of every source member annotated {@code @io.quarkus.security.PermissionChecker}, sorted. */
+    public List<String> findPermissionCheckers() {
+        return handle.createQuery("""
+                SELECT c.class_name || '#' || m.name FROM class_members m JOIN classes c ON c.id=m.class_id
+                WHERE c.origin='source' AND m.annotations LIKE '%"io.quarkus.security.PermissionChecker"%' ORDER BY 1""")
+                .mapTo(String.class).list();
+    }
 }

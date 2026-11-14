@@ -31,8 +31,10 @@ final class ConfigurationCacheNames {
         if (className == null || className.isBlank()) return;
         List<Map<String, Object>> members = db.jdbi().withHandle(h -> h.createQuery("""
                 SELECT m.name, m.annotation_details FROM class_members m JOIN classes c ON c.id=m.class_id
-                WHERE c.class_name=:owner AND m.annotations LIKE '%"io.quarkus.cache.%' ORDER BY m.kind, m.name""")
-                .bind("owner", className).mapToMap().list());
+                WHERE (c.class_name=:owner OR (instr(:owner, '.')=0 AND c.class_name LIKE '%.' || :owner))
+                AND m.annotations LIKE '%"io.quarkus.cache.%' ORDER BY m.kind, m.name""")
+                // V66 CQ-050: a simple name, as the usage filter accepts it, found no cache and Claude grepped for it.
+                .bind("owner", className.strip()).mapToMap().list());
         Map<String, String> caches = new LinkedHashMap<>();
         for (var member : members) {
             for (JsonNode annotation : JSON.readTree(String.valueOf(member.get("annotation_details")))) {

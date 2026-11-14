@@ -56,6 +56,9 @@ class ConfigurationSourceEvidenceTest {
         assertEquals("quarkus.cache.caffeine.reports.expire-after-write",definition.path("key").asText(),caches.toString());
         assertEquals("10m",definition.path("declared_source").path("declared_value").asText(),caches.toString());
         assertFalse(caches.toString().contains("other"));
+        // V66 CQ-050: Claude passed the simple name, the cache link stayed empty and it grepped application.properties.
+        var simple=query(null,"Fixture","declared");
+        assertEquals("reports",simple.path("cache_configuration").path(0).path("cache").asText(),simple.toString());
     }
     /** V64 CQ-038: the tool answer carried the rule but the prefetch fact did not, and Codex still read SmallRye bytecode. */
     @Test void thePrefetchOfADeclaredKeyKeepsHowSourcesTakePrecedence() throws Exception {

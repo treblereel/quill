@@ -168,10 +168,11 @@ final class SymbolToolQueries {
     }
 
     private static void appendBean(ObjectNode node, BeanRecord bean) {
-        node.put("kind", bean.kind());
+        node.put("kind", BeanTerms.kind(bean));
         if (bean.scope() == null) node.putNull("scope");
-        else node.put("scope", bean.scope());
-        node.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+        else node.put("scope", BeanTerms.scope(bean));
+        node.set("qualifiers", JSON.valueToTree(BeanTerms.qualifiers(bean)));
+        if (bean.framework() != null) node.put("framework", bean.framework());
         node.set("stereotypes", JSON.valueToTree(bean.stereotypes()));
         node.set("bean_types", JSON.valueToTree(bean.beanTypes()));
         node.set("profiles", JSON.valueToTree(bean.profiles()));

@@ -180,7 +180,8 @@ public final class SpringResolver {
         BeanResolver.addNonBeanDependencies(applicationIndex, beanRecords, depRecords, classNameToId);
 
         return new BeanResolver.ResolutionResult(
-                beanRecords, ipRecords, depRecords, classNameToId, problems);
+                beanRecords.stream().map(bean -> bean.withFramework(BeanRecord.SPRING)).toList(),
+                ipRecords, depRecords, classNameToId, problems);
     }
 
     private static int resolveInjectionPoints(ClassInfo ci, int classId, int beanId,

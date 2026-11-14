@@ -23,7 +23,7 @@ public final class NameTargetPrefetch {
     /** Beans declared in classes directly in {@code name}, without subpackages; null if no class is there. */
     static ObjectNode packageFact(ReadQueryContext db, String name) {
         List<Map<String, Object>> rows = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT c.class_name, c.source_set, b.kind, b.scope, b.qualifiers, b.member_name, b.bean_types
+                SELECT c.class_name, c.source_set, b.kind, b.scope, b.qualifiers, b.member_name, b.bean_types, b.framework
                 FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
                 WHERE c.class_name LIKE :prefix AND c.lifecycle = 'current'
                   AND instr(substr(c.class_name, length(:package) + 2), '.') = 0
@@ -43,14 +43,17 @@ public final class NameTargetPrefetch {
         fact.put("classes_counted", "every indexed class, nested and anonymous ones included");
         // V62 CQ-002: a zero states that no producer is declared here, so agents need not read every class's members.
         ObjectNode kinds = fact.putObject("bean_kind_counts_main");
-        for (String kind : List.of("CLASS", "PRODUCER_METHOD", "PRODUCER_FIELD", "SYNTHETIC")) kinds.put(kind, 0);
-        rows.stream().filter(row -> "main".equals(row.get("source_set"))).map(row -> String.valueOf(row.get("kind")))
+        boolean springOnly = !rows.isEmpty() && rows.stream().allMatch(row -> BeanTerms.spring(String.valueOf(row.get("framework"))));
+        for (String kind : springOnly ? List.of("CLASS", BeanTerms.SPRING_BEAN_METHOD)
+                : List.of("CLASS", "PRODUCER_METHOD", "PRODUCER_FIELD", "SYNTHETIC")) kinds.put(kind, 0);
+        rows.stream().filter(row -> "main".equals(row.get("source_set"))).map(row -> BeanTerms.kind(row.get("framework"), row.get("kind")))
                 .collect(java.util.stream.Collectors.groupingBy(kind -> kind, java.util.TreeMap::new, java.util.stream.Collectors.counting()))
                 .forEach(kinds::put);
         ArrayNode beans = fact.putArray("beans");
-        rows.stream().limit(LIMIT).forEach(row -> beans.add(row.get("source_set") + " " + row.get("kind") + " "
+        rows.stream().limit(LIMIT).forEach(row -> beans.add(row.get("source_set") + " " + BeanTerms.kind(row.get("framework"), row.get("kind")) + " "
                 + row.get("class_name") + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))
-                + " " + row.get("scope") + " qualifiers " + row.get("qualifiers")
+                + " " + BeanTerms.scope(row.get("framework"), row.get("scope"))
+                + " qualifiers " + BeanTerms.qualifiersJson(row.get("framework"), row.get("qualifiers"))
                 + (row.get("member_name") == null ? "" : " types " + row.get("bean_types"))));
         if (rows.size() > LIMIT) fact.putObject("beans_truncated").put("shown", LIMIT).put("total", rows.size());
         return fact;
@@ -66,7 +69,7 @@ public final class NameTargetPrefetch {
                               THEN 0 ELSE 1 END, artifact, class_name, member_name""")
                 .bind("type", quoted).mapToMap().list());
         List<Map<String, Object>> application = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers
+                SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers, b.framework
                 FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
                 WHERE b.bean_types LIKE :type
                 ORDER BY CASE WHEN EXISTS (SELECT 1 FROM json_each(b.qualifiers) WHERE value = '@Default')
@@ -78,13 +81,13 @@ public final class NameTargetPrefetch {
         fact.put("application_provider_count", application.size());
         if (!application.isEmpty()) {
             ArrayNode values = fact.putArray("application_providers");
-            application.stream().limit(LIMIT).forEach(row -> values.add(provider(row) + " " + row.get("scope")
-                    + " qualifiers " + row.get("qualifiers")));
+            application.stream().limit(LIMIT).forEach(row -> values.add(provider(row) + " " + BeanTerms.scope(row.get("framework"), row.get("scope"))
+                    + " qualifiers " + BeanTerms.qualifiersJson(row.get("framework"), row.get("qualifiers"))));
         }
         if (!external.isEmpty()) {
             ArrayNode values = fact.putArray("dependency_providers");
-            external.stream().limit(LIMIT).forEach(row -> values.add(provider(row) + " " + row.get("scope")
-                    + " qualifiers " + row.get("qualifiers") + " from " + row.get("artifact")
+            external.stream().limit(LIMIT).forEach(row -> values.add(provider(row) + " " + BeanTerms.scope(row.get("framework"), row.get("scope"))
+                    + " qualifiers " + BeanTerms.qualifiersJson(row.get("framework"), row.get("qualifiers")) + " from " + row.get("artifact")
                     + " (" + row.get("framework") + ")"
                     + ("[]".equals(String.valueOf(row.get("profiles"))) ? "" : " profiles " + row.get("profiles"))));
             appendArtifactDeclarations(db, fact, external.stream().limit(LIMIT).toList());
@@ -276,7 +279,7 @@ public final class NameTargetPrefetch {
     }
 
     private static String provider(Map<String, Object> row) {
-        return row.get("kind") + " " + row.get("class_name")
+        return BeanTerms.kind(row.get("framework"), row.get("kind")) + " " + row.get("class_name")
                 + (row.get("member_name") == null ? "" : "#" + row.get("member_name"));
     }
 }

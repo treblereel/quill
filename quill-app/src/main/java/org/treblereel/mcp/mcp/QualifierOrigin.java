@@ -85,7 +85,7 @@ final class QualifierOrigin {
 
     private static void candidate(ReadQueryContext db, int id, List<String> lines) {
         db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT b.kind, b.qualifiers, b.member_name, c.class_name, d.class_name AS declaring
+                SELECT b.kind, b.qualifiers, b.member_name, b.framework, c.class_name, d.class_name AS declaring
                 FROM beans b JOIN classes c ON c.id = b.class_id LEFT JOIN classes d ON d.id = b.declaring_class_id
                 WHERE b.id = :id""").bind("id", id).mapToMap().findOne()).ifPresent(bean -> {
             String declaring = (String) bean.get("declaring");
@@ -94,9 +94,9 @@ final class QualifierOrigin {
             String label = producer ? declaring + "#" + memberName : String.valueOf(bean.get("class_name"));
             List<String> annotations = producer ? memberAnnotations(db, declaring, memberName)
                     : classAnnotations(db, String.valueOf(bean.get("class_name")));
-            String kind = String.valueOf(bean.get("kind"));
+            String kind = BeanTerms.kind(bean.get("framework"), bean.get("kind"));
             lines.add(label + (kind.equals("CLASS") ? "" : " (" + kind + ")") + ": "
-                    + origin(parse(bean.get("qualifiers")), annotations));
+                    + origin(parse(BeanTerms.qualifiersJson(bean.get("framework"), bean.get("qualifiers"))), annotations));
         });
     }
 

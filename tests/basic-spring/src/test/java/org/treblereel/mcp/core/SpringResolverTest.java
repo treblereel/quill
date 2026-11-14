@@ -189,6 +189,13 @@ class SpringResolverTest {
     }
 
     @Test
+    void everyBeanRecordsThatSpringDiscoveredIt() {
+        var result = SpringResolver.resolve(index);
+        assertFalse(result.beans().isEmpty());
+        assertTrue(result.beans().stream().allMatch(BeanRecord::spring), result.beans().toString());
+    }
+
+    @Test
     void scopeAnnotationHonored() {
         var result = SpringResolver.resolve(index);
         var requestContext = result.beans().stream()

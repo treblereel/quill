@@ -77,11 +77,8 @@ final class ProjectOverviewQueries {
                         + reader.symbols.countAnnotatedClasses(
                                 "org.springframework.web.bind.annotation.RestController", true))));
 
-        ObjectNode scopeNode = root.putObject("beans_by_scope");
-        reader.beans.countBeansByScope().forEach(scopeNode::put);
-
-        ObjectNode kindNode = root.putObject("beans_by_kind");
-        reader.beans.countBeansByKind().forEach(kindNode::put);
+        root.set("beans_by_scope", countsInOwnTerms(reader.beans.countBeansByScope(), BeanTerms::scope));
+        root.set("beans_by_kind", countsInOwnTerms(reader.beans.countBeansByKind(), BeanTerms::kind));
 
         root.put("architecture_hubs_ranked_by", "combined");
         ArrayNode hubs = root.putArray("architecture_hubs");
@@ -362,4 +359,15 @@ final class ProjectOverviewQueries {
         node.set("limitations", JSON.valueToTree(injectionPoint.limitations()));
     }
 
+
+    /** Spring and CDI counts under each framework's own names (Spring singleton, not @Singleton), largest first. */
+    private static ObjectNode countsInOwnTerms(List<org.treblereel.mcp.db.BeanRepository.FrameworkCount> rows,
+            java.util.function.BinaryOperator<String> terms) {
+        Map<String, Integer> merged = new java.util.LinkedHashMap<>();
+        for (var row : rows) merged.merge(String.valueOf(terms.apply(row.framework(), row.value())), row.count(), Integer::sum);
+        ObjectNode node = JSON.createObjectNode();
+        merged.entrySet().stream().sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .forEach(entry -> node.put(entry.getKey(), entry.getValue()));
+        return node;
+    }
 }

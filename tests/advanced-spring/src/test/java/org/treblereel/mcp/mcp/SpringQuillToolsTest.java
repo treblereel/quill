@@ -66,7 +66,7 @@ class SpringQuillToolsTest {
                 new BeanRecord(6, 6, "CLASS", "@Singleton", List.of("@Default"),
                         List.of(), false, null, null, null, null,
                         List.of("com.example.OrderController"))
-        );
+        ).stream().map(bean -> bean.withFramework(BeanRecord.SPRING)).toList();
 
         var ips = List.of(
                 InjectionPointRecord.staticAnalysis(1, 2, "FIELD",
@@ -111,20 +111,24 @@ class SpringQuillToolsTest {
     @Test
     void getBeansFiltersBySingletonScope() {
         var tools = new QuillTools();
-        String result = tools.getBeans(jdbi, null, "@Singleton", null, null, null);
+        String result = tools.getBeans(jdbi, null, "singleton", null, null, null);
         assertTrue(result.contains("UserRepository"));
         assertTrue(result.contains("UserService"));
         assertFalse(result.contains("requestContext"));
+        assertEquals(result, tools.getBeans(jdbi, null, "@Singleton", null, null, null),
+                "the stored form still filters");
     }
 
     @Test
     void getBeansFiltersByProducerMethodKind() throws Exception {
         var tools = new QuillTools();
-        String result = tools.getBeans(jdbi, null, null, "PRODUCER_METHOD", null, null);
+        String result = tools.getBeans(jdbi, null, null, "BEAN_METHOD", null, null);
         JsonNode root = JSON.readTree(result);
         assertEquals(1, root.get("total").asInt());
-        assertTrue(result.contains("PRODUCER_METHOD"));
-        assertTrue(result.contains("@Prototype"));
+        assertEquals("BEAN_METHOD", root.get("beans").get(0).get("kind").asText());
+        assertEquals("prototype", root.get("beans").get(0).get("scope").asText());
+        assertFalse(result.contains("PRODUCER_METHOD"), result);
+        assertFalse(result.contains("@Prototype"), result);
 
         JsonNode bean = root.get("beans").get(0);
         assertEquals("requestContext", bean.get("member").asText(),
@@ -220,6 +224,22 @@ class SpringQuillToolsTest {
                 "resolved_member should show @Bean method name");
         assertEquals("com.example.RequestContext", producerIp.get("resolved_produced_type").asText(),
                 "resolved_produced_type should show the produced type");
+        assertEquals("BEAN_METHOD", producerIp.get("resolved_kind").asText());
+        assertEquals("prototype", producerIp.get("resolved_scope").asText());
+    }
+
+    /** Apollo AQ-010/011/013: CDI terms on Spring beans were repeated as Spring facts. */
+    @Test
+    void injectionPointsUseSpringTermsWithoutImplicitDefaultQualifier() throws Exception {
+        String result = new QuillTools().getInjectionPoints(jdbi, "UserService");
+        JsonNode root = JSON.readTree(result);
+        assertEquals("singleton", root.get("scope").asText());
+        assertEquals("CLASS", root.get("bean_kind").asText());
+        for (JsonNode ip : root.get("injection_points")) {
+            assertEquals(0, ip.get("qualifiers").size(), ip.toString());
+        }
+        assertFalse(result.contains("@Default"), result);
+        assertFalse(result.contains("@Singleton"), result);
     }
 
     @Test
@@ -231,14 +251,14 @@ class SpringQuillToolsTest {
         assertEquals(6, root.get("project").get("beans").asInt());
 
         JsonNode byScope = root.get("beans_by_scope");
-        assertTrue(byScope.has("@Singleton"));
-        assertEquals(5, byScope.get("@Singleton").asInt());
-        assertTrue(byScope.has("@Prototype"));
-        assertEquals(1, byScope.get("@Prototype").asInt());
+        assertEquals(5, byScope.get("singleton").asInt());
+        assertEquals(1, byScope.get("prototype").asInt());
+        assertFalse(byScope.has("@Singleton"));
 
         JsonNode byKind = root.get("beans_by_kind");
         assertTrue(byKind.has("CLASS"));
-        assertTrue(byKind.has("PRODUCER_METHOD"));
+        assertTrue(byKind.has("BEAN_METHOD"));
+        assertFalse(byKind.has("PRODUCER_METHOD"));
     }
 
     @Test

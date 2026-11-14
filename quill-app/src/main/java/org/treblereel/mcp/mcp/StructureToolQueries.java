@@ -73,7 +73,7 @@ final class StructureToolQueries {
             appendContext(node, value);
             node.put("is_bean", value.isBean());
             BeanRecord bean = beansByClass.get(value.id());
-            if (bean != null) node.put("scope", bean.scope());
+            if (bean != null) node.put("scope", BeanTerms.scope(bean));
             node.put("source_tokens", value.sourceTokens());
             appendOccurrences(node, occurrencesByClass.get(value.id()));
             naiveTokens += value.sourceTokens();
@@ -169,8 +169,8 @@ final class StructureToolQueries {
         }
         Map<String, String> filter = new HashMap<>();
         if (className != null) filter.put("class_name", className);
-        if (scope != null) filter.put("scope", scope);
-        if (kind != null) filter.put("kind", kind);
+        if (scope != null) filter.put("scope", BeanTerms.storedScope(scope));
+        if (kind != null) filter.put("kind", BeanTerms.storedKind(kind));
         if (profile != null) filter.put("profile", profile);
         if (qualifier != null) filter.put("qualifier", qualifier);
         if (module != null) filter.put("module", module);
@@ -253,14 +253,14 @@ final class StructureToolQueries {
                 if (isProducer(bean.kind()) && !bean.beanTypes().isEmpty()) {
                     node.put("produced_type", bean.beanTypes().getFirst());
                 }
-                node.put("kind", bean.kind());
-                node.put("scope", bean.scope());
+                node.put("kind", BeanTerms.kind(bean.framework(), bean.kind()));
+                node.put("scope", BeanTerms.scope(bean.framework(), bean.scope()));
                 node.put("origin", "dependency");
                 node.put("framework", bean.framework());
                 if (bean.artifact() != null) node.put("artifact", bean.artifact());
                 if (bean.jarPath() != null) node.put("jar", bean.jarPath());
                 if (bean.defaultBean()) node.put("default_bean", true);
-                node.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+                node.set("qualifiers", JSON.valueToTree(BeanTerms.qualifiers(bean.framework(), bean.qualifiers())));
                 node.set("bean_types", JSON.valueToTree(bean.beanTypes()));
                 node.set("profiles", JSON.valueToTree(bean.profiles()));
                 node.set("injection_points", JSON.valueToTree(bean.injectionPoints()));
@@ -274,11 +274,13 @@ final class StructureToolQueries {
                     && !bean.beanTypes().isEmpty()) {
                 node.put("produced_type", bean.beanTypes().getFirst());
             }
-            node.put("kind", bean.kind());
-            node.put("scope", bean.scope());
+            node.put("kind", BeanTerms.kind(bean));
+            node.put("scope", BeanTerms.scope(bean));
             node.put("origin", "application");
             if (bean.isDefault()) node.put("default_bean", true);
-            if (!DEFAULT_QUALIFIERS.equals(bean.qualifiers())) node.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+            List<String> shownQualifiers = BeanTerms.qualifiers(bean);
+            if (!DEFAULT_QUALIFIERS.equals(bean.qualifiers()) && shownQualifiers != null && !shownQualifiers.isEmpty())
+                node.set("qualifiers", JSON.valueToTree(shownQualifiers));
             appendOwnBeanTypes(node, bean, beanClass);
             // No profile list means the bean is active in every profile.
             if (bean.profiles() != null && !bean.profiles().isEmpty())
@@ -299,10 +301,16 @@ final class StructureToolQueries {
                     pageAnnotations.getOrDefault(bean.classId(), List.of()));
         }
         BeanEvidence.appendRetentionNotes(root);
-        if (limited.stream().anyMatch(view -> view.application() != null))
-            root.putObject("bean_defaults").put("bean_types", "Application beans list types besides the bean class "
+        if (limited.stream().anyMatch(view -> view.application() != null)) {
+            ObjectNode defaults = root.putObject("bean_defaults").put("bean_types", "Application beans list types besides the bean class "
                             + "(a producer's produced_type) and java.lang.Object, which they all have; class_is_bean_type false marks @Typed exceptions")
-                    .put("source_set", "main").set("qualifiers", JSON.valueToTree(DEFAULT_QUALIFIERS));
+                    .put("source_set", "main");
+            // An omitted qualifier list means @Default @Any for a CDI bean but no qualifier for a Spring bean.
+            boolean cdi = limited.stream().anyMatch(view -> view.application() != null && !view.application().spring());
+            boolean spring = limited.stream().anyMatch(view -> view.application() != null && view.application().spring());
+            if (cdi) defaults.set("qualifiers", JSON.valueToTree(DEFAULT_QUALIFIERS));
+            if (spring) defaults.set(cdi ? "spring_qualifiers" : "qualifiers", JSON.createArrayNode());
+        }
         ObjectNode originBreakdown = root.putObject("origin_breakdown");
         originBreakdown.put("application", beans.size());
         originBreakdown.put("dependency", externalBeans.size());
@@ -424,7 +432,7 @@ final class StructureToolQueries {
                 reader.usages.dependencyBreakdown(cls.id(), false));
         if (cls.isBean()) {
             reader.beans.findBeanByClassId(cls.id())
-                    .ifPresent(bean -> root.put("scope", bean.scope()));
+                    .ifPresent(bean -> root.put("scope", BeanTerms.scope(bean)));
         }
         if (!includeNodes) {
             root.put("nodes_included", false);
@@ -845,8 +853,8 @@ final class StructureToolQueries {
         if (bean.isEmpty()) return notABean(reader, cls, target);
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
-        root.put("scope", bean.get().scope());
-        root.put("bean_kind", bean.get().kind());
+        root.put("scope", BeanTerms.scope(bean.get()));
+        root.put("bean_kind", BeanTerms.kind(bean.get()));
         appendContext(root, cls);
         List<InjectionPointRecord> injectionPoints = reader.beans.findInjectionPoints(bean.get().id());
         Set<Integer> referencedBeanIds = new HashSet<>();
@@ -878,7 +886,7 @@ final class StructureToolQueries {
             node.put("kind", point.kind());
             node.put("field", point.fieldName());
             node.put("required_type", point.targetType());
-            node.set("qualifiers", JSON.valueToTree(point.qualifiers()));
+            node.set("qualifiers", JSON.valueToTree(BeanTerms.qualifiers(bean.get().framework(), point.qualifiers())));
             node.put("resolution", point.resolutionStatus().name().toLowerCase());
             node.put("resolution_strategy", point.resolutionStrategy());
             node.put("reason", point.resolutionReason().name());
@@ -895,8 +903,8 @@ final class StructureToolQueries {
             } else if (point.resolvedBeanId() != null) {
                 BeanRecord resolved = resolvedBeans.get(point.resolvedBeanId());
                 if (resolved != null) {
-                    node.put("resolved_scope", resolved.scope());
-                    node.put("resolved_kind", resolved.kind());
+                    node.put("resolved_scope", BeanTerms.scope(resolved));
+                    node.put("resolved_kind", BeanTerms.kind(resolved));
                     ClassRecord resolvedClass = resolvedClasses.get(resolved.classId());
                     if (resolvedClass != null) node.put("resolved_to", resolvedClass.className());
                     if (resolved.memberName() != null) {
@@ -907,7 +915,7 @@ final class StructureToolQueries {
                             && !resolved.beanTypes().isEmpty()) {
                         node.put("resolved_produced_type", resolved.beanTypes().getFirst());
                     }
-                    appendContextNote(node, resolved.scope());
+                    appendContextNote(node, resolved);
                 }
             } else {
                 node.putNull("resolved_to");
@@ -934,11 +942,18 @@ final class StructureToolQueries {
      * must be active when the proxy is used. Static analysis cannot prove that for asynchronous
      * code, so the answer states the unknown instead of claiming availability or failure.
      */
-    private static void appendContextNote(ObjectNode node, String scope) {
+    private static void appendContextNote(ObjectNode node, BeanRecord bean) {
+        String scope = bean.scope();
         if (scope == null || !CONTEXT_BOUND_SCOPES.contains(scope)) return;
         ObjectNode context = node.putObject("context_requirement");
-        context.put("scope", scope);
+        context.put("scope", BeanTerms.scope(bean));
         context.put("async_availability", "unproven");
+        if (bean.spring()) {
+            context.put("note", "Calls through this scoped proxy need an active " + BeanTerms.scope(bean)
+                    + " (RequestContextHolder bound to the calling thread). Startup code, schedulers, "
+                    + "executors and @Async methods run without one unless it is propagated; Quill does not track it");
+            return;
+        }
         context.put("note", "Calls through this proxy need an active " + scope.substring(1)
                 + " context. On other threads (Mutiny, CompletableFuture, executors, worker pools) "
                 + "availability depends on context propagation (for example SmallRye Context "
@@ -950,16 +965,17 @@ final class StructureToolQueries {
         List<ExternalBeanRecord> matches = providers.stream()
                 .filter(b -> IndexReader.matchesBeanType(b.beanTypes(), point.targetType())).toList();
         ObjectNode evidence = node.putObject("provider_evidence");
-        evidence.put("scope", "indexed declarations by provided type; not full CDI eligibility or runtime resolution")
+        evidence.put("scope", "indexed declarations by provided type; not full container eligibility or runtime resolution")
                 .put("runtime_resolution_proven", false).put("total", matches.size())
                 .put("showing", Math.min(5, matches.size())).put("has_more", matches.size() > 5);
         ArrayNode declarations = evidence.putArray("declarations");
         for (ExternalBeanRecord bean : matches.stream().limit(5).toList()) {
             ObjectNode declaration = declarations.addObject().put("declaring_class", bean.className())
-                    .put("kind", bean.kind()).put("bean_scope", bean.scope()).put("framework", bean.framework());
+                    .put("kind", BeanTerms.kind(bean.framework(), bean.kind()))
+                    .put("bean_scope", BeanTerms.scope(bean.framework(), bean.scope())).put("framework", bean.framework());
             if (bean.memberName() != null) declaration.put("member", bean.memberName());
             if (bean.artifact() != null) declaration.put("artifact", bean.artifact());
-            declaration.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+            declaration.set("qualifiers", JSON.valueToTree(BeanTerms.qualifiers(bean.framework(), bean.qualifiers())));
             declaration.set("profiles", JSON.valueToTree(bean.profiles()));
             declaration.put("qualifier_names_match", point.qualifiers().stream().allMatch(q -> {
                 int end = q.indexOf('(');
@@ -1024,10 +1040,10 @@ final class StructureToolQueries {
                 appendContext(candidateNode, candidateClass);
             }
             if (bean != null) {
-                candidateNode.put("kind", bean.kind());
-                candidateNode.put("scope", bean.scope());
+                candidateNode.put("kind", BeanTerms.kind(bean));
+                candidateNode.put("scope", BeanTerms.scope(bean));
                 if (bean.memberName() != null) candidateNode.put("member", bean.memberName());
-                candidateNode.set("qualifiers", JSON.valueToTree(bean.qualifiers()));
+                candidateNode.set("qualifiers", JSON.valueToTree(BeanTerms.qualifiers(bean)));
             }
             candidateNode.put("disposition", candidate.disposition().name().toLowerCase());
             candidateNode.put("reason", candidate.reason().name());

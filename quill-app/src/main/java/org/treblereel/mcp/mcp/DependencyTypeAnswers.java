@@ -96,13 +96,14 @@ final class DependencyTypeAnswers {
         ObjectNode root = header(type);
         ArrayNode beans = root.putArray("beans");
         reader.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT b.kind, b.scope, b.member_name, c.class_name, d.class_name AS declaring_class
+                SELECT b.kind, b.scope, b.member_name, b.framework, c.class_name, d.class_name AS declaring_class
                 FROM beans b JOIN classes c ON c.id = b.class_id LEFT JOIN classes d ON d.id = b.declaring_class_id
                 WHERE b.bean_types LIKE :quoted AND c.lifecycle = 'current' ORDER BY c.class_name, b.member_name""")
                 .bind("quoted", "%\"" + type + "\"%").mapToMap().list()).forEach(row -> beans.add(
                         (row.get("member_name") != null ? (row.get("declaring_class") != null ? row.get("declaring_class") : row.get("class_name"))
                                 + "#" + row.get("member_name") : String.valueOf(row.get("class_name")))
-                                + " (" + row.get("kind") + (row.get("scope") != null ? " " + row.get("scope") : "") + ")"));
+                                + " (" + BeanTerms.kind(row.get("framework"), row.get("kind"))
+                                + (row.get("scope") != null ? " " + BeanTerms.scope(row.get("framework"), row.get("scope")) : "") + ")"));
         ArrayNode points = injectionPoints(reader, type);
         root.set("injection_points", points);
         appendDependencyBeans(root, reader, type);
@@ -122,7 +123,7 @@ final class DependencyTypeAnswers {
         ArrayNode lines = JSON.createArrayNode();
         reader.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT c.class_name AS owner, ip.field_name, ip.kind, ip.target_type, ip.resolution_status, ip.resolution_reason,
-                       rb.kind AS bean_kind, rb.scope AS bean_scope, rb.member_name AS bean_member,
+                       rb.kind AS bean_kind, rb.scope AS bean_scope, rb.member_name AS bean_member, rb.framework AS bean_framework,
                        rc.class_name AS bean_class, dc.class_name AS bean_declaring_class
                 FROM injection_points ip JOIN beans b ON b.id = ip.bean_id JOIN classes c ON c.id = b.class_id
                 LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id LEFT JOIN classes rc ON rc.id = rb.class_id
@@ -142,11 +143,12 @@ final class DependencyTypeAnswers {
     private static void appendDependencyBeans(ObjectNode root, ReadQueryContext reader, String type) {
         ArrayNode lines = JSON.createArrayNode();
         reader.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT class_name, kind, member_name, scope, artifact FROM external_beans
+                SELECT class_name, kind, member_name, scope, artifact, framework FROM external_beans
                 WHERE bean_types LIKE :quoted ORDER BY class_name, member_name""")
                 .bind("quoted", "%\"" + type + "\"%").mapToMap().list()).forEach(row -> lines.add(
                         row.get("class_name") + (row.get("member_name") != null ? "#" + row.get("member_name") : "")
-                                + " (" + row.get("kind") + (row.get("scope") != null ? " " + row.get("scope") : "")
+                                + " (" + BeanTerms.kind(row.get("framework"), row.get("kind"))
+                                + (row.get("scope") != null ? " " + BeanTerms.scope(row.get("framework"), row.get("scope")) : "")
                                 + (row.get("artifact") != null ? ", " + row.get("artifact") : "") + ")"));
         if (!lines.isEmpty()) root.set("dependency_beans", lines);
     }
@@ -156,7 +158,8 @@ final class DependencyTypeAnswers {
             String owner = row.get("bean_declaring_class") != null ? String.valueOf(row.get("bean_declaring_class"))
                     : String.valueOf(row.get("bean_class"));
             String bean = row.get("bean_member") != null ? owner + "#" + row.get("bean_member") : String.valueOf(row.get("bean_class"));
-            return bean + " (" + row.get("bean_kind") + (row.get("bean_scope") != null ? " " + row.get("bean_scope") : "") + ")";
+            return bean + " (" + BeanTerms.kind(row.get("bean_framework"), row.get("bean_kind"))
+                    + (row.get("bean_scope") != null ? " " + BeanTerms.scope(row.get("bean_framework"), row.get("bean_scope")) : "") + ")";
         }
         if ("BUILTIN_BEAN".equals(row.get("resolution_reason"))) return "built-in bean";
         if ("NO_CONTEXT_CANDIDATE".equals(row.get("resolution_reason"))) return "no application bean";

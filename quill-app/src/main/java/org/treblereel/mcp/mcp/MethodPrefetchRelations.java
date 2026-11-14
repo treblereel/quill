@@ -599,7 +599,8 @@ final class MethodPrefetchRelations {
         int shown = 8;
         List<Map<String, Object>> points = db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status,
-                       rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.scope AS resolved_scope
+                       rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.scope AS resolved_scope,
+                       rb.framework AS resolved_framework, ob.framework AS owner_framework
                 FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
                 LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
                 LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
@@ -607,9 +608,10 @@ final class MethodPrefetchRelations {
                 .bind("id", classId).bind("limit", shown + 1).mapToMap().list());
         points.stream().limit(shown)
                 .forEach(row -> lines.add(row.get("kind") + " " + row.get("field_name") + ": " + row.get("target_type") + " "
-                        + row.get("qualifiers") + " -> " + (row.get("resolved_class") == null ? "not resolved by the application index"
+                        + BeanTerms.qualifiersJson(row.get("owner_framework"), row.get("qualifiers")) + " -> "
+                        + (row.get("resolved_class") == null ? "not resolved by the application index"
                                 : row.get("resolved_class") + (row.get("resolved_member") == null ? "" : "#" + row.get("resolved_member"))
-                                        + (row.get("resolved_scope") == null ? "" : " " + row.get("resolved_scope")))
+                                        + (row.get("resolved_scope") == null ? "" : " " + BeanTerms.scope(row.get("resolved_framework"), row.get("resolved_scope"))))
                         + " [" + row.get("resolution_status") + "]"));
         if (points.size() > shown)
             lines.add("truncated: more than " + shown + " injection points; list_injection_points shows all of them");

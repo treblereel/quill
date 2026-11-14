@@ -38,7 +38,7 @@ public final class ResolutionPersistenceMapper {
                     newId, classId, bean.kind(), bean.scope(), bean.qualifiers(), bean.stereotypes(),
                     bean.isAlternative(), bean.isDefault(), bean.priority(), bean.profiles(),
                     bean.declaringClassId() != null ? classIds.get(bean.declaringClassId()) : null,
-                    bean.memberName(), bean.beanTypes()));
+                    bean.memberName(), bean.beanTypes(), bean.framework()));
         }
 
         Map<Integer, Integer> injectionPointIds = new LinkedHashMap<>();
@@ -83,7 +83,7 @@ public final class ResolutionPersistenceMapper {
                 beans.add(new BeanRecord(id, bean.classId(), bean.kind(), bean.scope(),
                         bean.qualifiers(), bean.stereotypes(), bean.isAlternative(),
                         bean.isDefault(), bean.priority(), bean.profiles(), bean.declaringClassId(),
-                        bean.memberName(), bean.beanTypes()));
+                        bean.memberName(), bean.beanTypes(), bean.framework()));
             }
 
             Map<Integer, Integer> injectionPointIds = new HashMap<>();

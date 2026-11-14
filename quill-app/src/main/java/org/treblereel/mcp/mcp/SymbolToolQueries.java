@@ -90,6 +90,8 @@ final class SymbolToolQueries {
                     BeanEvidence.appendConditions(node, bean, annotations, List.of());
                     String discovery = BeanEvidence.discovery(reader, bean, annotations);
                     if (discovery != null) node.put("discovery", discovery);
+                    String removal = BeanEvidence.removal(reader, bean, annotations, cls.className());
+                    if (removal != null) node.put("arc_removal", removal);
                 });
         appendImplementations(root, cls, reader.symbols.findAllClasses());
         appendExternalDependencies(root, reader.usages.findExternalDeps(cls.id()));

@@ -82,6 +82,53 @@ final class BeanEvidence {
                 + "; " + (excludes.isEmpty() ? "no quarkus.arc.exclude-types declared" : "quarkus.arc.exclude-types: " + String.join(", ", excludes));
     }
 
+    /**
+     * Whether ArC's unused-bean removal can drop a class bean: the indexed reasons it is kept, the removal setting
+     * and whether the last indexed build generated its _Bean. V66 CQ-005: Codex read deployment processors and
+     * searched the web for these rules in every session.
+     */
+    static String removal(org.treblereel.mcp.db.ReadQueryContext db, BeanRecord bean, List<ClassAnnotationRecord> annotations,
+            String className) {
+        if (!"CLASS".equals(bean.kind())) return null;
+        List<String> owners = db.jdbi().withHandle(h -> h.createQuery("""
+                SELECT DISTINCT oc.class_name || '#' || COALESCE(ip.field_name, lower(ip.kind)) FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
+                WHERE ip.resolved_bean_id = :id ORDER BY 1""").bind("id", bean.id()).mapTo(String.class).list());
+        List<String> kept = new ArrayList<>();
+        if (!owners.isEmpty()) kept.add("injected into " + String.join(", ", owners.subList(0, Math.min(3, owners.size())))
+                + (owners.size() > 3 ? " (+" + (owners.size() - 3) + " more)" : ""));
+        List<Map<String, Object>> members = db.jdbi().withHandle(h -> h.createQuery("""
+                SELECT name, annotations FROM class_members WHERE class_id = :id AND kind IN ('METHOD','FIELD')
+                AND (annotations LIKE '%.event.Observes%' OR annotations LIKE '%.inject.Produces"%') ORDER BY rowid""")
+                .bind("id", bean.classId()).mapToMap().list());
+        for (var member : members) {
+            String role = String.valueOf(member.get("annotations")).contains(".event.Observes") ? "observer method " : "producer member ";
+            if (kept.size() < 4) kept.add(role + member.get("name"));
+        }
+        if (annotations.stream().anyMatch(annotation -> annotation.annotationName().equals(UNREMOVABLE))) kept.add("@Unremovable");
+        if (bean.qualifiers() != null && bean.qualifiers().stream().anyMatch(q -> q.startsWith("@Named"))) kept.add("@Named");
+        annotations.stream().map(ClassAnnotationRecord::annotationName).filter(ROOT_ANNOTATIONS::contains).distinct()
+                .forEach(name -> kept.add("@" + name.substring(name.lastIndexOf('.') + 1)));
+        List<String> setting = db.jdbi().withHandle(h -> h.createQuery("""
+                SELECT key || ' ' || file || ':' || line FROM configuration_definitions
+                WHERE key LIKE '%quarkus.arc.remove-unused-beans' ORDER BY source_set, file, line LIMIT 3""").mapTo(String.class).list());
+        String text = (kept.isEmpty()
+                ? "removal not ruled out: no indexed injection point, observer or producer member, @Named, @Unremovable "
+                        + "or root annotation keeps it; Instance/@All lookups and extension-registered roots also keep a bean"
+                : "kept: " + String.join("; ", kept) + " (ArC removes only a bean nothing injects, observes through, produces "
+                        + "from, names, marks @Unremovable or registers as a root)")
+                + "; " + (setting.isEmpty() ? "quarkus.arc.remove-unused-beans not declared (default all)"
+                        : "quarkus.arc.remove-unused-beans: " + String.join(", ", setting));
+        String generated = db.index.getMetadata().get(org.treblereel.mcp.core.GeneratedBytecodeScanner.METADATA_KEY);
+        if (generated != null) {
+            String beanClass = className + "_Bean";
+            text += generated.contains("\"" + beanClass + "\"")
+                    ? "; the last indexed Quarkus build generated " + beanClass + ", so that build kept it"
+                    : "; no generated " + beanClass + " in the last indexed Quarkus build output";
+        }
+        return text;
+    }
+
     /** {@code @Simple -> meaning} for each condition annotation a candidate line names, once per answer. */
     static ObjectNode conditionMeanings(Iterable<String> lines) {
         ObjectNode meanings = JSON.createObjectNode();

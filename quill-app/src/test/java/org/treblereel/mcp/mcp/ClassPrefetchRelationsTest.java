@@ -205,6 +205,42 @@ class ClassPrefetchRelationsTest {
         assertTrue(discovery.contains("no quarkus.arc.exclude-types"), discovery);
     }
 
+    /** V66 CQ-005: asked whether Quarkus may remove a bean, Codex read HttpSecurityProcessor bytecode and searched the web for the rules. */
+    @Test
+    void symbolDetailsStateWhetherArcMayRemoveAClassBean() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("removal.db"));
+        IndexWriter.writeIncremental(db, new IndexFixture()
+                .classes(List.of(new ClassRecord(0, "x.Mapper", "CLASS", "java.lang.Object", List.of(), "Mapper.java", 1, true, 10),
+                        new ClassRecord(0, "x.Auth", "CLASS", "java.lang.Object", List.of(), "Auth.java", 1, true, 10),
+                        new ClassRecord(0, "x.Idle", "CLASS", "java.lang.Object", List.of(), "Idle.java", 1, true, 10)))
+                .beans(List.of(new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default", "@Any"), List.of(), false, null, null, null, null, List.of("x.Mapper")),
+                        new BeanRecord(0, 2, "CLASS", "@ApplicationScoped", List.of("@Default", "@Any"), List.of(), false, null, null, null, null, List.of("x.Auth")),
+                        new BeanRecord(0, 3, "CLASS", "@ApplicationScoped", List.of("@Default", "@Any"), List.of(), false, null, null, null, null, List.of("x.Idle"))))
+                .injectionPoints(List.of(InjectionPointRecord.staticAnalysis(0, 2, "FIELD", "x.Mapper", List.of("@Default"), "mapper", 1, false, InjectionPointRecord.STATIC_CDI)))
+                .dependencies(List.of()).metadata(Map.of("index_id", "removal",
+                        org.treblereel.mcp.core.GeneratedBytecodeScanner.METADATA_KEY,
+                        "{\"classes\":[{\"class\":\"x.Mapper_Bean\",\"source_class\":\"x.Mapper\",\"jar\":\"target/quarkus-app/quarkus/generated-bytecode.jar\",\"entry\":\"x/Mapper_Bean.class\",\"references\":[]}],\"jars\":[]}"))
+                .snapshot());
+
+        String kept = new ObjectMapper().readTree(TestReads.<String>read(db, reader -> new SymbolToolQueries()
+                .getSymbolDetails(reader, "x.Mapper", false, null, 10, 0))).path("bean").path("arc_removal").asText();
+        assertTrue(kept.contains("kept: injected into x.Auth#mapper"), kept);
+        assertTrue(kept.contains("quarkus.arc.remove-unused-beans not declared (default all)"), kept);
+        assertTrue(kept.contains("generated x.Mapper_Bean"), kept);
+
+        String idle = new ObjectMapper().readTree(TestReads.<String>read(db, reader -> new SymbolToolQueries()
+                .getSymbolDetails(reader, "x.Idle", false, null, 10, 0))).path("bean").path("arc_removal").asText();
+        assertTrue(idle.contains("not ruled out"), idle);
+        assertTrue(idle.contains("no generated x.Idle_Bean"), idle);
+
+        // V66 probe of CQ-009: an observer bean read as removable although its @Observes method keeps it.
+        db.useHandle(handle -> handle.execute("INSERT INTO class_members(class_id,kind,name,descriptor,signature,type_name,parameter_types,modifiers,annotations) "
+                + "VALUES (3,'METHOD','onEvent','(Lx/Event;)V','onEvent(x.Event):void','void','[]','','[\"jakarta.enterprise.event.Observes\"]')"));
+        String observer = new ObjectMapper().readTree(TestReads.<String>read(db, reader -> new SymbolToolQueries()
+                .getSymbolDetails(reader, "x.Idle", false, null, 10, 0))).path("bean").path("arc_removal").asText();
+        assertTrue(observer.contains("kept: observer method onEvent"), observer);
+    }
+
     /** V62 CQ-045: asked about a scope change, Claude read the class for its state and @PreDestroy and opened each dependency for its scope. */
     @Test
     void aClassStatesItsInstanceStateAndLifecycleCallbacks() throws Exception {

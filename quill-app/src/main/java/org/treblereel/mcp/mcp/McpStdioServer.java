@@ -185,12 +185,23 @@ public final class McpStdioServer {
 
         @Override
         public int read() throws IOException {
-            return signal(super.read());
+            try {
+                return signal(super.read());
+            } catch (IOException failure) {
+                // A broken input never reaches EOF; the server must still stop instead of waiting forever.
+                eof.countDown();
+                throw failure;
+            }
         }
 
         @Override
         public int read(byte[] bytes, int offset, int length) throws IOException {
-            return signal(super.read(bytes, offset, length));
+            try {
+                return signal(super.read(bytes, offset, length));
+            } catch (IOException failure) {
+                eof.countDown();
+                throw failure;
+            }
         }
 
         @Override

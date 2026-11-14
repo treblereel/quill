@@ -687,6 +687,29 @@ class ProjectPreparationTest {
         }
     }
 
+    @Test void aProjectThatCannotBeObservedReportsItselfWithoutBlockingTheOthers() throws Exception {
+        var parent = root;
+        var broken = Files.createDirectory(parent.resolve("broken"));
+        var gitLink = Files.writeString(broken.resolve(".git"), "gitdir: " + parent.resolve("missing-git-dir") + "\n");
+        root = Files.createDirectory(parent.resolve("healthy"));
+        fixture();
+        var healthy = root;
+        // The unobservable project comes first: before isolation it stopped the healthy one from ever being observed.
+        ProjectScope scope = () -> new ProjectScope.Snapshot(1, List.of(
+                new ProjectScope.Project("broken", broken), new ProjectScope.Project("healthy", healthy)));
+        try (var registry = new ProjectRegistry(scope); var preparation = new ProjectPreparation(registry, scope)) {
+            preparation.start();
+            assertNotNull(await(() -> preparation.resolve("healthy").projects().stream()
+                    .filter(p -> !p.observations().freshness().structureStale()).findFirst().orElse(null)));
+            var failed = preparation.resolve("broken");
+            assertTrue(failed.issues().stream().anyMatch(i -> i.project().equals("broken")
+                    && i.code().equals("index_unavailable") && i.message().contains("cannot be observed")), failed.toString());
+            Files.delete(gitLink);
+            assertNotNull(await(() -> preparation.resolve("broken").issues().stream()
+                    .noneMatch(i -> i.message().contains("cannot be observed")) ? Boolean.TRUE : null));
+        }
+    }
+
     @Test void aSlowNativeDeliveryBarrierCannotBlockRequestsOrLeaveEvidenceVerified() throws Exception {
         var parent = root;
         root = Files.createDirectory(parent.resolve("healthy"));

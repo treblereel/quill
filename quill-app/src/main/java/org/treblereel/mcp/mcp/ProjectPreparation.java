@@ -34,6 +34,8 @@ final class ProjectPreparation implements AutoCloseable {
     private long nextReconcile;
     private final CompletableFuture<Void> initial = new CompletableFuture<>();
     private volatile String startupFailure;
+    /** Projects the last reconcile could not start observing, retried on the next one. */
+    private final Map<Path, String> stateFailures = new ConcurrentHashMap<>();
     private final long startupStarted = System.nanoTime();
     private boolean integrationsUpgraded;
 
@@ -130,12 +132,25 @@ final class ProjectPreparation implements AutoCloseable {
         Set<Path> retained = new HashSet<>();
         for (var project : snapshot.projects()) {
             retained.add(project.root());
-            states.compute(project.root(), (ignored, current) -> {
-                if (current != null && current.project.equals(project)) return current;
-                if (current != null) current.close();
-                return new State(project);
-            });
+            State current = states.get(project.root());
+            if (current != null && current.project.equals(project)) continue;
+            // Observing a project reads Git metadata and its layout: done outside the map, and a project
+            // that cannot be observed reports its own issue instead of stopping the rest of the workspace.
+            State next;
+            try {
+                next = new State(project);
+            } catch (RuntimeException failure) {
+                if (current != null && states.remove(project.root(), current)) current.close();
+                String message = ProjectRegistry.safeMessage(failure);
+                if (!Objects.equals(message, stateFailures.put(project.root(), message)))
+                    System.err.println("[quill] Cannot observe " + project.name() + ": " + message);
+                continue;
+            }
+            stateFailures.remove(project.root());
+            State previous = states.put(project.root(), next);
+            if (previous != null) previous.close();
         }
+        stateFailures.keySet().retainAll(retained);
         boolean removed = false;
         for (var entry : states.entrySet()) {
             if (!retained.contains(entry.getKey()) && states.remove(entry.getKey(), entry.getValue())) {
@@ -154,7 +169,9 @@ final class ProjectPreparation implements AutoCloseable {
                 reconcile();
             }
             states.values().forEach(State::tick);
-        } catch (RuntimeException failure) {
+        } catch (Throwable failure) {
+            // An escaping throwable would cancel the fixed-delay task for good and leave every project pending.
+            System.err.println("[quill] Project observation failed: " + ProjectRegistry.safeMessage(failure));
             states.values().forEach(State::changed);
         }
     }
@@ -180,7 +197,19 @@ final class ProjectPreparation implements AutoCloseable {
         List<ProjectRegistry.ProjectIssue> issues = new ArrayList<>();
         // Name and path selection use the already reconciled scope; coordinate aliases are
         // resolved by the workspace catalog during background reconciliation.
-        var selected = select(snapshot, selector).stream().map(p -> states.get(p.root())).filter(Objects::nonNull).toList();
+        var chosen = select(snapshot, selector);
+        for (var project : chosen) {
+            String failure = states.containsKey(project.root()) ? null : stateFailures.get(project.root());
+            if (failure == null) continue;
+            var issue = new ProjectRegistry.ProjectIssue(project.name(), project.root(), "index_unavailable", null,
+                    "Project cannot be observed: " + failure,
+                    "Observation will retry automatically; no build is required", false)
+                    .readiness(ProjectRegistry.ReadinessReason.PREPARATION_RETRY_SCHEDULED, "observing_project",
+                            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startupStarted), 1000L,
+                            org.treblereel.mcp.index.ProjectIndexStore.findBestAvailableDb(project.root()) != null);
+            errors.add(issue.legacyMessage()); issues.add(issue);
+        }
+        var selected = chosen.stream().map(p -> states.get(p.root())).filter(Objects::nonNull).toList();
         var barriers = new HashMap<State, CompletableFuture<Void>>();
         for (State state : selected) {
             state.checkControls();

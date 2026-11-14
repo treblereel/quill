@@ -112,6 +112,29 @@ class MethodPrefetchRelationsTest {
         assertTrue(some.path("declaring_class_injects").path(0).asText().startsWith("FIELD dep: p.Dep"), some.toString());
     }
 
+    /** Without a descriptor one static overload must not hide what the instance overloads need, nor may a cut list read as complete. */
+    @Test
+    void producerWithMixedOverloadsListsInjectionsAndMarksTruncation() throws Exception {
+        var db = JavaEvidenceFixture.index(root, "package p; class Gen {} class Producers { static Gen gen() { return new Gen(); } Gen gen(int i) { return new Gen(); } }");
+        db.useHandle(handle -> {
+            int id = handle.createQuery("SELECT id FROM classes WHERE class_name = 'p.Producers'").mapTo(Integer.class).one();
+            handle.execute("INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types) VALUES (?, 'CLASS', '@ApplicationScoped', '[\"@Default\"]', '[\"p.Producers\"]')", id);
+            handle.execute("INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, declaring_class_id, member_name) "
+                    + "VALUES (?, 'PRODUCER_METHOD', '@Dependent', '[\"@Default\"]', '[\"p.Gen\"]', ?, 'gen')", id, id);
+            int bean = handle.createQuery("SELECT id FROM beans WHERE class_id = ? AND kind = 'CLASS'").bind(0, id).mapTo(Integer.class).one();
+            for (int i = 0; i < 10; i++)
+                handle.execute("INSERT INTO injection_points(bean_id, kind, target_type, qualifiers, field_name, resolution_status, resolution_strategy, resolution_reason, resolution_confidence) "
+                        + "VALUES (?, 'FIELD', 'p.Gen', '[\"@Default\"]', ?, 'UNKNOWN', 'STATIC_CDI', 'NO_CANDIDATE', 'LOW')", bean, "dep" + i);
+        });
+        ObjectNode fact = JSON.createObjectNode().put("class", "p.Producers").put("name", "gen").put("descriptor", "");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, root, fact); return null; });
+
+        JsonNode lines = fact.path("declaring_class_injects");
+        assertTrue(lines.path(0).asText().startsWith("overloads differ"), fact.toString());
+        assertEquals(1 + 8 + 1, lines.size(), fact.toString());
+        assertTrue(lines.path(lines.size() - 1).asText().startsWith("truncated: more than 8"), fact.toString());
+    }
+
     @Test
     void methodFactListsAnnotationValuesAndCallsTwoLevelsDownThroughLambdas() throws Exception {
         var db = JavaEvidenceFixture.index(root, """

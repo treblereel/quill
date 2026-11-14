@@ -586,25 +586,34 @@ final class MethodPrefetchRelations {
      */
     private static ArrayNode declaringClassInjects(ReadQueryContext db, int classId, String name, String descriptor) {
         ArrayNode lines = JSON.createArrayNode();
-        boolean isStatic = db.jdbi().withHandle(handle -> handle.createQuery("""
+        List<Boolean> statics = db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT modifiers FROM class_members WHERE class_id = :id AND kind = 'METHOD' AND name = :name
                   AND (:descriptor = '' OR descriptor = :descriptor)""")
                 .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(String.class).list())
-                .stream().anyMatch(modifiers -> (" " + modifiers + " ").contains(" static "));
-        if (isStatic) return lines.add("not needed: static producer; the declaring bean is not instantiated to call it");
-        db.jdbi().withHandle(handle -> handle.createQuery("""
+                .stream().map(modifiers -> (" " + modifiers + " ").contains(" static ")).toList();
+        // Without a descriptor every overload matches: only when all are static is the instance never needed.
+        if (!statics.isEmpty() && !statics.contains(false))
+            return lines.add("not needed: static producer; the declaring bean is not instantiated to call it");
+        if (statics.contains(true))
+            lines.add("overloads differ: some are static and need no declaring bean instance; the others need what follows");
+        int shown = 8;
+        List<Map<String, Object>> points = db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status,
                        rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.scope AS resolved_scope
                 FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
                 LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
                 LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
-                WHERE ob.class_id = :id AND ob.kind = 'CLASS' ORDER BY ip.id LIMIT 8""").bind("id", classId).mapToMap().list())
+                WHERE ob.class_id = :id AND ob.kind = 'CLASS' ORDER BY ip.id LIMIT :limit""")
+                .bind("id", classId).bind("limit", shown + 1).mapToMap().list());
+        points.stream().limit(shown)
                 .forEach(row -> lines.add(row.get("kind") + " " + row.get("field_name") + ": " + row.get("target_type") + " "
                         + row.get("qualifiers") + " -> " + (row.get("resolved_class") == null ? "not resolved by the application index"
                                 : row.get("resolved_class") + (row.get("resolved_member") == null ? "" : "#" + row.get("resolved_member"))
                                         + (row.get("resolved_scope") == null ? "" : " " + row.get("resolved_scope")))
                         + " [" + row.get("resolution_status") + "]"));
-        if (lines.isEmpty()) lines.add("none: the declaring bean has no injection points");
+        if (points.size() > shown)
+            lines.add("truncated: more than " + shown + " injection points; list_injection_points shows all of them");
+        if (points.isEmpty()) lines.add("none: the declaring bean has no injection points");
         return lines;
     }
 

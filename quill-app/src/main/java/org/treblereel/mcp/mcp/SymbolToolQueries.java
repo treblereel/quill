@@ -88,6 +88,8 @@ final class SymbolToolQueries {
                     appendBean(node, bean);
                     // V62 CQ-014: get_context named @LookupIfProperty without its values or what Instance.get() then does.
                     BeanEvidence.appendConditions(node, bean, annotations, List.of());
+                    String discovery = BeanEvidence.discovery(reader, bean, annotations);
+                    if (discovery != null) node.put("discovery", discovery);
                 });
         appendImplementations(root, cls, reader.symbols.findAllClasses());
         appendExternalDependencies(root, reader.usages.findExternalDeps(cls.id()));

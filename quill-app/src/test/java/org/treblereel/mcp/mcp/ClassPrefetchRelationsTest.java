@@ -183,6 +183,28 @@ class ClassPrefetchRelationsTest {
         assertTrue(condition.path("meaning").asText().contains("UnsatisfiedResolutionException"), condition.toString());
     }
 
+    /** V62 CQ-003: every Codex session grepped beans.xml and quarkus.arc.* to explain why a class is a bean. */
+    @Test
+    void symbolDetailsStateWhyAClassIsDiscoveredAsABean() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("discovery.db"));
+        IndexWriter.writeIncremental(db, new IndexFixture()
+                .classes(List.of(new ClassRecord(0, "x.Mapper", "CLASS", "java.lang.Object", List.of(), "Mapper.java", 1, true, 10)))
+                .beans(List.of(new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default", "@Any"), List.of(), false, null, null, null, null, List.of("x.Mapper"))))
+                .dependencies(List.of()).metadata(Map.of("index_id", "discovery")).snapshot());
+        db.useHandle(handle -> {
+            handle.execute("INSERT INTO class_annotations(class_id,annotation_name,direct,annotation_values) VALUES (1,'jakarta.enterprise.context.ApplicationScoped',1,'{}')");
+            handle.execute("INSERT INTO files(project_path,repository_path,kind,origin,lifecycle,module,source_set) VALUES ('src/main/resources/META-INF/beans.xml','src/main/resources/META-INF/beans.xml','resource','source','current','.','main')");
+        });
+
+        String discovery = new ObjectMapper().readTree(TestReads.<String>read(db, reader -> new SymbolToolQueries()
+                .getSymbolDetails(reader, "x.Mapper", false, null, 10, 0))).path("bean").path("discovery").asText();
+
+        assertTrue(discovery.contains("bean-defining annotation @ApplicationScoped on the class"), discovery);
+        assertTrue(discovery.contains("stereotypes: none"), discovery);
+        assertTrue(discovery.contains("src/main/resources/META-INF/beans.xml"), discovery);
+        assertTrue(discovery.contains("no quarkus.arc.exclude-types"), discovery);
+    }
+
     @Test
     void decoratorsAreNamedWithPriorityAndUnresolvedPointsListQualifiedDependencyProviders() throws Exception {
         Jdbi db = QuillDatabase.create(root.resolve("decorators.db"));

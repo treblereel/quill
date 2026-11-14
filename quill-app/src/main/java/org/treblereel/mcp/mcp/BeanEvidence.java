@@ -56,6 +56,32 @@ final class BeanEvidence {
 
     private BeanEvidence() {}
 
+    /**
+     * Why a class bean is discovered: its bean-defining annotation, stereotypes, beans.xml and
+     * quarkus.arc.exclude-types. V62 CQ-003: Codex grepped these by hand in every session.
+     */
+    static String discovery(org.treblereel.mcp.db.ReadQueryContext db, BeanRecord bean, List<ClassAnnotationRecord> annotations) {
+        if (!"CLASS".equals(bean.kind()) || bean.scope() == null) return null;
+        String scope = bean.scope().substring(1);
+        List<String> defining = annotations.stream().filter(ClassAnnotationRecord::direct)
+                .map(ClassAnnotationRecord::annotationName)
+                .filter(name -> name.substring(name.lastIndexOf('.') + 1).equals(scope)).distinct()
+                .map(name -> "@" + name.substring(name.lastIndexOf('.') + 1)).toList();
+        List<String> stereotypes = bean.stereotypes() == null ? List.of() : bean.stereotypes();
+        List<String> beansXml = db.jdbi().withHandle(h -> h.createQuery("""
+                SELECT project_path FROM files WHERE lifecycle='current' AND project_path LIKE '%META-INF/beans.xml'
+                ORDER BY source_set, project_path LIMIT 3""").mapTo(String.class).list());
+        List<String> excludes = db.jdbi().withHandle(h -> h.createQuery("""
+                SELECT key || ' ' || file || ':' || line FROM configuration_definitions
+                WHERE key LIKE '%quarkus.arc.exclude-types' ORDER BY file, line LIMIT 3""").mapTo(String.class).list());
+        return (defining.isEmpty() ? "scope " + bean.scope() + " not declared directly on the class (inherited or via stereotype)"
+                        : "bean-defining annotation " + String.join(", ", defining) + " on the class")
+                + "; stereotypes: " + (stereotypes.isEmpty() ? "none" : String.join(", ", stereotypes))
+                + "; ArC uses annotated discovery and indexes application classes as one bean archive, "
+                + (beansXml.isEmpty() ? "no META-INF/beans.xml needed" : String.join(", ", beansXml) + " present (its bean-discovery-mode is ignored)")
+                + "; " + (excludes.isEmpty() ? "no quarkus.arc.exclude-types declared" : "quarkus.arc.exclude-types: " + String.join(", ", excludes));
+    }
+
     /** {@code @Simple -> meaning} for each condition annotation a candidate line names, once per answer. */
     static ObjectNode conditionMeanings(Iterable<String> lines) {
         ObjectNode meanings = JSON.createObjectNode();

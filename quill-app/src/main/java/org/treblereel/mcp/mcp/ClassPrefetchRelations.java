@@ -410,7 +410,9 @@ final class ClassPrefetchRelations {
     }
 
     private static String injects(ReadQueryContext db, Map<String, Object> row) {
-        String resolved = "BUILTIN_BEAN".equals(row.get("resolution_reason")) ? "built-in bean"
+        String resolved = "BUILTIN_BEAN".equals(row.get("resolution_reason"))
+                ? BeanTerms.spring(String.valueOf(row.get("owner_framework")))
+                        ? "supplied by the Spring context itself (resolvable dependency, no bean definition)" : "built-in bean"
                 : row.get("resolved_class") == null ? "not resolved by the application index"
                 + MethodPrefetchRelations.dependencyProviders(db, String.valueOf(row.get("target_type")), row.get("qualifiers"))
                 : row.get("resolved_class") + (row.get("resolved_member") == null ? ""

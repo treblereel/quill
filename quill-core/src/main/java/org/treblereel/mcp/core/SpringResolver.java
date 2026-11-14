@@ -179,6 +179,7 @@ public final class SpringResolver {
 
         BeanResolver.addNonBeanDependencies(applicationIndex, beanRecords, depRecords, classNameToId);
 
+        ipRecords.replaceAll(InjectionPointRecord::asSpringResolvable);
         return new BeanResolver.ResolutionResult(
                 beanRecords.stream().map(bean -> bean.withFramework(BeanRecord.SPRING)).toList(),
                 ipRecords, depRecords, classNameToId, problems);

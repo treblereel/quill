@@ -881,6 +881,7 @@ final class StructureToolQueries {
         List<ExternalBeanRecord> providers = injectionPoints.stream()
                 .anyMatch(p -> p.resolutionStatus() == ResolutionStatus.UNKNOWN)
                 ? reader.beans.findExternalBeans(null) : List.of();
+        Map<String, List<String>> typeArtifacts = new HashMap<>();
         for (InjectionPointRecord point : injectionPoints) {
             ObjectNode node = result.addObject();
             node.put("kind", point.kind());
@@ -888,6 +889,12 @@ final class StructureToolQueries {
             node.put("required_type", point.targetType());
             node.set("qualifiers", JSON.valueToTree(BeanTerms.qualifiers(bean.get().framework(), point.qualifiers())));
             node.put("resolution", point.resolutionStatus().name().toLowerCase());
+            // AQ-004: a dependency type's jar is part of "where does it come from"; the index knows it.
+            if (point.resolvedBeanId() == null && reader.symbols.findClassByName(point.targetType()).isEmpty()) {
+                List<String> artifacts = typeArtifacts.computeIfAbsent(point.targetType(),
+                        type -> ExternalSymbolQueries.artifactsOf(reader, type));
+                if (!artifacts.isEmpty()) node.set("required_type_artifacts", JSON.valueToTree(artifacts));
+            }
             node.put("resolution_strategy", point.resolutionStrategy());
             node.put("reason", point.resolutionReason().name());
             node.put("confidence", point.resolutionConfidence().name().toLowerCase());

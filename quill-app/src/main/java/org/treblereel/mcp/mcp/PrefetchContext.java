@@ -253,10 +253,11 @@ public final class PrefetchContext {
     /**
      * Cut only when nothing else is left: without the selected body, recorded agents read the whole file;
      * without the bound interceptors (V62 CQ-026) they searched for them over three more turns; an endpoint's
-     * methods, once halved to its handler, hold the handler body (other facts' methods go with OPTIONAL_FIELDS).
+     * methods, once halved to its handler, hold the handler body (other facts' methods go with OPTIONAL_FIELDS);
+     * halved calls (V66 CQ-027) lost ObjectMapper#readValue from every answer, though the body stayed.
      */
     private static final Set<String> LAST_RESORT=Set.of("selected_method_source","framework_contract","thread_hops",
-            "beans_reached_after","dependency_interceptors","methods");
+            "beans_reached_after","dependency_interceptors","methods","calls");
     /** A shorter field is a statement rather than a body of evidence, and removing it saves little. */
     private static final int MIN_FIELD_CUT_BYTES=64;
     private static final int PROPORTIONATE_FACTOR=4;
@@ -305,7 +306,7 @@ public final class PrefetchContext {
         return REACH.contains(field) || REACH_SUFFIXES.stream().anyMatch(field::endsWith);
     }
     /** A cut and the bytes it frees after paying for the note that states it. */
-    private record Cut(ObjectNode owner,String field,int frees,boolean list){}
+    private record Cut(ObjectNode owner,String field,int frees,boolean list,boolean lastResort){}
     /** Applies the smallest cut that fits the budget, or else the largest, so a small overrun never costs a large field. */
     private static boolean shrink(ObjectNode data,ArrayNode facts,int limit){
         List<Cut> cuts=new ArrayList<>();
@@ -313,7 +314,7 @@ public final class PrefetchContext {
         for(JsonNode fact:facts)if(fact instanceof ObjectNode object)collectFields(object,cuts);
         cuts.removeIf(cut->cut.frees()<=0);
         if(cuts.isEmpty())return false;
-        List<Cut> others=cuts.stream().filter(cut->!LAST_RESORT.contains(cut.field())).toList();
+        List<Cut> others=cuts.stream().filter(cut->!cut.lastResort()).toList();
         if(!others.isEmpty())cuts=others;
         int over=size(data)-limit;
         // Several small cuts are better than one far larger than the overrun.
@@ -340,7 +341,7 @@ public final class PrefetchContext {
             boolean verdict=value.isNumber() || value.isBoolean() || value.isNull();
             int bytes=size(value);
             if(FACT_IDENTITY.contains(field) || statesReach(field) || longList || verdict || bytes<MIN_FIELD_CUT_BYTES || mostlyList(value))return;
-            cuts.add(new Cut(fact,field,bytes+1,false));
+            cuts.add(new Cut(fact,field,bytes+1,false,LAST_RESORT.contains(field)));
         });
     }
     /** Halving such a value keeps most of what removing it would lose. */
@@ -349,19 +350,22 @@ public final class PrefetchContext {
         collectLists(value,lists);
         return lists.stream().anyMatch(list->list.frees()*4>=size(value));
     }
-    private static void collectLists(JsonNode node,List<Cut> cuts){
+    private static void collectLists(JsonNode node,List<Cut> cuts){collectLists(node,cuts,false);}
+    /** A list inside a last-resort field (framework_contract.rules) is cut as late as the field itself. */
+    private static void collectLists(JsonNode node,List<Cut> cuts,boolean insideLastResort){
         if(node instanceof ObjectNode object){
             object.properties().forEach(entry->{
+                boolean lastResort=insideLastResort || LAST_RESORT.contains(entry.getKey());
                 if(entry.getValue() instanceof ArrayNode list && list.size()>=2){
                     int removed=0;
                     for(int i=list.size()/2;i<list.size();i++)removed+=size(list.get(i))+1;
                     String marker=entry.getKey()+"_truncated";
                     int note=object.has(marker)?0:marker.length()+TRUNCATION_NOTE_BYTES;
-                    cuts.add(new Cut(object,entry.getKey(),removed-note,true));
+                    cuts.add(new Cut(object,entry.getKey(),removed-note,true,lastResort));
                 }
-                collectLists(entry.getValue(),cuts);
+                collectLists(entry.getValue(),cuts,lastResort);
             });
-        }else if(node instanceof ArrayNode list)for(JsonNode child:list)collectLists(child,cuts);
+        }else if(node instanceof ArrayNode list)for(JsonNode child:list)collectLists(child,cuts,insideLastResort);
     }
     /** Keeps half of a list and records shown/total next to it. */
     private static void halve(ObjectNode owner,String field){

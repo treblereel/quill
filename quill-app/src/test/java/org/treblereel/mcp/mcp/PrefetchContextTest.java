@@ -262,6 +262,30 @@ class PrefetchContextTest {
         PrefetchContext.boundContext(data);
         org.junit.jupiter.api.Assertions.assertTrue(data.path("facts").get(0).has("dependency_interceptors"),data.path("context_omitted_fields").toString());
     }
+    // V66 CQ-027: kept interceptors pushed the impact over budget and halved calls; readValue went and all three answers lost it.
+    @Test void theBudgetCutsOtherEvidenceBeforeAMethodsCalls() throws Exception {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var data=json.createObjectNode();
+        var fact=data.putArray("facts").addObject().put("kind","direct_method_impact").put("target","x.A");
+        fact.putArray("calls").add("1 x.Config#walk [virtual]").add("1 x.Credential#persistAndFlush [virtual]")
+                .add("1 com.fasterxml.jackson.databind.ObjectMapper#readValue(java.io.InputStream, java.lang.Class):java.lang.Object [external]");
+        fact.putArray("referenced_members").add("mapper: "+"m".repeat(200)).add("logger: "+"l".repeat(200));
+        fact.put("other","z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES-700));
+        PrefetchContext.boundContext(data);
+        org.junit.jupiter.api.Assertions.assertEquals(3,data.path("facts").get(0).path("calls").size(),data.toString().substring(0,600));
+    }
+    // Probe of V66 CQ-027 with calls kept: the cut moved to framework_contract.rules and lost the lambda and rollback rules.
+    @Test void aListInsideALastResortFieldIsAlsoCutLast() throws Exception {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var data=json.createObjectNode();
+        var fact=data.putArray("facts").addObject().put("kind","direct_method_impact").put("target","x.A");
+        fact.putObject("framework_contract").putArray("rules").add("r".repeat(150)).add("s".repeat(150)).add("t".repeat(150)).add("u".repeat(150));
+        fact.putArray("referenced_members").add("mapper: "+"m".repeat(200)).add("logger: "+"l".repeat(200));
+        fact.put("other","z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES-1000));
+        PrefetchContext.boundContext(data);
+        org.junit.jupiter.api.Assertions.assertEquals(4,data.path("facts").get(0).path("framework_contract").path("rules").size(),
+                data.path("facts").get(0).path("referenced_members_truncated").toString());
+    }
     // V63 CQ-046: callers' result use pushed the impact over budget and halved test_callers, the answer to a which-tests question.
     @Test void theBudgetDropsCallerResultUseBeforeHalvingTestCallers() throws Exception {
         var json=new com.fasterxml.jackson.databind.ObjectMapper();

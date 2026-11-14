@@ -29,6 +29,8 @@ final class ProjectPreparation implements AutoCloseable {
     private final Semaphore slots = new Semaphore(2, true);
     /** How long a request waits for its read barrier; above the 5.2 s worst fseventsd latency measured under load. */
     static final long READ_BARRIER_SECONDS = 10;
+    /** Background control polling of a leader with a live watcher; requests always check controls themselves. */
+    private static final long CONTROL_POLL_NANOS = TimeUnit.SECONDS.toNanos(1);
     private volatile ProjectScope.Snapshot projects;
     private volatile boolean closed;
     private long nextReconcile;
@@ -274,6 +276,7 @@ final class ProjectPreparation implements AutoCloseable {
         private volatile boolean leading;
         private Set<Path> watchedRoots = Set.of();
         private long nextLeadershipCheck;
+        private long nextControlCheck;
         private long preparingStarted, preparingRevision;
         private long retryDelay = TimeUnit.SECONDS.toNanos(1);
 
@@ -406,7 +409,13 @@ final class ProjectPreparation implements AutoCloseable {
         void tick() {
             if (stopped) return;
             checkLeadership();
-            checkControls();
+            // Requests check controls themselves before answering. In the background, a leader whose watcher
+            // is live polls them once a second; a follower, woken only by the leader's announcement, keeps 100 ms.
+            long now = System.nanoTime();
+            if (!leading || !events.active() || now >= nextControlCheck) {
+                nextControlCheck = now + CONTROL_POLL_NANOS;
+                checkControls();
+            }
             if (leading) {
                 events.checkHealth();
                 if (!events.active() && events.recover()) changed();
@@ -708,11 +717,16 @@ final class ProjectPreparation implements AutoCloseable {
         Map<Path,Object> result = new HashMap<>();
         for (Path file : files) {
             try {
-                var attr = Files.readAttributes(file, BasicFileAttributes.class);
-                Object changed;
-                try { changed = Files.getAttribute(file, "unix:ctime"); }
-                catch (UnsupportedOperationException | IllegalArgumentException ignored) { changed = attr.lastModifiedTime(); }
-                result.put(file, new Stamp(attr.fileKey(), attr.size(), attr.lastModifiedTime(), changed));
+                // One stat per file where the unix view exists; this runs on every tick and twice per request.
+                Map<String, Object> unix;
+                try { unix = Files.readAttributes(file, "unix:fileKey,size,lastModifiedTime,ctime"); }
+                catch (UnsupportedOperationException | IllegalArgumentException ignored) { unix = null; }
+                if (unix != null) {
+                    result.put(file, new Stamp(unix.get("fileKey"), (Long) unix.get("size"), unix.get("lastModifiedTime"), unix.get("ctime")));
+                } else {
+                    var attr = Files.readAttributes(file, BasicFileAttributes.class);
+                    result.put(file, new Stamp(attr.fileKey(), attr.size(), attr.lastModifiedTime(), attr.lastModifiedTime()));
+                }
             } catch (IOException | SecurityException absent) { result.put(file, "unavailable"); }
         }
         return Map.copyOf(result);

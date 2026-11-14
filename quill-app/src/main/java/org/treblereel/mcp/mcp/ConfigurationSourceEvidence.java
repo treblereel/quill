@@ -111,7 +111,7 @@ final class ConfigurationSourceEvidence {
         result.put("source_definition_limit", 12).put("source_file_limit", 5)
                 .put("effective_runtime_values_proven", false);
     }
-    static String baseKey(String key) { return key.startsWith("%") && key.indexOf('.') > 1 ? key.substring(key.indexOf('.') + 1) : key; }
+    static String baseKey(String key) { return org.treblereel.mcp.db.ReferenceRepository.baseKey(key); }
     private static boolean scalar(String value) {
         if (SCALAR.matcher(value).matches()) return true;
         if (!value.startsWith("P")) return false;

@@ -13,30 +13,46 @@ public final class ReferenceRepository {
             List<ConfigurationReference> references, Map<ResolutionKey,Resolution> resolutions) {}
     public record ResourcePage(int definitionCount, int usageCount,
             List<ResourceReference> references, Map<ResourceKey,List<String>> definitions) {}
+    /** A definition ({@code file}, {@code line}, {@code evidence}) or a usage ({@code class*}, {@code member}, ...). */
     public record ConfigurationReference(String entryType, String key, String kind, String file, Integer line,
             String module, String sourceSet, Integer classId, String className, String member,
-            Integer parameterIndex, String annotation, String source) {}
+            Integer parameterIndex, String annotation, String source, String evidence) {
+        public boolean definition() { return "definition".equals(entryType); }
+    }
     public record ResourceReference(String entryType, String resourcePath, String file, Integer classId,
             String className, String member, String api, String source, String module, String sourceSet, String kind) {}
-    public record Resolution(int count, List<String> files) {}
+    public record Resolution(int count, List<String> files) {
+        public static final Resolution NONE = new Resolution(0, List.of());
+    }
     public record ResolutionKey(String key, String kind) {}
     public record ResourceKey(String path, String kind) {}
 
-    public ConfigurationPage findConfiguration(String key, String className, String kind, String module, int limit, int offset) {
-            Filters filters = filters(key, className, kind, module);
-            int definitionCount = count("configuration_definitions d",
-                    filters.definitionWhere(), filters.bindings());
-            int usageCount = count("configuration_usages u",
-                    filters.usageWhere(), filters.bindings());
-            int total = definitionCount + usageCount;
-            List<ConfigurationReference> references = page(filters, limit, offset);
-            Map<ResolutionKey, Resolution> resolutions = resolveAll(references, module);
+    /** A definition's key without its {@code %profile.} prefix; persistence units are never profiled. */
+    private static final String BASE_KEY = "(CASE WHEN d.kind <> 'persistence_unit' AND substr(d.key,1,1)='%' AND instr(d.key,'.')>1 "
+            + "THEN substr(d.key,instr(d.key,'.')+1) ELSE d.key END)";
 
-        return new ConfigurationPage(definitionCount, usageCount, references, resolutions);
+    /**
+     * Configuration definitions and consumers matching a key glob ({@code *}), consumer class (exact or simple
+     * name), kind ({@code all}, {@code property}, {@code prefix}, {@code persistence}) and module, one page of
+     * them ordered by key, and for every usage on the page how many indexed definitions satisfy it.
+     */
+    public ConfigurationPage findConfiguration(String key, String className, String kind, String module, int limit, int offset) {
+        Filters filters = filters(key, className, kind, module);
+        int definitionCount = count("configuration_definitions d", filters.definitionWhere(), filters.bindings());
+        int usageCount = count("configuration_usages u", filters.usageWhere(), filters.bindings());
+        List<ConfigurationReference> references = page(filters, limit, offset);
+        return new ConfigurationPage(definitionCount, usageCount, references, resolveAll(references, module));
     }
 
-    private List<ConfigurationReference> page(
-            Filters filters, int limit, int offset) {
+    /** Test-profile declarations the indexer saw but could not read, in one module or all. */
+    public int unknownTestProfiles(String module) {
+        boolean scoped = module != null && !module.isBlank();
+        return handle.createQuery("SELECT count(*) FROM configuration_definitions WHERE kind='quarkus_test_profile_unknown'"
+                        + (scoped ? " AND module=:profile_module" : ""))
+                .bindMap(scoped ? Map.of("profile_module", module) : Map.of()).mapTo(Integer.class).one();
+    }
+
+    private List<ConfigurationReference> page(Filters filters, int limit, int offset) {
         String sql = ClasspathSqlLocator.findSqlOnClasspath(ReferenceRepository.class, "page").formatted(filters.definitionWhere(), filters.usageWhere());
         Map<String, Object> bindings = new LinkedHashMap<>(filters.bindings());
         bindings.put("limit", limit);
@@ -45,26 +61,20 @@ public final class ReferenceRepository {
                 .bindMap(bindings).map((rs,ctx) -> new ConfigurationReference(rs.getString("entry_type"),rs.getString("key"),rs.getString("kind"),
                         rs.getString("file"),(Integer)rs.getObject("line"),rs.getString("module"),rs.getString("source_set"),
                         (Integer)rs.getObject("class_id"),rs.getString("class_name"),rs.getString("member"),
-                        (Integer)rs.getObject("parameter_index"),rs.getString("annotation"),rs.getString("source"))).list();
+                        (Integer)rs.getObject("parameter_index"),rs.getString("annotation"),rs.getString("source"),
+                        rs.getString("evidence"))).list();
     }
 
-    private int count(String table, String where,
-            Map<String, Object> bindings) {
-        return handle.createQuery(
-                        "SELECT count(*) FROM " + table + " WHERE " + where)
+    private int count(String table, String where, Map<String, Object> bindings) {
+        return handle.createQuery("SELECT count(*) FROM " + table + " WHERE " + where)
                 .bindMap(bindings).mapTo(Integer.class).one();
     }
 
-    private Map<ResolutionKey, Resolution> resolveAll(
-            List<ConfigurationReference> references, String module) {
+    private Map<ResolutionKey, Resolution> resolveAll(List<ConfigurationReference> references, String module) {
         Set<ResolutionKey> keys = new LinkedHashSet<>();
-        for (ConfigurationReference reference : references) {
-            if (!"usage".equals(reference.entryType())) continue;
-            String kind = reference.kind();
-            if (!kind.equals("dynamic_config_key")) {
-                keys.add(new ResolutionKey(reference.key(), kind));
-            }
-        }
+        for (ConfigurationReference reference : references)
+            if (!reference.definition() && !reference.kind().equals("dynamic_config_key"))
+                keys.add(new ResolutionKey(reference.key(), reference.kind()));
         if (keys.isEmpty()) return Map.of();
 
         List<String> relations = new ArrayList<>();
@@ -76,10 +86,9 @@ public final class ReferenceRepository {
             if (key.kind().equals("config_prefix")) {
                 String prefix = "resolved_prefix_" + index;
                 bindings.put(prefix, escapeLike(key.key()) + ".%");
-                relations.add("(d.key = :" + exact + " OR d.key LIKE :" + prefix
-                        + " ESCAPE '!')");
+                relations.add("(" + BASE_KEY + " = :" + exact + " OR " + BASE_KEY + " LIKE :" + prefix + " ESCAPE '!')");
             } else {
-                relations.add("d.key = :" + exact);
+                relations.add((key.kind().equals("persistence_unit") ? "d.key" : BASE_KEY) + " = :" + exact);
             }
             index++;
         }
@@ -88,20 +97,17 @@ public final class ReferenceRepository {
             moduleFilter = " AND d.module = :resolved_module";
             bindings.put("resolved_module", module);
         }
-        String sql = "SELECT d.key, d.file FROM configuration_definitions d WHERE ("
-                + String.join(" OR ", relations) + ")" + moduleFilter
-                + " ORDER BY d.key, d.file";
-        List<Map<String, Object>> definitions = handle.createQuery(sql)
-                .bindMap(bindings).mapToMap().list();
+        String sql = "SELECT d.key, d.kind, d.file FROM configuration_definitions d WHERE d.kind NOT IN ('quarkus_test_profile','quarkus_test_profile_unknown') AND ("
+                + String.join(" OR ", relations) + ")" + moduleFilter + " ORDER BY d.key, d.file";
+        List<Map<String, Object>> definitions = handle.createQuery(sql).bindMap(bindings).mapToMap().list();
         Map<ResolutionKey, Resolution> result = new LinkedHashMap<>();
         for (ResolutionKey key : keys) {
             int count = 0;
             Set<String> files = new LinkedHashSet<>();
             for (Map<String, Object> definition : definitions) {
-                String definitionKey = text(definition, "key");
+                String definitionKey = text(definition, "kind").equals("persistence_unit") ? text(definition, "key") : baseKey(text(definition, "key"));
                 boolean matches = definitionKey.equals(key.key())
-                        || key.kind().equals("config_prefix")
-                                && definitionKey.startsWith(key.key() + ".");
+                        || key.kind().equals("config_prefix") && definitionKey.startsWith(key.key() + ".");
                 if (matches) {
                     count++;
                     files.add(text(definition, "file"));
@@ -112,66 +118,80 @@ public final class ReferenceRepository {
         return result;
     }
 
-    private static Filters filters(
-            String key, String className, String kind, String module) {
+    /** {@link #BASE_KEY} in Java: {@code %dev.app.name} is {@code app.name}. */
+    public static String baseKey(String key) {
+        if (key == null || !key.startsWith("%")) return key;
+        int dot = key.indexOf('.');
+        return dot > 1 ? key.substring(dot + 1) : key;
+    }
+
+    private static Filters filters(String key, String className, String kind, String module) {
         Map<String, Object> bindings = new LinkedHashMap<>();
         String definitionKey = "1 = 1";
-        String usageKey = "1 = 1";
         if (key != null && !key.isBlank()) {
             bindings.put("key_pattern", wildcardLike(key));
-            int wildcard = key.indexOf('*');
-            String literalPrefix = key.substring(0, wildcard < 0 ? key.length() : wildcard)
-                    .strip();
-            bindings.put("literal_prefix", literalPrefix);
-            definitionKey = "d.key LIKE :key_pattern ESCAPE '!'";
-            usageKey = "(u.key LIKE :key_pattern ESCAPE '!' OR "
-                    + "(u.kind = 'config_prefix' AND "
-                    + "(:literal_prefix = u.key OR :literal_prefix LIKE u.key || '.%')))";
+            String usagePattern = baseKey(key);
+            bindings.put("usage_key_pattern", wildcardLike(usagePattern));
+            int wildcard = usagePattern.indexOf('*');
+            bindings.put("literal_prefix", usagePattern.substring(0, wildcard < 0 ? usagePattern.length() : wildcard).strip());
+            definitionKey = "(d.key LIKE :key_pattern ESCAPE '!' OR " + BASE_KEY + " LIKE :key_pattern ESCAPE '!')";
         }
         String definitionModule = "1 = 1";
-        String usageModule = "1 = 1";
         if (module != null && !module.isBlank()) {
             bindings.put("module", module);
             definitionModule = "d.module = :module";
-            usageModule = "u.module = :module";
         }
-        String usageClass = "1 = 1";
         if (className != null && !className.isBlank()) {
             bindings.put("class_name", className);
             bindings.put("class_suffix", "%." + escapeLike(className));
-            usageClass = "(u.class_name = :class_name "
-                    + "OR u.class_name LIKE :class_suffix ESCAPE '!')";
         }
         String definitionKind = switch (kind) {
             case "persistence" -> "d.kind = 'persistence_unit'";
             case "property", "prefix" -> "d.kind <> 'persistence_unit'";
             default -> "1 = 1";
         };
-        String usageKind = switch (kind) {
-            case "persistence" -> "u.kind = 'persistence_unit'";
-            case "property" -> "u.kind IN ('config_key', 'dynamic_config_key')";
-            case "prefix" -> "u.kind = 'config_prefix'";
-            default -> "1 = 1";
-        };
-        String usageWhere = String.join(" AND ", usageKey, usageClass, usageModule, usageKind);
-        String definitionWhere = String.join(" AND ", definitionKey, definitionModule,
-                definitionKind);
+        String usageWhere = usageWhere("u", key, className, kind, module);
+        String definitionWhere = String.join(" AND ", definitionKey, definitionModule, definitionKind);
         if ((className != null && !className.isBlank()) || kind.equals("prefix")) {
-            String relatedUsage = usageWhere.replace("u.", "ru.");
-            definitionWhere += " AND EXISTS (SELECT 1 FROM configuration_usages ru WHERE "
-                    + relatedUsage + " AND (d.key = ru.key OR "
-                    + "(ru.kind = 'config_prefix' AND d.key LIKE ru.key || '.%')))";
+            String relatedDefinition = "EXISTS (SELECT 1 FROM configuration_usages ru WHERE "
+                    + usageWhere("ru", key, className, kind, module) + " AND (" + BASE_KEY + " = ru.key OR "
+                    + "(ru.kind = 'config_prefix' AND " + BASE_KEY + " LIKE ru.key || '.%')))";
+            if (className != null && !className.isBlank()) relatedDefinition += " OR (d.kind LIKE 'quarkus_test_profile%' AND "
+                    + "(json_extract(d.evidence,'$.declaring_class')=:class_name OR json_extract(d.evidence,'$.declaring_class') LIKE :class_suffix ESCAPE '!' "
+                    + "OR EXISTS (SELECT 1 FROM json_each(d.evidence,'$.profile_classes') p WHERE p.value=:class_name OR p.value LIKE :class_suffix ESCAPE '!')))";
+            definitionWhere += " AND (" + relatedDefinition + ")";
         }
         return new Filters(definitionWhere, usageWhere, bindings);
+    }
+
+    /**
+     * The usage predicate over configuration_usages aliased {@code u}: the same conditions serve the usage page
+     * and, aliased {@code ru}, the definitions related to those usages. Bindings are added by {@link #filters}.
+     */
+    private static String usageWhere(String u, String key, String className, String kind, String module) {
+        String usageKey = "1 = 1";
+        if (key != null && !key.isBlank()) {
+            usageKey = "(" + u + ".key LIKE :key_pattern ESCAPE '!' OR " + u + ".key LIKE :usage_key_pattern ESCAPE '!' OR "
+                    + "(" + u + ".kind = 'config_prefix' AND (:literal_prefix = " + u + ".key OR :literal_prefix LIKE " + u + ".key || '.%')))";
+        }
+        String usageModule = module != null && !module.isBlank() ? u + ".module = :module" : "1 = 1";
+        String usageClass = className != null && !className.isBlank()
+                ? "(" + u + ".class_name = :class_name OR " + u + ".class_name LIKE :class_suffix ESCAPE '!')" : "1 = 1";
+        String usageKind = switch (kind) {
+            case "persistence" -> u + ".kind = 'persistence_unit'";
+            case "property" -> u + ".kind IN ('config_key', 'dynamic_config_key')";
+            case "prefix" -> u + ".kind = 'config_prefix'";
+            default -> "1 = 1";
+        };
+        return String.join(" AND ", usageKey, usageClass, usageModule, usageKind);
     }
 
     private static String wildcardLike(String value) {
         StringBuilder result = new StringBuilder();
         for (char character : value.toCharArray()) {
             if (character == '*') result.append('%');
-            else if (character == '%' || character == '_' || character == '!') {
-                result.append('!').append(character);
-            } else result.append(character);
+            else if (character == '%' || character == '_' || character == '!') result.append('!').append(character);
+            else result.append(character);
         }
         return result.toString();
     }

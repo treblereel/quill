@@ -36,6 +36,21 @@ class ConfigurationSourceEvidenceTest {
         assertTrue(rule.contains("application.properties on the classpath 250"),rule);
         assertFalse(query("limits.timeout",null,"index").has("source_precedence"));
     }
+    /** V65 CQ-050: AnalysisReportAggregator's @CacheName("reports-aggregator") field came back with no references; the agents queried five classes for its expiry. */
+    @Test void aConsumerClassLinksItsQuarkusCachesToTheirConfiguration() throws Exception {
+        file("application.properties","quarkus.cache.caffeine.reports.expire-after-write=10m\nquarkus.cache.caffeine.other.maximum-size=5\n");
+        definition("quarkus.cache.caffeine.reports.expire-after-write","property","application.properties",1);
+        definition("quarkus.cache.caffeine.other.maximum-size","property","application.properties",2);
+        db.useHandle(h->h.execute("UPDATE class_members SET annotations='[\"io.quarkus.cache.CacheName\"]', annotation_details='[{\"annotationName\":\"io.quarkus.cache.CacheName\",\"targetKind\":\"FIELD\",\"values\":{\"value\":\"reports\"}}]' WHERE name='active'"));
+        var data=query(null,"p.Fixture","declared");var caches=data.path("cache_configuration");
+        assertEquals(1,caches.size(),data.toString());
+        assertEquals("reports",caches.path(0).path("cache").asText());
+        assertEquals("active @CacheName",caches.path(0).path("member").asText());
+        var definition=caches.path(0).path("definitions").path(0);
+        assertEquals("quarkus.cache.caffeine.reports.expire-after-write",definition.path("key").asText(),caches.toString());
+        assertEquals("10m",definition.path("declared_source").path("declared_value").asText(),caches.toString());
+        assertFalse(caches.toString().contains("other"));
+    }
     /** V64 CQ-038: the tool answer carried the rule but the prefetch fact did not, and Codex still read SmallRye bytecode. */
     @Test void thePrefetchOfADeclaredKeyKeepsHowSourcesTakePrecedence() throws Exception {
         file("application.properties","limits.timeout=5s\n");definition("limits.timeout","property","application.properties",1);usage("limits.timeout","active");

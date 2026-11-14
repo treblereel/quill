@@ -120,6 +120,7 @@ final class ConfigurationReferenceQueries {
                     resolution.files().forEach(files::add);
                 }
             }
+            ConfigurationCacheNames.append(reader, result, className, source);
             if (source != null) {
                 source.finish(result); ConfigurationReadEvidence.append(reader,result);
                 if(key!=null && !key.isBlank())result.set("configuration_resources",ConfigurationResourceInventory.collect(reader,key));

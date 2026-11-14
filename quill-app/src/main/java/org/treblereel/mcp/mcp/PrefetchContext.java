@@ -69,7 +69,7 @@ public final class PrefetchContext {
             names.computeIfAbsent(shortName,k->new ArrayList<>()).add(cls);
         }
         var facts=result.putArray("facts");var ambiguous=result.putArray("ambiguities");var unavailable=result.putArray("unavailable");
-        Set<String> configurationKeys=db.jdbi().withHandle(h->new HashSet<>(h.createQuery("SELECT key FROM configuration_definitions WHERE kind <> 'persistence_unit' UNION SELECT key FROM configuration_usages WHERE kind IN ('config_key','config_prefix')").mapTo(String.class).list()));
+        Set<String> configurationKeys=db.references.findConfigurationKeys();
         configurationKeys.stream().map(ConfigurationSourceEvidence::baseKey).toList().forEach(configurationKeys::add);
         Set<String> emittedKeys=new HashSet<>();var keys=CONFIG_KEY.matcher(prompt);
         while(keys.find() && facts.size()<3){
@@ -166,26 +166,22 @@ public final class PrefetchContext {
      * injection point and its candidates, agents still opened the source to see how it is used.
      */
     static List<String> fieldReads(ReadQueryContext db,String owner,String field) throws Exception {
-        var rows=db.jdbi().withHandle(h->h.createQuery("""
-                SELECT fc.class_name AS reader, fc.source_file, a.from_method, a.evidence_lines
-                FROM field_accesses a JOIN classes tc ON tc.id=a.to_class_id JOIN classes fc ON fc.id=a.from_class_id
-                WHERE tc.class_name=:owner AND a.field_name=:field AND a.access_kind LIKE 'read%'
-                ORDER BY fc.class_name, a.from_method""").bind("owner",owner).bind("field",field).mapToMap().list());
+        var rows=db.usages.findFieldReads(owner,field);
         String projectRoot=db.index.getMetadata().get("project_root");
         List<String> lines=new ArrayList<>();
         Map<String,List<String>> sources=new HashMap<>();
         for(var row:rows){
-            String method=String.valueOf(row.get("from_method")).replaceFirst("^lambda\\$(.+)\\$\\d+$","$1 (lambda)");
-            String reader=String.valueOf(row.get("reader"));
+            String method=String.valueOf(row.fromMethod()).replaceFirst("^lambda\\$(.+)\\$\\d+$","$1 (lambda)");
+            String reader=String.valueOf(row.reader());
             String label=reader.equals(owner)?method:reader+"#"+method;
             List<String> file=List.of();
-            if(projectRoot!=null && row.get("source_file")!=null){
-                file=sources.computeIfAbsent(String.valueOf(row.get("source_file")),path->{
+            if(projectRoot!=null && row.sourceFile()!=null){
+                file=sources.computeIfAbsent(row.sourceFile(),path->{
                     try{return java.nio.file.Files.readAllLines(java.nio.file.Path.of(projectRoot).resolve(path));}
                     catch(Exception unreadable){return List.of();}
                 });
             }
-            for(JsonNode number:JSON.readTree(String.valueOf(row.get("evidence_lines")))){
+            for(JsonNode number:JSON.readTree(String.valueOf(row.evidenceLines()))){
                 int n=number.asInt();
                 // A multi-line statement starts at the evidence line; show the line naming the field, through its end.
                 int at=n;
@@ -226,9 +222,8 @@ public final class PrefetchContext {
             }
         }
         int subtypes=reached.size()-1;
-        long beans=db.jdbi().withHandle(h->h.createQuery("SELECT COUNT(*) FROM beans WHERE bean_types LIKE :plain OR bean_types LIKE :generic")
-                .bind("plain","%\""+raw+"\"%").bind("generic","%\""+raw+"<%").mapTo(Long.class).one());
-        long totalBeans=db.jdbi().withHandle(h->h.createQuery("SELECT COUNT(*) FROM beans").mapTo(Long.class).one());
+        long beans=db.beans.countBeansOfRawType(raw);
+        long totalBeans=db.beans.countAllBeanRows();
         if(subtypes>0 && beans>0)return null;
         return (subtypes==0?"no application class extends or implements "+raw:subtypes+" application classes extend or implement "+raw)
                 +" (of "+classes.size()+" indexed); "

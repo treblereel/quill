@@ -362,4 +362,10 @@ public final class ReferenceRepository {
                 SELECT key || ' ' || file || ':' || line FROM configuration_definitions
                 WHERE key LIKE '%quarkus.arc.remove-unused-beans' ORDER BY source_set, file, line LIMIT 3""").mapTo(String.class).list();
     }
+
+    /** Every indexed configuration key: non-persistence definitions and key or prefix usages. */
+    public Set<String> findConfigurationKeys() {
+        return new HashSet<>(handle.createQuery("SELECT key FROM configuration_definitions WHERE kind <> 'persistence_unit' UNION SELECT key FROM configuration_usages WHERE kind IN ('config_key','config_prefix')")
+                .mapTo(String.class).list());
+    }
 }

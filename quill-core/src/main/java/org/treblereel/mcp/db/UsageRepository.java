@@ -771,4 +771,19 @@ public final class UsageRepository {
                 .map((rs, ctx) -> new Callee(rs.getInt("to_class_id"), rs.getString("class_name"), rs.getString("to_method"),
                         rs.getString("to_descriptor"), null)).list();
     }
+
+    /** A read of a field: the reading class, its source file, method and the JSON lines of the read. */
+    public record FieldRead(String reader, String sourceFile, String fromMethod, String evidenceLines) {}
+
+    /** Reads of {@code field} declared by any class named {@code owner}, by reader and method. */
+    public List<FieldRead> findFieldReads(String owner, String field) {
+        return handle.createQuery("""
+                SELECT fc.class_name AS reader, fc.source_file, a.from_method, a.evidence_lines
+                FROM field_accesses a JOIN classes tc ON tc.id=a.to_class_id JOIN classes fc ON fc.id=a.from_class_id
+                WHERE tc.class_name=:owner AND a.field_name=:field AND a.access_kind LIKE 'read%'
+                ORDER BY fc.class_name, a.from_method""")
+                .bind("owner", owner).bind("field", field)
+                .map((rs, ctx) -> new FieldRead(rs.getString("reader"), rs.getString("source_file"), rs.getString("from_method"),
+                        rs.getString("evidence_lines"))).list();
+    }
 }

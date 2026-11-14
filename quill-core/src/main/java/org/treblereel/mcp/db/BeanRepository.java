@@ -692,4 +692,15 @@ public final class BeanRepository {
                 SELECT 1 FROM beans WHERE qualifiers LIKE '%"@Qualifier(\\"applicationEventMulticaster\\")"%' LIMIT 1""")
                 .mapTo(Integer.class).findOne().isPresent();
     }
+
+    /** Application beans whose bean types include {@code rawType}, plain or parameterized. */
+    public long countBeansOfRawType(String rawType) {
+        return handle.createQuery("SELECT COUNT(*) FROM beans WHERE bean_types LIKE :plain OR bean_types LIKE :generic")
+                .bind("plain", "%\"" + rawType + "\"%").bind("generic", "%\"" + rawType + "<%").mapTo(Long.class).one();
+    }
+
+    /** Every bean row, whatever its class's lifecycle (unlike {@link #countBeans()}). */
+    public long countAllBeanRows() {
+        return handle.createQuery("SELECT COUNT(*) FROM beans").mapTo(Long.class).one();
+    }
 }

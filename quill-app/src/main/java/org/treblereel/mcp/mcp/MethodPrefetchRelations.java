@@ -580,6 +580,34 @@ final class MethodPrefetchRelations {
                 : "every Event field of the class; which one is fired is not indexed");
     }
 
+    /**
+     * What creating the declaring bean instance takes. V62 CQ-018: every session called list_injection_points on
+     * Producers only to learn that its class bean injects nothing.
+     */
+    private static ArrayNode declaringClassInjects(ReadQueryContext db, int classId, String name, String descriptor) {
+        ArrayNode lines = JSON.createArrayNode();
+        boolean isStatic = db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT modifiers FROM class_members WHERE class_id = :id AND kind = 'METHOD' AND name = :name
+                  AND (:descriptor = '' OR descriptor = :descriptor)""")
+                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(String.class).list())
+                .stream().anyMatch(modifiers -> (" " + modifiers + " ").contains(" static "));
+        if (isStatic) return lines.add("not needed: static producer; the declaring bean is not instantiated to call it");
+        db.jdbi().withHandle(handle -> handle.createQuery("""
+                SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status,
+                       rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.scope AS resolved_scope
+                FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
+                LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
+                LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
+                WHERE ob.class_id = :id AND ob.kind = 'CLASS' ORDER BY ip.id LIMIT 8""").bind("id", classId).mapToMap().list())
+                .forEach(row -> lines.add(row.get("kind") + " " + row.get("field_name") + ": " + row.get("target_type") + " "
+                        + row.get("qualifiers") + " -> " + (row.get("resolved_class") == null ? "not resolved by the application index"
+                                : row.get("resolved_class") + (row.get("resolved_member") == null ? "" : "#" + row.get("resolved_member"))
+                                        + (row.get("resolved_scope") == null ? "" : " " + row.get("resolved_scope")))
+                        + " [" + row.get("resolution_status") + "]"));
+        if (lines.isEmpty()) lines.add("none: the declaring bean has no injection points");
+        return lines;
+    }
+
     private static void producer(ReadQueryContext db, ObjectNode fact, int classId, String name) {
         List<Map<String, Object>> beans = db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT id, kind, scope, qualifiers, bean_types FROM beans
@@ -619,7 +647,10 @@ final class MethodPrefetchRelations {
         // The declaring class is a bean of its own, whose scope is not the produced bean's.
         db.jdbi().withHandle(handle -> handle.createQuery("SELECT scope FROM beans WHERE class_id = :id AND kind = 'CLASS' LIMIT 1")
                 .bind("id", classId).mapTo(String.class).findOne())
-                .ifPresent(scope -> fact.put("declaring_class_bean", "CLASS " + scope));
+                .ifPresent(scope -> {
+                    fact.put("declaring_class_bean", "CLASS " + scope);
+                    fact.set("declaring_class_injects", declaringClassInjects(db, classId, name, fact.path("descriptor").asText("")));
+                });
         if (!parameters.isEmpty()) fact.set("producer_parameters", parameters);
         if (!injectedInto.isEmpty()) fact.set("produced_bean_injected_into", injectedInto);
     }

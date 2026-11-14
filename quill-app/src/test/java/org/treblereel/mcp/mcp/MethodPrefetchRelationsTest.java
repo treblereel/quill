@@ -86,6 +86,30 @@ class MethodPrefetchRelationsTest {
 
         assertTrue(fact.path("produces").get(0).asText().startsWith("PRODUCER_METHOD @RequestScoped"), fact.toString());
         assertEquals("CLASS @Dependent", fact.path("declaring_class_bean").asText(), fact.toString());
+        assertTrue(fact.path("declaring_class_injects").path(0).asText().startsWith("not needed: static producer"), fact.toString());
+    }
+
+    /** V62 CQ-018: every session called list_injection_points on Producers only to learn the declaring bean injects nothing. */
+    @Test
+    void instanceProducerFactStatesWhatItsDeclaringBeanInjects() throws Exception {
+        var db = JavaEvidenceFixture.index(root, "package p; class Gen {} class Dep {} class Producers { Gen gen() { return new Gen(); } } class Factory { Dep dep; Gen make() { return new Gen(); } }");
+        db.useHandle(handle -> {
+            for (String owner : java.util.List.of("p.Producers", "p.Factory")) {
+                int id = handle.createQuery("SELECT id FROM classes WHERE class_name = :n").bind("n", owner).mapTo(Integer.class).one();
+                handle.execute("INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types) VALUES (?, 'CLASS', '@ApplicationScoped', '[\"@Default\"]', ?)", id, "[\"" + owner + "\"]");
+                handle.execute("INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, declaring_class_id, member_name) "
+                        + "VALUES (?, 'PRODUCER_METHOD', '@Dependent', '[\"@Default\"]', '[\"p.Gen\"]', ?, ?)", id, id, owner.equals("p.Producers") ? "gen" : "make");
+            }
+            int factoryBean = handle.createQuery("SELECT b.id FROM beans b JOIN classes c ON c.id=b.class_id WHERE c.class_name='p.Factory' AND b.kind='CLASS'").mapTo(Integer.class).one();
+            handle.execute("INSERT INTO injection_points(bean_id, kind, target_type, qualifiers, field_name, resolution_status, resolution_strategy, resolution_reason, resolution_confidence) "
+                    + "VALUES (?, 'FIELD', 'p.Dep', '[\"@Default\"]', 'dep', 'UNKNOWN', 'STATIC_CDI', 'NO_CANDIDATE', 'LOW')", factoryBean);
+        });
+        ObjectNode none = JSON.createObjectNode().put("class", "p.Producers").put("name", "gen").put("descriptor", "()Lp/Gen;");
+        ObjectNode some = JSON.createObjectNode().put("class", "p.Factory").put("name", "make").put("descriptor", "()Lp/Gen;");
+        TestReads.read(db, reader -> { MethodPrefetchRelations.append(reader, root, none); MethodPrefetchRelations.append(reader, root, some); return null; });
+
+        assertEquals("none: the declaring bean has no injection points", none.path("declaring_class_injects").path(0).asText(), none.toString());
+        assertTrue(some.path("declaring_class_injects").path(0).asText().startsWith("FIELD dep: p.Dep"), some.toString());
     }
 
     @Test

@@ -23,6 +23,21 @@ import org.treblereel.mcp.model.InjectionPointRecord;
 
 class ClassPrefetchRelationsTest {
 
+    /** V62 CQ-009: Claude read both superclasses in all three sessions to tell inherited dependencies from declared ones. */
+    @Test
+    void injectionOriginSeparatesDeclaredFromInheritedPoints() {
+        assertEquals("declared here: none; inherited: EntityNotificationObserver (bus, logger)",
+                ClassPrefetchRelations.injectionOrigin(List.of(
+                        Map.of("kind", "FIELD", "field_name", "EntityNotificationObserver.bus"),
+                        Map.of("kind", "FIELD", "field_name", "EntityNotificationObserver.logger"))));
+        assertEquals("declared here: mapper, <init>; inherited: Base (bus)",
+                ClassPrefetchRelations.injectionOrigin(List.of(
+                        Map.of("kind", "FIELD", "field_name", "mapper"),
+                        Map.of("kind", "CONSTRUCTOR_PARAM", "field_name", "<init>"),
+                        Map.of("kind", "FIELD", "field_name", "Base.bus"))));
+        assertEquals(null, ClassPrefetchRelations.injectionOrigin(List.of(Map.of("kind", "FIELD", "field_name", "mapper"))));
+    }
+
     @TempDir Path root;
 
     @Test

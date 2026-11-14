@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.treblereel.mcp.db.ReadQueryContext;
@@ -22,8 +24,28 @@ final class ClassPrefetchRelations {
     private ClassPrefetchRelations() {
     }
 
+    /**
+     * Declared versus inherited injection points; the index names an inherited field Superclass.field.
+     * Null when nothing is inherited. V62 CQ-009: Claude read both superclasses to tell them apart.
+     */
+    static String injectionOrigin(List<Map<String, Object>> rows) {
+        List<String> declared = new ArrayList<>();
+        Map<String, List<String>> inherited = new LinkedHashMap<>();
+        for (var row : rows) {
+            String name = String.valueOf(row.get("field_name"));
+            int dot = name.lastIndexOf('.');
+            if ("FIELD".equals(row.get("kind")) && dot > 0)
+                inherited.computeIfAbsent(name.substring(0, dot), ignored -> new ArrayList<>()).add(name.substring(dot + 1));
+            else if (!declared.contains(name)) declared.add(name);
+        }
+        if (inherited.isEmpty()) return null;
+        List<String> owners = new ArrayList<>();
+        inherited.forEach((owner, fields) -> owners.add(owner + " (" + String.join(", ", fields) + ")"));
+        return "declared here: " + (declared.isEmpty() ? "none" : String.join(", ", declared)) + "; inherited: " + String.join(", ", owners);
+    }
+
     static void append(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
-        lines(fact, "injects", db.jdbi().withHandle(handle -> handle.createQuery("""
+        List<Map<String, Object>> injectionRows = db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, ip.resolution_reason,
                        rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.kind AS resolved_kind,
                        rb.is_default AS resolved_default
@@ -32,7 +54,10 @@ final class ClassPrefetchRelations {
                 LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
                 LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
                 WHERE ob.class_id = :id AND (ob.member_name IS NULL OR ob.kind = 'SYNTHETIC')
-                ORDER BY ip.id""").bind("id", cls.id()).mapToMap().list()), row -> injects(db, row));
+                ORDER BY ip.id""").bind("id", cls.id()).mapToMap().list());
+        lines(fact, "injects", injectionRows, row -> injects(db, row));
+        String origin = injectionOrigin(injectionRows);
+        if (origin != null && fact.has("injects")) fact.put("injects_origin", origin);
         // A synthetic bean's own dependencies describe the bean; keep them in it, where the budget never drops them.
         if (fact.path("bean") instanceof ObjectNode bean && "SYNTHETIC".equals(bean.path("kind").asText())
                 && fact.remove("injects") instanceof com.fasterxml.jackson.databind.node.ArrayNode injects) bean.set("injects", injects);

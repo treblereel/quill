@@ -685,4 +685,11 @@ public final class BeanRepository {
                 JOIN beans ob ON ob.id = ip.bean_id JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
                 WHERE ip.resolved_bean_id = :id ORDER BY 1""").bind("id", beanId).mapTo(String.class).list();
     }
+
+    /** Whether the application declares a bean qualified {@code @Qualifier("applicationEventMulticaster")}. */
+    public boolean hasApplicationEventMulticaster() {
+        return handle.createQuery("""
+                SELECT 1 FROM beans WHERE qualifiers LIKE '%"@Qualifier(\\"applicationEventMulticaster\\")"%' LIMIT 1""")
+                .mapTo(Integer.class).findOne().isPresent();
+    }
 }

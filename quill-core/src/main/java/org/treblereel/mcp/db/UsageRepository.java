@@ -760,4 +760,15 @@ public final class UsageRepository {
                 .bind("id", classId).bind("name", method).bind("descriptor", descriptor)
                 .map((rs, ctx) -> new CallTarget(rs.getInt("to_class_id"), rs.getString("to_method"), rs.getString("to_descriptor"), null)).list();
     }
+
+    /** Every call out of a method into an indexed class, unordered; {@code invocationKind} is not read. */
+    public List<Callee> findIndexedCallees(int classId, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT mc.to_class_id, mc.to_method, mc.to_descriptor, c.class_name FROM method_calls mc
+                JOIN classes c ON c.id = mc.to_class_id
+                WHERE mc.from_class_id = :id AND mc.from_method = :name AND mc.from_descriptor = :descriptor""")
+                .bind("id", classId).bind("name", method).bind("descriptor", descriptor)
+                .map((rs, ctx) -> new Callee(rs.getInt("to_class_id"), rs.getString("class_name"), rs.getString("to_method"),
+                        rs.getString("to_descriptor"), null)).list();
+    }
 }

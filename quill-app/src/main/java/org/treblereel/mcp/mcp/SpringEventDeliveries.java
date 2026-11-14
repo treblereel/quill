@@ -47,16 +47,11 @@ final class SpringEventDeliveries {
             List<String> path = new ArrayList<>(current.path());
             path.add(label);
             String publishLine = publishCall(db, current);
-            List<Map<String, Object>> calls = db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT mc.to_class_id, mc.to_method, mc.to_descriptor, c.class_name FROM method_calls mc
-                    JOIN classes c ON c.id = mc.to_class_id
-                    WHERE mc.from_class_id = :id AND mc.from_method = :name AND mc.from_descriptor = :descriptor""")
-                    .bind("id", current.classId()).bind("name", current.name()).bind("descriptor", current.descriptor())
-                    .mapToMap().list());
+            var calls = db.usages.findIndexedCallees(current.classId(), current.name(), current.descriptor());
             if (publishLine != null) {
                 Set<String> events = new LinkedHashSet<>();
-                for (Map<String, Object> call : calls) {
-                    String type = String.valueOf(call.get("class_name"));
+                for (var call : calls) {
+                    String type = String.valueOf(call.className());
                     if (isEvent(db, type)) events.add(type);
                 }
                 eventsByPublisher.put(label, events);
@@ -66,9 +61,9 @@ final class SpringEventDeliveries {
                 publications.add(publication);
             }
             if (path.size() > DEPTH) continue;
-            for (Map<String, Object> call : calls)
-                queue.add(new Method(((Number) call.get("to_class_id")).intValue(), String.valueOf(call.get("to_method")),
-                        String.valueOf(call.get("to_descriptor")), path));
+            for (var call : calls)
+                queue.add(new Method(call.toClassId(), String.valueOf(call.toMethod()),
+                        String.valueOf(call.toDescriptor()), path));
         }
         if (publications.isEmpty()) return null;
         ObjectNode result = JSON.createObjectNode()
@@ -89,11 +84,7 @@ final class SpringEventDeliveries {
 
     /** The publishEvent call this method makes, from its recorded external calls, or null. */
     private static String publishCall(ReadQueryContext db, Method method) {
-        String raw = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT caller_external_calls FROM method_evidence
-                WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor""")
-                .bind("id", method.classId()).bind("name", method.name()).bind("descriptor", method.descriptor())
-                .mapTo(String.class).findOne().orElse("[]"));
+        String raw = db.usages.findCallerExternalCalls(method.classId(), method.name(), method.descriptor()).orElse("[]");
         try {
             for (JsonNode call : JSON.readTree(raw)) {
                 String[] parts = call.asText().split("\\|", -1);
@@ -108,9 +99,7 @@ final class SpringEventDeliveries {
 
     private static boolean isEvent(ReadQueryContext db, String type) {
         if (supertypes(db, type).contains(APPLICATION_EVENT)) return true;
-        return Boolean.TRUE.equals(db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT 1 FROM class_members WHERE annotations LIKE :listener AND parameter_types LIKE :type LIMIT 1""")
-                .bind("listener", "%EventListener%").bind("type", "%\"" + type + "\"%").mapTo(Integer.class).findOne().isPresent()));
+        return db.symbols.hasEventListenerFor(type);
     }
 
     /** {@code type} and its indexed superclasses and interfaces. */
@@ -131,22 +120,18 @@ final class SpringEventDeliveries {
     private static List<ObjectNode> listeners(ReadQueryContext db, String event) {
         Set<String> accepted = supertypes(db, event);
         List<ObjectNode> result = new ArrayList<>();
-        List<Map<String, Object>> rows = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT c.id, c.class_name, c.interfaces, m.name FROM class_members m JOIN classes c ON c.id = m.class_id
-                WHERE c.lifecycle = 'current' AND m.kind = 'METHOD'
-                  AND (m.annotations LIKE '%EventListener%' OR m.name = 'onApplicationEvent')
-                GROUP BY c.id, m.name ORDER BY c.class_name, m.name""").mapToMap().list());
-        for (Map<String, Object> row : rows) {
-            int classId = ((Number) row.get("id")).intValue();
+        var rows = db.symbols.findListenerMethods();
+        for (var row : rows) {
+            int classId = row.classId();
             for (ClassMemberRecord member : db.symbols.findClassMembers(classId)) {
-                if (!member.name().equals(row.get("name")) || member.parameterTypes().size() != 1) continue;
+                if (!member.name().equals(row.name()) || member.parameterTypes().size() != 1) continue;
                 String parameter = member.parameterTypes().getFirst();
                 boolean annotated = member.annotations().contains(EVENT_LISTENER) || member.annotations().contains(TX_EVENT_LISTENER);
                 boolean listenerInterface = member.name().equals("onApplicationEvent")
-                        && String.valueOf(row.get("interfaces")).contains(APPLICATION_LISTENER) && !parameter.equals(APPLICATION_EVENT);
+                        && String.valueOf(row.interfaces()).contains(APPLICATION_LISTENER) && !parameter.equals(APPLICATION_EVENT);
                 if (!(annotated || listenerInterface) || !accepted.contains(parameter)) continue;
                 ObjectNode listener = JSON.createObjectNode()
-                        .put("listener", row.get("class_name") + "#" + member.name() + "(" + simple(parameter) + ")")
+                        .put("listener", row.className() + "#" + member.name() + "(" + simple(parameter) + ")")
                         .put("mechanism", member.annotations().contains(TX_EVENT_LISTENER) ? "@TransactionalEventListener"
                                 : annotated ? "@EventListener" : "ApplicationListener");
                 for (MemberAnnotationRecord annotation : member.annotationDetails()) {
@@ -169,9 +154,7 @@ final class SpringEventDeliveries {
     }
 
     private static String multicaster(ReadQueryContext db) {
-        boolean custom = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT 1 FROM beans WHERE qualifiers LIKE '%"@Qualifier(\\"applicationEventMulticaster\\")"%' LIMIT 1""")
-                .mapTo(Integer.class).findOne().isPresent());
+        boolean custom = db.beans.hasApplicationEventMulticaster();
         return custom ? "custom applicationEventMulticaster bean: delivery follows its configuration (check for a task executor)"
                 : "no applicationEventMulticaster bean in the application index: Spring's default SimpleApplicationEventMulticaster "
                         + "without an executor calls non-@Async listeners on the publishing thread";

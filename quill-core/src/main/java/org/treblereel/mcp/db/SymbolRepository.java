@@ -1002,4 +1002,24 @@ public final class SymbolRepository {
                 .bind("id", classId)
                 .map((rs, ctx) -> new MemberAnnotations(rs.getString("name"), rs.getString("annotations"))).list();
     }
+
+    /** A current method that may receive Spring application events, with its class's raw interfaces JSON. */
+    public record ListenerMethod(int classId, String className, String interfaces, String name) {}
+
+    /** Whether any member annotated with an EventListener takes a {@code type} parameter. */
+    public boolean hasEventListenerFor(String type) {
+        return handle.createQuery("SELECT 1 FROM class_members WHERE annotations LIKE :listener AND parameter_types LIKE :type LIMIT 1")
+                .bind("listener", "%EventListener%").bind("type", "%\"" + type + "\"%").mapTo(Integer.class).findOne().isPresent();
+    }
+
+    /** Current methods annotated with an EventListener or named onApplicationEvent, one per class and name. */
+    public List<ListenerMethod> findListenerMethods() {
+        return handle.createQuery("""
+                SELECT c.id, c.class_name, c.interfaces, m.name FROM class_members m JOIN classes c ON c.id = m.class_id
+                WHERE c.lifecycle = 'current' AND m.kind = 'METHOD'
+                  AND (m.annotations LIKE '%EventListener%' OR m.name = 'onApplicationEvent')
+                GROUP BY c.id, m.name ORDER BY c.class_name, m.name""")
+                .map((rs, ctx) -> new ListenerMethod(rs.getInt("id"), rs.getString("class_name"), rs.getString("interfaces"),
+                        rs.getString("name"))).list();
+    }
 }

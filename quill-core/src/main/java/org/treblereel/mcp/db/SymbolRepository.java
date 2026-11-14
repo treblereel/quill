@@ -965,4 +965,32 @@ public final class SymbolRepository {
         return handle.createQuery("SELECT name FROM class_members WHERE class_id = :id AND kind = 'FIELD'")
                 .bind("id", classId).mapTo(String.class).list();
     }
+
+    /** A member's name and annotation names (JSON). */
+    public record MemberAnnotations(String name, String annotations) {}
+
+    /** Methods of every class named {@code className}, in declaration order. */
+    public List<MemberAnnotations> findMethodAnnotations(String className) {
+        return handle.createQuery("""
+                SELECT m.name, m.annotations FROM class_members m JOIN classes c ON c.id = m.class_id
+                WHERE c.class_name = :type AND m.kind = 'METHOD' ORDER BY m.rowid""")
+                .bind("type", className)
+                .map((rs, ctx) -> new MemberAnnotations(rs.getString("name"), rs.getString("annotations"))).list();
+    }
+
+    /** Annotation names (JSON) of a member of any class named {@code className}, a field before a method. */
+    public Optional<String> findMemberAnnotations(String className, String member) {
+        return handle.createQuery("""
+                SELECT m.annotations FROM class_members m JOIN classes c ON c.id = m.class_id
+                WHERE c.class_name = :owner AND m.name = :member ORDER BY m.kind = 'FIELD' DESC LIMIT 1""")
+                .bind("owner", className).bind("member", member).mapTo(String.class).findOne();
+    }
+
+    /** Names of the annotations written on any class named {@code className}, sorted. */
+    public List<String> findDirectAnnotationNames(String className) {
+        return handle.createQuery("""
+                SELECT a.annotation_name FROM class_annotations a JOIN classes c ON c.id = a.class_id
+                WHERE c.class_name = :name AND a.direct = 1 ORDER BY a.annotation_name""")
+                .bind("name", className).mapTo(String.class).list();
+    }
 }

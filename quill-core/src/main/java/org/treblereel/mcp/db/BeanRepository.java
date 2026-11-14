@@ -655,4 +655,26 @@ public final class BeanRepository {
                 .map((rs, ctx) -> new InjectedFieldRead(rs.getString("field_name"), rs.getString("scope"), rs.getString("framework"),
                         rs.getString("resolved"), rs.getString("target_type"))).list();
     }
+
+    /** A bean with its bean class and, for a producer, its declaring class. */
+    public record BeanOrigin(String kind, String qualifiers, String memberName, String framework, String className, String declaring) {}
+
+    /** Beans an owner class's injection point named {@code member} resolved to. */
+    public List<Integer> findResolvedBeanIds(String ownerClassName, String member) {
+        return handle.createQuery("""
+                SELECT ip.resolved_bean_id FROM injection_points ip
+                JOIN beans b ON b.id = ip.bean_id JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE c.class_name = :owner AND ip.field_name = :member AND ip.resolved_bean_id IS NOT NULL""")
+                .bind("owner", ownerClassName).bind("member", member).mapTo(Integer.class).list();
+    }
+
+    public Optional<BeanOrigin> findBeanOrigin(int beanId) {
+        return handle.createQuery("""
+                SELECT b.kind, b.qualifiers, b.member_name, b.framework, c.class_name, d.class_name AS declaring
+                FROM beans b JOIN classes c ON c.id = b.class_id LEFT JOIN classes d ON d.id = b.declaring_class_id
+                WHERE b.id = :id""")
+                .bind("id", beanId)
+                .map((rs, ctx) -> new BeanOrigin(rs.getString("kind"), rs.getString("qualifiers"), rs.getString("member_name"),
+                        rs.getString("framework"), rs.getString("class_name"), rs.getString("declaring"))).findOne();
+    }
 }

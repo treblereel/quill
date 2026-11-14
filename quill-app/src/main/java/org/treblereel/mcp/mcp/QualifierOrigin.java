@@ -31,11 +31,7 @@ final class QualifierOrigin {
         Set<Integer> beans = new LinkedHashSet<>();
         for (JsonNode candidate : point.path("resolution_trace").path("candidates"))
             if (candidate.path("bean_id").isNumber()) beans.add(candidate.path("bean_id").asInt());
-        if (beans.isEmpty()) db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT ip.resolved_bean_id FROM injection_points ip
-                JOIN beans b ON b.id = ip.bean_id JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
-                WHERE c.class_name = :owner AND ip.field_name = :member AND ip.resolved_bean_id IS NOT NULL""")
-                .bind("owner", owner).bind("member", member).mapTo(Integer.class).list()).forEach(beans::add);
+        if (beans.isEmpty()) db.beans.findResolvedBeanIds(owner, member).forEach(beans::add);
         beans.stream().limit(MAX_CANDIDATES).forEach(id -> candidate(db, id, lines));
         Set<String> withValues = new LinkedHashSet<>();
         for (JsonNode qualifier : point.path("qualifiers"))
@@ -55,11 +51,9 @@ final class QualifierOrigin {
      */
     static String memberBinding(ReadQueryContext db, String type) {
         List<String[]> members = new ArrayList<>();
-        db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT m.name, m.annotations FROM class_members m JOIN classes c ON c.id = m.class_id
-                WHERE c.class_name = :type AND m.kind = 'METHOD' ORDER BY m.rowid""").bind("type", type).mapToMap().list())
-                .forEach(row -> members.add(new String[] {String.valueOf(row.get("name")),
-                        String.valueOf(row.get("annotations")).contains(NONBINDING) ? "nonbinding" : "binding"}));
+        db.symbols.findMethodAnnotations(type)
+                .forEach(row -> members.add(new String[] {String.valueOf(row.name()),
+                        String.valueOf(row.annotations()).contains(NONBINDING) ? "nonbinding" : "binding"}));
         if (members.isEmpty()) {
             String projectRoot = db.index.getMetadata().get("project_root");
             if (projectRoot == null) return null;
@@ -84,19 +78,16 @@ final class QualifierOrigin {
     }
 
     private static void candidate(ReadQueryContext db, int id, List<String> lines) {
-        db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT b.kind, b.qualifiers, b.member_name, b.framework, c.class_name, d.class_name AS declaring
-                FROM beans b JOIN classes c ON c.id = b.class_id LEFT JOIN classes d ON d.id = b.declaring_class_id
-                WHERE b.id = :id""").bind("id", id).mapToMap().findOne()).ifPresent(bean -> {
-            String declaring = (String) bean.get("declaring");
-            String memberName = (String) bean.get("member_name");
+        db.beans.findBeanOrigin(id).ifPresent(bean -> {
+            String declaring = bean.declaring();
+            String memberName = bean.memberName();
             boolean producer = declaring != null && memberName != null && !memberName.startsWith("synthetic:");
-            String label = producer ? declaring + "#" + memberName : String.valueOf(bean.get("class_name"));
+            String label = producer ? declaring + "#" + memberName : String.valueOf(bean.className());
             List<String> annotations = producer ? memberAnnotations(db, declaring, memberName)
-                    : classAnnotations(db, String.valueOf(bean.get("class_name")));
-            String kind = BeanTerms.kind(bean.get("framework"), bean.get("kind"));
+                    : classAnnotations(db, String.valueOf(bean.className()));
+            String kind = BeanTerms.kind((Object) bean.framework(), bean.kind());
             lines.add(label + (kind.equals("CLASS") ? "" : " (" + kind + ")") + ": "
-                    + origin(parse(BeanTerms.qualifiersJson(bean.get("framework"), bean.get("qualifiers"))), annotations));
+                    + origin(parse(BeanTerms.qualifiersJson(bean.framework(), bean.qualifiers())), annotations));
         });
     }
 
@@ -117,20 +108,14 @@ final class QualifierOrigin {
     }
 
     private static List<String> memberAnnotations(ReadQueryContext db, String owner, String member) {
-        String raw = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT m.annotations FROM class_members m JOIN classes c ON c.id = m.class_id
-                WHERE c.class_name = :owner AND m.name = :member ORDER BY m.kind = 'FIELD' DESC LIMIT 1""")
-                .bind("owner", owner).bind("member", member).mapTo(String.class).findOne().orElse("[]"));
+        String raw = db.symbols.findMemberAnnotations(owner, member).orElse("[]");
         List<String> result = new ArrayList<>();
         parse(raw).forEach(node -> result.add(node.asText()));
         return result;
     }
 
     private static List<String> classAnnotations(ReadQueryContext db, String className) {
-        return db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT a.annotation_name FROM class_annotations a JOIN classes c ON c.id = a.class_id
-                WHERE c.class_name = :name AND a.direct = 1 ORDER BY a.annotation_name""")
-                .bind("name", className).mapTo(String.class).list());
+        return db.symbols.findDirectAnnotationNames(className);
     }
 
     private static JsonNode parse(Object raw) {

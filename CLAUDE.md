@@ -1,3 +1,7 @@
+## Project Type
+
+**Type:** java
+
 ## Quill — Codebase Intelligence (MCP)
 
 This project is indexed by Quill. **Always prefer Quill MCP tools over grep/find/Explore agents** for:

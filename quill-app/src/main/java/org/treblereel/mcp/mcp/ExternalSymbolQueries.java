@@ -42,8 +42,8 @@ final class ExternalSymbolQueries {
             return error("Member search requires class_name to bound dependency bytecode scanning");
         }
         String needle = pattern.strip().toLowerCase(Locale.ROOT).replace("*", "");
-        MatchMode matching = MatchMode.parse(matchMode);
-        if (matching == null) return error("match_mode must be exact, prefix, or contains");
+        MatchMode matching = MatchMode.parse(matchMode, pattern);
+        if (matching == null) return error("match_mode must be exact, prefix, contains or glob");
         String libraryNeedle = library == null ? ""
                 : library.strip().toLowerCase(Locale.ROOT).replace("*", "");
         Catalog catalog = catalog(reader, root);
@@ -57,8 +57,18 @@ final class ExternalSymbolQueries {
                         || ref.artifact().toLowerCase(Locale.ROOT).contains(libraryNeedle))
                 .sorted(Comparator.comparing(ClassRef::className)).toList();
         if (memberSearch) {
-            return searchMembers(catalog, candidates, pattern, requestedKind, matching,
-                    limit, offset);
+            boolean buildTime = false;
+            if (candidates.isEmpty()) {
+                // V66 CQ-005: details read a deployment processor that this search then said had no methods.
+                candidates = buildTimeClasses(reader, root, catalog).stream()
+                        .filter(ref -> matchesClassName(ref.className(), className))
+                        .sorted(Comparator.comparing(ClassRef::className)).toList();
+                buildTime = !candidates.isEmpty();
+            }
+            ObjectNode members = searchMembers(catalog, candidates, pattern, requestedKind, matching, limit, offset);
+            if (buildTime) members.put("source", "quarkus_deployment_bytecode").put("classpath_scope",
+                    "Quarkus deployment artifact from the local Maven repository: runs at build time, not on the application classpath");
+            return members.toString();
         }
         Map<String, List<ClassRef>> grouped = new LinkedHashMap<>();
         candidates.forEach(match -> grouped.computeIfAbsent(
@@ -349,7 +359,7 @@ final class ExternalSymbolQueries {
         return rest.startsWith("package ") ? rest : text;
     }
 
-    private static String searchMembers(Catalog catalog, List<ClassRef> candidates,
+    private static ObjectNode searchMembers(Catalog catalog, List<ClassRef> candidates,
             String pattern, String kind, MatchMode matching, int limit, int offset) {
         String needle = pattern.strip().toLowerCase(Locale.ROOT).replace("*", "");
         Map<String, ExternalMember> unique = new LinkedHashMap<>();
@@ -407,7 +417,7 @@ final class ExternalSymbolQueries {
                 .put("classes_inspected", candidates.stream()
                         .map(ClassRef::className).distinct().count())
                 .put("cache", catalog.cacheHit() ? "hit" : "miss");
-        return result.toString();
+        return result;
     }
 
     private static void addMember(Map<String, ExternalMember> target, ClassRef ref,
@@ -670,9 +680,14 @@ final class ExternalSymbolQueries {
             this.value = value;
         }
 
-        static MatchMode parse(String value) {
+        /** glob reads the pattern's wildcards: *x* contains, x* prefix, no wildcard exact. */
+        static MatchMode parse(String value, String pattern) {
             String normalized = value == null || value.isBlank()
                     ? "contains" : value.strip().toLowerCase(Locale.ROOT);
+            if (normalized.equals("glob")) {
+                String glob = pattern.strip();
+                return glob.startsWith("*") ? CONTAINS : glob.endsWith("*") ? PREFIX : glob.contains("*") ? CONTAINS : EXACT;
+            }
             for (MatchMode mode : values()) {
                 if (mode.value.equals(normalized)) return mode;
             }

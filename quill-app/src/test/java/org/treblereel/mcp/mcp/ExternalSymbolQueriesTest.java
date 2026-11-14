@@ -181,6 +181,16 @@ class ExternalSymbolQueriesTest {
         assertTrue(result.path("error").asText().contains("match_mode"));
     }
 
+    /** V66 CQ-005: Codex sent match_mode glob with *auth* and got an error instead of the methods. */
+    @Test
+    void globMatchModeReadsItsWildcards() throws Exception {
+        for (String[] probe : new String[][] {{"*ree*", "1"}, {"gr*", "1"}, {"ree*", "0"}, {"greet", "1"}}) {
+            var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                    .search(readScope, temp, probe[0], "method", "Fixture", null, "glob", false, 20, 0)));
+            assertEquals(Integer.parseInt(probe[1]), result.path("total").asInt(), probe[0] + " " + result);
+        }
+    }
+
     @Test
     void missingClassHasDedicatedErrorCode() throws Exception {
         var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
@@ -420,6 +430,12 @@ class ExternalSymbolQueriesTest {
         var processor = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
                 .details(readScope, temp, Processor.class.getName(), 20, 0)));
         assertEquals(Processor.class.getName(), processor.path("class_name").asText(), processor.toString());
+        // V66 CQ-005: the member search found no HttpSecurityProcessor methods that details had just shown.
+        var members = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ExternalSymbolQueries()
+                .search(readScope, temp, "buil", "method", BuildStep.class.getName(), null, "contains", false, 20, 0)));
+        assertEquals("build", members.path("symbols").path(0).path("name").asText(), members.toString());
+        assertEquals("org.demo:ext-deployment:1.0", members.path("symbols").path(0).path("artifact").asText());
+        assertTrue(members.path("classpath_scope").asText().contains("build time"), members.toString());
     }
 
     /** V33: the test classpath was never captured, yet the error said test classpaths were indexed. */

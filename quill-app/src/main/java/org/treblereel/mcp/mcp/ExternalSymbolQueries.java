@@ -438,6 +438,19 @@ final class ExternalSymbolQueries {
         return result.toString();
     }
 
+    /** Artifacts on the resolved classpath that contain exactly {@code className}; empty when none or unknown. */
+    static List<String> artifactsOf(ReadQueryContext reader, String className) {
+        String projectRoot = reader.index.getMetadata().get("project_root");
+        if (projectRoot == null || className == null) return List.of();
+        try {
+            return catalog(reader, Path.of(projectRoot)).classes().stream()
+                    .filter(candidate -> candidate.className().equals(className))
+                    .map(ClassRef::artifact).distinct().sorted().toList();
+        } catch (RuntimeException unavailable) {
+            return List.of();
+        }
+    }
+
     private static List<ClassRef> matching(List<ClassRef> classes, String className) {
         return classes.stream().filter(candidate -> candidate.className().equals(className)
                         || simpleName(candidate.className()).equals(className))

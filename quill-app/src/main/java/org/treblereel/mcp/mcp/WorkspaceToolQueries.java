@@ -1115,9 +1115,9 @@ final class WorkspaceToolQueries {
                 node.put("occurrences", 1);
                 node.put("origin", "dependency");
                 node.put("framework", bean.framework());
-                node.put("bean_kind", bean.kind());
+                node.put("bean_kind", BeanTerms.kind(bean.framework(), bean.kind()));
                 if (bean.scope() == null) node.putNull("scope");
-                else node.put("scope", bean.scope());
+                else node.put("scope", BeanTerms.scope(bean.framework(), bean.scope()));
                 if (bean.artifact() == null) node.putNull("artifact");
                 else node.put("artifact", bean.artifact());
                 node.put("reason", "Framework bean discovery exposes this dependency bean "

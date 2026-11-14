@@ -192,7 +192,8 @@ public final class BeanRepository {
                 rs.getObject("priority") != null ? rs.getInt("priority") : null,
                 fromJson(rs.getString("profiles")),
                 rs.getObject("declaring_class_id") != null ? rs.getInt("declaring_class_id") : null,
-                rs.getString("member_name"), fromJson(rs.getString("bean_types")));
+                rs.getString("member_name"), fromJson(rs.getString("bean_types")),
+                rs.getString("framework"));
     }
 
     static InjectionPointRecord mapInjectionPoint(java.sql.ResultSet rs) throws java.sql.SQLException {
@@ -216,18 +217,24 @@ public final class BeanRepository {
                 + "WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output'");
     }
 
-    public Map<String, Integer> countBeansByScope() {
-        return groupCountQuery("SELECT b.scope, COUNT(*) as cnt FROM beans b "
-                + "JOIN classes c ON c.id = b.class_id "
-                + "WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output' "
-                + "GROUP BY b.scope ORDER BY cnt DESC");
+    /** Bean count per stored scope and the framework that discovered the beans. */
+    public record FrameworkCount(String framework, String value, int count) {}
+
+    public List<FrameworkCount> countBeansByScope() {
+        return frameworkCountQuery("scope");
     }
 
-    public Map<String, Integer> countBeansByKind() {
-        return groupCountQuery("SELECT b.kind, COUNT(*) as cnt FROM beans b "
-                + "JOIN classes c ON c.id = b.class_id "
-                + "WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output' "
-                + "GROUP BY b.kind ORDER BY cnt DESC");
+    public List<FrameworkCount> countBeansByKind() {
+        return frameworkCountQuery("kind");
+    }
+
+    private List<FrameworkCount> frameworkCountQuery(String column) {
+        return handle.createQuery("SELECT b.framework, b." + column + ", COUNT(*) AS cnt FROM beans b "
+                        + "JOIN classes c ON c.id = b.class_id "
+                        + "WHERE c.lifecycle = 'current' AND c.origin != 'orphan_output' "
+                        + "GROUP BY b.framework, b." + column + " ORDER BY cnt DESC")
+                .map((rs, ctx) -> new FrameworkCount(rs.getString(1), rs.getString(2), rs.getInt(3)))
+                .list();
     }
 
     public List<InjectionPointRecord> findUnsatisfiedInjectionPoints() {

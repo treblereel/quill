@@ -76,7 +76,8 @@ final class ClassPrefetchRelations {
         List<Map<String, Object>> injectionRows = db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, ip.resolution_reason,
                        rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.kind AS resolved_kind,
-                       rb.is_default AS resolved_default, rb.scope AS resolved_scope
+                       rb.is_default AS resolved_default, rb.scope AS resolved_scope,
+                       rb.framework AS resolved_framework, ob.framework AS owner_framework
                 FROM injection_points ip
                 JOIN beans ob ON ob.id = ip.bean_id
                 LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
@@ -93,6 +94,7 @@ final class ClassPrefetchRelations {
         lines(fact, "injected_into", db.jdbi().withHandle(handle -> handle.createQuery("""
                 SELECT DISTINCT oc.class_name AS owner, ob.member_name AS owner_member, ob.kind AS owner_kind, ip.kind,
                        ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, ob.scope AS owner_scope,
+                       ob.framework AS owner_framework,
                        (SELECT GROUP_CONCAT(mc.from_method, ',') FROM method_calls mc
                         WHERE mc.from_class_id = oc.id AND mc.to_class_id = :id) AS used_in
                 FROM injection_points ip
@@ -167,14 +169,15 @@ final class ClassPrefetchRelations {
             lines(fact, "contract_callers", callers, row -> row.get("class_name") + " calls " + compactCalls(String.valueOf(row.get("methods"))));
             fact.put("contract_caller_classes", callers.size());
             var beans = db.jdbi().withHandle(h -> h.createQuery("""
-                    SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers, b.profiles, b.priority
+                    SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers, b.profiles, b.priority, b.framework
                     FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
                     WHERE c.lifecycle = 'current' AND b.bean_types LIKE :type
                     ORDER BY c.class_name, b.member_name""")
                     .bind("type", "%\"" + cls.className() + "\"%").mapToMap().list());
             lines(fact, "contract_beans", beans, row -> row.get("class_name")
                     + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))
-                    + " " + row.get("kind") + " " + row.get("scope") + " qualifiers " + row.get("qualifiers")
+                    + " " + BeanTerms.kind(row.get("framework"), row.get("kind")) + " " + BeanTerms.scope(row.get("framework"), row.get("scope"))
+                    + " qualifiers " + BeanTerms.qualifiersJson(row.get("framework"), row.get("qualifiers"))
                     + " profiles " + row.get("profiles") + " priority " + row.get("priority"));
             fact.put("contract_application_producer_count", beans.stream()
                     .filter(row -> String.valueOf(row.get("kind")).startsWith("PRODUCER_")).count());
@@ -267,7 +270,7 @@ final class ClassPrefetchRelations {
     static List<String> typeCandidates(ReadQueryContext db, String type) {
         List<String> lines = new java.util.ArrayList<>();
         db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT b.class_id, c.class_name, b.kind, b.scope, b.member_name, b.qualifiers, b.is_default
+                SELECT b.class_id, c.class_name, b.kind, b.scope, b.member_name, b.qualifiers, b.is_default, b.framework
                 FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
                 WHERE b.bean_types LIKE :type ORDER BY c.class_name, b.member_name""")
                 .bind("type", "%\"" + type + "\"%").mapToMap().list()).forEach(row -> {
@@ -278,8 +281,9 @@ final class ClassPrefetchRelations {
                             .filter(annotation -> CONDITIONS.contains(String.valueOf(annotation.get("annotation_name"))))
                             .map(annotation -> "@" + annotation.get("annotation_name") + values(annotation.get("annotation_values")))
                             .toList();
-                    lines.add(row.get("kind") + " " + row.get("class_name") + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))
-                            + " " + row.get("scope") + " qualifiers " + row.get("qualifiers")
+                    lines.add(BeanTerms.kind(row.get("framework"), row.get("kind")) + " " + row.get("class_name") + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))
+                            + " " + BeanTerms.scope(row.get("framework"), row.get("scope"))
+                            + " qualifiers " + BeanTerms.qualifiersJson(row.get("framework"), row.get("qualifiers"))
                             + (conditions.isEmpty() ? "" : " " + String.join(" ", conditions))
                             + (isSet(row.get("is_default")) && conditions.stream().noneMatch(c -> c.contains("DefaultBean"))
                                     ? " @DefaultBean" : ""));
@@ -387,18 +391,18 @@ final class ClassPrefetchRelations {
     private static String replacedBean(ReadQueryContext db, String type, String mark) {
         String quoted = "%\"" + type + "\"%";
         List<Map<String, Object>> rows = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT b.kind, c.class_name, b.member_name, b.scope, NULL AS artifact FROM beans b
+                SELECT b.kind, c.class_name, b.member_name, b.scope, NULL AS artifact, b.framework FROM beans b
                 JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
                 WHERE b.bean_types LIKE :type AND EXISTS (SELECT 1 FROM json_each(b.qualifiers) WHERE value = '@Default')
                 UNION ALL
-                SELECT kind, class_name, member_name, scope, artifact FROM external_beans
+                SELECT kind, class_name, member_name, scope, artifact, framework FROM external_beans
                 WHERE bean_types LIKE :type AND EXISTS (SELECT 1 FROM json_each(qualifiers) WHERE value = '@Default')""")
                 .bind("type", quoted).mapToMap().list());
         if (rows.isEmpty()) return " replaces no indexed default bean";
         Map<String, Object> row = rows.getFirst();
         String scope = row.get("scope") == null ? "@Dependent" : String.valueOf(row.get("scope"));
-        return " replaces " + row.get("kind") + " " + row.get("class_name")
-                + (row.get("member_name") == null ? "" : "#" + row.get("member_name")) + " " + scope
+        return " replaces " + BeanTerms.kind(row.get("framework"), row.get("kind")) + " " + row.get("class_name")
+                + (row.get("member_name") == null ? "" : "#" + row.get("member_name")) + " " + BeanTerms.scope(row.get("framework"), scope)
                 + (row.get("artifact") == null ? "" : " from " + row.get("artifact"))
                 + (rows.size() > 1 ? " (+" + (rows.size() - 1) + " other default providers)" : "")
                 + (PSEUDO_SCOPES.contains(scope) && mark.equals("@InjectMock")
@@ -406,12 +410,14 @@ final class ClassPrefetchRelations {
     }
 
     private static String injects(ReadQueryContext db, Map<String, Object> row) {
-        String resolved = "BUILTIN_BEAN".equals(row.get("resolution_reason")) ? "built-in bean"
+        String resolved = "BUILTIN_BEAN".equals(row.get("resolution_reason"))
+                ? BeanTerms.spring(String.valueOf(row.get("owner_framework")))
+                        ? "supplied by the Spring context itself (resolvable dependency, no bean definition)" : "built-in bean"
                 : row.get("resolved_class") == null ? "not resolved by the application index"
                 + MethodPrefetchRelations.dependencyProviders(db, String.valueOf(row.get("target_type")), row.get("qualifiers"))
                 : row.get("resolved_class") + (row.get("resolved_member") == null ? ""
-                        : "#" + row.get("resolved_member")) + " (" + row.get("resolved_kind")
-                        + (row.get("resolved_scope") == null ? "" : " " + row.get("resolved_scope")) + ")"
+                        : "#" + row.get("resolved_member")) + " (" + BeanTerms.kind(row.get("resolved_framework"), row.get("resolved_kind"))
+                        + (row.get("resolved_scope") == null ? "" : " " + BeanTerms.scope(row.get("resolved_framework"), row.get("resolved_scope"))) + ")"
                         + (isSet(row.get("resolved_default")) ? " @DefaultBean" : "");
         return row.get("kind") + " " + row.get("field_name") + ": " + source(row.get("target_type"))
                 + qualifiers(row) + " -> " + resolved + " [" + row.get("resolution_status") + "]";
@@ -463,7 +469,7 @@ final class ClassPrefetchRelations {
         }
         return owner + "#" + row.get("field_name") + " (" + row.get("kind") + " " + source(row.get("target_type"))
                 + ")" + qualifiers(row) + " [" + row.get("resolution_status") + "]"
-                + (!decorator && scope != null ? " owner " + scope : "")
+                + (!decorator && scope != null ? " owner " + BeanTerms.scope(row.get("owner_framework"), scope) : "")
                 + (methods.isEmpty() ? "" : ", uses it in " + String.join(", ", methods))
                 + (decorator ? " in a decorator: a delegate point resolves to the decorated bean" : "");
     }
@@ -471,7 +477,7 @@ final class ClassPrefetchRelations {
     private static final java.util.regex.Pattern LAMBDA = java.util.regex.Pattern.compile("lambda\\$(.+?)\\$\\d+");
 
     private static String qualifiers(Map<String, Object> row) {
-        Object value = row.get("qualifiers");
+        Object value = BeanTerms.qualifiersJson(row.get("owner_framework"), row.get("qualifiers"));
         return value == null || "[]".equals(value) ? "" : " " + value;
     }
 

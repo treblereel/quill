@@ -149,7 +149,8 @@ CREATE TABLE IF NOT EXISTS beans (
     profiles TEXT,
     declaring_class_id INTEGER REFERENCES classes(id),
     member_name TEXT,
-    bean_types TEXT
+    bean_types TEXT,
+    framework TEXT
 );
 
 CREATE TABLE IF NOT EXISTS injection_points (

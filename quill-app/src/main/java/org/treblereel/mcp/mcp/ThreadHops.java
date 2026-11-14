@@ -97,7 +97,7 @@ final class ThreadHops {
             if (!seen.add(id + "#" + name + desc)) continue;
             String shown = name.replaceFirst("^lambda\\$(.+)\\$\\d+$", "$1 (lambda)");
             for (Map<String, Object> row : db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT a.field_name, rb.scope, rc.class_name AS resolved, ip.target_type
+                    SELECT a.field_name, rb.scope, rb.framework, rc.class_name AS resolved, ip.target_type
                     FROM field_accesses a
                     JOIN beans ob ON ob.class_id = a.to_class_id AND ob.member_name IS NULL
                     JOIN injection_points ip ON ip.bean_id = ob.id AND ip.field_name = a.field_name
@@ -108,7 +108,7 @@ final class ThreadHops {
                     .bind("id", id).bind("name", name).bind("descriptor", desc).mapToMap().list())) {
                 String scope = row.get("scope") == null ? null : String.valueOf(row.get("scope"));
                 String bean = row.get("resolved") == null ? String.valueOf(row.get("target_type")) : String.valueOf(row.get("resolved"));
-                reached.add(bean + " " + (scope == null ? "unresolved" : scope) + ": " + row.get("field_name") + " in " + shown);
+                reached.add(bean + " " + (scope == null ? "unresolved" : BeanTerms.scope(row.get("framework"), scope)) + ": " + row.get("field_name") + " in " + shown);
                 if ("@RequestScoped".equals(scope) || "@SessionScoped".equals(scope)) requestScoped.add(bean);
             }
             if (depth >= DEPTH) continue;

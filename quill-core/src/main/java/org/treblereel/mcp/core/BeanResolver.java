@@ -179,7 +179,8 @@ public final class BeanResolver {
         reResolveUnresolved(beans, ips, deps, specializedBeans, classNames);
         ips.replaceAll(ip -> ip.resolvedBeanId() == null ? ip.asCdiBuiltin() : ip);
         addNonBeanDependencies(applicationIndex, beans, deps, classIds);
-        return new ResolutionResult(beans, ips, deps, classIds, List.of());
+        return new ResolutionResult(beans.stream().map(bean -> bean.withFramework(BeanRecord.CDI)).toList(),
+                ips, deps, classIds, List.of());
     }
 
     /**

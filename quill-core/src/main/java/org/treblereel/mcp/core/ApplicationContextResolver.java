@@ -116,6 +116,7 @@ public final class ApplicationContextResolver {
             }
         }
 
+        if (spring && candidates.isEmpty() && point.springResolvableProvider() != null) return point.asSpringResolvable();
         Integer selected = candidates.size() == 1 ? candidates.getFirst().id() : null;
         ResolutionStatus status = selected != null ? ResolutionStatus.RESOLVED
                 : candidates.size() > 1 ? ResolutionStatus.AMBIGUOUS : ResolutionStatus.UNKNOWN;

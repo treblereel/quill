@@ -72,7 +72,7 @@ public final class IndexWriter {
     private static final TableSpec BEANS = new TableSpec("beans",
             "id", "class_id", "kind", "scope", "qualifiers", "stereotypes",
             "is_alternative", "is_default", "priority", "profiles", "declaring_class_id",
-            "member_name", "bean_types");
+            "member_name", "bean_types", "framework");
     private static final TableSpec INJECTION_POINTS = new TableSpec("injection_points",
             "id", "bean_id", "kind", "target_type", "qualifiers", "field_name",
             "resolved_bean_id", "resolution_status", "resolution_strategy",
@@ -432,6 +432,7 @@ public final class IndexWriter {
                 statement.setObject(11, b.declaringClassId());
                 statement.setString(12, b.memberName());
                 statement.setString(13, toJson(b.beanTypes()));
+                statement.setString(14, b.framework());
                 statement.addBatch();
             }
             if (!beans.isEmpty()) statement.executeBatch();

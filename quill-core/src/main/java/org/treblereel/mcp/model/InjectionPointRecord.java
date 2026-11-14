@@ -65,6 +65,60 @@ public record InjectionPointRecord(
         return CDI_BUILTIN_TYPES.contains(generic < 0 ? targetType : targetType.substring(0, generic));
     }
 
+    /**
+     * Types a Spring context injects without a bean definition: AbstractApplicationContext#prepareBeanFactory
+     * (spring-context) registers BeanFactory, ResourceLoader, ApplicationEventPublisher and ApplicationContext via
+     * registerResolvableDependency, which also satisfies their subtypes the context or factory implements; a web
+     * context adds the request/session objects (WebApplicationContextUtils.registerWebApplicationScopes).
+     */
+    private static final java.util.Map<String, String> SPRING_RESOLVABLE_TYPES = springResolvableTypes();
+
+    private static java.util.Map<String, String> springResolvableTypes() {
+        String context = "the ApplicationContext itself, registered by AbstractApplicationContext#prepareBeanFactory "
+                + "(spring-context) via beanFactory.registerResolvableDependency";
+        String factory = "the context's BeanFactory, registered by AbstractApplicationContext#prepareBeanFactory "
+                + "(spring-context) via beanFactory.registerResolvableDependency";
+        String web = "a request-bound proxy registered by WebApplicationContextUtils.registerWebApplicationScopes "
+                + "(spring-web) via registerResolvableDependency; web application contexts only";
+        java.util.Map<String, String> types = new java.util.LinkedHashMap<>();
+        for (String type : java.util.List.of("org.springframework.context.ApplicationContext",
+                "org.springframework.context.ConfigurableApplicationContext",
+                "org.springframework.context.ApplicationEventPublisher",
+                "org.springframework.core.io.ResourceLoader",
+                "org.springframework.core.io.support.ResourcePatternResolver")) types.put(type, context);
+        for (String type : java.util.List.of("org.springframework.beans.factory.BeanFactory",
+                "org.springframework.beans.factory.ListableBeanFactory",
+                "org.springframework.beans.factory.HierarchicalBeanFactory",
+                "org.springframework.beans.factory.config.AutowireCapableBeanFactory",
+                "org.springframework.beans.factory.config.ConfigurableBeanFactory",
+                "org.springframework.beans.factory.config.ConfigurableListableBeanFactory")) types.put(type, factory);
+        for (String type : java.util.List.of("jakarta.servlet.ServletRequest", "jakarta.servlet.http.HttpServletRequest",
+                "jakarta.servlet.ServletResponse", "jakarta.servlet.http.HttpServletResponse",
+                "jakarta.servlet.http.HttpSession", "org.springframework.web.context.request.WebRequest",
+                "org.springframework.web.context.request.NativeWebRequest")) types.put(type, web);
+        return java.util.Map.copyOf(types);
+    }
+
+    /** What supplies a Spring container-provided dependency, or null when the type is not one. */
+    public String springResolvableProvider() {
+        if (!STATIC_SPRING.equals(resolutionStrategy) || targetType == null) return null;
+        int generic = targetType.indexOf('<');
+        return SPRING_RESOLVABLE_TYPES.get(generic < 0 ? targetType : targetType.substring(0, generic));
+    }
+
+    /** Marks an unresolved Spring container-provided dependency as satisfied, saying what supplies it. */
+    public InjectionPointRecord asSpringResolvable() {
+        String provider = springResolvableProvider();
+        if (provider == null || resolvedBeanId != null
+                || resolutionStatus != ResolutionStatus.UNKNOWN && resolutionStatus != ResolutionStatus.UNSATISFIED) return this;
+        return new InjectionPointRecord(id, beanId, kind, targetType, qualifiers, fieldName,
+                null, ResolutionStatus.RESOLVED, resolutionStrategy, ResolutionReason.BUILTIN_BEAN,
+                ResolutionConfidence.HIGH,
+                List.of("Supplied by " + provider + "; a resolvable dependency is not a bean definition, "
+                        + "so getBeansOfType/getBean do not return it"),
+                resolutionTrace);
+    }
+
     /** Marks a built-in injection point as satisfied by the container rather than unknown. */
     public InjectionPointRecord asCdiBuiltin() {
         if (!isCdiBuiltin()) return this;

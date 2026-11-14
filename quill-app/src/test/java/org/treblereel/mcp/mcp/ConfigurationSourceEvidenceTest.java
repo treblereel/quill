@@ -36,6 +36,24 @@ class ConfigurationSourceEvidenceTest {
         assertTrue(rule.contains("application.properties on the classpath 250"),rule);
         assertFalse(query("limits.timeout",null,"index").has("source_precedence"));
     }
+    /** V66 CQ-039: the phase came only for quarkus.cache.enabled; Codex read ConfigProducer and CacheProcessor bytecode to prove the app key is runtime. */
+    @Test void anApplicationKeyStatesWhenItsConsumersReadIt() throws Exception {
+        file("application.properties","limits.timeout=5s\n");definition("limits.timeout","property","application.properties",1);usage("limits.timeout","active");
+        db.useHandle(h->h.execute("INSERT INTO beans(class_id,kind,scope) VALUES (1,'CLASS','@ApplicationScoped')"));
+        String phase=query("limits.timeout",null,"declared").path("application_key_phase").asText();
+        assertTrue(phase.contains("@ConfigProperty injection into p.Fixture#active (@ApplicationScoped)"),phase);
+        assertTrue(phase.contains("no rebuild"),phase);
+        assertTrue(phase.contains("restart"),phase);
+        assertFalse(query("quarkus.http.port",null,"declared").has("application_key_phase"));
+        // MemoryCachingReportsService is a @Dependent decorator: it lives as long as each bean it decorates.
+        db.useHandle(h->h.execute("UPDATE beans SET kind='DECORATOR', scope='@Dependent' WHERE class_id=1"));
+        String decorator=query("limits.timeout",null,"declared").path("application_key_phase").asText();
+        assertTrue(decorator.contains("p.Fixture#active (decorator, created with each decorated bean instance)"),decorator);
+        db.useHandle(h->h.execute("INSERT INTO class_annotations(class_id,annotation_name,direct,annotation_values) VALUES (1,'io.quarkus.arc.properties.IfBuildProperty',1,'{\"name\":\"limits.timeout\",\"stringValue\":\"5s\"}')"));
+        String build=query("limits.timeout",null,"declared").path("application_key_phase").asText();
+        assertTrue(build.contains("@IfBuildProperty on p.Fixture"),build);
+        assertTrue(build.contains("needs a rebuild"),build);
+    }
     /** V62-V65: Codex sent view=full and view=details six times and got "view must be index or declared". */
     @Test void detailedViewSpellingsMeanDeclared() throws Exception {
         file("application.properties","limits.timeout=5s\n");definition("limits.timeout","property","application.properties",1);

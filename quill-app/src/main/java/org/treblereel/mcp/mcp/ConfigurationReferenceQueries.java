@@ -126,6 +126,7 @@ final class ConfigurationReferenceQueries {
                 source.finish(result); ConfigurationReadEvidence.append(reader,result);
                 if(key!=null && !key.isBlank())result.set("configuration_resources",ConfigurationResourceInventory.collect(reader,key));
                 frameworkKeyPhases(reader, key, result);
+                ApplicationKeyPhase.append(reader, key, result);
             }
             int unknownProfiles=jdbi.withHandle(h->h.createQuery("SELECT count(*) FROM configuration_definitions WHERE kind='quarkus_test_profile_unknown'"+(module==null || module.isBlank()?"":" AND module=:profile_module"))
                     .bindMap(module==null || module.isBlank()?Map.of():Map.of("profile_module",module)).mapTo(Integer.class).one());

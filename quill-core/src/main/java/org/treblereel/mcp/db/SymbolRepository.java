@@ -955,4 +955,14 @@ public final class SymbolRepository {
         return handle.createQuery("SELECT source_file FROM classes WHERE class_name = :name AND lifecycle = 'current' LIMIT 1")
                 .bind("name", className).mapTo(String.class).findOne();
     }
+
+    public Optional<String> findSourceFile(int classId) {
+        return handle.createQuery("SELECT source_file FROM classes WHERE id = :id")
+                .bind("id", classId).mapTo(String.class).findOne();
+    }
+
+    public List<String> findFieldNames(int classId) {
+        return handle.createQuery("SELECT name FROM class_members WHERE class_id = :id AND kind = 'FIELD'")
+                .bind("id", classId).mapTo(String.class).list();
+    }
 }

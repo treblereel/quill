@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -52,10 +51,7 @@ final class ThreadHops {
 
     /** With {@code root}, also the values each handed-off lambda captures and whether context propagation is on the classpath. */
     static ObjectNode of(ReadQueryContext db, Path root, int classId, String method, String descriptor) throws Exception {
-        String external = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT caller_external_calls FROM method_evidence
-                WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor""")
-                .bind("id", classId).bind("name", method).bind("descriptor", descriptor).mapTo(String.class).findOne().orElse("[]"));
+        String external = db.usages.findCallerExternalCalls(classId, method, descriptor).orElse("[]");
         List<String> switches = new ArrayList<>();
         String executor = null;
         for (JsonNode call : JSON.readTree(external)) {
@@ -77,14 +73,11 @@ final class ThreadHops {
         List<String> source = root == null ? List.of() : source(db, root, classId);
         Set<String> fields = source.isEmpty() ? Set.of() : fields(db, classId);
         List<String> captures = new ArrayList<>();
-        for (Map<String, Object> lambda : db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT to_class_id, to_method, to_descriptor, evidence_lines FROM method_calls
-                WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor AND to_method LIKE 'lambda$%'""")
-                .bind("id", classId).bind("name", method).bind("descriptor", descriptor).mapToMap().list())) {
-            queue.add(new Object[] {((Number) lambda.get("to_class_id")).intValue(), lambda.get("to_method"), lambda.get("to_descriptor"), 1});
-            if (source.isEmpty() || lambda.get("evidence_lines") == null) continue;
-            for (JsonNode line : JSON.readTree(String.valueOf(lambda.get("evidence_lines")))) {
-                String captured = captured(source, line.asInt(), String.valueOf(lambda.get("to_descriptor")), fields);
+        for (var lambda : db.usages.findLambdaCalls(classId, method, descriptor)) {
+            queue.add(new Object[] {lambda.toClassId(), lambda.toMethod(), lambda.toDescriptor(), 1});
+            if (source.isEmpty() || lambda.evidenceLines() == null) continue;
+            for (JsonNode line : JSON.readTree(lambda.evidenceLines())) {
+                String captured = captured(source, line.asInt(), String.valueOf(lambda.toDescriptor()), fields);
                 if (captured != null) captures.add(captured);
             }
         }
@@ -96,28 +89,16 @@ final class ThreadHops {
             int depth = (int) current[3];
             if (!seen.add(id + "#" + name + desc)) continue;
             String shown = name.replaceFirst("^lambda\\$(.+)\\$\\d+$", "$1 (lambda)");
-            for (Map<String, Object> row : db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT a.field_name, rb.scope, rb.framework, rc.class_name AS resolved, ip.target_type
-                    FROM field_accesses a
-                    JOIN beans ob ON ob.class_id = a.to_class_id AND ob.member_name IS NULL
-                    JOIN injection_points ip ON ip.bean_id = ob.id AND ip.field_name = a.field_name
-                    LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
-                    LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
-                    WHERE a.from_class_id = :id AND a.from_method = :name AND a.from_descriptor = :descriptor
-                      AND a.access_kind LIKE 'read%' ORDER BY a.field_name""")
-                    .bind("id", id).bind("name", name).bind("descriptor", desc).mapToMap().list())) {
-                String scope = row.get("scope") == null ? null : String.valueOf(row.get("scope"));
-                String bean = row.get("resolved") == null ? String.valueOf(row.get("target_type")) : String.valueOf(row.get("resolved"));
-                reached.add(bean + " " + (scope == null ? "unresolved" : BeanTerms.scope(row.get("framework"), scope)) + ": " + row.get("field_name") + " in " + shown);
+            for (var row : db.beans.findInjectedFieldReads(id, name, desc)) {
+                String scope = row.scope();
+                String bean = row.resolved() == null ? String.valueOf(row.targetType()) : row.resolved();
+                reached.add(bean + " " + (scope == null ? "unresolved" : BeanTerms.scope((Object) row.framework(), scope)) + ": " + row.fieldName() + " in " + shown);
                 if ("@RequestScoped".equals(scope) || "@SessionScoped".equals(scope)) requestScoped.add(bean);
             }
             if (depth >= DEPTH) continue;
-            for (Map<String, Object> call : db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT to_class_id, to_method, to_descriptor FROM method_calls
-                    WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor""")
-                    .bind("id", id).bind("name", name).bind("descriptor", desc).mapToMap().list()))
-                queue.add(new Object[] {((Number) call.get("to_class_id")).intValue(), call.get("to_method"), call.get("to_descriptor"),
-                        String.valueOf(call.get("to_method")).startsWith("lambda$") ? depth : depth + 1});
+            for (var call : db.usages.findCallTargets(id, name, desc))
+                queue.add(new Object[] {call.toClassId(), call.toMethod(), call.toDescriptor(),
+                        String.valueOf(call.toMethod()).startsWith("lambda$") ? depth : depth + 1});
         }
         ArrayNode beans = fact.putArray("beans_reached_after");
         // Application beans and their scopes answer the question; unresolved framework fields go last.
@@ -273,8 +254,7 @@ final class ThreadHops {
     }
 
     private static List<String> source(ReadQueryContext db, Path root, int classId) {
-        String file = db.jdbi().withHandle(handle -> handle.createQuery("SELECT source_file FROM classes WHERE id = :id")
-                .bind("id", classId).mapTo(String.class).findOne().orElse(null));
+        String file = db.symbols.findSourceFile(classId).orElse(null);
         if (file == null) return List.of();
         try {
             return Files.readAllLines(root.resolve(file));
@@ -284,7 +264,6 @@ final class ThreadHops {
     }
 
     private static Set<String> fields(ReadQueryContext db, int classId) {
-        return new HashSet<>(db.jdbi().withHandle(handle -> handle.createQuery(
-                "SELECT name FROM class_members WHERE class_id = :id AND kind = 'FIELD'").bind("id", classId).mapTo(String.class).list()));
+        return new HashSet<>(db.symbols.findFieldNames(classId));
     }
 }

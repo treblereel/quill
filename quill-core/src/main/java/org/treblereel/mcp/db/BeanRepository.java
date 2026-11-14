@@ -636,4 +636,23 @@ public final class BeanRepository {
                 .map((rs, ctx) -> new ApplicationTypeProvider(rs.getString("class_name"), rs.getString("kind"),
                         rs.getString("member_name"), rs.getString("scope"), rs.getString("qualifiers"), rs.getString("framework"))).list();
     }
+
+    /** An injected field a method reads, with the scope and class of the bean it resolved to. */
+    public record InjectedFieldRead(String fieldName, String scope, String framework, String resolved, String targetType) {}
+
+    /** Injected fields of class beans that a method reads, by field name. */
+    public List<InjectedFieldRead> findInjectedFieldReads(int classId, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT a.field_name, rb.scope, rb.framework, rc.class_name AS resolved, ip.target_type
+                FROM field_accesses a
+                JOIN beans ob ON ob.class_id = a.to_class_id AND ob.member_name IS NULL
+                JOIN injection_points ip ON ip.bean_id = ob.id AND ip.field_name = a.field_name
+                LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
+                LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
+                WHERE a.from_class_id = :id AND a.from_method = :name AND a.from_descriptor = :descriptor
+                  AND a.access_kind LIKE 'read%' ORDER BY a.field_name""")
+                .bind("id", classId).bind("name", method).bind("descriptor", descriptor)
+                .map((rs, ctx) -> new InjectedFieldRead(rs.getString("field_name"), rs.getString("scope"), rs.getString("framework"),
+                        rs.getString("resolved"), rs.getString("target_type"))).list();
+    }
 }

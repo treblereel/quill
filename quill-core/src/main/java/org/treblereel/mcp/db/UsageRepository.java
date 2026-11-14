@@ -738,4 +738,26 @@ public final class UsageRepository {
                 .bind("id", interfaceId).bind("type", "%\"" + interfaceName + "\"%")
                 .map((rs, ctx) -> new ContractCaller(rs.getString("class_name"), rs.getString("source_file"), rs.getString("methods"))).list();
     }
+
+    /** A call from a method: the callee, and for a lambda the JSON lines it is created on. */
+    public record CallTarget(int toClassId, String toMethod, String toDescriptor, String evidenceLines) {}
+
+    /** The lambda bodies a method creates, with the lines creating them. */
+    public List<CallTarget> findLambdaCalls(int classId, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT to_class_id, to_method, to_descriptor, evidence_lines FROM method_calls
+                WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor AND to_method LIKE 'lambda$%'""")
+                .bind("id", classId).bind("name", method).bind("descriptor", descriptor)
+                .map((rs, ctx) -> new CallTarget(rs.getInt("to_class_id"), rs.getString("to_method"), rs.getString("to_descriptor"),
+                        rs.getString("evidence_lines"))).list();
+    }
+
+    /** Every call out of a method, unordered and whether or not the callee class is indexed. */
+    public List<CallTarget> findCallTargets(int classId, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT to_class_id, to_method, to_descriptor FROM method_calls
+                WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor""")
+                .bind("id", classId).bind("name", method).bind("descriptor", descriptor)
+                .map((rs, ctx) -> new CallTarget(rs.getInt("to_class_id"), rs.getString("to_method"), rs.getString("to_descriptor"), null)).list();
+    }
 }

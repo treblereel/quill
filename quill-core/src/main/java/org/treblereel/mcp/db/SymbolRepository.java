@@ -921,4 +921,38 @@ public final class SymbolRepository {
         return handle.createQuery("SELECT superclass FROM classes WHERE class_name = :name AND lifecycle = 'current'")
                 .bind("name", className).mapTo(String.class).list();
     }
+
+    /** How many current classes one source set holds. */
+    public record SourceSetCount(String sourceSet, int classes) {}
+
+    /** Current classes directly in {@code packageName} per source set ({@code unknown} when unset). */
+    public List<SourceSetCount> findPackageClassCounts(String packageName) {
+        return handle.createQuery("""
+                SELECT COALESCE(source_set, 'unknown') AS source_set, count(*) AS classes FROM classes
+                WHERE class_name LIKE :prefix AND lifecycle = 'current'
+                  AND instr(substr(class_name, length(:package) + 2), '.') = 0
+                GROUP BY 1 ORDER BY 1""")
+                .bind("prefix", packageName + ".%").bind("package", packageName)
+                .map((rs, ctx) -> new SourceSetCount(rs.getString("source_set"), rs.getInt("classes"))).list();
+    }
+
+    /** Current non-orphan classes per module ({@code .} when unset) and source set ({@code unknown}). */
+    public List<IndexedScope> findCurrentClassCounts() {
+        return handle.createQuery("""
+                SELECT COALESCE(module, '.') AS module, COALESCE(source_set, 'unknown') AS source_set, count(*) AS classes
+                FROM classes WHERE lifecycle = 'current' AND origin <> 'orphan_output'
+                GROUP BY 1, 2 ORDER BY 1, 2""")
+                .map((rs, ctx) -> new IndexedScope(rs.getString("module"), rs.getString("source_set"), rs.getInt("classes"))).list();
+    }
+
+    /** Every module a class of any lifecycle is indexed in. */
+    public List<String> findClassModules() {
+        return handle.createQuery("SELECT DISTINCT module FROM classes WHERE module IS NOT NULL ORDER BY module").mapTo(String.class).list();
+    }
+
+    /** The source file of the current class named {@code className}, whatever its origin. */
+    public Optional<String> findCurrentSourceFile(String className) {
+        return handle.createQuery("SELECT source_file FROM classes WHERE class_name = :name AND lifecycle = 'current' LIMIT 1")
+                .bind("name", className).mapTo(String.class).findOne();
+    }
 }

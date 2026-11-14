@@ -586,4 +586,54 @@ public final class BeanRepository {
                 GROUP BY c.class_name ORDER BY total DESC, c.class_name LIMIT 3""")
                 .map((rs, ctx) -> new ProducerHost(rs.getString("class_name"), rs.getInt("total"))).list();
     }
+
+    /** A bean declared by a class directly in a package. */
+    public record PackageBean(String className, String sourceSet, String kind, String scope, String qualifiers,
+            String memberName, String beanTypes, String framework) {}
+    /** A dependency bean offering a type, with where its jar is. */
+    public record ExternalTypeProvider(String className, String kind, String memberName, String scope, String qualifiers,
+            String artifact, String framework, String profiles, String jarPath) {}
+    /** An application bean offering a type. */
+    public record ApplicationTypeProvider(String className, String kind, String memberName, String scope,
+            String qualifiers, String framework) {}
+
+    /** Beans declared by current classes directly in {@code packageName}, without subpackages. */
+    public List<PackageBean> findPackageBeans(String packageName) {
+        return handle.createQuery("""
+                SELECT c.class_name, c.source_set, b.kind, b.scope, b.qualifiers, b.member_name, b.bean_types, b.framework
+                FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE c.class_name LIKE :prefix AND c.lifecycle = 'current'
+                  AND instr(substr(c.class_name, length(:package) + 2), '.') = 0
+                ORDER BY c.source_set, b.kind, c.class_name, b.member_name""")
+                .bind("prefix", packageName + ".%").bind("package", packageName)
+                .map((rs, ctx) -> new PackageBean(rs.getString("class_name"), rs.getString("source_set"), rs.getString("kind"),
+                        rs.getString("scope"), rs.getString("qualifiers"), rs.getString("member_name"),
+                        rs.getString("bean_types"), rs.getString("framework"))).list();
+    }
+
+    /** Dependency beans offering {@code type}, default-qualified first. */
+    public List<ExternalTypeProvider> findExternalTypeProviders(String type) {
+        return handle.createQuery("""
+                SELECT class_name, kind, member_name, scope, qualifiers, artifact, framework, profiles, jar_path
+                FROM external_beans WHERE bean_types LIKE :type
+                ORDER BY CASE WHEN EXISTS (SELECT 1 FROM json_each(external_beans.qualifiers) WHERE value = '@Default')
+                              THEN 0 ELSE 1 END, artifact, class_name, member_name""")
+                .bind("type", "%\"" + type + "\"%")
+                .map((rs, ctx) -> new ExternalTypeProvider(rs.getString("class_name"), rs.getString("kind"),
+                        rs.getString("member_name"), rs.getString("scope"), rs.getString("qualifiers"), rs.getString("artifact"),
+                        rs.getString("framework"), rs.getString("profiles"), rs.getString("jar_path"))).list();
+    }
+
+    /** Application beans offering {@code type}, default-qualified first. */
+    public List<ApplicationTypeProvider> findApplicationTypeProviders(String type) {
+        return handle.createQuery("""
+                SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers, b.framework
+                FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE b.bean_types LIKE :type
+                ORDER BY CASE WHEN EXISTS (SELECT 1 FROM json_each(b.qualifiers) WHERE value = '@Default')
+                              THEN 0 ELSE 1 END, c.class_name, b.member_name""")
+                .bind("type", "%\"" + type + "\"%")
+                .map((rs, ctx) -> new ApplicationTypeProvider(rs.getString("class_name"), rs.getString("kind"),
+                        rs.getString("member_name"), rs.getString("scope"), rs.getString("qualifiers"), rs.getString("framework"))).list();
+    }
 }

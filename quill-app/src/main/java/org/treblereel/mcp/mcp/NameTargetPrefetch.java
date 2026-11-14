@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Map;
+import org.treblereel.mcp.db.BeanRepository.ExternalTypeProvider;
 import org.treblereel.mcp.db.ReadQueryContext;
 
 /**
@@ -22,85 +23,64 @@ public final class NameTargetPrefetch {
 
     /** Beans declared in classes directly in {@code name}, without subpackages; null if no class is there. */
     static ObjectNode packageFact(ReadQueryContext db, String name) {
-        List<Map<String, Object>> rows = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT c.class_name, c.source_set, b.kind, b.scope, b.qualifiers, b.member_name, b.bean_types, b.framework
-                FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
-                WHERE c.class_name LIKE :prefix AND c.lifecycle = 'current'
-                  AND instr(substr(c.class_name, length(:package) + 2), '.') = 0
-                ORDER BY c.source_set, b.kind, c.class_name, b.member_name""")
-                .bind("prefix", name + ".%").bind("package", name).mapToMap().list());
-        List<Map<String, Object>> counts = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT COALESCE(source_set, 'unknown') AS source_set, count(*) AS classes FROM classes
-                WHERE class_name LIKE :prefix AND lifecycle = 'current'
-                  AND instr(substr(class_name, length(:package) + 2), '.') = 0
-                GROUP BY 1 ORDER BY 1""")
-                .bind("prefix", name + ".%").bind("package", name).mapToMap().list());
+        var rows = db.beans.findPackageBeans(name);
+        var counts = db.symbols.findPackageClassCounts(name);
         if (counts.isEmpty()) return null;
         ObjectNode fact = JSON.createObjectNode().put("kind", "package").put("package", name)
                 .put("scope_note", "beans of classes directly in the package; subpackages excluded");
         ObjectNode classes = fact.putObject("classes_in_package_by_source_set");
-        counts.forEach(row -> classes.put(String.valueOf(row.get("source_set")), ((Number) row.get("classes")).intValue()));
+        counts.forEach(row -> classes.put(String.valueOf(row.sourceSet()), row.classes()));
         fact.put("classes_counted", "every indexed class, nested and anonymous ones included");
         // V62 CQ-002: a zero states that no producer is declared here, so agents need not read every class's members.
         ObjectNode kinds = fact.putObject("bean_kind_counts_main");
-        boolean springOnly = !rows.isEmpty() && rows.stream().allMatch(row -> BeanTerms.spring(String.valueOf(row.get("framework"))));
+        boolean springOnly = !rows.isEmpty() && rows.stream().allMatch(row -> BeanTerms.spring(String.valueOf(row.framework())));
         for (String kind : springOnly ? List.of("CLASS", BeanTerms.SPRING_BEAN_METHOD)
                 : List.of("CLASS", "PRODUCER_METHOD", "PRODUCER_FIELD", "SYNTHETIC")) kinds.put(kind, 0);
-        rows.stream().filter(row -> "main".equals(row.get("source_set"))).map(row -> BeanTerms.kind(row.get("framework"), row.get("kind")))
+        rows.stream().filter(row -> "main".equals(row.sourceSet())).map(row -> BeanTerms.kind((Object) row.framework(), row.kind()))
                 .collect(java.util.stream.Collectors.groupingBy(kind -> kind, java.util.TreeMap::new, java.util.stream.Collectors.counting()))
                 .forEach(kinds::put);
         ArrayNode beans = fact.putArray("beans");
-        rows.stream().limit(LIMIT).forEach(row -> beans.add(row.get("source_set") + " " + BeanTerms.kind(row.get("framework"), row.get("kind")) + " "
-                + row.get("class_name") + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))
-                + " " + BeanTerms.scope(row.get("framework"), row.get("scope"))
-                + " qualifiers " + BeanTerms.qualifiersJson(row.get("framework"), row.get("qualifiers"))
-                + (row.get("member_name") == null ? "" : " types " + row.get("bean_types"))));
+        rows.stream().limit(LIMIT).forEach(row -> beans.add(row.sourceSet() + " " + BeanTerms.kind((Object) row.framework(), row.kind()) + " "
+                + row.className() + (row.memberName() == null ? "" : "#" + row.memberName())
+                + " " + BeanTerms.scope((Object) row.framework(), row.scope())
+                + " qualifiers " + BeanTerms.qualifiersJson(row.framework(), row.qualifiers())
+                + (row.memberName() == null ? "" : " types " + row.beanTypes())));
         if (rows.size() > LIMIT) fact.putObject("beans_truncated").put("shown", LIMIT).put("total", rows.size());
         return fact;
     }
 
     /** Application and dependency beans whose bean types include {@code type}; null if none. */
     static ObjectNode typeProviders(ReadQueryContext db, String type) {
-        String quoted = "%\"" + type + "\"%";
-        List<Map<String, Object>> external = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT class_name, kind, member_name, scope, qualifiers, artifact, framework, profiles, jar_path
-                FROM external_beans WHERE bean_types LIKE :type
-                ORDER BY CASE WHEN EXISTS (SELECT 1 FROM json_each(external_beans.qualifiers) WHERE value = '@Default')
-                              THEN 0 ELSE 1 END, artifact, class_name, member_name""")
-                .bind("type", quoted).mapToMap().list());
-        List<Map<String, Object>> application = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers, b.framework
-                FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
-                WHERE b.bean_types LIKE :type
-                ORDER BY CASE WHEN EXISTS (SELECT 1 FROM json_each(b.qualifiers) WHERE value = '@Default')
-                              THEN 0 ELSE 1 END, c.class_name, b.member_name""")
-                .bind("type", quoted).mapToMap().list());
+        var external = db.beans.findExternalTypeProviders(type);
+        var application = db.beans.findApplicationTypeProviders(type);
         if (external.isEmpty() && application.isEmpty()) return null;
         ObjectNode fact = JSON.createObjectNode().put("kind", "bean_type_providers").put("bean_type", type)
                 .put("scope_note", "indexed bean declarations by type, default-qualified first; eligibility and runtime selection not proven");
         fact.put("application_provider_count", application.size());
         if (!application.isEmpty()) {
             ArrayNode values = fact.putArray("application_providers");
-            application.stream().limit(LIMIT).forEach(row -> values.add(provider(row) + " " + BeanTerms.scope(row.get("framework"), row.get("scope"))
-                    + " qualifiers " + BeanTerms.qualifiersJson(row.get("framework"), row.get("qualifiers"))));
+            application.stream().limit(LIMIT).forEach(row -> values.add(provider(row.framework(), row.kind(), row.className(), row.memberName())
+                    + " " + BeanTerms.scope((Object) row.framework(), row.scope())
+                    + " qualifiers " + BeanTerms.qualifiersJson(row.framework(), row.qualifiers())));
         }
         if (!external.isEmpty()) {
             ArrayNode values = fact.putArray("dependency_providers");
-            external.stream().limit(LIMIT).forEach(row -> values.add(provider(row) + " " + BeanTerms.scope(row.get("framework"), row.get("scope"))
-                    + " qualifiers " + BeanTerms.qualifiersJson(row.get("framework"), row.get("qualifiers")) + " from " + row.get("artifact")
-                    + " (" + row.get("framework") + ")"
-                    + ("[]".equals(String.valueOf(row.get("profiles"))) ? "" : " profiles " + row.get("profiles"))));
+            external.stream().limit(LIMIT).forEach(row -> values.add(provider(row.framework(), row.kind(), row.className(), row.memberName())
+                    + " " + BeanTerms.scope((Object) row.framework(), row.scope())
+                    + " qualifiers " + BeanTerms.qualifiersJson(row.framework(), row.qualifiers()) + " from " + row.artifact()
+                    + " (" + row.framework() + ")"
+                    + ("[]".equals(String.valueOf(row.profiles())) ? "" : " profiles " + row.profiles())));
             appendArtifactDeclarations(db, fact, external.stream().limit(LIMIT).toList());
         }
         try {
             var registered = registeredDependencyBeans(db);
             ArrayNode evidence = fact.putArray("dependency_provider_evidence");
             for (var row : external.stream().limit(4).toList()) {
-                String owner = String.valueOf(row.get("class_name"));
+                String owner = String.valueOf(row.className());
                 ObjectNode item = evidence.addObject().put("class", owner);
                 item.set("producer_bytecode", ExternalSymbolQueries.producerEvidence(
-                        java.nio.file.Path.of(String.valueOf(row.get("jar_path"))), owner,
-                        String.valueOf(row.get("member_name"))));
+                        java.nio.file.Path.of(String.valueOf(row.jarPath())), owner,
+                        String.valueOf(row.memberName())));
                 item.putObject("inspect").put("tool", "get_external_symbol_details")
                         .putObject("arguments").put("class_name", owner);
                 if (registered != null) item.put("class_registered_in_generated_build", registered.contains(owner));
@@ -113,7 +93,7 @@ public final class NameTargetPrefetch {
     }
 
     /** Whether each provider's artifact is a direct dependency, and where the project's POMs declare and version it. */
-    private static void appendArtifactDeclarations(ReadQueryContext db, ObjectNode fact, List<Map<String, Object>> providers) {
+    private static void appendArtifactDeclarations(ReadQueryContext db, ObjectNode fact, List<ExternalTypeProvider> providers) {
         String projectRoot = db.index.getMetadata().get("project_root");
         if (projectRoot == null) return;
         java.nio.file.Path root = java.nio.file.Path.of(projectRoot);
@@ -121,19 +101,18 @@ public final class NameTargetPrefetch {
         java.util.Set<String> artifacts = new java.util.LinkedHashSet<>();
         String repositoryHint = null;
         for (var row : providers) {
-            String artifact = String.valueOf(row.get("artifact"));
+            String artifact = String.valueOf(row.artifact());
             String[] parts = artifact.split(":");
             if (parts.length < 2) continue;
             artifacts.add(parts[0] + ":" + parts[1]);
-            String jar = String.valueOf(row.get("jar_path"));
+            String jar = String.valueOf(row.jarPath());
             int at = jar.indexOf("/" + parts[0].replace('.', '/') + "/" + parts[1] + "/");
             if (repositoryHint == null && at > 0) repositoryHint = jar.substring(0, at);
         }
         if (artifacts.isEmpty()) return;
         java.nio.file.Path repository = repositoryHint != null ? java.nio.file.Path.of(repositoryHint)
                 : java.nio.file.Path.of(System.getProperty("user.home"), ".m2", "repository");
-        List<String> modules = db.jdbi().withHandle(handle -> handle.createQuery(
-                "SELECT DISTINCT module FROM classes WHERE module IS NOT NULL ORDER BY module").mapTo(String.class).list());
+        List<String> modules = db.symbols.findClassModules();
         Map<String, org.treblereel.mcp.core.DependencyDeclarations.Declaration> declared = new java.util.LinkedHashMap<>();
         for (String module : modules.isEmpty() ? List.of(".") : modules)
             org.treblereel.mcp.core.DependencyDeclarations.locate(root, module, repository).forEach(declared::putIfAbsent);
@@ -154,18 +133,10 @@ public final class NameTargetPrefetch {
         ObjectNode fact = JSON.createObjectNode().put("kind", "project")
                 .put("scope_note", "indexed modules, build files and direct dependencies; no question-specific facts");
         ArrayNode modules = fact.putArray("modules");
-        db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT COALESCE(module, '.') AS module, COALESCE(source_set, 'unknown') AS source_set, count(*) AS classes
-                FROM classes WHERE lifecycle = 'current' AND origin <> 'orphan_output'
-                GROUP BY 1, 2 ORDER BY 1, 2""").mapToMap().list())
-                .forEach(row -> modules.add(row.get("module") + " " + row.get("source_set") + " " + row.get("classes") + " classes"));
+        db.symbols.findCurrentClassCounts()
+                .forEach(row -> modules.add(row.module() + " " + row.sourceSet() + " " + row.classes() + " classes"));
         ArrayNode builds = fact.putArray("build_files");
-        db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT project_path FROM files WHERE lifecycle = 'current' AND (
-                    project_path LIKE '%pom.xml' OR project_path LIKE '%build.gradle' OR project_path LIKE '%build.gradle.kts'
-                    OR project_path LIKE '%settings.gradle' OR project_path LIKE '%settings.gradle.kts'
-                    OR project_path IN ('mvnw', 'gradlew'))
-                ORDER BY project_path LIMIT 40""").mapTo(String.class).list()).forEach(builds::add);
+        db.index.findBuildEntryFiles().forEach(builds::add);
         var dependencies = JSON.readTree(new ProjectDependencyQueries().getProjectDependencies(
                 db, root, null, null, null, "direct", null, null, null, 200, 0));
         ArrayNode direct = fact.putArray("direct_dependencies");
@@ -273,13 +244,11 @@ public final class NameTargetPrefetch {
     }
 
     private static String sourceFile(ReadQueryContext db, String className) {
-        return db.jdbi().withHandle(handle -> handle.createQuery(
-                "SELECT source_file FROM classes WHERE class_name = :name AND lifecycle = 'current' LIMIT 1")
-                .bind("name", className).mapTo(String.class).findOne().orElse(null));
+        return db.symbols.findCurrentSourceFile(className).orElse(null);
     }
 
-    private static String provider(Map<String, Object> row) {
-        return BeanTerms.kind(row.get("framework"), row.get("kind")) + " " + row.get("class_name")
-                + (row.get("member_name") == null ? "" : "#" + row.get("member_name"));
+    private static String provider(String framework, String kind, String className, String memberName) {
+        return BeanTerms.kind((Object) framework, kind) + " " + className
+                + (memberName == null ? "" : "#" + memberName);
     }
 }

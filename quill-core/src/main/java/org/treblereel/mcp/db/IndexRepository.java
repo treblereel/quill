@@ -283,4 +283,14 @@ public final class IndexRepository {
     private record ClassValue(String name, String fingerprint) {}
     public record ComparisonSnapshot(Map<String, String> classes, Map<String, Integer> dependencies,
                             Set<String> beans, Map<String, String> injections) {}
+
+    /** Up to 40 current build entry files: POMs, Gradle build and settings scripts, and the Maven/Gradle wrappers. */
+    public List<String> findBuildEntryFiles() {
+        return handle.createQuery("""
+                SELECT project_path FROM files WHERE lifecycle = 'current' AND (
+                    project_path LIKE '%pom.xml' OR project_path LIKE '%build.gradle' OR project_path LIKE '%build.gradle.kts'
+                    OR project_path LIKE '%settings.gradle' OR project_path LIKE '%settings.gradle.kts'
+                    OR project_path IN ('mvnw', 'gradlew'))
+                ORDER BY project_path LIMIT 40""").mapTo(String.class).list();
+    }
 }

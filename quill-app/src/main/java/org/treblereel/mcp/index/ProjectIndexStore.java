@@ -36,6 +36,11 @@ import org.treblereel.mcp.db.QuillDatabase;
 public final class ProjectIndexStore {
 
     private static final int MAX_INDEXES = 5;
+    /**
+     * Disk budget for retained generations besides the active one; a large project's generations are
+     * hundreds of MB each, so the count alone let five of them hold gigabytes. One fallback is always kept.
+     */
+    static final long DEFAULT_INDEX_CACHE_BYTES = 1L << 30;
     static final java.time.Duration OUTDATED_GENERATION_GRACE = java.time.Duration.ofDays(1);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final ConcurrentMap<Path, ValidatedDatabase> VALID_DATABASES =
@@ -105,6 +110,21 @@ public final class ProjectIndexStore {
     }
 
     private static void cleanupLru(Path root, Map<String, String> refs, String activeIndex) {
+        cleanupLru(root, refs, activeIndex, indexCacheBytes());
+    }
+
+    static long indexCacheBytes() {
+        String configured = System.getenv("QUILL_INDEX_CACHE_BYTES");
+        if (configured == null || configured.isBlank()) return DEFAULT_INDEX_CACHE_BYTES;
+        try {
+            long value = Long.parseLong(configured.strip());
+            return value > 0 ? value : DEFAULT_INDEX_CACHE_BYTES;
+        } catch (NumberFormatException ignored) {
+            return DEFAULT_INDEX_CACHE_BYTES;
+        }
+    }
+
+    static void cleanupLru(Path root, Map<String, String> refs, String activeIndex, long budgetBytes) {
         Path quillDir = root.resolve(".quill");
         // Generations with an outdated schema can never be served by this version. They are kept
         // until a replacement is published (this runs after activation) and removed here; their
@@ -140,13 +160,21 @@ public final class ProjectIndexStore {
 
         Set<String> keptHashes = new HashSet<>();
         if (activeIndex != null) keptHashes.add(activeIndex);
+        long retainedBytes = 0;
+        int fallbacks = 0;
         for (int i = 0; i < databases.size(); i++) {
             Path database = databases.get(i);
             String fileName = database.getFileName().toString();
             String hash = fileName.substring(0, fileName.length() - ".db".length());
-            if (keptHashes.contains(hash) || keptHashes.size() < MAX_INDEXES) {
+            if (hash.equals(activeIndex)) continue;
+            long size;
+            try { size = Files.size(database); } catch (IOException unavailable) { size = 0; }
+            boolean withinBudget = fallbacks == 0 || retainedBytes + size <= budgetBytes;
+            if (!keptHashes.contains(hash) && keptHashes.size() < MAX_INDEXES && withinBudget) {
                 keptHashes.add(hash);
-            } else {
+                retainedBytes += size;
+                fallbacks++;
+            } else if (!keptHashes.contains(hash)) {
                 deleteDatabaseArtifacts(database);
             }
         }

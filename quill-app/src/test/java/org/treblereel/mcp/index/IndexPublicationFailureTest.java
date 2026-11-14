@@ -83,6 +83,27 @@ class IndexPublicationFailureTest {
         }
     }
 
+    /** Five generations of a large project held 1.8 GB: past the disk budget only the newest fallback stays. */
+    @Test void maintenanceKeepsGenerationsWithinTheDiskBudget() throws Exception {
+        Path active = generation("active");
+        Files.setLastModifiedTime(active, FileTime.fromMillis(1));
+        long size = Files.size(active);
+        for (int i = 0; i < 4; i++) Files.setLastModifiedTime(generation("older" + i), FileTime.fromMillis(1000 + i));
+        var refs = new java.util.HashMap<>(java.util.Map.of("@worktree", "active"));
+        // Room for two fallbacks: the two most recent stay, beside the active generation.
+        ProjectIndexStore.cleanupLru(root, refs, "active", 2 * size);
+        try (var paths = Files.list(root.resolve(".quill"))) {
+            assertEquals(java.util.Set.of("active.db", "older3.db", "older2.db"),
+                    paths.map(p -> p.getFileName().toString()).filter(n -> n.endsWith(".db")).collect(java.util.stream.Collectors.toSet()));
+        }
+        // A budget below one generation still keeps a single fallback.
+        ProjectIndexStore.cleanupLru(root, refs, "active", 1);
+        try (var paths = Files.list(root.resolve(".quill"))) {
+            assertEquals(java.util.Set.of("active.db", "older3.db"),
+                    paths.map(p -> p.getFileName().toString()).filter(n -> n.endsWith(".db")).collect(java.util.stream.Collectors.toSet()));
+        }
+    }
+
     @Test void publicationAndUpdateAgreeOnDocumentationButRejectChangedIndexedInputs() throws Exception {
         Path source = root.resolve("src/main/java/Marker.java");
         Path test = root.resolve("src/test/java/MarkerTest.java");

@@ -143,6 +143,7 @@ public final class PrefetchContext {
             String required=point.path("required_type").asText();
             var candidates=ClassPrefetchRelations.instanceCandidates(db,required);
             if(!candidates.isEmpty())fact.set("instance_candidates",JSON.valueToTree(candidates));
+            ClassPrefetchRelations.appendCandidateConditions(fact,candidates);
             var observers=ClassPrefetchRelations.eventObservers(db,required);
             if(!observers.isEmpty())fact.set("observers",JSON.valueToTree(observers));
             if("FIELD".equals(point.path("kind").asText())){

@@ -83,7 +83,12 @@ final class SymbolToolQueries {
                 reader.usages.countDependencyEdges(cls.id(), false));
 
         reader.beans.findBeanByClassId(cls.id())
-                .ifPresent(bean -> appendBean(root.putObject("bean"), bean));
+                .ifPresent(bean -> {
+                    ObjectNode node = root.putObject("bean");
+                    appendBean(node, bean);
+                    // V62 CQ-014: get_context named @LookupIfProperty without its values or what Instance.get() then does.
+                    BeanEvidence.appendConditions(node, bean, annotations, List.of());
+                });
         appendImplementations(root, cls, reader.symbols.findAllClasses());
         appendExternalDependencies(root, reader.usages.findExternalDeps(cls.id()));
         appendOccurrences(root, reader.index.findClassOccurrencesByClassIds(List.of(cls.id())).get(cls.id()));

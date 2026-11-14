@@ -22,10 +22,12 @@ final class BeanEvidence {
     private static final Map<String, String> CONDITIONS = Map.ofEntries(
             Map.entry("io.quarkus.arc.lookup.LookupIfProperty",
                     "Programmatic lookup (Instance) only: available when property `name` equals `stringValue` "
-                            + "(String.equals, case-sensitive); lookupIfMissing defaults to false. @Inject resolution is unaffected"),
+                            + "(String.equals, case-sensitive); lookupIfMissing defaults to false. With no other available bean, "
+                            + "Instance.get() throws UnsatisfiedResolutionException. @Inject resolution is unaffected"),
             Map.entry("io.quarkus.arc.lookup.LookupUnlessProperty",
                     "Programmatic lookup (Instance) only: hidden when property `name` equals `stringValue` "
-                            + "(String.equals, case-sensitive); @Inject resolution is unaffected"),
+                            + "(String.equals, case-sensitive); with no other available bean, Instance.get() throws "
+                            + "UnsatisfiedResolutionException. @Inject resolution is unaffected"),
             Map.entry("io.quarkus.arc.properties.IfBuildProperty",
                     "Build time: the bean is removed unless property `name` equals `stringValue`; enableIfMissing defaults to false"),
             Map.entry("io.quarkus.arc.properties.UnlessBuildProperty",
@@ -53,6 +55,18 @@ final class BeanEvidence {
             "io.quarkus.runtime.Startup", "jakarta.ws.rs.Path", "io.quarkus.scheduler.Scheduled");
 
     private BeanEvidence() {}
+
+    /** {@code @Simple -> meaning} for each condition annotation a candidate line names, once per answer. */
+    static ObjectNode conditionMeanings(Iterable<String> lines) {
+        ObjectNode meanings = JSON.createObjectNode();
+        for (String line : lines) {
+            CONDITIONS.forEach((annotation, meaning) -> {
+                if (line.contains("@" + annotation + "("))
+                    meanings.put("@" + annotation.substring(annotation.lastIndexOf('.') + 1), meaning);
+            });
+        }
+        return meanings;
+    }
 
     /**
      * @param declaringMembers members of the class declaring a producer; its conditions sit on

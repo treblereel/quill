@@ -157,9 +157,30 @@ class ClassPrefetchRelationsTest {
         assertEquals(List.of("CLASS x.BucketStore @ApplicationScoped qualifiers [\"@Default\"] "
                         + "@io.quarkus.arc.lookup.LookupIfProperty(name=store.mode, stringValue=bucket)"),
                 strings(publisher, "instance_candidates"));
+        // V62 CQ-014: the condition alone sent Codex into ArC bytecode to learn what Instance.get() does without the bean.
+        assertTrue(publisher.path("candidate_conditions").path("@LookupIfProperty").asText().contains("UnsatisfiedResolutionException"),
+                publisher.toString());
         assertEquals("FIELD created: jakarta.enterprise.event.Event<x.Events.Created> [\"@Default\"] -> not resolved by the application index [UNKNOWN]",
                 strings(publisher, "injects").get(0));
         assertEquals("java.util.List<x.Outer.Inner$1>", ClassPrefetchRelations.source("java.util.List<x.Outer$Inner$1>"));
+    }
+
+    /** V62 CQ-014: get_context named @LookupIfProperty without its values, so Codex read ArC bytecode to learn what get() does. */
+    @Test
+    void symbolDetailsStateABeansLookupConditionAndWhatGetDoesWithoutIt() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("lookup.db"));
+        IndexWriter.writeIncremental(db, new IndexFixture()
+                .classes(List.of(new ClassRecord(0, "x.BucketStore", "CLASS", "java.lang.Object", List.of(), "BucketStore.java", 1, true, 10)))
+                .beans(List.of(new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default"), List.of(), false, null, null, null, null, List.of("x.BucketStore"))))
+                .dependencies(List.of()).metadata(Map.of("index_id", "lookup")).snapshot());
+        db.useHandle(handle -> handle.execute("INSERT INTO class_annotations(class_id,annotation_name,direct,annotation_values) VALUES (1,'io.quarkus.arc.lookup.LookupIfProperty',1,?)",
+                "{\"$defaults\":[\"lookupIfMissing\"],\"name\":\"store.mode\",\"stringValue\":\"bucket\"}"));
+
+        var bean = new ObjectMapper().readTree(TestReads.<String>read(db, reader -> new SymbolToolQueries().getSymbolDetails(reader, "x.BucketStore", false, null, 10, 0))).path("bean");
+
+        var condition = bean.path("registration_conditions").path(0);
+        assertEquals("bucket", condition.path("values").path("stringValue").asText(), bean.toString());
+        assertTrue(condition.path("meaning").asText().contains("UnsatisfiedResolutionException"), condition.toString());
     }
 
     @Test

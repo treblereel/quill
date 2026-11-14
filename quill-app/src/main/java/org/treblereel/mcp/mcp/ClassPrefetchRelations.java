@@ -168,6 +168,13 @@ final class ClassPrefetchRelations {
         }
         if (!observers.isEmpty()) fact.set("observers_of_injected_events", observers);
         if (!candidates.isEmpty()) fact.set("instance_candidates", candidates);
+        appendCandidateConditions(fact, candidates.valueStream().map(JsonNode::asText).toList());
+    }
+
+    /** V62 CQ-014: a lookup condition alone sent Codex into ArC bytecode to learn what Instance.get() does without the bean. */
+    static void appendCandidateConditions(ObjectNode fact, List<String> candidates) {
+        ObjectNode meanings = BeanEvidence.conditionMeanings(candidates);
+        if (!meanings.isEmpty()) fact.set("candidate_conditions", meanings);
     }
 
     private static final ObjectMapper JSON = new ObjectMapper();

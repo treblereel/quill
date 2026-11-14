@@ -32,6 +32,17 @@ class NameTargetPrefetchTest {
         assertNull(TestReads.read(db, reader -> NameTargetPrefetch.packageFact(reader, "x.missing")));
     }
 
+    /** V62 CQ-002: rbac has no producers, and Claude read eight classes' members one call each to confirm it. */
+    @Test
+    void packageCountsBeanKindsIncludingAbsentProducers() throws Exception {
+        Jdbi db = index();
+        var counts = TestReads.read(db, reader -> NameTargetPrefetch.packageFact(reader, "x.rbac")).path("bean_kind_counts_main");
+        assertEquals(1, counts.path("CLASS").asInt(), counts.toString());
+        assertEquals(1, counts.path("PRODUCER_METHOD").asInt(), counts.toString());
+        assertEquals(0, counts.path("PRODUCER_FIELD").asInt(), counts.toString());
+        assertEquals(true, counts.has("PRODUCER_FIELD"), counts.toString());
+    }
+
     @Test
     void typeProvidersNameApplicationAndDependencyBeansWithTheirArtifact() throws Exception {
         Jdbi db = index();

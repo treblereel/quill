@@ -41,6 +41,12 @@ public final class NameTargetPrefetch {
         ObjectNode classes = fact.putObject("classes_in_package_by_source_set");
         counts.forEach(row -> classes.put(String.valueOf(row.get("source_set")), ((Number) row.get("classes")).intValue()));
         fact.put("classes_counted", "every indexed class, nested and anonymous ones included");
+        // V62 CQ-002: a zero states that no producer is declared here, so agents need not read every class's members.
+        ObjectNode kinds = fact.putObject("bean_kind_counts_main");
+        for (String kind : List.of("CLASS", "PRODUCER_METHOD", "PRODUCER_FIELD", "SYNTHETIC")) kinds.put(kind, 0);
+        rows.stream().filter(row -> "main".equals(row.get("source_set"))).map(row -> String.valueOf(row.get("kind")))
+                .collect(java.util.stream.Collectors.groupingBy(kind -> kind, java.util.TreeMap::new, java.util.stream.Collectors.counting()))
+                .forEach(kinds::put);
         ArrayNode beans = fact.putArray("beans");
         rows.stream().limit(LIMIT).forEach(row -> beans.add(row.get("source_set") + " " + row.get("kind") + " "
                 + row.get("class_name") + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))

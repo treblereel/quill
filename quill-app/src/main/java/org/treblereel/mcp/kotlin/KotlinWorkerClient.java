@@ -32,6 +32,11 @@ public final class KotlinWorkerClient implements AutoCloseable {
     private final VersionedCommand command;
     private final VersionedIdentity identity;
     private final long timeoutNanos;
+    /**
+     * Added to the first request of a freshly started worker, whose answer also waits for the JVM and the
+     * compiler to load: otherwise the restart after a timeout could itself time out on a loaded machine.
+     */
+    static final long STARTUP_GRACE_NANOS = TimeUnit.SECONDS.toNanos(15);
     private final ReentrantLock lock = new ReentrantLock();
     private final java.util.concurrent.atomic.AtomicInteger closing = new java.util.concurrent.atomic.AtomicInteger();
     private volatile Process process;
@@ -69,6 +74,7 @@ public final class KotlinWorkerClient implements AutoCloseable {
                 catch (IOException missing) { changed = true; }
                 if (changed) stop();
             }
+            boolean starting = process == null;
             if (process == null) {
                 List<String> args;
                 try { args = new ArrayList<>(command.get(selected)); }
@@ -105,7 +111,7 @@ public final class KotlinWorkerClient implements AutoCloseable {
                     throw new IOException("Invalid worker response");
                 return result;
             });
-            JsonNode result = pending.get(timeoutNanos, TimeUnit.NANOSECONDS);
+            JsonNode result = pending.get(timeoutNanos + (starting ? STARTUP_GRACE_NANOS : 0), TimeUnit.NANOSECONDS);
             if (result.path("reason").asText().equals("StackOverflowError")) stop();
             return result;
         } catch (TimeoutException timeout) {

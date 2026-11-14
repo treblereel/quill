@@ -36,6 +36,12 @@ class ConfigurationSourceEvidenceTest {
         assertTrue(rule.contains("application.properties on the classpath 250"),rule);
         assertFalse(query("limits.timeout",null,"index").has("source_precedence"));
     }
+    /** V62-V65: Codex sent view=full and view=details six times and got "view must be index or declared". */
+    @Test void detailedViewSpellingsMeanDeclared() throws Exception {
+        file("application.properties","limits.timeout=5s\n");definition("limits.timeout","property","application.properties",1);
+        for(String view:List.of("full","details","Values"))assertEquals("declared",query("limits.timeout",null,view).path("view").asText(),view);
+        assertTrue(query("limits.timeout",null,"bogus").has("error_code"));
+    }
     /** V65 CQ-050: AnalysisReportAggregator's @CacheName("reports-aggregator") field came back with no references; the agents queried five classes for its expiry. */
     @Test void aConsumerClassLinksItsQuarkusCachesToTheirConfiguration() throws Exception {
         file("application.properties","quarkus.cache.caffeine.reports.expire-after-write=10m\nquarkus.cache.caffeine.other.maximum-size=5\n");

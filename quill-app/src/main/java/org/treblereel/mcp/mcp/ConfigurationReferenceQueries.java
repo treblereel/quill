@@ -50,6 +50,7 @@ final class ConfigurationReferenceQueries {
     String find(org.treblereel.mcp.db.ReadQueryContext reader, String key, String className, String kind,
             String module, int limit, int offset, String view) {
         Jdbi jdbi = reader.jdbi();
+        view = view == null ? "index" : ArgumentAliases.configurationView(view);
         if (!Set.of("index","declared").contains(view)) return errorResponse("view must be index or declared");
         if (view.equals("declared") && (key==null || key.isBlank()) && (className==null || className.isBlank()))
             return errorResponse("declared view requires a key or consumer class");

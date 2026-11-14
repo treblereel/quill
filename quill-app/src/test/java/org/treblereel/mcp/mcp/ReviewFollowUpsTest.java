@@ -17,6 +17,11 @@ class ReviewFollowUpsTest {
                 @ToolArg(description = "Arguments") Map<String, Object> arguments) {
             return name + ":" + arguments.size();
         }
+
+        @Tool(readOnly = true, description = "Echo the search query.")
+        public String search_tools(@ToolArg(description = "Words") String query) {
+            return "query:" + query;
+        }
     }
 
     @Test
@@ -36,6 +41,14 @@ class ReviewFollowUpsTest {
                 Map.of("name", "list_beans", "tool_name", "ignored", "arguments", Map.of()));
 
         assertEquals("list_beans:0", invocation.text());
+    }
+
+    /** V62-V65: Codex sent search_tools {"name": "find_method_overrides"} four times and got Unknown argument: name. */
+    @Test
+    void searchToolsTakesAToolNameAsItsQuery() throws Exception {
+        var method = RouterLike.class.getMethod("search_tools", String.class);
+        assertEquals("query:analyze_execution_order",
+                McpToolCatalog.invokeMethod(new RouterLike(), method, Map.of("name", "analyze_execution_order")).text());
     }
 
     @Test

@@ -30,4 +30,15 @@ final class ArgumentAliases {
             default -> value;
         };
     }
+
+    /** index or declared; V62-V65 Codex asked for the detailed view as full or details. */
+    static String configurationView(String view) {
+        if (view == null) return null;
+        String value = view.strip().toLowerCase(Locale.ROOT);
+        return switch (value) {
+            case "full", "detail", "details", "detailed", "value", "values", "source", "sources", "declarations" -> "declared";
+            case "summary", "references", "refs", "usages" -> "index";
+            default -> value;
+        };
+    }
 }

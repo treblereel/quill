@@ -446,7 +446,8 @@ final class McpToolCatalog {
                     "args", "arguments", "parameters", "arguments", "input", "arguments"),
             "find_usages", Map.of("symbol", "target", "class_name", "target"),
             "list_injection_points", Map.of("class_name", "target", "type", "target"),
-            "list_beans", Map.of("type", "class_name"));
+            "list_beans", Map.of("type", "class_name"),
+            "search_tools", Map.of("name", "query", "tool", "query", "tool_name", "query"));
 
     private static final List<String> SELECTORS = List.of("target", "targets", "class_name");
     private static final Set<String> GUESSED_SELECTORS = Set.of("target", "targets", "class_name", "symbol", "class");

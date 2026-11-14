@@ -993,4 +993,13 @@ public final class SymbolRepository {
                 WHERE c.class_name = :name AND a.direct = 1 ORDER BY a.annotation_name""")
                 .bind("name", className).mapTo(String.class).list();
     }
+
+    /** A class's observer methods and producer members, in declaration order. */
+    public List<MemberAnnotations> findObserverAndProducerMembers(int classId) {
+        return handle.createQuery("""
+                SELECT name, annotations FROM class_members WHERE class_id = :id AND kind IN ('METHOD','FIELD')
+                AND (annotations LIKE '%.event.Observes%' OR annotations LIKE '%.inject.Produces"%') ORDER BY rowid""")
+                .bind("id", classId)
+                .map((rs, ctx) -> new MemberAnnotations(rs.getString("name"), rs.getString("annotations"))).list();
+    }
 }

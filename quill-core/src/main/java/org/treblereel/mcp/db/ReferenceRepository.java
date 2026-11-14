@@ -348,4 +348,18 @@ public final class ReferenceRepository {
                 .map((rs, ctx) -> new PropertyDeclaration(rs.getString("file"), nullableInt(rs, "line"),
                         rs.getString("kind"), rs.getString("evidence"))).list();
     }
+
+    /** Up to three {@code quarkus.arc.exclude-types} declarations (any profile) as {@code key file:line}. */
+    public List<String> findArcExcludeTypesDeclarations() {
+        return handle.createQuery("""
+                SELECT key || ' ' || file || ':' || line FROM configuration_definitions
+                WHERE key LIKE '%quarkus.arc.exclude-types' ORDER BY file, line LIMIT 3""").mapTo(String.class).list();
+    }
+
+    /** Up to three {@code quarkus.arc.remove-unused-beans} declarations (any profile) as {@code key file:line}. */
+    public List<String> findArcRemoveUnusedBeansDeclarations() {
+        return handle.createQuery("""
+                SELECT key || ' ' || file || ':' || line FROM configuration_definitions
+                WHERE key LIKE '%quarkus.arc.remove-unused-beans' ORDER BY source_set, file, line LIMIT 3""").mapTo(String.class).list();
+    }
 }

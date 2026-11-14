@@ -293,4 +293,11 @@ public final class IndexRepository {
                     OR project_path IN ('mvnw', 'gradlew'))
                 ORDER BY project_path LIMIT 40""").mapTo(String.class).list();
     }
+
+    /** Up to three current META-INF/beans.xml files, main before test. */
+    public List<String> findBeansXmlFiles() {
+        return handle.createQuery("""
+                SELECT project_path FROM files WHERE lifecycle='current' AND project_path LIKE '%META-INF/beans.xml'
+                ORDER BY source_set, project_path LIMIT 3""").mapTo(String.class).list();
+    }
 }

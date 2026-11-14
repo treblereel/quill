@@ -68,12 +68,8 @@ final class BeanEvidence {
                 .filter(name -> name.substring(name.lastIndexOf('.') + 1).equals(scope)).distinct()
                 .map(name -> "@" + name.substring(name.lastIndexOf('.') + 1)).toList();
         List<String> stereotypes = bean.stereotypes() == null ? List.of() : bean.stereotypes();
-        List<String> beansXml = db.jdbi().withHandle(h -> h.createQuery("""
-                SELECT project_path FROM files WHERE lifecycle='current' AND project_path LIKE '%META-INF/beans.xml'
-                ORDER BY source_set, project_path LIMIT 3""").mapTo(String.class).list());
-        List<String> excludes = db.jdbi().withHandle(h -> h.createQuery("""
-                SELECT key || ' ' || file || ':' || line FROM configuration_definitions
-                WHERE key LIKE '%quarkus.arc.exclude-types' ORDER BY file, line LIMIT 3""").mapTo(String.class).list());
+        List<String> beansXml = db.index.findBeansXmlFiles();
+        List<String> excludes = db.references.findArcExcludeTypesDeclarations();
         return (defining.isEmpty() ? "scope " + bean.scope() + " not declared directly on the class (inherited or via stereotype)"
                         : "bean-defining annotation " + String.join(", ", defining) + " on the class")
                 + "; stereotypes: " + (stereotypes.isEmpty() ? "none" : String.join(", ", stereotypes))
@@ -90,28 +86,20 @@ final class BeanEvidence {
     static String removal(org.treblereel.mcp.db.ReadQueryContext db, BeanRecord bean, List<ClassAnnotationRecord> annotations,
             String className) {
         if (!"CLASS".equals(bean.kind())) return null;
-        List<String> owners = db.jdbi().withHandle(h -> h.createQuery("""
-                SELECT DISTINCT oc.class_name || '#' || COALESCE(ip.field_name, lower(ip.kind)) FROM injection_points ip
-                JOIN beans ob ON ob.id = ip.bean_id JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
-                WHERE ip.resolved_bean_id = :id ORDER BY 1""").bind("id", bean.id()).mapTo(String.class).list());
+        List<String> owners = db.beans.findInjectionPointOwners(bean.id());
         List<String> kept = new ArrayList<>();
         if (!owners.isEmpty()) kept.add("injected into " + String.join(", ", owners.subList(0, Math.min(3, owners.size())))
                 + (owners.size() > 3 ? " (+" + (owners.size() - 3) + " more)" : ""));
-        List<Map<String, Object>> members = db.jdbi().withHandle(h -> h.createQuery("""
-                SELECT name, annotations FROM class_members WHERE class_id = :id AND kind IN ('METHOD','FIELD')
-                AND (annotations LIKE '%.event.Observes%' OR annotations LIKE '%.inject.Produces"%') ORDER BY rowid""")
-                .bind("id", bean.classId()).mapToMap().list());
+        var members = db.symbols.findObserverAndProducerMembers(bean.classId());
         for (var member : members) {
-            String role = String.valueOf(member.get("annotations")).contains(".event.Observes") ? "observer method " : "producer member ";
-            if (kept.size() < 4) kept.add(role + member.get("name"));
+            String role = String.valueOf(member.annotations()).contains(".event.Observes") ? "observer method " : "producer member ";
+            if (kept.size() < 4) kept.add(role + member.name());
         }
         if (annotations.stream().anyMatch(annotation -> annotation.annotationName().equals(UNREMOVABLE))) kept.add("@Unremovable");
         if (bean.qualifiers() != null && bean.qualifiers().stream().anyMatch(q -> q.startsWith("@Named"))) kept.add("@Named");
         annotations.stream().map(ClassAnnotationRecord::annotationName).filter(ROOT_ANNOTATIONS::contains).distinct()
                 .forEach(name -> kept.add("@" + name.substring(name.lastIndexOf('.') + 1)));
-        List<String> setting = db.jdbi().withHandle(h -> h.createQuery("""
-                SELECT key || ' ' || file || ':' || line FROM configuration_definitions
-                WHERE key LIKE '%quarkus.arc.remove-unused-beans' ORDER BY source_set, file, line LIMIT 3""").mapTo(String.class).list());
+        List<String> setting = db.references.findArcRemoveUnusedBeansDeclarations();
         String text = (kept.isEmpty()
                 ? "removal not ruled out: no indexed injection point, observer or producer member, @Named, @Unremovable "
                         + "or root annotation keeps it; Instance/@All lookups and extension-registered roots also keep a bean"

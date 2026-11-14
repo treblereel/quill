@@ -677,4 +677,12 @@ public final class BeanRepository {
                 .map((rs, ctx) -> new BeanOrigin(rs.getString("kind"), rs.getString("qualifiers"), rs.getString("member_name"),
                         rs.getString("framework"), rs.getString("class_name"), rs.getString("declaring"))).findOne();
     }
+
+    /** {@code Owner#field} (or the lower-cased point kind) of every injection point resolved to the bean, sorted. */
+    public List<String> findInjectionPointOwners(int beanId) {
+        return handle.createQuery("""
+                SELECT DISTINCT oc.class_name || '#' || COALESCE(ip.field_name, lower(ip.kind)) FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
+                WHERE ip.resolved_bean_id = :id ORDER BY 1""").bind("id", beanId).mapTo(String.class).list();
+    }
 }

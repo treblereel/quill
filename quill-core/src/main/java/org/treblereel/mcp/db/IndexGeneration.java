@@ -53,7 +53,8 @@ public final class IndexGeneration implements AutoCloseable {
         } catch (IOException error) {
             throw new IllegalStateException("Cannot inspect immutable index generation at " + path, error);
         }
-        var pool = new ReadOnlyConnectionPool(() -> openReader(stamp), 4, Duration.ofSeconds(5));
+        var pool = new ReadOnlyConnectionPool(() -> openReader(stamp), ReadConcurrency.readersPerGeneration(),
+                Duration.ofSeconds(5));
         Jdbi database = Jdbi.create(pool::borrow);
         QuillDatabase.instrument(database);
         try {

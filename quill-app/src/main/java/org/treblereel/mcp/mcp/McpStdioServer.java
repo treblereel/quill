@@ -18,7 +18,7 @@ import reactor.core.scheduler.Schedulers;
 
 public final class McpStdioServer {
 
-    static final int DEFAULT_MAX_CONCURRENT_REQUESTS = 4;
+    static final int DEFAULT_MAX_CONCURRENT_REQUESTS = org.treblereel.mcp.db.ReadConcurrency.DEFAULT_REQUESTS;
     static final int DEFAULT_MAX_QUEUED_REQUESTS_PER_WORKER = 64;
     static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(30);
     static final Duration SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
@@ -48,8 +48,8 @@ public final class McpStdioServer {
         InputStream serverInput = new EofAwareInputStream(input, eof);
         var mapper = new JacksonMcpJsonMapper(new ObjectMapper());
         Scheduler toolScheduler = Schedulers.newBoundedElastic(
-                positiveEnvironmentValue("QUILL_MCP_MAX_CONCURRENCY",
-                        DEFAULT_MAX_CONCURRENT_REQUESTS),
+                // The same limit sizes each generation's reader pool.
+                org.treblereel.mcp.db.ReadConcurrency.requests(),
                 positiveEnvironmentValue("QUILL_MCP_MAX_QUEUED_PER_WORKER",
                         DEFAULT_MAX_QUEUED_REQUESTS_PER_WORKER),
                 "quill-mcp");

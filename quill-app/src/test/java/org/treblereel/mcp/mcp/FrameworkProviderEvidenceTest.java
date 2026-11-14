@@ -95,6 +95,10 @@ class FrameworkProviderEvidenceTest {
         assertEquals("test:providers:1.0",producer.path("artifact").asText());
         assertTrue(producer.path("qualifier_names_match").asBoolean());
         assertFalse(evidence.path("declarations").get(1).path("qualifier_names_match").asBoolean());
+        // V66 CQ-050: with CacheProducer#produce the only match, Codex read its bytecode to learn what supplies @CacheName Cache.
+        String single=evidence.path("single_match").asText();
+        assertTrue(single.startsWith(producer.path("declaring_class").asText()+"#"+producer.path("member").asText()+" (PRODUCER_METHOD @Dependent"),single);
+        assertTrue(single.contains("no application bean is a candidate"),single);
         var mapping=result.path("injection_points").get(1).path("provider_evidence");
         assertEquals(0,mapping.path("total").asInt());
         assertEquals("not_proven",mapping.path("configuration_mapping_declaration").path("generated_bean_scope").asText());
@@ -111,6 +115,7 @@ class FrameworkProviderEvidenceTest {
         IndexFixture.writeExternalBeans(db,all.stream().map(p -> provider(p.id(),p.className(),p.kind(),p.scope(),p.memberName(),List.of("x.Message"),p.qualifiers(),p.profiles())).toList());
         var evidence=JSON.readTree(TestReads.<String>read(db, readScope -> new StructureToolQueries().getInjectionPoints(readScope,"Consumer"))).path("injection_points").get(0).path("provider_evidence");
         assertEquals(6,evidence.path("total").asInt());assertEquals(5,evidence.path("showing").asInt());assertTrue(evidence.path("has_more").asBoolean());
+        assertFalse(evidence.has("single_match"),evidence.toString());
     }
     @Test void literalNamesDoNotEraseGenericsOrUseSqlUnderscoreAsWildcard() throws Exception {
         assertFalse(IndexReader.matchesBeanType(List.of("dep.OtherMessage"),"Message"));

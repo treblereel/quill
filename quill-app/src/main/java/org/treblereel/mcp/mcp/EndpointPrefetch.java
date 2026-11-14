@@ -140,6 +140,10 @@ final class EndpointPrefetch {
         if(!qualifiers.isEmpty())line.append(' ').append(qualifiers);
         if(point.hasNonNull("resolved_to"))line.append(" -> ").append(point.path("resolved_to").asText())
                 .append(point.hasNonNull("resolved_scope")?" "+point.path("resolved_scope").asText():"");
+        else if(point.path("provider_evidence").hasNonNull("single_match")){
+            String single=point.path("provider_evidence").path("single_match").asText();int end=single.indexOf(" is the one");
+            line.append(" -> ").append(end<0?single:single.substring(0,end));
+        }
         if(!"resolved".equals(point.path("resolution").asText()))
             line.append(" (").append(point.path("resolution").asText()).append(point.hasNonNull("reason")?", "+point.path("reason").asText():"").append(')');
         return line.toString();

@@ -966,6 +966,19 @@ final class StructureToolQueries {
                 return IndexReader.matchesQualifier(bean.qualifiers(), end < 0 ? q : q.substring(0, end));
             }));
         }
+        // V66 CQ-050: one matching CacheProducer#produce went unstated, and Codex read its bytecode to find the supplier.
+        List<ExternalBeanRecord> qualified = matches.stream().filter(bean -> point.qualifiers().stream().allMatch(q -> {
+            int end = q.indexOf('(');
+            return IndexReader.matchesQualifier(bean.qualifiers(), end < 0 ? q : q.substring(0, end));
+        })).toList();
+        if (qualified.size() == 1) {
+            ExternalBeanRecord only = qualified.getFirst();
+            evidence.put("single_match", only.className() + (only.memberName() == null ? "" : "#" + only.memberName())
+                    + " (" + only.kind() + " " + only.scope() + (only.artifact() == null ? "" : ", " + only.artifact())
+                    + (only.profiles() == null || only.profiles().isEmpty() ? "" : ", profiles " + only.profiles())
+                    + ") is the one indexed provider matching the type and qualifier names; no application bean is a candidate, "
+                    + "so it supplies this injection point unless the build excludes or replaces it");
+        }
         var lookup = ClassTargetResolver.resolve(reader, point.targetType());
         if (lookup.error() == null && reader.symbols.findClassAnnotations(lookup.cls().id()).stream()
                 .anyMatch(a -> a.direct() && a.annotationName().equals("io.smallrye.config.ConfigMapping"))) {

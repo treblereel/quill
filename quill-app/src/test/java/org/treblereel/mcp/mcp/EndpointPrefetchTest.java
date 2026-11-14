@@ -86,6 +86,9 @@ class EndpointPrefetchTest {
                 EndpointPrefetch.injectionLine(json.readTree("{\"field\":\"reportAggregator\",\"required_type\":\"io.cryostat.reports.AnalysisReportAggregator\",\"qualifiers\":[\"@Default\"],\"resolution\":\"resolved\",\"reason\":\"UNIQUE_CONTEXT_CANDIDATE\",\"resolved_scope\":\"@Singleton\",\"resolved_to\":\"io.cryostat.reports.AnalysisReportAggregator\"}")));
         assertEquals("store x.Store [@Named(\"s3\")] (unsatisfied, NO_CANDIDATE)",
                 EndpointPrefetch.injectionLine(json.readTree("{\"field\":\"store\",\"required_type\":\"x.Store\",\"qualifiers\":[\"@Named(\\\"s3\\\")\"],\"resolution\":\"unsatisfied\",\"reason\":\"NO_CANDIDATE\"}")));
+        // V66 CQ-050: an unknown @CacheName Cache with one matching dependency producer.
+        assertEquals("cache io.quarkus.cache.Cache [@io.quarkus.cache.CacheName] -> io.quarkus.cache.runtime.CacheProducer#produce (PRODUCER_METHOD @Dependent) (unknown, NO_CONTEXT_CANDIDATE)",
+                EndpointPrefetch.injectionLine(json.readTree("{\"field\":\"cache\",\"required_type\":\"io.quarkus.cache.Cache\",\"qualifiers\":[\"@io.quarkus.cache.CacheName\"],\"resolution\":\"unknown\",\"reason\":\"NO_CONTEXT_CANDIDATE\",\"provider_evidence\":{\"single_match\":\"io.quarkus.cache.runtime.CacheProducer#produce (PRODUCER_METHOD @Dependent) is the one indexed provider matching the type and qualifier names; no application bean is a candidate\"}}")));
     }
     @Test void duplicateMappingsAreAmbiguousAndChangedSourcesNeverBecomeFreshFacts() throws Exception {
         var db=JavaEvidenceFixture.index(root,"package p; class Fixture {int fetch(){return 1;}}");

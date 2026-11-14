@@ -368,4 +368,12 @@ public final class ReferenceRepository {
         return new HashSet<>(handle.createQuery("SELECT key FROM configuration_definitions WHERE kind <> 'persistence_unit' UNION SELECT key FROM configuration_usages WHERE kind IN ('config_key','config_prefix')")
                 .mapTo(String.class).list());
     }
+
+    /** The {@code @ConfigMapping} prefix a class declares, if any. */
+    public Optional<String> findConfigMappingPrefix(int classId) {
+        return handle.createQuery("""
+                SELECT key FROM configuration_usages
+                WHERE class_id = :id AND kind = 'config_prefix' AND annotation = 'io.smallrye.config.ConfigMapping'
+                LIMIT 1""").bind("id", classId).mapTo(String.class).findOne();
+    }
 }

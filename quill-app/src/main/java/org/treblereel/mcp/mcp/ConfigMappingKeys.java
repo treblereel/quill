@@ -28,10 +28,7 @@ final class ConfigMappingKeys {
     }
 
     static void append(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
-        String prefix = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT key FROM configuration_usages
-                WHERE class_id = :id AND kind = 'config_prefix' AND annotation = 'io.smallrye.config.ConfigMapping'
-                LIMIT 1""").bind("id", cls.id()).mapTo(String.class).findOne().orElse(null));
+        String prefix = db.references.findConfigMappingPrefix(cls.id()).orElse(null);
         if (prefix == null) return;
         ArrayNode keys = JSON.createArrayNode();
         ArrayNode groups = JSON.createArrayNode();
@@ -58,23 +55,19 @@ final class ConfigMappingKeys {
     private static void expand(ReadQueryContext db, ConfigurationSourceEvidence values, String type, String prefix, int depth, ArrayNode keys,
             ArrayNode groups, ArrayNode unsupported, Set<String> seen) {
         if (!seen.add(type) || keys.size() >= LIMIT) return;
-        List<Map<String, Object>> members = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT cm.name, cm.type_name, cm.modifiers, cm.parameter_types, cm.annotation_details
-                FROM class_members cm JOIN classes c ON c.id = cm.class_id
-                WHERE c.class_name = :type AND c.lifecycle = 'current' AND cm.kind = 'METHOD'
-                ORDER BY cm.name""").bind("type", type).mapToMap().list());
-        for (Map<String, Object> member : members) {
-            String modifiers = String.valueOf(member.get("modifiers"));
+        var members = db.symbols.findMappingMethods(type);
+        for (var member : members) {
+            String modifiers = String.valueOf(member.modifiers());
             if (!modifiers.contains("abstract") || modifiers.contains("static")
-                    || !"[]".equals(String.valueOf(member.get("parameter_types")))) continue;
-            Map<String, String> annotations = annotations(String.valueOf(member.get("annotation_details")));
+                    || !"[]".equals(String.valueOf(member.parameterTypes()))) continue;
+            Map<String, String> annotations = annotations(String.valueOf(member.annotationDetails()));
             if (annotations.containsKey("io.smallrye.config.WithParentName")) {
-                unsupported.add(member.get("name") + ": @WithParentName");
+                unsupported.add(member.name() + ": @WithParentName");
                 continue;
             }
-            String name = annotations.getOrDefault("io.smallrye.config.WithName", kebab(String.valueOf(member.get("name"))));
+            String name = annotations.getOrDefault("io.smallrye.config.WithName", kebab(String.valueOf(member.name())));
             String key = prefix + "." + name;
-            String returnType = String.valueOf(member.get("type_name"));
+            String returnType = String.valueOf(member.typeName());
             boolean group = depth < DEPTH && isInterface(db, returnType);
             if (group) {
                 groups.add(key + " -> " + returnType.replace('$', '.'));
@@ -91,20 +84,16 @@ final class ConfigMappingKeys {
 
     /** V41 CQ-037: a mapping without @WithDefault leaves its default to the application's own properties. */
     static String mainDeclaration(ReadQueryContext db, ConfigurationSourceEvidence values, String key) {
-        return db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT file, line, kind, evidence FROM configuration_definitions
-                WHERE key = :key AND kind IN ('property', 'yaml_property') AND COALESCE(source_set, 'main') = 'main'
-                ORDER BY file, line LIMIT 1""").bind("key", key).mapToMap().findOne()).map(main -> {
-            String declared = ClassPrefetchRelations.declaredValue(values, key, String.valueOf(main.get("file")),
-                    ((Number) main.get("line")).intValue(), String.valueOf(main.get("kind")), String.valueOf(main.get("evidence")));
-            return MAIN + main.get("file") + ":" + main.get("line") + (declared == null ? "" : "=" + declared);
+        // The first of the (at most two) main declarations the class prefetch lists.
+        return db.references.findMainPropertyDeclarations(key).stream().findFirst().map(main -> {
+            String declared = ClassPrefetchRelations.declaredValue(values, key, String.valueOf(main.file()),
+                    main.line().intValue(), String.valueOf(main.kind()), String.valueOf(main.evidence()));
+            return MAIN + main.file() + ":" + main.line() + (declared == null ? "" : "=" + declared);
         }).orElse("");
     }
 
     private static boolean isInterface(ReadQueryContext db, String type) {
-        return db.jdbi().withHandle(handle -> handle.createQuery(
-                "SELECT count(*) FROM classes WHERE class_name = :type AND kind = 'INTERFACE' AND lifecycle = 'current'")
-                .bind("type", type).mapTo(Integer.class).one()) > 0;
+        return db.symbols.isCurrentInterface(type);
     }
 
     private static Map<String, String> annotations(String details) {

@@ -1047,4 +1047,24 @@ public final class SymbolRepository {
                 WHERE c.origin='source' AND m.annotations LIKE '%"io.quarkus.security.PermissionChecker"%' ORDER BY 1""")
                 .mapTo(String.class).list();
     }
+
+    /** A method as a config mapping reads it: return type, modifiers, parameter types and annotation details (JSON). */
+    public record MappingMethod(String name, String typeName, String modifiers, String parameterTypes, String annotationDetails) {}
+
+    /** Methods of the current class named {@code className}, by name. */
+    public List<MappingMethod> findMappingMethods(String className) {
+        return handle.createQuery("""
+                SELECT cm.name, cm.type_name, cm.modifiers, cm.parameter_types, cm.annotation_details
+                FROM class_members cm JOIN classes c ON c.id = cm.class_id
+                WHERE c.class_name = :type AND c.lifecycle = 'current' AND cm.kind = 'METHOD'
+                ORDER BY cm.name""")
+                .bind("type", className)
+                .map((rs, ctx) -> new MappingMethod(rs.getString("name"), rs.getString("type_name"), rs.getString("modifiers"),
+                        rs.getString("parameter_types"), rs.getString("annotation_details"))).list();
+    }
+
+    public boolean isCurrentInterface(String className) {
+        return handle.createQuery("SELECT count(*) FROM classes WHERE class_name = :type AND kind = 'INTERFACE' AND lifecycle = 'current'")
+                .bind("type", className).mapTo(Integer.class).one() > 0;
+    }
 }

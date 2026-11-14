@@ -153,12 +153,17 @@ final class ChangeVerificationQueries {
 
         String verdict = verdict(context, build, diagnostics, changes, verificationPlan,
                 effectiveTargets.isEmpty(), inferenceTruncated);
+        ChangedTestExecution.Result changedTests = ChangedTestExecution.inspect(projectRoot, changes);
+        if (changedTests.evidence().path("changed_test_classes").asInt() > 0) root.set("changed_tests", changedTests.evidence());
+        // A successful compile does not verify tests that were changed and never ran (Apollo AQ-049).
+        if (verdict.equals("ready") && changedTests.blocking()) verdict = "partial";
         root.put("verdict", verdict);
         root.put("verified", verdict.equals("ready"));
         ArrayNode blockers = root.putArray("blockers");
         ArrayNode nextActions = root.putArray("next_actions");
         appendGuidance(verdict, context, diagnostics, changes, verificationPlan,
                 blockers, nextActions, effectiveTargets.isEmpty(), inferenceTruncated);
+        appendChangedTestGuidance(changedTests, verificationPlan, blockers, nextActions);
         root.set("_meta", context.path("_meta").deepCopy());
         return root.toString();
     }
@@ -304,6 +309,25 @@ final class ChangeVerificationQueries {
     }
 
     /** Recompiling cannot show that failed tests pass; the retry runs tests, the focused ones when ranked. */
+    private static void appendChangedTestGuidance(ChangedTestExecution.Result changedTests,
+            ObjectNode verificationPlan, ArrayNode blockers, ArrayNode actions) {
+        if (!changedTests.failed().isEmpty()) {
+            blockers.addObject().put("code", "CHANGED_TESTS_FAILED")
+                    .put("message", "Changed test classes failed in their latest run: " + String.join(", ", changedTests.failed()));
+        }
+        if (!changedTests.notExecuted().isEmpty()) {
+            blockers.addObject().put("code", "CHANGED_TESTS_NOT_EXECUTED")
+                    .put("message", "Changed test classes have not run since they changed: " + String.join(", ", changedTests.notExecuted())
+                            + ". A compiling build does not show they pass; run them, or report them as not run");
+        }
+        if (!changedTests.blocking()) return;
+        String code = changedTests.failed().isEmpty() ? "CHANGED_TESTS_NOT_EXECUTED" : "CHANGED_TESTS_FAILED";
+        String testScope = testCommandScope(verificationPlan);
+        if (testScope != null && verificationPlan.path("runner").path("available").asBoolean()) externalCommand(actions, testScope, code);
+        action(actions, "run_changed_tests", code).put("evidence", "changed_tests.classes")
+                .put("description", "Run the listed test classes; if they cannot run here, say so in the answer instead of reporting the change as verified");
+    }
+
     private static String testCommandScope(ObjectNode verificationPlan) {
         List<String> scopes = verificationPlan.path("commands").valueStream()
                 .filter(command -> command.path("executes_tests").asBoolean())

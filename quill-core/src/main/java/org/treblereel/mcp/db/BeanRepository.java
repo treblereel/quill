@@ -339,4 +339,114 @@ public final class BeanRepository {
         }
         return !restricted || included;
     }
+
+    /** A dependency interceptor with its bindings (JSON array of annotation texts). */
+    public record ExternalInterceptor(String className, Integer priority, String artifact, String interceptorBindings) {}
+    /** A dependency bean offering a type, with its qualifiers (JSON array). */
+    public record ExternalProvider(String className, String memberName, String artifact, String qualifiers) {}
+    /** An injection point of a class's beans: field, required type and qualifiers (JSON array). */
+    public record ClassInjectionPoint(String fieldName, String targetType, String qualifiers) {}
+    /** An injection point of a class bean with the bean it resolved to, if any. */
+    public record ResolvedInjectionPoint(String kind, String fieldName, String targetType, String qualifiers,
+            String resolutionStatus, String resolvedClass, String resolvedMember, String resolvedScope,
+            String resolvedFramework, String ownerFramework) {}
+    public record ProducerBean(int id, String kind, String scope, String qualifiers, String beanTypes) {}
+    /** A producer parameter and the class of the bean it resolved to. */
+    public record ProducerParameter(String fieldName, String targetType, String qualifiers, String resolutionStatus, String resolved) {}
+    /** An injection point that receives a bean, resolved or as a candidate. */
+    public record BeanConsumer(String owner, String fieldName, String qualifiers, String resolutionStatus, String sourceFile) {}
+
+    private static Integer nullableInt(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+        int value = rs.getInt(column);
+        return rs.wasNull() ? null : value;
+    }
+
+    /** Dependency interceptors that declare bindings, lowest priority first. */
+    public List<ExternalInterceptor> findBoundExternalInterceptors() {
+        return handle.createQuery("""
+                SELECT class_name, priority, artifact, interceptor_bindings FROM external_beans
+                WHERE kind = 'INTERCEPTOR' AND interceptor_bindings <> '[]'
+                ORDER BY priority IS NULL, priority, class_name""")
+                .map((rs, ctx) -> new ExternalInterceptor(rs.getString("class_name"), nullableInt(rs, "priority"),
+                        rs.getString("artifact"), rs.getString("interceptor_bindings"))).list();
+    }
+
+    /** Dependency beans whose bean types name {@code type}. */
+    public List<ExternalProvider> findExternalProviders(String type) {
+        return handle.createQuery("""
+                SELECT class_name, member_name, artifact, qualifiers FROM external_beans
+                WHERE bean_types LIKE :type ORDER BY artifact, class_name, member_name""")
+                .bind("type", "%\"" + type + "\"%")
+                .map((rs, ctx) -> new ExternalProvider(rs.getString("class_name"), rs.getString("member_name"),
+                        rs.getString("artifact"), rs.getString("qualifiers"))).list();
+    }
+
+    /** Injection points of every bean whose bean class is {@code classId}, in index order. */
+    public List<ClassInjectionPoint> findClassInjectionPoints(int classId) {
+        return handle.createQuery("""
+                SELECT ip.field_name, ip.target_type, ip.qualifiers FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
+                WHERE ob.class_id = :id ORDER BY ip.id""")
+                .bind("id", classId)
+                .map((rs, ctx) -> new ClassInjectionPoint(rs.getString("field_name"), rs.getString("target_type"), rs.getString("qualifiers"))).list();
+    }
+
+    /** Up to {@code limit} injection points of the class bean of {@code classId}, with what each resolved to. */
+    public List<ResolvedInjectionPoint> findClassBeanInjectionPoints(int classId, int limit) {
+        return handle.createQuery("""
+                SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status,
+                       rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.scope AS resolved_scope,
+                       rb.framework AS resolved_framework, ob.framework AS owner_framework
+                FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
+                LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
+                LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
+                WHERE ob.class_id = :id AND ob.kind = 'CLASS' ORDER BY ip.id LIMIT :limit""")
+                .bind("id", classId).bind("limit", limit)
+                .map((rs, ctx) -> new ResolvedInjectionPoint(rs.getString("kind"), rs.getString("field_name"),
+                        rs.getString("target_type"), rs.getString("qualifiers"), rs.getString("resolution_status"),
+                        rs.getString("resolved_class"), rs.getString("resolved_member"), rs.getString("resolved_scope"),
+                        rs.getString("resolved_framework"), rs.getString("owner_framework"))).list();
+    }
+
+    /** Producer method beans that a class declares under one method name. */
+    public List<ProducerBean> findProducerMethodBeans(int declaringClassId, String memberName) {
+        return handle.createQuery("""
+                SELECT id, kind, scope, qualifiers, bean_types FROM beans
+                WHERE declaring_class_id = :id AND member_name = :name AND kind = 'PRODUCER_METHOD'""")
+                .bind("id", declaringClassId).bind("name", memberName)
+                .map((rs, ctx) -> new ProducerBean(rs.getInt("id"), rs.getString("kind"), rs.getString("scope"),
+                        rs.getString("qualifiers"), rs.getString("bean_types"))).list();
+    }
+
+    /** A bean's own injection points (a producer's parameters) with the class each resolved to. */
+    public List<ProducerParameter> findProducerParameters(int beanId) {
+        return handle.createQuery("""
+                SELECT ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, rc.class_name AS resolved
+                FROM injection_points ip
+                LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
+                LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
+                WHERE ip.bean_id = :id ORDER BY ip.id""")
+                .bind("id", beanId)
+                .map((rs, ctx) -> new ProducerParameter(rs.getString("field_name"), rs.getString("target_type"),
+                        rs.getString("qualifiers"), rs.getString("resolution_status"), rs.getString("resolved"))).list();
+    }
+
+    /** Injection points resolved to the bean or listing it as a resolution candidate. */
+    public List<BeanConsumer> findBeanConsumers(int beanId) {
+        return handle.createQuery("""
+                SELECT DISTINCT oc.class_name AS owner, ip.field_name, ip.qualifiers, ip.resolution_status, oc.source_file
+                FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id
+                JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
+                WHERE ip.resolved_bean_id = :id OR ip.resolution_candidates LIKE :candidate
+                ORDER BY oc.class_name, ip.field_name""")
+                .bind("id", beanId).bind("candidate", "%\"beanId\":" + beanId + ",%")
+                .map((rs, ctx) -> new BeanConsumer(rs.getString("owner"), rs.getString("field_name"),
+                        rs.getString("qualifiers"), rs.getString("resolution_status"), rs.getString("source_file"))).list();
+    }
+
+    /** The scope of the class bean of {@code classId}. */
+    public Optional<String> findClassBeanScope(int classId) {
+        return handle.createQuery("SELECT scope FROM beans WHERE class_id = :id AND kind = 'CLASS' LIMIT 1")
+                .bind("id", classId).mapTo(String.class).findOne();
+    }
 }

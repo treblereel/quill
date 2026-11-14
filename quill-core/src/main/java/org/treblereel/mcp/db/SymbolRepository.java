@@ -800,4 +800,71 @@ public final class SymbolRepository {
         return new HashSet<>(handle.createQuery("SELECT class_name FROM class_occurrences GROUP BY class_name HAVING count(DISTINCT output_directory)>1")
                 .mapTo(String.class).list());
     }
+
+    /** A field declared by a class: its type, modifiers and annotation names (a JSON array). */
+    public record FieldDeclaration(String typeName, String modifiers, String annotations) {}
+    /** A member carrying an {@code @Observes} parameter, with its raw annotation details. */
+    public record ObserverMember(int classId, String className, String name, String descriptor, String annotationDetails) {}
+    /** A direct class annotation with its raw values (JSON, may be null). */
+    public record DirectClassAnnotation(String annotationName, String annotationValues) {}
+
+    /** The id of the current class named {@code className}, whatever its origin. */
+    public Optional<Integer> findCurrentClassId(String className) {
+        return handle.createQuery("SELECT id FROM classes WHERE class_name = :name AND lifecycle = 'current' LIMIT 1")
+                .bind("name", className).mapTo(Integer.class).findOne();
+    }
+
+    public Optional<String> findSuperclass(int classId) {
+        return handle.createQuery("SELECT superclass FROM classes WHERE id = :id")
+                .bind("id", classId).mapTo(String.class).findOne();
+    }
+
+    /** The raw annotation_details JSON of one member; empty when the member is unknown or has none. */
+    public Optional<String> findMemberAnnotationDetails(int classId, String name, String descriptor) {
+        return handle.createQuery("SELECT annotation_details FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor")
+                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(String.class).findOne();
+    }
+
+    /** Current members observing {@code eventType} through an {@code @Observes} parameter. */
+    public List<ObserverMember> findObserverMembers(String eventType) {
+        return handle.createQuery("""
+                SELECT c.id AS class_id, c.class_name, m.name, m.descriptor, m.annotation_details FROM class_members m
+                JOIN classes c ON c.id = m.class_id
+                WHERE c.lifecycle = 'current' AND m.annotation_details LIKE '%.event.Observes"%' AND m.annotation_details LIKE :type""")
+                .bind("type", "%\"parameterType\":\"" + eventType + "\"%")
+                .map((rs, ctx) -> new ObserverMember(rs.getInt("class_id"), rs.getString("class_name"), rs.getString("name"),
+                        rs.getString("descriptor"), rs.getString("annotation_details"))).list();
+    }
+
+    public Optional<FieldDeclaration> findField(int classId, String name) {
+        return handle.createQuery("SELECT type_name, modifiers, annotations FROM class_members WHERE class_id = :id AND kind = 'FIELD' AND name = :name")
+                .bind("id", classId).bind("name", name)
+                .map((rs, ctx) -> new FieldDeclaration(rs.getString("type_name"), rs.getString("modifiers"), rs.getString("annotations")))
+                .findOne();
+    }
+
+    /** Annotations written on the class itself, in index order. */
+    public List<DirectClassAnnotation> findDirectClassAnnotations(int classId) {
+        return handle.createQuery("SELECT annotation_name, annotation_values FROM class_annotations WHERE class_id = :id AND direct = 1")
+                .bind("id", classId)
+                .map((rs, ctx) -> new DirectClassAnnotation(rs.getString("annotation_name"), rs.getString("annotation_values"))).list();
+    }
+
+    public boolean hasMemberNamed(int classId, String name) {
+        return handle.createQuery("SELECT count(*) FROM class_members WHERE class_id = :id AND name = :name")
+                .bind("id", classId).bind("name", name).mapTo(Integer.class).one() > 0;
+    }
+
+    public boolean declaresMember(int classId, String name, String descriptor) {
+        return handle.createQuery("SELECT count(*) FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor")
+                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(Integer.class).one() > 0;
+    }
+
+    /** Modifiers of each method overload named {@code name}; an empty descriptor matches every overload. */
+    public List<String> findMethodModifiers(int classId, String name, String descriptor) {
+        return handle.createQuery("""
+                SELECT modifiers FROM class_members WHERE class_id = :id AND kind = 'METHOD' AND name = :name
+                  AND (:descriptor = '' OR descriptor = :descriptor)""")
+                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(String.class).list();
+    }
 }

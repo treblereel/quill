@@ -630,4 +630,56 @@ public final class UsageRepository {
         result.replaceAll((ignored, values) -> List.copyOf(values));
         return result;
     }
+
+    /** A read or write of one of the class's own fields. */
+    public record OwnFieldAccess(String fromMethod, String fromDescriptor, String fieldName) {}
+    /** A call out of a method, with the callee's class name. */
+    public record Callee(int toClassId, String className, String toMethod, String toDescriptor, String invocationKind) {}
+
+    /** Accesses of a class's own fields from its own methods and lambdas. */
+    public List<OwnFieldAccess> findOwnFieldAccesses(int classId) {
+        return handle.createQuery("SELECT from_method, from_descriptor, field_name FROM field_accesses WHERE from_class_id = :id AND to_class_id = :id")
+                .bind("id", classId)
+                .map((rs, ctx) -> new OwnFieldAccess(rs.getString("from_method"), rs.getString("from_descriptor"), rs.getString("field_name"))).list();
+    }
+
+    /** Own instance fields one method reads. */
+    public List<String> findOwnInstanceFieldReads(int classId, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT field_name FROM field_accesses
+                WHERE from_class_id = :id AND to_class_id = :id AND from_method = :name
+                  AND from_descriptor = :descriptor AND access_kind = 'read_instance'""")
+                .bind("id", classId).bind("name", method).bind("descriptor", descriptor).mapTo(String.class).list();
+    }
+
+    /** Whether a method calls a lambda body that has no method_evidence row. */
+    public boolean hasLambdaCallWithoutEvidence(int classId, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT count(*) FROM method_calls mc
+                LEFT JOIN method_evidence me ON me.from_class_id = mc.to_class_id
+                  AND me.from_method = mc.to_method AND me.from_descriptor = mc.to_descriptor
+                WHERE mc.from_class_id = :id AND mc.from_method = :name AND mc.from_descriptor = :descriptor
+                  AND mc.to_method LIKE 'lambda$%' AND me.from_class_id IS NULL""")
+                .bind("id", classId).bind("name", method).bind("descriptor", descriptor).mapTo(Integer.class).one() > 0;
+    }
+
+    /** A method's indexed callees in source order. */
+    public List<Callee> findCallees(int classId, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT mc.to_class_id, c.class_name, mc.to_method, mc.to_descriptor, mc.invocation_kind
+                FROM method_calls mc JOIN classes c ON c.id = mc.to_class_id
+                WHERE mc.from_class_id = :id AND mc.from_method = :name AND mc.from_descriptor = :descriptor
+                ORDER BY mc.evidence_lines""")
+                .bind("id", classId).bind("name", method).bind("descriptor", descriptor)
+                .map((rs, ctx) -> new Callee(rs.getInt("to_class_id"), rs.getString("class_name"), rs.getString("to_method"),
+                        rs.getString("to_descriptor"), rs.getString("invocation_kind"))).list();
+    }
+
+    /** The raw caller_external_calls JSON of a method's evidence row. */
+    public Optional<String> findCallerExternalCalls(int classId, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT caller_external_calls FROM method_evidence
+                WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor""")
+                .bind("id", classId).bind("name", method).bind("descriptor", descriptor).mapTo(String.class).findOne();
+    }
 }

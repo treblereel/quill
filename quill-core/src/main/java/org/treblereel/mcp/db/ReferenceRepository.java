@@ -301,4 +301,10 @@ public final class ReferenceRepository {
     public static ResourceKey resourceKey(ResourceReference row) {
         return new ResourceKey(row.resourcePath(), row.kind());
     }
+
+    /** The configuration key a class member injects, if one is indexed. */
+    public Optional<String> findMemberConfigKey(int classId, String member) {
+        return handle.createQuery("SELECT key FROM configuration_usages WHERE class_id = :id AND member = :name AND kind = 'config_key' LIMIT 1")
+                .bind("id", classId).bind("name", member).mapTo(String.class).findOne();
+    }
 }

@@ -9,6 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.db.BeanRepository;
 import org.treblereel.mcp.db.ReadQueryContext;
 
 /**
@@ -90,9 +91,7 @@ final class MethodPrefetchRelations {
         String name = fact.path("name").asText(null);
         String descriptor = fact.path("descriptor").asText(null);
         if (owner == null || name == null || descriptor == null) return;
-        Integer classId = db.jdbi().withHandle(handle -> handle.createQuery(
-                "SELECT id FROM classes WHERE class_name = :name AND lifecycle = 'current' LIMIT 1")
-                .bind("name", owner).mapTo(Integer.class).findOne().orElse(null));
+        Integer classId = db.symbols.findCurrentClassId(owner).orElse(null);
         if (classId == null) return;
         annotations(db, fact, classId, name, descriptor);
         FrameworkContracts.append(db, fact, classId, name, descriptor);
@@ -197,9 +196,7 @@ final class MethodPrefetchRelations {
      * @Priority order: what the start or stop order between them is, and where it is unspecified.
      */
     private static void sameEventObservers(ReadQueryContext db, ObjectNode fact, int classId, String name, String descriptor) {
-        String details = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT annotation_details FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
-                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(String.class).findOne().orElse("[]"));
+        String details = db.symbols.findMemberAnnotationDetails(classId, name, descriptor).orElse("[]");
         String event = null;
         try {
             for (JsonNode annotation : JSON.readTree(details))
@@ -212,22 +209,18 @@ final class MethodPrefetchRelations {
         String type = event;
         record Observer(String name, int priority, boolean explicit) {}
         List<Observer> observers = new java.util.ArrayList<>();
-        for (var row : db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT c.id AS class_id, c.class_name, m.name, m.descriptor, m.annotation_details FROM class_members m
-                JOIN classes c ON c.id = m.class_id
-                WHERE c.lifecycle = 'current' AND m.annotation_details LIKE '%.event.Observes"%' AND m.annotation_details LIKE :type""")
-                .bind("type", "%\"parameterType\":\"" + type + "\"%").mapToMap().list())) {
-            if (((Number) row.get("class_id")).intValue() == classId && name.equals(row.get("name")) && descriptor.equals(row.get("descriptor"))) continue;
+        for (var row : db.symbols.findObserverMembers(type)) {
+            if (row.classId() == classId && name.equals(row.name()) && descriptor.equals(row.descriptor())) continue;
             Integer priority = null;
             try {
-                for (JsonNode annotation : JSON.readTree(String.valueOf(row.get("annotation_details"))))
+                for (JsonNode annotation : JSON.readTree(String.valueOf(row.annotationDetails())))
                     if (annotation.path("annotationName").asText().endsWith(".annotation.Priority")
                             && annotation.path("targetKind").asText().equals("METHOD_PARAMETER"))
                         priority = annotation.path("values").path("value").asInt(DEFAULT_OBSERVER_PRIORITY);
             } catch (Exception unreadable) {
                 // An unreadable row keeps the default priority.
             }
-            observers.add(new Observer(row.get("class_name") + "#" + row.get("name"),
+            observers.add(new Observer(row.className() + "#" + row.name(),
                     priority == null ? DEFAULT_OBSERVER_PRIORITY : priority, priority != null));
         }
         if (observers.isEmpty()) return;
@@ -236,9 +229,7 @@ final class MethodPrefetchRelations {
         // Listed: those with a stated @Priority and those of classes this method uses.
         List<Observer> named = observers.stream().filter(o -> o.explicit() || related.contains(o.name().substring(0, o.name().indexOf('#'))))
                 .limit(OBSERVER_LIMIT).toList();
-        boolean selfDefault = !db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT annotation_details FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
-                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(String.class).findOne().orElse(""))
+        boolean selfDefault = !db.symbols.findMemberAnnotationDetails(classId, name, descriptor).orElse("")
                 .contains(".annotation.Priority\"");
         long unordered = observers.stream().filter(o -> !o.explicit()).count();
         // One field, so the context budget can drop it whole before it cuts the method's own evidence.
@@ -277,38 +268,31 @@ final class MethodPrefetchRelations {
      * file for exactly these declarations.
      */
     private static void referencedMembers(ReadQueryContext db, ObjectNode fact, int classId, String name, String descriptor) {
-        var rows = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT from_method, from_descriptor, field_name FROM field_accesses
-                WHERE from_class_id = :id AND to_class_id = :id""").bind("id", classId).mapToMap().list());
+        var rows = db.usages.findOwnFieldAccesses(classId);
         Set<String> used = new LinkedHashSet<>();
         Map<String, java.util.TreeSet<String>> users = new java.util.LinkedHashMap<>();
         for (var row : rows) {
-            String method = String.valueOf(row.get("from_method")), field = String.valueOf(row.get("field_name"));
+            String method = String.valueOf(row.fromMethod()), field = String.valueOf(row.fieldName());
             String declarer = method.startsWith("lambda$") && method.indexOf('$', 7) > 7 ? method.substring(7, method.indexOf('$', 7)) : method;
-            boolean selected = declarer.equals(name) && (method.startsWith("lambda$") || descriptor.equals(row.get("from_descriptor")));
+            boolean selected = declarer.equals(name) && (method.startsWith("lambda$") || descriptor.equals(row.fromDescriptor()));
             if (selected) used.add(field);
             else users.computeIfAbsent(field, key -> new java.util.TreeSet<>()).add(declarer);
         }
         if (used.isEmpty()) return;
         ArrayNode lines = JSON.createArrayNode();
         for (String field : used.stream().limit(MEMBER_LIMIT).toList()) {
-            var member = db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT type_name, modifiers, annotations FROM class_members
-                    WHERE class_id = :id AND kind = 'FIELD' AND name = :name""")
-                    .bind("id", classId).bind("name", field).mapToMap().findOne().orElse(null));
+            var member = db.symbols.findField(classId, field).orElse(null);
             if (member == null) continue;
-            StringBuilder line = new StringBuilder(field).append(": ").append(member.get("type_name"));
-            String modifiers = String.valueOf(member.get("modifiers"));
+            StringBuilder line = new StringBuilder(field).append(": ").append(member.typeName());
+            String modifiers = String.valueOf(member.modifiers());
             if (!modifiers.isBlank()) line.append(' ').append(modifiers);
             try {
-                for (JsonNode annotation : JSON.readTree(String.valueOf(member.get("annotations")))) line.append(" @").append(annotation.asText());
+                for (JsonNode annotation : JSON.readTree(String.valueOf(member.annotations()))) line.append(" @").append(annotation.asText());
             } catch (Exception unreadable) {
                 // Annotations are a convenience here; the type and users still stand.
             }
             // V41 CQ-035: a config-injected field's key and main value, which agents otherwise grep for.
-            db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT key FROM configuration_usages WHERE class_id = :id AND member = :name AND kind = 'config_key' LIMIT 1""")
-                    .bind("id", classId).bind("name", field).mapTo(String.class).findOne())
+            db.references.findMemberConfigKey(classId, field)
                     .ifPresent(key -> line.append(" key ").append(key).append(ConfigMappingKeys.mainDeclaration(db, new ConfigurationSourceEvidence(db), key)));
             var others = users.getOrDefault(field, new java.util.TreeSet<>());
             if (!others.isEmpty()) line.append("; also used by ").append(String.join(", ", others.stream().limit(USER_LIMIT).toList()))
@@ -323,22 +307,12 @@ final class MethodPrefetchRelations {
     private static final int LAMBDA_SOURCE_BUDGET = 4000;
 
     private static boolean missingLambdaEvidence(ReadQueryContext db, int id, String name, String descriptor) {
-        return db.jdbi().withHandle(h -> h.createQuery("""
-                SELECT count(*) FROM method_calls mc
-                LEFT JOIN method_evidence me ON me.from_class_id = mc.to_class_id
-                  AND me.from_method = mc.to_method AND me.from_descriptor = mc.to_descriptor
-                WHERE mc.from_class_id = :id AND mc.from_method = :name AND mc.from_descriptor = :descriptor
-                  AND mc.to_method LIKE 'lambda$%' AND me.from_class_id IS NULL""")
-                .bind("id", id).bind("name", name).bind("descriptor", descriptor).mapTo(Integer.class).one()) > 0;
+        return db.usages.hasLambdaCallWithoutEvidence(id, name, descriptor);
     }
 
     private static void annotations(ReadQueryContext db, ObjectNode fact, int classId, String name,
             String descriptor) throws Exception {
-        String details = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT annotation_details FROM class_members
-                WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
-                .bind("id", classId).bind("name", name).bind("descriptor", descriptor)
-                .mapTo(String.class).findOne().orElse("[]"));
+        String details = db.symbols.findMemberAnnotationDetails(classId, name, descriptor).orElse("[]");
         ArrayNode lines = JSON.createArrayNode();
         for (JsonNode annotation : JSON.readTree(details)) {
             if (annotation.path("parameterIndex").asInt(-1) >= 0) continue;
@@ -364,35 +338,26 @@ final class MethodPrefetchRelations {
     private static void interceptors(ReadQueryContext db, ObjectNode fact, int classId, String name,
             String descriptor) throws Exception {
         Map<String, JsonNode> carried = new java.util.LinkedHashMap<>();
-        String details = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT annotation_details FROM class_members
-                WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
-                .bind("id", classId).bind("name", name).bind("descriptor", descriptor)
-                .mapTo(String.class).findOne().orElse("[]"));
+        String details = db.symbols.findMemberAnnotationDetails(classId, name, descriptor).orElse("[]");
         for (JsonNode annotation : JSON.readTree(details))
             if (annotation.path("parameterIndex").asInt(-1) < 0)
                 carried.put(annotation.path("annotationName").asText(), annotation.path("values"));
-        for (Map<String, Object> row : db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT annotation_name, annotation_values FROM class_annotations WHERE class_id = :id AND direct = 1""")
-                .bind("id", classId).mapToMap().list()))
-            carried.putIfAbsent(String.valueOf(row.get("annotation_name")),
-                    row.get("annotation_values") == null ? JSON.createObjectNode() : JSON.readTree(String.valueOf(row.get("annotation_values"))));
+        for (var row : db.symbols.findDirectClassAnnotations(classId))
+            carried.putIfAbsent(String.valueOf(row.annotationName()),
+                    row.annotationValues() == null ? JSON.createObjectNode() : JSON.readTree(row.annotationValues()));
         if (carried.isEmpty()) return;
         Set<String> registered = NameTargetPrefetch.registeredDependencyBeans(db);
         ArrayNode lines = JSON.createArrayNode();
-        for (Map<String, Object> row : db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT class_name, priority, artifact, interceptor_bindings FROM external_beans
-                WHERE kind = 'INTERCEPTOR' AND interceptor_bindings <> '[]'
-                ORDER BY priority IS NULL, priority, class_name""").mapToMap().list())) {
-            for (JsonNode binding : JSON.readTree(String.valueOf(row.get("interceptor_bindings")))) {
+        for (var row : db.beans.findBoundExternalInterceptors()) {
+            for (JsonNode binding : JSON.readTree(String.valueOf(row.interceptorBindings()))) {
                 String text = binding.asText();
                 int open = text.indexOf('(');
                 String annotation = text.substring(1, open < 0 ? text.length() : open);
                 JsonNode values = carried.get(annotation);
                 if (values == null || !bindingMatches(text, values)) continue;
-                if (registered != null && !registered.contains(String.valueOf(row.get("class_name")))) continue;
-                lines.add(row.get("class_name") + " @Priority(" + (row.get("priority") == null ? "none" : row.get("priority"))
-                        + ") via " + text + " from " + row.get("artifact"));
+                if (registered != null && !registered.contains(String.valueOf(row.className()))) continue;
+                lines.add(row.className() + " @Priority(" + (row.priority() == null ? "none" : row.priority())
+                        + ") via " + text + " from " + row.artifact());
             }
         }
         if (lines.isEmpty()) return;
@@ -428,28 +393,19 @@ final class MethodPrefetchRelations {
         while (!queue.isEmpty() && lines.size() < LIMIT * 2) {
             Method method = queue.removeFirst();
             if (method.classId() == classId) visited.add(new String[] {method.name(), method.descriptor()});
-            for (Map<String, Object> call : db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT mc.to_class_id, c.class_name, mc.to_method, mc.to_descriptor, mc.invocation_kind
-                    FROM method_calls mc JOIN classes c ON c.id = mc.to_class_id
-                    WHERE mc.from_class_id = :id AND mc.from_method = :name AND mc.from_descriptor = :descriptor
-                    ORDER BY mc.evidence_lines""").bind("id", method.classId()).bind("name", method.name())
-                    .bind("descriptor", method.descriptor()).mapToMap().list())) {
-                String callee = String.valueOf(call.get("to_method"));
-                int calleeClass = ((Number) call.get("to_class_id")).intValue();
-                String calleeDescriptor = String.valueOf(call.get("to_descriptor"));
+            for (var call : db.usages.findCallees(method.classId(), method.name(), method.descriptor())) {
+                String callee = String.valueOf(call.toMethod());
+                int calleeClass = call.toClassId();
+                String calleeDescriptor = String.valueOf(call.toDescriptor());
                 boolean lambda = callee.startsWith("lambda$");
-                if (!lambda) lines.add(method.depth() + " " + call.get("class_name") + "#" + callee
-                        + " [" + call.get("invocation_kind") + (declares(db, calleeClass, callee, calleeDescriptor) ? ""
+                if (!lambda) lines.add(method.depth() + " " + call.className() + "#" + callee
+                        + " [" + call.invocationKind() + (declares(db, calleeClass, callee, calleeDescriptor) ? ""
                                 : ", inherited: " + inheritedFrom(db, root, calleeClass, callee)) + "]");
                 int next = lambda ? method.depth() : method.depth() + 1;
                 if (next <= DEPTH && seen.add(calleeClass + "#" + callee + calleeDescriptor))
                     queue.addLast(new Method(calleeClass, callee, calleeDescriptor, next));
             }
-            String external = db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT caller_external_calls FROM method_evidence
-                    WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor""")
-                    .bind("id", method.classId()).bind("name", method.name()).bind("descriptor", method.descriptor())
-                    .mapTo(String.class).findOne().orElse("[]"));
+            String external = db.usages.findCallerExternalCalls(method.classId(), method.name(), method.descriptor()).orElse("[]");
             try {
                 for (JsonNode call : JSON.readTree(external)) {
                     // line|ordinal|owner|method|descriptor|...
@@ -478,21 +434,15 @@ final class MethodPrefetchRelations {
 
     /** The nearest superclass declaring {@code name}, searched through application and dependency bytecode. */
     private static String inheritedFrom(ReadQueryContext db, java.nio.file.Path root, int classId, String name) {
-        String type = db.jdbi().withHandle(handle -> handle.createQuery("SELECT superclass FROM classes WHERE id = :id")
-                .bind("id", classId).mapTo(String.class).findOne().orElse(null));
+        String type = db.symbols.findSuperclass(classId).orElse(null);
         ExternalSymbolQueries external = new ExternalSymbolQueries();
         for (int depth = 0; type != null && !type.equals("java.lang.Object") && depth < 8; depth++) {
             String current = type;
-            Integer local = db.jdbi().withHandle(handle -> handle.createQuery(
-                    "SELECT id FROM classes WHERE class_name = :name AND lifecycle = 'current' LIMIT 1")
-                    .bind("name", current).mapTo(Integer.class).findOne().orElse(null));
+            Integer local = db.symbols.findCurrentClassId(current).orElse(null);
             if (local != null) {
-                boolean found = db.jdbi().withHandle(handle -> handle.createQuery(
-                        "SELECT count(*) FROM class_members WHERE class_id = :id AND name = :name")
-                        .bind("id", local).bind("name", name).mapTo(Integer.class).one()) > 0;
+                boolean found = db.symbols.hasMemberNamed(local, name);
                 if (found) return "declared by " + current;
-                type = db.jdbi().withHandle(handle -> handle.createQuery("SELECT superclass FROM classes WHERE id = :id")
-                        .bind("id", local).mapTo(String.class).findOne().orElse(null));
+                type = db.symbols.findSuperclass(local).orElse(null);
                 continue;
             }
             if (root == null) break;
@@ -513,9 +463,7 @@ final class MethodPrefetchRelations {
     private static boolean declares(ReadQueryContext db, int classId, String name, String descriptor) {
         // Constructors are indexed under the class's simple name and are never inherited.
         if (name.equals("<init>")) return true;
-        return db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT count(*) FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
-                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(Integer.class).one()) > 0;
+        return db.symbols.declaresMember(classId, name, descriptor);
     }
 
     /**
@@ -526,35 +474,28 @@ final class MethodPrefetchRelations {
             Set<String> dispatch) {
         Set<String> read = new java.util.HashSet<>();
         for (String[] method : visited)
-            read.addAll(db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT field_name FROM field_accesses
-                    WHERE from_class_id = :id AND to_class_id = :id AND from_method = :name
-                      AND from_descriptor = :descriptor AND access_kind = 'read_instance'""")
-                    .bind("id", classId).bind("name", method[0]).bind("descriptor", method[1])
-                    .mapTo(String.class).list()));
-        List<Map<String, Object>> points = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT ip.field_name, ip.target_type, ip.qualifiers FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
-                WHERE ob.class_id = :id ORDER BY ip.id""").bind("id", classId).mapToMap().list())
-                .stream().filter(point -> ClassPrefetchRelations.argument(String.valueOf(point.get("target_type")),
+            read.addAll(db.usages.findOwnInstanceFieldReads(classId, method[0], method[1]));
+        List<BeanRepository.ClassInjectionPoint> points = db.beans.findClassInjectionPoints(classId)
+                .stream().filter(point -> ClassPrefetchRelations.argument(String.valueOf(point.targetType()),
                         List.of("jakarta.enterprise.event.Event", "javax.enterprise.event.Event")) != null).toList();
-        List<Map<String, Object>> fired = points.stream().filter(point -> read.contains(String.valueOf(point.get("field_name")))).toList();
+        List<BeanRepository.ClassInjectionPoint> fired = points.stream().filter(point -> read.contains(String.valueOf(point.fieldName()))).toList();
         boolean narrowed = !fired.isEmpty();
         ArrayNode observers = JSON.createArrayNode();
-        List<Map<String, Object>> selected = narrowed ? fired : points;
+        List<BeanRepository.ClassInjectionPoint> selected = narrowed ? fired : points;
         ArrayNode events = JSON.createArrayNode();
-        for (Map<String, Object> point : selected) {
-            String type = String.valueOf(point.get("target_type"));
+        for (var point : selected) {
+            String type = String.valueOf(point.targetType());
             ClassPrefetchRelations.eventObservers(db, type).forEach(observer ->
-                    observers.add(point.get("field_name") + " " + ClassPrefetchRelations.source(type) + " -> " + observer));
+                    observers.add(point.fieldName() + " " + ClassPrefetchRelations.source(type) + " -> " + observer));
             if (events.size() >= 3) continue;
             String event = ClassPrefetchRelations.argument(type,
                     List.of("jakarta.enterprise.event.Event", "javax.enterprise.event.Event"));
-            ObjectNode value = events.addObject().put("field", String.valueOf(point.get("field_name")))
+            ObjectNode value = events.addObject().put("field", String.valueOf(point.fieldName()))
                     .put("event_type", event);
             value.set("dispatch_methods", JSON.valueToTree(dispatch));
             value.put("field_to_fire_binding_proven", false);
             try {
-                ArrayNode qualifiers = (ArrayNode) JSON.readTree(String.valueOf(point.get("qualifiers")));
+                ArrayNode qualifiers = (ArrayNode) JSON.readTree(String.valueOf(point.qualifiers()));
                 if (qualifiers.isEmpty()) qualifiers.add("@Default");
                 if (qualifiers.valueStream().noneMatch(q -> q.asText().equals("@Any")
                         || q.asText().equals("@jakarta.enterprise.inject.Any") || q.asText().equals("@javax.enterprise.inject.Any")))
@@ -586,10 +527,7 @@ final class MethodPrefetchRelations {
      */
     private static ArrayNode declaringClassInjects(ReadQueryContext db, int classId, String name, String descriptor) {
         ArrayNode lines = JSON.createArrayNode();
-        List<Boolean> statics = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT modifiers FROM class_members WHERE class_id = :id AND kind = 'METHOD' AND name = :name
-                  AND (:descriptor = '' OR descriptor = :descriptor)""")
-                .bind("id", classId).bind("name", name).bind("descriptor", descriptor).mapTo(String.class).list())
+        List<Boolean> statics = db.symbols.findMethodModifiers(classId, name, descriptor)
                 .stream().map(modifiers -> (" " + modifiers + " ").contains(" static ")).toList();
         // Without a descriptor every overload matches: only when all are static is the instance never needed.
         if (!statics.isEmpty() && !statics.contains(false))
@@ -597,22 +535,14 @@ final class MethodPrefetchRelations {
         if (statics.contains(true))
             lines.add("overloads differ: some are static and need no declaring bean instance; the others need what follows");
         int shown = 8;
-        List<Map<String, Object>> points = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT ip.kind, ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status,
-                       rc.class_name AS resolved_class, rb.member_name AS resolved_member, rb.scope AS resolved_scope,
-                       rb.framework AS resolved_framework, ob.framework AS owner_framework
-                FROM injection_points ip JOIN beans ob ON ob.id = ip.bean_id
-                LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
-                LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
-                WHERE ob.class_id = :id AND ob.kind = 'CLASS' ORDER BY ip.id LIMIT :limit""")
-                .bind("id", classId).bind("limit", shown + 1).mapToMap().list());
+        var points = db.beans.findClassBeanInjectionPoints(classId, shown + 1);
         points.stream().limit(shown)
-                .forEach(row -> lines.add(row.get("kind") + " " + row.get("field_name") + ": " + row.get("target_type") + " "
-                        + BeanTerms.qualifiersJson(row.get("owner_framework"), row.get("qualifiers")) + " -> "
-                        + (row.get("resolved_class") == null ? "not resolved by the application index"
-                                : row.get("resolved_class") + (row.get("resolved_member") == null ? "" : "#" + row.get("resolved_member"))
-                                        + (row.get("resolved_scope") == null ? "" : " " + BeanTerms.scope(row.get("resolved_framework"), row.get("resolved_scope"))))
-                        + " [" + row.get("resolution_status") + "]"));
+                .forEach(row -> lines.add(row.kind() + " " + row.fieldName() + ": " + row.targetType() + " "
+                        + BeanTerms.qualifiersJson(row.ownerFramework(), row.qualifiers()) + " -> "
+                        + (row.resolvedClass() == null ? "not resolved by the application index"
+                                : row.resolvedClass() + (row.resolvedMember() == null ? "" : "#" + row.resolvedMember())
+                                        + (row.resolvedScope() == null ? "" : " " + BeanTerms.scope(row.resolvedFramework(), row.resolvedScope())))
+                        + " [" + row.resolutionStatus() + "]"));
         if (points.size() > shown)
             lines.add("truncated: more than " + shown + " injection points; list_injection_points shows all of them");
         if (points.isEmpty()) lines.add("none: the declaring bean has no injection points");
@@ -620,44 +550,28 @@ final class MethodPrefetchRelations {
     }
 
     private static void producer(ReadQueryContext db, ObjectNode fact, int classId, String name) {
-        List<Map<String, Object>> beans = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT id, kind, scope, qualifiers, bean_types FROM beans
-                WHERE declaring_class_id = :id AND member_name = :name AND kind = 'PRODUCER_METHOD'""")
-                .bind("id", classId).bind("name", name).mapToMap().list());
+        var beans = db.beans.findProducerMethodBeans(classId, name);
         if (beans.isEmpty()) return;
         ArrayNode produces = fact.putArray("produces");
         ArrayNode parameters = JSON.createArrayNode();
         ArrayNode injectedInto = JSON.createArrayNode();
-        for (Map<String, Object> bean : beans) {
-            int id = ((Number) bean.get("id")).intValue();
-            produces.add(bean.get("kind") + " " + bean.get("scope") + " qualifiers " + bean.get("qualifiers")
-                    + " types " + bean.get("bean_types"));
-            db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, rc.class_name AS resolved
-                    FROM injection_points ip
-                    LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
-                    LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
-                    WHERE ip.bean_id = :id ORDER BY ip.id""").bind("id", id).mapToMap().list())
-                    .forEach(row -> parameters.add(row.get("field_name") + ": " + row.get("target_type") + " "
-                            + row.get("qualifiers") + " -> " + (row.get("resolved") == null
+        for (var bean : beans) {
+            int id = bean.id();
+            produces.add(bean.kind() + " " + bean.scope() + " qualifiers " + bean.qualifiers()
+                    + " types " + bean.beanTypes());
+            db.beans.findProducerParameters(id)
+                    .forEach(row -> parameters.add(row.fieldName() + ": " + row.targetType() + " "
+                            + row.qualifiers() + " -> " + (row.resolved() == null
                                     ? "not resolved by the application index" + dependencyProviders(db,
-                                            String.valueOf(row.get("target_type")), row.get("qualifiers"))
-                                    : row.get("resolved"))
-                            + " [" + row.get("resolution_status") + "]"));
-            db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT DISTINCT oc.class_name AS owner, ip.field_name, ip.qualifiers, ip.resolution_status, oc.source_file
-                    FROM injection_points ip
-                    JOIN beans ob ON ob.id = ip.bean_id
-                    JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
-                    WHERE ip.resolved_bean_id = :id OR ip.resolution_candidates LIKE :candidate
-                    ORDER BY oc.class_name, ip.field_name""").bind("id", id)
-                    .bind("candidate", "%\"beanId\":" + id + ",%").mapToMap().list())
-                    .forEach(row -> injectedInto.add(row.get("owner") + "#" + row.get("field_name") + " "
-                            + row.get("qualifiers") + " [" + row.get("resolution_status") + "] " + row.get("source_file")));
+                                            String.valueOf(row.targetType()), row.qualifiers())
+                                    : row.resolved())
+                            + " [" + row.resolutionStatus() + "]"));
+            db.beans.findBeanConsumers(id)
+                    .forEach(row -> injectedInto.add(row.owner() + "#" + row.fieldName() + " "
+                            + row.qualifiers() + " [" + row.resolutionStatus() + "] " + row.sourceFile()));
         }
         // The declaring class is a bean of its own, whose scope is not the produced bean's.
-        db.jdbi().withHandle(handle -> handle.createQuery("SELECT scope FROM beans WHERE class_id = :id AND kind = 'CLASS' LIMIT 1")
-                .bind("id", classId).mapTo(String.class).findOne())
+        db.beans.findClassBeanScope(classId)
                 .ifPresent(scope -> {
                     fact.put("declaring_class_bean", "CLASS " + scope);
                     fact.set("declaring_class_injects", declaringClassInjects(db, classId, name, fact.path("descriptor").asText("")));
@@ -677,21 +591,18 @@ final class MethodPrefetchRelations {
         } catch (Exception unreadable) {
             // Unreadable qualifiers leave the providers unfiltered.
         }
-        List<String> providers = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT class_name, member_name, artifact, qualifiers FROM external_beans
-                WHERE bean_types LIKE :type ORDER BY artifact, class_name, member_name""")
-                .bind("type", "%\"" + type + "\"%").mapToMap().list()).stream()
+        List<String> providers = db.beans.findExternalProviders(type).stream()
                 .filter(row -> {
                     try {
                         Set<String> offered = new java.util.HashSet<>();
-                        JSON.readTree(String.valueOf(row.get("qualifiers"))).forEach(q -> offered.add(q.asText()));
+                        JSON.readTree(String.valueOf(row.qualifiers())).forEach(q -> offered.add(q.asText()));
                         return offered.containsAll(required);
                     } catch (Exception unreadable) {
                         return true;
                     }
                 })
-                .limit(5).map(row -> row.get("class_name") + (row.get("member_name") == null ? "" : "#" + row.get("member_name"))
-                        + " from " + (row.get("artifact") == null ? "unknown" : row.get("artifact"))).toList();
+                .limit(5).map(row -> row.className() + (row.memberName() == null ? "" : "#" + row.memberName())
+                        + " from " + (row.artifact() == null ? "unknown" : row.artifact())).toList();
         return providers.isEmpty() ? "" : "; dependency providers: " + String.join(", ", providers);
     }
 

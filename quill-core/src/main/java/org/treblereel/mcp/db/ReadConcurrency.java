@@ -38,4 +38,14 @@ public final class ReadConcurrency {
             return fallback;
         }
     }
+
+    static long positiveLong(String configured, long fallback) {
+        if (configured == null || configured.isBlank()) return fallback;
+        try {
+            long value = Long.parseLong(configured.strip());
+            return value > 0 ? value : fallback;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
 }

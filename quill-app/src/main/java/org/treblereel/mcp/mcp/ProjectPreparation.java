@@ -129,6 +129,7 @@ final class ProjectPreparation implements AutoCloseable {
             registry.upgradeBuildIntegrations();
             integrationsUpgraded = true;
         }
+        registry.expectProjects(snapshot.projects().size());
         Set<Path> retained = new HashSet<>();
         for (var project : snapshot.projects()) {
             retained.add(project.root());

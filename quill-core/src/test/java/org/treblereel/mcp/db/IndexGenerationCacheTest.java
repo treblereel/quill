@@ -137,12 +137,45 @@ class IndexGenerationCacheTest {
         long initial = graph.retainedWeight();
         graph.aliases("test", () -> List.of(1,2,3));
         assertTrue(graph.retainedWeight() > initial);
+        var small = new IndexGenerationCache(100_000, 100_000);
         try (var generation = fixture("oversized", true)) {
-            cache.retain(generation, new org.treblereel.mcp.analysis.JvmTypeGraph(
+            small.retain(generation, new org.treblereel.mcp.analysis.JvmTypeGraph(
                     java.util.stream.IntStream.range(0, 60000).mapToObj(id -> new org.treblereel.mcp.model.ClassRecord(
                             id, "p.L"+id,"CLASS",null,List.of(),"L.java",1,false,0)).toList(), Map.of(), Set.of()));
-            assertEquals(0, cache.size());
+            assertEquals(0, small.size());
         }
+    }
+
+    private static org.treblereel.mcp.analysis.JvmTypeGraph graphOf(int classes) {
+        return new org.treblereel.mcp.analysis.JvmTypeGraph(java.util.stream.IntStream.range(0, classes)
+                .mapToObj(id -> new org.treblereel.mcp.model.ClassRecord(id, "p.W" + id, "CLASS", null, List.of(), "W.java", 1, false, 0))
+                .toList(), Map.of(), Set.of());
+    }
+
+    /** One project far beyond the old shared 100k budget stays cached, and workspace size sets how many generations stay. */
+    @Test void aLargeProjectStaysCachedAndTheGenerationCountFollowsTheWorkspace() {
+        var budget = new IndexGenerationCache(300_000, 400_000);
+        var generations = new ArrayList<IndexGeneration>();
+        try {
+            for (int i = 0; i < 12; i++) generations.add(fixture("ws" + i, false));
+            var large = graphOf(80_000);
+            budget.retain(generations.get(0), large);
+            assertSame(large, budget.get(generations.get(0)));
+            // A second large graph pushes the total over budget: the least recently used goes, never the one just retained.
+            budget.retain(generations.get(1), graphOf(80_000));
+            budget.retain(generations.get(2), graphOf(80_000));
+            assertEquals(2, budget.size());
+            assertNull(budget.get(generations.get(0)));
+            budget.invalidate(generations.get(1)); budget.invalidate(generations.get(2));
+
+            for (int i = 0; i < 12; i++) budget.retain(generations.get(i), graphOf(10));
+            assertEquals(8, budget.size());
+            budget.expectProjects(6);
+            for (int i = 0; i < 12; i++) budget.retain(generations.get(i), graphOf(10));
+            assertEquals(12, budget.size());
+            budget.expectProjects(1);
+            assertEquals(8, budget.size());
+        } finally { generations.forEach(IndexGeneration::close); }
     }
 
     @Test void sqlOnlyReadsNeverInitializeOrRequireTheTypeGraph() {

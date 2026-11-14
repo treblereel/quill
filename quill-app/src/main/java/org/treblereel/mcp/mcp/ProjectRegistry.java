@@ -150,6 +150,9 @@ public class ProjectRegistry implements AutoCloseable {
     private record IndexHandle(Path projectRoot, IndexGeneration generation, AtomicLong lastSeen) {}
 
     private final org.treblereel.mcp.db.IndexGenerationCache graphCache = new org.treblereel.mcp.db.IndexGenerationCache();
+
+    /** Keeps a current and a preparing generation of every project within the graph cache's count. */
+    void expectProjects(int count) { graphCache.expectProjects(count); }
     private final ConcurrentHashMap<Path, IndexHandle> databases = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Path, AtomicLong> projectRoots = new ConcurrentHashMap<>();
     /** Background rebuilds of outdated indexes; a failure is kept briefly to avoid rebuild loops. */

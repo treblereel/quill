@@ -1115,4 +1115,23 @@ public final class SymbolRepository {
                 .bind("quoted", "%\"" + annotation + "\"%")
                 .map((rs, ctx) -> rs.getString("class_name") + "#" + rs.getString("name")).list();
     }
+
+    /** An annotation value that may hold an expression: on a member ({@code member} set) or on a class. */
+    public record AnnotationExpressionSite(String className, String sourceFile, String module, String sourceSet, String member, String details) {}
+
+    /** Current member annotation details and direct class annotation values matching a LIKE pattern, by class and member. */
+    public List<AnnotationExpressionSite> findAnnotationValuesLike(String like) {
+        return handle.createQuery("""
+                SELECT c.class_name, c.source_file, c.module, c.source_set, m.name AS member, m.annotation_details AS details
+                FROM class_members m JOIN classes c ON c.id = m.class_id
+                WHERE c.lifecycle = 'current' AND m.annotation_details LIKE :like
+                UNION ALL
+                SELECT c.class_name, c.source_file, c.module, c.source_set, NULL, a.annotation_name || '=' || a.annotation_values
+                FROM class_annotations a JOIN classes c ON c.id = a.class_id
+                WHERE c.lifecycle = 'current' AND a.direct = 1 AND a.annotation_values LIKE :like
+                ORDER BY 1, 5""")
+                .bind("like", like)
+                .map((rs, ctx) -> new AnnotationExpressionSite(rs.getString("class_name"), rs.getString("source_file"),
+                        rs.getString("module"), rs.getString("source_set"), rs.getString("member"), rs.getString("details"))).list();
+    }
 }

@@ -751,4 +751,14 @@ public final class BeanRepository {
                 .map((rs, ctx) -> new ExternalTypeBean(rs.getString("class_name"), rs.getString("kind"), rs.getString("member_name"),
                         rs.getString("scope"), rs.getString("artifact"), rs.getString("framework"))).list();
     }
+
+    /** Qualifier JSON of the Spring beans reachable as {@code className}: its own class bean and bean methods returning it. */
+    public List<String> findSpringBeanQualifiers(int classId, String className) {
+        return handle.createQuery("""
+                SELECT b.qualifiers FROM beans b
+                WHERE b.framework = :spring AND (b.class_id = :id AND b.member_name IS NULL
+                      OR b.member_name IS NOT NULL AND b.bean_types LIKE :type)""")
+                .bind("spring", BeanRecord.SPRING).bind("id", classId)
+                .bind("type", "%\"" + className + "\"%").mapTo(String.class).list();
+    }
 }

@@ -7,12 +7,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassRecord;
 
 /**
@@ -31,15 +29,10 @@ final class ExpressionReferences {
     /** Bean names under which SpEL can reach {@code cls}; empty when it is not a Spring bean. */
     static Set<String> beanNames(ReadQueryContext db, ClassRecord cls) {
         Set<String> names = new LinkedHashSet<>();
-        List<Map<String, Object>> rows = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT b.qualifiers FROM beans b
-                WHERE b.framework = :spring AND (b.class_id = :id AND b.member_name IS NULL
-                      OR b.member_name IS NOT NULL AND b.bean_types LIKE :type)""")
-                .bind("spring", BeanRecord.SPRING).bind("id", cls.id())
-                .bind("type", "%\"" + cls.className() + "\"%").mapToMap().list());
-        for (Map<String, Object> row : rows) {
+        List<String> rows = db.beans.findSpringBeanQualifiers(cls.id(), cls.className());
+        for (String qualifiers : rows) {
             try {
-                for (JsonNode qualifier : JSON.readTree(String.valueOf(row.get("qualifiers")))) {
+                for (JsonNode qualifier : JSON.readTree(String.valueOf(qualifiers))) {
                     Matcher name = BEAN_NAME.matcher(qualifier.asText());
                     if (name.matches()) names.add(name.group(1));
                 }
@@ -62,25 +55,17 @@ final class ExpressionReferences {
         for (String name : names) {
             Pattern call = Pattern.compile("@" + Pattern.quote(name) + "\\s*\\.\\s*" + Pattern.quote(method) + "\\s*\\(");
             String like = "%@" + name + "%" + method + "%";
-            for (Map<String, Object> row : db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT c.class_name, c.source_file, c.module, c.source_set, m.name AS member, m.annotation_details AS details
-                    FROM class_members m JOIN classes c ON c.id = m.class_id
-                    WHERE c.lifecycle = 'current' AND m.annotation_details LIKE :like
-                    UNION ALL
-                    SELECT c.class_name, c.source_file, c.module, c.source_set, NULL, a.annotation_name || '=' || a.annotation_values
-                    FROM class_annotations a JOIN classes c ON c.id = a.class_id
-                    WHERE c.lifecycle = 'current' AND a.direct = 1 AND a.annotation_values LIKE :like
-                    ORDER BY 1, 5""").bind("like", like).mapToMap().list())) {
-                for (String[] expression : expressions(row.get("member") == null, String.valueOf(row.get("details")), call)) {
+            for (var row : db.symbols.findAnnotationValuesLike(like)) {
+                for (String[] expression : expressions(row.member() == null, String.valueOf(row.details()), call)) {
                     total++;
                     if (found.size() >= LIMIT) continue;
-                    ObjectNode node = JSON.createObjectNode().put("class", String.valueOf(row.get("class_name")));
-                    if (row.get("member") != null) node.put("method", String.valueOf(row.get("member")));
+                    ObjectNode node = JSON.createObjectNode().put("class", String.valueOf(row.className()));
+                    if (row.member() != null) node.put("method", row.member());
                     else node.put("on", "class");
                     node.put("annotation", expression[0]).put("expression", expression[1]).put("bean_name", name);
-                    if (row.get("source_file") != null) node.put("source", String.valueOf(row.get("source_file")));
-                    if (row.get("module") != null) node.put("module", String.valueOf(row.get("module")));
-                    if (row.get("source_set") != null) node.put("source_set", String.valueOf(row.get("source_set")));
+                    if (row.sourceFile() != null) node.put("source", row.sourceFile());
+                    if (row.module() != null) node.put("module", row.module());
+                    if (row.sourceSet() != null) node.put("source_set", row.sourceSet());
                     found.add(node);
                 }
             }

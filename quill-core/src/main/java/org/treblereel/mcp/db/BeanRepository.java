@@ -761,4 +761,21 @@ public final class BeanRepository {
                 .bind("spring", BeanRecord.SPRING).bind("id", classId)
                 .bind("type", "%\"" + className + "\"%").mapTo(String.class).list();
     }
+
+    /** A bean's kind and scope. */
+    public record BeanKindScope(String kind, String scope) {}
+
+    /**
+     * The first bean (by id) of the current class {@code ownerClassName}: its class bean when {@code memberName} is null,
+     * else the bean of that member.
+     */
+    public Optional<BeanKindScope> findFirstBeanOf(String ownerClassName, String memberName) {
+        return handle.createQuery("""
+                SELECT b.kind, b.scope, b.member_name FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE c.class_name = :owner AND c.lifecycle = 'current'
+                  AND ((:member IS NULL AND b.member_name IS NULL) OR b.member_name = :member)
+                ORDER BY b.id LIMIT 1""")
+                .bind("owner", ownerClassName).bind("member", memberName)
+                .map((rs, ctx) -> new BeanKindScope(rs.getString("kind"), rs.getString("scope"))).findOne();
+    }
 }

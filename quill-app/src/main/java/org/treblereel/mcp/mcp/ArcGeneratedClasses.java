@@ -44,19 +44,15 @@ final class ArcGeneratedClasses {
             role = ROLES.get(matcher.group(2));
         } else return null;
         String declaring = owner, producer = member;
-        var bean = reader.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT b.kind, b.scope, b.member_name FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
-                WHERE c.class_name = :owner AND c.lifecycle = 'current'
-                  AND ((:member IS NULL AND b.member_name IS NULL) OR b.member_name = :member)
-                ORDER BY b.id LIMIT 1""").bind("owner", declaring).bind("member", producer).mapToMap().findOne());
+        var bean = reader.beans.findFirstBeanOf(declaring, producer);
         if (bean.isEmpty() && !"observer_method".equals(role)) return null;
         if ("observer_method".equals(role) && reader.symbols.findClassesByName(owner).isEmpty()) return null;
         ObjectNode answer = JSON.createObjectNode().put("class", name).put("origin", "generated")
                 .put("generated_by", "Quarkus ArC at build time; in neither compiled outputs nor jars")
                 .put("generated_role", role).put("meaning", MEANINGS.get(role))
                 .put("generated_for", member == null ? owner : owner + "#" + member);
-        bean.ifPresent(row -> answer.putObject("bean").put("kind", String.valueOf(row.get("kind")))
-                .put("scope", String.valueOf(row.get("scope"))));
+        bean.ifPresent(row -> answer.putObject("bean").put("kind", String.valueOf(row.kind()))
+                .put("scope", String.valueOf(row.scope())));
         answer.putObject("next_step").put("tool", "get_symbol_details").putObject("arguments").put("target", owner);
         return answer;
     }

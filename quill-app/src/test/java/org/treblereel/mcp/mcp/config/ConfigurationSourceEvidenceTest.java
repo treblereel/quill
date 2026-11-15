@@ -125,6 +125,27 @@ class ConfigurationSourceEvidenceTest {
     }
 
     /**
+     * Apollo v2: a Spring @Value key must not read as @ConfigProperty or mention Quarkus build
+     * guards.
+     */
+    @Test
+    void aSpringValueKeyNamesItsOwnAnnotation() throws Exception {
+        file("application.properties", "limits.timeout=5s\n");
+        definition("limits.timeout", "property", "application.properties", 1);
+        db.useHandle(
+                h ->
+                        h.execute(
+                                "INSERT INTO configuration_usages(key,kind,class_id,class_name,member,annotation,source,module,source_set) "
+                                        + "VALUES ('limits.timeout','config_key',1,'p.Fixture','active','org.springframework.beans.factory.annotation.Value',"
+                                        + "'src/main/java/p/Fixture.java','.','main')"));
+        String phase =
+                query("limits.timeout", null, "declared").path("application_key_phase").asText();
+        assertTrue(phase.contains("read by @Value injection into p.Fixture#active"), phase);
+        assertFalse(phase.contains("ConfigProperty"), phase);
+        assertFalse(phase.contains("IfBuildProperty"), phase);
+    }
+
+    /**
      * V62-V65: Codex sent view=full and view=details six times and got "view must be index or
      * declared".
      */

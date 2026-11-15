@@ -1336,4 +1336,58 @@ class ClassPrefetchRelationsTest {
     private static List<String> strings(ObjectNode fact, String field) {
         return fact.path(field).valueStream().map(node -> node.asText()).toList();
     }
+
+    /**
+     * Apollo with_quill v2 AQ-005: a Spring bean got ArC removal rules and quarkus.arc settings;
+     * Claude's cost tripled.
+     */
+    @Test
+    void aSpringBeanGetsNoArcDiscoveryOrRemovalVerdict() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("spring.db"));
+        IndexWriter.writeIncremental(
+                db,
+                new IndexFixture()
+                        .classes(
+                                List.of(
+                                        new ClassRecord(
+                                                0,
+                                                "x.Holder",
+                                                "CLASS",
+                                                "java.lang.Object",
+                                                List.of(),
+                                                "Holder.java",
+                                                1,
+                                                true,
+                                                10)))
+                        .beans(
+                                List.of(
+                                        new BeanRecord(
+                                                0,
+                                                1,
+                                                "CLASS",
+                                                "@Singleton",
+                                                List.of("@Default"),
+                                                List.of(),
+                                                false,
+                                                false,
+                                                null,
+                                                List.of(),
+                                                null,
+                                                null,
+                                                List.of("x.Holder"),
+                                                BeanRecord.SPRING)))
+                        .dependencies(List.of())
+                        .metadata(Map.of("index_id", "spring"))
+                        .snapshot());
+        var bean =
+                TestReads.read(
+                                db,
+                                reader ->
+                                        new SymbolToolQueries()
+                                                .getSymbolDetails(
+                                                        reader, "x.Holder", false, null, 10, 0))
+                        .path("bean");
+        assertFalse(bean.has("arc_removal"), bean.toString());
+        assertFalse(bean.has("discovery"), bean.toString());
+    }
 }

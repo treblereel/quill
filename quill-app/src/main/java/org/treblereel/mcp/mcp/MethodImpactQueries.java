@@ -143,13 +143,7 @@ final class MethodImpactQueries {
      * sessions to find where a new test belongs.
      */
     private static ArrayNode declaringClassTests(ReadQueryContext db,int classId,int limit){
-        var names=db.jdbi().withHandle(h->h.createQuery("""
-                SELECT DISTINCT tc.class_name FROM classes tc
-                WHERE tc.id IN (SELECT from_class_id FROM dependencies WHERE to_class_id = :id
-                                UNION SELECT from_class_id FROM method_calls WHERE to_class_id = :id)
-                  AND tc.id <> :id AND tc.lifecycle = 'current'
-                  AND (tc.source_set = 'test' OR tc.source_file LIKE '%src/test/%')
-                ORDER BY tc.class_name LIMIT :limit""").bind("id",classId).bind("limit",limit).mapTo(String.class).list());
+        var names=db.usages.findTestClassesUsing(classId,limit);
         var result=JSON.createArrayNode();names.forEach(result::add);return result;
     }
     private static ObjectNode categoryCounts(ArrayNode rows){

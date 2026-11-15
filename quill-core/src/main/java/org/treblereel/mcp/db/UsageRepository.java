@@ -828,4 +828,15 @@ public final class UsageRepository {
                 .map((rs, ctx) -> new ForeignFieldAccess(rs.getString("class_name"), rs.getString("field_name"),
                         rs.getString("access_kind"), rs.getString("evidence_lines"))).list();
     }
+
+    /** Up to {@code limit} current test classes that depend on or call the class, by name. */
+    public List<String> findTestClassesUsing(int classId, int limit) {
+        return handle.createQuery("""
+                SELECT DISTINCT tc.class_name FROM classes tc
+                WHERE tc.id IN (SELECT from_class_id FROM dependencies WHERE to_class_id = :id
+                                UNION SELECT from_class_id FROM method_calls WHERE to_class_id = :id)
+                  AND tc.id <> :id AND tc.lifecycle = 'current'
+                  AND (tc.source_set = 'test' OR tc.source_file LIKE '%src/test/%')
+                ORDER BY tc.class_name LIMIT :limit""").bind("id", classId).bind("limit", limit).mapTo(String.class).list();
+    }
 }

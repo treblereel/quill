@@ -1239,6 +1239,21 @@ the repository's `.mvn/extensions.xml`, which already requests the new version.
 Use `verify` instead of `install` for subsequent isolated extension checks. Publishing
 that artifact to Maven Central is a separate release action.
 
+### Formatting and logging
+
+Java sources use google-java-format in AOSP style through Spotless. `verify` checks only
+files changed since the pinned `spotless.ratchetFrom` commit, so code is reformatted as it is
+touched rather than all at once. Format your changes before committing:
+
+```bash
+./mvnw spotless:apply
+```
+
+Diagnostics go to stderr through `QuillLog`, because stdout carries the MCP protocol. Set
+`QUILL_LOG_LEVEL` to `debug`, `info` (default), `warn` or `off`; `QUILL_DEBUG=1` or `--debug`
+also enables debug output. At debug level every best-effort fallback reports where it caught
+an exception, which explains an answer that degraded to `unknown` or `unavailable`.
+
 ### Native executable
 
 With GraalVM and `native-image` installed:

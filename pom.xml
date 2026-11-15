@@ -40,6 +40,14 @@
         <shade-plugin.version>3.6.1</shade-plugin.version>
         <resources-plugin.version>3.4.0</resources-plugin.version>
         <release-plugin.version>3.3.1</release-plugin.version>
+        <spotless-plugin.version>3.10.4</spotless-plugin.version>
+        <google-java-format.version>1.36.1</google-java-format.version>
+        <!--
+            Formatting is enforced only for files changed after this commit, so existing code is
+            reformatted as it is touched instead of in one sweep. The commit must stay reachable
+            from main (merge, do not squash or rebase the branch that introduced it).
+        -->
+        <spotless.ratchetFrom>cc14596f68790c394bb4e0b766860dd108ef9bb6</spotless.ratchetFrom>
         <quill.maven.extension.version>0.1.6-SNAPSHOT</quill.maven.extension.version>
         <slf4j.version>2.0.18</slf4j.version>
         <native.buildtools.version>1.1.12</native.buildtools.version>
@@ -213,6 +221,32 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless-plugin.version}</version>
+                <configuration>
+                    <ratchetFrom>${spotless.ratchetFrom}</ratchetFrom>
+                    <java>
+                        <googleJavaFormat>
+                            <version>${google-java-format.version}</version>
+                            <!-- AOSP keeps the existing four-space indentation. -->
+                            <style>AOSP</style>
+                            <reflowLongStrings>false</reflowLongStrings>
+                        </googleJavaFormat>
+                        <removeUnusedImports />
+                    </java>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>spotless-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-release-plugin</artifactId>

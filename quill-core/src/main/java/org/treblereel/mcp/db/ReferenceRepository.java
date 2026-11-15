@@ -376,4 +376,21 @@ public final class ReferenceRepository {
                 WHERE class_id = :id AND kind = 'config_prefix' AND annotation = 'io.smallrye.config.ConfigMapping'
                 LIMIT 1""").bind("id", classId).mapTo(String.class).findOne();
     }
+
+    /** A declaration of a key, possibly under a {@code %profile.} prefix. */
+    public record KeyDeclaration(String key, String kind, String file, Integer line, String evidence) {}
+
+    /** Up to six property or YAML declarations of {@code key}, plain or profiled, by key, file and line. */
+    public List<KeyDeclaration> findPropertyDeclarations(String key) {
+        return handle.createQuery("""
+                SELECT key, kind, file, line, evidence FROM configuration_definitions
+                WHERE kind IN ('property','yaml_property') AND
+                  (key = :key OR (substr(key,1,1) = '%' AND substr(key,instr(key,'.')+1) = :key))
+                ORDER BY key, file, line LIMIT 6""")
+                .bind("key", key).map((rs, ctx) -> keyDeclaration(rs)).list();
+    }
+
+    private static KeyDeclaration keyDeclaration(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new KeyDeclaration(rs.getString("key"), rs.getString("kind"), rs.getString("file"), nullableInt(rs, "line"), rs.getString("evidence"));
+    }
 }

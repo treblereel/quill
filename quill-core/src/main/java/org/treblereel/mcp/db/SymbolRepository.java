@@ -1067,4 +1067,10 @@ public final class SymbolRepository {
         return handle.createQuery("SELECT count(*) FROM classes WHERE class_name = :type AND kind = 'INTERFACE' AND lifecycle = 'current'")
                 .bind("type", className).mapTo(Integer.class).one() > 0;
     }
+
+    /** Raw values (JSON, null when none) of each direct {@code annotationName} annotation on a class. */
+    public List<String> findDirectClassAnnotationValues(int classId, String annotationName) {
+        return handle.createQuery("SELECT annotation_values FROM class_annotations WHERE class_id = :id AND direct = 1 AND annotation_name = :annotation")
+                .bind("id", classId).bind("annotation", annotationName).mapTo(String.class).list();
+    }
 }

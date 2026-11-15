@@ -56,11 +56,7 @@ final class FrameworkContracts {
     }
 
     static void append(ReadQueryContext db, ObjectNode fact, int classId, String name, String descriptor) throws Exception {
-        String details = db.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT annotation_details FROM class_members
-                WHERE class_id = :id AND name = :name AND descriptor = :descriptor""")
-                .bind("id", classId).bind("name", name).bind("descriptor", descriptor)
-                .mapTo(String.class).findOne().orElse("[]"));
+        String details = db.symbols.findMemberAnnotationDetails(classId, name, descriptor).orElse("[]");
         Map<String, JsonNode> method = new LinkedHashMap<>();
         Set<String> observed = new LinkedHashSet<>();
         org.objectweb.asm.Type[] parameters;
@@ -77,12 +73,8 @@ final class FrameworkContracts {
                 observed.add(parameters[index].getClassName());
         }
         if (!method.containsKey("jakarta.transaction.Transactional")) {
-            for (Map<String, Object> row : db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT annotation_values FROM class_annotations
-                    WHERE class_id = :id AND direct = 1 AND annotation_name = 'jakarta.transaction.Transactional'""")
-                    .bind("id", classId).mapToMap().list())) {
-                Object values = row.get("annotation_values");
-                method.put("jakarta.transaction.Transactional", values == null ? JSON.createObjectNode() : JSON.readTree(String.valueOf(values)));
+            for (String values : db.symbols.findDirectClassAnnotationValues(classId, "jakarta.transaction.Transactional")) {
+                method.put("jakarta.transaction.Transactional", values == null ? JSON.createObjectNode() : JSON.readTree(values));
             }
         }
         List<String> rules = new ArrayList<>();
@@ -121,23 +113,19 @@ final class FrameworkContracts {
         ConfigurationSourceEvidence source = new ConfigurationSourceEvidence(db);
         for (var setting : settings.entrySet()) {
             String key = setting.getKey();
-            var rows = db.jdbi().withHandle(handle -> handle.createQuery("""
-                    SELECT key, kind, file, line, evidence FROM configuration_definitions
-                    WHERE kind IN ('property','yaml_property') AND
-                      (key = :key OR (substr(key,1,1) = '%' AND substr(key,instr(key,'.')+1) = :key))
-                    ORDER BY key, file, line LIMIT 6""").bind("key", key).mapToMap().list());
+            var rows = db.references.findPropertyDeclarations(key);
             for (var row : rows) {
                 ObjectNode reference = JSON.createObjectNode();
-                String declared = (String) row.get("key"), file = (String) row.get("file");
-                int line = ((Number) row.get("line")).intValue();
-                source.append(reference, declared, file, line, (String) row.get("kind"), String.valueOf(row.get("evidence")));
+                String declared = row.key(), file = row.file();
+                int line = row.line().intValue();
+                source.append(reference, declared, file, line, row.kind(), String.valueOf(row.evidence()));
                 JsonNode evidence = reference.path("declared_source");
                 String value = evidence.has("declared_value") ? evidence.path("declared_value").asText()
                         : evidence.path("status").asText().equals("opaque_or_unsupported_value") ? enumWord(db, file, declared, line) : null;
                 lines.add(value != null ? declared + "=" + value + " " + file + ":" + line
                         : declared + " declared at " + file + ":" + line + " (value " + evidence.path("status").asText("unknown") + ")");
             }
-            boolean profileOnly = rows.stream().allMatch(row -> String.valueOf(row.get("key")).startsWith("%"));
+            boolean profileOnly = rows.stream().allMatch(row -> String.valueOf(row.key()).startsWith("%"));
             if (profileOnly) lines.add(key + ": " + (rows.isEmpty() ? "not declared; " : "no unprofiled declaration; ")
                     + (setting.getValue() == null ? "no default" : setting.getValue()));
         }

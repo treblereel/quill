@@ -82,7 +82,7 @@ API: removal produces `NoSuchMethodError`, static-to-instance change produces
 `IncompatibleClassChangeError`, a generated bridge preserves covariant-return binary
 linkage, and an added overload preserves a binary client but prevents recompiling
 its `null` call. These cases verify the limits of the conservative classification.
-The existing `QuillToolsTest` checks that the new object is present without losing
+The existing `QuillToolsStructureTest` checks that the new object is present without losing
 the prior structural/resolution response fields.
 
 ## Retained JVM API evidence

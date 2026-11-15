@@ -210,6 +210,48 @@ class ConfigurationSourceEvidenceTest {
      * V64 CQ-038: the tool answer carried the rule but the prefetch fact did not, and Codex still
      * read SmallRye bytecode.
      */
+    /**
+     * Apollo v3: every prompt's context line set spring.profiles.active=github,auth; 26 of 47
+     * prefetches spent the budget on it.
+     */
+    @Test
+    void aKeyThePromptAssignsAValueIsNotLookedUp() throws Exception {
+        file("application.properties", "limits.timeout=5s\n");
+        definition("limits.timeout", "property", "application.properties", 1);
+        var given =
+                TestReads.read(
+                                db,
+                                readScope ->
+                                        PrefetchContext.collect(
+                                                readScope,
+                                                root,
+                                                "Profile: runs with limits.timeout=9s. Which bean reads p.Fixture?"))
+                        .path("facts");
+        assertFalse(given.toString().contains("\"key\":\"limits.timeout\""), given.toString());
+        var asked =
+                TestReads.read(
+                                db,
+                                readScope ->
+                                        PrefetchContext.collect(
+                                                readScope, root, "Where is limits.timeout set?"))
+                        .path("facts");
+        assertTrue(asked.toString().contains("\"key\":\"limits.timeout\""), asked.toString());
+    }
+
+    /** Apollo v3: a Spring project got the MicroProfile config_ordinal rule. */
+    @Test
+    void aSpringProjectGetsSpringBootPropertySourceOrder() throws Exception {
+        file("application.properties", "limits.timeout=5s\n");
+        definition("limits.timeout", "property", "application.properties", 1);
+        db.useHandle(
+                h ->
+                        h.execute(
+                                "INSERT INTO beans(class_id,kind,scope,framework) VALUES (1,'CLASS','@Singleton','spring')"));
+        String rule = query("limits.timeout", null, "declared").path("source_precedence").asText();
+        assertTrue(rule.startsWith("Spring Boot"), rule);
+        assertFalse(rule.contains("MicroProfile"), rule);
+    }
+
     @Test
     void thePrefetchOfADeclaredKeyKeepsHowSourcesTakePrecedence() throws Exception {
         file("application.properties", "limits.timeout=5s\n");

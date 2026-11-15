@@ -151,6 +151,10 @@ public final class PrefetchContext {
         var keys = CONFIG_KEY.matcher(prompt);
         while (keys.find() && facts.size() < 3) {
             String key = keys.group().replaceAll("\\.+$", "");
+            // Apollo v3: "spring.profiles.active=github,auth" in every prompt's context took the
+            // budget;
+            // a key the prompt assigns a value to is a given, not a question.
+            if (assignedInPrompt(prompt, keys.end())) continue;
             if (!configurationKeys.contains(key) || !emittedKeys.add(key)) continue;
             ObjectNode evidence =
                     (ObjectNode)
@@ -402,6 +406,12 @@ public final class PrefetchContext {
                 + " (of "
                 + totalBeans
                 + ")";
+    }
+
+    private static boolean assignedInPrompt(String prompt, int end) {
+        int i = end;
+        while (i < prompt.length() && prompt.charAt(i) == ' ') i++;
+        return i < prompt.length() && prompt.charAt(i) == '=';
     }
 
     /** Every session pays for this context once; replays of recorded packets chose the limit. */

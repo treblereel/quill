@@ -29,6 +29,18 @@ public final class ConfigurationReferenceQueries {
                     + ".env in the working directory 295, config/application.properties in the working directory 260, "
                     + "application.properties on the classpath 250, META-INF/microprofile-config.properties 100; a source may set its own config_ordinal";
 
+    /**
+     * Documented Spring Boot externalized configuration order, for a project whose beans are
+     * Spring's.
+     */
+    static final String SPRING_SOURCE_PRECEDENCE =
+            "Spring Boot: an earlier property source wins (documented, not read from dependency bytecode): command-line "
+                    + "arguments, SPRING_APPLICATION_JSON, servlet init parameters, JNDI, Java system properties, OS environment "
+                    + "variables, then config data with profile-specific files over plain ones and files outside the jar over "
+                    + "those inside (config/ before the working directory, then classpath:/config/, then classpath:), then "
+                    + "@PropertySource on @Configuration classes, then SpringApplication default properties; property sources "
+                    + "added programmatically to the Environment go where their code puts them (addFirst/addLast)";
+
     private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> KINDS = Set.of("all", "property", "prefix", "persistence");
 
@@ -107,7 +119,10 @@ public final class ConfigurationReferenceQueries {
             // V41/V62 CQ-038: without the rule Codex read SmallRye's comparator bytecode to confirm
             // it.
             if (view.equals("declared") && key != null && !key.isBlank())
-                result.put("source_precedence", SOURCE_PRECEDENCE);
+                // Apollo v3: a Spring project got the MicroProfile rule.
+                result.put(
+                        "source_precedence",
+                        springProject(reader) ? SPRING_SOURCE_PRECEDENCE : SOURCE_PRECEDENCE);
             ConfigurationSourceEvidence source =
                     view.equals("declared") ? new ConfigurationSourceEvidence(reader) : null;
             ArrayNode values = result.putArray("references");
@@ -224,6 +239,18 @@ public final class ConfigurationReferenceQueries {
             QuillLog.swallowed(error);
             return errorNode("Could not query indexed configuration references");
         }
+    }
+
+    /** Spring when the index holds Spring beans and no CDI ones. */
+    static boolean springProject(org.treblereel.mcp.db.ReadQueryContext reader) {
+        return reader.jdbi()
+                .withHandle(
+                        h ->
+                                h.createQuery(
+                                                "SELECT SUM(framework = 'spring') > 0 AND SUM(framework = 'cdi') = 0 FROM beans")
+                                        .mapTo(Boolean.class)
+                                        .findOne()
+                                        .orElse(false));
     }
 
     private static final java.util.regex.Pattern FRAMEWORK_KEY =

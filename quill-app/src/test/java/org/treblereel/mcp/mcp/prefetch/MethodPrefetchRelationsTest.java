@@ -942,4 +942,44 @@ class MethodPrefetchRelationsTest {
         assertFalse(fact.path("coverage").has("snapshot_freshness"));
         assertFalse(fact.has("reference_page_counts"));
     }
+
+    /**
+     * Apollo v1-v3 AQ-046: asked which tests to run after changing a delegating method, Claude left
+     * out the delegates' tests.
+     */
+    @Test
+    void aDelegatingMethodNamesItsDelegatesTests() throws Exception {
+        var db =
+                JavaEvidenceFixture.index(
+                        root,
+                        "package p; interface V { boolean ok(String a); } "
+                                + "class UserV implements V { public boolean ok(String a) { return true; } } "
+                                + "class TokenV implements V { public boolean ok(String a) { return false; } } "
+                                + "class Unified { V delegate; boolean ok(String a) { return delegate.ok(a); } } "
+                                + "class UserVTest { UserV v = new UserV(); } class Unrelated {}");
+        db.useHandle(
+                handle ->
+                        handle.execute(
+                                "UPDATE classes SET source_set = CASE WHEN class_name = 'p.UserVTest' THEN 'test' ELSE 'main' END"));
+        db.useHandle(
+                handle ->
+                        handle.execute(
+                                "INSERT INTO dependencies(from_class_id, to_class_id, kind, occurrence_count, evidence_lines) SELECT t.id, u.id, "
+                                        + "'CONSTRUCTS', 1, '[]' FROM classes t, classes u WHERE t.class_name = 'p.UserVTest' AND u.class_name = 'p.UserV'"));
+        ObjectNode fact =
+                JSON.createObjectNode()
+                        .put("class", "p.Unified")
+                        .put("name", "ok")
+                        .put("descriptor", "(Ljava/lang/String;)Z");
+        TestReads.read(
+                db,
+                reader -> {
+                    MethodPrefetchRelations.append(reader, root, fact);
+                    return null;
+                });
+
+        String delegates = fact.path("delegate_tests").toString();
+        assertTrue(delegates.contains("p.UserVTest (tests UserV)"), fact.toString());
+        assertTrue(fact.path("delegate_tests_basis").asText().contains("V#ok"), fact.toString());
+    }
 }

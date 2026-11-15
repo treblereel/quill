@@ -144,6 +144,7 @@ public final class MethodPrefetchRelations {
         referencedMembers(db, fact, classId, name, descriptor);
         interceptors(db, fact, classId, name, descriptor);
         callees(db, root, fact, classId, name, descriptor);
+        delegateTests(db, fact, classId, name, descriptor);
         var hops = ThreadHops.of(db, root, classId, name, descriptor);
         if (hops != null) fact.set("thread_hops", hops);
         sameEventObservers(db, fact, classId, name, descriptor);
@@ -951,6 +952,97 @@ public final class MethodPrefetchRelations {
         if (!parameters.isEmpty()) fact.set("producer_parameters", parameters);
         if (!injectedInto.isEmpty()) fact.set("produced_bean_injected_into", injectedInto);
         sameTypeProviders(db, fact, classId, beans);
+    }
+
+    /**
+     * Tests of the implementations a method delegates to: calls of the same method name on another
+     * type, then that type's application implementations (one level of subclassing) and the test
+     * classes referencing them. Apollo v1-v3 AQ-046: asked which tests to run after changing
+     * UnifiedPermissionValidator#hasReleaseNamespacePermission, Claude never named the delegate
+     * validators' tests.
+     */
+    private static void delegateTests(
+            ReadQueryContext db, ObjectNode fact, int classId, String name, String descriptor) {
+        var targets =
+                db.jdbi()
+                        .withHandle(
+                                handle ->
+                                        handle.createQuery(
+                                                        """
+                SELECT DISTINCT c.class_name FROM method_calls mc JOIN classes c ON c.id = mc.to_class_id
+                WHERE mc.from_class_id = :id AND mc.from_method = :name AND mc.from_descriptor = :descriptor
+                  AND mc.to_method = :name AND mc.to_class_id <> :id ORDER BY 1""")
+                                                .bind("id", classId)
+                                                .bind("name", name)
+                                                .bind(
+                                                        "descriptor",
+                                                        descriptor == null ? "" : descriptor)
+                                                .mapTo(String.class)
+                                                .list());
+        if (targets.isEmpty()) return;
+        List<String> lines = new ArrayList<>();
+        for (String target : targets) {
+            var implementations =
+                    db.jdbi()
+                            .withHandle(
+                                    handle ->
+                                            handle.createQuery(
+                                                            """
+                    WITH direct AS (SELECT id, class_name FROM classes WHERE lifecycle = 'current'
+                                      AND COALESCE(source_set, 'main') <> 'test'
+                                      AND (interfaces LIKE :type OR superclass = :name))
+                    SELECT id, class_name FROM direct
+                    UNION SELECT c.id, c.class_name FROM classes c JOIN direct d ON c.superclass = d.class_name
+                    WHERE c.lifecycle = 'current' AND COALESCE(c.source_set, 'main') <> 'test' ORDER BY 2""")
+                                                    .bind("type", "%\"" + target + "\"%")
+                                                    .bind("name", target)
+                                                    .mapToMap()
+                                                    .list());
+            for (var implementation : implementations) {
+                if (lines.size() >= 6) break;
+                String impl = String.valueOf(implementation.get("class_name"));
+                String own = impl.substring(impl.lastIndexOf('.') + 1) + "Test";
+                // One test class per implementation, its own <Impl>Test first.
+                List<String> tests =
+                        db
+                                .jdbi()
+                                .withHandle(
+                                        handle ->
+                                                handle.createQuery(
+                                                                """
+                        SELECT DISTINCT tc.class_name FROM dependencies d JOIN classes tc ON tc.id = d.from_class_id
+                        WHERE d.to_class_id = :id AND tc.source_set = 'test' ORDER BY 1""")
+                                                        .bind(
+                                                                "id",
+                                                                ((Number) implementation.get("id"))
+                                                                        .intValue())
+                                                        .mapTo(String.class)
+                                                        .list())
+                                .stream()
+                                .filter(t -> t.matches(".*(Test|Tests|IT)$"))
+                                .sorted(
+                                        java.util.Comparator.comparing(
+                                                (String t) -> !t.endsWith("." + own)))
+                                .limit(1)
+                                .toList();
+                for (String test : tests) {
+                    String line =
+                            test + " (tests " + impl.substring(impl.lastIndexOf('.') + 1) + ")";
+                    if (lines.size() < 6 && !lines.contains(line)) lines.add(line);
+                }
+            }
+        }
+        if (lines.isEmpty()) return;
+        fact.set("delegate_tests", JSON.valueToTree(lines));
+        fact.put(
+                "delegate_tests_basis",
+                "heuristic: tests referencing the implementations of "
+                        + String.join(
+                                ", ",
+                                targets.stream()
+                                        .map(t -> t.substring(t.lastIndexOf('.') + 1) + "#" + name)
+                                        .toList())
+                        + ", which this method calls; they cover the delegates, not this method");
     }
 
     private static final int MAX_PROVIDERS = 6;

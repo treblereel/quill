@@ -383,10 +383,7 @@ final class CallHierarchyQueries {
 
     /** The one bytecode descriptor of a synthetic lambda in call evidence, matching a given descriptor if any. */
     private static String lambdaDescriptor(ReadQueryContext reader, int classId, String method, String signature) {
-        List<String> descriptors = reader.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT from_descriptor FROM method_calls WHERE from_class_id = :id AND from_method = :name
-                UNION SELECT to_descriptor FROM method_calls WHERE to_class_id = :id AND to_method = :name""")
-                .bind("id", classId).bind("name", method).mapTo(String.class).list());
+        List<String> descriptors = reader.usages.findCallDescriptors(classId, method);
         List<String> matching = signature == null ? descriptors
                 : descriptors.stream().filter(signature::equals).toList();
         return matching.size() == 1 ? matching.getFirst() : null;

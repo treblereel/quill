@@ -859,4 +859,12 @@ public final class UsageRepository {
                 .bind("from", fromClassId).bind("to", toClassId)
                 .map((rs, ctx) -> new DependentUse(rs.getString("scope"), rs.getString("used_in"))).one();
     }
+
+    /** Distinct descriptors a method name has in call evidence, as caller or callee. */
+    public List<String> findCallDescriptors(int classId, String method) {
+        return handle.createQuery("""
+                SELECT from_descriptor FROM method_calls WHERE from_class_id = :id AND from_method = :name
+                UNION SELECT to_descriptor FROM method_calls WHERE to_class_id = :id AND to_method = :name""")
+                .bind("id", classId).bind("name", method).mapTo(String.class).list();
+    }
 }

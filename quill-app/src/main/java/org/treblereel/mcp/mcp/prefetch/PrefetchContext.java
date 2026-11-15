@@ -474,7 +474,8 @@ public final class PrefetchContext {
      * file; without the bound interceptors (V62 CQ-026) they searched for them over three more
      * turns; an endpoint's methods, once halved to its handler, hold the handler body (other facts'
      * methods go with OPTIONAL_FIELDS); halved calls (V66 CQ-027) lost ObjectMapper#readValue from
-     * every answer, though the body stayed.
+     * every answer, though the body stayed; halved same_type_providers (Apollo AQ-005) lost the
+     * LDAP provider while 25 consumers stayed.
      */
     private static final Set<String> LAST_RESORT =
             Set.of(
@@ -484,7 +485,8 @@ public final class PrefetchContext {
                     "beans_reached_after",
                     "dependency_interceptors",
                     "methods",
-                    "calls");
+                    "calls",
+                    "same_type_providers");
 
     /**
      * A shorter field is a statement rather than a body of evidence, and removing it saves little.
